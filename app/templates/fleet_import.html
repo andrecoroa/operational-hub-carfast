@@ -10,14 +10,21 @@
       <a href="/">Dashboard</a>
       <a href="/fleet">Viaturas</a>
       <a href="/task-board">Tarefas</a>
+      <a href="/imports">Importacoes</a>
       <a href="/imports/fleet" class="active">Importar frota</a>
       <a href="/docs">API</a>
     </nav>
   </aside>
   <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Rentway</p>
+        <h2>Importar frota</h2>
+      </div>
+      <a class="button-link secondary-link" href="/imports">Historico</a>
+    </header>
+
     <section class="form-panel">
-      <p class="eyebrow">Rentway</p>
-      <h2>Importar frota</h2>
       {% if error %}
         <div class="alert">{{ error }}</div>
       {% endif %}

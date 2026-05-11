@@ -5,12 +5,12 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
-from app.models.imports import ImportBatch
+from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
@@ -322,6 +322,52 @@ def fleet_import_submit(request: Request, file: UploadFile):
         f"/fleet?imported={stats['created_rows']}+criadas,+{stats['updated_rows']}+atualizadas",
         status_code=303,
     )
+
+
+@web_router.get("/imports", response_class=HTMLResponse)
+def imports_page(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        batches = db.scalars(select(ImportBatch).order_by(ImportBatch.id.desc()).limit(100)).all()
+        return templates.TemplateResponse(
+            request,
+            "imports.html",
+            {
+                "batches": batches,
+            },
+        )
+
+
+@web_router.get("/imports/{batch_id}", response_class=HTMLResponse)
+def import_detail(request: Request, batch_id: int):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        batch = db.get(ImportBatch, batch_id)
+        if not batch:
+            return RedirectResponse("/imports", status_code=303)
+        files = db.scalars(
+            select(ImportFile).where(ImportFile.batch_id == batch.id).order_by(ImportFile.id)
+        ).all()
+        errors = db.scalars(
+            select(ImportError).where(ImportError.batch_id == batch.id).order_by(ImportError.id).limit(100)
+        ).all()
+        raw_rows = db.scalar(
+            select(func.count()).select_from(ImportRawRow).where(ImportRawRow.batch_id == batch.id)
+        ) or 0
+        return templates.TemplateResponse(
+            request,
+            "import_detail.html",
+            {
+                "batch": batch,
+                "files": files,
+                "errors": errors,
+                "raw_rows": raw_rows,
+            },
+        )
 
 
 @web_router.get("/task-board", response_class=HTMLResponse)

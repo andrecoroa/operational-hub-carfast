@@ -11,7 +11,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch
-from app.models.tasks import Task, TaskHistory
+from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
@@ -413,6 +413,96 @@ def task_create(
         db.commit()
 
     return RedirectResponse("/task-board?created=1", status_code=303)
+
+
+@web_router.get("/task-board/{task_id}", response_class=HTMLResponse)
+def task_detail(request: Request, task_id: int, commented: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task:
+            return RedirectResponse("/task-board", status_code=303)
+        comments = db.scalars(
+            select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
+        ).all()
+        history = db.scalars(
+            select(TaskHistory).where(TaskHistory.task_id == task.id).order_by(TaskHistory.changed_at.desc())
+        ).all()
+        linked_vehicle = None
+        if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
+            linked_vehicle = db.get(Vehicle, int(task.entity_id))
+        return templates.TemplateResponse(
+            request,
+            "task_detail.html",
+            {
+                "task": task,
+                "comments": comments,
+                "history": history,
+                "linked_vehicle": linked_vehicle,
+                "commented": commented,
+                "error": None,
+            },
+        )
+
+
+@web_router.post("/task-board/{task_id}/comments", response_class=HTMLResponse)
+def task_add_comment(
+    request: Request,
+    task_id: int,
+    comment: str = Form(...),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_comment = comment.strip()
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task:
+            return RedirectResponse("/task-board", status_code=303)
+
+        if not clean_comment:
+            comments = db.scalars(
+                select(TaskComment)
+                .where(TaskComment.task_id == task.id)
+                .order_by(TaskComment.created_at.desc())
+            ).all()
+            history = db.scalars(
+                select(TaskHistory)
+                .where(TaskHistory.task_id == task.id)
+                .order_by(TaskHistory.changed_at.desc())
+            ).all()
+            linked_vehicle = None
+            if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
+                linked_vehicle = db.get(Vehicle, int(task.entity_id))
+            return templates.TemplateResponse(
+                request,
+                "task_detail.html",
+                {
+                    "task": task,
+                    "comments": comments,
+                    "history": history,
+                    "linked_vehicle": linked_vehicle,
+                    "commented": None,
+                    "error": "Escreve um comentario antes de gravar.",
+                },
+                status_code=400,
+            )
+
+        db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        record_audit(
+            db,
+            action="task.comment.created",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Comentario adicionado a tarefa: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
 
 @web_router.post("/task-board/{task_id}/close")

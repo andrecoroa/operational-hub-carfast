@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Tarefas</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Viaturas</a>
+      <a href="/task-board" class="active">Tarefas</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Follow-up operacional</p>
+        <h2>{{ task.title }}</h2>
+      </div>
+      <a class="button-link secondary-link" href="/task-board">Voltar</a>
+    </header>
+
+    {% if commented %}
+      <div class="success">Comentario gravado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Resumo</h3>
+        <dl class="detail-list">
+          <div><dt>Estado</dt><dd>{{ task.status }}</dd></div>
+          <div><dt>Categoria</dt><dd>{{ task.category or "-" }}</dd></div>
+          <div><dt>Prioridade</dt><dd>{{ task.priority or "-" }}</dd></div>
+          <div>
+            <dt>Ligacao</dt>
+            <dd>
+              {% if linked_vehicle %}
+                <a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a>
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+          <div><dt>Descricao</dt><dd>{{ task.description or "-" }}</dd></div>
+        </dl>
+      </article>
+
+      <form method="post" action="/task-board/{{ task.id }}/comments" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Comentario</p>
+          <h3>Adicionar comentario</h3>
+        </div>
+        <label>
+          Comentario
+          <textarea name="comment" rows="5" required></textarea>
+        </label>
+        <button type="submit">Gravar comentario</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Comentarios</h3>
+        <div class="event-list">
+          {% for item in comments %}
+            <article class="event-item">
+              <div>
+                <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+              </div>
+              <p>{{ item.comment }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem comentarios.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="section">
+        <h3>Historico</h3>
+        <div class="event-list">
+          {% for item in history %}
+            <article class="event-item">
+              <div>
+                <strong>{{ item.field_name }}</strong>
+                <span>{{ item.changed_at.strftime("%Y-%m-%d %H:%M") if item.changed_at else "" }}</span>
+              </div>
+              <p>{{ item.old_value or "-" }} -> {{ item.new_value or "-" }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem historico.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -81,7 +81,7 @@
             {% for task in tasks %}
               <tr>
                 <td>
-                  <strong>{{ task.title }}</strong>
+                  <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
                   {% if task.description %}
                     <p class="table-note">{{ task.description }}</p>
                   {% endif %}

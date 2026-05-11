@@ -72,6 +72,12 @@ def excel_date_to_iso(value: Any) -> str | None:
     return text
 
 
+def json_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
 def iter_xlsx_rows(path: str | Path, preferred_sheet: str | None = None):
     wb = load_workbook(path, data_only=True, read_only=True)
     try:
@@ -79,7 +85,7 @@ def iter_xlsx_rows(path: str | Path, preferred_sheet: str | None = None):
         headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
         for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             raw = {
-                headers[idx] or f"coluna_{idx + 1}": value
+                headers[idx] or f"coluna_{idx + 1}": json_safe_value(value)
                 for idx, value in enumerate(row)
                 if idx < len(headers)
             }

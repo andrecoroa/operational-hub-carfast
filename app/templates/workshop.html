@@ -51,6 +51,20 @@
         </label>
         <div class="form-grid">
           <label>
+            Abertura
+            <select name="opening_type">
+              {% for code, label in opening_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            KM entrada
+            <input type="number" name="km_entry" min="0">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
             Prioridade
             <select name="priority">
               <option value="normal">Normal</option>
@@ -76,8 +90,10 @@
             <tr>
               <th>Processo</th>
               <th>Viatura</th>
+              <th>Abertura</th>
               <th>Prioridade</th>
               <th>Estado</th>
+              <th>Decisao</th>
               <th>Saida prevista</th>
               <th></th>
             </tr>
@@ -92,8 +108,10 @@
                   {% endif %}
                 </td>
                 <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">Viatura #{{ process.vehicle_id }}</a></td>
+                <td>{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</td>
                 <td>{{ process.priority or "-" }}</td>
-                <td><span class="pill">{{ process.status }}</span></td>
+                <td><span class="pill">{{ status_labels.get(process.status, process.status) }}</span></td>
+                <td>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
                 <td>{{ process.expected_exit_on or "-" }}</td>
                 <td class="row-action">
                   <form method="post" action="/workshop/{{ process.id }}/close">
@@ -103,7 +121,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="6" class="muted">Sem processos de oficina abertos.</td>
+                <td colspan="8" class="muted">Sem processos de oficina abertos.</td>
               </tr>
             {% endfor %}
           </tbody>

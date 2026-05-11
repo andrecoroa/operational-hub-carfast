@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -13,12 +13,18 @@ class WorkshopProcess(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
-    status: Mapped[str] = mapped_column(String(80), default="open", index=True)
+    opening_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(80), default="opening", index=True)
     priority: Mapped[str | None] = mapped_column(String(80), index=True)
     source: Mapped[str | None] = mapped_column(String(80), index=True)
     opened_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     opened_on: Mapped[date | None] = mapped_column(Date)
     expected_exit_on: Mapped[date | None] = mapped_column(Date)
+    km_entry: Mapped[int | None] = mapped_column(Integer)
+    decision: Mapped[str | None] = mapped_column(String(80), index=True)
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(Text)
 

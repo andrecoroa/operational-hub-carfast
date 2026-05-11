@@ -36,15 +36,50 @@
       <article class="section">
         <h3>Resumo</h3>
         <dl class="detail-list">
-          <div><dt>Estado</dt><dd>{{ process.status }}</dd></div>
+          <div><dt>Estado</dt><dd>{{ status_labels.get(process.status, process.status) }}</dd></div>
+          <div><dt>Abertura</dt><dd>{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</dd></div>
           <div><dt>Prioridade</dt><dd>{{ process.priority or "-" }}</dd></div>
           <div><dt>Viatura</dt><dd><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></dd></div>
           <div><dt>Entrada</dt><dd>{{ process.opened_on or "-" }}</dd></div>
+          <div><dt>KM entrada</dt><dd>{{ process.km_entry or "-" }}</dd></div>
           <div><dt>Saida prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
+          <div><dt>Decisao</dt><dd>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</dd></div>
+          <div><dt>Nota decisao</dt><dd>{{ process.decision_note or "-" }}</dd></div>
           <div><dt>Nota inicial</dt><dd>{{ process.note or "-" }}</dd></div>
         </dl>
       </article>
 
+      <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Fluxo</p>
+          <h3>Atualizar estado</h3>
+        </div>
+        <label>
+          Estado
+          <select name="status">
+            {% for code, label in statuses %}
+              <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Decisao
+          <select name="decision">
+            <option value="">Sem decisao</option>
+            {% for code, label in decisions %}
+              <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Nota da decisao
+          <textarea name="decision_note" rows="4">{{ process.decision_note or "" }}</textarea>
+        </label>
+        <button type="submit">Atualizar fluxo</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
       <form method="post" action="/workshop/{{ process.id }}/notes" class="form-panel form-stack">
         <div>
           <p class="eyebrow">Acompanhamento</p>
@@ -56,9 +91,7 @@
         </label>
         <button type="submit">Gravar nota</button>
       </form>
-    </section>
 
-    <section class="detail-grid">
       <article class="section">
         <h3>Notas</h3>
         <div class="event-list">

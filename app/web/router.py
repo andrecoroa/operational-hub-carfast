@@ -21,6 +21,36 @@ from app.services.authorization import get_user_authorized_unit_codes, get_user_
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
 
+WORKSHOP_OPENING_TYPES = [
+    ("walk_in", "Entrada imediata"),
+    ("appointment", "Marcacao"),
+]
+
+WORKSHOP_STATUSES = [
+    ("opening", "Abertura"),
+    ("reception", "Rececao"),
+    ("diagnosis", "Diagnostico"),
+    ("decision", "Decisao"),
+    ("waiting_analysis", "Aguardar analise"),
+    ("waiting_parts", "Aguardar material"),
+    ("in_progress", "Em execucao"),
+    ("validation", "Validacao"),
+    ("closed", "Fechado"),
+]
+
+WORKSHOP_DECISIONS = [
+    ("repair", "Reparar"),
+    ("wait_analysis", "Aguardar analise"),
+    ("order_parts", "Encomendar material"),
+    ("send_to_brand", "Enviar para marca"),
+    ("request_quote", "Pedir orcamento"),
+    ("no_action_needed", "Sem intervencao necessaria"),
+]
+
+WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
+WORKSHOP_STATUS_LABELS = dict(WORKSHOP_STATUSES)
+WORKSHOP_DECISION_LABELS = dict(WORKSHOP_DECISIONS)
+
 
 @web_router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -130,6 +160,7 @@ def vehicle_detail(
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
+                "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                 "saved": saved,
                 "task_created": task_created,
                 "error": None,
@@ -190,6 +221,7 @@ def vehicle_add_event(
                     "events": events,
                     "vehicle_tasks": vehicle_tasks,
                     "workshop_processes": workshop_processes,
+                    "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                     "saved": None,
                     "task_created": None,
                     "error": "Escreve uma nota antes de gravar.",
@@ -275,6 +307,7 @@ def vehicle_create_task(
                     "events": events,
                     "vehicle_tasks": vehicle_tasks,
                     "workshop_processes": workshop_processes,
+                    "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                     "saved": None,
                     "task_created": None,
                     "error": "Indica um titulo para a tarefa.",
@@ -338,6 +371,10 @@ def workshop_page(request: Request, created: str | None = None, closed: str | No
                 "created": created,
                 "closed": closed,
                 "error": None,
+                "opening_types": WORKSHOP_OPENING_TYPES,
+                "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                "status_labels": WORKSHOP_STATUS_LABELS,
+                "decision_labels": WORKSHOP_DECISION_LABELS,
             },
         )
 
@@ -347,7 +384,9 @@ def workshop_create(
     request: Request,
     vehicle_id: int = Form(...),
     title: str = Form(...),
+    opening_type: str = Form("walk_in"),
     priority: str = Form("normal"),
+    km_entry: str = Form(""),
     expected_exit_on: str = Form(""),
     note: str = Form(""),
 ):
@@ -375,6 +414,10 @@ def workshop_create(
                     "created": None,
                     "closed": None,
                     "error": "Escolhe uma viatura e indica um titulo.",
+                    "opening_types": WORKSHOP_OPENING_TYPES,
+                    "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                    "status_labels": WORKSHOP_STATUS_LABELS,
+                    "decision_labels": WORKSHOP_DECISION_LABELS,
                 },
                 status_code=400,
             )
@@ -383,12 +426,14 @@ def workshop_create(
         process = WorkshopProcess(
             vehicle_id=vehicle.id,
             title=clean_title,
-            status="open",
+            opening_type=opening_type,
+            status="opening",
             priority=priority,
             source="internal",
             opened_by_id=user_id,
             opened_on=date.today(),
             expected_exit_on=expected_date,
+            km_entry=parse_optional_int(km_entry),
             note=note.strip() or None,
         )
         db.add(process)
@@ -430,6 +475,11 @@ def workshop_detail(request: Request, process_id: int, noted: str | None = None)
                 "notes": notes,
                 "noted": noted,
                 "error": None,
+                "statuses": WORKSHOP_STATUSES,
+                "decisions": WORKSHOP_DECISIONS,
+                "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                "status_labels": WORKSHOP_STATUS_LABELS,
+                "decision_labels": WORKSHOP_DECISION_LABELS,
             },
         )
 
@@ -465,6 +515,11 @@ def workshop_add_note(
                     "notes": notes,
                     "noted": None,
                     "error": "Escreve uma nota antes de gravar.",
+                    "statuses": WORKSHOP_STATUSES,
+                    "decisions": WORKSHOP_DECISIONS,
+                    "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                    "status_labels": WORKSHOP_STATUS_LABELS,
+                    "decision_labels": WORKSHOP_DECISION_LABELS,
                 },
                 status_code=400,
             )
@@ -480,6 +535,71 @@ def workshop_add_note(
         )
         db.commit()
 
+    return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/flow")
+def workshop_update_flow(
+    request: Request,
+    process_id: int,
+    status: str = Form(...),
+    decision: str = Form(""),
+    decision_note: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    allowed_statuses = {code for code, _ in WORKSHOP_STATUSES}
+    allowed_decisions = {code for code, _ in WORKSHOP_DECISIONS}
+    if status not in allowed_statuses:
+        status = "opening"
+    if decision and decision not in allowed_decisions:
+        decision = ""
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+
+        old_status = process.status
+        old_decision = process.decision
+        process.status = status
+        process.decision = decision or None
+        process.decision_note = decision_note.strip() or None
+        if decision and decision != old_decision:
+            process.decided_by_id = user_id
+            process.decided_at = datetime.now(UTC)
+        if status == "closed":
+            process.closed_at = process.closed_at or datetime.now(UTC)
+        else:
+            process.closed_at = None
+
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Fluxo atualizado: "
+                    f"{WORKSHOP_STATUS_LABELS.get(old_status, old_status)} -> "
+                    f"{WORKSHOP_STATUS_LABELS.get(status, status)}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.process.flow.updated",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Fluxo de oficina atualizado: {process.title}",
+            before_json={"status": old_status, "decision": old_decision},
+            after_json={"status": process.status, "decision": process.decision},
+            user_id=user_id,
+        )
+        db.commit()
+
+    if status == "closed":
+        return RedirectResponse("/workshop?closed=1", status_code=303)
     return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
 
 
@@ -864,3 +984,9 @@ def parse_optional_date(value: str | None) -> date | None:
     if not value or not value.strip():
         return None
     return date.fromisoformat(value.strip())
+
+
+def parse_optional_int(value: str | None) -> int | None:
+    if not value or not value.strip():
+        return None
+    return int(value.strip())

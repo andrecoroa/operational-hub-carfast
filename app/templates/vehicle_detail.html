@@ -116,7 +116,7 @@
             <article class="event-item">
               <div>
                 <strong><a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a></strong>
-                <span>{{ process.priority or "normal" }}</span>
+                <span>{{ workshop_status_labels.get(process.status, process.status) }}</span>
               </div>
               {% if process.note %}
                 <p>{{ process.note }}</p>

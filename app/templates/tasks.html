@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Tarefas</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Viaturas</a>
+      <a href="/task-board" class="active">Tarefas</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Follow-up operacional</p>
+        <h2>Tarefas abertas</h2>
+      </div>
+    </header>
+
+    {% if created %}
+      <div class="success">Tarefa criada.</div>
+    {% endif %}
+    {% if closed %}
+      <div class="success">Tarefa fechada.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="task-layout">
+      <form method="post" action="/task-board" class="form-panel form-stack task-form">
+        <label>
+          Titulo
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Categoria
+            <select name="category">
+              <option value="operacional">Operacional</option>
+              <option value="oficina">Oficina</option>
+              <option value="frota">Frota</option>
+              <option value="stock">Stock</option>
+              <option value="administracao">Administracao</option>
+            </select>
+          </label>
+          <label>
+            Prioridade
+            <select name="priority">
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+              <option value="low">Baixa</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Descricao
+          <textarea name="description" rows="4"></textarea>
+        </label>
+        <button type="submit">Criar tarefa</button>
+      </form>
+
+      <section class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Tarefa</th>
+              <th>Categoria</th>
+              <th>Prioridade</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for task in tasks %}
+              <tr>
+                <td>
+                  <strong>{{ task.title }}</strong>
+                  {% if task.description %}
+                    <p class="table-note">{{ task.description }}</p>
+                  {% endif %}
+                </td>
+                <td>{{ task.category or "-" }}</td>
+                <td>{{ task.priority or "-" }}</td>
+                <td><span class="pill">{{ task.status }}</span></td>
+                <td class="row-action">
+                  <form method="post" action="/task-board/{{ task.id }}/close">
+                    <button type="submit" class="secondary small-button">Fechar</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="5" class="muted">Sem tarefas abertas.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</div>
+{% endblock %}

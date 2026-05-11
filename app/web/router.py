@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -10,7 +11,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch
-from app.models.tasks import Task
+from app.models.tasks import Task, TaskHistory
 from app.models.vehicles import Vehicle
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
@@ -110,6 +111,131 @@ def fleet_import_submit(request: Request, file: UploadFile):
         f"/fleet?imported={stats['created_rows']}+criadas,+{stats['updated_rows']}+atualizadas",
         status_code=303,
     )
+
+
+@web_router.get("/task-board", response_class=HTMLResponse)
+def task_board(request: Request, created: str | None = None, closed: str | None = None):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        tasks = db.scalars(
+            select(Task)
+            .where(Task.closed_at.is_(None))
+            .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
+            .limit(100)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "tasks.html",
+            {
+                "tasks": tasks,
+                "created": created,
+                "closed": closed,
+                "error": None,
+            },
+        )
+
+
+@web_router.post("/task-board", response_class=HTMLResponse)
+def task_create(
+    request: Request,
+    title: str = Form(...),
+    category: str = Form("operacional"),
+    priority: str = Form("normal"),
+    description: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_title = title.strip()
+    if not clean_title:
+        with SessionLocal() as db:
+            tasks = db.scalars(
+                select(Task)
+                .where(Task.closed_at.is_(None))
+                .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
+                .limit(100)
+            ).all()
+        return templates.TemplateResponse(
+            request,
+            "tasks.html",
+            {
+                "tasks": tasks,
+                "created": None,
+                "closed": None,
+                "error": "Indica um titulo para a tarefa.",
+            },
+            status_code=400,
+        )
+
+    with SessionLocal() as db:
+        task = Task(
+            title=clean_title,
+            description=description.strip() or None,
+            category=category,
+            status="new",
+            priority=priority,
+            created_by_id=user_id,
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=None,
+                new_value="new",
+            )
+        )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Tarefa criada: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/task-board?created=1", status_code=303)
+
+
+@web_router.post("/task-board/{task_id}/close")
+def task_close(request: Request, task_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if task and not task.closed_at:
+            old_status = task.status
+            task.status = "done"
+            task.closed_at = datetime.now(UTC)
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="status",
+                    old_value=old_status,
+                    new_value="done",
+                )
+            )
+            record_audit(
+                db,
+                action="task.close",
+                entity_type="task",
+                entity_id=task.id,
+                detail=f"Tarefa fechada: {task.title}",
+                user_id=user_id,
+            )
+            db.commit()
+
+    return RedirectResponse("/task-board?closed=1", status_code=303)
 
 
 @web_router.get("/login", response_class=HTMLResponse)

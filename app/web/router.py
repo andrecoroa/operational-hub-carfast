@@ -34,9 +34,9 @@ def dashboard(request: Request):
             "imports": count_rows(db, ImportBatch),
         }
         return templates.TemplateResponse(
+            request,
             "dashboard.html",
             {
-                "request": request,
                 "user": user,
                 "permissions": sorted(get_user_permission_codes(db, user)),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
@@ -47,7 +47,7 @@ def dashboard(request: Request):
 
 @web_router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @web_router.post("/login", response_class=HTMLResponse)
@@ -60,8 +60,9 @@ def login_submit(
         user = db.scalar(select(User).where(User.email == email.strip().lower()))
         if not user or not user.active or not verify_password(password, user.password_hash):
             return templates.TemplateResponse(
+                request,
                 "login.html",
-                {"request": request, "error": "Email ou password invalidos."},
+                {"error": "Email ou password invalidos."},
                 status_code=401,
             )
         request.session["user_id"] = user.id
@@ -93,4 +94,3 @@ def count_open_tasks(db) -> int:
     from sqlalchemy import func
 
     return db.scalar(select(func.count()).select_from(Task).where(Task.closed_at.is_(None))) or 0
-

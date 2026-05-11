@@ -30,6 +30,7 @@ C:\carfast_stock_mvp
 - Script de criacao de admin inicial
 - Servico interno de autorizacao por permissoes e areas
 - Autenticacao API por bearer token assinado
+- Importador inicial de frota Rentway por script/servico
 
 ## Dominios Ja Modelados
 
@@ -137,6 +138,7 @@ O check valida:
 - criacao e fecho de batch de importacao;
 - raw rows e erros de importacao.
 - criacao, fecho e comentarios de tarefas.
+- importador de frota Rentway com XLSX de amostra.
 
 ## Decisoes Aplicadas
 
@@ -149,6 +151,8 @@ O check valida:
 - Importacoes guardam raw rows e erros sem apagar dados internos.
 - Passwords usam PBKDF2-SHA256 com salt.
 - Tarefas podem ligar-se genericamente a entidades por `entity_type` e `entity_id`.
+- Importacao de frota cria/atualiza `vehicles`, guarda `import_raw_rows` e
+  `vehicle_external_snapshots`.
 
 ## Proximos Passos Recomendados
 
@@ -156,7 +160,7 @@ O check valida:
 2. Enviar commit inicial.
 3. Criar Blueprint no Render a partir de `render.yaml`.
 4. Criar admin inicial no Render.
-5. Criar importador inicial de frota Rentway usando a estrutura v1 como referencia.
+5. Ligar importador de frota a uma rota protegida ou UI de importacao.
 
 ## Bloqueios Atuais
 

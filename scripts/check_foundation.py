@@ -1,9 +1,11 @@
 import sys
+import tempfile
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from openpyxl import Workbook
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -30,6 +32,8 @@ from app.api.routes.vehicles import create_vehicle, list_vehicles, lookup_vehicl
 from app.core.security import verify_password
 from app.models.admin import User
 from app.models import Base
+from app.models.imports import ImportRawRow
+from app.models.vehicles import VehicleExternalSnapshot
 from app.schemas.imports import ImportBatchCreate, ImportBatchUpdate, ImportErrorCreate, ImportRawRowCreate
 from app.schemas.auth import LoginRequest
 from app.schemas.organization import TeamCreate
@@ -42,7 +46,9 @@ from app.services.authorization import (
     user_has_authorized_unit,
     user_has_permission,
 )
+from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.users import create_user
+from sqlalchemy import func, select
 
 
 def main() -> None:
@@ -166,7 +172,39 @@ def main() -> None:
         assert len(list_task_comments(task.id, db)) == 1
         assert len(list_tasks(db, limit=50, offset=0)) == 1
 
+        sample_path = Path(tempfile.gettempdir()) / "carfast_tmp_foundation_fleet.xlsx"
+        create_sample_fleet_xlsx(sample_path)
+        try:
+            fleet_stats = import_rentway_fleet_xlsx(db, sample_path)
+        finally:
+            sample_path.unlink(missing_ok=True)
+        assert fleet_stats["created_rows"] == 1
+        assert db.scalar(select(func.count()).select_from(VehicleExternalSnapshot)) >= 1
+        assert db.scalar(select(func.count()).select_from(ImportRawRow)) >= 1
+
     print("Foundation check passed.")
+
+
+def create_sample_fleet_xlsx(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Frota Total"
+    ws.append(
+        [
+            "matricula",
+            "vin",
+            "rentway_unitnr",
+            "marca",
+            "modelo",
+            "versao",
+            "ano",
+            "estado_frota",
+            "estado_operacional",
+            "ativo",
+        ]
+    )
+    ws.append(["BB 00 BB", "VIN456", "12345", "Peugeot", "208", "1.2", 2024, "Ativa", "Livre", 1])
+    wb.save(path)
 
 
 if __name__ == "__main__":

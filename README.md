@@ -81,6 +81,21 @@ python scripts/check_foundation.py
 Este check valida seed inicial, areas de trabalho, equipas, viaturas e
 importacoes auditaveis sem gravar ficheiros locais.
 
+## Importar Frota Rentway
+
+Importador inicial por script:
+
+```powershell
+python scripts/import_rentway_fleet.py C:\caminho\para\FROTA_TOTAL.xlsx
+```
+
+O importador guarda:
+
+- batch de importacao;
+- linhas raw;
+- viaturas permanentes;
+- snapshot externo Rentway por viatura.
+
 Para correr a suite de testes, instalar primeiro as dependencias de
 desenvolvimento:
 

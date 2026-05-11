@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Form, Request
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
+from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -9,6 +12,7 @@ from app.models.admin import User
 from app.models.imports import ImportBatch
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle
+from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 
@@ -18,7 +22,7 @@ web_router = APIRouter(include_in_schema=False)
 
 @web_router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
@@ -43,6 +47,69 @@ def dashboard(request: Request):
                 "metrics": metrics,
             },
         )
+
+
+@web_router.get("/fleet", response_class=HTMLResponse)
+def vehicles_page(request: Request, q: str | None = None, imported: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        stmt = select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(100)
+        if q:
+            normalized = q.strip().upper().replace(" ", "")
+            stmt = stmt.where(
+                (Vehicle.plate == normalized)
+                | (Vehicle.vin == normalized)
+                | (Vehicle.rentway_unit_nr == normalized)
+                | Vehicle.brand.ilike(f"%{q}%")
+                | Vehicle.model.ilike(f"%{q}%")
+            )
+        vehicles = db.scalars(stmt).all()
+        return templates.TemplateResponse(
+            request,
+            "vehicles.html",
+            {
+                "vehicles": vehicles,
+                "q": q or "",
+                "imported": imported,
+            },
+        )
+
+
+@web_router.get("/imports/fleet", response_class=HTMLResponse)
+def fleet_import_form(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "fleet_import.html", {"error": None})
+
+
+@web_router.post("/imports/fleet", response_class=HTMLResponse)
+def fleet_import_submit(request: Request, file: UploadFile):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not file.filename.lower().endswith(".xlsx"):
+        return templates.TemplateResponse(
+            request,
+            "fleet_import.html",
+            {"error": "Carrega um ficheiro XLSX."},
+            status_code=400,
+        )
+
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        with SessionLocal() as db:
+            stats = import_rentway_fleet_xlsx(db, tmp_path, original_name=file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return RedirectResponse(
+        f"/fleet?imported={stats['created_rows']}+criadas,+{stats['updated_rows']}+atualizadas",
+        status_code=303,
+    )
 
 
 @web_router.get("/login", response_class=HTMLResponse)
@@ -82,6 +149,13 @@ def login_submit(
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+def get_web_user_id(request: Request) -> int | None:
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return None
+    return int(user_id)
 
 
 def count_rows(db, model) -> int:

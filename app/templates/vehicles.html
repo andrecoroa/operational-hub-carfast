@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Frota</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet" class="active">Viaturas</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Viaturas permanentes</p>
+        <h2>Frota</h2>
+      </div>
+      <a class="button-link" href="/imports/fleet">Importar XLSX</a>
+    </header>
+
+    {% if imported %}
+      <div class="success">Importacao concluida: {{ imported }}</div>
+    {% endif %}
+
+    <form method="get" action="/fleet" class="toolbar">
+      <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matricula, VIN, marca ou modelo">
+      <button type="submit">Pesquisar</button>
+    </form>
+
+    <section class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Matricula</th>
+            <th>Marca</th>
+            <th>Modelo</th>
+            <th>Lifecycle</th>
+            <th>Operacional</th>
+            <th>Rentway</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vehicle in vehicles %}
+            <tr>
+              <td>{{ vehicle.plate or "-" }}</td>
+              <td>{{ vehicle.brand or "-" }}</td>
+              <td>{{ vehicle.model or "-" }}</td>
+              <td>{{ vehicle.lifecycle_status or "-" }}</td>
+              <td>{{ vehicle.operational_status or "-" }}</td>
+              <td>{{ vehicle.rentway_unit_nr or "-" }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="muted">Sem viaturas para mostrar.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Importacoes</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Viaturas</a>
+      <a href="/imports/fleet" class="active">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <section class="form-panel">
+      <p class="eyebrow">Rentway</p>
+      <h2>Importar frota</h2>
+      {% if error %}
+        <div class="alert">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/imports/fleet" enctype="multipart/form-data" class="form-stack">
+        <label>
+          Ficheiro XLSX
+          <input type="file" name="file" accept=".xlsx" required>
+        </label>
+        <button type="submit">Importar</button>
+      </form>
+    </section>
+  </main>
+</div>
+{% endblock %}

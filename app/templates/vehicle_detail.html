@@ -26,6 +26,9 @@
     {% if saved %}
       <div class="success">Nota interna gravada.</div>
     {% endif %}
+    {% if task_created %}
+      <div class="success">Tarefa criada para esta viatura.</div>
+    {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
@@ -55,6 +58,51 @@
           <textarea name="note" rows="5" required></textarea>
         </label>
         <button type="submit">Gravar nota</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Tarefas abertas</h3>
+        <div class="event-list">
+          {% for task in vehicle_tasks %}
+            <article class="event-item">
+              <div>
+                <strong>{{ task.title }}</strong>
+                <span>{{ task.priority or "normal" }}</span>
+              </div>
+              {% if task.description %}
+                <p>{{ task.description }}</p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem tarefas abertas para esta viatura.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <form method="post" action="/fleet/{{ vehicle.id }}/tasks" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Follow-up</p>
+          <h3>Criar tarefa</h3>
+        </div>
+        <label>
+          Titulo
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <label>
+          Prioridade
+          <select name="priority">
+            <option value="normal">Normal</option>
+            <option value="high">Alta</option>
+            <option value="low">Baixa</option>
+          </select>
+        </label>
+        <label>
+          Descricao
+          <textarea name="description" rows="3"></textarea>
+        </label>
+        <button type="submit">Criar tarefa</button>
       </form>
     </section>
 

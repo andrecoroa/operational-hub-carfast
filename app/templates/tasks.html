@@ -72,6 +72,7 @@
               <th>Tarefa</th>
               <th>Categoria</th>
               <th>Prioridade</th>
+              <th>Ligacao</th>
               <th>Estado</th>
               <th></th>
             </tr>
@@ -87,6 +88,13 @@
                 </td>
                 <td>{{ task.category or "-" }}</td>
                 <td>{{ task.priority or "-" }}</td>
+                <td>
+                  {% if task.entity_type == "vehicle" and task.entity_id %}
+                    <a class="table-link" href="/fleet/{{ task.entity_id }}">Viatura #{{ task.entity_id }}</a>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
                 <td><span class="pill">{{ task.status }}</span></td>
                 <td class="row-action">
                   <form method="post" action="/task-board/{{ task.id }}/close">
@@ -96,7 +104,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="5" class="muted">Sem tarefas abertas.</td>
+                <td colspan="6" class="muted">Sem tarefas abertas.</td>
               </tr>
             {% endfor %}
           </tbody>

@@ -78,7 +78,12 @@ def vehicles_page(request: Request, q: str | None = None, imported: str | None =
 
 
 @web_router.get("/fleet/{vehicle_id}", response_class=HTMLResponse)
-def vehicle_detail(request: Request, vehicle_id: int, saved: str | None = None):
+def vehicle_detail(
+    request: Request,
+    vehicle_id: int,
+    saved: str | None = None,
+    task_created: str | None = None,
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
@@ -98,6 +103,15 @@ def vehicle_detail(request: Request, vehicle_id: int, saved: str | None = None):
             .order_by(VehicleOperationalStatusEvent.created_at.desc())
             .limit(20)
         ).all()
+        vehicle_tasks = db.scalars(
+            select(Task)
+            .where(
+                Task.entity_type == "vehicle",
+                Task.entity_id == str(vehicle.id),
+                Task.closed_at.is_(None),
+            )
+            .order_by(Task.id.desc())
+        ).all()
         return templates.TemplateResponse(
             request,
             "vehicle_detail.html",
@@ -105,7 +119,9 @@ def vehicle_detail(request: Request, vehicle_id: int, saved: str | None = None):
                 "vehicle": vehicle,
                 "snapshot": snapshot,
                 "events": events,
+                "vehicle_tasks": vehicle_tasks,
                 "saved": saved,
+                "task_created": task_created,
                 "error": None,
             },
         )
@@ -138,6 +154,15 @@ def vehicle_add_event(
                 .order_by(VehicleOperationalStatusEvent.created_at.desc())
                 .limit(20)
             ).all()
+            vehicle_tasks = db.scalars(
+                select(Task)
+                .where(
+                    Task.entity_type == "vehicle",
+                    Task.entity_id == str(vehicle.id),
+                    Task.closed_at.is_(None),
+                )
+                .order_by(Task.id.desc())
+            ).all()
             return templates.TemplateResponse(
                 request,
                 "vehicle_detail.html",
@@ -145,7 +170,9 @@ def vehicle_add_event(
                     "vehicle": vehicle,
                     "snapshot": snapshot,
                     "events": events,
+                    "vehicle_tasks": vehicle_tasks,
                     "saved": None,
+                    "task_created": None,
                     "error": "Escreve uma nota antes de gravar.",
                 },
                 status_code=400,
@@ -171,6 +198,94 @@ def vehicle_add_event(
         db.commit()
 
     return RedirectResponse(f"/fleet/{vehicle_id}?saved=1", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/tasks", response_class=HTMLResponse)
+def vehicle_create_task(
+    request: Request,
+    vehicle_id: int,
+    title: str = Form(...),
+    priority: str = Form("normal"),
+    description: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_title = title.strip()
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+
+        if not clean_title:
+            snapshot = db.scalar(
+                select(VehicleExternalSnapshot)
+                .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+                .order_by(VehicleExternalSnapshot.updated_at.desc())
+            )
+            events = db.scalars(
+                select(VehicleOperationalStatusEvent)
+                .where(VehicleOperationalStatusEvent.vehicle_id == vehicle.id)
+                .order_by(VehicleOperationalStatusEvent.created_at.desc())
+                .limit(20)
+            ).all()
+            vehicle_tasks = db.scalars(
+                select(Task)
+                .where(
+                    Task.entity_type == "vehicle",
+                    Task.entity_id == str(vehicle.id),
+                    Task.closed_at.is_(None),
+                )
+                .order_by(Task.id.desc())
+            ).all()
+            return templates.TemplateResponse(
+                request,
+                "vehicle_detail.html",
+                {
+                    "vehicle": vehicle,
+                    "snapshot": snapshot,
+                    "events": events,
+                    "vehicle_tasks": vehicle_tasks,
+                    "saved": None,
+                    "task_created": None,
+                    "error": "Indica um titulo para a tarefa.",
+                },
+                status_code=400,
+            )
+
+        task = Task(
+            title=clean_title,
+            description=description.strip() or None,
+            category="frota",
+            status="new",
+            priority=priority,
+            entity_type="vehicle",
+            entity_id=str(vehicle.id),
+            created_by_id=user_id,
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=None,
+                new_value="new",
+            )
+        )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Tarefa criada para viatura {vehicle.plate or vehicle.id}: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/fleet/{vehicle_id}?task_created=1", status_code=303)
 
 
 @web_router.get("/imports/fleet", response_class=HTMLResponse)

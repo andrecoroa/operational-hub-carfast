@@ -14,7 +14,7 @@ O ficheiro `render.yaml` define:
 - Render PostgreSQL
 - `DATABASE_URL` vindo do Postgres interno do Render
 - `APP_SECRET_KEY` gerado pelo Render
-- migracoes Alembic em `preDeployCommand`
+- migracoes Alembic no arranque do servico
 - health check em `/health`
 
 ## Criar No Render
@@ -44,3 +44,6 @@ do Render, Postgres free expira apos 30 dias e nao deve ser usado para producao.
 Para uso real da empresa, trocar a base para plano pago antes de carregar dados
 importantes.
 
+Nota: `preDeployCommand` nao e suportado em servicos free. Por isso, no plano
+free, as migracoes correm em `scripts/render_start.py` antes de iniciar o
+Uvicorn.

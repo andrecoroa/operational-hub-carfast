@@ -179,8 +179,11 @@ O `render.yaml` cria:
 - PostgreSQL `operational-hub-carfast-db`
 - `DATABASE_URL` a partir do Postgres interno do Render
 - `APP_SECRET_KEY` gerado automaticamente
-- migracoes Alembic antes do deploy
+- migracoes Alembic no arranque do servico
 
 Nota: Render Postgres free expira apos 30 dias segundo a documentacao atual.
 Para dados reais da empresa, trocar para plano pago antes de importar dados
 importantes.
+
+Nota tecnica: `preDeployCommand` nao e suportado no free tier do Render. As
+migracoes correm em `scripts/render_start.py` antes do Uvicorn.

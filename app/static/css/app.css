@@ -108,6 +108,11 @@ button {
   color: white;
 }
 
+.secondary-link {
+  background: #edf2f1;
+  color: var(--brand-dark);
+}
+
 button:hover {
   background: var(--brand-dark);
 }
@@ -309,6 +314,75 @@ th {
   padding: 8px 10px;
 }
 
+.table-link {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.detail-grid + .detail-grid {
+  margin-top: 18px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.detail-list dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.event-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.event-item div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-item strong {
+  color: var(--ink);
+}
+
+.event-item p {
+  margin: 8px 0 0;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -332,7 +406,9 @@ th {
   }
 
   .task-layout,
-  .form-grid {
+  .form-grid,
+  .detail-grid,
+  .detail-list div {
     grid-template-columns: 1fr;
   }
 }

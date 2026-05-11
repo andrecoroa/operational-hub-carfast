@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Frota</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet" class="active">Viaturas</a>
+      <a href="/task-board">Tarefas</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Viatura permanente</p>
+        <h2>{{ vehicle.plate or "Sem matricula" }}</h2>
+      </div>
+      <a class="button-link secondary-link" href="/fleet">Voltar</a>
+    </header>
+
+    {% if saved %}
+      <div class="success">Nota interna gravada.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Dados principais</h3>
+        <dl class="detail-list">
+          <div><dt>Matricula</dt><dd>{{ vehicle.plate or "-" }}</dd></div>
+          <div><dt>VIN</dt><dd>{{ vehicle.vin or "-" }}</dd></div>
+          <div><dt>Rentway</dt><dd>{{ vehicle.rentway_unit_nr or "-" }}</dd></div>
+          <div><dt>Marca</dt><dd>{{ vehicle.brand or "-" }}</dd></div>
+          <div><dt>Modelo</dt><dd>{{ vehicle.model or "-" }}</dd></div>
+          <div><dt>Versao</dt><dd>{{ vehicle.version or "-" }}</dd></div>
+          <div><dt>Ciclo</dt><dd>{{ vehicle.lifecycle_status or "-" }}</dd></div>
+          <div><dt>Operacional</dt><dd>{{ vehicle.operational_status or "-" }}</dd></div>
+        </dl>
+      </article>
+
+      <form method="post" action="/fleet/{{ vehicle.id }}/events" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Interno</p>
+          <h3>Adicionar nota</h3>
+        </div>
+        <label>
+          Nota
+          <textarea name="note" rows="5" required></textarea>
+        </label>
+        <button type="submit">Gravar nota</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Eventos internos</h3>
+        <div class="event-list">
+          {% for event in events %}
+            <article class="event-item">
+              <div>
+                <strong>{{ event.status }}</strong>
+                <span>{{ event.created_at.strftime("%Y-%m-%d %H:%M") if event.created_at else "" }}</span>
+              </div>
+              <p>{{ event.note or "-" }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem eventos internos.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="section">
+        <h3>Ultimo snapshot Rentway</h3>
+        {% if snapshot %}
+          <dl class="detail-list">
+            {% for key, value in snapshot.data_json.items() %}
+              <div><dt>{{ key }}</dt><dd>{{ value if value is not none else "-" }}</dd></div>
+            {% endfor %}
+          </dl>
+        {% else %}
+          <p class="muted">Sem snapshot importado.</p>
+        {% endif %}
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

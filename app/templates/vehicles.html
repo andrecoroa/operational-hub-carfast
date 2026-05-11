@@ -47,7 +47,7 @@
         <tbody>
           {% for vehicle in vehicles %}
             <tr>
-              <td>{{ vehicle.plate or "-" }}</td>
+              <td><a class="table-link" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a></td>
               <td>{{ vehicle.brand or "-" }}</td>
               <td>{{ vehicle.model or "-" }}</td>
               <td>{{ vehicle.lifecycle_status or "-" }}</td>

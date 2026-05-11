@@ -12,7 +12,7 @@ from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch
 from app.models.tasks import Task, TaskHistory
-from app.models.vehicles import Vehicle
+from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
@@ -75,6 +75,102 @@ def vehicles_page(request: Request, q: str | None = None, imported: str | None =
                 "imported": imported,
             },
         )
+
+
+@web_router.get("/fleet/{vehicle_id}", response_class=HTMLResponse)
+def vehicle_detail(request: Request, vehicle_id: int, saved: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+
+        snapshot = db.scalar(
+            select(VehicleExternalSnapshot)
+            .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+            .order_by(VehicleExternalSnapshot.updated_at.desc())
+        )
+        events = db.scalars(
+            select(VehicleOperationalStatusEvent)
+            .where(VehicleOperationalStatusEvent.vehicle_id == vehicle.id)
+            .order_by(VehicleOperationalStatusEvent.created_at.desc())
+            .limit(20)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "vehicle_detail.html",
+            {
+                "vehicle": vehicle,
+                "snapshot": snapshot,
+                "events": events,
+                "saved": saved,
+                "error": None,
+            },
+        )
+
+
+@web_router.post("/fleet/{vehicle_id}/events", response_class=HTMLResponse)
+def vehicle_add_event(
+    request: Request,
+    vehicle_id: int,
+    note: str = Form(...),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_note = note.strip()
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+        if not clean_note:
+            snapshot = db.scalar(
+                select(VehicleExternalSnapshot)
+                .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+                .order_by(VehicleExternalSnapshot.updated_at.desc())
+            )
+            events = db.scalars(
+                select(VehicleOperationalStatusEvent)
+                .where(VehicleOperationalStatusEvent.vehicle_id == vehicle.id)
+                .order_by(VehicleOperationalStatusEvent.created_at.desc())
+                .limit(20)
+            ).all()
+            return templates.TemplateResponse(
+                request,
+                "vehicle_detail.html",
+                {
+                    "vehicle": vehicle,
+                    "snapshot": snapshot,
+                    "events": events,
+                    "saved": None,
+                    "error": "Escreve uma nota antes de gravar.",
+                },
+                status_code=400,
+            )
+
+        db.add(
+            VehicleOperationalStatusEvent(
+                vehicle_id=vehicle.id,
+                status=vehicle.operational_status or "note",
+                occurred_at=datetime.now(UTC),
+                source="internal",
+                note=clean_note,
+            )
+        )
+        record_audit(
+            db,
+            action="vehicle.event.created",
+            entity_type="vehicle",
+            entity_id=vehicle.id,
+            detail=f"Nota interna adicionada a {vehicle.plate or vehicle.id}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/fleet/{vehicle_id}?saved=1", status_code=303)
 
 
 @web_router.get("/imports/fleet", response_class=HTMLResponse)

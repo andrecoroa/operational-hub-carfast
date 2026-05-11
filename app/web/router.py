@@ -81,6 +81,27 @@ def dashboard(request: Request):
         )
 
 
+@web_router.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "admin.html",
+            {
+                "user": user,
+                "permissions": sorted(get_user_permission_codes(db, user)),
+                "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
+            },
+        )
+
+
 @web_router.get("/fleet", response_class=HTMLResponse)
 def vehicles_page(request: Request, q: str | None = None, imported: str | None = None):
     if not get_web_user_id(request):

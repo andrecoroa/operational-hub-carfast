@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Administracao</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/task-board">Tarefas</a>
+      <a href="/workshop">Oficina</a>
+      <a href="/fleet">Frota</a>
+      <a href="/imports">Importacoes</a>
+      <a href="/admin" class="active">Administracao</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Configuracao</p>
+        <h2>Administracao</h2>
+      </div>
+    </header>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Utilizador</h3>
+        <dl class="detail-list">
+          <div><dt>Nome</dt><dd>{{ user.name }}</dd></div>
+          <div><dt>Email</dt><dd>{{ user.email }}</dd></div>
+        </dl>
+      </article>
+
+      <article class="section">
+        <h3>Areas autorizadas</h3>
+        <div class="pill-row">
+          {% for unit in authorized_units %}
+            <span class="pill">{{ unit }}</span>
+          {% else %}
+            <span class="muted">Sem areas configuradas.</span>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h3>Permissoes</h3>
+      <div class="pill-row">
+        {% for permission in permissions %}
+          <span class="pill muted-pill">{{ permission }}</span>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

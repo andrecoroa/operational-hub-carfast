@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Oficina</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Viaturas</a>
+      <a href="/task-board">Tarefas</a>
+      <a href="/workshop" class="active">Oficina</a>
+      <a href="/imports">Importacoes</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Processos temporarios</p>
+        <h2>Oficina</h2>
+      </div>
+    </header>
+
+    {% if created %}
+      <div class="success">Processo de oficina criado.</div>
+    {% endif %}
+    {% if closed %}
+      <div class="success">Processo de oficina fechado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="task-layout">
+      <form method="post" action="/workshop" class="form-panel form-stack task-form">
+        <label>
+          Viatura
+          <select name="vehicle_id" required>
+            <option value="">Escolher viatura</option>
+            {% for vehicle in vehicles %}
+              <option value="{{ vehicle.id }}">{{ vehicle.plate or ("Viatura #" ~ vehicle.id) }}{% if vehicle.brand or vehicle.model %} - {{ vehicle.brand or "" }} {{ vehicle.model or "" }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Titulo
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Prioridade
+            <select name="priority">
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+              <option value="low">Baixa</option>
+            </select>
+          </label>
+          <label>
+            Saida prevista
+            <input type="date" name="expected_exit_on">
+          </label>
+        </div>
+        <label>
+          Nota inicial
+          <textarea name="note" rows="4"></textarea>
+        </label>
+        <button type="submit">Criar processo</button>
+      </form>
+
+      <section class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Processo</th>
+              <th>Viatura</th>
+              <th>Prioridade</th>
+              <th>Estado</th>
+              <th>Saida prevista</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for process in processes %}
+              <tr>
+                <td>
+                  <a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a>
+                  {% if process.note %}
+                    <p class="table-note">{{ process.note }}</p>
+                  {% endif %}
+                </td>
+                <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">Viatura #{{ process.vehicle_id }}</a></td>
+                <td>{{ process.priority or "-" }}</td>
+                <td><span class="pill">{{ process.status }}</span></td>
+                <td>{{ process.expected_exit_on or "-" }}</td>
+                <td class="row-action">
+                  <form method="post" action="/workshop/{{ process.id }}/close">
+                    <button type="submit" class="secondary small-button">Fechar</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="6" class="muted">Sem processos de oficina abertos.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -13,6 +13,7 @@ from app.models.admin import User
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
+from app.models.workshop import WorkshopProcess, WorkshopProcessNote
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
@@ -112,6 +113,14 @@ def vehicle_detail(
             )
             .order_by(Task.id.desc())
         ).all()
+        workshop_processes = db.scalars(
+            select(WorkshopProcess)
+            .where(
+                WorkshopProcess.vehicle_id == vehicle.id,
+                WorkshopProcess.closed_at.is_(None),
+            )
+            .order_by(WorkshopProcess.id.desc())
+        ).all()
         return templates.TemplateResponse(
             request,
             "vehicle_detail.html",
@@ -120,6 +129,7 @@ def vehicle_detail(
                 "snapshot": snapshot,
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
+                "workshop_processes": workshop_processes,
                 "saved": saved,
                 "task_created": task_created,
                 "error": None,
@@ -163,6 +173,14 @@ def vehicle_add_event(
                 )
                 .order_by(Task.id.desc())
             ).all()
+            workshop_processes = db.scalars(
+                select(WorkshopProcess)
+                .where(
+                    WorkshopProcess.vehicle_id == vehicle.id,
+                    WorkshopProcess.closed_at.is_(None),
+                )
+                .order_by(WorkshopProcess.id.desc())
+            ).all()
             return templates.TemplateResponse(
                 request,
                 "vehicle_detail.html",
@@ -171,6 +189,7 @@ def vehicle_add_event(
                     "snapshot": snapshot,
                     "events": events,
                     "vehicle_tasks": vehicle_tasks,
+                    "workshop_processes": workshop_processes,
                     "saved": None,
                     "task_created": None,
                     "error": "Escreve uma nota antes de gravar.",
@@ -239,6 +258,14 @@ def vehicle_create_task(
                 )
                 .order_by(Task.id.desc())
             ).all()
+            workshop_processes = db.scalars(
+                select(WorkshopProcess)
+                .where(
+                    WorkshopProcess.vehicle_id == vehicle.id,
+                    WorkshopProcess.closed_at.is_(None),
+                )
+                .order_by(WorkshopProcess.id.desc())
+            ).all()
             return templates.TemplateResponse(
                 request,
                 "vehicle_detail.html",
@@ -247,6 +274,7 @@ def vehicle_create_task(
                     "snapshot": snapshot,
                     "events": events,
                     "vehicle_tasks": vehicle_tasks,
+                    "workshop_processes": workshop_processes,
                     "saved": None,
                     "task_created": None,
                     "error": "Indica um titulo para a tarefa.",
@@ -286,6 +314,197 @@ def vehicle_create_task(
         db.commit()
 
     return RedirectResponse(f"/fleet/{vehicle_id}?task_created=1", status_code=303)
+
+
+@web_router.get("/workshop", response_class=HTMLResponse)
+def workshop_page(request: Request, created: str | None = None, closed: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        processes = db.scalars(
+            select(WorkshopProcess)
+            .where(WorkshopProcess.closed_at.is_(None))
+            .order_by(WorkshopProcess.id.desc())
+            .limit(100)
+        ).all()
+        vehicles = db.scalars(select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(300)).all()
+        return templates.TemplateResponse(
+            request,
+            "workshop.html",
+            {
+                "processes": processes,
+                "vehicles": vehicles,
+                "created": created,
+                "closed": closed,
+                "error": None,
+            },
+        )
+
+
+@web_router.post("/workshop", response_class=HTMLResponse)
+def workshop_create(
+    request: Request,
+    vehicle_id: int = Form(...),
+    title: str = Form(...),
+    priority: str = Form("normal"),
+    expected_exit_on: str = Form(""),
+    note: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_title = title.strip()
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle or not clean_title:
+            processes = db.scalars(
+                select(WorkshopProcess)
+                .where(WorkshopProcess.closed_at.is_(None))
+                .order_by(WorkshopProcess.id.desc())
+                .limit(100)
+            ).all()
+            vehicles = db.scalars(select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(300)).all()
+            return templates.TemplateResponse(
+                request,
+                "workshop.html",
+                {
+                    "processes": processes,
+                    "vehicles": vehicles,
+                    "created": None,
+                    "closed": None,
+                    "error": "Escolhe uma viatura e indica um titulo.",
+                },
+                status_code=400,
+            )
+
+        expected_date = parse_optional_date(expected_exit_on)
+        process = WorkshopProcess(
+            vehicle_id=vehicle.id,
+            title=clean_title,
+            status="open",
+            priority=priority,
+            source="internal",
+            opened_by_id=user_id,
+            opened_on=date.today(),
+            expected_exit_on=expected_date,
+            note=note.strip() or None,
+        )
+        db.add(process)
+        db.flush()
+        record_audit(
+            db,
+            action="workshop.process.created",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Processo de oficina criado para {vehicle.plate or vehicle.id}: {process.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/workshop?created=1", status_code=303)
+
+
+@web_router.get("/workshop/{process_id}", response_class=HTMLResponse)
+def workshop_detail(request: Request, process_id: int, noted: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        notes = db.scalars(
+            select(WorkshopProcessNote)
+            .where(WorkshopProcessNote.process_id == process.id)
+            .order_by(WorkshopProcessNote.created_at.desc())
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "workshop_detail.html",
+            {
+                "process": process,
+                "vehicle": vehicle,
+                "notes": notes,
+                "noted": noted,
+                "error": None,
+            },
+        )
+
+
+@web_router.post("/workshop/{process_id}/notes", response_class=HTMLResponse)
+def workshop_add_note(
+    request: Request,
+    process_id: int,
+    note: str = Form(...),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_note = note.strip()
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        if not clean_note:
+            vehicle = db.get(Vehicle, process.vehicle_id)
+            notes = db.scalars(
+                select(WorkshopProcessNote)
+                .where(WorkshopProcessNote.process_id == process.id)
+                .order_by(WorkshopProcessNote.created_at.desc())
+            ).all()
+            return templates.TemplateResponse(
+                request,
+                "workshop_detail.html",
+                {
+                    "process": process,
+                    "vehicle": vehicle,
+                    "notes": notes,
+                    "noted": None,
+                    "error": "Escreve uma nota antes de gravar.",
+                },
+                status_code=400,
+            )
+
+        db.add(WorkshopProcessNote(process_id=process.id, user_id=user_id, note=clean_note))
+        record_audit(
+            db,
+            action="workshop.process.note.created",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Nota adicionada ao processo de oficina: {process.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/close")
+def workshop_close(request: Request, process_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if process and not process.closed_at:
+            process.status = "closed"
+            process.closed_at = datetime.now(UTC)
+            record_audit(
+                db,
+                action="workshop.process.closed",
+                entity_type="workshop_process",
+                entity_id=process.id,
+                detail=f"Processo de oficina fechado: {process.title}",
+                user_id=user_id,
+            )
+            db.commit()
+
+    return RedirectResponse("/workshop?closed=1", status_code=303)
 
 
 @web_router.get("/imports/fleet", response_class=HTMLResponse)
@@ -638,6 +857,10 @@ def count_rows(db, model) -> int:
 
 
 def count_open_tasks(db) -> int:
-    from sqlalchemy import func
-
     return db.scalar(select(func.count()).select_from(Task).where(Task.closed_at.is_(None))) or 0
+
+
+def parse_optional_date(value: str | None) -> date | None:
+    if not value or not value.strip():
+        return None
+    return date.fromisoformat(value.strip())

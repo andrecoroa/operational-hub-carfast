@@ -10,6 +10,7 @@
       <a href="/">Dashboard</a>
       <a href="/fleet" class="active">Viaturas</a>
       <a href="/task-board">Tarefas</a>
+      <a href="/workshop">Oficina</a>
       <a href="/imports">Importacoes</a>
       <a href="/imports/fleet">Importar frota</a>
       <a href="/docs">API</a>
@@ -105,6 +106,34 @@
         </label>
         <button type="submit">Criar tarefa</button>
       </form>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Oficina</h3>
+        <div class="event-list">
+          {% for process in workshop_processes %}
+            <article class="event-item">
+              <div>
+                <strong><a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a></strong>
+                <span>{{ process.priority or "normal" }}</span>
+              </div>
+              {% if process.note %}
+                <p>{{ process.note }}</p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem processos de oficina abertos.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="section">
+        <h3>Acao rapida</h3>
+        <div class="pill-row">
+          <a class="button-link" href="/workshop">Oficina</a>
+        </div>
+      </article>
     </section>
 
     <section class="detail-grid">

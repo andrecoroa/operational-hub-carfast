@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Oficina</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Viaturas</a>
+      <a href="/task-board">Tarefas</a>
+      <a href="/workshop" class="active">Oficina</a>
+      <a href="/imports">Importacoes</a>
+      <a href="/imports/fleet">Importar frota</a>
+      <a href="/docs">API</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Processo de oficina</p>
+        <h2>{{ process.title }}</h2>
+      </div>
+      <a class="button-link secondary-link" href="/workshop">Voltar</a>
+    </header>
+
+    {% if noted %}
+      <div class="success">Nota gravada.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Resumo</h3>
+        <dl class="detail-list">
+          <div><dt>Estado</dt><dd>{{ process.status }}</dd></div>
+          <div><dt>Prioridade</dt><dd>{{ process.priority or "-" }}</dd></div>
+          <div><dt>Viatura</dt><dd><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></dd></div>
+          <div><dt>Entrada</dt><dd>{{ process.opened_on or "-" }}</dd></div>
+          <div><dt>Saida prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
+          <div><dt>Nota inicial</dt><dd>{{ process.note or "-" }}</dd></div>
+        </dl>
+      </article>
+
+      <form method="post" action="/workshop/{{ process.id }}/notes" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Acompanhamento</p>
+          <h3>Adicionar nota</h3>
+        </div>
+        <label>
+          Nota
+          <textarea name="note" rows="5" required></textarea>
+        </label>
+        <button type="submit">Gravar nota</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Notas</h3>
+        <div class="event-list">
+          {% for item in notes %}
+            <article class="event-item">
+              <div>
+                <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+              </div>
+              <p>{{ item.note }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem notas adicionais.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="section">
+        <h3>Fecho</h3>
+        {% if process.closed_at %}
+          <p class="muted">Processo fechado em {{ process.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+        {% else %}
+          <form method="post" action="/workshop/{{ process.id }}/close" class="form-stack">
+            <button type="submit">Fechar processo</button>
+          </form>
+        {% endif %}
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

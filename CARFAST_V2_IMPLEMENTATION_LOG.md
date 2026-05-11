@@ -191,3 +191,7 @@ importantes.
 
 Nota tecnica: `preDeployCommand` nao e suportado no free tier do Render. As
 migracoes correm em `scripts/render_start.py` antes do Uvicorn.
+
+No plano free tambem nao ha shell/one-off jobs. O admin inicial pode ser criado
+automaticamente no arranque se existirem `CARFAST_ADMIN_EMAIL` e
+`CARFAST_ADMIN_PASSWORD`.

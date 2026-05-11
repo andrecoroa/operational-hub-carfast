@@ -50,6 +50,15 @@ $env:CARFAST_ADMIN_PASSWORD="alterar-esta-password"
 python scripts/create_admin.py
 ```
 
+No Render free, como nao ha shell/one-off jobs, configurar temporariamente:
+
+```text
+CARFAST_ADMIN_EMAIL=andrecoroa@daccordinvest.pt
+CARFAST_ADMIN_PASSWORD=uma-password-forte
+```
+
+Depois fazer redeploy. O admin e criado automaticamente no arranque.
+
 ## Autenticacao API
 
 Login:

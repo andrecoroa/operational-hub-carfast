@@ -27,15 +27,22 @@ O ficheiro `render.yaml` define:
    - `operational-hub-carfast-db`
 5. Fazer deploy.
 
-## Admin Inicial
+## Admin Inicial No Plano Free
 
-Depois do primeiro deploy, criar admin por shell/job no Render:
+O plano free do Render nao suporta one-off jobs nem shell. Para criar o admin,
+definir estas environment variables no Web Service:
 
-```bash
-CARFAST_ADMIN_EMAIL=admin@carfast.local \
-CARFAST_ADMIN_PASSWORD="alterar-esta-password" \
-python scripts/create_admin.py
+```text
+CARFAST_ADMIN_EMAIL=admin@carfast.local
+CARFAST_ADMIN_PASSWORD=alterar-esta-password
 ```
+
+Depois fazer redeploy. O `scripts/render_start.py` corre as migracoes e cria o
+admin automaticamente se essas variaveis existirem. Se o admin ja existir, nao
+cria duplicado.
+
+Depois do admin estar criado, remover `CARFAST_ADMIN_PASSWORD` das environment
+variables e fazer novo redeploy.
 
 ## Nota Sobre Free Plan
 

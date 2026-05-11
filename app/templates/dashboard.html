@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Operational Hub</h1>
+    </div>
+    <nav>
+      <a href="/" class="active">Dashboard</a>
+      <a href="/docs">API</a>
+    </nav>
+    <form method="post" action="/logout">
+      <button type="submit" class="secondary">Sair</button>
+    </form>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Sessao ativa</p>
+        <h2>{{ user.name }}</h2>
+      </div>
+      <span>{{ user.email }}</span>
+    </header>
+
+    <section class="metric-grid">
+      <article class="metric">
+        <span>Viaturas</span>
+        <strong>{{ metrics.vehicles }}</strong>
+      </article>
+      <article class="metric">
+        <span>Tarefas abertas</span>
+        <strong>{{ metrics.open_tasks }}</strong>
+      </article>
+      <article class="metric">
+        <span>Importacoes</span>
+        <strong>{{ metrics.imports }}</strong>
+      </article>
+    </section>
+
+    <section class="section">
+      <h3>Areas autorizadas</h3>
+      <div class="pill-row">
+        {% for unit in authorized_units %}
+          <span class="pill">{{ unit }}</span>
+        {% else %}
+          <span class="muted">Sem areas configuradas.</span>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <h3>Permissoes</h3>
+      <div class="pill-row">
+        {% for permission in permissions %}
+          <span class="pill muted-pill">{{ permission }}</span>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+

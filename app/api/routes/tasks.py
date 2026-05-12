@@ -21,6 +21,7 @@ TaskWriter = Annotated[object, Depends(require_permission("tasks.write"))]
 def list_tasks(
     db: DbSession,
     status_filter: str | None = None,
+    task_type: str | None = None,
     team_id: int | None = None,
     assigned_to_id: int | None = None,
     entity_type: str | None = None,
@@ -32,6 +33,8 @@ def list_tasks(
     stmt = select(Task).order_by(Task.id.desc()).limit(limit).offset(offset)
     if status_filter:
         stmt = stmt.where(Task.status == status_filter)
+    if task_type:
+        stmt = stmt.where(Task.task_type == task_type)
     if team_id:
         stmt = stmt.where(Task.team_id == team_id)
     if assigned_to_id:
@@ -50,6 +53,8 @@ def create_task(
     current_user: CurrentUser,
     _: TaskWriter = None,
 ):
+    if not payload.team_id and not payload.assigned_to_id:
+        raise HTTPException(status_code=400, detail="Task requires an assigned user or team.")
     validate_task_links(db, payload.team_id, payload.assigned_to_id)
     task = Task(**payload.model_dump(), created_by_id=current_user.id)
     db.add(task)
@@ -90,6 +95,10 @@ def update_task(
 
     changes = payload.model_dump(exclude_unset=True)
     validate_task_links(db, changes.get("team_id"), changes.get("assigned_to_id"))
+    next_team_id = changes.get("team_id", task.team_id)
+    next_assigned_to_id = changes.get("assigned_to_id", task.assigned_to_id)
+    if not next_team_id and not next_assigned_to_id:
+        raise HTTPException(status_code=400, detail="Task requires an assigned user or team.")
 
     before = {
         "status": task.status,
@@ -183,4 +192,3 @@ def record_task_history(
             new_value="" if new_value is None else str(new_value),
         )
     )
-

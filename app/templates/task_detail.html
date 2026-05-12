@@ -43,12 +43,14 @@
         <h3>Resumo</h3>
         <dl class="detail-list">
           <div><dt>Nº interno</dt><dd>CF-TASK-{{ "%05d"|format(task.id) }}</dd></div>
+          <div><dt>Natureza</dt><dd>{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</dd></div>
           <div><dt>Origem</dt><dd>{{ task_source_labels.get(task.source, task.source or "Manual") }}</dd></div>
           <div><dt>Estado</dt><dd><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></dd></div>
           <div><dt>Categoria</dt><dd>{{ task_category_labels.get(task.category, task.category or "-") }}</dd></div>
-          <div><dt>Subcategoria</dt><dd>{{ task.subcategory or "-" }}</dd></div>
+          <div><dt>Classificação</dt><dd>{{ task.subcategory or "-" }}</dd></div>
           <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
           <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
+          <div><dt>Equipa/Fila</dt><dd>{{ assigned_team.name if assigned_team else "-" }}</dd></div>
           <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
           <div><dt>Cliente</dt><dd>{{ task.customer_name or "-" }}</dd></div>
           <div><dt>Contacto</dt><dd>{{ task.customer_contact or "-" }}</dd></div>
@@ -89,6 +91,14 @@
         </label>
         <div class="form-grid">
           <label>
+            Natureza
+            <select name="task_type">
+              {% for code, label in task_types %}
+                <option value="{{ code }}" {% if task.task_type == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
             Categoria
             <select name="category">
               {% for code, label in task_categories %}
@@ -110,18 +120,29 @@
           </label>
         </div>
         <label>
-          Subcategoria
+          Classificação
           <input type="text" name="subcategory" maxlength="120" value="{{ task.subcategory or "" }}">
         </label>
-        <label>
-          Responsável
-          <select name="assigned_to_id">
-            <option value="">Sem responsável</option>
-            {% for user in users %}
-              <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        <div class="form-grid">
+          <label>
+            Responsável
+            <select name="assigned_to_id">
+              <option value="">Sem responsável</option>
+              {% for user in users %}
+                <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Equipa/Fila
+            <select name="team_id">
+              <option value="">Sem equipa</option>
+              {% for team in teams %}
+                <option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
         <div class="form-grid">
           <label>
             Estação
@@ -152,9 +173,10 @@
         <h3>Comentários</h3>
         <div class="event-list">
           {% for item in comments %}
+            {% set comment_user = user_by_id.get(item.user_id) if item.user_id else None %}
             <article class="event-item">
               <div>
-                <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                <strong>{{ comment_user.name if comment_user else "Sistema" }}</strong>
                 <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
               </div>
               <p>{{ item.comment }}</p>
@@ -169,9 +191,10 @@
         <h3>Histórico</h3>
         <div class="event-list">
           {% for item in history %}
+            {% set history_user = user_by_id.get(item.user_id) if item.user_id else None %}
             <article class="event-item">
               <div>
-                <strong>{{ item.field_name }}</strong>
+                <strong>{{ item.field_name }}{% if history_user %} · {{ history_user.name }}{% endif %}</strong>
                 <span>{{ item.changed_at.strftime("%Y-%m-%d %H:%M") if item.changed_at else "" }}</span>
               </div>
               <p>{{ item.old_value or "-" }} -> {{ item.new_value or "-" }}</p>

@@ -8,6 +8,7 @@ from app.schemas.common import ApiModel
 class TaskBase(ApiModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = None
+    task_type: str = Field(default="task", max_length=80)
     category: str | None = Field(default=None, max_length=80)
     status: str = Field(default="new", max_length=80)
     priority: str | None = Field(default="normal", max_length=80)
@@ -25,6 +26,7 @@ class TaskCreate(TaskBase):
 class TaskUpdate(ApiModel):
     title: str | None = Field(default=None, min_length=2, max_length=200)
     description: str | None = None
+    task_type: str | None = Field(default=None, max_length=80)
     category: str | None = Field(default=None, max_length=80)
     status: str | None = Field(default=None, max_length=80)
     priority: str | None = Field(default=None, max_length=80)
@@ -53,4 +55,3 @@ class TaskCommentRead(ApiModel):
     user_id: int | None
     comment: str
     created_at: datetime
-

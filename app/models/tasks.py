@@ -13,6 +13,7 @@ class Task(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
+    task_type: Mapped[str] = mapped_column(String(80), default="task", index=True)
     source: Mapped[str | None] = mapped_column(String(80), index=True)
     category: Mapped[str | None] = mapped_column(String(80), index=True)
     subcategory: Mapped[str | None] = mapped_column(String(120), index=True)

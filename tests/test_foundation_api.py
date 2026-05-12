@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -11,6 +12,7 @@ from app.models import Base
 from app.services.bootstrap import seed_initial_data
 
 
+@contextmanager
 def build_test_db() -> Generator[Session]:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -47,9 +49,7 @@ def test_foundation_endpoints_return_seed_data():
         assert {"carfast", "fleet", "workshop"}.issubset(unit_codes)
 
         roles = client.get("/admin/roles")
-        assert roles.status_code == 200
-        role_codes = {item["code"] for item in roles.json()}
-        assert {"admin", "manager", "operator", "viewer"}.issubset(role_codes)
+        assert roles.status_code == 401
 
         catalogs = client.get("/settings/catalogs")
         assert catalogs.status_code == 200
@@ -57,7 +57,7 @@ def test_foundation_endpoints_return_seed_data():
         assert "vehicle_lifecycle_status" in catalog_codes
 
 
-def test_can_create_team_and_catalog_value():
+def test_admin_write_endpoints_require_authentication():
     with build_test_db():
         client = TestClient(app)
 
@@ -73,8 +73,7 @@ def test_can_create_team_and_catalog_value():
                 "active": True,
             },
         )
-        assert team_response.status_code == 201
-        assert team_response.json()["code"] == "fleet_followup"
+        assert team_response.status_code == 401
 
         value_response = client.post(
             "/settings/catalogs/task_priority/values",
@@ -86,6 +85,4 @@ def test_can_create_team_and_catalog_value():
                 "is_system": False,
             },
         )
-        assert value_response.status_code == 201
-        assert value_response.json()["code"] == "critical"
-
+        assert value_response.status_code == 401

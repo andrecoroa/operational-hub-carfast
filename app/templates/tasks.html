@@ -46,7 +46,7 @@
         <strong>{{ metrics.open }}</strong>
       </a>
       <a class="metric" href="/task-board?view=unassigned">
-        <span>Sem responsável</span>
+        <span>Sem destino</span>
         <strong>{{ metrics.unassigned }}</strong>
       </a>
       <a class="metric" href="/task-board?view=overdue">
@@ -69,9 +69,12 @@
           Âmbito
           <select name="view">
             <option value="" {% if not filters.view %}selected{% endif %}>Backlog aberto</option>
+            <option value="mine" {% if filters.view == "mine" %}selected{% endif %}>Minhas</option>
+            <option value="urgent" {% if filters.view == "urgent" %}selected{% endif %}>Urgentes</option>
+            <option value="team" {% if filters.view == "team" %}selected{% endif %}>Fila/Equipa</option>
             <option value="archived" {% if filters.view == "archived" %}selected{% endif %}>Arquivo</option>
             <option value="all" {% if filters.view == "all" %}selected{% endif %}>Todas</option>
-            <option value="unassigned" {% if filters.view == "unassigned" %}selected{% endif %}>Sem responsável</option>
+            <option value="unassigned" {% if filters.view == "unassigned" %}selected{% endif %}>Sem destino</option>
             <option value="overdue" {% if filters.view == "overdue" %}selected{% endif %}>Vencidas</option>
             <option value="due_today" {% if filters.view == "due_today" %}selected{% endif %}>Limite hoje</option>
           </select>
@@ -86,6 +89,15 @@
             <option value="">Todos</option>
             {% for code, label in task_statuses %}
               <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Natureza
+          <select name="task_type">
+            <option value="">Todas</option>
+            {% for code, label in task_types %}
+              <option value="{{ code }}" {% if filters.task_type == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -117,6 +129,15 @@
           </select>
         </label>
         <label>
+          Equipa/Fila
+          <select name="team_id">
+            <option value="">Todas</option>
+            {% for team in teams %}
+              <option value="{{ team.id }}" {% if filters.team_id == (team.id|string) %}selected{% endif %}>{{ team.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
           Estação
           <input list="stations" name="station" value="{{ filters.station }}">
           <datalist id="stations">
@@ -144,6 +165,14 @@
         </label>
         <div class="form-grid">
           <label>
+            Natureza
+            <select name="task_type">
+              {% for code, label in task_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
             Origem
             <select name="source">
               {% for code, label in task_sources %}
@@ -151,6 +180,8 @@
               {% endfor %}
             </select>
           </label>
+        </div>
+        <div class="form-grid">
           <label>
             Categoria
             <select name="category">
@@ -162,7 +193,7 @@
         </div>
         <div class="form-grid">
           <label>
-            Subcategoria
+            Classificação
             <input type="text" name="subcategory" maxlength="120">
           </label>
           <label>
@@ -225,6 +256,17 @@
             </select>
           </label>
           <label>
+            Equipa/Fila
+            <select name="team_id">
+              <option value="">Sem equipa</option>
+              {% for team in teams %}
+                <option value="{{ team.id }}" {% if team.code == "operations" %}selected{% endif %}>{{ team.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
             Data limite
             <input type="date" name="due_on">
           </label>
@@ -276,6 +318,8 @@
                 <td data-label="Tarefa">
                   <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
                   <p class="table-note">
+                    {{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}
+                    &middot;
                     {{ task_category_labels.get(task.category, task.category or "-") }}
                     &middot; Prioridade {{ priority_labels.get(task.priority, task.priority or "Normal") }}
                     {% if task.subcategory %} &middot; {{ task.subcategory }}{% endif %}
@@ -289,7 +333,8 @@
                 <td data-label="Origem">{{ task_source_labels.get(task.source, task.source or "Manual") }}</td>
                 <td data-label="Responsável">
                   {% set assigned = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else None %}
-                  {{ assigned.name if assigned else "-" }}
+                  {% set team = team_by_id.get(task.team_id) if task.team_id else None %}
+                  {{ assigned.name if assigned else (team.name if team else "-") }}
                 </td>
                 <td data-label="Limite">{{ task.due_on or "-" }}</td>
                 <td data-label="Estado"><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>

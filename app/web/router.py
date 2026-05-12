@@ -13,6 +13,7 @@ from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.organization import Team
 from app.models.pilot import PilotFeedback
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
@@ -149,59 +150,82 @@ INCIDENT_EVIDENCE_TYPE_LABELS = dict(INCIDENT_EVIDENCE_TYPES)
 
 TASK_STATUSES = [
     ("new", "Nova"),
-    ("analysis", "Em análise"),
     ("in_treatment", "Em tratamento"),
-    ("waiting_customer", "A aguardar cliente"),
-    ("waiting_internal", "A aguardar interno"),
-    ("waiting_supplier", "A aguardar fornecedor"),
-    ("answered", "Respondida"),
-    ("resolved", "Resolvida"),
+    ("waiting", "A aguardar"),
     ("closed", "Fechada"),
-    ("no_action_needed", "Sem ação necessária"),
-    ("cancelled", "Cancelada"),
 ]
 
 TASK_STATUS_LABELS = dict(TASK_STATUSES)
+TASK_LEGACY_STATUS_LABELS = {
+    "analysis": "Em análise",
+    "waiting_customer": "A aguardar cliente",
+    "waiting_internal": "A aguardar interno",
+    "waiting_supplier": "A aguardar fornecedor",
+    "answered": "Respondida",
+    "resolved": "Resolvida",
+    "no_action_needed": "Sem ação necessária",
+    "cancelled": "Cancelada",
+}
+TASK_STATUS_DISPLAY_LABELS = {**TASK_STATUS_LABELS, **TASK_LEGACY_STATUS_LABELS}
 
 PRIORITIES = [
     ("normal", "Normal"),
     ("high", "Alta"),
-    ("low", "Baixa"),
+    ("urgent", "Urgente"),
 ]
 PRIORITY_LABELS = dict(PRIORITIES)
+PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
 
+TASK_TYPES = [
+    ("task", "Tarefa"),
+    ("request", "Pedido"),
+    ("incident", "Incidente"),
+]
+TASK_TYPE_LABELS = dict(TASK_TYPES)
+
 TASK_SOURCES = [
     ("manual", "Manual"),
-    ("email", "E-mail"),
-    ("whatsapp", "WhatsApp"),
-    ("webex", "Webex"),
-    ("rentway", "Rentway"),
     ("system", "Sistema"),
+    ("external", "Externo"),
 ]
 
 TASK_SOURCE_LABELS = dict(TASK_SOURCES)
+TASK_LEGACY_SOURCE_LABELS = {
+    "email": "E-mail",
+    "whatsapp": "WhatsApp",
+    "webex": "Webex",
+    "rentway": "Rentway",
+}
+TASK_SOURCE_DISPLAY_LABELS = {**TASK_SOURCE_LABELS, **TASK_LEGACY_SOURCE_LABELS}
 
 TASK_CATEGORIES = [
-    ("reservas", "Reservas"),
-    ("alteracoes", "Alterações"),
-    ("cancelamentos", "Cancelamentos"),
-    ("caucoes_reembolsos", "Cauções/Reembolsos"),
-    ("faturacao", "Faturação"),
-    ("danos", "Danos"),
-    ("sinistros", "Sinistros"),
-    ("reclamacoes", "Reclamações"),
-    ("assistencia", "Assistência"),
-    ("shuttle_aeroporto", "Shuttle/Aeroporto"),
-    ("manutencao", "Manutenção"),
-    ("logistica_viaturas", "Logística de viaturas"),
-    ("brokers", "Brokers"),
-    ("corporate", "Corporate"),
-    ("sem_acao_necessaria", "Sem ação necessária"),
+    ("support", "Suporte"),
+    ("operations", "Operações"),
+    ("workshop", "Oficina"),
+    ("finance", "Financeira"),
 ]
 
 TASK_CATEGORY_LABELS = dict(TASK_CATEGORIES)
+TASK_LEGACY_CATEGORY_LABELS = {
+    "reservas": "Reservas",
+    "alteracoes": "Alterações",
+    "cancelamentos": "Cancelamentos",
+    "caucoes_reembolsos": "Cauções/Reembolsos",
+    "faturacao": "Faturação",
+    "danos": "Danos",
+    "sinistros": "Sinistros",
+    "reclamacoes": "Reclamações",
+    "assistencia": "Assistência",
+    "shuttle_aeroporto": "Shuttle/Aeroporto",
+    "manutencao": "Manutenção",
+    "logistica_viaturas": "Logística de viaturas",
+    "brokers": "Brokers",
+    "corporate": "Corporate",
+    "sem_acao_necessaria": "Sem ação necessária",
+}
+TASK_CATEGORY_DISPLAY_LABELS = {**TASK_CATEGORY_LABELS, **TASK_LEGACY_CATEGORY_LABELS}
 
 PILOT_FEEDBACK_KINDS = [
     ("question", "Pedir ajuda"),
@@ -688,9 +712,13 @@ def vehicle_create_task(
         task = Task(
             title=clean_title,
             description=description.strip() or None,
-            category="frota",
+            task_type="task",
+            source="manual",
+            category="operations",
+            subcategory="Frota",
             status="new",
             priority=priority,
+            team_id=default_team_id(db, "operations"),
             entity_type="vehicle",
             entity_id=str(vehicle.id),
             created_by_id=user_id,
@@ -725,6 +753,7 @@ def workshop_page(
     created: str | None = None,
     closed: str | None = None,
     feedback_saved: str | None = None,
+    error: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -752,7 +781,7 @@ def workshop_page(
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
-                "error": None,
+                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
                 "opening_types": WORKSHOP_OPENING_TYPES,
                 "opening_type_labels": WORKSHOP_OPENING_LABELS,
                 "status_labels": WORKSHOP_STATUS_LABELS,
@@ -1353,9 +1382,11 @@ def task_board(
     feedback_saved: str | None = None,
     q: str = "",
     status: str = "",
+    task_type: str = "",
     category: str = "",
     source: str = "",
     assigned_to_id: str = "",
+    team_id: str = "",
     station: str = "",
     view: str = "",
 ):
@@ -1377,6 +1408,7 @@ def task_board(
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
+                    Task.team_id.is_(None),
                 )
             )
             or 0,
@@ -1405,8 +1437,14 @@ def task_board(
             stmt = select(Task).where(archived_condition)
         elif view == "all":
             stmt = select(Task)
+        elif view == "mine":
+            stmt = stmt.where(Task.assigned_to_id == user_id)
+        elif view == "team":
+            stmt = stmt.where(Task.team_id.is_not(None))
+        elif view == "urgent":
+            stmt = stmt.where(Task.priority == "urgent")
         elif view == "unassigned":
-            stmt = stmt.where(Task.assigned_to_id.is_(None))
+            stmt = stmt.where(Task.assigned_to_id.is_(None), Task.team_id.is_(None))
         elif view == "overdue":
             stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
         elif view == "due_today":
@@ -1429,6 +1467,8 @@ def task_board(
             )
         if status:
             stmt = stmt.where(Task.status == status)
+        if task_type:
+            stmt = stmt.where(Task.task_type == task_type)
         if category:
             stmt = stmt.where(Task.category == category)
         if source:
@@ -1436,12 +1476,17 @@ def task_board(
         parsed_assigned_to_id = parse_optional_int(assigned_to_id)
         if parsed_assigned_to_id:
             stmt = stmt.where(Task.assigned_to_id == parsed_assigned_to_id)
+        parsed_team_id = parse_optional_int(team_id)
+        if parsed_team_id:
+            stmt = stmt.where(Task.team_id == parsed_team_id)
         if station.strip():
             stmt = stmt.where(Task.station.ilike(f"%{station.strip()}%"))
 
         tasks = db.scalars(stmt.order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc()).limit(100)).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
+        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        team_by_id = {item.id: item for item in teams}
         stations = [
             item
             for item in db.scalars(
@@ -1460,6 +1505,8 @@ def task_board(
                 "tasks": tasks,
                 "users": users,
                 "user_by_id": user_by_id,
+                "teams": teams,
+                "team_by_id": team_by_id,
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
@@ -1468,22 +1515,26 @@ def task_board(
                 "filters": {
                     "q": q,
                     "status": status,
+                    "task_type": task_type,
                     "category": category,
                     "source": source,
                     "assigned_to_id": assigned_to_id,
+                    "team_id": team_id,
                     "station": station,
                     "view": view,
                 },
                 "archive_statuses": TASK_ARCHIVE_STATUSES,
                 "stations": stations,
                 "task_statuses": TASK_STATUSES,
-                "task_status_labels": TASK_STATUS_LABELS,
+                "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
-                "priority_labels": PRIORITY_LABELS,
+                "priority_labels": PRIORITY_DISPLAY_LABELS,
+                "task_types": TASK_TYPES,
+                "task_type_labels": TASK_TYPE_LABELS,
                 "task_sources": TASK_SOURCES,
-                "task_source_labels": TASK_SOURCE_LABELS,
+                "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": TASK_CATEGORIES,
-                "task_category_labels": TASK_CATEGORY_LABELS,
+                "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
             },
         )
 
@@ -1492,11 +1543,13 @@ def task_board(
 def task_create(
     request: Request,
     title: str = Form(...),
-    category: str = Form("operacional"),
+    task_type: str = Form("task"),
+    category: str = Form("operations"),
     subcategory: str = Form(""),
     source: str = Form("manual"),
     priority: str = Form("normal"),
     assigned_to_id: str = Form(""),
+    team_id: str = Form(""),
     due_on: str = Form(""),
     customer_name: str = Form(""),
     customer_contact: str = Form(""),
@@ -1525,6 +1578,8 @@ def task_create(
             ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             user_by_id = {item.id: item for item in users}
+            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+            team_by_id = {item.id: item for item in teams}
         return templates.TemplateResponse(
             request,
             "tasks.html",
@@ -1532,18 +1587,22 @@ def task_create(
                 "tasks": tasks,
                 "users": users,
                 "user_by_id": user_by_id,
+                "teams": teams,
+                "team_by_id": team_by_id,
                 "created": None,
                 "closed": None,
                 "error": "Indica um título para a tarefa.",
-                "task_status_labels": TASK_STATUS_LABELS,
-                "priority_labels": PRIORITY_LABELS,
+                "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
+                "priority_labels": PRIORITY_DISPLAY_LABELS,
                 "task_sources": TASK_SOURCES,
-                "task_source_labels": TASK_SOURCE_LABELS,
+                "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
+                "task_types": TASK_TYPES,
+                "task_type_labels": TASK_TYPE_LABELS,
                 "task_categories": TASK_CATEGORIES,
-                "task_category_labels": TASK_CATEGORY_LABELS,
+                "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
                 "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0, "archived": 0},
                 "feedback_saved": None,
-                "filters": {"q": "", "status": "", "category": "", "source": "", "assigned_to_id": "", "station": "", "view": ""},
+                "filters": {"q": "", "status": "", "task_type": "", "category": "", "source": "", "assigned_to_id": "", "team_id": "", "station": "", "view": ""},
                 "stations": [],
                 "task_statuses": TASK_STATUSES,
                 "priorities": PRIORITIES,
@@ -1553,16 +1612,25 @@ def task_create(
         )
 
     with SessionLocal() as db:
-        if source not in TASK_SOURCE_LABELS:
+        if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
+        if task_type not in TASK_TYPE_LABELS:
+            task_type = "task"
         if category not in TASK_CATEGORY_LABELS:
-            category = "reservas"
+            category = "operations"
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
+        assigned_team_id = parse_optional_int(team_id)
+        if assigned_team_id and not db.get(Team, assigned_team_id):
+            assigned_team_id = None
+        assigned_team_id = assigned_team_id or default_team_id(db, "operations")
+        if not assigned_user_id and not assigned_team_id:
+            return RedirectResponse("/task-board?error=missing_destination", status_code=303)
         task = Task(
             title=clean_title,
             description=description.strip() or None,
+            task_type=task_type,
             source=source,
             category=category,
             subcategory=subcategory.strip() or None,
@@ -1579,6 +1647,7 @@ def task_create(
             department=department.strip() or None,
             external_source_id=external_source_id.strip() or None,
             assigned_to_id=assigned_user_id,
+            team_id=assigned_team_id,
             created_by_id=user_id,
             due_on=parse_optional_date(due_on),
         )
@@ -1612,6 +1681,7 @@ def task_detail(
     task_id: int,
     commented: str | None = None,
     feedback_saved: str | None = None,
+    error: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -1630,7 +1700,10 @@ def task_detail(
         if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        user_by_id = {item.id: item for item in users}
+        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
+        assigned_team = db.get(Team, task.team_id) if task.team_id else None
         return templates.TemplateResponse(
             request,
             "task_detail.html",
@@ -1640,17 +1713,22 @@ def task_detail(
                 "history": history,
                 "linked_vehicle": linked_vehicle,
                 "users": users,
+                "user_by_id": user_by_id,
+                "teams": teams,
                 "assigned_user": assigned_user,
+                "assigned_team": assigned_team,
                 "commented": commented,
                 "feedback_saved": feedback_saved,
-                "error": None,
+                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
                 "task_statuses": TASK_STATUSES,
-                "task_status_labels": TASK_STATUS_LABELS,
+                "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
-                "priority_labels": PRIORITY_LABELS,
-                "task_source_labels": TASK_SOURCE_LABELS,
+                "priority_labels": PRIORITY_DISPLAY_LABELS,
+                "task_types": TASK_TYPES,
+                "task_type_labels": TASK_TYPE_LABELS,
+                "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": TASK_CATEGORIES,
-                "task_category_labels": TASK_CATEGORY_LABELS,
+                "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
             },
         )
 
@@ -1661,9 +1739,11 @@ def task_update(
     task_id: int,
     status: str = Form("new"),
     priority: str = Form("normal"),
-    category: str = Form("reservas"),
+    task_type: str = Form("task"),
+    category: str = Form("operations"),
     subcategory: str = Form(""),
     assigned_to_id: str = Form(""),
+    team_id: str = Form(""),
     due_on: str = Form(""),
     department: str = Form(""),
     station: str = Form(""),
@@ -1672,11 +1752,13 @@ def task_update(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    allowed_statuses = {code for code, _ in TASK_STATUSES}
+    allowed_statuses = {code for code, _ in TASK_STATUSES} | TASK_ARCHIVE_STATUSES
     if status not in allowed_statuses:
         status = "new"
+    if task_type not in TASK_TYPE_LABELS:
+        task_type = "task"
     if category not in TASK_CATEGORY_LABELS:
-        category = "reservas"
+        category = "operations"
 
     with SessionLocal() as db:
         task = db.get(Task, task_id)
@@ -1686,14 +1768,21 @@ def task_update(
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
+        assigned_team_id = parse_optional_int(team_id)
+        if assigned_team_id and not db.get(Team, assigned_team_id):
+            assigned_team_id = None
+        if not assigned_user_id and not assigned_team_id:
+            return RedirectResponse(f"/task-board/{task_id}?error=missing_destination", status_code=303)
         parsed_due_on = parse_optional_date(due_on)
 
         changes = [
             ("status", task.status, status),
             ("priority", task.priority, priority),
+            ("task_type", task.task_type, task_type),
             ("category", task.category, category),
             ("subcategory", task.subcategory, subcategory.strip()),
             ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
+            ("team_id", str(task.team_id or ""), str(assigned_team_id or "")),
             ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
             ("department", task.department, department.strip()),
             ("station", task.station, station.strip()),
@@ -1701,9 +1790,11 @@ def task_update(
 
         task.status = status
         task.priority = priority
+        task.task_type = task_type
         task.category = category
         task.subcategory = subcategory.strip() or None
         task.assigned_to_id = assigned_user_id
+        task.team_id = assigned_team_id
         task.due_on = parsed_due_on
         task.department = department.strip() or None
         task.station = station.strip() or None
@@ -1774,7 +1865,10 @@ def task_add_comment(
             if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
                 linked_vehicle = db.get(Vehicle, int(task.entity_id))
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            user_by_id = {item.id: item for item in users}
+            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
+            assigned_team = db.get(Team, task.team_id) if task.team_id else None
             return templates.TemplateResponse(
                 request,
                 "task_detail.html",
@@ -1784,16 +1878,21 @@ def task_add_comment(
                     "history": history,
                     "linked_vehicle": linked_vehicle,
                     "users": users,
+                    "user_by_id": user_by_id,
+                    "teams": teams,
                     "assigned_user": assigned_user,
+                    "assigned_team": assigned_team,
                     "commented": None,
                     "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
-                    "task_status_labels": TASK_STATUS_LABELS,
+                    "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                     "priorities": PRIORITIES,
-                    "priority_labels": PRIORITY_LABELS,
-                    "task_source_labels": TASK_SOURCE_LABELS,
+                    "priority_labels": PRIORITY_DISPLAY_LABELS,
+                    "task_types": TASK_TYPES,
+                    "task_type_labels": TASK_TYPE_LABELS,
+                    "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                     "task_categories": TASK_CATEGORIES,
-                    "task_category_labels": TASK_CATEGORY_LABELS,
+                    "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
                 },
                 status_code=400,
             )
@@ -1901,6 +2000,11 @@ def count_rows(db, model) -> int:
 
 def count_open_tasks(db) -> int:
     return db.scalar(select(func.count()).select_from(Task).where(Task.closed_at.is_(None))) or 0
+
+
+def default_team_id(db, code: str) -> int | None:
+    team = db.scalar(select(Team).where(Team.code == code, Team.active.is_(True)))
+    return team.id if team else None
 
 
 def parse_optional_date(value: str | None) -> date | None:

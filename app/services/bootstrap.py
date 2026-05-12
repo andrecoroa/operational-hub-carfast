@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.admin import Permission, Role, RolePermission
-from app.models.organization import OrganizationalUnit
+from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 
 INITIAL_PERMISSIONS = [
@@ -36,6 +36,13 @@ INITIAL_UNITS = [
     ("locations", "Localizacoes", "business_area", "carfast"),
 ]
 
+INITIAL_TEAMS = [
+    ("support", "Suporte", "administration"),
+    ("operations", "Operacoes", "operations"),
+    ("workshop", "Oficina", "workshop"),
+    ("finance", "Financeira", "administration"),
+]
+
 INITIAL_CATALOGS = {
     "vehicle_lifecycle_status": ["active", "for_sale", "sold", "inactive", "written_off"],
     "vehicle_operational_status": [
@@ -48,8 +55,8 @@ INITIAL_CATALOGS = {
         "reserved",
         "in_transfer",
     ],
-    "task_status": ["new", "in_progress", "waiting", "done", "cancelled"],
-    "task_priority": ["low", "normal", "high", "urgent"],
+    "task_status": ["new", "in_treatment", "waiting", "closed"],
+    "task_priority": ["normal", "high", "urgent"],
     "document_type": ["general", "invoice", "report", "photo", "contract"],
     "import_type": ["rentway_fleet", "rentway_contracts", "rentway_impros"],
 }
@@ -59,6 +66,7 @@ def seed_initial_data(db: Session) -> None:
     seed_permissions(db)
     seed_roles(db)
     seed_organizational_units(db)
+    seed_teams(db)
     seed_catalogs(db)
     db.commit()
 
@@ -112,6 +120,22 @@ def seed_organizational_units(db: Session) -> None:
         by_code[code] = unit
 
 
+def seed_teams(db: Session) -> None:
+    units = {unit.code: unit for unit in db.scalars(select(OrganizationalUnit)).all()}
+    teams = {team.code: team for team in db.scalars(select(Team)).all()}
+    for code, name, unit_code in INITIAL_TEAMS:
+        if code in teams:
+            continue
+        unit = units.get(unit_code)
+        db.add(
+            Team(
+                code=code,
+                name=name,
+                organizational_unit_id=unit.id if unit else None,
+            )
+        )
+
+
 def seed_catalogs(db: Session) -> None:
     for catalog_code, values in INITIAL_CATALOGS.items():
         catalog = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == catalog_code))
@@ -136,4 +160,3 @@ def seed_catalogs(db: Session) -> None:
                         is_system=True,
                     )
                 )
-

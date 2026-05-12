@@ -8,6 +8,7 @@ from app.models import Base
 from app.models.audit import AuditLog
 from app.models.admin import User
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.organization import Team
 from app.models.pilot import PilotFeedback
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleOperationalStatusEvent
@@ -210,6 +211,12 @@ def test_complete_workshop_training_flow():
         assert paulo is not None
         assert paulo.name == "Paulo Azevedo"
         paulo_id = paulo.id
+        workshop_team = db.scalar(select(Team).where(Team.code == "workshop"))
+        operations_team = db.scalar(select(Team).where(Team.code == "operations"))
+        assert workshop_team is not None
+        assert operations_team is not None
+        workshop_team_id = workshop_team.id
+        operations_team_id = operations_team.id
 
     decision = client.post(
         f"/workshop/{process_id}/flow",
@@ -262,11 +269,13 @@ def test_complete_workshop_training_flow():
         "/task-board",
         data={
             "title": "Contactar oficina externa",
+            "task_type": "task",
             "source": "manual",
-            "category": "manutencao",
+            "category": "workshop",
             "subcategory": "Oficina externa",
             "priority": "high",
             "assigned_to_id": str(paulo_id),
+            "team_id": str(workshop_team_id),
             "due_on": "2026-05-14",
             "customer_name": "Cliente Teste",
             "customer_email": "cliente@example.com",
@@ -291,9 +300,11 @@ def test_complete_workshop_training_flow():
         data={
             "status": "in_treatment",
             "priority": "high",
-            "category": "manutencao",
+            "task_type": "task",
+            "category": "workshop",
             "subcategory": "Oficina externa",
             "assigned_to_id": str(paulo_id),
+            "team_id": str(workshop_team_id),
             "due_on": "2026-05-15",
             "station": "Aeroporto Porto",
             "department": "Oficina",
@@ -306,9 +317,11 @@ def test_complete_workshop_training_flow():
         "/task-board",
         data={
             "title": "Validar caução pendente",
+            "task_type": "request",
             "source": "email",
-            "category": "caucoes_reembolsos",
+            "category": "finance",
             "priority": "high",
+            "team_id": str(operations_team_id),
             "due_on": "2026-05-01",
             "customer_name": "Cliente Backlog",
             "station": "Aeroporto Porto",
@@ -329,9 +342,11 @@ def test_complete_workshop_training_flow():
         data={
             "status": "no_action_needed",
             "priority": "high",
-            "category": "caucoes_reembolsos",
+            "task_type": "request",
+            "category": "finance",
             "subcategory": "",
             "assigned_to_id": "",
+            "team_id": str(operations_team_id),
             "due_on": "2026-05-01",
             "station": "Aeroporto Porto",
             "department": "Faturação",
@@ -342,7 +357,7 @@ def test_complete_workshop_training_flow():
 
     assert client.get("/task-board?view=unassigned").status_code == 200
     assert client.get("/task-board?view=overdue").status_code == 200
-    assert client.get("/task-board?category=manutencao&assigned_to_id=" + str(paulo_id)).status_code == 200
+    assert client.get("/task-board?category=workshop&assigned_to_id=" + str(paulo_id)).status_code == 200
     assert client.get("/task-board?q=BZ81SC").status_code == 200
     default_task_board = client.get("/task-board")
     assert "Validar caução pendente" not in default_task_board.text
@@ -419,8 +434,9 @@ def test_complete_workshop_training_flow():
         ) == 1
         managed_task = db.get(Task, managed_task_id)
         assert managed_task.status == "in_treatment"
+        assert managed_task.task_type == "task"
         assert managed_task.source == "manual"
-        assert managed_task.category == "manutencao"
+        assert managed_task.category == "workshop"
         assert managed_task.subcategory == "Oficina externa"
         assert managed_task.customer_name == "Cliente Teste"
         assert managed_task.customer_email == "cliente@example.com"
@@ -431,6 +447,7 @@ def test_complete_workshop_training_flow():
         assert managed_task.department == "Oficina"
         assert managed_task.priority == "high"
         assert managed_task.assigned_to_id == paulo_id
+        assert managed_task.team_id == workshop_team_id
         assert managed_task.due_on.isoformat() == "2026-05-15"
         assert db.scalar(
             select(func.count()).select_from(PilotFeedback).where(

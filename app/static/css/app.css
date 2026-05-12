@@ -335,6 +335,10 @@ button:hover,
   margin-bottom: 18px;
 }
 
+.fleet-toolbar {
+  grid-template-columns: minmax(0, 1fr) 180px auto;
+}
+
 .table-shell,
 .form-panel {
   background: var(--panel);
@@ -751,6 +755,10 @@ a.metric:hover {
   }
 
   .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-toolbar {
     grid-template-columns: 1fr;
   }
 

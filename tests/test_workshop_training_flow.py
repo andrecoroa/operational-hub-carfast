@@ -64,9 +64,20 @@ def test_complete_workshop_training_flow():
             lifecycle_status="active",
             operational_status="free",
         )
+        sold_vehicle = Vehicle(
+            plate="CC33CC",
+            vin="TESTUNIT250",
+            brand="FIAT",
+            model="Tipo",
+            rentway_unit_nr="250",
+            lifecycle_status="sold",
+            operational_status="sold",
+            active=False,
+        )
         db.add(vehicle)
         db.add(newer_vehicle)
         db.add(older_vehicle)
+        db.add(sold_vehicle)
         db.commit()
         vehicle_id = vehicle.id
 
@@ -450,6 +461,14 @@ def test_complete_workshop_training_flow():
     assert fleet_page.status_code == 200
     fleet_html = fleet_page.text
     assert fleet_html.index("200") < fleet_html.index("120") < fleet_html.index("030")
+    assert "250" not in fleet_html
+    sold_fleet_page = client.get("/fleet?scope=sold")
+    assert sold_fleet_page.status_code == 200
+    assert "250" in sold_fleet_page.text
+    all_fleet_page = client.get("/fleet?scope=all")
+    assert all_fleet_page.status_code == 200
+    assert "250" in all_fleet_page.text
+    assert all_fleet_page.text.index("250") < all_fleet_page.text.index("200")
     assert client.get("/pilot-feedback/new?kind=question&source_area=workshop").status_code == 200
     assert client.get(
         f"/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={managed_task_id}"

@@ -29,8 +29,13 @@
       <div class="success">Importação concluída: {{ imported }}</div>
     {% endif %}
 
-    <form method="get" action="/fleet" class="toolbar">
+    <form method="get" action="/fleet" class="toolbar fleet-toolbar">
       <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matrícula, Unit Nr, VIN, marca ou modelo">
+      <select name="scope" aria-label="Âmbito da frota">
+        <option value="active" {% if scope == "active" %}selected{% endif %}>Ativos</option>
+        <option value="sold" {% if scope == "sold" %}selected{% endif %}>Vendidos</option>
+        <option value="all" {% if scope == "all" %}selected{% endif %}>Todos</option>
+      </select>
       <button type="submit">Pesquisar</button>
     </form>
 

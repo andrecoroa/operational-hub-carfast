@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.database import SessionLocal
 from app.core.security import verify_password
@@ -444,11 +444,18 @@ def pilot_feedback_create(
 
 
 @web_router.get("/fleet", response_class=HTMLResponse)
-def vehicles_page(request: Request, q: str | None = None, imported: str | None = None):
+def vehicles_page(request: Request, q: str | None = None, scope: str = "active", imported: str | None = None):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
     with SessionLocal() as db:
         stmt = select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)
+        if scope not in {"active", "sold", "all"}:
+            scope = "active"
+        sold_filter = or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
+        if scope == "active":
+            stmt = stmt.where(Vehicle.active.is_(True), ~sold_filter)
+        elif scope == "sold":
+            stmt = stmt.where(sold_filter)
         if q:
             normalized = q.strip().upper().replace(" ", "")
             stmt = stmt.where(
@@ -465,6 +472,7 @@ def vehicles_page(request: Request, q: str | None = None, imported: str | None =
             {
                 "vehicles": vehicles,
                 "q": q or "",
+                "scope": scope,
                 "imported": imported,
             },
         )

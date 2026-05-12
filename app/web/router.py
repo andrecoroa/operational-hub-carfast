@@ -170,6 +170,8 @@ PRIORITIES = [
 ]
 PRIORITY_LABELS = dict(PRIORITIES)
 
+TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+
 TASK_SOURCES = [
     ("manual", "Manual"),
     ("email", "E-mail"),
@@ -726,13 +728,19 @@ def workshop_page(
             .order_by(WorkshopProcess.id.desc())
             .limit(100)
         ).all()
-        vehicles = db.scalars(select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(300)).all()
+        vehicles = sorted(
+            db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
+            key=rentway_unit_sort_key,
+            reverse=True,
+        )
+        vehicle_by_id = {item.id: item for item in vehicles}
         return templates.TemplateResponse(
             request,
             "workshop.html",
             {
                 "processes": processes,
                 "vehicles": vehicles,
+                "vehicle_by_id": vehicle_by_id,
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
@@ -771,13 +779,19 @@ def workshop_create(
                 .order_by(WorkshopProcess.id.desc())
                 .limit(100)
             ).all()
-            vehicles = db.scalars(select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(300)).all()
+            vehicles = sorted(
+                db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
+                key=rentway_unit_sort_key,
+                reverse=True,
+            )
+            vehicle_by_id = {item.id: item for item in vehicles}
             return templates.TemplateResponse(
                 request,
                 "workshop.html",
                 {
                     "processes": processes,
                     "vehicles": vehicles,
+                    "vehicle_by_id": vehicle_by_id,
                     "created": None,
                     "closed": None,
                     "error": "Escolhe a viatura para ligar o processo ao histórico correto.",
@@ -1343,12 +1357,17 @@ def task_board(
 
     with SessionLocal() as db:
         today = date.today()
-        open_stmt = select(Task).where(Task.closed_at.is_(None))
+        archived_condition = (Task.closed_at.is_not(None)) | (Task.status.in_(TASK_ARCHIVE_STATUSES))
+        open_stmt = select(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
         metrics = {
-            "open": db.scalar(select(func.count()).select_from(Task).where(Task.closed_at.is_(None))) or 0,
+            "open": db.scalar(
+                select(func.count()).select_from(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+            )
+            or 0,
             "unassigned": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
                 )
             )
@@ -1356,6 +1375,7 @@ def task_board(
             "overdue": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on.is_not(None),
                     Task.due_on < today,
                 )
@@ -1364,14 +1384,20 @@ def task_board(
             "due_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on == today,
                 )
             )
             or 0,
+            "archived": db.scalar(select(func.count()).select_from(Task).where(archived_condition)) or 0,
         }
 
         stmt = open_stmt
-        if view == "unassigned":
+        if view == "archived" or status in TASK_ARCHIVE_STATUSES:
+            stmt = select(Task).where(archived_condition)
+        elif view == "all":
+            stmt = select(Task)
+        elif view == "unassigned":
             stmt = stmt.where(Task.assigned_to_id.is_(None))
         elif view == "overdue":
             stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
@@ -1440,6 +1466,7 @@ def task_board(
                     "station": station,
                     "view": view,
                 },
+                "archive_statuses": TASK_ARCHIVE_STATUSES,
                 "stations": stations,
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
@@ -1506,12 +1533,13 @@ def task_create(
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_LABELS,
-                "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0},
+                "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0, "archived": 0},
                 "feedback_saved": None,
                 "filters": {"q": "", "status": "", "category": "", "source": "", "assigned_to_id": "", "station": "", "view": ""},
                 "stations": [],
                 "task_statuses": TASK_STATUSES,
                 "priorities": PRIORITIES,
+                "archive_statuses": TASK_ARCHIVE_STATUSES,
             },
             status_code=400,
         )

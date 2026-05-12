@@ -308,10 +308,39 @@ def test_complete_workshop_training_flow():
     )
     assert unassigned_overdue.status_code == 303
 
+    with SessionLocal() as db:
+        archived_task = db.scalar(select(Task).where(Task.title == "Validar caução pendente"))
+        assert archived_task is not None
+        archived_task_id = archived_task.id
+
+    archive_update = client.post(
+        f"/task-board/{archived_task_id}/update",
+        data={
+            "status": "no_action_needed",
+            "priority": "high",
+            "category": "caucoes_reembolsos",
+            "subcategory": "",
+            "assigned_to_id": "",
+            "due_on": "2026-05-01",
+            "station": "Aeroporto Porto",
+            "department": "Faturação",
+        },
+        follow_redirects=False,
+    )
+    assert archive_update.status_code == 303
+
     assert client.get("/task-board?view=unassigned").status_code == 200
     assert client.get("/task-board?view=overdue").status_code == 200
     assert client.get("/task-board?category=manutencao&assigned_to_id=" + str(paulo_id)).status_code == 200
     assert client.get("/task-board?q=BZ81SC").status_code == 200
+    default_task_board = client.get("/task-board")
+    assert "Validar caução pendente" not in default_task_board.text
+    archived_search = client.get("/task-board?view=archived&q=Validar+caução")
+    assert archived_search.status_code == 200
+    assert "Validar caução pendente" in archived_search.text
+    no_action_filter = client.get("/task-board?status=no_action_needed")
+    assert no_action_filter.status_code == 200
+    assert "Validar caução pendente" in no_action_filter.text
     assert client.get("/task-board?feedback_saved=1").status_code == 200
     assert client.get(f"/task-board/{managed_task_id}?feedback_saved=1").status_code == 200
 
@@ -408,6 +437,10 @@ def test_complete_workshop_training_flow():
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200
+    workshop_page = client.get("/workshop")
+    assert workshop_page.status_code == 200
+    assert "Unit 200" in workshop_page.text
+    assert "Unit 120" in workshop_page.text
     workshop_detail_page = client.get(f"/workshop/{process_id}")
     assert workshop_detail_page.status_code == 200
     assert "Incidentes do processo" in workshop_detail_page.text

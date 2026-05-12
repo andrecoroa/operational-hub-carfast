@@ -57,11 +57,25 @@
         <span>Limite hoje</span>
         <strong>{{ metrics.due_today }}</strong>
       </a>
+      <a class="metric" href="/task-board?view=archived">
+        <span>Arquivo</span>
+        <strong>{{ metrics.archived }}</strong>
+      </a>
     </section>
 
     <section class="table-shell filter-panel">
       <form method="get" action="/task-board" class="filter-grid">
-        <input type="hidden" name="view" value="{{ filters.view }}">
+        <label>
+          Âmbito
+          <select name="view">
+            <option value="" {% if not filters.view %}selected{% endif %}>Backlog aberto</option>
+            <option value="archived" {% if filters.view == "archived" %}selected{% endif %}>Arquivo</option>
+            <option value="all" {% if filters.view == "all" %}selected{% endif %}>Todas</option>
+            <option value="unassigned" {% if filters.view == "unassigned" %}selected{% endif %}>Sem responsável</option>
+            <option value="overdue" {% if filters.view == "overdue" %}selected{% endif %}>Vencidas</option>
+            <option value="due_today" {% if filters.view == "due_today" %}selected{% endif %}>Limite hoje</option>
+          </select>
+        </label>
         <label>
           Pesquisa
           <input type="search" name="q" value="{{ filters.q }}" placeholder="Assunto, cliente, matrícula, reserva, contrato">
@@ -234,7 +248,7 @@
         <div class="table-heading">
           <div>
             <p class="eyebrow">Backlog</p>
-            <h3>Tarefas abertas</h3>
+            <h3>{% if filters.view == "archived" %}Tarefas em arquivo{% elif filters.view == "all" %}Todas as tarefas{% else %}Tarefas abertas{% endif %}</h3>
           </div>
         </div>
         <table>
@@ -272,9 +286,11 @@
                 <td>{{ task.due_on or "-" }}</td>
                 <td><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
                 <td class="row-action">
-                  <form method="post" action="/task-board/{{ task.id }}/close">
-                    <button type="submit" class="secondary small-button">Fechar</button>
-                  </form>
+                  {% if task.status not in archive_statuses %}
+                    <form method="post" action="/task-board/{{ task.id }}/close">
+                      <button type="submit" class="secondary small-button">Fechar</button>
+                    </form>
+                  {% endif %}
                 </td>
               </tr>
             {% else %}

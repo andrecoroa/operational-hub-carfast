@@ -18,7 +18,7 @@
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Processos temporarios</p>
+        <p class="eyebrow">Processos temporários</p>
         <h2>Oficina</h2>
       </div>
       <div class="button-row">
@@ -51,12 +51,16 @@
           <select name="vehicle_id" required>
             <option value="">Escolher viatura</option>
             {% for vehicle in vehicles %}
-              <option value="{{ vehicle.id }}">{{ vehicle.plate or ("Viatura #" ~ vehicle.id) }}{% if vehicle.brand or vehicle.model %} - {{ vehicle.brand or "" }} {{ vehicle.model or "" }}{% endif %}</option>
+              <option value="{{ vehicle.id }}">
+                {% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }} · {% endif %}
+                {{ vehicle.plate or ("Viatura #" ~ vehicle.id) }}
+                {% if vehicle.brand or vehicle.model %} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}{% endif %}
+              </option>
             {% endfor %}
           </select>
         </label>
         <label>
-          Titulo
+          Título
           <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
         </label>
         <div class="form-grid">
@@ -125,7 +129,8 @@
                     {% if process.expected_exit_on %} &middot; Saída {{ process.expected_exit_on }}{% endif %}
                   </p>
                 </td>
-                <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">Viatura #{{ process.vehicle_id }}</a></td>
+                {% set vehicle = vehicle_by_id.get(process.vehicle_id) %}
+                <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></td>
                 <td><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
                 <td>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
                 <td class="row-action">

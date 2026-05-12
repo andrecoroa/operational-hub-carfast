@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.models import Base
 from app.models.audit import AuditLog
+from app.models.admin import User
 from app.models.pilot import PilotFeedback
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleOperationalStatusEvent
@@ -142,6 +143,18 @@ def test_complete_workshop_training_flow():
     )
     assert experience_report.status_code == 303
 
+    created_user = client.post(
+        "/admin/users",
+        data={
+            "name": "Paulo Azevedo",
+            "email": "paulo.azevedo@example.com",
+            "password": "Temp12345!",
+            "role_code": "operator",
+        },
+        follow_redirects=False,
+    )
+    assert created_user.status_code == 303
+
     decision = client.post(
         f"/workshop/{process_id}/flow",
         data={
@@ -225,6 +238,9 @@ def test_complete_workshop_training_flow():
                 PilotFeedback.entity_id == str(process_id),
             )
         ) == 2
+        paulo = db.scalar(select(User).where(User.email == "paulo.azevedo@example.com"))
+        assert paulo is not None
+        assert paulo.name == "Paulo Azevedo"
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200

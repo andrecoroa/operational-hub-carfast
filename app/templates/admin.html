@@ -23,6 +23,13 @@
       </div>
     </header>
 
+    {% if user_created %}
+      <div class="success">Utilizador criado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
     <section class="detail-grid">
       <article class="section">
         <h3>Utilizador</h3>
@@ -39,6 +46,53 @@
             <span class="pill">{{ unit }}</span>
           {% else %}
             <span class="muted">Sem areas configuradas.</span>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="detail-grid">
+      <form method="post" action="/admin/users" class="form-panel form-stack task-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Piloto</p>
+          <h3>Criar utilizador</h3>
+        </div>
+        <label>
+          Nome
+          <input type="text" name="name" maxlength="160" placeholder="Ex.: Paulo Azevedo" required>
+        </label>
+        <label>
+          Email
+          <input type="email" name="email" autocomplete="email" required>
+        </label>
+        <label>
+          Password temporaria
+          <input type="text" name="password" minlength="8" required>
+        </label>
+        <label>
+          Perfil
+          <select name="role_code">
+            {% for code, label in admin_user_roles %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Criar utilizador</button>
+      </form>
+
+      <article class="section">
+        <h3>Utilizadores</h3>
+        <div class="event-list">
+          {% for item in users %}
+            <article class="event-item">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span>{{ "Ativo" if item.active else "Inativo" }}</span>
+              </div>
+              <p>{{ item.email }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem utilizadores.</p>
           {% endfor %}
         </div>
       </article>

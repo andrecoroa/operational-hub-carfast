@@ -18,6 +18,7 @@ from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, Worksh
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.users import create_user
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
@@ -88,6 +89,13 @@ PILOT_FEEDBACK_KINDS = [
 ]
 PILOT_FEEDBACK_KIND_LABELS = dict(PILOT_FEEDBACK_KINDS)
 
+ADMIN_USER_ROLES = [
+    ("operator", "Operador"),
+    ("manager", "Gestor"),
+    ("admin", "Admin"),
+    ("viewer", "Consulta"),
+]
+
 
 @web_router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -119,7 +127,11 @@ def dashboard(request: Request):
 
 
 @web_router.get("/admin", response_class=HTMLResponse)
-def admin_page(request: Request):
+def admin_page(
+    request: Request,
+    user_created: str | None = None,
+    error: str | None = None,
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
@@ -131,17 +143,78 @@ def admin_page(request: Request):
         pilot_feedback_items = db.scalars(
             select(PilotFeedback).order_by(PilotFeedback.id.desc()).limit(20)
         ).all()
+        users = db.scalars(select(User).order_by(User.name, User.email).limit(50)).all()
         return templates.TemplateResponse(
             request,
             "admin.html",
             {
                 "user": user,
+                "users": users,
                 "permissions": sorted(get_user_permission_codes(db, user)),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
                 "pilot_feedback_items": pilot_feedback_items,
                 "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
+                "admin_user_roles": ADMIN_USER_ROLES,
+                "user_created": user_created,
+                "error": error,
             },
         )
+
+
+@web_router.post("/admin/users", response_class=HTMLResponse)
+def admin_create_user(
+    request: Request,
+    name: str = Form(""),
+    email: str = Form(""),
+    password: str = Form(""),
+    role_code: str = Form("operator"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_name = name.strip()
+    clean_email = email.strip().lower()
+    clean_password = password.strip()
+    allowed_roles = {code for code, _ in ADMIN_USER_ROLES}
+    if role_code not in allowed_roles:
+        role_code = "operator"
+
+    if not clean_name or not clean_email or not clean_password:
+        return RedirectResponse("/admin?error=Preenche%20nome%2C%20email%20e%20password.", status_code=303)
+    if "@" not in clean_email:
+        return RedirectResponse("/admin?error=Email%20invalido.", status_code=303)
+    if len(clean_password) < 8:
+        return RedirectResponse("/admin?error=A%20password%20deve%20ter%20pelo%20menos%208%20caracteres.", status_code=303)
+
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        if not current_user:
+            return RedirectResponse("/login", status_code=303)
+        existing = db.scalar(select(User).where(User.email == clean_email))
+        if existing:
+            return RedirectResponse("/admin?error=Ja%20existe%20um%20utilizador%20com%20esse%20email.", status_code=303)
+
+        new_user = create_user(
+            db,
+            name=clean_name,
+            email=clean_email,
+            password=clean_password,
+            role_codes=[role_code],
+            organizational_unit_codes=["carfast", "workshop"],
+        )
+        record_audit(
+            db,
+            action="admin.user.created",
+            entity_type="user",
+            entity_id=new_user.id,
+            detail=f"Utilizador criado na administracao: {new_user.email}",
+            after_json={"role": role_code, "units": ["carfast", "workshop"]},
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/admin?user_created=1", status_code=303)
 
 
 @web_router.get("/pilot-feedback/new", response_class=HTMLResponse)

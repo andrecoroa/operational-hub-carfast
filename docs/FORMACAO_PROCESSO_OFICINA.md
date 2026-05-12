@@ -84,7 +84,31 @@ Resultado esperado:
 
 - a nota aparece no historico de notas do processo.
 
-### 6. Tomar decisao
+### 6. Registar evidencia de anomalia
+
+No bloco `Registar evidencia`, preencher:
+
+- Fase: `Diagnostico`.
+- Tipo: `Foto`.
+- Categoria: `Desgaste irregular`.
+- Estado: `Registada`.
+- Link externo: link do ficheiro em SharePoint/OneDrive/storage, se ja existir.
+- Descricao: `Foto evidencia desgaste irregular nas pastilhas dianteiras.`
+
+Selecionar `Gravar evidencia`.
+
+Resultado esperado:
+
+- a evidencia fica ligada ao processo de oficina;
+- a evidencia fica ligada a viatura;
+- o ficheiro nao fica guardado na base de dados, apenas o link externo;
+- e criada uma nota automatica no historico do processo.
+
+Regra de treino:
+
+- sempre que houver algo anormal, visivel, audivel ou operacional, registar evidencia antes de decidir ou fechar.
+
+### 7. Tomar decisao
 
 No bloco `Atualizar estado`:
 
@@ -100,7 +124,7 @@ Resultado esperado:
 - a decisao fica como `Encomendar material`;
 - a nota da decisao fica visivel no resumo.
 
-### 7. Registar execucao
+### 8. Registar execucao
 
 Quando o material estiver disponivel, adicionar nota:
 
@@ -112,7 +136,7 @@ Resultado esperado:
 
 - a execucao fica registada no processo.
 
-### 8. Fechar processo
+### 9. Fechar processo
 
 No bloco `Atualizar estado`:
 
@@ -128,7 +152,7 @@ Resultado esperado:
 - deixa de aparecer como processo aberto na lista principal de Oficina;
 - continua acessivel por historico quando for criada a vista de arquivo.
 
-### 9. Registar nota final na viatura
+### 10. Registar nota final na viatura
 
 Na ficha da viatura, adicionar nota interna:
 
@@ -141,7 +165,7 @@ Resultado esperado:
 - a viatura fica com historico interno associado;
 - a decisao e notas do processo continuam separadas no processo de oficina.
 
-### 10. Criar tarefa de follow-up
+### 11. Criar tarefa de follow-up
 
 Na ficha da viatura, criar tarefa:
 
@@ -161,6 +185,7 @@ No final do treino deve existir:
 
 - 1 processo de oficina fechado;
 - varias notas no processo;
+- pelo menos 1 evidencia de anomalia, se existiu algo fora do normal;
 - 1 decisao registada;
 - 1 nota final na viatura;
 - 1 tarefa de follow-up ligada a viatura;
@@ -172,4 +197,5 @@ No final do treino deve existir:
 - Usar `Aguardar material` quando a intervencao depende de pecas.
 - Usar `Aguardar analise` quando ainda falta avaliacao tecnica.
 - Usar `Sem intervencao necessaria` quando houve analise mas nao ha necessidade de atuar.
+- Registar foto, video, documento ou nota tecnica sempre que existir uma anomalia.
 - Fechar apenas quando o resultado final estiver claro.

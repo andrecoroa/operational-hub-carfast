@@ -27,6 +27,9 @@
     {% if noted %}
       <div class="success">Nota gravada.</div>
     {% endif %}
+    {% if evidence_created %}
+      <div class="success">Evidencia registada.</div>
+    {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
@@ -76,6 +79,84 @@
         </label>
         <button type="submit">Atualizar fluxo</button>
       </form>
+    </section>
+
+    <section class="detail-grid">
+      <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Anomalias</p>
+          <h3>Registar evidencia</h3>
+        </div>
+        <label>
+          Fase
+          <select name="phase">
+            {% for code, label in statuses %}
+              <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-grid">
+          <label>
+            Tipo
+            <select name="evidence_type">
+              {% for code, label in evidence_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Categoria
+            <select name="anomaly_category">
+              {% for code, label in evidence_categories %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label>
+          Estado
+          <select name="status">
+            {% for code, label in evidence_statuses %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Link externo
+          <input name="external_url" type="url" placeholder="https://...">
+        </label>
+        <label>
+          Descricao
+          <textarea name="description" rows="4" required></textarea>
+        </label>
+        <input name="storage_provider" type="hidden" value="external">
+        <button type="submit">Gravar evidencia</button>
+      </form>
+
+      <article class="section">
+        <h3>Evidencias de anomalia</h3>
+        <div class="event-list">
+          {% for item in evidences %}
+            <article class="event-item">
+              <div>
+                <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
+                <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
+              </div>
+              <p>
+                {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
+                &middot; {{ status_labels.get(item.phase, item.phase) }}
+                &middot; {{ evidence_status_labels.get(item.status, item.status) }}
+              </p>
+              <p>{{ item.description }}</p>
+              {% if item.external_url %}
+                <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem evidencias registadas.</p>
+          {% endfor %}
+        </div>
+      </article>
     </section>
 
     <section class="detail-grid">

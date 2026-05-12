@@ -37,3 +37,20 @@ class WorkshopProcessNote(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     note: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WorkshopProcessEvidence(Base):
+    __tablename__ = "workshop_process_evidences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(ForeignKey("workshop_processes.id", ondelete="CASCADE"), index=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    phase: Mapped[str] = mapped_column(String(80), index=True)
+    evidence_type: Mapped[str] = mapped_column(String(80), index=True)
+    anomaly_category: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(80), default="registered", index=True)
+    description: Mapped[str] = mapped_column(Text)
+    storage_provider: Mapped[str | None] = mapped_column(String(80))
+    external_url: Mapped[str | None] = mapped_column(Text)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

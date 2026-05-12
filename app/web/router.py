@@ -13,7 +13,7 @@ from app.models.admin import User
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
-from app.models.workshop import WorkshopProcess, WorkshopProcessNote
+from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
@@ -47,9 +47,39 @@ WORKSHOP_DECISIONS = [
     ("no_action_needed", "Sem intervencao necessaria"),
 ]
 
+WORKSHOP_EVIDENCE_TYPES = [
+    ("photo", "Foto"),
+    ("video", "Video"),
+    ("document", "Documento"),
+    ("note", "Nota tecnica"),
+]
+
+WORKSHOP_EVIDENCE_CATEGORIES = [
+    ("noise", "Ruido anormal"),
+    ("visible_damage", "Dano visivel"),
+    ("warning_light", "Luz de avaria"),
+    ("wear", "Desgaste irregular"),
+    ("leak", "Fuga"),
+    ("broken_part", "Peca partida"),
+    ("intermittent_failure", "Falha intermitente"),
+    ("mileage_inconsistency", "KM incoerentes"),
+    ("safety", "Seguranca"),
+    ("other", "Outra anomalia"),
+]
+
+WORKSHOP_EVIDENCE_STATUSES = [
+    ("registered", "Registada"),
+    ("reviewed", "Analisada"),
+    ("resolved", "Resolvida"),
+    ("no_action_needed", "Sem intervencao necessaria"),
+]
+
 WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
 WORKSHOP_STATUS_LABELS = dict(WORKSHOP_STATUSES)
 WORKSHOP_DECISION_LABELS = dict(WORKSHOP_DECISIONS)
+WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
+WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
+WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 
 
 @web_router.get("/", response_class=HTMLResponse)
@@ -472,8 +502,61 @@ def workshop_create(
     return RedirectResponse("/workshop?created=1", status_code=303)
 
 
+def render_workshop_detail(
+    request: Request,
+    db,
+    process: WorkshopProcess,
+    *,
+    noted: str | None = None,
+    evidence_created: str | None = None,
+    error: str | None = None,
+    status_code: int = 200,
+):
+    vehicle = db.get(Vehicle, process.vehicle_id)
+    notes = db.scalars(
+        select(WorkshopProcessNote)
+        .where(WorkshopProcessNote.process_id == process.id)
+        .order_by(WorkshopProcessNote.created_at.desc())
+    ).all()
+    evidences = db.scalars(
+        select(WorkshopProcessEvidence)
+        .where(WorkshopProcessEvidence.process_id == process.id)
+        .order_by(WorkshopProcessEvidence.id.desc())
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "workshop_detail.html",
+        {
+            "process": process,
+            "vehicle": vehicle,
+            "notes": notes,
+            "evidences": evidences,
+            "noted": noted,
+            "evidence_created": evidence_created,
+            "error": error,
+            "statuses": WORKSHOP_STATUSES,
+            "decisions": WORKSHOP_DECISIONS,
+            "evidence_types": WORKSHOP_EVIDENCE_TYPES,
+            "evidence_categories": WORKSHOP_EVIDENCE_CATEGORIES,
+            "evidence_statuses": WORKSHOP_EVIDENCE_STATUSES,
+            "opening_type_labels": WORKSHOP_OPENING_LABELS,
+            "status_labels": WORKSHOP_STATUS_LABELS,
+            "decision_labels": WORKSHOP_DECISION_LABELS,
+            "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
+            "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
+            "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
+        },
+        status_code=status_code,
+    )
+
+
 @web_router.get("/workshop/{process_id}", response_class=HTMLResponse)
-def workshop_detail(request: Request, process_id: int, noted: str | None = None):
+def workshop_detail(
+    request: Request,
+    process_id: int,
+    noted: str | None = None,
+    evidence_created: str | None = None,
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
@@ -481,27 +564,12 @@ def workshop_detail(request: Request, process_id: int, noted: str | None = None)
         process = db.get(WorkshopProcess, process_id)
         if not process:
             return RedirectResponse("/workshop", status_code=303)
-        vehicle = db.get(Vehicle, process.vehicle_id)
-        notes = db.scalars(
-            select(WorkshopProcessNote)
-            .where(WorkshopProcessNote.process_id == process.id)
-            .order_by(WorkshopProcessNote.created_at.desc())
-        ).all()
-        return templates.TemplateResponse(
+        return render_workshop_detail(
             request,
-            "workshop_detail.html",
-            {
-                "process": process,
-                "vehicle": vehicle,
-                "notes": notes,
-                "noted": noted,
-                "error": None,
-                "statuses": WORKSHOP_STATUSES,
-                "decisions": WORKSHOP_DECISIONS,
-                "opening_type_labels": WORKSHOP_OPENING_LABELS,
-                "status_labels": WORKSHOP_STATUS_LABELS,
-                "decision_labels": WORKSHOP_DECISION_LABELS,
-            },
+            db,
+            process,
+            noted=noted,
+            evidence_created=evidence_created,
         )
 
 
@@ -521,27 +589,11 @@ def workshop_add_note(
         if not process:
             return RedirectResponse("/workshop", status_code=303)
         if not clean_note:
-            vehicle = db.get(Vehicle, process.vehicle_id)
-            notes = db.scalars(
-                select(WorkshopProcessNote)
-                .where(WorkshopProcessNote.process_id == process.id)
-                .order_by(WorkshopProcessNote.created_at.desc())
-            ).all()
-            return templates.TemplateResponse(
+            return render_workshop_detail(
                 request,
-                "workshop_detail.html",
-                {
-                    "process": process,
-                    "vehicle": vehicle,
-                    "notes": notes,
-                    "noted": None,
-                    "error": "Escreve uma nota antes de gravar.",
-                    "statuses": WORKSHOP_STATUSES,
-                    "decisions": WORKSHOP_DECISIONS,
-                    "opening_type_labels": WORKSHOP_OPENING_LABELS,
-                    "status_labels": WORKSHOP_STATUS_LABELS,
-                    "decision_labels": WORKSHOP_DECISION_LABELS,
-                },
+                db,
+                process,
+                error="Escreve uma nota antes de gravar.",
                 status_code=400,
             )
 
@@ -557,6 +609,96 @@ def workshop_add_note(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/evidences", response_class=HTMLResponse)
+def workshop_add_evidence(
+    request: Request,
+    process_id: int,
+    phase: str = Form(...),
+    evidence_type: str = Form(...),
+    anomaly_category: str = Form(...),
+    status: str = Form("registered"),
+    description: str = Form(...),
+    external_url: str = Form(""),
+    storage_provider: str = Form("external"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    allowed_phases = {code for code, _ in WORKSHOP_STATUSES}
+    allowed_types = {code for code, _ in WORKSHOP_EVIDENCE_TYPES}
+    allowed_categories = {code for code, _ in WORKSHOP_EVIDENCE_CATEGORIES}
+    allowed_statuses = {code for code, _ in WORKSHOP_EVIDENCE_STATUSES}
+    if phase not in allowed_phases:
+        phase = "diagnosis"
+    if evidence_type not in allowed_types:
+        evidence_type = "photo"
+    if anomaly_category not in allowed_categories:
+        anomaly_category = "other"
+    if status not in allowed_statuses:
+        status = "registered"
+
+    clean_description = description.strip()
+    clean_url = external_url.strip()
+    clean_provider = storage_provider.strip() or "external"
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        if not clean_description:
+            return render_workshop_detail(
+                request,
+                db,
+                process,
+                error="Descreve a anomalia antes de gravar a evidencia.",
+                status_code=400,
+            )
+
+        evidence = WorkshopProcessEvidence(
+            process_id=process.id,
+            vehicle_id=process.vehicle_id,
+            user_id=user_id,
+            phase=phase,
+            evidence_type=evidence_type,
+            anomaly_category=anomaly_category,
+            status=status,
+            description=clean_description,
+            storage_provider=clean_provider,
+            external_url=clean_url or None,
+        )
+        db.add(evidence)
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Evidencia registada: "
+                    f"{WORKSHOP_EVIDENCE_CATEGORY_LABELS.get(anomaly_category, anomaly_category)} - "
+                    f"{clean_description}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.process.evidence.created",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Evidencia de anomalia registada: {process.title}",
+            after_json={
+                "phase": phase,
+                "evidence_type": evidence_type,
+                "anomaly_category": anomaly_category,
+                "status": status,
+                "has_external_url": bool(clean_url),
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?evidence_created=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/flow")

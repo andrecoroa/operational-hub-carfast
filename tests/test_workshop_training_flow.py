@@ -8,7 +8,7 @@ from app.models import Base
 from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleOperationalStatusEvent
-from app.models.workshop import WorkshopProcess, WorkshopProcessNote
+from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
 from app.services.bootstrap import seed_initial_data
 from app.services.users import create_user
 import app.web.router as web_router
@@ -95,6 +95,21 @@ def test_complete_workshop_training_flow():
     )
     assert diagnosis_note.status_code == 303
 
+    evidence = client.post(
+        f"/workshop/{process_id}/evidences",
+        data={
+            "phase": "diagnosis",
+            "evidence_type": "photo",
+            "anomaly_category": "wear",
+            "status": "registered",
+            "description": "Foto evidencia desgaste irregular nas pastilhas dianteiras.",
+            "external_url": "https://example.com/sharepoint/oficina/bz81sc/pastilhas.jpg",
+            "storage_provider": "sharepoint",
+        },
+        follow_redirects=False,
+    )
+    assert evidence.status_code == 303
+
     decision = client.post(
         f"/workshop/{process_id}/flow",
         data={
@@ -152,7 +167,14 @@ def test_complete_workshop_training_flow():
             select(func.count()).select_from(WorkshopProcessNote).where(
                 WorkshopProcessNote.process_id == process_id
             )
-        ) >= 4
+        ) >= 5
+        assert db.scalar(
+            select(func.count()).select_from(WorkshopProcessEvidence).where(
+                WorkshopProcessEvidence.process_id == process_id,
+                WorkshopProcessEvidence.vehicle_id == vehicle_id,
+                WorkshopProcessEvidence.anomaly_category == "wear",
+            )
+        ) == 1
         assert db.scalar(
             select(func.count()).select_from(VehicleOperationalStatusEvent).where(
                 VehicleOperationalStatusEvent.vehicle_id == vehicle_id

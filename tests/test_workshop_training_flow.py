@@ -58,7 +58,7 @@ def test_complete_workshop_training_flow():
         "/workshop",
         data={
             "vehicle_id": vehicle_id,
-            "title": "Ruido na travagem",
+            "title": "",
             "opening_type": "appointment",
             "priority": "high",
             "km_entry": "3673",
@@ -73,6 +73,7 @@ def test_complete_workshop_training_flow():
         process = db.scalar(select(WorkshopProcess).where(WorkshopProcess.vehicle_id == vehicle_id))
         assert process is not None
         process_id = process.id
+        assert process.title == "Cliente reporta ruido anormal na travagem."
         assert process.opening_type == "appointment"
         assert process.status == "opening"
         assert process.km_entry == 3673
@@ -102,7 +103,7 @@ def test_complete_workshop_training_flow():
             "evidence_type": "photo",
             "anomaly_category": "wear",
             "status": "registered",
-            "description": "Foto evidencia desgaste irregular nas pastilhas dianteiras.",
+            "description": "",
             "external_url": "https://example.com/sharepoint/oficina/bz81sc/pastilhas.jpg",
             "storage_provider": "sharepoint",
         },
@@ -173,6 +174,7 @@ def test_complete_workshop_training_flow():
                 WorkshopProcessEvidence.process_id == process_id,
                 WorkshopProcessEvidence.vehicle_id == vehicle_id,
                 WorkshopProcessEvidence.anomaly_category == "wear",
+                WorkshopProcessEvidence.description == "Evidencia registada sem descricao.",
             )
         ) == 1
         assert db.scalar(

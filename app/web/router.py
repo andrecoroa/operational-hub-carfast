@@ -433,8 +433,8 @@ def workshop_page(request: Request, created: str | None = None, closed: str | No
 @web_router.post("/workshop", response_class=HTMLResponse)
 def workshop_create(
     request: Request,
-    vehicle_id: int = Form(...),
-    title: str = Form(...),
+    vehicle_id: str = Form(""),
+    title: str = Form(""),
     opening_type: str = Form("walk_in"),
     priority: str = Form("normal"),
     km_entry: str = Form(""),
@@ -446,9 +446,10 @@ def workshop_create(
         return RedirectResponse("/login", status_code=303)
 
     clean_title = title.strip()
+    parsed_vehicle_id = parse_optional_int(vehicle_id)
     with SessionLocal() as db:
-        vehicle = db.get(Vehicle, vehicle_id)
-        if not vehicle or not clean_title:
+        vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
+        if not vehicle:
             processes = db.scalars(
                 select(WorkshopProcess)
                 .where(WorkshopProcess.closed_at.is_(None))
@@ -464,7 +465,7 @@ def workshop_create(
                     "vehicles": vehicles,
                     "created": None,
                     "closed": None,
-                    "error": "Escolhe uma viatura e indica um titulo.",
+                    "error": "Escolhe a viatura para ligar o processo ao historico correto.",
                     "opening_types": WORKSHOP_OPENING_TYPES,
                     "opening_type_labels": WORKSHOP_OPENING_LABELS,
                     "status_labels": WORKSHOP_STATUS_LABELS,
@@ -474,6 +475,8 @@ def workshop_create(
             )
 
         expected_date = parse_optional_date(expected_exit_on)
+        fallback_title = note.strip().splitlines()[0][:120] if note.strip() else ""
+        clean_title = clean_title or fallback_title or f"Processo oficina - {vehicle.plate or vehicle.id}"
         process = WorkshopProcess(
             vehicle_id=vehicle.id,
             title=clean_title,
@@ -577,7 +580,7 @@ def workshop_detail(
 def workshop_add_note(
     request: Request,
     process_id: int,
-    note: str = Form(...),
+    note: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -589,13 +592,7 @@ def workshop_add_note(
         if not process:
             return RedirectResponse("/workshop", status_code=303)
         if not clean_note:
-            return render_workshop_detail(
-                request,
-                db,
-                process,
-                error="Escreve uma nota antes de gravar.",
-                status_code=400,
-            )
+            return RedirectResponse(f"/workshop/{process_id}", status_code=303)
 
         db.add(WorkshopProcessNote(process_id=process.id, user_id=user_id, note=clean_note))
         record_audit(
@@ -619,7 +616,7 @@ def workshop_add_evidence(
     evidence_type: str = Form(...),
     anomaly_category: str = Form(...),
     status: str = Form("registered"),
-    description: str = Form(...),
+    description: str = Form(""),
     external_url: str = Form(""),
     storage_provider: str = Form("external"),
 ):
@@ -649,13 +646,7 @@ def workshop_add_evidence(
         if not process:
             return RedirectResponse("/workshop", status_code=303)
         if not clean_description:
-            return render_workshop_detail(
-                request,
-                db,
-                process,
-                error="Descreve a anomalia antes de gravar a evidencia.",
-                status_code=400,
-            )
+            clean_description = "Evidencia registada sem descricao."
 
         evidence = WorkshopProcessEvidence(
             process_id=process.id,

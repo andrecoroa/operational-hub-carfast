@@ -27,11 +27,11 @@ Use uma viatura ja importada em Frota. Para treino, o exemplo usado foi:
 Preencher o formulario de novo processo:
 
 - Viatura: escolher a matricula de teste.
-- Titulo: `Ruido na travagem`.
-- Abertura: `Marcacao`.
-- KM entrada: `3673`.
-- Prioridade: `Alta`.
-- Saida prevista: data prevista para conclusao.
+- Titulo: preencher apenas se ja existir um titulo claro.
+- Abertura: preencher se a origem ja for conhecida.
+- KM entrada: preencher se estiver disponivel.
+- Prioridade: ajustar se for relevante.
+- Saida prevista: preencher apenas se existir data prevista.
 - Nota inicial: `Cliente reporta ruido anormal na travagem.`
 
 Selecionar `Criar processo`.
@@ -40,6 +40,7 @@ Resultado esperado:
 
 - o processo fica criado;
 - o estado inicial fica em `Abertura`;
+- se o titulo ficar vazio, a app usa a primeira linha da nota inicial ou um titulo automatico;
 - o processo aparece na lista de Oficina;
 - a ficha da viatura passa a mostrar processo de oficina aberto.
 
@@ -93,7 +94,7 @@ No bloco `Registar evidencia`, preencher:
 - Categoria: `Desgaste irregular`.
 - Estado: `Registada`.
 - Link externo: link do ficheiro em SharePoint/OneDrive/storage, se ja existir.
-- Descricao: `Foto evidencia desgaste irregular nas pastilhas dianteiras.`
+- Descricao: preencher apenas se houver detalhe util.
 
 Selecionar `Gravar evidencia`.
 
@@ -198,4 +199,5 @@ No final do treino deve existir:
 - Usar `Aguardar analise` quando ainda falta avaliacao tecnica.
 - Usar `Sem intervencao necessaria` quando houve analise mas nao ha necessidade de atuar.
 - Registar foto, video, documento ou nota tecnica sempre que existir uma anomalia.
+- No piloto, nao forcar preenchimento de campos que ainda nao tenham informacao disponivel.
 - Fechar apenas quando o resultado final estiver claro.

@@ -132,7 +132,7 @@ TASK_CATEGORY_LABELS = dict(TASK_CATEGORIES)
 
 PILOT_FEEDBACK_KINDS = [
     ("question", "Pedir ajuda"),
-    ("experience", "Relatar experiencia"),
+    ("experience", "Relatar experiência"),
 ]
 PILOT_FEEDBACK_KIND_LABELS = dict(PILOT_FEEDBACK_KINDS)
 
@@ -578,7 +578,7 @@ def vehicle_create_task(
                     "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                     "saved": None,
                     "task_created": None,
-                    "error": "Indica um titulo para a tarefa.",
+                    "error": "Indica um título para a tarefa.",
                 },
                 status_code=400,
             )
@@ -688,7 +688,7 @@ def workshop_create(
                     "vehicles": vehicles,
                     "created": None,
                     "closed": None,
-                    "error": "Escolhe a viatura para ligar o processo ao historico correto.",
+                    "error": "Escolhe a viatura para ligar o processo ao histórico correto.",
                     "opening_types": WORKSHOP_OPENING_TYPES,
                     "opening_type_labels": WORKSHOP_OPENING_LABELS,
                     "status_labels": WORKSHOP_STATUS_LABELS,
@@ -1095,6 +1095,7 @@ def task_board(
     request: Request,
     created: str | None = None,
     closed: str | None = None,
+    feedback_saved: str | None = None,
     q: str = "",
     status: str = "",
     category: str = "",
@@ -1194,6 +1195,7 @@ def task_board(
                 "user_by_id": user_by_id,
                 "created": created,
                 "closed": closed,
+                "feedback_saved": feedback_saved,
                 "error": None,
                 "metrics": metrics,
                 "filters": {
@@ -1262,13 +1264,14 @@ def task_create(
                 "user_by_id": user_by_id,
                 "created": None,
                 "closed": None,
-                "error": "Indica um titulo para a tarefa.",
+                "error": "Indica um título para a tarefa.",
                 "task_status_labels": TASK_STATUS_LABELS,
                 "task_sources": TASK_SOURCES,
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_LABELS,
                 "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0},
+                "feedback_saved": None,
                 "filters": {"q": "", "status": "", "category": "", "source": "", "assigned_to_id": "", "station": "", "view": ""},
                 "stations": [],
                 "task_statuses": TASK_STATUSES,
@@ -1331,7 +1334,12 @@ def task_create(
 
 
 @web_router.get("/task-board/{task_id}", response_class=HTMLResponse)
-def task_detail(request: Request, task_id: int, commented: str | None = None):
+def task_detail(
+    request: Request,
+    task_id: int,
+    commented: str | None = None,
+    feedback_saved: str | None = None,
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
@@ -1361,6 +1369,7 @@ def task_detail(request: Request, task_id: int, commented: str | None = None):
                 "users": users,
                 "assigned_user": assigned_user,
                 "commented": commented,
+                "feedback_saved": feedback_saved,
                 "error": None,
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
@@ -1502,7 +1511,7 @@ def task_add_comment(
                     "users": users,
                     "assigned_user": assigned_user,
                     "commented": None,
-                    "error": "Escreve um comentario antes de gravar.",
+                    "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
                     "task_status_labels": TASK_STATUS_LABELS,
                     "task_source_labels": TASK_SOURCE_LABELS,

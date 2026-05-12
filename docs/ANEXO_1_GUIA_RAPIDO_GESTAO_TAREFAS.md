@@ -17,8 +17,17 @@ https://operational-hub-carfast.onrender.com
 Dados de acesso:
 
 ```text
-Email: [preencher]
-Password: [preencher]
+Paulo Azevedo
+Email: pauloazevedo@carfast.pt
+Password: testepaulo123
+
+Pedro Pereira
+Email: pedropereira@carfast.pt
+Password: testepedro123
+
+Mónica Cardoso
+Email: monica.cardoso@carfast.pt
+Password: testemonica123
 ```
 
 Se a aplicação demorar a abrir, aguarda alguns segundos e tenta novamente.
@@ -112,4 +121,3 @@ Durante ou após o teste, regista:
 - dificuldades encontradas.
 
 O objetivo é melhorar a ferramenta antes de a tornar mais completa.
-

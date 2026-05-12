@@ -21,14 +21,21 @@
         <p class="eyebrow">Follow-up operacional</p>
         <h2>{{ task.title }}</h2>
       </div>
-      <a class="button-link secondary-link" href="/task-board">Voltar</a>
+      <div class="button-row">
+        <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={{ task.id }}&return_url=/task-board/{{ task.id }}">Pedir ajuda</a>
+        <a class="button-link feedback-link" href="/pilot-feedback/new?kind=experience&source_area=tasks&entity_type=task&entity_id={{ task.id }}&return_url=/task-board/{{ task.id }}">Relatar experiência</a>
+        <a class="button-link secondary-link" href="/task-board">Voltar</a>
+      </div>
     </header>
 
     {% if commented %}
-      <div class="success">Atualizacao gravada.</div>
+      <div class="success">Atualização gravada.</div>
     {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
     <section class="detail-grid">
@@ -109,7 +116,7 @@
         <label>
           Responsável
           <select name="assigned_to_id">
-            <option value="">Sem responsavel</option>
+            <option value="">Sem responsável</option>
             {% for user in users %}
               <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
             {% endfor %}
@@ -133,13 +140,13 @@
       <form method="post" action="/task-board/{{ task.id }}/comments" class="form-panel form-stack">
         <div class="panel-heading">
           <p class="eyebrow">Comentário</p>
-          <h3>Adicionar comentario</h3>
+          <h3>Adicionar comentário</h3>
         </div>
         <label>
           Comentário
           <textarea name="comment" rows="5" required></textarea>
         </label>
-        <button type="submit">Gravar comentario</button>
+        <button type="submit">Gravar comentário</button>
       </form>
       <article class="section">
         <h3>Comentários</h3>
@@ -153,7 +160,7 @@
               <p>{{ item.comment }}</p>
             </article>
           {% else %}
-            <p class="muted">Sem comentarios.</p>
+            <p class="muted">Sem comentários.</p>
           {% endfor %}
         </div>
       </article>
@@ -170,7 +177,7 @@
               <p>{{ item.old_value or "-" }} -> {{ item.new_value or "-" }}</p>
             </article>
           {% else %}
-            <p class="muted">Sem historico.</p>
+            <p class="muted">Sem histórico.</p>
           {% endfor %}
         </div>
       </article>

@@ -21,6 +21,10 @@
         <p class="eyebrow">Follow-up operacional</p>
         <h2>Gestão de Tarefas</h2>
       </div>
+      <div class="button-row">
+        <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area=tasks&return_url=/task-board">Pedir ajuda</a>
+        <a class="button-link feedback-link" href="/pilot-feedback/new?kind=experience&source_area=tasks&return_url=/task-board">Relatar experiência</a>
+      </div>
     </header>
 
     {% if created %}
@@ -31,6 +35,9 @@
     {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
     <section class="metric-grid">
@@ -115,7 +122,7 @@
       <form method="post" action="/task-board" class="form-panel form-stack task-form">
         <div class="panel-heading">
           <p class="eyebrow">Nova tarefa</p>
-          <h3>Registo rapido</h3>
+          <h3>Registo rápido</h3>
         </div>
         <label>
           Assunto
@@ -197,7 +204,7 @@
           <label>
             Responsável
             <select name="assigned_to_id">
-              <option value="">Sem responsavel</option>
+              <option value="">Sem responsável</option>
               {% for user in users %}
                 <option value="{{ user.id }}">{{ user.name }}</option>
               {% endfor %}

@@ -273,6 +273,23 @@ def test_complete_workshop_training_flow():
     assert client.get("/task-board?view=overdue").status_code == 200
     assert client.get("/task-board?category=manutencao&assigned_to_id=" + str(paulo_id)).status_code == 200
     assert client.get("/task-board?q=BZ81SC").status_code == 200
+    assert client.get("/task-board?feedback_saved=1").status_code == 200
+    assert client.get(f"/task-board/{managed_task_id}?feedback_saved=1").status_code == 200
+
+    task_feedback = client.post(
+        "/pilot-feedback",
+        data={
+            "kind": "experience",
+            "source_area": "tasks",
+            "entity_type": "task",
+            "entity_id": str(managed_task_id),
+            "subject": "Teste de tarefas",
+            "body": "Os filtros ajudam, mas quero validar a linguagem com a equipa.",
+            "return_url": f"/task-board/{managed_task_id}",
+        },
+        follow_redirects=False,
+    )
+    assert task_feedback.status_code == 303
 
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)
@@ -325,10 +342,20 @@ def test_complete_workshop_training_flow():
                 PilotFeedback.entity_id == str(process_id),
             )
         ) == 2
+        assert db.scalar(
+            select(func.count()).select_from(PilotFeedback).where(
+                PilotFeedback.source_area == "tasks",
+                PilotFeedback.entity_type == "task",
+                PilotFeedback.entity_id == str(managed_task_id),
+            )
+        ) == 1
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200
     assert client.get(f"/workshop/{process_id}").status_code == 200
     assert client.get(f"/fleet/{vehicle_id}").status_code == 200
     assert client.get("/pilot-feedback/new?kind=question&source_area=workshop").status_code == 200
+    assert client.get(
+        f"/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={managed_task_id}"
+    ).status_code == 200
     assert client.get("/admin").status_code == 200

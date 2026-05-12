@@ -51,7 +51,7 @@
         <label>
           Descrição
           {% if kind == "question" %}
-            <textarea name="body" rows="8" placeholder="Escreve a duvida ou o ponto onde ficaste bloqueado"></textarea>
+            <textarea name="body" rows="8" placeholder="Escreve a dúvida ou o ponto onde ficaste bloqueado"></textarea>
           {% else %}
             <textarea name="body" rows="8" placeholder="Conta o que correu bem, o que atrapalhou ou o que faltou"></textarea>
           {% endif %}
@@ -63,7 +63,7 @@
         <h3>Contexto</h3>
         <dl class="detail-list">
           <div><dt>Tipo</dt><dd>{{ kind_label }}</dd></div>
-          <div><dt>Area</dt><dd>{{ source_area or "-" }}</dd></div>
+          <div><dt>Área</dt><dd>{{ source_area or "-" }}</dd></div>
           <div><dt>Ligação</dt><dd>{{ entity_type or "-" }} {{ entity_id or "" }}</dd></div>
         </dl>
       </article>

@@ -45,7 +45,7 @@
           {% for unit in authorized_units %}
             <span class="pill">{{ unit }}</span>
           {% else %}
-            <span class="muted">Sem areas configuradas.</span>
+            <span class="muted">Sem áreas configuradas.</span>
           {% endfor %}
         </div>
       </article>
@@ -99,7 +99,7 @@
     </section>
 
     <section class="section">
-      <h3>Permissoes</h3>
+      <h3>Permissões</h3>
       <div class="pill-row">
         {% for permission in permissions %}
           <span class="pill muted-pill">{{ permission }}</span>
@@ -109,6 +109,24 @@
 
     <section class="section">
       <h3>Feedback do piloto</h3>
+      <div class="metric-grid compact-metrics">
+        <div class="metric">
+          <span>Total</span>
+          <strong>{{ pilot_feedback_counts.total }}</strong>
+        </div>
+        <div class="metric">
+          <span>Em aberto</span>
+          <strong>{{ pilot_feedback_counts.open }}</strong>
+        </div>
+        <div class="metric">
+          <span>Gestão de Tarefas</span>
+          <strong>{{ pilot_feedback_counts.tasks }}</strong>
+        </div>
+        <div class="metric">
+          <span>Oficina</span>
+          <strong>{{ pilot_feedback_counts.workshop }}</strong>
+        </div>
+      </div>
       <div class="event-list">
         {% for item in pilot_feedback_items %}
           <article class="event-item">
@@ -119,7 +137,7 @@
             <p>{{ item.subject or "-" }}</p>
             <p>{{ item.body }}</p>
             {% if item.entity_type or item.entity_id %}
-              <p class="muted">{{ item.source_area or "-" }} &middot; {{ item.entity_type or "-" }} {{ item.entity_id or "" }}</p>
+              <p class="muted">{{ pilot_feedback_source_labels.get(item.source_area, item.source_area or "-") }} &middot; {{ item.entity_type or "-" }} {{ item.entity_id or "" }}</p>
             {% endif %}
           </article>
         {% else %}

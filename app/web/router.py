@@ -135,6 +135,10 @@ PILOT_FEEDBACK_KINDS = [
     ("experience", "Relatar experiência"),
 ]
 PILOT_FEEDBACK_KIND_LABELS = dict(PILOT_FEEDBACK_KINDS)
+PILOT_FEEDBACK_SOURCE_LABELS = {
+    "tasks": "Gestão de Tarefas",
+    "workshop": "Oficina",
+}
 
 ADMIN_USER_ROLES = [
     ("operator", "Operador"),
@@ -190,6 +194,21 @@ def admin_page(
         pilot_feedback_items = db.scalars(
             select(PilotFeedback).order_by(PilotFeedback.id.desc()).limit(20)
         ).all()
+        pilot_feedback_counts = {
+            "total": db.scalar(select(func.count()).select_from(PilotFeedback)) or 0,
+            "open": db.scalar(
+                select(func.count()).select_from(PilotFeedback).where(PilotFeedback.status == "open")
+            )
+            or 0,
+            "tasks": db.scalar(
+                select(func.count()).select_from(PilotFeedback).where(PilotFeedback.source_area == "tasks")
+            )
+            or 0,
+            "workshop": db.scalar(
+                select(func.count()).select_from(PilotFeedback).where(PilotFeedback.source_area == "workshop")
+            )
+            or 0,
+        }
         users = db.scalars(select(User).order_by(User.name, User.email).limit(50)).all()
         return templates.TemplateResponse(
             request,
@@ -200,7 +219,9 @@ def admin_page(
                 "permissions": sorted(get_user_permission_codes(db, user)),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
                 "pilot_feedback_items": pilot_feedback_items,
+                "pilot_feedback_counts": pilot_feedback_counts,
                 "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
+                "pilot_feedback_source_labels": PILOT_FEEDBACK_SOURCE_LABELS,
                 "admin_user_roles": ADMIN_USER_ROLES,
                 "user_created": user_created,
                 "error": error,

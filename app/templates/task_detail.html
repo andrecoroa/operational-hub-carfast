@@ -4,15 +4,15 @@
   <aside class="sidebar">
     <div>
       <p class="eyebrow">CarFast</p>
-      <h1>Gestao de Tarefas</h1>
+      <h1>Gestão de Tarefas</h1>
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <a href="/task-board" class="active">Gestao de Tarefas</a>
+      <a href="/task-board" class="active">Gestão de Tarefas</a>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
-      <a href="/imports">Importacoes</a>
-      <a href="/admin">Administracao</a>
+      <a href="/imports">Importações</a>
+      <a href="/admin">Administração</a>
     </nav>
   </aside>
   <main class="content">
@@ -41,7 +41,7 @@
           <div><dt>Responsavel</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
           <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
           <div>
-            <dt>Ligacao</dt>
+            <dt>Ligação</dt>
             <dd>
               {% if linked_vehicle %}
                 <a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a>
@@ -50,13 +50,13 @@
               {% endif %}
             </dd>
           </div>
-          <div><dt>Descricao</dt><dd>{{ task.description or "-" }}</dd></div>
+          <div><dt>Descrição</dt><dd>{{ task.description or "-" }}</dd></div>
         </dl>
       </article>
 
       <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack">
         <div class="panel-heading">
-          <p class="eyebrow">Gestao</p>
+          <p class="eyebrow">Gestão</p>
           <h3>Atualizar tarefa</h3>
         </div>
         <label>
@@ -97,17 +97,17 @@
     <section class="detail-grid">
       <form method="post" action="/task-board/{{ task.id }}/comments" class="form-panel form-stack">
         <div class="panel-heading">
-          <p class="eyebrow">Comentario</p>
+          <p class="eyebrow">Comentário</p>
           <h3>Adicionar comentario</h3>
         </div>
         <label>
-          Comentario
+          Comentário
           <textarea name="comment" rows="5" required></textarea>
         </label>
         <button type="submit">Gravar comentario</button>
       </form>
       <article class="section">
-        <h3>Comentarios</h3>
+        <h3>Comentários</h3>
         <div class="event-list">
           {% for item in comments %}
             <article class="event-item">
@@ -124,7 +124,7 @@
       </article>
 
       <article class="section">
-        <h3>Historico</h3>
+        <h3>Histórico</h3>
         <div class="event-list">
           {% for item in history %}
             <article class="event-item">

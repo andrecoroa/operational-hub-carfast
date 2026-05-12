@@ -8,11 +8,11 @@
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <a href="/task-board">Gestao de Tarefas</a>
+      <a href="/task-board">Gestão de Tarefas</a>
       <a href="/workshop" class="active">Oficina</a>
       <a href="/fleet">Frota</a>
-      <a href="/imports">Importacoes</a>
-      <a href="/admin">Administracao</a>
+      <a href="/imports">Importações</a>
+      <a href="/admin">Administração</a>
     </nav>
   </aside>
   <main class="content">
@@ -32,7 +32,7 @@
       <div class="success">Nota gravada.</div>
     {% endif %}
     {% if evidence_created %}
-      <div class="success">Evidencia registada.</div>
+      <div class="success">Evidência registada.</div>
     {% endif %}
     {% if feedback_saved %}
       <div class="success">Registo de piloto guardado.</div>
@@ -51,8 +51,8 @@
           <div><dt>Viatura</dt><dd><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></dd></div>
           <div><dt>Entrada</dt><dd>{{ process.opened_on or "-" }}</dd></div>
           <div><dt>KM entrada</dt><dd>{{ process.km_entry or "-" }}</dd></div>
-          <div><dt>Saida prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
-          <div><dt>Decisao</dt><dd>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</dd></div>
+          <div><dt>Saída prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
+          <div><dt>Decisão</dt><dd>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</dd></div>
           <div><dt>Nota decisao</dt><dd>{{ process.decision_note or "-" }}</dd></div>
           <div><dt>Nota inicial</dt><dd>{{ process.note or "-" }}</dd></div>
         </dl>
@@ -72,7 +72,7 @@
           </select>
         </label>
         <label>
-          Decisao
+          Decisão
           <select name="decision">
             <option value="">Sem decisao</option>
             {% for code, label in decisions %}
@@ -133,7 +133,7 @@
           <input name="external_url" type="url" placeholder="https://...">
         </label>
         <label>
-          Descricao
+          Descrição
           <textarea name="description" rows="4" placeholder="Pode ficar vazio se ainda nao houver detalhe"></textarea>
         </label>
         <input name="storage_provider" type="hidden" value="external">
@@ -141,7 +141,7 @@
       </form>
 
       <article class="section">
-        <h3>Evidencias de anomalia</h3>
+        <h3>Evidências de anomalia</h3>
         <div class="event-list">
           {% for item in evidences %}
             <article class="event-item">

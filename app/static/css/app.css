@@ -2,23 +2,23 @@
   color-scheme: light;
   --bg: #f7f8fb;
   --panel: #ffffff;
-  --ink: #202532;
-  --muted: #6f7583;
-  --line: #e6eaf2;
-  --line-strong: #d6dce8;
-  --brand: #2949ad;
-  --brand-dark: #1d347f;
-  --brand-soft: #edf1ff;
-  --nav: #2d49a8;
-  --nav-soft: #5a6ef1;
-  --nav-ink: #e8ecff;
-  --blue: #2949ad;
-  --blue-soft: #edf1ff;
+  --ink: #1e2228;
+  --muted: #6c727b;
+  --line: #e5e8ee;
+  --line-strong: #d5dae3;
+  --brand: #b43a34;
+  --brand-dark: #812621;
+  --brand-soft: #faeceb;
+  --nav: #191d23;
+  --nav-soft: #2b3038;
+  --nav-ink: #e7eaef;
+  --blue: #275a95;
+  --blue-soft: #eaf2fb;
   --amber: #8a5b13;
   --amber-soft: #fff3d7;
   --warn: #a13f2b;
   --warn-soft: #fff4f0;
-  --shadow: 0 12px 28px rgba(32, 37, 50, 0.08);
+  --shadow: 0 12px 28px rgba(30, 34, 40, 0.08);
 }
 
 * {
@@ -130,7 +130,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(41, 73, 173, 0.14);
+  box-shadow: 0 0 0 3px rgba(180, 58, 52, 0.14);
   outline: none;
 }
 
@@ -232,32 +232,35 @@ button:hover,
 }
 
 .sidebar > div:first-child {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 14px;
+  display: block;
   align-items: center;
 }
 
 .sidebar > div:first-child::before {
-  content: "CF";
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
+  content: "CARFAST";
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-width: 148px;
   height: 48px;
+  padding: 0 16px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   background: var(--brand);
   color: white;
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 800;
+  letter-spacing: 2px;
 }
 
 .sidebar h1 {
+  margin-top: 18px;
   font-size: 23px;
 }
 
 .sidebar .eyebrow {
   color: #ffffff;
+  display: none;
 }
 
 .sidebar nav {
@@ -277,7 +280,7 @@ button:hover,
 .sidebar a.active,
 .sidebar a:hover {
   background: var(--nav-soft);
-  border-left-color: #ffffff;
+  border-left-color: var(--brand);
   color: white;
 }
 
@@ -603,13 +606,10 @@ tbody tr:hover {
     position: static;
   }
 
-  .sidebar > div:first-child {
-    grid-template-columns: 44px 1fr;
-  }
-
   .sidebar > div:first-child::before {
-    width: 44px;
+    min-width: 136px;
     height: 44px;
+    font-size: 19px;
   }
 
   .metric-grid {

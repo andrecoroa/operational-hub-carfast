@@ -255,7 +255,7 @@ def test_complete_workshop_training_flow():
                 WorkshopProcessEvidence.process_id == process_id,
                 WorkshopProcessEvidence.vehicle_id == vehicle_id,
                 WorkshopProcessEvidence.anomaly_category == "wear",
-                WorkshopProcessEvidence.description == "Evidencia registada sem descricao.",
+                WorkshopProcessEvidence.description == "Evidência registada sem descrição.",
             )
         ) == 1
         assert db.scalar(

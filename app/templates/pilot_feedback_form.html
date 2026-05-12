@@ -8,11 +8,11 @@
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <a href="/task-board">Gestao de Tarefas</a>
+      <a href="/task-board">Gestão de Tarefas</a>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
-      <a href="/imports">Importacoes</a>
-      <a href="/admin">Administracao</a>
+      <a href="/imports">Importações</a>
+      <a href="/admin">Administração</a>
     </nav>
   </aside>
   <main class="content">
@@ -49,7 +49,7 @@
           <input type="text" name="subject" maxlength="200" placeholder="Pode ficar vazio">
         </label>
         <label>
-          Descricao
+          Descrição
           {% if kind == "question" %}
             <textarea name="body" rows="8" placeholder="Escreve a duvida ou o ponto onde ficaste bloqueado"></textarea>
           {% else %}
@@ -64,7 +64,7 @@
         <dl class="detail-list">
           <div><dt>Tipo</dt><dd>{{ kind_label }}</dd></div>
           <div><dt>Area</dt><dd>{{ source_area or "-" }}</dd></div>
-          <div><dt>Ligacao</dt><dd>{{ entity_type or "-" }} {{ entity_id or "" }}</dd></div>
+          <div><dt>Ligação</dt><dd>{{ entity_type or "-" }} {{ entity_id or "" }}</dd></div>
         </dl>
       </article>
     </section>

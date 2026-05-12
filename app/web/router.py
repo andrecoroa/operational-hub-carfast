@@ -25,28 +25,28 @@ web_router = APIRouter(include_in_schema=False)
 
 WORKSHOP_OPENING_TYPES = [
     ("walk_in", "Entrada imediata"),
-    ("appointment", "Marcacao"),
+    ("appointment", "Marcação"),
 ]
 
 WORKSHOP_STATUSES = [
     ("opening", "Abertura"),
-    ("reception", "Rececao"),
-    ("diagnosis", "Diagnostico"),
-    ("decision", "Decisao"),
-    ("waiting_analysis", "Aguardar analise"),
+    ("reception", "Receção"),
+    ("diagnosis", "Diagnóstico"),
+    ("decision", "Decisão"),
+    ("waiting_analysis", "Aguardar análise"),
     ("waiting_parts", "Aguardar material"),
-    ("in_progress", "Em execucao"),
-    ("validation", "Validacao"),
+    ("in_progress", "Em execução"),
+    ("validation", "Validação"),
     ("closed", "Fechado"),
 ]
 
 WORKSHOP_DECISIONS = [
     ("repair", "Reparar"),
-    ("wait_analysis", "Aguardar analise"),
+    ("wait_analysis", "Aguardar análise"),
     ("order_parts", "Encomendar material"),
     ("send_to_brand", "Enviar para marca"),
-    ("request_quote", "Pedir orcamento"),
-    ("no_action_needed", "Sem intervencao necessaria"),
+    ("request_quote", "Pedir orçamento"),
+    ("no_action_needed", "Sem intervenção necessária"),
 ]
 
 WORKSHOP_EVIDENCE_TYPES = [
@@ -57,15 +57,15 @@ WORKSHOP_EVIDENCE_TYPES = [
 ]
 
 WORKSHOP_EVIDENCE_CATEGORIES = [
-    ("noise", "Ruido anormal"),
-    ("visible_damage", "Dano visivel"),
+    ("noise", "Ruído anormal"),
+    ("visible_damage", "Dano visível"),
     ("warning_light", "Luz de avaria"),
     ("wear", "Desgaste irregular"),
     ("leak", "Fuga"),
-    ("broken_part", "Peca partida"),
+    ("broken_part", "Peça partida"),
     ("intermittent_failure", "Falha intermitente"),
     ("mileage_inconsistency", "KM incoerentes"),
-    ("safety", "Seguranca"),
+    ("safety", "Segurança"),
     ("other", "Outra anomalia"),
 ]
 
@@ -73,7 +73,7 @@ WORKSHOP_EVIDENCE_STATUSES = [
     ("registered", "Registada"),
     ("reviewed", "Analisada"),
     ("resolved", "Resolvida"),
-    ("no_action_needed", "Sem intervencao necessaria"),
+    ("no_action_needed", "Sem intervenção necessária"),
 ]
 
 WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
@@ -203,7 +203,7 @@ def admin_create_user(
             return RedirectResponse("/login", status_code=303)
         existing = db.scalar(select(User).where(User.email == clean_email))
         if existing:
-            return RedirectResponse("/admin?error=Ja%20existe%20um%20utilizador%20com%20esse%20email.", status_code=303)
+            return RedirectResponse("/admin?error=Já%20existe%20um%20utilizador%20com%20esse%20email.", status_code=303)
 
         new_user = create_user(
             db,
@@ -836,7 +836,7 @@ def workshop_add_evidence(
         if not process:
             return RedirectResponse("/workshop", status_code=303)
         if not clean_description:
-            clean_description = "Evidencia registada sem descricao."
+            clean_description = "Evidência registada sem descrição."
 
         evidence = WorkshopProcessEvidence(
             process_id=process.id,
@@ -856,7 +856,7 @@ def workshop_add_evidence(
                 process_id=process.id,
                 user_id=user_id,
                 note=(
-                    "Evidencia registada: "
+                    "Evidência registada: "
                     f"{WORKSHOP_EVIDENCE_CATEGORY_LABELS.get(anomaly_category, anomaly_category)} - "
                     f"{clean_description}"
                 ),
@@ -867,7 +867,7 @@ def workshop_add_evidence(
             action="workshop.process.evidence.created",
             entity_type="workshop_process",
             entity_id=process.id,
-            detail=f"Evidencia de anomalia registada: {process.title}",
+            detail=f"Evidência de anomalia registada: {process.title}",
             after_json={
                 "phase": phase,
                 "evidence_type": evidence_type,
@@ -1321,7 +1321,7 @@ def task_add_comment(
             action="task.comment.created",
             entity_type="task",
             entity_id=task.id,
-            detail=f"Comentario adicionado a tarefa: {task.title}",
+            detail=f"Comentário adicionado à tarefa: {task.title}",
             user_id=user_id,
         )
         db.commit()

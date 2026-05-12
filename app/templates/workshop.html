@@ -8,11 +8,11 @@
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <a href="/task-board">Gestao de Tarefas</a>
+      <a href="/task-board">Gestão de Tarefas</a>
       <a href="/workshop" class="active">Oficina</a>
       <a href="/fleet">Frota</a>
-      <a href="/imports">Importacoes</a>
-      <a href="/admin">Administracao</a>
+      <a href="/imports">Importações</a>
+      <a href="/admin">Administração</a>
     </nav>
   </aside>
   <main class="content">
@@ -83,7 +83,7 @@
             </select>
           </label>
           <label>
-            Saida prevista
+            Saída prevista
             <input type="date" name="expected_exit_on">
           </label>
         </div>
@@ -107,7 +107,7 @@
               <th>Processo</th>
               <th>Viatura</th>
               <th>Estado</th>
-              <th>Decisao</th>
+              <th>Decisão</th>
               <th></th>
             </tr>
           </thead>
@@ -122,7 +122,7 @@
                   <p class="table-note">
                     {{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}
                     {% if process.priority %} &middot; Prioridade {{ process.priority }}{% endif %}
-                    {% if process.expected_exit_on %} &middot; Saida {{ process.expected_exit_on }}{% endif %}
+                    {% if process.expected_exit_on %} &middot; Saída {{ process.expected_exit_on }}{% endif %}
                   </p>
                 </td>
                 <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">Viatura #{{ process.vehicle_id }}</a></td>

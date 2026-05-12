@@ -534,6 +534,68 @@ def test_complete_workshop_training_flow():
         ) >= 2
     assert client.get("/documents").status_code == 200
     assert client.get("/documents?q=oficina").status_code == 200
+    workshop_document = client.post(
+        f"/workshop/{process_id}/documents",
+        data={
+            "title": "Documento contexto oficina",
+            "status": "unclassified",
+            "document_date": "2026-05-13",
+            "source": "email",
+            "entry_channel": "oficina@carfast.pt",
+            "url_original": "https://example.com/entrada/oficina.pdf",
+            "notes": "Criado dentro do processo.",
+        },
+        follow_redirects=False,
+    )
+    assert workshop_document.status_code == 303
+    vehicle_document = client.post(
+        f"/fleet/{vehicle_id}/documents",
+        data={
+            "title": "Documento contexto viatura",
+            "status": "classified",
+            "document_date": "2026-05-13",
+            "entry_channel": "documentos@carfast.pt",
+            "url_original": "https://example.com/entrada/viatura.pdf",
+        },
+        follow_redirects=False,
+    )
+    assert vehicle_document.status_code == 303
+    task_document = client.post(
+        f"/task-board/{managed_task_id}/documents",
+        data={
+            "title": "Documento contexto tarefa",
+            "classification": "fleet",
+            "document_type": "general_fleet",
+            "status": "unclassified",
+            "document_date": "2026-05-13",
+            "entry_channel": "documentos@carfast.pt",
+            "url_original": "https://example.com/entrada/tarefa.pdf",
+        },
+        follow_redirects=False,
+    )
+    assert task_document.status_code == 303
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(Document).where(
+                Document.workshop_process_id == process_id,
+                Document.title == "Documento contexto oficina",
+            )
+        ) == 1
+        assert db.scalar(
+            select(func.count()).select_from(Document).where(
+                Document.vehicle_id == vehicle_id,
+                Document.title == "Documento contexto viatura",
+            )
+        ) == 1
+        assert db.scalar(
+            select(func.count()).select_from(Document).where(
+                Document.task_id == managed_task_id,
+                Document.title == "Documento contexto tarefa",
+            )
+        ) == 1
+    assert "Documento contexto oficina" in client.get(f"/workshop/{process_id}").text
+    assert "Documento contexto viatura" in client.get(f"/fleet/{vehicle_id}").text
+    assert "Documento contexto tarefa" in client.get(f"/task-board/{managed_task_id}").text
     archived_document = client.post(
         f"/documents/{document_id}/update",
         data={

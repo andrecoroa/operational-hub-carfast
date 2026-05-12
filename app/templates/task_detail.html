@@ -159,6 +159,104 @@
     </section>
 
     <section class="detail-grid">
+      <form method="post" action="/task-board/{{ task.id }}/documents" class="form-panel form-stack">
+        <div class="panel-heading">
+          <p class="eyebrow">Arquivo</p>
+          <h3>Adicionar documento</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Área
+            <select name="classification">
+              <option value="general_archive">Arquivo Geral</option>
+              <option value="fleet" {% if task.plate %}selected{% endif %}>Frota</option>
+              <option value="finance">Financeiro</option>
+              <option value="rentway_imports">Rentway Importações</option>
+            </select>
+          </label>
+          <label>
+            Tipologia
+            <select name="document_type">
+              <option value="general_archive">Geral Arquivo</option>
+              <option value="general_fleet" {% if task.plate %}selected{% endif %}>Geral Frota</option>
+              <option value="general_finance">Geral Financeiro</option>
+              <option value="general_rentway">Geral Rentway</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in document_statuses %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in document_sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Canal de entrada
+            <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+          </label>
+        </div>
+        <label>
+          Link original / entrada 365
+          <input type="url" name="url_original" placeholder="https://...">
+        </label>
+        <label>
+          Link arquivado
+          <input type="url" name="url_archive" placeholder="https://...">
+        </label>
+        <label>
+          Notas
+          <textarea name="notes" rows="3"></textarea>
+        </label>
+        <button type="submit">Adicionar documento</button>
+      </form>
+
+      <article class="section">
+        <h3>Documentos da tarefa</h3>
+        <div class="event-list">
+          {% for document in documents %}
+            <article class="event-item">
+              <div>
+                <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+              </div>
+              <p>
+                {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+              </p>
+              <p>{{ document.folder_path or "-" }}</p>
+              {% if document.external_url %}
+                <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem documentos associados a esta tarefa.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="detail-grid">
       <form method="post" action="/task-board/{{ task.id }}/comments" class="form-panel form-stack">
         <div class="panel-heading">
           <p class="eyebrow">Comentário</p>

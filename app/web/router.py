@@ -544,6 +544,7 @@ def vehicle_detail(
     vehicle_id: int,
     saved: str | None = None,
     task_created: str | None = None,
+    document_created: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -581,6 +582,12 @@ def vehicle_detail(
             )
             .order_by(WorkshopProcess.id.desc())
         ).all()
+        documents = db.scalars(
+            select(Document)
+            .where(or_(Document.vehicle_id == vehicle.id, Document.plate == (vehicle.plate or "")))
+            .order_by(Document.id.desc())
+            .limit(20)
+        ).all()
         return templates.TemplateResponse(
             request,
             "vehicle_detail.html",
@@ -590,9 +597,14 @@ def vehicle_detail(
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
+                "documents": documents,
+                "document_status_labels": DOCUMENT_STATUS_LABELS,
+                "document_area_labels": DOCUMENT_AREA_LABELS,
+                "document_type_labels": DOCUMENT_TYPE_LABELS,
                 "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                 "saved": saved,
                 "task_created": task_created,
+                "document_created": document_created,
                 "error": None,
             },
         )
@@ -783,6 +795,60 @@ def vehicle_create_task(
     return RedirectResponse(f"/fleet/{vehicle_id}?task_created=1", status_code=303)
 
 
+@web_router.post("/fleet/{vehicle_id}/documents", response_class=HTMLResponse)
+def vehicle_create_document(
+    request: Request,
+    vehicle_id: int,
+    title: str = Form(""),
+    status: str = Form("unclassified"),
+    document_date: str = Form(""),
+    source: str = Form("email"),
+    entry_channel: str = Form(""),
+    source_sender: str = Form(""),
+    source_subject: str = Form(""),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    supplier_name: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+        try:
+            add_document_record(
+                db,
+                title=title,
+                classification="fleet",
+                document_type="general_fleet",
+                status=status,
+                document_date=parse_optional_date(document_date),
+                source=source,
+                entry_channel=entry_channel,
+                source_sender=source_sender,
+                source_subject=source_subject,
+                url_original=url_original,
+                url_archive=url_archive,
+                plate=vehicle.plate or "",
+                vehicle_id=vehicle.id,
+                supplier_name=supplier_name,
+                customer_name="",
+                task_id=None,
+                workshop_process_id=None,
+                notes=notes,
+                user_id=user_id,
+            )
+        except ValueError:
+            return RedirectResponse(f"/fleet/{vehicle_id}?error=Indica%20título%20e%20link.", status_code=303)
+        db.commit()
+
+    return RedirectResponse(f"/fleet/{vehicle_id}?document_created=1", status_code=303)
+
+
 @web_router.get("/workshop", response_class=HTMLResponse)
 def workshop_page(
     request: Request,
@@ -817,7 +883,7 @@ def workshop_page(
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
-                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "error": task_detail_error_message(error),
                 "opening_types": WORKSHOP_OPENING_TYPES,
                 "opening_type_labels": WORKSHOP_OPENING_LABELS,
                 "status_labels": WORKSHOP_STATUS_LABELS,
@@ -915,6 +981,7 @@ def render_workshop_detail(
     noted: str | None = None,
     evidence_created: str | None = None,
     incident_created: str | None = None,
+    document_created: str | None = None,
     feedback_saved: str | None = None,
     error: str | None = None,
     status_code: int = 200,
@@ -943,6 +1010,12 @@ def render_workshop_detail(
     incident_evidences_by_incident: dict[int, list[IncidentEvidence]] = {}
     for item in incident_evidences:
         incident_evidences_by_incident.setdefault(item.incident_id, []).append(item)
+    documents = db.scalars(
+        select(Document)
+        .where(Document.workshop_process_id == process.id)
+        .order_by(Document.id.desc())
+        .limit(20)
+    ).all()
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -953,9 +1026,11 @@ def render_workshop_detail(
             "evidences": evidences,
             "incidents": incidents,
             "incident_evidences_by_incident": incident_evidences_by_incident,
+            "documents": documents,
             "noted": noted,
             "evidence_created": evidence_created,
             "incident_created": incident_created,
+            "document_created": document_created,
             "feedback_saved": feedback_saved,
             "error": error,
             "statuses": WORKSHOP_STATUSES,
@@ -978,6 +1053,11 @@ def render_workshop_detail(
             "incident_status_labels": INCIDENT_STATUS_LABELS,
             "incident_evidence_types": INCIDENT_EVIDENCE_TYPES,
             "incident_evidence_type_labels": INCIDENT_EVIDENCE_TYPE_LABELS,
+            "document_statuses": DOCUMENT_STATUSES,
+            "document_status_labels": DOCUMENT_STATUS_LABELS,
+            "document_area_labels": DOCUMENT_AREA_LABELS,
+            "document_type_labels": DOCUMENT_TYPE_LABELS,
+            "document_sources": DOCUMENT_SOURCES,
         },
         status_code=status_code,
     )
@@ -990,6 +1070,7 @@ def workshop_detail(
     noted: str | None = None,
     evidence_created: str | None = None,
     incident_created: str | None = None,
+    document_created: str | None = None,
     feedback_saved: str | None = None,
 ):
     if not get_web_user_id(request):
@@ -1006,6 +1087,7 @@ def workshop_detail(
             noted=noted,
             evidence_created=evidence_created,
             incident_created=incident_created,
+            document_created=document_created,
             feedback_saved=feedback_saved,
         )
 
@@ -1237,6 +1319,61 @@ def workshop_create_incident(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?incident_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/documents", response_class=HTMLResponse)
+def workshop_create_document(
+    request: Request,
+    process_id: int,
+    title: str = Form(""),
+    status: str = Form("unclassified"),
+    document_date: str = Form(""),
+    source: str = Form("email"),
+    entry_channel: str = Form(""),
+    source_sender: str = Form(""),
+    source_subject: str = Form(""),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    supplier_name: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        try:
+            add_document_record(
+                db,
+                title=title,
+                classification="fleet",
+                document_type="general_fleet",
+                status=status,
+                document_date=parse_optional_date(document_date),
+                source=source,
+                entry_channel=entry_channel,
+                source_sender=source_sender,
+                source_subject=source_subject,
+                url_original=url_original,
+                url_archive=url_archive,
+                plate=(vehicle.plate if vehicle else "") or "",
+                vehicle_id=process.vehicle_id,
+                supplier_name=supplier_name,
+                customer_name="",
+                task_id=None,
+                workshop_process_id=process.id,
+                notes=notes,
+                user_id=user_id,
+            )
+        except ValueError:
+            return RedirectResponse(f"/workshop/{process_id}?error=Indica%20título%20e%20link.", status_code=303)
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?document_created=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/flow")
@@ -1808,6 +1945,14 @@ def task_board_manage(
                 select(func.count()).select_from(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
             )
             or 0,
+            "in_treatment": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.status == "in_treatment",
+                )
+            )
+            or 0,
             "unassigned": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_(None),
@@ -1831,6 +1976,13 @@ def task_board_manage(
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on == today,
+                )
+            )
+            or 0,
+            "closed_today": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.closed_at.is_not(None),
+                    func.date(Task.closed_at) == today.isoformat(),
                 )
             )
             or 0,
@@ -2107,6 +2259,14 @@ def task_detail(
         linked_vehicle = None
         if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
+        elif task.plate:
+            linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate))
+        documents = db.scalars(
+            select(Document)
+            .where(Document.task_id == task.id)
+            .order_by(Document.id.desc())
+            .limit(20)
+        ).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -2120,6 +2280,7 @@ def task_detail(
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
+                "documents": documents,
                 "users": users,
                 "user_by_id": user_by_id,
                 "teams": teams,
@@ -2137,6 +2298,11 @@ def task_detail(
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                "document_statuses": DOCUMENT_STATUSES,
+                "document_status_labels": DOCUMENT_STATUS_LABELS,
+                "document_area_labels": DOCUMENT_AREA_LABELS,
+                "document_type_labels": DOCUMENT_TYPE_LABELS,
+                "document_sources": DOCUMENT_SOURCES,
             },
         )
 
@@ -2272,6 +2438,14 @@ def task_add_comment(
             linked_vehicle = None
             if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
                 linked_vehicle = db.get(Vehicle, int(task.entity_id))
+            elif task.plate:
+                linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate))
+            documents = db.scalars(
+                select(Document)
+                .where(Document.task_id == task.id)
+                .order_by(Document.id.desc())
+                .limit(20)
+            ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             user_by_id = {item.id: item for item in users}
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -2285,6 +2459,7 @@ def task_add_comment(
                     "comments": comments,
                     "history": history,
                     "linked_vehicle": linked_vehicle,
+                    "documents": documents,
                     "users": users,
                     "user_by_id": user_by_id,
                     "teams": teams,
@@ -2301,6 +2476,11 @@ def task_add_comment(
                     "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                     "task_categories": TASK_CATEGORIES,
                     "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                    "document_statuses": DOCUMENT_STATUSES,
+                    "document_status_labels": DOCUMENT_STATUS_LABELS,
+                    "document_area_labels": DOCUMENT_AREA_LABELS,
+                    "document_type_labels": DOCUMENT_TYPE_LABELS,
+                    "document_sources": DOCUMENT_SOURCES,
                 },
                 status_code=400,
             )
@@ -2314,6 +2494,67 @@ def task_add_comment(
             detail=f"Comentário adicionado à tarefa: {task.title}",
             user_id=user_id,
         )
+        db.commit()
+
+    return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
+
+
+@web_router.post("/task-board/{task_id}/documents", response_class=HTMLResponse)
+def task_create_document(
+    request: Request,
+    task_id: int,
+    title: str = Form(""),
+    classification: str = Form("general_archive"),
+    document_type: str = Form("general_archive"),
+    status: str = Form("unclassified"),
+    document_date: str = Form(""),
+    source: str = Form("email"),
+    entry_channel: str = Form(""),
+    source_sender: str = Form(""),
+    source_subject: str = Form(""),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    supplier_name: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate)) if task.plate else None
+        if classification not in DOCUMENT_AREA_LABELS:
+            classification = "general_archive"
+        if document_type not in DOCUMENT_TYPE_LABELS:
+            document_type = default_document_type_for_area(classification)
+        try:
+            add_document_record(
+                db,
+                title=title,
+                classification=classification,
+                document_type=document_type,
+                status=status,
+                document_date=parse_optional_date(document_date),
+                source=source,
+                entry_channel=entry_channel,
+                source_sender=source_sender,
+                source_subject=source_subject,
+                url_original=url_original,
+                url_archive=url_archive,
+                plate=task.plate or "",
+                vehicle_id=vehicle.id if vehicle else None,
+                supplier_name=supplier_name,
+                customer_name=task.customer_name or "",
+                task_id=task.id,
+                workshop_process_id=None,
+                notes=notes,
+                user_id=user_id,
+            )
+        except ValueError:
+            return RedirectResponse(f"/task-board/{task_id}?error=missing_document_fields", status_code=303)
         db.commit()
 
     return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
@@ -2422,6 +2663,122 @@ def default_document_type_for_area(area: str) -> str:
         "rentway_imports": "general_rentway",
         "general_archive": "general_archive",
     }.get(area, "general_archive")
+
+
+def task_detail_error_message(error: str | None) -> str | None:
+    if error == "missing_destination":
+        return "Escolhe uma pessoa responsável ou uma equipa/fila."
+    if error == "missing_document_fields":
+        return "Indica título e pelo menos um link para associar o documento."
+    return None
+
+
+def add_document_record(
+    db,
+    *,
+    title: str,
+    classification: str,
+    document_type: str,
+    status: str,
+    document_date: date | None,
+    source: str,
+    entry_channel: str,
+    source_sender: str,
+    source_subject: str,
+    url_original: str,
+    url_archive: str,
+    plate: str,
+    vehicle_id: int | None,
+    supplier_name: str,
+    customer_name: str,
+    task_id: int | None,
+    workshop_process_id: int | None,
+    notes: str,
+    user_id: int,
+) -> Document:
+    clean_title = title.strip()
+    clean_original_url = url_original.strip()
+    clean_archive_url = url_archive.strip()
+    if not clean_title or not (clean_original_url or clean_archive_url):
+        raise ValueError("title_and_link_required")
+    if classification not in DOCUMENT_AREA_LABELS:
+        classification = "general_archive"
+    if document_type not in DOCUMENT_TYPE_LABELS:
+        document_type = default_document_type_for_area(classification)
+    if status not in DOCUMENT_STATUS_LABELS:
+        status = "unclassified"
+
+    clean_plate = plate.strip().upper()
+    archived = status == "archived"
+    document = Document(
+        title=clean_title,
+        document_type=document_type,
+        classification=classification,
+        status=status,
+        source=source.strip() or None,
+        entry_channel=entry_channel.strip() or None,
+        source_sender=source_sender.strip() or None,
+        source_subject=source_subject.strip() or None,
+        original_name=clean_title[:255],
+        file_name=clean_title[:255],
+        file_type=None,
+        file_size=None,
+        storage_provider="sharepoint",
+        storage_path=clean_original_url or clean_archive_url,
+        storage_key=clean_original_url or None,
+        external_url=clean_archive_url or clean_original_url,
+        folder_path=suggest_document_folder_path(classification, document_date, clean_plate),
+        vehicle_id=vehicle_id,
+        task_id=task_id,
+        workshop_process_id=workshop_process_id,
+        plate=clean_plate or None,
+        customer_name=customer_name.strip() or None,
+        supplier_name=supplier_name.strip() or None,
+        document_date=document_date,
+        uploaded_by_id=user_id,
+        archived_by_id=user_id if archived else None,
+        archived_at=datetime.now(UTC) if archived else None,
+        archived=archived,
+    )
+    db.add(document)
+    db.flush()
+    if notes.strip():
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="note",
+                old_value=None,
+                new_value=notes.strip(),
+                user_id=user_id,
+            )
+        )
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="created",
+            old_value=None,
+            new_value=f"Documento criado em {DOCUMENT_AREA_LABELS[classification]}",
+            user_id=user_id,
+        )
+    )
+    record_audit(
+        db,
+        action="document.created",
+        entity_type="document",
+        entity_id=document.id,
+        detail=f"Documento registado: {document.title}",
+        after_json={
+            "classification": classification,
+            "document_type": document_type,
+            "status": status,
+            "folder_path": document.folder_path,
+            "task_id": task_id,
+            "workshop_process_id": workshop_process_id,
+            "vehicle_id": vehicle_id,
+        },
+        user_id=user_id,
+    )
+    return document
 
 
 def suggest_document_folder_path(

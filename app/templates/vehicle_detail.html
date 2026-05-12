@@ -31,6 +31,9 @@
     {% if task_created %}
       <div class="success">Tarefa criada para esta viatura.</div>
     {% endif %}
+    {% if document_created %}
+      <div class="success">Documento associado a esta viatura.</div>
+    {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
@@ -61,6 +64,81 @@
         </label>
         <button type="submit">Gravar nota</button>
       </form>
+    </section>
+
+    <section class="detail-grid">
+      <form method="post" action="/fleet/{{ vehicle.id }}/documents" class="form-panel form-stack">
+        <div>
+          <p class="eyebrow">Arquivo</p>
+          <h3>Adicionar documento</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Estado
+            <select name="status">
+              <option value="unclassified">Por classificar</option>
+              <option value="classified">Classificado</option>
+              <option value="archived">Arquivado</option>
+              <option value="rejected">Rejeitado / Sem interesse</option>
+            </select>
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Canal de entrada
+            <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+          </label>
+          <label>
+            Fornecedor
+            <input type="text" name="supplier_name" maxlength="200">
+          </label>
+        </div>
+        <label>
+          Link original / entrada 365
+          <input type="url" name="url_original" placeholder="https://...">
+        </label>
+        <label>
+          Link arquivado
+          <input type="url" name="url_archive" placeholder="https://...">
+        </label>
+        <label>
+          Notas
+          <textarea name="notes" rows="3"></textarea>
+        </label>
+        <button type="submit">Adicionar documento</button>
+      </form>
+
+      <article class="section">
+        <h3>Documentos da viatura</h3>
+        <div class="event-list">
+          {% for document in documents %}
+            <article class="event-item">
+              <div>
+                <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+              </div>
+              <p>
+                {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+              </p>
+              <p>{{ document.folder_path or "-" }}</p>
+              {% if document.external_url %}
+                <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem documentos associados a esta viatura.</p>
+          {% endfor %}
+        </div>
+      </article>
     </section>
 
     <section class="detail-grid">

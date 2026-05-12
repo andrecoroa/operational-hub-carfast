@@ -38,6 +38,9 @@
     {% if incident_created %}
       <div class="success">Incidente criado.</div>
     {% endif %}
+    {% if document_created %}
+      <div class="success">Documento associado ao processo.</div>
+    {% endif %}
     {% if feedback_saved %}
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
@@ -260,6 +263,98 @@
             </article>
           {% else %}
             <p class="muted">Sem incidentes registados.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="detail-grid">
+      <form method="post" action="/workshop/{{ process.id }}/documents" class="form-panel form-stack">
+        <div class="panel-heading">
+          <p class="eyebrow">Arquivo</p>
+          <h3>Adicionar documento</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in document_statuses %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in document_sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Canal de entrada
+            <input type="text" name="entry_channel" maxlength="120" placeholder="oficina@carfast.pt">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Remetente
+            <input type="text" name="source_sender" maxlength="255">
+          </label>
+          <label>
+            Assunto original
+            <input type="text" name="source_subject" maxlength="255">
+          </label>
+        </div>
+        <label>
+          Link original / entrada 365
+          <input type="url" name="url_original" placeholder="https://...">
+        </label>
+        <label>
+          Link arquivado
+          <input type="url" name="url_archive" placeholder="https://...">
+        </label>
+        <label>
+          Fornecedor
+          <input type="text" name="supplier_name" maxlength="200">
+        </label>
+        <label>
+          Notas
+          <textarea name="notes" rows="3"></textarea>
+        </label>
+        <button type="submit">Adicionar documento</button>
+      </form>
+
+      <article class="section">
+        <h3>Documentos do processo</h3>
+        <div class="event-list">
+          {% for document in documents %}
+            <article class="event-item">
+              <div>
+                <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+              </div>
+              <p>
+                {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+              </p>
+              <p>{{ document.folder_path or "-" }}</p>
+              {% if document.external_url %}
+                <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted">Sem documentos associados a este processo.</p>
           {% endfor %}
         </div>
       </article>

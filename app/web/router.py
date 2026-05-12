@@ -1539,6 +1539,33 @@ def task_board(
         )
 
 
+@web_router.get("/task-board/new", response_class=HTMLResponse)
+def task_new_form(
+    request: Request,
+    error: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        return templates.TemplateResponse(
+            request,
+            "task_new.html",
+            {
+                "users": users,
+                "teams": teams,
+                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "task_types": TASK_TYPES,
+                "task_sources": TASK_SOURCES,
+                "task_categories": TASK_CATEGORIES,
+                "priorities": PRIORITIES,
+            },
+        )
+
+
+@web_router.post("/task-board/new", response_class=HTMLResponse)
 @web_router.post("/task-board", response_class=HTMLResponse)
 def task_create(
     request: Request,
@@ -1570,43 +1597,19 @@ def task_create(
     clean_title = title.strip()
     if not clean_title:
         with SessionLocal() as db:
-            tasks = db.scalars(
-                select(Task)
-                .where(Task.closed_at.is_(None))
-                .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
-                .limit(100)
-            ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
-            user_by_id = {item.id: item for item in users}
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
-            team_by_id = {item.id: item for item in teams}
         return templates.TemplateResponse(
             request,
-            "tasks.html",
+            "task_new.html",
             {
-                "tasks": tasks,
                 "users": users,
-                "user_by_id": user_by_id,
                 "teams": teams,
-                "team_by_id": team_by_id,
-                "created": None,
-                "closed": None,
                 "error": "Indica um título para a tarefa.",
-                "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
-                "priority_labels": PRIORITY_DISPLAY_LABELS,
                 "task_sources": TASK_SOURCES,
-                "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_types": TASK_TYPES,
-                "task_type_labels": TASK_TYPE_LABELS,
                 "task_categories": TASK_CATEGORIES,
-                "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
-                "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0, "archived": 0},
-                "feedback_saved": None,
-                "filters": {"q": "", "status": "", "task_type": "", "category": "", "source": "", "assigned_to_id": "", "team_id": "", "station": "", "view": ""},
-                "stations": [],
-                "task_statuses": TASK_STATUSES,
                 "priorities": PRIORITIES,
-                "archive_statuses": TASK_ARCHIVE_STATUSES,
             },
             status_code=400,
         )
@@ -1626,7 +1629,7 @@ def task_create(
             assigned_team_id = None
         assigned_team_id = assigned_team_id or default_team_id(db, "operations")
         if not assigned_user_id and not assigned_team_id:
-            return RedirectResponse("/task-board?error=missing_destination", status_code=303)
+            return RedirectResponse("/task-board/new?error=missing_destination", status_code=303)
         task = Task(
             title=clean_title,
             description=description.strip() or None,

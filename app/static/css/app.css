@@ -505,6 +505,10 @@ a.metric:hover {
   max-width: none;
 }
 
+.form-panel.task-create-page {
+  max-width: 980px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

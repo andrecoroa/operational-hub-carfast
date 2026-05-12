@@ -89,6 +89,7 @@ def test_complete_workshop_training_flow():
         follow_redirects=False,
     )
     assert login.status_code == 303
+    assert client.get("/task-board/new").status_code == 200
 
     created = client.post(
         "/workshop",

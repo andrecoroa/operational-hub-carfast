@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
+from app.models.documents import Document, DocumentEvent
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.organization import Team
@@ -244,6 +245,40 @@ ADMIN_USER_ROLES = [
     ("viewer", "Consulta"),
 ]
 
+DOCUMENT_AREAS = [
+    ("fleet", "Frota"),
+    ("finance", "Financeiro"),
+    ("rentway_imports", "Rentway Importações"),
+    ("general_archive", "Arquivo Geral"),
+]
+DOCUMENT_AREA_LABELS = dict(DOCUMENT_AREAS)
+
+DOCUMENT_TYPES = [
+    ("general_fleet", "Geral Frota"),
+    ("general_finance", "Geral Financeiro"),
+    ("general_rentway", "Geral Rentway"),
+    ("general_archive", "Geral Arquivo"),
+]
+DOCUMENT_TYPE_LABELS = dict(DOCUMENT_TYPES)
+
+DOCUMENT_STATUSES = [
+    ("unclassified", "Por classificar"),
+    ("classified", "Classificado"),
+    ("archived", "Arquivado"),
+    ("rejected", "Rejeitado / Sem interesse"),
+]
+DOCUMENT_STATUS_LABELS = dict(DOCUMENT_STATUSES)
+
+DOCUMENT_SOURCES = [
+    ("email", "E-mail"),
+    ("manual", "Manual"),
+    ("whatsapp", "WhatsApp"),
+    ("scanner", "Scanner"),
+    ("rentway", "Rentway"),
+    ("onedrive", "OneDrive/SharePoint"),
+    ("other", "Outro"),
+]
+
 
 @web_router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -261,6 +296,7 @@ def dashboard(request: Request):
             if False
             else count_open_tasks(db),
             "imports": count_rows(db, ImportBatch),
+            "documents": count_rows(db, Document),
         }
         return templates.TemplateResponse(
             request,
@@ -1374,6 +1410,345 @@ def import_detail(request: Request, batch_id: int):
         )
 
 
+@web_router.get("/documents", response_class=HTMLResponse)
+def documents_page(
+    request: Request,
+    q: str = "",
+    status: str = "",
+    area: str = "",
+    document_type: str = "",
+    created: str | None = None,
+    updated: str | None = None,
+    error: str | None = None,
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_q = q.strip()
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+
+        statement = select(Document)
+        if clean_q:
+            pattern = f"%{clean_q}%"
+            statement = statement.where(
+                or_(
+                    Document.title.ilike(pattern),
+                    Document.plate.ilike(pattern),
+                    Document.supplier_name.ilike(pattern),
+                    Document.customer_name.ilike(pattern),
+                    Document.entry_channel.ilike(pattern),
+                    Document.source_sender.ilike(pattern),
+                    Document.source_subject.ilike(pattern),
+                )
+            )
+        if status in DOCUMENT_STATUS_LABELS:
+            statement = statement.where(Document.status == status)
+        if area in DOCUMENT_AREA_LABELS:
+            statement = statement.where(Document.classification == area)
+        if document_type in DOCUMENT_TYPE_LABELS:
+            statement = statement.where(Document.document_type == document_type)
+
+        documents = db.scalars(statement.order_by(Document.id.desc()).limit(100)).all()
+        metrics = {
+            "total": db.scalar(select(func.count()).select_from(Document)) or 0,
+            "unclassified": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "unclassified")
+            )
+            or 0,
+            "classified": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "classified")
+            )
+            or 0,
+            "archived": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "archived")
+            )
+            or 0,
+        }
+        return templates.TemplateResponse(
+            request,
+            "documents.html",
+            {
+                "user": user,
+                "documents": documents,
+                "metrics": metrics,
+                "filters": {
+                    "q": q,
+                    "status": status,
+                    "area": area,
+                    "document_type": document_type,
+                },
+                "areas": DOCUMENT_AREAS,
+                "area_labels": DOCUMENT_AREA_LABELS,
+                "document_types": DOCUMENT_TYPES,
+                "document_type_labels": DOCUMENT_TYPE_LABELS,
+                "statuses": DOCUMENT_STATUSES,
+                "status_labels": DOCUMENT_STATUS_LABELS,
+                "sources": DOCUMENT_SOURCES,
+                "created": created,
+                "updated": updated,
+                "error": error,
+            },
+        )
+
+
+@web_router.post("/documents", response_class=HTMLResponse)
+def document_create(
+    request: Request,
+    title: str = Form(""),
+    classification: str = Form("fleet"),
+    document_type: str = Form("general_fleet"),
+    status: str = Form("unclassified"),
+    document_date: str = Form(""),
+    source: str = Form("email"),
+    entry_channel: str = Form(""),
+    source_sender: str = Form(""),
+    source_subject: str = Form(""),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    plate: str = Form(""),
+    supplier_name: str = Form(""),
+    customer_name: str = Form(""),
+    task_id: str = Form(""),
+    workshop_process_id: str = Form(""),
+    import_batch_id: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_title = title.strip()
+    clean_original_url = url_original.strip()
+    clean_archive_url = url_archive.strip()
+    if not clean_title:
+        return RedirectResponse("/documents?error=Indica%20um%20título.", status_code=303)
+    if not clean_original_url and not clean_archive_url:
+        return RedirectResponse("/documents?error=Indica%20pelo%20menos%20um%20link.", status_code=303)
+    if classification not in DOCUMENT_AREA_LABELS:
+        classification = "general_archive"
+    if document_type not in DOCUMENT_TYPE_LABELS:
+        document_type = default_document_type_for_area(classification)
+    if status not in DOCUMENT_STATUS_LABELS:
+        status = "unclassified"
+
+    parsed_document_date = parse_optional_date(document_date)
+    clean_plate = plate.strip().upper()
+    folder_path = suggest_document_folder_path(classification, parsed_document_date, clean_plate)
+    archived = status == "archived"
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+
+        vehicle_id = None
+        if clean_plate:
+            vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == clean_plate))
+            vehicle_id = vehicle.id if vehicle else None
+        parsed_task_id = parse_optional_int(task_id)
+        if parsed_task_id and not db.get(Task, parsed_task_id):
+            parsed_task_id = None
+        parsed_workshop_process_id = parse_optional_int(workshop_process_id)
+        if parsed_workshop_process_id and not db.get(WorkshopProcess, parsed_workshop_process_id):
+            parsed_workshop_process_id = None
+
+        document = Document(
+            title=clean_title,
+            document_type=document_type,
+            classification=classification,
+            status=status,
+            source=source.strip() or None,
+            entry_channel=entry_channel.strip() or None,
+            source_sender=source_sender.strip() or None,
+            source_subject=source_subject.strip() or None,
+            original_name=clean_title[:255],
+            file_name=clean_title[:255],
+            file_type=None,
+            file_size=None,
+            storage_provider="sharepoint",
+            storage_path=clean_original_url or clean_archive_url,
+            storage_key=clean_original_url or None,
+            external_url=clean_archive_url or clean_original_url,
+            folder_path=folder_path,
+            vehicle_id=vehicle_id,
+            task_id=parsed_task_id,
+            workshop_process_id=parsed_workshop_process_id,
+            plate=clean_plate or None,
+            customer_name=customer_name.strip() or None,
+            supplier_name=supplier_name.strip() or None,
+            document_date=parsed_document_date,
+            uploaded_by_id=user_id,
+            archived_by_id=user_id if archived else None,
+            archived_at=datetime.now(UTC) if archived else None,
+            archived=archived,
+        )
+        db.add(document)
+        db.flush()
+        if import_batch_id.strip():
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="linked.import_batch",
+                    old_value=None,
+                    new_value=import_batch_id.strip(),
+                    user_id=user_id,
+                )
+            )
+        if notes.strip():
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="note",
+                    old_value=None,
+                    new_value=notes.strip(),
+                    user_id=user_id,
+                )
+            )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="created",
+                old_value=None,
+                new_value=f"Documento criado em {DOCUMENT_AREA_LABELS[classification]}",
+                user_id=user_id,
+            )
+        )
+        record_audit(
+            db,
+            action="document.created",
+            entity_type="document",
+            entity_id=document.id,
+            detail=f"Documento registado: {document.title}",
+            after_json={
+                "classification": classification,
+                "document_type": document_type,
+                "status": status,
+                "folder_path": folder_path,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/documents?created=1", status_code=303)
+
+
+@web_router.get("/documents/{document_id}", response_class=HTMLResponse)
+def document_detail(request: Request, document_id: int, updated: str | None = None):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        document = db.get(Document, document_id)
+        if not user or not document:
+            return RedirectResponse("/documents", status_code=303)
+        events = db.scalars(
+            select(DocumentEvent)
+            .where(DocumentEvent.document_id == document.id)
+            .order_by(DocumentEvent.id.desc())
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "document_detail.html",
+            {
+                "user": user,
+                "document": document,
+                "events": events,
+                "areas": DOCUMENT_AREAS,
+                "area_labels": DOCUMENT_AREA_LABELS,
+                "document_types": DOCUMENT_TYPES,
+                "document_type_labels": DOCUMENT_TYPE_LABELS,
+                "statuses": DOCUMENT_STATUSES,
+                "status_labels": DOCUMENT_STATUS_LABELS,
+                "sources": DOCUMENT_SOURCES,
+                "updated": updated,
+            },
+        )
+
+
+@web_router.post("/documents/{document_id}/update", response_class=HTMLResponse)
+def document_update(
+    request: Request,
+    document_id: int,
+    classification: str = Form(""),
+    document_type: str = Form(""),
+    status: str = Form(""),
+    url_archive: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse("/documents", status_code=303)
+
+        changes = []
+        if classification in DOCUMENT_AREA_LABELS and classification != document.classification:
+            changes.append(("classification", document.classification, classification))
+            document.classification = classification
+        if document_type in DOCUMENT_TYPE_LABELS and document_type != document.document_type:
+            changes.append(("document_type", document.document_type, document_type))
+            document.document_type = document_type
+        if status in DOCUMENT_STATUS_LABELS and status != document.status:
+            changes.append(("status", document.status, status))
+            document.status = status
+        clean_archive_url = url_archive.strip()
+        if clean_archive_url and clean_archive_url != document.external_url:
+            changes.append(("url_archive", document.external_url, clean_archive_url))
+            document.external_url = clean_archive_url
+        document.folder_path = suggest_document_folder_path(
+            document.classification or "general_archive",
+            document.document_date,
+            document.plate,
+        )
+        if document.status == "archived":
+            document.archived = True
+            document.archived_by_id = user_id
+            document.archived_at = document.archived_at or datetime.now(UTC)
+        else:
+            document.archived = False
+
+        for field, old_value, new_value in changes:
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action=f"updated.{field}",
+                    old_value=str(old_value or ""),
+                    new_value=str(new_value or ""),
+                    user_id=user_id,
+                )
+            )
+        if notes.strip():
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="note",
+                    old_value=None,
+                    new_value=notes.strip(),
+                    user_id=user_id,
+                )
+            )
+        if changes or notes.strip():
+            record_audit(
+                db,
+                action="document.updated",
+                entity_type="document",
+                entity_id=document.id,
+                detail=f"Documento atualizado: {document.title}",
+                after_json={"changes": [field for field, _, _ in changes]},
+                user_id=user_id,
+            )
+        db.commit()
+    return RedirectResponse(f"/documents/{document_id}?updated=1", status_code=303)
+
+
 @web_router.get("/task-board", response_class=HTMLResponse)
 def task_center(request: Request):
     if not get_web_user_id(request):
@@ -2038,6 +2413,33 @@ def count_open_tasks(db) -> int:
 def default_team_id(db, code: str) -> int | None:
     team = db.scalar(select(Team).where(Team.code == code, Team.active.is_(True)))
     return team.id if team else None
+
+
+def default_document_type_for_area(area: str) -> str:
+    return {
+        "fleet": "general_fleet",
+        "finance": "general_finance",
+        "rentway_imports": "general_rentway",
+        "general_archive": "general_archive",
+    }.get(area, "general_archive")
+
+
+def suggest_document_folder_path(
+    area: str,
+    document_date: date | None,
+    plate: str | None = None,
+) -> str:
+    reference_date = document_date or date.today()
+    year = f"{reference_date.year:04d}"
+    month = f"{reference_date.month:02d}"
+    clean_plate = (plate or "").strip().upper()
+    if area == "fleet":
+        return f"Frota/{clean_plate or 'Sem_Matricula'}"
+    if area == "finance":
+        return f"Financeiro/{year}/{month}"
+    if area == "rentway_imports":
+        return f"Rentway_Importacoes/{year}/{month}"
+    return f"Arquivo_Geral/{year}/{month}"
 
 
 def parse_optional_date(value: str | None) -> date | None:

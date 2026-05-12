@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Documentos</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Frota</a>
+      <a href="/workshop">Oficina</a>
+      <a href="/task-board">Centro de Tarefas</a>
+      <a href="/imports">Importações</a>
+      <a href="/documents" class="active">Documentos</a>
+      <a href="/admin">Administração</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>Documentos</h2>
+        <span>Fase 1: registo leve, classificação e link 365.</span>
+      </div>
+    </header>
+
+    {% if created %}
+      <div class="success">Documento registado.</div>
+    {% endif %}
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="metric-grid task-metrics">
+      <article class="metric">
+        <span>Total</span>
+        <strong>{{ metrics.total }}</strong>
+      </article>
+      <article class="metric">
+        <span>Por classificar</span>
+        <strong>{{ metrics.unclassified }}</strong>
+      </article>
+      <article class="metric">
+        <span>Classificados</span>
+        <strong>{{ metrics.classified }}</strong>
+      </article>
+      <article class="metric">
+        <span>Arquivados</span>
+        <strong>{{ metrics.archived }}</strong>
+      </article>
+    </section>
+
+    <section class="table-shell filter-panel">
+      <form method="get" action="/documents" class="filter-grid">
+        <label>
+          Pesquisa
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="Título, matrícula, fornecedor, remetente">
+        </label>
+        <label>
+          Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in statuses %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Área
+          <select name="area">
+            <option value="">Todas</option>
+            {% for code, label in areas %}
+              <option value="{{ code }}" {% if filters.area == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Tipologia
+          <select name="document_type">
+            <option value="">Todas</option>
+            {% for code, label in document_types %}
+              <option value="{{ code }}" {% if filters.document_type == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="filter-actions">
+          <button type="submit">Filtrar</button>
+          <a class="button-link secondary-link" href="/documents">Limpar</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="task-layout tasks-layout">
+      <form method="post" action="/documents" class="form-panel form-stack task-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Entrada documental</p>
+          <h3>Registar documento</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="form-grid">
+          <label>
+            Área
+            <select name="classification">
+              {% for code, label in areas %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Tipologia
+            <select name="document_type">
+              {% for code, label in document_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in statuses %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Canal de entrada
+            <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Remetente
+            <input type="text" name="source_sender" maxlength="255">
+          </label>
+          <label>
+            Assunto original
+            <input type="text" name="source_subject" maxlength="255">
+          </label>
+        </div>
+        <label>
+          Link original / entrada 365
+          <input type="url" name="url_original" placeholder="https://...">
+        </label>
+        <label>
+          Link arquivado
+          <input type="url" name="url_archive" placeholder="https://...">
+        </label>
+        <div class="form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40">
+          </label>
+          <label>
+            Fornecedor
+            <input type="text" name="supplier_name" maxlength="200">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Cliente
+            <input type="text" name="customer_name" maxlength="200">
+          </label>
+          <label>
+            Tarefa associada
+            <input type="number" name="task_id" min="1">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Processo oficina
+            <input type="number" name="workshop_process_id" min="1">
+          </label>
+          <label>
+            Lote importação
+            <input type="number" name="import_batch_id" min="1">
+          </label>
+        </div>
+        <label>
+          Notas
+          <textarea name="notes" rows="3"></textarea>
+        </label>
+        <button type="submit">Registar documento</button>
+      </form>
+
+      <section class="table-shell">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Fila documental</p>
+            <h3>Documentos registados</h3>
+          </div>
+        </div>
+        <table class="task-table responsive-card-table">
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Área</th>
+              <th>Estado</th>
+              <th>Caminho</th>
+              <th>Origem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for document in documents %}
+              <tr>
+                <td data-label="Documento">
+                  <a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a>
+                  <p class="table-note">
+                    {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                    {% if document.plate %} · {{ document.plate }}{% endif %}
+                    {% if document.supplier_name %} · {{ document.supplier_name }}{% endif %}
+                  </p>
+                </td>
+                <td data-label="Área">{{ area_labels.get(document.classification, document.classification or "-") }}</td>
+                <td data-label="Estado"><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></td>
+                <td data-label="Caminho">{{ document.folder_path or "-" }}</td>
+                <td data-label="Origem">
+                  {{ document.entry_channel or document.source or "-" }}
+                  {% if document.source_sender %}<p class="table-note">{{ document.source_sender }}</p>{% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="5" class="muted">Ainda não existem documentos registados.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</div>
+{% endblock %}

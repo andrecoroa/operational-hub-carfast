@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Documentos</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/fleet">Frota</a>
+      <a href="/workshop">Oficina</a>
+      <a href="/task-board">Centro de Tarefas</a>
+      <a href="/imports">Importações</a>
+      <a href="/documents" class="active">Documentos</a>
+      <a href="/admin">Administração</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>{{ document.title or document.original_name }}</h2>
+        <span>{{ status_labels.get(document.status, document.status) }}</span>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/documents">Voltar</a>
+        {% if document.external_url %}
+          <a class="button-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir link</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <section class="section">
+        <h3>Dados do documento</h3>
+        <dl class="detail-list">
+          <div>
+            <dt>Área</dt>
+            <dd>{{ area_labels.get(document.classification, document.classification or "-") }}</dd>
+          </div>
+          <div>
+            <dt>Tipologia</dt>
+            <dd>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</dd>
+          </div>
+          <div>
+            <dt>Estado</dt>
+            <dd><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></dd>
+          </div>
+          <div>
+            <dt>Caminho sugerido</dt>
+            <dd>{{ document.folder_path or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Data</dt>
+            <dd>{{ document.document_date or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Origem</dt>
+            <dd>{{ document.source or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Canal</dt>
+            <dd>{{ document.entry_channel or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Remetente</dt>
+            <dd>{{ document.source_sender or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Assunto original</dt>
+            <dd>{{ document.source_subject or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Matrícula</dt>
+            <dd>{{ document.plate or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Fornecedor</dt>
+            <dd>{{ document.supplier_name or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Cliente</dt>
+            <dd>{{ document.customer_name or "-" }}</dd>
+          </div>
+          <div>
+            <dt>Link original</dt>
+            <dd>
+              {% if document.storage_key %}
+                <a class="table-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original</a>
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Link arquivado</dt>
+            <dd>
+              {% if document.external_url %}
+                <a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="form-panel form-stack">
+        <div class="panel-heading">
+          <p class="eyebrow">Tratamento</p>
+          <h3>Atualizar</h3>
+        </div>
+        <form method="post" action="/documents/{{ document.id }}/update" class="form-stack">
+          <label>
+            Área
+            <select name="classification">
+              {% for code, label in areas %}
+                <option value="{{ code }}" {% if document.classification == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Tipologia
+            <select name="document_type">
+              {% for code, label in document_types %}
+                <option value="{{ code }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in statuses %}
+                <option value="{{ code }}" {% if document.status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Link arquivado
+            <input type="url" name="url_archive" value="{{ document.external_url or '' }}">
+          </label>
+          <label>
+            Nota de tratamento
+            <textarea name="notes" rows="4"></textarea>
+          </label>
+          <button type="submit">Guardar atualização</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="section">
+      <h3>Histórico</h3>
+      <div class="timeline">
+        {% for event in events %}
+          <article>
+            <strong>{{ event.action }}</strong>
+            <span>{{ event.created_at }}</span>
+            {% if event.new_value %}
+              <p>{{ event.new_value }}</p>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Sem histórico registado.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -694,11 +694,36 @@ a.metric:hover {
   margin: 8px 0 0;
 }
 
+.timeline {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.timeline article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.timeline article span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.timeline article p {
+  margin: 8px 0 0;
+}
+
 .status-opening,
 .status-reception,
 .status-diagnosis,
 .status-new,
-.status-analysis {
+.status-analysis,
+.status-unclassified {
   background: var(--blue-soft);
   color: var(--blue);
 }
@@ -708,7 +733,8 @@ a.metric:hover {
 .status-waiting_parts,
 .status-waiting_customer,
 .status-waiting_internal,
-.status-waiting_supplier {
+.status-waiting_supplier,
+.status-classified {
   background: var(--amber-soft);
   color: var(--amber);
 }
@@ -724,7 +750,9 @@ a.metric:hover {
 
 .status-closed,
 .status-no_action_needed,
-.status-cancelled {
+.status-cancelled,
+.status-archived,
+.status-rejected {
   background: #eef1f2;
   color: var(--muted);
 }

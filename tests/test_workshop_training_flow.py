@@ -7,6 +7,7 @@ from app.main import app
 from app.models import Base
 from app.models.audit import AuditLog
 from app.models.admin import User
+from app.models.documents import Document, DocumentEvent
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.organization import Team
 from app.models.pilot import PilotFeedback
@@ -495,4 +496,62 @@ def test_complete_workshop_training_flow():
     assert client.get(
         f"/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={managed_task_id}"
     ).status_code == 200
+    document_response = client.post(
+        "/documents",
+        data={
+            "title": "Fatura oficina BN-72-MN",
+            "classification": "fleet",
+            "document_type": "general_fleet",
+            "status": "classified",
+            "document_date": "2026-05-12",
+            "source": "email",
+            "entry_channel": "documentos@carfast.pt",
+            "source_sender": "oficina@example.com",
+            "source_subject": "Fatura oficina",
+            "url_original": "https://example.com/entrada/fatura.pdf",
+            "plate": "BZ81SC",
+            "supplier_name": "Oficina Externa",
+            "task_id": str(managed_task_id),
+            "workshop_process_id": str(process_id),
+            "notes": "Documento registado para teste.",
+        },
+        follow_redirects=False,
+    )
+    assert document_response.status_code == 303
+    with SessionLocal() as db:
+        document = db.scalar(select(Document).where(Document.title == "Fatura oficina BN-72-MN"))
+        assert document is not None
+        document_id = document.id
+        assert document.classification == "fleet"
+        assert document.document_type == "general_fleet"
+        assert document.status == "classified"
+        assert document.folder_path == "Frota/BZ81SC"
+        assert document.entry_channel == "documentos@carfast.pt"
+        assert document.task_id == managed_task_id
+        assert document.workshop_process_id == process_id
+        assert db.scalar(
+            select(func.count()).select_from(DocumentEvent).where(DocumentEvent.document_id == document_id)
+        ) >= 2
+    assert client.get("/documents").status_code == 200
+    assert client.get("/documents?q=oficina").status_code == 200
+    archived_document = client.post(
+        f"/documents/{document_id}/update",
+        data={
+            "classification": "fleet",
+            "document_type": "general_fleet",
+            "status": "archived",
+            "url_archive": "https://example.com/frota/BZ81SC/fatura.pdf",
+            "notes": "Link final confirmado.",
+        },
+        follow_redirects=False,
+    )
+    assert archived_document.status_code == 303
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        assert document is not None
+        assert document.status == "archived"
+        assert document.archived is True
+        assert document.archived_at is not None
+        assert document.external_url == "https://example.com/frota/BZ81SC/fatura.pdf"
+    assert client.get(f"/documents/{document_id}").status_code == 200
     assert client.get("/admin").status_code == 200

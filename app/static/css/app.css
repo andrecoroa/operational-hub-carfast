@@ -108,6 +108,13 @@ button {
   color: white;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .secondary-link {
   background: #edf2f1;
   color: var(--brand-dark);

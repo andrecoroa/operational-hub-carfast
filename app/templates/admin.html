@@ -52,6 +52,27 @@
         {% endfor %}
       </div>
     </section>
+
+    <section class="section">
+      <h3>Feedback do piloto</h3>
+      <div class="event-list">
+        {% for item in pilot_feedback_items %}
+          <article class="event-item">
+            <div>
+              <strong>{{ pilot_feedback_kind_labels.get(item.kind, item.kind) }}</strong>
+              <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+            </div>
+            <p>{{ item.subject or "-" }}</p>
+            <p>{{ item.body }}</p>
+            {% if item.entity_type or item.entity_id %}
+              <p class="muted">{{ item.source_area or "-" }} &middot; {{ item.entity_type or "-" }} {{ item.entity_id or "" }}</p>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Sem feedback registado.</p>
+        {% endfor %}
+      </div>
+    </section>
   </main>
 </div>
 {% endblock %}

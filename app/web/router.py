@@ -11,6 +11,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
+from app.models.pilot import PilotFeedback
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
 from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
@@ -81,6 +82,12 @@ WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 
+PILOT_FEEDBACK_KINDS = [
+    ("question", "Pedir ajuda"),
+    ("experience", "Relatar experiencia"),
+]
+PILOT_FEEDBACK_KIND_LABELS = dict(PILOT_FEEDBACK_KINDS)
+
 
 @web_router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -121,6 +128,9 @@ def admin_page(request: Request):
         user = db.get(User, user_id)
         if not user:
             return RedirectResponse("/login", status_code=303)
+        pilot_feedback_items = db.scalars(
+            select(PilotFeedback).order_by(PilotFeedback.id.desc()).limit(20)
+        ).all()
         return templates.TemplateResponse(
             request,
             "admin.html",
@@ -128,8 +138,95 @@ def admin_page(request: Request):
                 "user": user,
                 "permissions": sorted(get_user_permission_codes(db, user)),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
+                "pilot_feedback_items": pilot_feedback_items,
+                "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
             },
         )
+
+
+@web_router.get("/pilot-feedback/new", response_class=HTMLResponse)
+def pilot_feedback_form(
+    request: Request,
+    kind: str = "question",
+    source_area: str = "workshop",
+    entity_type: str = "",
+    entity_id: str = "",
+    return_url: str = "",
+    saved: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if kind not in PILOT_FEEDBACK_KIND_LABELS:
+        kind = "question"
+    return templates.TemplateResponse(
+        request,
+        "pilot_feedback_form.html",
+        {
+            "kind": kind,
+            "kind_label": PILOT_FEEDBACK_KIND_LABELS[kind],
+            "source_area": source_area,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "return_url": return_url,
+            "saved": saved,
+            "kind_labels": PILOT_FEEDBACK_KIND_LABELS,
+        },
+    )
+
+
+@web_router.post("/pilot-feedback", response_class=HTMLResponse)
+def pilot_feedback_create(
+    request: Request,
+    kind: str = Form("question"),
+    source_area: str = Form("workshop"),
+    entity_type: str = Form(""),
+    entity_id: str = Form(""),
+    subject: str = Form(""),
+    body: str = Form(""),
+    current_url: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if kind not in PILOT_FEEDBACK_KIND_LABELS:
+        kind = "question"
+
+    clean_subject = subject.strip()
+    clean_body = body.strip() or "Registo criado sem detalhe."
+    with SessionLocal() as db:
+        item = PilotFeedback(
+            kind=kind,
+            status="open",
+            source_area=source_area.strip() or None,
+            entity_type=entity_type.strip() or None,
+            entity_id=entity_id.strip() or None,
+            subject=clean_subject or PILOT_FEEDBACK_KIND_LABELS[kind],
+            body=clean_body,
+            current_url=current_url.strip() or None,
+            user_id=user_id,
+        )
+        db.add(item)
+        db.flush()
+        record_audit(
+            db,
+            action="pilot.feedback.created",
+            entity_type="pilot_feedback",
+            entity_id=item.id,
+            detail=f"Feedback de piloto registado: {PILOT_FEEDBACK_KIND_LABELS[kind]}",
+            after_json={
+                "kind": kind,
+                "source_area": item.source_area,
+                "linked_entity_type": item.entity_type,
+                "linked_entity_id": item.entity_id,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    if return_url.startswith("/"):
+        return RedirectResponse(add_query_flag(return_url, "feedback_saved", "1"), status_code=303)
+    return RedirectResponse(f"/pilot-feedback/new?kind={kind}&saved=1", status_code=303)
 
 
 @web_router.get("/fleet", response_class=HTMLResponse)
@@ -401,7 +498,12 @@ def vehicle_create_task(
 
 
 @web_router.get("/workshop", response_class=HTMLResponse)
-def workshop_page(request: Request, created: str | None = None, closed: str | None = None):
+def workshop_page(
+    request: Request,
+    created: str | None = None,
+    closed: str | None = None,
+    feedback_saved: str | None = None,
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
@@ -421,6 +523,7 @@ def workshop_page(request: Request, created: str | None = None, closed: str | No
                 "vehicles": vehicles,
                 "created": created,
                 "closed": closed,
+                "feedback_saved": feedback_saved,
                 "error": None,
                 "opening_types": WORKSHOP_OPENING_TYPES,
                 "opening_type_labels": WORKSHOP_OPENING_LABELS,
@@ -512,6 +615,7 @@ def render_workshop_detail(
     *,
     noted: str | None = None,
     evidence_created: str | None = None,
+    feedback_saved: str | None = None,
     error: str | None = None,
     status_code: int = 200,
 ):
@@ -536,6 +640,7 @@ def render_workshop_detail(
             "evidences": evidences,
             "noted": noted,
             "evidence_created": evidence_created,
+            "feedback_saved": feedback_saved,
             "error": error,
             "statuses": WORKSHOP_STATUSES,
             "decisions": WORKSHOP_DECISIONS,
@@ -559,6 +664,7 @@ def workshop_detail(
     process_id: int,
     noted: str | None = None,
     evidence_created: str | None = None,
+    feedback_saved: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -573,6 +679,7 @@ def workshop_detail(
             process,
             noted=noted,
             evidence_created=evidence_created,
+            feedback_saved=feedback_saved,
         )
 
 
@@ -1144,3 +1251,8 @@ def parse_optional_int(value: str | None) -> int | None:
     if not value or not value.strip():
         return None
     return int(value.strip())
+
+
+def add_query_flag(url: str, key: str, value: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{key}={value}"

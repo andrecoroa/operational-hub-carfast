@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">CarFast</p>
+      <h1>Piloto</h1>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/task-board">Tarefas</a>
+      <a href="/workshop">Oficina</a>
+      <a href="/fleet">Frota</a>
+      <a href="/imports">Importacoes</a>
+      <a href="/admin">Administracao</a>
+    </nav>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Apoio ao piloto</p>
+        <h2>{{ kind_label }}</h2>
+      </div>
+      {% if return_url %}
+        <a class="button-link secondary-link" href="{{ return_url }}">Voltar</a>
+      {% else %}
+        <a class="button-link secondary-link" href="/workshop">Voltar</a>
+      {% endif %}
+    </header>
+
+    {% if saved %}
+      <div class="success">Registo guardado.</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <form method="post" action="/pilot-feedback" class="form-panel form-stack task-form">
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <input type="hidden" name="source_area" value="{{ source_area }}">
+        <input type="hidden" name="entity_type" value="{{ entity_type }}">
+        <input type="hidden" name="entity_id" value="{{ entity_id }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="current_url" value="{{ return_url }}">
+        <label>
+          Assunto
+          <input type="text" name="subject" maxlength="200" placeholder="Pode ficar vazio">
+        </label>
+        <label>
+          Descricao
+          {% if kind == "question" %}
+            <textarea name="body" rows="8" placeholder="Escreve a duvida ou o ponto onde ficaste bloqueado"></textarea>
+          {% else %}
+            <textarea name="body" rows="8" placeholder="Conta o que correu bem, o que atrapalhou ou o que faltou"></textarea>
+          {% endif %}
+        </label>
+        <button type="submit">Guardar</button>
+      </form>
+
+      <article class="section">
+        <h3>Contexto</h3>
+        <dl class="detail-list">
+          <div><dt>Tipo</dt><dd>{{ kind_label }}</dd></div>
+          <div><dt>Area</dt><dd>{{ source_area or "-" }}</dd></div>
+          <div><dt>Ligacao</dt><dd>{{ entity_type or "-" }} {{ entity_id or "" }}</dd></div>
+        </dl>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

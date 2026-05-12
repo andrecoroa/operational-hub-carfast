@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.models import Base
 from app.models.audit import AuditLog
+from app.models.pilot import PilotFeedback
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleOperationalStatusEvent
 from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
@@ -111,6 +112,36 @@ def test_complete_workshop_training_flow():
     )
     assert evidence.status_code == 303
 
+    help_request = client.post(
+        "/pilot-feedback",
+        data={
+            "kind": "question",
+            "source_area": "workshop",
+            "entity_type": "workshop_process",
+            "entity_id": str(process_id),
+            "subject": "Duvida no diagnostico",
+            "body": "Nao sei se devo colocar em aguardar analise ou aguardar material.",
+            "return_url": f"/workshop/{process_id}",
+        },
+        follow_redirects=False,
+    )
+    assert help_request.status_code == 303
+
+    experience_report = client.post(
+        "/pilot-feedback",
+        data={
+            "kind": "experience",
+            "source_area": "workshop",
+            "entity_type": "workshop_process",
+            "entity_id": str(process_id),
+            "subject": "",
+            "body": "O registo de evidencia foi simples, mas falta ver o historico fechado.",
+            "return_url": f"/workshop/{process_id}",
+        },
+        follow_redirects=False,
+    )
+    assert experience_report.status_code == 303
+
     decision = client.post(
         f"/workshop/{process_id}/flow",
         data={
@@ -188,8 +219,16 @@ def test_complete_workshop_training_flow():
                 Task.entity_id == str(vehicle_id),
             )
         ) == 1
+        assert db.scalar(
+            select(func.count()).select_from(PilotFeedback).where(
+                PilotFeedback.entity_type == "workshop_process",
+                PilotFeedback.entity_id == str(process_id),
+            )
+        ) == 2
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200
     assert client.get(f"/workshop/{process_id}").status_code == 200
     assert client.get(f"/fleet/{vehicle_id}").status_code == 200
+    assert client.get("/pilot-feedback/new?kind=question&source_area=workshop").status_code == 200
+    assert client.get("/admin").status_code == 200

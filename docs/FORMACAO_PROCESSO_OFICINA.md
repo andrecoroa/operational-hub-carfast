@@ -22,6 +22,13 @@ Use uma viatura ja importada em Frota. Para treino, o exemplo usado foi:
 2. No menu lateral, escolher `Oficina`.
 3. Confirmar que aparece a pagina de processos de oficina.
 
+Durante o piloto existem dois botoes de apoio:
+
+- `Pedir ajuda`: usar quando houver uma duvida durante a execucao.
+- `Relatar experiencia`: usar para indicar dificuldades, melhorias ou algo que correu bem.
+
+Quando usados dentro de um processo, estes registos ficam ligados ao processo de oficina.
+
 ### 2. Criar processo
 
 Preencher o formulario de novo processo:
@@ -190,6 +197,7 @@ No final do treino deve existir:
 - 1 decisao registada;
 - 1 nota final na viatura;
 - 1 tarefa de follow-up ligada a viatura;
+- perguntas ou relatos de experiencia registados, se existirem;
 - auditoria das acoes principais.
 
 ## Regras de utilizacao
@@ -200,4 +208,5 @@ No final do treino deve existir:
 - Usar `Sem intervencao necessaria` quando houve analise mas nao ha necessidade de atuar.
 - Registar foto, video, documento ou nota tecnica sempre que existir uma anomalia.
 - No piloto, nao forcar preenchimento de campos que ainda nao tenham informacao disponivel.
+- Usar `Pedir ajuda` e `Relatar experiencia` durante a execucao real, nao apenas no fim.
 - Fechar apenas quando o resultado final estiver claro.

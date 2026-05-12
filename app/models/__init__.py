@@ -4,6 +4,7 @@ from app.models.base import Base
 from app.models.documents import Document, DocumentLink
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
+from app.models.pilot import PilotFeedback
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.tasks import Task, TaskComment, TaskDocument, TaskHistory
 from app.models.vehicles import (
@@ -28,6 +29,7 @@ __all__ = [
     "ImportRawRow",
     "OrganizationalUnit",
     "Permission",
+    "PilotFeedback",
     "Role",
     "RolePermission",
     "SettingsCatalog",

@@ -34,6 +34,9 @@
     {% if evidence_created %}
       <div class="success">Evidência registada.</div>
     {% endif %}
+    {% if incident_created %}
+      <div class="success">Incidente criado.</div>
+    {% endif %}
     {% if feedback_saved %}
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
@@ -53,7 +56,7 @@
           <div><dt>KM entrada</dt><dd>{{ process.km_entry or "-" }}</dd></div>
           <div><dt>Saída prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
           <div><dt>Decisão</dt><dd>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</dd></div>
-          <div><dt>Nota decisao</dt><dd>{{ process.decision_note or "-" }}</dd></div>
+          <div><dt>Nota decisão</dt><dd>{{ process.decision_note or "-" }}</dd></div>
           <div><dt>Nota inicial</dt><dd>{{ process.note or "-" }}</dd></div>
         </dl>
       </article>
@@ -74,14 +77,14 @@
         <label>
           Decisão
           <select name="decision">
-            <option value="">Sem decisao</option>
+            <option value="">Sem decisão</option>
             {% for code, label in decisions %}
               <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
         <label>
-          Nota da decisao
+          Nota da decisão
           <textarea name="decision_note" rows="4">{{ process.decision_note or "" }}</textarea>
         </label>
         <button type="submit">Atualizar fluxo</button>
@@ -92,7 +95,7 @@
       <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-panel form-stack">
         <div class="panel-heading">
           <p class="eyebrow">Anomalias</p>
-          <h3>Registar evidencia</h3>
+          <h3>Registar evidência</h3>
         </div>
         <label>
           Fase
@@ -134,10 +137,10 @@
         </label>
         <label>
           Descrição
-          <textarea name="description" rows="4" placeholder="Pode ficar vazio se ainda nao houver detalhe"></textarea>
+          <textarea name="description" rows="4" placeholder="Pode ficar vazio se ainda não houver detalhe"></textarea>
         </label>
         <input name="storage_provider" type="hidden" value="external">
-        <button type="submit">Gravar evidencia</button>
+        <button type="submit">Gravar evidência</button>
       </form>
 
       <article class="section">
@@ -160,7 +163,102 @@
               {% endif %}
             </article>
           {% else %}
-            <p class="muted">Sem evidencias registadas.</p>
+            <p class="muted">Sem evidências registadas.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="detail-grid">
+      <form method="post" action="/workshop/{{ process.id }}/incidents" class="form-panel form-stack">
+        <div class="panel-heading">
+          <p class="eyebrow">Incidentes</p>
+          <h3>Criar incidente</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
+        </label>
+        <div class="form-grid">
+          <label>
+            Tipo
+            <select name="incident_type">
+              {% for code, label in incident_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Categoria
+            <select name="category">
+              {% for code, label in incident_categories %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label>
+          Gravidade
+          <select name="severity">
+            {% for code, label in incident_severities %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Descrição
+          <textarea name="description" rows="4" placeholder="Regista o que aconteceu, sem obrigar a preencher campos que ainda não sabes"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            Tipo de evidência
+            <select name="evidence_type">
+              {% for code, label in incident_evidence_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Link da evidência
+            <input name="evidence_url" type="url" placeholder="SharePoint, OneDrive ou outro link">
+          </label>
+        </div>
+        <label>
+          Explicação da evidência
+          <textarea name="evidence_description" rows="3" placeholder="Pode ser uma nota sobre foto, vídeo ou áudio"></textarea>
+        </label>
+        <input name="storage_provider" type="hidden" value="external">
+        <button type="submit">Criar incidente</button>
+      </form>
+
+      <article class="section">
+        <h3>Incidentes do processo</h3>
+        <div class="event-list">
+          {% for item in incidents %}
+            <article class="event-item">
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
+              </div>
+              <p>
+                {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
+                &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
+                &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
+                &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
+              </p>
+              {% if item.description %}
+                <p>{{ item.description }}</p>
+              {% endif %}
+              {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
+                <p class="table-note">
+                  Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
+                  {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
+                  {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
+                </p>
+              {% endfor %}
+            </article>
+          {% else %}
+            <p class="muted">Sem incidentes registados.</p>
           {% endfor %}
         </div>
       </article>

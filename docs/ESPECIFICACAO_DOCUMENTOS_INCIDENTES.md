@@ -248,3 +248,24 @@ Adiar:
 - classificação automática por IA;
 - integração Microsoft Lists.
 
+## MVP iniciado
+
+Já ficou implementado o primeiro passo operacional:
+
+- criação de incidente dentro do processo de oficina;
+- ligação automática à viatura e ao processo;
+- categoria, tipo e gravidade;
+- evidência por URL externo;
+- suporte a evidência de foto, vídeo, documento, link e áudio/nota de voz;
+- registo em notas do processo;
+- eventos internos do incidente;
+- auditoria.
+
+Ainda falta:
+
+- página própria de detalhe do incidente;
+- alteração de estado do incidente;
+- criação opcional de tarefa de follow-up;
+- ligação ao arquivo documental;
+- upload/gravação direta para 365;
+- gravação de voz no browser.

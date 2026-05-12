@@ -7,6 +7,7 @@ from app.main import app
 from app.models import Base
 from app.models.audit import AuditLog
 from app.models.admin import User
+from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.pilot import PilotFeedback
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleOperationalStatusEvent
@@ -133,6 +134,23 @@ def test_complete_workshop_training_flow():
         follow_redirects=False,
     )
     assert evidence.status_code == 303
+
+    incident_response = client.post(
+        f"/workshop/{process_id}/incidents",
+        data={
+            "title": "",
+            "description": "Pastilha com desgaste anormal e ruído em travagem.",
+            "incident_type": "technical",
+            "category": "wear",
+            "severity": "high",
+            "evidence_type": "audio",
+            "evidence_description": "Nota de voz do operador a explicar o ruído ouvido no teste.",
+            "evidence_url": "https://example.com/sharepoint/oficina/bz81sc/audio-ruido.m4a",
+            "storage_provider": "sharepoint",
+        },
+        follow_redirects=False,
+    )
+    assert incident_response.status_code == 303
 
     help_request = client.post(
         "/pilot-feedback",
@@ -331,6 +349,23 @@ def test_complete_workshop_training_flow():
                 WorkshopProcessEvidence.description == "Evidência registada sem descrição.",
             )
         ) == 1
+        incident = db.scalar(select(Incident).where(Incident.workshop_process_id == process_id))
+        assert incident is not None
+        assert incident.title == "Pastilha com desgaste anormal e ruído em travagem."
+        assert incident.vehicle_id == vehicle_id
+        assert incident.plate == "BZ81SC"
+        assert incident.category == "wear"
+        assert incident.severity == "high"
+        assert db.scalar(
+            select(func.count()).select_from(IncidentEvidence).where(
+                IncidentEvidence.incident_id == incident.id,
+                IncidentEvidence.evidence_type == "audio",
+                IncidentEvidence.external_url == "https://example.com/sharepoint/oficina/bz81sc/audio-ruido.m4a",
+            )
+        ) == 1
+        assert db.scalar(
+            select(func.count()).select_from(IncidentEvent).where(IncidentEvent.incident_id == incident.id)
+        ) >= 2
         assert db.scalar(
             select(func.count()).select_from(VehicleOperationalStatusEvent).where(
                 VehicleOperationalStatusEvent.vehicle_id == vehicle_id
@@ -373,7 +408,10 @@ def test_complete_workshop_training_flow():
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200
-    assert client.get(f"/workshop/{process_id}").status_code == 200
+    workshop_detail_page = client.get(f"/workshop/{process_id}")
+    assert workshop_detail_page.status_code == 200
+    assert "Incidentes do processo" in workshop_detail_page.text
+    assert "Áudio/nota de voz" in workshop_detail_page.text
     assert client.get(f"/fleet/{vehicle_id}").status_code == 200
     fleet_page = client.get("/fleet")
     assert fleet_page.status_code == 200

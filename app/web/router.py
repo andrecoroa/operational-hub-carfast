@@ -12,6 +12,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
+from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.pilot import PilotFeedback
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
@@ -60,9 +61,9 @@ WORKSHOP_DECISIONS = [
 
 WORKSHOP_EVIDENCE_TYPES = [
     ("photo", "Foto"),
-    ("video", "Video"),
+    ("video", "Vídeo"),
     ("document", "Documento"),
-    ("note", "Nota tecnica"),
+    ("note", "Nota técnica"),
 ]
 
 WORKSHOP_EVIDENCE_CATEGORIES = [
@@ -91,6 +92,60 @@ WORKSHOP_DECISION_LABELS = dict(WORKSHOP_DECISIONS)
 WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
+
+INCIDENT_TYPES = [
+    ("technical", "Técnico"),
+    ("damage", "Dano"),
+    ("safety", "Segurança"),
+    ("customer", "Cliente"),
+    ("supplier", "Fornecedor"),
+    ("operational", "Operacional"),
+    ("other", "Outro"),
+]
+INCIDENT_TYPE_LABELS = dict(INCIDENT_TYPES)
+
+INCIDENT_CATEGORIES = [
+    ("noise", "Ruído anormal"),
+    ("visible_damage", "Dano visível"),
+    ("warning_light", "Luz de avaria"),
+    ("wear", "Desgaste irregular"),
+    ("leak", "Fuga"),
+    ("broken_part", "Peça partida"),
+    ("safety", "Segurança"),
+    ("documentation", "Documentação"),
+    ("customer_report", "Reporte de cliente"),
+    ("other", "Outra situação"),
+]
+INCIDENT_CATEGORY_LABELS = dict(INCIDENT_CATEGORIES)
+
+INCIDENT_SEVERITIES = [
+    ("low", "Baixa"),
+    ("medium", "Média"),
+    ("high", "Alta"),
+    ("critical", "Crítica"),
+]
+INCIDENT_SEVERITY_LABELS = dict(INCIDENT_SEVERITIES)
+
+INCIDENT_STATUSES = [
+    ("new", "Novo"),
+    ("analysis", "Em análise"),
+    ("in_treatment", "Em tratamento"),
+    ("waiting_decision", "A aguardar decisão"),
+    ("waiting_supplier", "A aguardar fornecedor"),
+    ("resolved", "Resolvido"),
+    ("closed", "Fechado"),
+    ("no_action_needed", "Sem ação necessária"),
+]
+INCIDENT_STATUS_LABELS = dict(INCIDENT_STATUSES)
+
+INCIDENT_EVIDENCE_TYPES = [
+    ("photo", "Foto"),
+    ("video", "Vídeo"),
+    ("audio", "Áudio/nota de voz"),
+    ("document", "Documento"),
+    ("link", "Link externo"),
+]
+INCIDENT_EVIDENCE_TYPE_LABELS = dict(INCIDENT_EVIDENCE_TYPES)
 
 TASK_STATUSES = [
     ("new", "Nova"),
@@ -772,6 +827,7 @@ def render_workshop_detail(
     *,
     noted: str | None = None,
     evidence_created: str | None = None,
+    incident_created: str | None = None,
     feedback_saved: str | None = None,
     error: str | None = None,
     status_code: int = 200,
@@ -787,6 +843,19 @@ def render_workshop_detail(
         .where(WorkshopProcessEvidence.process_id == process.id)
         .order_by(WorkshopProcessEvidence.id.desc())
     ).all()
+    incidents = db.scalars(
+        select(Incident)
+        .where(Incident.workshop_process_id == process.id)
+        .order_by(Incident.id.desc())
+    ).all()
+    incident_evidences = db.scalars(
+        select(IncidentEvidence)
+        .where(IncidentEvidence.incident_id.in_([item.id for item in incidents]))
+        .order_by(IncidentEvidence.id.desc())
+    ).all() if incidents else []
+    incident_evidences_by_incident: dict[int, list[IncidentEvidence]] = {}
+    for item in incident_evidences:
+        incident_evidences_by_incident.setdefault(item.incident_id, []).append(item)
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -795,8 +864,11 @@ def render_workshop_detail(
             "vehicle": vehicle,
             "notes": notes,
             "evidences": evidences,
+            "incidents": incidents,
+            "incident_evidences_by_incident": incident_evidences_by_incident,
             "noted": noted,
             "evidence_created": evidence_created,
+            "incident_created": incident_created,
             "feedback_saved": feedback_saved,
             "error": error,
             "statuses": WORKSHOP_STATUSES,
@@ -810,6 +882,15 @@ def render_workshop_detail(
             "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
             "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
             "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
+            "incident_types": INCIDENT_TYPES,
+            "incident_type_labels": INCIDENT_TYPE_LABELS,
+            "incident_categories": INCIDENT_CATEGORIES,
+            "incident_category_labels": INCIDENT_CATEGORY_LABELS,
+            "incident_severities": INCIDENT_SEVERITIES,
+            "incident_severity_labels": INCIDENT_SEVERITY_LABELS,
+            "incident_status_labels": INCIDENT_STATUS_LABELS,
+            "incident_evidence_types": INCIDENT_EVIDENCE_TYPES,
+            "incident_evidence_type_labels": INCIDENT_EVIDENCE_TYPE_LABELS,
         },
         status_code=status_code,
     )
@@ -821,6 +902,7 @@ def workshop_detail(
     process_id: int,
     noted: str | None = None,
     evidence_created: str | None = None,
+    incident_created: str | None = None,
     feedback_saved: str | None = None,
 ):
     if not get_web_user_id(request):
@@ -836,6 +918,7 @@ def workshop_detail(
             process,
             noted=noted,
             evidence_created=evidence_created,
+            incident_created=incident_created,
             feedback_saved=feedback_saved,
         )
 
@@ -954,6 +1037,119 @@ def workshop_add_evidence(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?evidence_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/incidents", response_class=HTMLResponse)
+def workshop_create_incident(
+    request: Request,
+    process_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    incident_type: str = Form("technical"),
+    category: str = Form("other"),
+    severity: str = Form("medium"),
+    evidence_type: str = Form("photo"),
+    evidence_description: str = Form(""),
+    evidence_url: str = Form(""),
+    storage_provider: str = Form("external"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    if incident_type not in INCIDENT_TYPE_LABELS:
+        incident_type = "technical"
+    if category not in INCIDENT_CATEGORY_LABELS:
+        category = "other"
+    if severity not in INCIDENT_SEVERITY_LABELS:
+        severity = "medium"
+    if evidence_type not in INCIDENT_EVIDENCE_TYPE_LABELS:
+        evidence_type = "photo"
+
+    clean_description = description.strip()
+    clean_evidence_description = evidence_description.strip()
+    clean_evidence_url = evidence_url.strip()
+    clean_provider = storage_provider.strip() or "external"
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        clean_title = title.strip()
+        if not clean_title:
+            clean_title = clean_description.splitlines()[0][:160] if clean_description else ""
+        if not clean_title:
+            clean_title = f"Incidente {INCIDENT_CATEGORY_LABELS.get(category, category)}"
+
+        incident = Incident(
+            title=clean_title,
+            description=clean_description or None,
+            incident_type=incident_type,
+            category=category,
+            severity=severity,
+            status="new",
+            source="workshop",
+            vehicle_id=process.vehicle_id,
+            workshop_process_id=process.id,
+            plate=vehicle.plate if vehicle else None,
+            created_by_id=user_id,
+            occurred_at=datetime.now(UTC),
+        )
+        db.add(incident)
+        db.flush()
+        db.add(
+            IncidentEvent(
+                incident_id=incident.id,
+                action="created",
+                new_value=incident.title,
+                user_id=user_id,
+            )
+        )
+        if clean_evidence_url or clean_evidence_description:
+            db.add(
+                IncidentEvidence(
+                    incident_id=incident.id,
+                    evidence_type=evidence_type,
+                    description=clean_evidence_description or None,
+                    storage_provider=clean_provider,
+                    external_url=clean_evidence_url or None,
+                    user_id=user_id,
+                )
+            )
+            db.add(
+                IncidentEvent(
+                    incident_id=incident.id,
+                    action="evidence_added",
+                    new_value=INCIDENT_EVIDENCE_TYPE_LABELS.get(evidence_type, evidence_type),
+                    user_id=user_id,
+                )
+            )
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=f"Incidente criado: {incident.title}",
+            )
+        )
+        record_audit(
+            db,
+            action="incident.created",
+            entity_type="incident",
+            entity_id=incident.id,
+            detail=f"Incidente criado no processo de oficina: {incident.title}",
+            after_json={
+                "workshop_process_id": process.id,
+                "vehicle_id": process.vehicle_id,
+                "category": category,
+                "severity": severity,
+                "has_evidence": bool(clean_evidence_url or clean_evidence_description),
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?incident_created=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/flow")

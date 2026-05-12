@@ -7,14 +7,20 @@
       <h1>Operational Hub</h1>
     </div>
     <nav>
+      <span class="nav-section-label">Operações</span>
       <a href="/">Dashboard</a>
       <a href="/task-board" class="active">Centro de Tarefas</a>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
+      <span class="nav-section-label">Sistema</span>
       <a href="/imports">Importações</a>
       <a href="/documents">Documentos</a>
       <a href="/admin">Administração</a>
     </nav>
+    <div class="sidebar-status">
+      <span class="status-dot"></span>
+      <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>
+    </div>
   </aside>
   <main class="content">
     <header class="topbar">
@@ -22,21 +28,49 @@
         <p class="eyebrow">Centro operacional</p>
         <h2>Centro de Tarefas</h2>
       </div>
+      <div class="topbar-tools">
+        <label class="global-search" aria-label="Pesquisa global">
+          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
+        </label>
+        <span class="top-icon-button" aria-label="Notificações">3</span>
+        <span class="user-chip">
+          <span class="user-avatar">CF</span>
+          <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>
+        </span>
+      </div>
     </header>
 
+    <section class="page-intro">
+      <h3>Centro de Tarefas</h3>
+      <p>Escolha o que pretende fazer.</p>
+    </section>
+
     <section class="task-center-grid">
-      <a class="task-center-card" href="/task-board/new">
-        <span class="eyebrow">Criação</span>
-        <strong>Novo registo</strong>
-        <p>Criar uma tarefa, comunicação ou incidente com destino definido por pessoa ou equipa.</p>
-        <span class="button-link">Criar tarefa</span>
+      <a class="task-center-card create-card" href="/task-board/new">
+        <span class="task-card-main">
+          <span class="task-card-icon">+</span>
+          <span>
+            <strong>Nova tarefa</strong>
+            <p>Criar uma nova tarefa, comunicação ou incidente no sistema.</p>
+          </span>
+        </span>
+        <span class="button-link">Criar nova tarefa</span>
       </a>
-      <a class="task-center-card" href="/task-board/manage">
-        <span class="eyebrow">Gestão</span>
-        <strong>Acompanhar backlog</strong>
+      <a class="task-center-card manage-card" href="/task-board/manage">
+        <span class="task-card-main">
+          <span class="task-card-icon">≡</span>
+          <span>
+            <strong>Gestão de tarefas</strong>
+            <p>Acompanhar, gerir e atualizar todas as tarefas existentes.</p>
+          </span>
+        </span>
+        <span class="button-link blue-link">Abrir gestão de tarefas</span>
+      </a>
+      <article class="info-card">
+        <h3>Dica rápida</h3>
+        <p>Se tiver dúvida, crie uma tarefa ou consulte a gestão para encontrar o que precisa.</p>
         <p>{{ open_count }} tarefas abertas. {{ due_today }} com limite hoje.</p>
-        <span class="button-link secondary-link">Abrir gestão</span>
-      </a>
+      </article>
     </section>
   </main>
 </div>

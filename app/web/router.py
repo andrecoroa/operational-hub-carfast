@@ -1888,10 +1888,12 @@ def document_update(
 
 @web_router.get("/task-board", response_class=HTMLResponse)
 def task_center(request: Request):
-    if not get_web_user_id(request):
+    user_id = get_web_user_id(request)
+    if not user_id:
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
+        current_user = db.get(User, user_id)
         today = date.today()
         open_count = db.scalar(
             select(func.count()).select_from(Task).where(
@@ -1912,6 +1914,7 @@ def task_center(request: Request):
             {
                 "open_count": open_count,
                 "due_today": due_today,
+                "current_user": current_user,
             },
         )
 
@@ -2061,6 +2064,7 @@ def task_board_manage(
             {
                 "tasks": tasks,
                 "users": users,
+                "current_user": user_by_id.get(user_id),
                 "user_by_id": user_by_id,
                 "teams": teams,
                 "team_by_id": team_by_id,
@@ -2101,10 +2105,12 @@ def task_new_form(
     request: Request,
     error: str | None = None,
 ):
-    if not get_web_user_id(request):
+    user_id = get_web_user_id(request)
+    if not user_id:
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
+        current_user = db.get(User, user_id)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
@@ -2112,6 +2118,7 @@ def task_new_form(
             "task_new.html",
             {
                 "users": users,
+                "current_user": current_user,
                 "teams": teams,
                 "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
                 "task_types": TASK_TYPES,
@@ -2247,6 +2254,7 @@ def task_detail(
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
+        current_user = db.get(User, get_web_user_id(request))
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
@@ -2282,6 +2290,7 @@ def task_detail(
                 "linked_vehicle": linked_vehicle,
                 "documents": documents,
                 "users": users,
+                "current_user": current_user,
                 "user_by_id": user_by_id,
                 "teams": teams,
                 "assigned_user": assigned_user,

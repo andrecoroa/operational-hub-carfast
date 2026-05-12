@@ -359,8 +359,8 @@ def test_complete_workshop_training_flow():
 
     task_center = client.get("/task-board")
     assert task_center.status_code == 200
-    assert "Criar tarefa" in task_center.text
-    assert "Abrir gestão" in task_center.text
+    assert "Criar nova tarefa" in task_center.text
+    assert "Abrir gestão de tarefas" in task_center.text
     assert client.get("/task-board/manage?view=unassigned").status_code == 200
     assert client.get("/task-board/manage?view=overdue").status_code == 200
     assert client.get("/task-board/manage?category=workshop&assigned_to_id=" + str(paulo_id)).status_code == 200

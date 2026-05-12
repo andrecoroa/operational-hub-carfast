@@ -4,27 +4,40 @@
   <aside class="sidebar">
     <div>
       <p class="eyebrow">CarFast</p>
-      <h1>Gestão de Tarefas</h1>
+      <h1>Operational Hub</h1>
     </div>
     <nav>
+      <span class="nav-section-label">Operações</span>
       <a href="/">Dashboard</a>
       <a href="/task-board" class="active">Centro de Tarefas</a>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
+      <span class="nav-section-label">Sistema</span>
       <a href="/imports">Importações</a>
       <a href="/documents">Documentos</a>
       <a href="/admin">Administração</a>
     </nav>
+    <div class="sidebar-status">
+      <span class="status-dot"></span>
+      <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>
+    </div>
   </aside>
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Criação operacional</p>
+        <p class="eyebrow">Centro operacional</p>
         <h2>Nova tarefa</h2>
+        <p class="breadcrumb">Centro de Tarefas &gt; <strong>Nova tarefa</strong></p>
       </div>
-      <div class="button-row">
-        <a class="button-link secondary-link" href="/task-board">Centro</a>
+      <div class="topbar-tools">
+        <label class="global-search" aria-label="Pesquisa global">
+          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
+        </label>
         <a class="button-link secondary-link" href="/task-board/manage">Gestão</a>
+        <span class="user-chip">
+          <span class="user-avatar">CF</span>
+          <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>
+        </span>
       </div>
     </header>
 
@@ -32,135 +45,167 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <form method="post" action="/task-board/new" class="form-panel form-stack task-form task-create-page">
-      <div class="panel-heading">
-        <p class="eyebrow">Novo registo</p>
-        <h3>Dados essenciais</h3>
-      </div>
-      <label>
-        Assunto
-        <input type="text" name="title" maxlength="200" required>
-      </label>
-      <div class="form-grid">
+    <section class="form-page-grid">
+      <form method="post" action="/task-board/new" class="form-panel form-stack task-form task-create-page">
+        <div class="step-row">
+          <span class="step-item active"><span class="step-number">1</span>Detalhes</span>
+          <span class="step-item"><span class="step-number">2</span>Destino</span>
+          <span class="step-item"><span class="step-number">3</span>Contexto</span>
+          <span class="step-item"><span class="step-number">4</span>Revisão</span>
+        </div>
+        <div class="panel-heading">
+          <p class="eyebrow">Novo registo</p>
+          <h3>Dados essenciais</h3>
+        </div>
+        <div class="form-grid">
+          <label>
+            Natureza
+            <select name="task_type">
+              {% for code, label in task_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Categoria
+            <select name="category">
+              {% for code, label in task_categories %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in task_sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Prioridade
+            <select name="priority">
+              {% for code, label in priorities %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
         <label>
-          Natureza
-          <select name="task_type">
-            {% for code, label in task_types %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
+          Assunto
+          <input type="text" name="title" maxlength="200" required placeholder="Ex.: Dano na porta traseira esquerda">
         </label>
         <label>
-          Origem
-          <select name="source">
-            {% for code, label in task_sources %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
+          Descrição
+          <textarea name="description" rows="4" placeholder="Descreva a tarefa, incidente ou comunicação..."></textarea>
         </label>
-      </div>
-      <div class="form-grid">
+        <div class="form-grid">
+          <label>
+            Estação
+            <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa">
+          </label>
+          <label>
+            Classificação
+            <input type="text" name="subcategory" maxlength="120">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Responsável
+            <select name="assigned_to_id">
+              <option value="">Sem responsável</option>
+              {% for user in users %}
+                <option value="{{ user.id }}">{{ user.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Equipa/Fila
+            <select name="team_id">
+              <option value="">Sem equipa</option>
+              {% for team in teams %}
+                <option value="{{ team.id }}" {% if team.code == "operations" %}selected{% endif %}>{{ team.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40">
+          </label>
+          <label>
+            Data limite
+            <input type="date" name="due_on">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Cliente
+            <input type="text" name="customer_name" maxlength="200">
+          </label>
+          <label>
+            Contacto
+            <input type="text" name="customer_contact" maxlength="200">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            E-mail
+            <input type="email" name="customer_email" maxlength="255">
+          </label>
+          <label>
+            Telefone
+            <input type="text" name="customer_phone" maxlength="80">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Reserva
+            <input type="text" name="reservation_number" maxlength="120">
+          </label>
+          <label>
+            Contrato
+            <input type="text" name="contract_number" maxlength="120">
+          </label>
+        </div>
         <label>
-          Categoria
-          <select name="category">
-            {% for code, label in task_categories %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Classificação
-          <input type="text" name="subcategory" maxlength="120">
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Prioridade
-          <select name="priority">
-            {% for code, label in priorities %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Data limite
-          <input type="date" name="due_on">
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Responsável
-          <select name="assigned_to_id">
-            <option value="">Sem responsável</option>
-            {% for user in users %}
-              <option value="{{ user.id }}">{{ user.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Equipa/Fila
-          <select name="team_id">
-            <option value="">Sem equipa</option>
-            {% for team in teams %}
-              <option value="{{ team.id }}" {% if team.code == "operations" %}selected{% endif %}>{{ team.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Cliente
-          <input type="text" name="customer_name" maxlength="200">
-        </label>
-        <label>
-          Contacto
-          <input type="text" name="customer_contact" maxlength="200">
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          E-mail
-          <input type="email" name="customer_email" maxlength="255">
-        </label>
-        <label>
-          Telefone
-          <input type="text" name="customer_phone" maxlength="80">
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Matrícula
-          <input type="text" name="plate" maxlength="40">
+          Departamento/Fila
+          <input type="text" name="department" maxlength="120">
         </label>
         <label>
-          Reserva
-          <input type="text" name="reservation_number" maxlength="120">
+          ID externo
+          <input type="text" name="external_source_id" maxlength="255">
         </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Contrato
-          <input type="text" name="contract_number" maxlength="120">
-        </label>
-        <label>
-          Estação
-          <input type="text" name="station" maxlength="120">
-        </label>
-      </div>
-      <label>
-        Departamento/Fila
-        <input type="text" name="department" maxlength="120">
-      </label>
-      <label>
-        ID externo
-        <input type="text" name="external_source_id" maxlength="255">
-      </label>
-      <label>
-        Descrição
-        <textarea name="description" rows="5"></textarea>
-      </label>
-      <button type="submit">Criar tarefa</button>
-    </form>
+        <div class="button-row">
+          <a class="button-link secondary-link" href="/task-board">Cancelar</a>
+          <button type="submit">Criar tarefa</button>
+        </div>
+      </form>
+      <aside class="side-panel">
+        <article class="summary-card">
+          <h3>Resumo da tarefa</h3>
+          <ul class="summary-list">
+            <li><strong>Tipo</strong> -</li>
+            <li><strong>Prioridade</strong> -</li>
+            <li><strong>Estação</strong> -</li>
+            <li><strong>Destino</strong> -</li>
+            <li><strong>Data limite</strong> -</li>
+          </ul>
+        </article>
+        <article class="best-practices-card">
+          <h3>Boas práticas</h3>
+          <ul class="best-practices-list">
+            <li>Seja claro e objetivo no assunto.</li>
+            <li>Adicione os detalhes disponíveis.</li>
+            <li>Defina a prioridade com cuidado.</li>
+            <li>Atribua a uma pessoa ou equipa.</li>
+          </ul>
+        </article>
+      </aside>
+    </section>
   </main>
 </div>
 {% endblock %}

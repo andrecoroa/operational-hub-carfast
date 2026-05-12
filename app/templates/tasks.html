@@ -8,7 +8,13 @@
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <a href="/task-board" class="active">Gestão de Tarefas</a>
+      <div class="nav-group">
+        <a href="/task-board" class="active nav-parent">Centro de Tarefas</a>
+        <div class="nav-subnav">
+          <a href="/task-board#nova-tarefa">Criação</a>
+          <a href="/task-board#gestao-tarefas" class="active">Gestão</a>
+        </div>
+      </div>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
       <a href="/imports">Importações</a>
@@ -63,7 +69,7 @@
       </a>
     </section>
 
-    <section class="table-shell filter-panel">
+    <section class="table-shell filter-panel" id="gestao-tarefas">
       <form method="get" action="/task-board" class="filter-grid">
         <label>
           Âmbito
@@ -154,7 +160,7 @@
     </section>
 
     <section class="task-layout tasks-layout">
-      <form method="post" action="/task-board" class="form-panel form-stack task-form">
+      <form method="post" action="/task-board" class="form-panel form-stack task-form" id="nova-tarefa">
         <div class="panel-heading">
           <p class="eyebrow">Nova tarefa</p>
           <h3>Registo rápido</h3>

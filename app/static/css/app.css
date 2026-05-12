@@ -285,6 +285,36 @@ button:hover,
   color: white;
 }
 
+.nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.nav-parent {
+  margin-bottom: 2px;
+}
+
+.nav-subnav {
+  display: grid;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.sidebar .nav-subnav a {
+  padding: 8px 10px;
+  color: #b8c0cb;
+  font-size: 13px;
+  font-weight: 700;
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar .nav-subnav a.active,
+.sidebar .nav-subnav a:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-left-color: var(--brand);
+  color: white;
+}
+
 .content {
   padding: 34px;
   min-width: 0;

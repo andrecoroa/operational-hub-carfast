@@ -47,7 +47,7 @@
           <div><dt>Estado</dt><dd><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></dd></div>
           <div><dt>Categoria</dt><dd>{{ task_category_labels.get(task.category, task.category or "-") }}</dd></div>
           <div><dt>Subcategoria</dt><dd>{{ task.subcategory or "-" }}</dd></div>
-          <div><dt>Prioridade</dt><dd>{{ task.priority or "-" }}</dd></div>
+          <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
           <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
           <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
           <div><dt>Cliente</dt><dd>{{ task.customer_name or "-" }}</dd></div>
@@ -99,9 +99,9 @@
           <label>
             Prioridade
             <select name="priority">
-              <option value="normal" {% if task.priority == "normal" %}selected{% endif %}>Normal</option>
-              <option value="high" {% if task.priority == "high" %}selected{% endif %}>Alta</option>
-              <option value="low" {% if task.priority == "low" %}selected{% endif %}>Baixa</option>
+              {% for code, label in priorities %}
+                <option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
             </select>
           </label>
           <label>

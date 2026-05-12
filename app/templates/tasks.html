@@ -154,9 +154,9 @@
           <label>
             Prioridade
             <select name="priority">
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
-              <option value="low">Baixa</option>
+              {% for code, label in priorities %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
             </select>
           </label>
         </div>
@@ -255,6 +255,7 @@
                   <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
                   <p class="table-note">
                     {{ task_category_labels.get(task.category, task.category or "-") }}
+                    &middot; Prioridade {{ priority_labels.get(task.priority, task.priority or "Normal") }}
                     {% if task.subcategory %} &middot; {{ task.subcategory }}{% endif %}
                     {% if task.customer_name %} &middot; {{ task.customer_name }}{% endif %}
                     {% if task.plate %} &middot; {{ task.plate }}{% endif %}

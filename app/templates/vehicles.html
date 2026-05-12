@@ -20,6 +20,7 @@
       <div>
         <p class="eyebrow">Viaturas permanentes</p>
         <h2>Frota</h2>
+        <span>Ordenação: Unit Nr Rentway decrescente</span>
       </div>
       <a class="button-link" href="/imports/fleet">Importar XLSX</a>
     </header>
@@ -29,7 +30,7 @@
     {% endif %}
 
     <form method="get" action="/fleet" class="toolbar">
-      <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matricula, VIN, marca ou modelo">
+      <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matrícula, Unit Nr, VIN, marca ou modelo">
       <button type="submit">Pesquisar</button>
     </form>
 
@@ -37,23 +38,23 @@
       <table>
         <thead>
           <tr>
-            <th>Matricula</th>
+            <th>Matrícula</th>
+            <th>Unit Nr</th>
             <th>Marca</th>
             <th>Modelo</th>
             <th>Lifecycle</th>
             <th>Operacional</th>
-            <th>Rentway</th>
           </tr>
         </thead>
         <tbody>
           {% for vehicle in vehicles %}
             <tr>
               <td><a class="table-link" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a></td>
+              <td>{{ vehicle.rentway_unit_nr or "-" }}</td>
               <td>{{ vehicle.brand or "-" }}</td>
               <td>{{ vehicle.model or "-" }}</td>
               <td>{{ vehicle.lifecycle_status or "-" }}</td>
               <td>{{ vehicle.operational_status or "-" }}</td>
-              <td>{{ vehicle.rentway_unit_nr or "-" }}</td>
             </tr>
           {% else %}
             <tr>

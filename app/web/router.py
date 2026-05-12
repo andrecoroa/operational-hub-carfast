@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
+import re
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Form, Request, UploadFile
@@ -22,6 +23,14 @@ from app.services.users import create_user
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
+
+
+def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
+    unit = (vehicle.rentway_unit_nr or "").strip()
+    match = re.search(r"\d+", unit)
+    if match:
+        return (1, int(match.group(0)), unit)
+    return (0, 0, unit)
 
 WORKSHOP_OPENING_TYPES = [
     ("walk_in", "Entrada imediata"),
@@ -98,6 +107,13 @@ TASK_STATUSES = [
 ]
 
 TASK_STATUS_LABELS = dict(TASK_STATUSES)
+
+PRIORITIES = [
+    ("normal", "Normal"),
+    ("high", "Alta"),
+    ("low", "Baixa"),
+]
+PRIORITY_LABELS = dict(PRIORITIES)
 
 TASK_SOURCES = [
     ("manual", "Manual"),
@@ -375,7 +391,7 @@ def vehicles_page(request: Request, q: str | None = None, imported: str | None =
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
     with SessionLocal() as db:
-        stmt = select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(100)
+        stmt = select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)
         if q:
             normalized = q.strip().upper().replace(" ", "")
             stmt = stmt.where(
@@ -385,7 +401,7 @@ def vehicles_page(request: Request, q: str | None = None, imported: str | None =
                 | Vehicle.brand.ilike(f"%{q}%")
                 | Vehicle.model.ilike(f"%{q}%")
             )
-        vehicles = db.scalars(stmt).all()
+        vehicles = sorted(db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True)[:100]
         return templates.TemplateResponse(
             request,
             "vehicles.html",
@@ -1231,6 +1247,8 @@ def task_board(
                 "stations": stations,
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
+                "priorities": PRIORITIES,
+                "priority_labels": PRIORITY_LABELS,
                 "task_sources": TASK_SOURCES,
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
@@ -1287,6 +1305,7 @@ def task_create(
                 "closed": None,
                 "error": "Indica um título para a tarefa.",
                 "task_status_labels": TASK_STATUS_LABELS,
+                "priority_labels": PRIORITY_LABELS,
                 "task_sources": TASK_SOURCES,
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
@@ -1296,6 +1315,7 @@ def task_create(
                 "filters": {"q": "", "status": "", "category": "", "source": "", "assigned_to_id": "", "station": "", "view": ""},
                 "stations": [],
                 "task_statuses": TASK_STATUSES,
+                "priorities": PRIORITIES,
             },
             status_code=400,
         )
@@ -1394,6 +1414,8 @@ def task_detail(
                 "error": None,
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
+                "priorities": PRIORITIES,
+                "priority_labels": PRIORITY_LABELS,
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_LABELS,
@@ -1535,6 +1557,8 @@ def task_add_comment(
                     "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
                     "task_status_labels": TASK_STATUS_LABELS,
+                    "priorities": PRIORITIES,
+                    "priority_labels": PRIORITY_LABELS,
                     "task_source_labels": TASK_SOURCE_LABELS,
                     "task_categories": TASK_CATEGORIES,
                     "task_category_labels": TASK_CATEGORY_LABELS,

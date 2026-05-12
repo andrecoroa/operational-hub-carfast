@@ -41,10 +41,31 @@ def test_complete_workshop_training_flow():
             vin="ZFA5FBAT0SJ079652",
             brand="FIAT",
             model="600 Hibrido",
+            rentway_unit_nr="120",
+            lifecycle_status="active",
+            operational_status="free",
+        )
+        newer_vehicle = Vehicle(
+            plate="AA11AA",
+            vin="TESTUNIT200",
+            brand="FIAT",
+            model="500",
+            rentway_unit_nr="200",
+            lifecycle_status="active",
+            operational_status="free",
+        )
+        older_vehicle = Vehicle(
+            plate="BB22BB",
+            vin="TESTUNIT030",
+            brand="FIAT",
+            model="Panda",
+            rentway_unit_nr="030",
             lifecycle_status="active",
             operational_status="free",
         )
         db.add(vehicle)
+        db.add(newer_vehicle)
+        db.add(older_vehicle)
         db.commit()
         vehicle_id = vehicle.id
 
@@ -354,6 +375,10 @@ def test_complete_workshop_training_flow():
     assert client.get("/workshop").status_code == 200
     assert client.get(f"/workshop/{process_id}").status_code == 200
     assert client.get(f"/fleet/{vehicle_id}").status_code == 200
+    fleet_page = client.get("/fleet")
+    assert fleet_page.status_code == 200
+    fleet_html = fleet_page.text
+    assert fleet_html.index("200") < fleet_html.index("120") < fleet_html.index("030")
     assert client.get("/pilot-feedback/new?kind=question&source_area=workshop").status_code == 200
     assert client.get(
         f"/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={managed_task_id}"

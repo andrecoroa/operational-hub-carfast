@@ -212,10 +212,19 @@ def test_complete_workshop_training_flow():
         "/task-board",
         data={
             "title": "Contactar oficina externa",
-            "category": "oficina",
+            "source": "manual",
+            "category": "manutencao",
+            "subcategory": "Oficina externa",
             "priority": "high",
             "assigned_to_id": str(paulo_id),
             "due_on": "2026-05-14",
+            "customer_name": "Cliente Teste",
+            "customer_email": "cliente@example.com",
+            "plate": "BZ81SC",
+            "reservation_number": "RES123",
+            "contract_number": "CONT456",
+            "station": "Aeroporto Porto",
+            "department": "Oficina",
             "description": "Confirmar disponibilidade para avaliacao.",
         },
         follow_redirects=False,
@@ -230,10 +239,14 @@ def test_complete_workshop_training_flow():
     task_update = client.post(
         f"/task-board/{managed_task_id}/update",
         data={
-            "status": "in_progress",
+            "status": "in_treatment",
             "priority": "high",
+            "category": "manutencao",
+            "subcategory": "Oficina externa",
             "assigned_to_id": str(paulo_id),
             "due_on": "2026-05-15",
+            "station": "Aeroporto Porto",
+            "department": "Oficina",
         },
         follow_redirects=False,
     )
@@ -270,7 +283,17 @@ def test_complete_workshop_training_flow():
             )
         ) == 1
         managed_task = db.get(Task, managed_task_id)
-        assert managed_task.status == "in_progress"
+        assert managed_task.status == "in_treatment"
+        assert managed_task.source == "manual"
+        assert managed_task.category == "manutencao"
+        assert managed_task.subcategory == "Oficina externa"
+        assert managed_task.customer_name == "Cliente Teste"
+        assert managed_task.customer_email == "cliente@example.com"
+        assert managed_task.plate == "BZ81SC"
+        assert managed_task.reservation_number == "RES123"
+        assert managed_task.contract_number == "CONT456"
+        assert managed_task.station == "Aeroporto Porto"
+        assert managed_task.department == "Oficina"
         assert managed_task.priority == "high"
         assert managed_task.assigned_to_id == paulo_id
         assert managed_task.due_on.isoformat() == "2026-05-15"

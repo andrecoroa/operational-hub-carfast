@@ -85,13 +85,50 @@ WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 
 TASK_STATUSES = [
     ("new", "Nova"),
-    ("in_progress", "Em curso"),
-    ("waiting", "A aguardar"),
-    ("blocked", "Bloqueada"),
-    ("done", "Fechada"),
+    ("analysis", "Em análise"),
+    ("in_treatment", "Em tratamento"),
+    ("waiting_customer", "A aguardar cliente"),
+    ("waiting_internal", "A aguardar interno"),
+    ("waiting_supplier", "A aguardar fornecedor"),
+    ("answered", "Respondida"),
+    ("resolved", "Resolvida"),
+    ("closed", "Fechada"),
+    ("no_action_needed", "Sem ação necessária"),
+    ("cancelled", "Cancelada"),
 ]
 
 TASK_STATUS_LABELS = dict(TASK_STATUSES)
+
+TASK_SOURCES = [
+    ("manual", "Manual"),
+    ("email", "E-mail"),
+    ("whatsapp", "WhatsApp"),
+    ("webex", "Webex"),
+    ("rentway", "Rentway"),
+    ("system", "Sistema"),
+]
+
+TASK_SOURCE_LABELS = dict(TASK_SOURCES)
+
+TASK_CATEGORIES = [
+    ("reservas", "Reservas"),
+    ("alteracoes", "Alterações"),
+    ("cancelamentos", "Cancelamentos"),
+    ("caucoes_reembolsos", "Cauções/Reembolsos"),
+    ("faturacao", "Faturação"),
+    ("danos", "Danos"),
+    ("sinistros", "Sinistros"),
+    ("reclamacoes", "Reclamações"),
+    ("assistencia", "Assistência"),
+    ("shuttle_aeroporto", "Shuttle/Aeroporto"),
+    ("manutencao", "Manutenção"),
+    ("logistica_viaturas", "Logística de viaturas"),
+    ("brokers", "Brokers"),
+    ("corporate", "Corporate"),
+    ("sem_acao_necessaria", "Sem ação necessária"),
+]
+
+TASK_CATEGORY_LABELS = dict(TASK_CATEGORIES)
 
 PILOT_FEEDBACK_KINDS = [
     ("question", "Pedir ajuda"),
@@ -1067,16 +1104,22 @@ def task_board(request: Request, created: str | None = None, closed: str | None 
             .limit(100)
         ).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        user_by_id = {item.id: item for item in users}
         return templates.TemplateResponse(
             request,
             "tasks.html",
             {
                 "tasks": tasks,
                 "users": users,
+                "user_by_id": user_by_id,
                 "created": created,
                 "closed": closed,
                 "error": None,
                 "task_status_labels": TASK_STATUS_LABELS,
+                "task_sources": TASK_SOURCES,
+                "task_source_labels": TASK_SOURCE_LABELS,
+                "task_categories": TASK_CATEGORIES,
+                "task_category_labels": TASK_CATEGORY_LABELS,
             },
         )
 
@@ -1086,9 +1129,21 @@ def task_create(
     request: Request,
     title: str = Form(...),
     category: str = Form("operacional"),
+    subcategory: str = Form(""),
+    source: str = Form("manual"),
     priority: str = Form("normal"),
     assigned_to_id: str = Form(""),
     due_on: str = Form(""),
+    customer_name: str = Form(""),
+    customer_contact: str = Form(""),
+    customer_email: str = Form(""),
+    customer_phone: str = Form(""),
+    plate: str = Form(""),
+    reservation_number: str = Form(""),
+    contract_number: str = Form(""),
+    station: str = Form(""),
+    department: str = Form(""),
+    external_source_id: str = Form(""),
     description: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -1105,30 +1160,52 @@ def task_create(
                 .limit(100)
             ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            user_by_id = {item.id: item for item in users}
         return templates.TemplateResponse(
             request,
             "tasks.html",
             {
                 "tasks": tasks,
                 "users": users,
+                "user_by_id": user_by_id,
                 "created": None,
                 "closed": None,
                 "error": "Indica um titulo para a tarefa.",
                 "task_status_labels": TASK_STATUS_LABELS,
+                "task_sources": TASK_SOURCES,
+                "task_source_labels": TASK_SOURCE_LABELS,
+                "task_categories": TASK_CATEGORIES,
+                "task_category_labels": TASK_CATEGORY_LABELS,
             },
             status_code=400,
         )
 
     with SessionLocal() as db:
+        if source not in TASK_SOURCE_LABELS:
+            source = "manual"
+        if category not in TASK_CATEGORY_LABELS:
+            category = "reservas"
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
         task = Task(
             title=clean_title,
             description=description.strip() or None,
+            source=source,
             category=category,
+            subcategory=subcategory.strip() or None,
             status="new",
             priority=priority,
+            customer_name=customer_name.strip() or None,
+            customer_contact=customer_contact.strip() or None,
+            customer_email=customer_email.strip().lower() or None,
+            customer_phone=customer_phone.strip() or None,
+            plate=plate.strip().upper().replace(" ", "") or None,
+            reservation_number=reservation_number.strip() or None,
+            contract_number=contract_number.strip() or None,
+            station=station.strip() or None,
+            department=department.strip() or None,
+            external_source_id=external_source_id.strip() or None,
             assigned_to_id=assigned_user_id,
             created_by_id=user_id,
             due_on=parse_optional_date(due_on),
@@ -1191,6 +1268,9 @@ def task_detail(request: Request, task_id: int, commented: str | None = None):
                 "error": None,
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
+                "task_source_labels": TASK_SOURCE_LABELS,
+                "task_categories": TASK_CATEGORIES,
+                "task_category_labels": TASK_CATEGORY_LABELS,
             },
         )
 
@@ -1201,8 +1281,12 @@ def task_update(
     task_id: int,
     status: str = Form("new"),
     priority: str = Form("normal"),
+    category: str = Form("reservas"),
+    subcategory: str = Form(""),
     assigned_to_id: str = Form(""),
     due_on: str = Form(""),
+    department: str = Form(""),
+    station: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -1211,6 +1295,8 @@ def task_update(
     allowed_statuses = {code for code, _ in TASK_STATUSES}
     if status not in allowed_statuses:
         status = "new"
+    if category not in TASK_CATEGORY_LABELS:
+        category = "reservas"
 
     with SessionLocal() as db:
         task = db.get(Task, task_id)
@@ -1225,15 +1311,27 @@ def task_update(
         changes = [
             ("status", task.status, status),
             ("priority", task.priority, priority),
+            ("category", task.category, category),
+            ("subcategory", task.subcategory, subcategory.strip()),
             ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
             ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
+            ("department", task.department, department.strip()),
+            ("station", task.station, station.strip()),
         ]
 
         task.status = status
         task.priority = priority
+        task.category = category
+        task.subcategory = subcategory.strip() or None
         task.assigned_to_id = assigned_user_id
         task.due_on = parsed_due_on
-        if status == "done":
+        task.department = department.strip() or None
+        task.station = station.strip() or None
+        if status in {"resolved", "closed", "no_action_needed"}:
+            task.resolved_at = task.resolved_at or datetime.now(UTC)
+        else:
+            task.resolved_at = None
+        if status in {"closed", "cancelled", "no_action_needed"}:
             task.closed_at = task.closed_at or datetime.now(UTC)
         else:
             task.closed_at = None
@@ -1260,7 +1358,7 @@ def task_update(
         )
         db.commit()
 
-    if status == "done":
+    if status in {"closed", "cancelled", "no_action_needed"}:
         return RedirectResponse("/task-board?closed=1", status_code=303)
     return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
@@ -1311,6 +1409,9 @@ def task_add_comment(
                     "error": "Escreve um comentario antes de gravar.",
                     "task_statuses": TASK_STATUSES,
                     "task_status_labels": TASK_STATUS_LABELS,
+                    "task_source_labels": TASK_SOURCE_LABELS,
+                    "task_categories": TASK_CATEGORIES,
+                    "task_category_labels": TASK_CATEGORY_LABELS,
                 },
                 status_code=400,
             )
@@ -1339,7 +1440,8 @@ def task_close(request: Request, task_id: int):
         task = db.get(Task, task_id)
         if task and not task.closed_at:
             old_status = task.status
-            task.status = "done"
+            task.status = "closed"
+            task.resolved_at = task.resolved_at or datetime.now(UTC)
             task.closed_at = datetime.now(UTC)
             db.add(
                 TaskHistory(
@@ -1347,7 +1449,7 @@ def task_close(request: Request, task_id: int):
                     user_id=user_id,
                     field_name="status",
                     old_value=old_status,
-                    new_value="done",
+                    new_value="closed",
                 )
             )
             record_audit(

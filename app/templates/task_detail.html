@@ -35,11 +35,24 @@
       <article class="section">
         <h3>Resumo</h3>
         <dl class="detail-list">
+          <div><dt>Nº interno</dt><dd>CF-TASK-{{ "%05d"|format(task.id) }}</dd></div>
+          <div><dt>Origem</dt><dd>{{ task_source_labels.get(task.source, task.source or "Manual") }}</dd></div>
           <div><dt>Estado</dt><dd><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></dd></div>
-          <div><dt>Categoria</dt><dd>{{ task.category or "-" }}</dd></div>
+          <div><dt>Categoria</dt><dd>{{ task_category_labels.get(task.category, task.category or "-") }}</dd></div>
+          <div><dt>Subcategoria</dt><dd>{{ task.subcategory or "-" }}</dd></div>
           <div><dt>Prioridade</dt><dd>{{ task.priority or "-" }}</dd></div>
-          <div><dt>Responsavel</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
+          <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
           <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
+          <div><dt>Cliente</dt><dd>{{ task.customer_name or "-" }}</dd></div>
+          <div><dt>Contacto</dt><dd>{{ task.customer_contact or "-" }}</dd></div>
+          <div><dt>E-mail</dt><dd>{{ task.customer_email or "-" }}</dd></div>
+          <div><dt>Telefone</dt><dd>{{ task.customer_phone or "-" }}</dd></div>
+          <div><dt>Matrícula</dt><dd>{{ task.plate or "-" }}</dd></div>
+          <div><dt>Reserva</dt><dd>{{ task.reservation_number or "-" }}</dd></div>
+          <div><dt>Contrato</dt><dd>{{ task.contract_number or "-" }}</dd></div>
+          <div><dt>Estação</dt><dd>{{ task.station or "-" }}</dd></div>
+          <div><dt>Departamento/Fila</dt><dd>{{ task.department or "-" }}</dd></div>
+          <div><dt>ID externo</dt><dd>{{ task.external_source_id or "-" }}</dd></div>
           <div>
             <dt>Ligação</dt>
             <dd>
@@ -69,6 +82,14 @@
         </label>
         <div class="form-grid">
           <label>
+            Categoria
+            <select name="category">
+              {% for code, label in task_categories %}
+                <option value="{{ code }}" {% if task.category == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
             Prioridade
             <select name="priority">
               <option value="normal" {% if task.priority == "normal" %}selected{% endif %}>Normal</option>
@@ -82,7 +103,11 @@
           </label>
         </div>
         <label>
-          Responsavel
+          Subcategoria
+          <input type="text" name="subcategory" maxlength="120" value="{{ task.subcategory or "" }}">
+        </label>
+        <label>
+          Responsável
           <select name="assigned_to_id">
             <option value="">Sem responsavel</option>
             {% for user in users %}
@@ -90,6 +115,16 @@
             {% endfor %}
           </select>
         </label>
+        <div class="form-grid">
+          <label>
+            Estação
+            <input type="text" name="station" maxlength="120" value="{{ task.station or "" }}">
+          </label>
+          <label>
+            Departamento/Fila
+            <input type="text" name="department" maxlength="120" value="{{ task.department or "" }}">
+          </label>
+        </div>
         <button type="submit">Atualizar tarefa</button>
       </form>
     </section>

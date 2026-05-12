@@ -40,19 +40,31 @@
           <h3>Registo rapido</h3>
         </div>
         <label>
-          Titulo
+          Assunto
           <input type="text" name="title" maxlength="200" required>
         </label>
         <div class="form-grid">
           <label>
+            Origem
+            <select name="source">
+              {% for code, label in task_sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
             Categoria
             <select name="category">
-              <option value="operacional">Operacional</option>
-              <option value="oficina">Oficina</option>
-              <option value="frota">Frota</option>
-              <option value="stock">Stock</option>
-              <option value="administracao">Administração</option>
+              {% for code, label in task_categories %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
             </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Subcategoria
+            <input type="text" name="subcategory" maxlength="120">
           </label>
           <label>
             Prioridade
@@ -65,7 +77,47 @@
         </div>
         <div class="form-grid">
           <label>
-            Responsavel
+            Cliente
+            <input type="text" name="customer_name" maxlength="200">
+          </label>
+          <label>
+            Contacto
+            <input type="text" name="customer_contact" maxlength="200">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            E-mail
+            <input type="email" name="customer_email" maxlength="255">
+          </label>
+          <label>
+            Telefone
+            <input type="text" name="customer_phone" maxlength="80">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40">
+          </label>
+          <label>
+            Reserva
+            <input type="text" name="reservation_number" maxlength="120">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Contrato
+            <input type="text" name="contract_number" maxlength="120">
+          </label>
+          <label>
+            Estação
+            <input type="text" name="station" maxlength="120">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Responsável
             <select name="assigned_to_id">
               <option value="">Sem responsavel</option>
               {% for user in users %}
@@ -79,6 +131,14 @@
           </label>
         </div>
         <label>
+          Departamento/Fila
+          <input type="text" name="department" maxlength="120">
+        </label>
+        <label>
+          ID externo
+          <input type="text" name="external_source_id" maxlength="255">
+        </label>
+        <label>
           Descrição
           <textarea name="description" rows="4"></textarea>
         </label>
@@ -90,11 +150,9 @@
           <thead>
             <tr>
               <th>Tarefa</th>
-              <th>Categoria</th>
-              <th>Responsavel</th>
+              <th>Origem</th>
+              <th>Responsável</th>
               <th>Limite</th>
-              <th>Prioridade</th>
-              <th>Ligação</th>
               <th>Estado</th>
               <th></th>
             </tr>
@@ -104,24 +162,22 @@
               <tr>
                 <td>
                   <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
+                  <p class="table-note">
+                    {{ task_category_labels.get(task.category, task.category or "-") }}
+                    {% if task.subcategory %} &middot; {{ task.subcategory }}{% endif %}
+                    {% if task.customer_name %} &middot; {{ task.customer_name }}{% endif %}
+                    {% if task.plate %} &middot; {{ task.plate }}{% endif %}
+                  </p>
                   {% if task.description %}
                     <p class="table-note">{{ task.description }}</p>
                   {% endif %}
                 </td>
-                <td>{{ task.category or "-" }}</td>
+                <td>{{ task_source_labels.get(task.source, task.source or "Manual") }}</td>
                 <td>
-                  {% set assigned = users | selectattr("id", "equalto", task.assigned_to_id) | list %}
-                  {{ assigned[0].name if assigned else "-" }}
+                  {% set assigned = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else None %}
+                  {{ assigned.name if assigned else "-" }}
                 </td>
                 <td>{{ task.due_on or "-" }}</td>
-                <td>{{ task.priority or "-" }}</td>
-                <td>
-                  {% if task.entity_type == "vehicle" and task.entity_id %}
-                    <a class="table-link" href="/fleet/{{ task.entity_id }}">Viatura #{{ task.entity_id }}</a>
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
                 <td><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
                 <td class="row-action">
                   <form method="post" action="/task-board/{{ task.id }}/close">
@@ -131,7 +187,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="8" class="muted">Sem tarefas abertas.</td>
+                <td colspan="6" class="muted">Sem tarefas abertas.</td>
               </tr>
             {% endfor %}
           </tbody>

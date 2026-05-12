@@ -557,25 +557,35 @@ tbody tr:hover {
 
 .status-opening,
 .status-reception,
-.status-diagnosis {
+.status-diagnosis,
+.status-new,
+.status-analysis {
   background: var(--blue-soft);
   color: var(--blue);
 }
 
 .status-decision,
 .status-waiting_analysis,
-.status-waiting_parts {
+.status-waiting_parts,
+.status-waiting_customer,
+.status-waiting_internal,
+.status-waiting_supplier {
   background: var(--amber-soft);
   color: var(--amber);
 }
 
 .status-in_progress,
-.status-validation {
+.status-in_treatment,
+.status-validation,
+.status-answered,
+.status-resolved {
   background: var(--brand-soft);
   color: var(--brand-dark);
 }
 
-.status-closed {
+.status-closed,
+.status-no_action_needed,
+.status-cancelled {
   background: #eef1f2;
   color: var(--muted);
 }

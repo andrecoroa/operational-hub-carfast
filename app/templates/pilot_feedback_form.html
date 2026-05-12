@@ -34,6 +34,10 @@
 
     <section class="detail-grid">
       <form method="post" action="/pilot-feedback" class="form-panel form-stack task-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Registo</p>
+          <h3>{{ kind_label }}</h3>
+        </div>
         <input type="hidden" name="kind" value="{{ kind }}">
         <input type="hidden" name="source_area" value="{{ source_area }}">
         <input type="hidden" name="entity_type" value="{{ entity_type }}">

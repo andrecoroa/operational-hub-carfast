@@ -40,7 +40,7 @@
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
-    <section class="metric-grid">
+    <section class="metric-grid task-metrics">
       <a class="metric" href="/task-board">
         <span>Abertas</span>
         <strong>{{ metrics.open }}</strong>
@@ -132,7 +132,7 @@
       </form>
     </section>
 
-    <section class="task-layout">
+    <section class="task-layout tasks-layout">
       <form method="post" action="/task-board" class="form-panel form-stack task-form">
         <div class="panel-heading">
           <p class="eyebrow">Nova tarefa</p>
@@ -251,7 +251,15 @@
             <h3>{% if filters.view == "archived" %}Tarefas em arquivo{% elif filters.view == "all" %}Todas as tarefas{% else %}Tarefas abertas{% endif %}</h3>
           </div>
         </div>
-        <table>
+        <table class="task-table responsive-card-table">
+          <colgroup>
+            <col class="task-col-main">
+            <col class="task-col-source">
+            <col class="task-col-owner">
+            <col class="task-col-date">
+            <col class="task-col-status">
+            <col class="task-col-action">
+          </colgroup>
           <thead>
             <tr>
               <th>Tarefa</th>
@@ -265,7 +273,7 @@
           <tbody>
             {% for task in tasks %}
               <tr>
-                <td>
+                <td data-label="Tarefa">
                   <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
                   <p class="table-note">
                     {{ task_category_labels.get(task.category, task.category or "-") }}
@@ -278,14 +286,14 @@
                     <p class="table-note">{{ task.description }}</p>
                   {% endif %}
                 </td>
-                <td>{{ task_source_labels.get(task.source, task.source or "Manual") }}</td>
-                <td>
+                <td data-label="Origem">{{ task_source_labels.get(task.source, task.source or "Manual") }}</td>
+                <td data-label="Responsável">
                   {% set assigned = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else None %}
                   {{ assigned.name if assigned else "-" }}
                 </td>
-                <td>{{ task.due_on or "-" }}</td>
-                <td><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
-                <td class="row-action">
+                <td data-label="Limite">{{ task.due_on or "-" }}</td>
+                <td data-label="Estado"><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
+                <td data-label="Ação" class="row-action">
                   {% if task.status not in archive_statuses %}
                     <form method="post" action="/task-board/{{ task.id }}/close">
                       <button type="submit" class="secondary small-button">Fechar</button>

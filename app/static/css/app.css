@@ -33,6 +33,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0;
   line-height: 1.45;
+  overflow-x: hidden;
 }
 
 a {
@@ -316,6 +317,10 @@ button:hover,
   gap: 16px;
 }
 
+.task-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
 .compact-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 18px;
@@ -451,6 +456,21 @@ a.metric:hover {
   margin-top: 18px;
 }
 
+.tasks-layout {
+  grid-template-columns: 1fr;
+}
+
+.tasks-layout > .table-shell {
+  order: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.tasks-layout > .task-form {
+  order: 2;
+  max-width: 980px;
+}
+
 .task-form {
   max-width: none;
 }
@@ -513,11 +533,12 @@ a.metric:hover {
 .filter-panel {
   margin-top: 18px;
   padding: 18px;
+  overflow-x: visible;
 }
 
 .filter-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(5, minmax(140px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   align-items: end;
 }
@@ -525,6 +546,42 @@ a.metric:hover {
 .filter-actions {
   display: flex;
   gap: 10px;
+  align-items: end;
+}
+
+.filter-actions button,
+.filter-actions .button-link {
+  width: 100%;
+}
+
+.task-table {
+  min-width: 860px;
+}
+
+.task-col-main {
+  width: 38%;
+}
+
+.task-col-source,
+.task-col-date {
+  width: 12%;
+}
+
+.task-col-owner,
+.task-col-status {
+  width: 15%;
+}
+
+.task-col-action {
+  width: 8%;
+}
+
+.task-table th {
+  white-space: nowrap;
+}
+
+.task-table .pill {
+  white-space: normal;
 }
 
 .detail-grid {
@@ -780,5 +837,50 @@ a.metric:hover {
 
   .table-shell {
     overflow-x: auto;
+  }
+
+  .task-table {
+    min-width: 0;
+  }
+
+  .responsive-card-table,
+  .responsive-card-table tbody,
+  .responsive-card-table tr,
+  .responsive-card-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-card-table thead,
+  .responsive-card-table colgroup {
+    display: none;
+  }
+
+  .responsive-card-table tr {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 16px;
+  }
+
+  .responsive-card-table td {
+    border-bottom: 0;
+    padding: 7px 0;
+  }
+
+  .responsive-card-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .responsive-card-table .row-action {
+    white-space: normal;
+  }
+
+  .responsive-card-table .small-button {
+    width: 100%;
   }
 }

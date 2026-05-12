@@ -83,6 +83,16 @@ WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 
+TASK_STATUSES = [
+    ("new", "Nova"),
+    ("in_progress", "Em curso"),
+    ("waiting", "A aguardar"),
+    ("blocked", "Bloqueada"),
+    ("done", "Fechada"),
+]
+
+TASK_STATUS_LABELS = dict(TASK_STATUSES)
+
 PILOT_FEEDBACK_KINDS = [
     ("question", "Pedir ajuda"),
     ("experience", "Relatar experiencia"),
@@ -1056,14 +1066,17 @@ def task_board(request: Request, created: str | None = None, closed: str | None 
             .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
             .limit(100)
         ).all()
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         return templates.TemplateResponse(
             request,
             "tasks.html",
             {
                 "tasks": tasks,
+                "users": users,
                 "created": created,
                 "closed": closed,
                 "error": None,
+                "task_status_labels": TASK_STATUS_LABELS,
             },
         )
 
@@ -1074,6 +1087,8 @@ def task_create(
     title: str = Form(...),
     category: str = Form("operacional"),
     priority: str = Form("normal"),
+    assigned_to_id: str = Form(""),
+    due_on: str = Form(""),
     description: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -1089,26 +1104,34 @@ def task_create(
                 .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
                 .limit(100)
             ).all()
+            users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         return templates.TemplateResponse(
             request,
             "tasks.html",
             {
                 "tasks": tasks,
+                "users": users,
                 "created": None,
                 "closed": None,
                 "error": "Indica um titulo para a tarefa.",
+                "task_status_labels": TASK_STATUS_LABELS,
             },
             status_code=400,
         )
 
     with SessionLocal() as db:
+        assigned_user_id = parse_optional_int(assigned_to_id)
+        if assigned_user_id and not db.get(User, assigned_user_id):
+            assigned_user_id = None
         task = Task(
             title=clean_title,
             description=description.strip() or None,
             category=category,
             status="new",
             priority=priority,
+            assigned_to_id=assigned_user_id,
             created_by_id=user_id,
+            due_on=parse_optional_date(due_on),
         )
         db.add(task)
         db.flush()
@@ -1152,6 +1175,8 @@ def task_detail(request: Request, task_id: int, commented: str | None = None):
         linked_vehicle = None
         if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
         return templates.TemplateResponse(
             request,
             "task_detail.html",
@@ -1160,10 +1185,84 @@ def task_detail(request: Request, task_id: int, commented: str | None = None):
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
+                "users": users,
+                "assigned_user": assigned_user,
                 "commented": commented,
                 "error": None,
+                "task_statuses": TASK_STATUSES,
+                "task_status_labels": TASK_STATUS_LABELS,
             },
         )
+
+
+@web_router.post("/task-board/{task_id}/update", response_class=HTMLResponse)
+def task_update(
+    request: Request,
+    task_id: int,
+    status: str = Form("new"),
+    priority: str = Form("normal"),
+    assigned_to_id: str = Form(""),
+    due_on: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    allowed_statuses = {code for code, _ in TASK_STATUSES}
+    if status not in allowed_statuses:
+        status = "new"
+
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task:
+            return RedirectResponse("/task-board", status_code=303)
+
+        assigned_user_id = parse_optional_int(assigned_to_id)
+        if assigned_user_id and not db.get(User, assigned_user_id):
+            assigned_user_id = None
+        parsed_due_on = parse_optional_date(due_on)
+
+        changes = [
+            ("status", task.status, status),
+            ("priority", task.priority, priority),
+            ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
+            ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
+        ]
+
+        task.status = status
+        task.priority = priority
+        task.assigned_to_id = assigned_user_id
+        task.due_on = parsed_due_on
+        if status == "done":
+            task.closed_at = task.closed_at or datetime.now(UTC)
+        else:
+            task.closed_at = None
+
+        for field_name, old_value, new_value in changes:
+            if old_value != new_value:
+                db.add(
+                    TaskHistory(
+                        task_id=task.id,
+                        user_id=user_id,
+                        field_name=field_name,
+                        old_value=old_value or None,
+                        new_value=new_value or None,
+                    )
+                )
+
+        record_audit(
+            db,
+            action="task.update",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Tarefa atualizada: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    if status == "done":
+        return RedirectResponse("/task-board?closed=1", status_code=303)
+    return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
 
 @web_router.post("/task-board/{task_id}/comments", response_class=HTMLResponse)
@@ -1196,6 +1295,8 @@ def task_add_comment(
             linked_vehicle = None
             if task.entity_type == "vehicle" and task.entity_id and task.entity_id.isdigit():
                 linked_vehicle = db.get(Vehicle, int(task.entity_id))
+            users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
             return templates.TemplateResponse(
                 request,
                 "task_detail.html",
@@ -1204,8 +1305,12 @@ def task_add_comment(
                     "comments": comments,
                     "history": history,
                     "linked_vehicle": linked_vehicle,
+                    "users": users,
+                    "assigned_user": assigned_user,
                     "commented": None,
                     "error": "Escreve um comentario antes de gravar.",
+                    "task_statuses": TASK_STATUSES,
+                    "task_status_labels": TASK_STATUS_LABELS,
                 },
                 status_code=400,
             )

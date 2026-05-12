@@ -35,6 +35,10 @@
 
     <section class="task-layout">
       <form method="post" action="/task-board" class="form-panel form-stack task-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Nova tarefa</p>
+          <h3>Registo rapido</h3>
+        </div>
         <label>
           Titulo
           <input type="text" name="title" maxlength="200" required>
@@ -59,6 +63,21 @@
             </select>
           </label>
         </div>
+        <div class="form-grid">
+          <label>
+            Responsavel
+            <select name="assigned_to_id">
+              <option value="">Sem responsavel</option>
+              {% for user in users %}
+                <option value="{{ user.id }}">{{ user.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Data limite
+            <input type="date" name="due_on">
+          </label>
+        </div>
         <label>
           Descricao
           <textarea name="description" rows="4"></textarea>
@@ -72,6 +91,8 @@
             <tr>
               <th>Tarefa</th>
               <th>Categoria</th>
+              <th>Responsavel</th>
+              <th>Limite</th>
               <th>Prioridade</th>
               <th>Ligacao</th>
               <th>Estado</th>
@@ -88,6 +109,11 @@
                   {% endif %}
                 </td>
                 <td>{{ task.category or "-" }}</td>
+                <td>
+                  {% set assigned = users | selectattr("id", "equalto", task.assigned_to_id) | list %}
+                  {{ assigned[0].name if assigned else "-" }}
+                </td>
+                <td>{{ task.due_on or "-" }}</td>
                 <td>{{ task.priority or "-" }}</td>
                 <td>
                   {% if task.entity_type == "vehicle" and task.entity_id %}
@@ -96,7 +122,7 @@
                     -
                   {% endif %}
                 </td>
-                <td><span class="pill">{{ task.status }}</span></td>
+                <td><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
                 <td class="row-action">
                   <form method="post" action="/task-board/{{ task.id }}/close">
                     <button type="submit" class="secondary small-button">Fechar</button>
@@ -105,7 +131,7 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="6" class="muted">Sem tarefas abertas.</td>
+                <td colspan="8" class="muted">Sem tarefas abertas.</td>
               </tr>
             {% endfor %}
           </tbody>

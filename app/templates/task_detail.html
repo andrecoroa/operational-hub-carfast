@@ -25,7 +25,7 @@
     </header>
 
     {% if commented %}
-      <div class="success">Comentario gravado.</div>
+      <div class="success">Atualizacao gravada.</div>
     {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
@@ -35,9 +35,11 @@
       <article class="section">
         <h3>Resumo</h3>
         <dl class="detail-list">
-          <div><dt>Estado</dt><dd>{{ task.status }}</dd></div>
+          <div><dt>Estado</dt><dd><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></dd></div>
           <div><dt>Categoria</dt><dd>{{ task.category or "-" }}</dd></div>
           <div><dt>Prioridade</dt><dd>{{ task.priority or "-" }}</dd></div>
+          <div><dt>Responsavel</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
+          <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
           <div>
             <dt>Ligacao</dt>
             <dd>
@@ -52,8 +54,49 @@
         </dl>
       </article>
 
+      <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack">
+        <div class="panel-heading">
+          <p class="eyebrow">Gestao</p>
+          <h3>Atualizar tarefa</h3>
+        </div>
+        <label>
+          Estado
+          <select name="status">
+            {% for code, label in task_statuses %}
+              <option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-grid">
+          <label>
+            Prioridade
+            <select name="priority">
+              <option value="normal" {% if task.priority == "normal" %}selected{% endif %}>Normal</option>
+              <option value="high" {% if task.priority == "high" %}selected{% endif %}>Alta</option>
+              <option value="low" {% if task.priority == "low" %}selected{% endif %}>Baixa</option>
+            </select>
+          </label>
+          <label>
+            Data limite
+            <input type="date" name="due_on" value="{{ task.due_on or "" }}">
+          </label>
+        </div>
+        <label>
+          Responsavel
+          <select name="assigned_to_id">
+            <option value="">Sem responsavel</option>
+            {% for user in users %}
+              <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Atualizar tarefa</button>
+      </form>
+    </section>
+
+    <section class="detail-grid">
       <form method="post" action="/task-board/{{ task.id }}/comments" class="form-panel form-stack">
-        <div>
+        <div class="panel-heading">
           <p class="eyebrow">Comentario</p>
           <h3>Adicionar comentario</h3>
         </div>
@@ -63,9 +106,6 @@
         </label>
         <button type="submit">Gravar comentario</button>
       </form>
-    </section>
-
-    <section class="detail-grid">
       <article class="section">
         <h3>Comentarios</h3>
         <div class="event-list">

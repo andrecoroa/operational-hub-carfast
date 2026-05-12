@@ -155,6 +155,12 @@ def test_complete_workshop_training_flow():
     )
     assert created_user.status_code == 303
 
+    with SessionLocal() as db:
+        paulo = db.scalar(select(User).where(User.email == "paulo.azevedo@example.com"))
+        assert paulo is not None
+        assert paulo.name == "Paulo Azevedo"
+        paulo_id = paulo.id
+
     decision = client.post(
         f"/workshop/{process_id}/flow",
         data={
@@ -202,6 +208,37 @@ def test_complete_workshop_training_flow():
     )
     assert task.status_code == 303
 
+    task_board_task = client.post(
+        "/task-board",
+        data={
+            "title": "Contactar oficina externa",
+            "category": "oficina",
+            "priority": "high",
+            "assigned_to_id": str(paulo_id),
+            "due_on": "2026-05-14",
+            "description": "Confirmar disponibilidade para avaliacao.",
+        },
+        follow_redirects=False,
+    )
+    assert task_board_task.status_code == 303
+
+    with SessionLocal() as db:
+        managed_task = db.scalar(select(Task).where(Task.title == "Contactar oficina externa"))
+        assert managed_task is not None
+        managed_task_id = managed_task.id
+
+    task_update = client.post(
+        f"/task-board/{managed_task_id}/update",
+        data={
+            "status": "in_progress",
+            "priority": "high",
+            "assigned_to_id": str(paulo_id),
+            "due_on": "2026-05-15",
+        },
+        follow_redirects=False,
+    )
+    assert task_update.status_code == 303
+
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)
         assert process.status == "closed"
@@ -232,15 +269,17 @@ def test_complete_workshop_training_flow():
                 Task.entity_id == str(vehicle_id),
             )
         ) == 1
+        managed_task = db.get(Task, managed_task_id)
+        assert managed_task.status == "in_progress"
+        assert managed_task.priority == "high"
+        assert managed_task.assigned_to_id == paulo_id
+        assert managed_task.due_on.isoformat() == "2026-05-15"
         assert db.scalar(
             select(func.count()).select_from(PilotFeedback).where(
                 PilotFeedback.entity_type == "workshop_process",
                 PilotFeedback.entity_id == str(process_id),
             )
         ) == 2
-        paulo = db.scalar(select(User).where(User.email == "paulo.azevedo@example.com"))
-        assert paulo is not None
-        assert paulo.name == "Paulo Azevedo"
         assert db.scalar(select(func.count()).select_from(AuditLog)) >= 1
 
     assert client.get("/workshop").status_code == 200

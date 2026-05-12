@@ -33,6 +33,84 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
+    <section class="metric-grid">
+      <a class="metric" href="/task-board">
+        <span>Abertas</span>
+        <strong>{{ metrics.open }}</strong>
+      </a>
+      <a class="metric" href="/task-board?view=unassigned">
+        <span>Sem responsável</span>
+        <strong>{{ metrics.unassigned }}</strong>
+      </a>
+      <a class="metric" href="/task-board?view=overdue">
+        <span>Vencidas</span>
+        <strong>{{ metrics.overdue }}</strong>
+      </a>
+      <a class="metric" href="/task-board?view=due_today">
+        <span>Limite hoje</span>
+        <strong>{{ metrics.due_today }}</strong>
+      </a>
+    </section>
+
+    <section class="table-shell filter-panel">
+      <form method="get" action="/task-board" class="filter-grid">
+        <input type="hidden" name="view" value="{{ filters.view }}">
+        <label>
+          Pesquisa
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="Assunto, cliente, matrícula, reserva, contrato">
+        </label>
+        <label>
+          Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in task_statuses %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Categoria
+          <select name="category">
+            <option value="">Todas</option>
+            {% for code, label in task_categories %}
+              <option value="{{ code }}" {% if filters.category == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Origem
+          <select name="source">
+            <option value="">Todas</option>
+            {% for code, label in task_sources %}
+              <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Responsável
+          <select name="assigned_to_id">
+            <option value="">Todos</option>
+            {% for user in users %}
+              <option value="{{ user.id }}" {% if filters.assigned_to_id == (user.id|string) %}selected{% endif %}>{{ user.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Estação
+          <input list="stations" name="station" value="{{ filters.station }}">
+          <datalist id="stations">
+            {% for item in stations %}
+              <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
+        </label>
+        <div class="filter-actions">
+          <button type="submit">Filtrar</button>
+          <a class="button-link secondary-link" href="/task-board">Limpar</a>
+        </div>
+      </form>
+    </section>
+
     <section class="task-layout">
       <form method="post" action="/task-board" class="form-panel form-stack task-form">
         <div class="panel-heading">
@@ -146,6 +224,12 @@
       </form>
 
       <section class="table-shell">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Backlog</p>
+            <h3>Tarefas abertas</h3>
+          </div>
+        </div>
         <table>
           <thead>
             <tr>

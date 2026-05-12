@@ -252,6 +252,28 @@ def test_complete_workshop_training_flow():
     )
     assert task_update.status_code == 303
 
+    unassigned_overdue = client.post(
+        "/task-board",
+        data={
+            "title": "Validar caução pendente",
+            "source": "email",
+            "category": "caucoes_reembolsos",
+            "priority": "high",
+            "due_on": "2026-05-01",
+            "customer_name": "Cliente Backlog",
+            "station": "Aeroporto Porto",
+            "department": "Faturação",
+            "description": "Tarefa vencida sem responsável para testar filtros.",
+        },
+        follow_redirects=False,
+    )
+    assert unassigned_overdue.status_code == 303
+
+    assert client.get("/task-board?view=unassigned").status_code == 200
+    assert client.get("/task-board?view=overdue").status_code == 200
+    assert client.get("/task-board?category=manutencao&assigned_to_id=" + str(paulo_id)).status_code == 200
+    assert client.get("/task-board?q=BZ81SC").status_code == 200
+
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)
         assert process.status == "closed"

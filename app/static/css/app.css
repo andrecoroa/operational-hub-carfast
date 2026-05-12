@@ -386,6 +386,15 @@ tbody tr:hover {
   box-shadow: 0 8px 20px rgba(23, 32, 38, 0.04);
 }
 
+a.metric {
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+a.metric:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
 .metric span {
   color: var(--muted);
 }
@@ -429,6 +438,7 @@ tbody tr:hover {
   grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+  margin-top: 18px;
 }
 
 .task-form {
@@ -488,6 +498,23 @@ tbody tr:hover {
 .table-link {
   color: var(--brand);
   font-weight: 700;
+}
+
+.filter-panel {
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(5, minmax(140px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .detail-grid {
@@ -651,9 +678,14 @@ tbody tr:hover {
 
   .task-layout,
   .form-grid,
+  .filter-grid,
   .detail-grid,
   .detail-list div {
     grid-template-columns: 1fr;
+  }
+
+  .filter-actions {
+    flex-direction: column;
   }
 
   .table-shell {

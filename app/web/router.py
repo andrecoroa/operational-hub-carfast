@@ -1091,20 +1091,100 @@ def import_detail(request: Request, batch_id: int):
 
 
 @web_router.get("/task-board", response_class=HTMLResponse)
-def task_board(request: Request, created: str | None = None, closed: str | None = None):
+def task_board(
+    request: Request,
+    created: str | None = None,
+    closed: str | None = None,
+    q: str = "",
+    status: str = "",
+    category: str = "",
+    source: str = "",
+    assigned_to_id: str = "",
+    station: str = "",
+    view: str = "",
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
-        tasks = db.scalars(
-            select(Task)
-            .where(Task.closed_at.is_(None))
-            .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
-            .limit(100)
-        ).all()
+        today = date.today()
+        open_stmt = select(Task).where(Task.closed_at.is_(None))
+        metrics = {
+            "open": db.scalar(select(func.count()).select_from(Task).where(Task.closed_at.is_(None))) or 0,
+            "unassigned": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.closed_at.is_(None),
+                    Task.assigned_to_id.is_(None),
+                )
+            )
+            or 0,
+            "overdue": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.closed_at.is_(None),
+                    Task.due_on.is_not(None),
+                    Task.due_on < today,
+                )
+            )
+            or 0,
+            "due_today": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.closed_at.is_(None),
+                    Task.due_on == today,
+                )
+            )
+            or 0,
+        }
+
+        stmt = open_stmt
+        if view == "unassigned":
+            stmt = stmt.where(Task.assigned_to_id.is_(None))
+        elif view == "overdue":
+            stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
+        elif view == "due_today":
+            stmt = stmt.where(Task.due_on == today)
+
+        clean_q = q.strip()
+        if clean_q:
+            like_q = f"%{clean_q}%"
+            normalized_plate = clean_q.upper().replace(" ", "")
+            stmt = stmt.where(
+                (Task.title.ilike(like_q))
+                | (Task.description.ilike(like_q))
+                | (Task.customer_name.ilike(like_q))
+                | (Task.customer_email.ilike(like_q))
+                | (Task.customer_phone.ilike(like_q))
+                | (Task.plate == normalized_plate)
+                | (Task.reservation_number.ilike(like_q))
+                | (Task.contract_number.ilike(like_q))
+                | (Task.external_source_id.ilike(like_q))
+            )
+        if status:
+            stmt = stmt.where(Task.status == status)
+        if category:
+            stmt = stmt.where(Task.category == category)
+        if source:
+            stmt = stmt.where(Task.source == source)
+        parsed_assigned_to_id = parse_optional_int(assigned_to_id)
+        if parsed_assigned_to_id:
+            stmt = stmt.where(Task.assigned_to_id == parsed_assigned_to_id)
+        if station.strip():
+            stmt = stmt.where(Task.station.ilike(f"%{station.strip()}%"))
+
+        tasks = db.scalars(stmt.order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc()).limit(100)).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
+        stations = [
+            item
+            for item in db.scalars(
+                select(Task.station)
+                .where(Task.station.is_not(None), Task.station != "")
+                .distinct()
+                .order_by(Task.station)
+                .limit(100)
+            ).all()
+            if item
+        ]
         return templates.TemplateResponse(
             request,
             "tasks.html",
@@ -1115,6 +1195,18 @@ def task_board(request: Request, created: str | None = None, closed: str | None 
                 "created": created,
                 "closed": closed,
                 "error": None,
+                "metrics": metrics,
+                "filters": {
+                    "q": q,
+                    "status": status,
+                    "category": category,
+                    "source": source,
+                    "assigned_to_id": assigned_to_id,
+                    "station": station,
+                    "view": view,
+                },
+                "stations": stations,
+                "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_LABELS,
                 "task_sources": TASK_SOURCES,
                 "task_source_labels": TASK_SOURCE_LABELS,
@@ -1176,6 +1268,10 @@ def task_create(
                 "task_source_labels": TASK_SOURCE_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_LABELS,
+                "metrics": {"open": len(tasks), "unassigned": 0, "overdue": 0, "due_today": 0},
+                "filters": {"q": "", "status": "", "category": "", "source": "", "assigned_to_id": "", "station": "", "view": ""},
+                "stations": [],
+                "task_statuses": TASK_STATUSES,
             },
             status_code=400,
         )

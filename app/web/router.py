@@ -1375,7 +1375,37 @@ def import_detail(request: Request, batch_id: int):
 
 
 @web_router.get("/task-board", response_class=HTMLResponse)
-def task_board(
+def task_center(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        today = date.today()
+        open_count = db.scalar(
+            select(func.count()).select_from(Task).where(
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            )
+        ) or 0
+        due_today = db.scalar(
+            select(func.count()).select_from(Task).where(
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                Task.due_on == today,
+            )
+        ) or 0
+        return templates.TemplateResponse(
+            request,
+            "task_center.html",
+            {
+                "open_count": open_count,
+                "due_today": due_today,
+            },
+        )
+
+
+@web_router.get("/task-board/manage", response_class=HTMLResponse)
+def task_board_manage(
     request: Request,
     created: str | None = None,
     closed: str | None = None,
@@ -1565,8 +1595,8 @@ def task_new_form(
         )
 
 
-@web_router.post("/task-board/new", response_class=HTMLResponse)
 @web_router.post("/task-board", response_class=HTMLResponse)
+@web_router.post("/task-board/new", response_class=HTMLResponse)
 def task_create(
     request: Request,
     title: str = Form(...),
@@ -1675,7 +1705,7 @@ def task_create(
         )
         db.commit()
 
-    return RedirectResponse("/task-board?created=1", status_code=303)
+    return RedirectResponse("/task-board/manage?created=1", status_code=303)
 
 
 @web_router.get("/task-board/{task_id}", response_class=HTMLResponse)
@@ -1692,7 +1722,7 @@ def task_detail(
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if not task:
-            return RedirectResponse("/task-board", status_code=303)
+            return RedirectResponse("/task-board/manage", status_code=303)
         comments = db.scalars(
             select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
         ).all()
@@ -1766,7 +1796,7 @@ def task_update(
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if not task:
-            return RedirectResponse("/task-board", status_code=303)
+            return RedirectResponse("/task-board/manage", status_code=303)
 
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
@@ -1833,7 +1863,7 @@ def task_update(
         db.commit()
 
     if status in {"closed", "cancelled", "no_action_needed"}:
-        return RedirectResponse("/task-board?closed=1", status_code=303)
+        return RedirectResponse("/task-board/manage?closed=1", status_code=303)
     return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
 
@@ -1851,7 +1881,7 @@ def task_add_comment(
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if not task:
-            return RedirectResponse("/task-board", status_code=303)
+            return RedirectResponse("/task-board/manage", status_code=303)
 
         if not clean_comment:
             comments = db.scalars(
@@ -1946,7 +1976,7 @@ def task_close(request: Request, task_id: int):
             )
             db.commit()
 
-    return RedirectResponse("/task-board?closed=1", status_code=303)
+    return RedirectResponse("/task-board/manage?closed=1", status_code=303)
 
 
 @web_router.get("/login", response_class=HTMLResponse)

@@ -8,13 +8,7 @@
     </div>
     <nav>
       <a href="/">Dashboard</a>
-      <div class="nav-group">
-        <a href="/task-board" class="active nav-parent">Centro de Tarefas</a>
-        <div class="nav-subnav">
-          <a href="/task-board/new">Criação</a>
-          <a href="/task-board" class="active">Gestão</a>
-        </div>
-      </div>
+      <a href="/task-board" class="active">Centro de Tarefas</a>
       <a href="/workshop">Oficina</a>
       <a href="/fleet">Frota</a>
       <a href="/imports">Importações</a>
@@ -30,7 +24,7 @@
       <div class="button-row">
         <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={{ task.id }}&return_url=/task-board/{{ task.id }}">Pedir ajuda</a>
         <a class="button-link feedback-link" href="/pilot-feedback/new?kind=experience&source_area=tasks&entity_type=task&entity_id={{ task.id }}&return_url=/task-board/{{ task.id }}">Relatar experiência</a>
-        <a class="button-link secondary-link" href="/task-board">Voltar</a>
+        <a class="button-link secondary-link" href="/task-board/manage">Voltar</a>
       </div>
     </header>
 

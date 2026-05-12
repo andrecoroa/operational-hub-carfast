@@ -356,19 +356,23 @@ def test_complete_workshop_training_flow():
     )
     assert archive_update.status_code == 303
 
-    assert client.get("/task-board?view=unassigned").status_code == 200
-    assert client.get("/task-board?view=overdue").status_code == 200
-    assert client.get("/task-board?category=workshop&assigned_to_id=" + str(paulo_id)).status_code == 200
-    assert client.get("/task-board?q=BZ81SC").status_code == 200
-    default_task_board = client.get("/task-board")
+    task_center = client.get("/task-board")
+    assert task_center.status_code == 200
+    assert "Criar tarefa" in task_center.text
+    assert "Abrir gestão" in task_center.text
+    assert client.get("/task-board/manage?view=unassigned").status_code == 200
+    assert client.get("/task-board/manage?view=overdue").status_code == 200
+    assert client.get("/task-board/manage?category=workshop&assigned_to_id=" + str(paulo_id)).status_code == 200
+    assert client.get("/task-board/manage?q=BZ81SC").status_code == 200
+    default_task_board = client.get("/task-board/manage")
     assert "Validar caução pendente" not in default_task_board.text
-    archived_search = client.get("/task-board?view=archived&q=Validar+caução")
+    archived_search = client.get("/task-board/manage?view=archived&q=Validar+caução")
     assert archived_search.status_code == 200
     assert "Validar caução pendente" in archived_search.text
-    no_action_filter = client.get("/task-board?status=no_action_needed")
+    no_action_filter = client.get("/task-board/manage?status=no_action_needed")
     assert no_action_filter.status_code == 200
     assert "Validar caução pendente" in no_action_filter.text
-    assert client.get("/task-board?feedback_saved=1").status_code == 200
+    assert client.get("/task-board/manage?feedback_saved=1").status_code == 200
     assert client.get(f"/task-board/{managed_task_id}?feedback_saved=1").status_code == 200
 
     task_feedback = client.post(

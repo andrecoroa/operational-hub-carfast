@@ -285,36 +285,6 @@ button:hover,
   color: white;
 }
 
-.nav-group {
-  display: grid;
-  gap: 6px;
-}
-
-.nav-parent {
-  margin-bottom: 2px;
-}
-
-.nav-subnav {
-  display: grid;
-  gap: 4px;
-  padding-left: 12px;
-}
-
-.sidebar .nav-subnav a {
-  padding: 8px 10px;
-  color: #b8c0cb;
-  font-size: 13px;
-  font-weight: 700;
-  border-left-color: rgba(255, 255, 255, 0.1);
-}
-
-.sidebar .nav-subnav a.active,
-.sidebar .nav-subnav a:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-left-color: var(--brand);
-  color: white;
-}
-
 .content {
   padding: 34px;
   min-width: 0;
@@ -349,6 +319,47 @@ button:hover,
 
 .task-metrics {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.task-center-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 18px;
+  max-width: 980px;
+}
+
+.task-center-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 230px;
+  padding: 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+.task-center-card:hover {
+  border-color: rgba(166, 67, 55, 0.45);
+  transform: translateY(-1px);
+}
+
+.task-center-card strong {
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.task-center-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.task-center-card .button-link {
+  justify-self: start;
+  margin-top: 8px;
 }
 
 .compact-metrics {

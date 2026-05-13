@@ -91,6 +91,18 @@ button,
   font-weight: 800;
 }
 
+.login-secondary-action {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.login-secondary-action a {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--brand);
@@ -215,6 +227,74 @@ button:hover,
   padding: 12px;
   color: var(--brand-dark);
   background: #edf8f3;
+}
+
+.public-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(178, 70, 52, 0.08), rgba(17, 24, 39, 0.02)),
+    var(--bg);
+}
+
+.public-card {
+  width: min(860px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: var(--shadow);
+}
+
+.public-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.public-logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 7px;
+  background: var(--brand);
+  color: white;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.public-form {
+  margin-top: 22px;
+}
+
+.public-actions {
+  margin-top: 6px;
+}
+
+.hidden-field {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
 }
 
 .app-shell {
@@ -1416,6 +1496,11 @@ a.metric:hover {
     justify-content: flex-start;
     width: 100%;
   }
+
+  .public-brand {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1474,6 +1559,14 @@ a.metric:hover {
 
   .button-row .button-link {
     flex: 1 1 180px;
+  }
+
+  .public-page {
+    padding: 14px;
+  }
+
+  .public-card {
+    padding: 22px;
   }
 
   .toolbar {

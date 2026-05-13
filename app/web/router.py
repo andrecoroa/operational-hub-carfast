@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
+from time import monotonic
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -198,6 +199,7 @@ TASK_LEGACY_SOURCE_LABELS = {
     "whatsapp": "WhatsApp",
     "webex": "Webex",
     "rentway": "Rentway",
+    "external_portal": "Portal externo",
 }
 TASK_SOURCE_DISPLAY_LABELS = {**TASK_SOURCE_LABELS, **TASK_LEGACY_SOURCE_LABELS}
 
@@ -227,6 +229,21 @@ TASK_LEGACY_CATEGORY_LABELS = {
     "sem_acao_necessaria": "Sem ação necessária",
 }
 TASK_CATEGORY_DISPLAY_LABELS = {**TASK_CATEGORY_LABELS, **TASK_LEGACY_CATEGORY_LABELS}
+
+EXTERNAL_PORTAL_CATEGORIES = [
+    ("operations", "Pedido geral"),
+    ("reservas", "Reserva"),
+    ("alteracoes", "Alteração"),
+    ("faturacao", "Faturação"),
+    ("danos", "Danos"),
+    ("sinistros", "Sinistro"),
+    ("assistencia", "Assistência"),
+    ("workshop", "Oficina"),
+]
+EXTERNAL_PORTAL_CATEGORY_LABELS = dict(EXTERNAL_PORTAL_CATEGORIES)
+EXTERNAL_PORTAL_RATE_LIMIT: dict[str, list[float]] = {}
+EXTERNAL_PORTAL_RATE_LIMIT_WINDOW_SECONDS = 600
+EXTERNAL_PORTAL_RATE_LIMIT_MAX_REQUESTS = 5
 
 PILOT_FEEDBACK_KINDS = [
     ("question", "Pedir ajuda"),
@@ -278,6 +295,132 @@ DOCUMENT_SOURCES = [
     ("onedrive", "OneDrive/SharePoint"),
     ("other", "Outro"),
 ]
+
+
+@web_router.get("/portal", response_class=HTMLResponse)
+@web_router.get("/portal/pedido", response_class=HTMLResponse)
+def external_portal_request_form(
+    request: Request,
+    sent: str | None = None,
+    ref: str | None = None,
+    error: str | None = None,
+):
+    error_messages = {
+        "required": "Indica o assunto, a mensagem e pelo menos um contacto.",
+        "consent": "Confirma que podemos usar os dados enviados para tratar o pedido.",
+        "rate_limit": "Foram enviados vários pedidos recentemente. Tenta novamente dentro de alguns minutos.",
+        "spam": "Não foi possível registar o pedido.",
+    }
+    return templates.TemplateResponse(
+        request,
+        "external_request.html",
+        {
+            "categories": EXTERNAL_PORTAL_CATEGORIES,
+            "sent": sent == "1",
+            "reference": ref,
+            "error": error_messages.get(error),
+        },
+    )
+
+
+@web_router.post("/portal/pedido", response_class=HTMLResponse)
+def external_portal_request_create(
+    request: Request,
+    name: str = Form(""),
+    email: str = Form(""),
+    phone: str = Form(""),
+    category: str = Form("operations"),
+    subject: str = Form(""),
+    message: str = Form(""),
+    plate: str = Form(""),
+    reservation_number: str = Form(""),
+    contract_number: str = Form(""),
+    station: str = Form(""),
+    consent: str = Form(""),
+    company: str = Form(""),
+):
+    if company.strip():
+        return RedirectResponse("/portal/pedido?error=spam", status_code=303)
+    if not external_portal_rate_limit_allows(external_client_key(request)):
+        return RedirectResponse("/portal/pedido?error=rate_limit", status_code=303)
+    if not consent:
+        return RedirectResponse("/portal/pedido?error=consent", status_code=303)
+
+    clean_subject = subject.strip()
+    clean_message = message.strip()
+    clean_email = email.strip().lower()
+    clean_phone = phone.strip()
+    clean_name = name.strip()
+    if not clean_subject or not clean_message or not (clean_email or clean_phone):
+        return RedirectResponse("/portal/pedido?error=required", status_code=303)
+    if category not in EXTERNAL_PORTAL_CATEGORY_LABELS:
+        category = "operations"
+
+    with SessionLocal() as db:
+        assigned_team_id = default_team_id(db, "support") or default_team_id(db, "operations")
+        task = Task(
+            title=clean_subject[:200],
+            description=build_external_portal_description(
+                message=clean_message,
+                category=category,
+                station=station,
+            ),
+            task_type="request",
+            source="external_portal",
+            category=category,
+            subcategory="Portal externo",
+            status="new",
+            priority="normal",
+            customer_name=clean_name[:200] or None,
+            customer_contact=(clean_email or clean_phone)[:200] or None,
+            customer_email=clean_email[:255] or None,
+            customer_phone=clean_phone[:80] or None,
+            plate=plate.strip().upper().replace(" ", "")[:40] or None,
+            reservation_number=reservation_number.strip()[:120] or None,
+            contract_number=contract_number.strip()[:120] or None,
+            station=station.strip()[:120] or None,
+            department="Suporte",
+            external_source_id=None,
+            assigned_to_id=None,
+            team_id=assigned_team_id,
+            created_by_id=None,
+        )
+        db.add(task)
+        db.flush()
+        task.external_source_id = f"portal:{task.id:05d}"
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=None,
+                field_name="status",
+                old_value=None,
+                new_value="new",
+            )
+        )
+        db.add(
+            TaskComment(
+                task_id=task.id,
+                user_id=None,
+                comment="Pedido recebido através do portal externo.",
+            )
+        )
+        record_audit(
+            db,
+            action="external_portal.task_created",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Pedido externo registado: {task.title}",
+            after_json={
+                "source": "external_portal",
+                "category": category,
+                "team_id": assigned_team_id,
+            },
+            user_id=None,
+        )
+        db.commit()
+        reference = f"CF-TASK-{task.id:05d}"
+
+    return RedirectResponse(f"/portal/pedido?sent=1&ref={reference}", status_code=303)
 
 
 @web_router.get("/", response_class=HTMLResponse)
@@ -2763,6 +2906,40 @@ def count_open_tasks(db) -> int:
 def default_team_id(db, code: str) -> int | None:
     team = db.scalar(select(Team).where(Team.code == code, Team.active.is_(True)))
     return team.id if team else None
+
+
+def external_client_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()[:80]
+    if request.client:
+        return request.client.host[:80]
+    return "unknown"
+
+
+def external_portal_rate_limit_allows(client_key: str) -> bool:
+    now = monotonic()
+    window_start = now - EXTERNAL_PORTAL_RATE_LIMIT_WINDOW_SECONDS
+    recent_requests = [
+        timestamp for timestamp in EXTERNAL_PORTAL_RATE_LIMIT.get(client_key, []) if timestamp >= window_start
+    ]
+    if len(recent_requests) >= EXTERNAL_PORTAL_RATE_LIMIT_MAX_REQUESTS:
+        EXTERNAL_PORTAL_RATE_LIMIT[client_key] = recent_requests
+        return False
+    recent_requests.append(now)
+    EXTERNAL_PORTAL_RATE_LIMIT[client_key] = recent_requests
+    return True
+
+
+def build_external_portal_description(*, message: str, category: str, station: str) -> str:
+    lines = [
+        "Pedido recebido através do portal externo.",
+        f"Tipo de pedido: {EXTERNAL_PORTAL_CATEGORY_LABELS.get(category, category)}",
+    ]
+    if station.strip():
+        lines.append(f"Estação indicada: {station.strip()}")
+    lines.extend(["", message.strip()])
+    return "\n".join(lines)[:5000]
 
 
 def default_document_type_for_area(area: str) -> str:

@@ -479,7 +479,98 @@ Antes de implementar, validar:
 9. Um fluxo deve poder correr em oficina e stock, ou apenas em tarefas na fase 1?
 10. Quando um bloco cria uma subtarefa, a tarefa principal fica a aguardar automaticamente?
 
-## 8. Recomendacao pratica
+## 8. Tarefas recorrentes
+
+As tarefas recorrentes devem ficar previstas desde o desenho inicial, mas a implementacao deve ser simples na primeira fase.
+
+### Objetivo
+
+Permitir criar tarefas que se repetem por regra, sem obrigar o utilizador a recriar manualmente tarefas operacionais previsiveis.
+
+Exemplos:
+
+- verificacao diaria de viaturas bloqueadas;
+- follow-up semanal de processos de oficina abertos;
+- controlo mensal de documentos por arquivar;
+- tarefas periodicas de stock;
+- verificacao de impros ou contratos pendentes;
+- envio recorrente de pedidos internos;
+- auditorias operacionais.
+
+### Modelo proposto
+
+### recurring_task_templates
+
+- id
+- name
+- description
+- task_type
+- title_template
+- description_template
+- priority
+- source
+- assigned_to_id
+- team_id
+- department
+- station
+- recurrence_rule
+- start_on
+- end_on
+- next_run_on
+- active
+- created_by_id
+- created_at
+- updated_at
+
+### recurring_task_runs
+
+- id
+- recurring_task_template_id
+- generated_task_id
+- scheduled_for
+- status: gerada, ignorada, erro
+- error_message
+- created_at
+
+### Regras importantes
+
+- A tarefa recorrente deve gerar uma tarefa normal.
+- A tarefa gerada deve ter historico e auditoria como qualquer outra tarefa.
+- Deve existir protecao contra duplicados no mesmo periodo.
+- Deve ser possivel pausar a recorrencia sem apagar o historico.
+- Deve ser possivel gerar manualmente a proxima ocorrencia.
+- Na fase 1, a recorrencia pode ser diaria, semanal ou mensal, sem regras complexas.
+
+### Ligacao com fluxos
+
+Uma tarefa recorrente pode, no futuro, iniciar automaticamente um fluxo.
+
+Exemplo:
+
+1. Gera tarefa mensal "Rever documentos por arquivar".
+2. Inicia fluxo "Validacao documental mensal".
+3. Cria checklist.
+4. Atribui a equipa administrativa.
+5. Fecha quando validado.
+
+### Recomendacao para fase 1
+
+Implementar apenas:
+
+- lista de modelos recorrentes;
+- criacao manual de modelo;
+- geracao diaria/semanal/mensal;
+- pausa/reativacao;
+- historico de tarefas geradas.
+
+Deixar para fase futura:
+
+- recorrencias complexas;
+- regras condicionais;
+- criacao automatica baseada em indicadores;
+- envio automatico de e-mails recorrentes.
+
+## 9. Recomendacao pratica
 
 Implementar nesta ordem:
 

@@ -1,21 +1,8 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell">
-  <aside class="sidebar">
-    <div>
-      <p class="eyebrow">CarFast</p>
-      <h1>Documentos</h1>
-    </div>
-    <nav>
-      <a href="/">Dashboard</a>
-      <a href="/fleet">Frota</a>
-      <a href="/workshop">Oficina</a>
-      <a href="/task-board">Centro de Tarefas</a>
-      <a href="/imports">Importações</a>
-      <a href="/documents" class="active">Documentos</a>
-      <a href="/admin">Administração</a>
-    </nav>
-  </aside>
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
   <main class="content">
     <header class="topbar">
       <div>

@@ -1,0 +1,27 @@
+<aside class="sidebar">
+  <div>
+    <p class="eyebrow">CarFast</p>
+    <h1>Operational Hub</h1>
+  </div>
+  <nav>
+    <span class="nav-section-label">Operações</span>
+    <a href="/" {% if active_menu == "dashboard" %}class="active"{% endif %}>Dashboard</a>
+    <a href="/task-board" {% if active_menu == "tasks" %}class="active"{% endif %}>
+      Centro de Tarefas
+      {% if nav_task_count is defined %}<span class="nav-badge">{{ nav_task_count }}</span>{% endif %}
+    </a>
+    <a href="/workshop" {% if active_menu == "workshop" %}class="active"{% endif %}>
+      Oficina
+      {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
+    </a>
+    <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
+    <span class="nav-section-label">Sistema</span>
+    <a href="/imports" {% if active_menu == "imports" %}class="active"{% endif %}>Importações</a>
+    <a href="/documents" {% if active_menu == "documents" %}class="active"{% endif %}>Documentos</a>
+    <a href="/admin" {% if active_menu == "admin" %}class="active"{% endif %}>Administração</a>
+  </nav>
+  <div class="sidebar-status">
+    <span class="status-dot"></span>
+    <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>
+  </div>
+</aside>

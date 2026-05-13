@@ -1139,14 +1139,14 @@ a.metric:hover {
 }
 
 .filter-panel {
-  margin-top: 18px;
+  margin-top: 12px;
   padding: 18px;
   overflow-x: visible;
 }
 
 .filter-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(130px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
   gap: 12px;
   align-items: end;
 }
@@ -1160,6 +1160,32 @@ a.metric:hover {
 .filter-actions button,
 .filter-actions .button-link {
   width: 100%;
+}
+
+.quick-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.quick-filter-row a {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+  background: white;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.quick-filter-row a.active {
+  border-color: #f0c6ba;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
 }
 
 .task-table {

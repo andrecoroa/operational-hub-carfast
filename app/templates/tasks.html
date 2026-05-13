@@ -60,19 +60,18 @@
       </a>
     </section>
 
+    <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
+      <a href="/task-board/manage" class="{% if not filters.view %}active{% endif %}">Backlog aberto</a>
+      <a href="/task-board/manage?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
+      <a href="/task-board/manage?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
+      <a href="/task-board/manage?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}">Limite hoje</a>
+      <a href="/task-board/manage?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}">Arquivo</a>
+      <a href="/task-board/manage?view=all" class="{% if filters.view == 'all' %}active{% endif %}">Todas</a>
+    </nav>
+
     <section class="table-shell filter-panel" id="gestao-tarefas">
       <form method="get" action="/task-board/manage" class="filter-grid">
-        <label>
-          Âmbito
-          <select name="view">
-            <option value="" {% if not filters.view %}selected{% endif %}>Backlog aberto</option>
-            <option value="urgent" {% if filters.view == "urgent" %}selected{% endif %}>Urgentes</option>
-            <option value="archived" {% if filters.view == "archived" %}selected{% endif %}>Arquivo</option>
-            <option value="all" {% if filters.view == "all" %}selected{% endif %}>Todas</option>
-            <option value="overdue" {% if filters.view == "overdue" %}selected{% endif %}>Vencidas</option>
-            <option value="due_today" {% if filters.view == "due_today" %}selected{% endif %}>Limite hoje</option>
-          </select>
-        </label>
+        {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
         <label>
           Pesquisa
           <input type="search" name="q" value="{{ filters.q }}" placeholder="Assunto, cliente, matrícula, reserva, contrato">

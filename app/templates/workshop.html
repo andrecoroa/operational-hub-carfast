@@ -39,7 +39,7 @@
             <h3>Processos abertos</h3>
           </div>
         </div>
-        <table>
+        <table class="task-table responsive-card-table">
           <thead>
             <tr>
               <th>Processo</th>
@@ -52,10 +52,10 @@
           <tbody>
             {% for process in processes %}
               <tr>
-                <td>
+                <td data-label="Processo">
                   <a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a>
                   {% if process.note %}
-                    <p class="table-note">{{ process.note }}</p>
+                    <p class="table-note table-note-clamp">{{ process.note }}</p>
                   {% endif %}
                   <p class="table-note">
                     {{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}
@@ -64,10 +64,10 @@
                   </p>
                 </td>
                 {% set vehicle = vehicle_by_id.get(process.vehicle_id) %}
-                <td><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></td>
-                <td><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
-                <td>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
-                <td class="row-action">
+                <td data-label="Viatura"><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></td>
+                <td data-label="Estado"><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
+                <td data-label="Decisão">{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
+                <td data-label="Ação" class="row-action">
                   <form method="post" action="/workshop/{{ process.id }}/close">
                     <button type="submit" class="secondary small-button">Fechar</button>
                   </form>

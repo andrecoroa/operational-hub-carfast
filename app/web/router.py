@@ -1211,6 +1211,7 @@ def workshop_manage_page(
                 "feedback_saved": feedback_saved,
                 "status_labels": WORKSHOP_STATUS_LABELS,
                 "decision_labels": WORKSHOP_DECISION_LABELS,
+                "opening_type_labels": WORKSHOP_OPENING_LABELS,
             },
         )
 

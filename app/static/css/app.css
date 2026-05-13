@@ -1087,6 +1087,14 @@ a.metric:hover {
   font-size: 14px;
 }
 
+.table-note-clamp {
+  display: -webkit-box;
+  max-height: 4.2em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .panel-heading {
   display: grid;
   gap: 4px;
@@ -1337,6 +1345,60 @@ a.metric:hover {
 
 .detail-list dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 460px);
+}
+
+.task-detail-summary {
+  display: grid;
+  gap: 18px;
+}
+
+.compact-heading {
+  padding: 0;
+}
+
+.task-description-box {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.task-description-box span,
+.task-info-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.task-description-box p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-info-grid div {
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.task-info-grid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -1617,6 +1679,7 @@ a.metric:hover {
   .form-grid,
   .step-row,
   .filter-grid,
+  .task-info-grid,
   .detail-grid,
   .detail-list div {
     grid-template-columns: 1fr;

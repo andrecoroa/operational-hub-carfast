@@ -37,42 +37,46 @@
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
-    <section class="detail-grid">
-      <article class="section">
-        <h3>Resumo</h3>
-        <dl class="detail-list">
-          <div><dt>Nº interno</dt><dd>CF-TASK-{{ "%05d"|format(task.id) }}</dd></div>
-          <div><dt>Natureza</dt><dd>{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</dd></div>
-          <div><dt>Origem</dt><dd>{{ task_source_labels.get(task.source, task.source or "Manual") }}</dd></div>
-          <div><dt>Estado</dt><dd><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></dd></div>
-          <div><dt>Categoria</dt><dd>{{ task_category_labels.get(task.category, task.category or "-") }}</dd></div>
-          <div><dt>Classificação</dt><dd>{{ task.subcategory or "-" }}</dd></div>
-          <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
-          <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else "-" }}</dd></div>
-          <div><dt>Equipa/Fila</dt><dd>{{ assigned_team.name if assigned_team else "-" }}</dd></div>
-          <div><dt>Data limite</dt><dd>{{ task.due_on or "-" }}</dd></div>
-          <div><dt>Cliente</dt><dd>{{ task.customer_name or "-" }}</dd></div>
-          <div><dt>Contacto</dt><dd>{{ task.customer_contact or "-" }}</dd></div>
-          <div><dt>E-mail</dt><dd>{{ task.customer_email or "-" }}</dd></div>
-          <div><dt>Telefone</dt><dd>{{ task.customer_phone or "-" }}</dd></div>
-          <div><dt>Matrícula</dt><dd>{{ task.plate or "-" }}</dd></div>
-          <div><dt>Reserva</dt><dd>{{ task.reservation_number or "-" }}</dd></div>
-          <div><dt>Contrato</dt><dd>{{ task.contract_number or "-" }}</dd></div>
-          <div><dt>Estação</dt><dd>{{ task.station or "-" }}</dd></div>
-          <div><dt>Departamento/Fila</dt><dd>{{ task.department or "-" }}</dd></div>
-          <div><dt>ID externo</dt><dd>{{ task.external_source_id or "-" }}</dd></div>
+    <section class="detail-grid task-detail-grid">
+      <article class="section task-detail-summary">
+        <div class="panel-heading compact-heading">
+          <p class="eyebrow">Resumo</p>
+          <h3>CF-TASK-{{ "%05d"|format(task.id) }}</h3>
+        </div>
+        <div class="pill-row">
+          <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+          <span class="pill">{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</span>
+          <span class="pill priority-{{ task.priority }}">{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+          <span class="pill muted-pill">{{ task_source_labels.get(task.source, task.source or "Manual") }}</span>
+        </div>
+        <div class="task-description-box">
+          <span>Descrição</span>
+          <p>{{ task.description or "Sem descrição registada." }}</p>
+        </div>
+        <div class="task-info-grid">
+          <div><span>Categoria</span><strong>{{ task_category_labels.get(task.category, task.category or "-") }}</strong></div>
+          <div><span>Classificação</span><strong>{{ task.subcategory or "-" }}</strong></div>
+          <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else "-" }}</strong></div>
+          <div><span>Equipa/Fila</span><strong>{{ assigned_team.name if assigned_team else "-" }}</strong></div>
+          <div><span>Data limite</span><strong>{{ task.due_on or "-" }}</strong></div>
+          <div><span>Estação</span><strong>{{ task.station or "-" }}</strong></div>
+          <div><span>Cliente</span><strong>{{ task.customer_name or "-" }}</strong></div>
+          <div><span>Contacto</span><strong>{{ task.customer_contact or task.customer_email or task.customer_phone or "-" }}</strong></div>
+          <div><span>Matrícula</span><strong>{{ task.plate or "-" }}</strong></div>
+          <div><span>Reserva</span><strong>{{ task.reservation_number or "-" }}</strong></div>
+          <div><span>Contrato</span><strong>{{ task.contract_number or "-" }}</strong></div>
+          <div><span>ID externo</span><strong>{{ task.external_source_id or "-" }}</strong></div>
           <div>
-            <dt>Ligação</dt>
-            <dd>
+            <span>Ligação</span>
+            <strong>
               {% if linked_vehicle %}
                 <a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a>
               {% else %}
                 -
               {% endif %}
-            </dd>
+            </strong>
           </div>
-          <div><dt>Descrição</dt><dd>{{ task.description or "-" }}</dd></div>
-        </dl>
+        </div>
       </article>
 
       <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack">

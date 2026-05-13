@@ -193,7 +193,7 @@
                     {% if task.plate %} &middot; {{ task.plate }}{% endif %}
                   </p>
                   {% if task.description %}
-                    <p class="table-note">{{ task.description }}</p>
+                    <p class="table-note table-note-clamp">{{ task.description }}</p>
                   {% endif %}
                 </td>
                 <td data-label="Tipo">{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</td>

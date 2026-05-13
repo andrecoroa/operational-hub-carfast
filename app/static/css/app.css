@@ -275,6 +275,10 @@ button:hover,
 }
 
 .sidebar a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   border-radius: 6px;
   padding: 12px 13px;
   color: var(--nav-ink);
@@ -288,6 +292,24 @@ button:hover,
   background: var(--nav-soft);
   border-left-color: var(--brand);
   color: white;
+}
+
+.nav-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.nav-badge.warning {
+  background: #f59e0b;
+  color: #111827;
 }
 
 .nav-section-label {
@@ -458,6 +480,149 @@ button:hover,
 .page-intro p {
   margin: 7px 0 0;
   color: var(--muted);
+}
+
+.cockpit-content {
+  background:
+    radial-gradient(circle at top right, rgba(178, 70, 52, 0.08), transparent 28%),
+    var(--bg);
+}
+
+.cockpit-topbar {
+  margin-bottom: 24px;
+}
+
+.cockpit-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.alert-card {
+  display: grid;
+  gap: 8px;
+  min-height: 160px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
+}
+
+.alert-card.critical {
+  border-color: #f1c7c0;
+  background: linear-gradient(135deg, #fff2ef 0%, #ffffff 72%);
+}
+
+.alert-card.warning {
+  border-color: #f4ddab;
+  background: linear-gradient(135deg, #fff8e7 0%, #ffffff 72%);
+}
+
+.alert-card span {
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.alert-card strong {
+  color: var(--brand);
+  font-size: 32px;
+  line-height: 1;
+}
+
+.alert-card h3 {
+  font-size: 15px;
+}
+
+.alert-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cockpit-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.cockpit-summary .metric {
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+}
+
+.cockpit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.cockpit-panel {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
+}
+
+.operation-list {
+  display: grid;
+}
+
+.operation-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.operation-item:hover {
+  background: #fbfcfc;
+}
+
+.operation-item strong,
+.operation-item small {
+  display: block;
+}
+
+.operation-item small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.operation-icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 5px rgba(178, 70, 52, 0.11);
+}
+
+.operation-icon.vehicle {
+  background: var(--blue);
+  box-shadow: 0 0 0 5px rgba(33, 85, 214, 0.11);
+}
+
+.compact-timeline {
+  margin: 0;
+  padding: 14px;
+}
+
+.compact-timeline article {
+  padding: 12px;
+}
+
+.empty-panel {
+  padding: 16px;
 }
 
 .metric-grid {

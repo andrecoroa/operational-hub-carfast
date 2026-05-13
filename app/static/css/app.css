@@ -656,17 +656,34 @@ button:hover,
   box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
 }
 
+.cockpit-panel .table-heading {
+  min-height: 86px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cockpit-panel .table-heading h3 {
+  font-size: 20px;
+}
+
+.cockpit-panel .table-heading .table-link {
+  font-size: 15px;
+  font-weight: 900;
+}
+
 .operation-list {
   display: grid;
 }
 
 .operation-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 16px;
   align-items: center;
-  padding: 14px 16px;
+  min-height: 74px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--line);
+  color: var(--ink);
 }
 
 .operation-item:hover {
@@ -676,38 +693,77 @@ button:hover,
 .operation-item strong,
 .operation-item small {
   display: block;
+  min-width: 0;
+}
+
+.operation-item strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .operation-item small {
-  margin-top: 3px;
+  margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .operation-icon {
-  width: 10px;
-  height: 10px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: var(--brand);
-  box-shadow: 0 0 0 5px rgba(178, 70, 52, 0.11);
+  box-shadow: 0 0 0 7px rgba(178, 70, 52, 0.12);
+  justify-self: center;
 }
 
 .operation-icon.vehicle {
   background: var(--blue);
-  box-shadow: 0 0 0 5px rgba(33, 85, 214, 0.11);
+  box-shadow: 0 0 0 7px rgba(33, 85, 214, 0.12);
 }
 
-.compact-timeline {
+.timeline.compact-timeline {
+  display: grid;
+  gap: 12px;
   margin: 0;
-  padding: 14px;
+  padding: 18px;
 }
 
-.compact-timeline article {
-  padding: 12px;
+.timeline.compact-timeline article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+}
+
+.timeline.compact-timeline article::before {
+  display: none;
+}
+
+.timeline.compact-timeline strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.timeline.compact-timeline article span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .empty-panel {
-  padding: 16px;
+  padding: 18px 20px;
 }
 
 .metric-grid {

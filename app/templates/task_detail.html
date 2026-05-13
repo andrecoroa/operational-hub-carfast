@@ -14,7 +14,11 @@
         <label class="global-search" aria-label="Pesquisa global">
           <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
         </label>
-        <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area=tasks&entity_type=task&entity_id={{ task.id }}&return_url=/task-board/{{ task.id }}">Pedir ajuda</a>
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_entity_type = "task" %}
+        {% set feedback_entity_id = task.id %}
+        {% set feedback_return_url = "/task-board/" ~ task.id %}
+        {% include "_pilot_actions.html" %}
         <a class="button-link secondary-link" href="/task-board/manage">Voltar</a>
         <span class="user-chip">
           <span class="user-avatar">CF</span>

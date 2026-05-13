@@ -16,6 +16,9 @@
         <label class="global-search" aria-label="Pesquisa global">
           <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
         </label>
+        {% set feedback_source_area = "dashboard" %}
+        {% set feedback_return_url = "/" %}
+        {% include "_pilot_actions.html" %}
         <span class="top-icon-button" aria-label="Notificações">{{ metrics.overdue_tasks + metrics.unassigned_tasks }}</span>
         <span class="user-chip">
           <span class="user-avatar">CF</span>
@@ -52,9 +55,8 @@
     </section>
 
     <section class="metric-grid cockpit-summary">
-      <a class="metric" href="/fleet">
-        <span class="metric-icon blue">↔</span>
-        <span class="metric-detail"><strong>{{ metrics.vehicles }}</strong><span>Viaturas</span><small>Frota registada</small></span>
+      <a class="metric" href="/fleet?scope=for_sale">
+        <span class="metric-detail"><strong>{{ metrics.for_sale_vehicles }}</strong><span>Viaturas para venda</span><small>Preparação da lista de venda</small></span>
       </a>
       <a class="metric" href="/task-board/manage">
         <span class="metric-icon green">✓</span>

@@ -251,8 +251,14 @@ PILOT_FEEDBACK_KINDS = [
 ]
 PILOT_FEEDBACK_KIND_LABELS = dict(PILOT_FEEDBACK_KINDS)
 PILOT_FEEDBACK_SOURCE_LABELS = {
+    "dashboard": "Dashboard",
     "tasks": "Gestão de Tarefas",
     "workshop": "Oficina",
+    "fleet": "Frota",
+    "imports": "Importações",
+    "documents": "Documentos",
+    "admin": "Administração",
+    "general": "Geral",
 }
 
 ADMIN_USER_ROLES = [
@@ -439,6 +445,10 @@ def dashboard(request: Request):
         open_workshop_statuses = {code for code, _ in WORKSHOP_STATUSES if code != "closed"}
         metrics = {
             "vehicles": db.scalar(select(Vehicle).count()) if False else count_rows(db, Vehicle),
+            "for_sale_vehicles": db.scalar(
+                select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")
+            )
+            or 0,
             "open_tasks": db.scalar(
                 select(func.count()).select_from(Task).where(*open_task_condition)
             )
@@ -752,11 +762,13 @@ def vehicles_page(request: Request, q: str | None = None, scope: str = "active",
         return RedirectResponse("/login", status_code=303)
     with SessionLocal() as db:
         stmt = select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)
-        if scope not in {"active", "sold", "all"}:
+        if scope not in {"active", "for_sale", "sold", "all"}:
             scope = "active"
         sold_filter = or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
         if scope == "active":
             stmt = stmt.where(Vehicle.active.is_(True), ~sold_filter)
+        elif scope == "for_sale":
+            stmt = stmt.where(Vehicle.lifecycle_status == "for_sale")
         elif scope == "sold":
             stmt = stmt.where(sold_filter)
         if q:
@@ -769,6 +781,15 @@ def vehicles_page(request: Request, q: str | None = None, scope: str = "active",
                 | Vehicle.model.ilike(f"%{q}%")
             )
         vehicles = sorted(db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True)[:100]
+        last_fleet_import = db.scalar(
+            select(ImportBatch)
+            .where(ImportBatch.import_type == "rentway_fleet")
+            .order_by(ImportBatch.id.desc())
+            .limit(1)
+        )
+        for_sale_count = db.scalar(
+            select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")
+        ) or 0
         return templates.TemplateResponse(
             request,
             "vehicles.html",
@@ -777,6 +798,8 @@ def vehicles_page(request: Request, q: str | None = None, scope: str = "active",
                 "q": q or "",
                 "scope": scope,
                 "imported": imported,
+                "last_fleet_import": last_fleet_import,
+                "for_sale_count": for_sale_count,
             },
         )
 
@@ -1093,12 +1116,73 @@ def vehicle_create_document(
 
 
 @web_router.get("/workshop", response_class=HTMLResponse)
-def workshop_page(
+def workshop_center_page(
     request: Request,
     created: str | None = None,
     closed: str | None = None,
     feedback_saved: str | None = None,
-    error: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        open_query = select(func.count()).select_from(WorkshopProcess).where(WorkshopProcess.closed_at.is_(None))
+        open_count = db.scalar(open_query) or 0
+        waiting_parts_count = db.scalar(
+            open_query.where(WorkshopProcess.status == "waiting_parts")
+        ) or 0
+        waiting_analysis_count = db.scalar(
+            open_query.where(WorkshopProcess.status == "waiting_analysis")
+        ) or 0
+        vehicles_preview = sorted(
+            db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
+            key=rentway_unit_sort_key,
+            reverse=True,
+        )[:3]
+        return templates.TemplateResponse(
+            request,
+            "workshop_center.html",
+            {
+                "open_count": open_count,
+                "waiting_parts_count": waiting_parts_count,
+                "waiting_analysis_count": waiting_analysis_count,
+                "vehicles_preview": vehicles_preview,
+                "created": created,
+                "closed": closed,
+                "feedback_saved": feedback_saved,
+            },
+        )
+
+
+@web_router.get("/workshop/new", response_class=HTMLResponse)
+def workshop_new_page(request: Request, error: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicles = sorted(
+            db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
+            key=rentway_unit_sort_key,
+            reverse=True,
+        )
+        return templates.TemplateResponse(
+            request,
+            "workshop_new.html",
+            {
+                "vehicles": vehicles,
+                "error": task_detail_error_message(error),
+                "opening_types": WORKSHOP_OPENING_TYPES,
+                "opening_type_labels": WORKSHOP_OPENING_LABELS,
+            },
+        )
+
+
+@web_router.get("/workshop/manage", response_class=HTMLResponse)
+def workshop_manage_page(
+    request: Request,
+    created: str | None = None,
+    closed: str | None = None,
+    feedback_saved: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -1121,14 +1205,10 @@ def workshop_page(
             "workshop.html",
             {
                 "processes": processes,
-                "vehicles": vehicles,
                 "vehicle_by_id": vehicle_by_id,
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
-                "error": task_detail_error_message(error),
-                "opening_types": WORKSHOP_OPENING_TYPES,
-                "opening_type_labels": WORKSHOP_OPENING_LABELS,
                 "status_labels": WORKSHOP_STATUS_LABELS,
                 "decision_labels": WORKSHOP_DECISION_LABELS,
             },
@@ -1136,6 +1216,7 @@ def workshop_page(
 
 
 @web_router.post("/workshop", response_class=HTMLResponse)
+@web_router.post("/workshop/new", response_class=HTMLResponse)
 def workshop_create(
     request: Request,
     vehicle_id: str = Form(""),
@@ -1155,32 +1236,19 @@ def workshop_create(
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
         if not vehicle:
-            processes = db.scalars(
-                select(WorkshopProcess)
-                .where(WorkshopProcess.closed_at.is_(None))
-                .order_by(WorkshopProcess.id.desc())
-                .limit(100)
-            ).all()
             vehicles = sorted(
                 db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
                 key=rentway_unit_sort_key,
                 reverse=True,
             )
-            vehicle_by_id = {item.id: item for item in vehicles}
             return templates.TemplateResponse(
                 request,
-                "workshop.html",
+                "workshop_new.html",
                 {
-                    "processes": processes,
                     "vehicles": vehicles,
-                    "vehicle_by_id": vehicle_by_id,
-                    "created": None,
-                    "closed": None,
                     "error": "Escolhe a viatura para ligar o processo ao histórico correto.",
                     "opening_types": WORKSHOP_OPENING_TYPES,
                     "opening_type_labels": WORKSHOP_OPENING_LABELS,
-                    "status_labels": WORKSHOP_STATUS_LABELS,
-                    "decision_labels": WORKSHOP_DECISION_LABELS,
                 },
                 status_code=400,
             )
@@ -1213,7 +1281,7 @@ def workshop_create(
         )
         db.commit()
 
-    return RedirectResponse("/workshop?created=1", status_code=303)
+    return RedirectResponse("/workshop/manage?created=1", status_code=303)
 
 
 def render_workshop_detail(
@@ -1680,7 +1748,7 @@ def workshop_update_flow(
         db.commit()
 
     if status == "closed":
-        return RedirectResponse("/workshop?closed=1", status_code=303)
+        return RedirectResponse("/workshop/manage?closed=1", status_code=303)
     return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
 
 
@@ -1705,7 +1773,7 @@ def workshop_close(request: Request, process_id: int):
             )
             db.commit()
 
-    return RedirectResponse("/workshop?closed=1", status_code=303)
+    return RedirectResponse("/workshop/manage?closed=1", status_code=303)
 
 
 @web_router.get("/imports/fleet", response_class=HTMLResponse)
@@ -1791,7 +1859,63 @@ def import_detail(request: Request, batch_id: int):
 
 
 @web_router.get("/documents", response_class=HTMLResponse)
-def documents_page(
+def documents_center_page(
+    request: Request,
+    created: str | None = None,
+    updated: str | None = None,
+    feedback_saved: str | None = None,
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        metrics = {
+            "total": db.scalar(select(func.count()).select_from(Document)) or 0,
+            "unclassified": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "unclassified")
+            )
+            or 0,
+            "classified": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "classified")
+            )
+            or 0,
+            "archived": db.scalar(
+                select(func.count()).select_from(Document).where(Document.status == "archived")
+            )
+            or 0,
+        }
+        return templates.TemplateResponse(
+            request,
+            "documents_center.html",
+            {
+                "metrics": metrics,
+                "created": created,
+                "updated": updated,
+                "feedback_saved": feedback_saved,
+            },
+        )
+
+
+@web_router.get("/documents/new", response_class=HTMLResponse)
+def documents_new_page(request: Request, error: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "documents_new.html",
+        {
+            "areas": DOCUMENT_AREAS,
+            "document_types": DOCUMENT_TYPES,
+            "statuses": DOCUMENT_STATUSES,
+            "sources": DOCUMENT_SOURCES,
+            "error": error,
+        },
+    )
+
+
+@web_router.get("/documents/manage", response_class=HTMLResponse)
+def documents_manage_page(
     request: Request,
     q: str = "",
     status: str = "",
@@ -1876,6 +2000,7 @@ def documents_page(
 
 
 @web_router.post("/documents", response_class=HTMLResponse)
+@web_router.post("/documents/new", response_class=HTMLResponse)
 def document_create(
     request: Request,
     title: str = Form(""),
@@ -1905,9 +2030,9 @@ def document_create(
     clean_original_url = url_original.strip()
     clean_archive_url = url_archive.strip()
     if not clean_title:
-        return RedirectResponse("/documents?error=Indica%20um%20título.", status_code=303)
+        return RedirectResponse("/documents/new?error=Indica%20um%20título.", status_code=303)
     if not clean_original_url and not clean_archive_url:
-        return RedirectResponse("/documents?error=Indica%20pelo%20menos%20um%20link.", status_code=303)
+        return RedirectResponse("/documents/new?error=Indica%20pelo%20menos%20um%20link.", status_code=303)
     if classification not in DOCUMENT_AREA_LABELS:
         classification = "general_archive"
     if document_type not in DOCUMENT_TYPE_LABELS:
@@ -2013,7 +2138,7 @@ def document_create(
         )
         db.commit()
 
-    return RedirectResponse("/documents?created=1", status_code=303)
+    return RedirectResponse("/documents/manage?created=1", status_code=303)
 
 
 @web_router.get("/documents/{document_id}", response_class=HTMLResponse)

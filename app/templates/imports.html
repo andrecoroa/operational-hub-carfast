@@ -7,9 +7,14 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Rentway e outros sistemas</p>
-        <h2>Histórico de importacoes</h2>
+        <h2>Histórico de importações</h2>
       </div>
-      <a class="button-link" href="/imports/fleet">Importar frota</a>
+      <div class="button-row">
+        <a class="button-link" href="/imports/fleet">Importar frota</a>
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports" %}
+        {% include "_pilot_actions.html" %}
+      </div>
     </header>
 
     <section class="table-shell">

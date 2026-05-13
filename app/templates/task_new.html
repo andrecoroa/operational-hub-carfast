@@ -15,6 +15,9 @@
           <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
         </label>
         <a class="button-link secondary-link" href="/task-board/manage">Gestão</a>
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_return_url = "/task-board/new" %}
+        {% include "_pilot_actions.html" %}
         <span class="user-chip">
           <span class="user-avatar">CF</span>
           <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>

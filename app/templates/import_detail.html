@@ -9,7 +9,14 @@
         <p class="eyebrow">{{ batch.source_system }}</p>
         <h2>Lote #{{ batch.id }}</h2>
       </div>
-      <a class="button-link secondary-link" href="/imports">Voltar</a>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_entity_type = "import_batch" %}
+        {% set feedback_entity_id = batch.id %}
+        {% set feedback_return_url = "/imports/" ~ batch.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Voltar</a>
+      </div>
     </header>
 
     <section class="metric-grid">

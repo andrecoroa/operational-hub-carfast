@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>Documentos</h2>
+        <p class="breadcrumb">Registo, classificação e arquivo documental no 365.</p>
+      </div>
+      {% set feedback_source_area = "documents" %}
+      {% set feedback_return_url = "/documents" %}
+      {% include "_pilot_actions.html" %}
+    </header>
+
+    {% if created %}
+      <div class="success">Documento registado.</div>
+    {% endif %}
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+
+    <section class="metric-grid task-metrics">
+      <article class="metric"><span>Total</span><strong>{{ metrics.total }}</strong></article>
+      <article class="metric"><span>Por classificar</span><strong>{{ metrics.unclassified }}</strong></article>
+      <article class="metric"><span>Classificados</span><strong>{{ metrics.classified }}</strong></article>
+      <article class="metric"><span>Arquivados</span><strong>{{ metrics.archived }}</strong></article>
+    </section>
+
+    <section class="task-center-grid module-entry-grid">
+      <a class="task-center-card create-card" href="/documents/new">
+        <span class="task-card-main">
+          <span class="task-card-icon">+</span>
+          <span>
+            <strong>Novo documento</strong>
+            <p>Registar uma entrada documental e preparar classificação/arquivo.</p>
+          </span>
+        </span>
+        <span class="button-link">Registar documento</span>
+      </a>
+      <a class="task-center-card manage-card" href="/documents/manage">
+        <span class="task-card-main">
+          <span class="task-card-icon">≡</span>
+          <span>
+            <strong>Gestão documental</strong>
+            <p>Pesquisar, classificar, associar e acompanhar documentos.</p>
+          </span>
+        </span>
+        <span class="button-link blue-link">Abrir documentos</span>
+      </a>
+      <article class="info-card">
+        <h3>Dica rápida</h3>
+        <p>Na fase atual guardamos links e caminhos 365, não ficheiros binários na base de dados.</p>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

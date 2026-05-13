@@ -10,7 +10,12 @@
         <h2>Frota</h2>
         <span>Ordenação: Unit Nr Rentway decrescente</span>
       </div>
-      <a class="button-link" href="/imports/fleet">Importar XLSX</a>
+      <div class="topbar-tools">
+        <a class="button-link" href="/imports/fleet">Importar XLSX</a>
+        {% set feedback_source_area = "fleet" %}
+        {% set feedback_return_url = "/fleet" %}
+        {% include "_pilot_actions.html" %}
+      </div>
     </header>
 
     {% if imported %}
@@ -21,14 +26,25 @@
       <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matrícula, Unit Nr, VIN, marca ou modelo">
       <select name="scope" aria-label="Âmbito da frota">
         <option value="active" {% if scope == "active" %}selected{% endif %}>Ativos</option>
+        <option value="for_sale" {% if scope == "for_sale" %}selected{% endif %}>Para venda</option>
         <option value="sold" {% if scope == "sold" %}selected{% endif %}>Vendidos</option>
         <option value="all" {% if scope == "all" %}selected{% endif %}>Todos</option>
       </select>
       <button type="submit">Pesquisar</button>
     </form>
 
+    <section class="fleet-freshness">
+      <strong>Última atualização da frota Rentway:</strong>
+      {% if last_fleet_import %}
+        {{ (last_fleet_import.finished_at or last_fleet_import.started_at).strftime("%d/%m/%Y %H:%M") }}
+      {% else %}
+        sem importação registada
+      {% endif %}
+      <span>{{ for_sale_count }} viaturas marcadas para venda.</span>
+    </section>
+
     <section class="table-shell">
-      <table>
+      <table class="compact-table">
         <thead>
           <tr>
             <th>Matrícula</th>

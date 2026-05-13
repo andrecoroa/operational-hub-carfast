@@ -11,7 +11,12 @@
         <span>{{ status_labels.get(document.status, document.status) }}</span>
       </div>
       <div class="button-row">
-        <a class="button-link secondary-link" href="/documents">Voltar</a>
+        {% set feedback_source_area = "documents" %}
+        {% set feedback_entity_type = "document" %}
+        {% set feedback_entity_id = document.id %}
+        {% set feedback_return_url = "/documents/" ~ document.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/documents/manage">Voltar</a>
         {% if document.external_url %}
           <a class="button-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir link</a>
         {% endif %}

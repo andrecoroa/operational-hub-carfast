@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell">
-  {% set active_menu = "tasks" if source_area == "tasks" else ("workshop" if source_area == "workshop" else "") %}
+  {% set active_menu = source_area if source_area in ["dashboard", "tasks", "workshop", "fleet", "imports", "documents", "admin"] else "" %}
   {% include "_sidebar.html" %}
   <main class="content">
     <header class="topbar">
@@ -12,7 +12,7 @@
       {% if return_url %}
         <a class="button-link secondary-link" href="{{ return_url }}">Voltar</a>
       {% else %}
-        <a class="button-link secondary-link" href="/workshop">Voltar</a>
+        <a class="button-link secondary-link" href="{{ return_url if return_url else '/workshop' }}">Voltar</a>
       {% endif %}
     </header>
 

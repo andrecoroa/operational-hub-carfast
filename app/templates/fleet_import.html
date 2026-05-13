@@ -9,7 +9,12 @@
         <p class="eyebrow">Rentway</p>
         <h2>Importar frota</h2>
       </div>
-      <a class="button-link secondary-link" href="/imports">Histórico</a>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports/fleet" %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Histórico</a>
+      </div>
     </header>
 
     <section class="form-panel">

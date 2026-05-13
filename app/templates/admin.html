@@ -9,6 +9,9 @@
         <p class="eyebrow">Configuração</p>
         <h2>Administração</h2>
       </div>
+      {% set feedback_source_area = "admin" %}
+      {% set feedback_return_url = "/admin" %}
+      {% include "_pilot_actions.html" %}
     </header>
 
     {% if user_created %}

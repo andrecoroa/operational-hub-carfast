@@ -7,11 +7,14 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Processos temporários</p>
-        <h2>Oficina</h2>
+        <h2>Gestão de oficina</h2>
+        <p class="breadcrumb">Oficina &gt; <strong>Gestão de processos</strong></p>
       </div>
-      <div class="button-row">
-        <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area=workshop&return_url=/workshop">Pedir ajuda</a>
-        <a class="button-link feedback-link" href="/pilot-feedback/new?kind=experience&source_area=workshop&return_url=/workshop">Relatar experiência</a>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="/workshop/new">Novo processo</a>
+        {% set feedback_source_area = "workshop" %}
+        {% set feedback_return_url = "/workshop/manage" %}
+        {% include "_pilot_actions.html" %}
       </div>
     </header>
 
@@ -28,64 +31,7 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <section class="task-layout">
-      <form method="post" action="/workshop" class="form-panel form-stack task-form">
-        <div class="panel-heading">
-          <p class="eyebrow">Novo processo</p>
-          <h3>Registo inicial</h3>
-        </div>
-        <label>
-          Viatura
-          <select name="vehicle_id" required>
-            <option value="">Escolher viatura</option>
-            {% for vehicle in vehicles %}
-              <option value="{{ vehicle.id }}">
-                {% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }} · {% endif %}
-                {{ vehicle.plate or ("Viatura #" ~ vehicle.id) }}
-                {% if vehicle.brand or vehicle.model %} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Título
-          <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
-        </label>
-        <div class="form-grid">
-          <label>
-            Abertura
-            <select name="opening_type">
-              {% for code, label in opening_types %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            KM entrada
-            <input type="number" name="km_entry" min="0">
-          </label>
-        </div>
-        <div class="form-grid">
-          <label>
-            Prioridade
-            <select name="priority">
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
-              <option value="low">Baixa</option>
-            </select>
-          </label>
-          <label>
-            Saída prevista
-            <input type="date" name="expected_exit_on">
-          </label>
-        </div>
-        <label>
-          Nota inicial
-          <textarea name="note" rows="4"></textarea>
-        </label>
-        <button type="submit">Criar processo</button>
-      </form>
-
+    <section class="task-layout tasks-layout">
       <section class="table-shell">
         <div class="table-heading">
           <div>

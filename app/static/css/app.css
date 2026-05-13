@@ -179,6 +179,10 @@ button {
   justify-content: flex-end;
 }
 
+.pilot-actions {
+  flex: 0 0 auto;
+}
+
 .secondary-link {
   background: var(--brand-soft);
   color: var(--brand-dark);
@@ -722,6 +726,10 @@ button:hover,
   max-width: 1160px;
 }
 
+.module-entry-grid {
+  margin-top: 18px;
+}
+
 .task-center-card {
   display: grid;
   align-content: space-between;
@@ -854,6 +862,30 @@ button:hover,
 
 .fleet-toolbar {
   grid-template-columns: minmax(0, 1fr) 180px auto;
+}
+
+.fleet-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin: 0 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: white;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fleet-freshness strong {
+  color: var(--ink);
+}
+
+.compact-table th,
+.compact-table td {
+  padding: 9px 12px;
+  font-size: 13px;
 }
 
 .table-shell,

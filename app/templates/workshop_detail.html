@@ -39,8 +39,9 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <section class="workshop-overview-grid">
-      <article class="section workshop-summary-card">
+    <section class="workshop-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card">
         <div class="panel-heading compact-heading">
           <p class="eyebrow">Resumo</p>
           <h3>{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</h3>
@@ -60,41 +61,8 @@
           <span>Nota inicial / decisão</span>
           <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
         </div>
-      </article>
+        </article>
 
-      <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack workshop-flow-card">
-        <div class="panel-heading compact-heading">
-          <p class="eyebrow">Fluxo</p>
-          <h3>Atualizar estado</h3>
-        </div>
-        <div class="compact-form-grid two-col">
-          <label>
-            Estado
-            <select name="status">
-              {% for code, label in statuses %}
-                <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Decisão
-            <select name="decision">
-              <option value="">Sem decisão</option>
-              {% for code, label in decisions %}
-                <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
-        <label>
-          Nota da decisão
-          <textarea name="decision_note" rows="3">{{ process.decision_note or "" }}</textarea>
-        </label>
-        <button type="submit">Atualizar fluxo</button>
-      </form>
-    </section>
-
-    <section class="workshop-board">
       <article class="section workshop-feed">
         <div class="table-heading flat-heading">
           <div>
@@ -201,8 +169,41 @@
           </div>
         </details>
       </article>
+      </div>
 
-      <aside class="workshop-actions">
+      <aside class="workshop-side-column">
+        <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack workshop-flow-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Fluxo</p>
+            <h3>Atualizar estado</h3>
+          </div>
+          <div class="compact-form-grid two-col">
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in statuses %}
+                  <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Decisão
+              <select name="decision">
+                <option value="">Sem decisão</option>
+                {% for code, label in decisions %}
+                  <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <label>
+            Nota da decisão
+            <textarea name="decision_note" rows="3">{{ process.decision_note or "" }}</textarea>
+          </label>
+          <button type="submit">Atualizar fluxo</button>
+        </form>
+
+        <div class="workshop-actions">
         <details class="workshop-action-card" open>
           <summary>Registar evidência</summary>
           <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
@@ -398,6 +399,7 @@
             </form>
           {% endif %}
         </article>
+        </div>
       </aside>
     </section>
   </main>

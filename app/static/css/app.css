@@ -1534,12 +1534,24 @@ a.metric:hover {
   overflow-wrap: anywhere;
 }
 
-.workshop-overview-grid {
+.workshop-page-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+  grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.8fr);
   gap: 18px;
   align-items: start;
   margin-top: 18px;
+}
+
+.workshop-main-column,
+.workshop-side-column {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.workshop-main-column .section,
+.workshop-side-column .section {
+  margin-top: 0;
 }
 
 .workshop-summary-card,
@@ -1547,16 +1559,27 @@ a.metric:hover {
   margin-top: 0;
 }
 
-.workshop-info-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.workshop-summary-card {
+  padding: 20px;
 }
 
-.workshop-board {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
-  gap: 18px;
-  align-items: start;
-  margin-top: 18px;
+.workshop-flow-card {
+  gap: 14px;
+  max-width: none;
+  padding: 20px;
+}
+
+.workshop-flow-card .form-stack,
+.workshop-flow-card label {
+  gap: 8px;
+}
+
+.workshop-flow-card textarea {
+  min-height: 92px;
+}
+
+.workshop-info-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .workshop-feed {
@@ -1620,7 +1643,7 @@ a.metric:hover {
 .workshop-action-card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 14px;
+  padding: 18px;
   background: var(--panel);
   box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
 }
@@ -1633,8 +1656,14 @@ a.metric:hover {
   margin-bottom: 14px;
 }
 
+.workshop-action-card .form-stack {
+  margin-top: 0;
+  gap: 12px;
+}
+
 .workshop-close-card {
   margin-top: 0;
+  padding: 18px;
 }
 
 .event-list {
@@ -1770,8 +1799,7 @@ a.metric:hover {
   .task-layout,
   .detail-grid,
   .form-page-grid,
-  .workshop-overview-grid,
-  .workshop-board {
+  .workshop-page-grid {
     grid-template-columns: 1fr;
   }
 

@@ -627,7 +627,7 @@ button:hover,
   font-size: 13px;
 }
 
-.cockpit-summary {
+.metric-grid.cockpit-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 18px;
 }
@@ -636,7 +636,8 @@ button:hover,
   grid-template-columns: auto 1fr;
   gap: 12px;
   align-items: center;
-  padding: 18px;
+  min-width: 0;
+  padding: 16px;
 }
 
 .cockpit-grid {

@@ -2309,6 +2309,8 @@ def task_board_manage(
 
     with SessionLocal() as db:
         today = date.today()
+        today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
+        tomorrow_start = datetime.fromtimestamp(today_start.timestamp() + 86400, UTC)
         archived_condition = (Task.closed_at.is_not(None)) | (Task.status.in_(TASK_ARCHIVE_STATUSES))
         open_stmt = select(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
         metrics = {
@@ -2353,7 +2355,8 @@ def task_board_manage(
             "closed_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_not(None),
-                    func.date(Task.closed_at) == today,
+                    Task.closed_at >= today_start,
+                    Task.closed_at < tomorrow_start,
                 )
             )
             or 0,

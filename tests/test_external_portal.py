@@ -64,7 +64,7 @@ def test_external_portal_creates_simple_task():
     with SessionLocal() as db:
         task = db.scalar(select(Task).where(Task.title == "Dano reportado na entrega"))
         assert task is not None
-        assert task.task_type == "request"
+        assert task.task_type == "request_info"
         assert task.source == "external_portal"
         assert task.category == "danos"
         assert task.status == "new"

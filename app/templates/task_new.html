@@ -61,14 +61,6 @@
             </select>
           </label>
           <label>
-            Categoria
-            <select name="category">
-              {% for code, label in task_categories %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
             Origem
             <select name="source">
               {% for code, label in task_sources %}
@@ -87,15 +79,6 @@
             <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa">
           </label>
           <label>
-            Responsável
-            <select name="assigned_to_id">
-              <option value="">Sem responsável</option>
-              {% for user in users %}
-                <option value="{{ user.id }}">{{ user.name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
             Data limite
             <input type="date" name="due_on">
           </label>
@@ -104,19 +87,6 @@
         <details class="advanced-panel">
           <summary>Dados adicionais</summary>
           <div class="compact-form-grid">
-            <label>
-              Equipa/Fila
-              <select name="team_id">
-                <option value="">Sem equipa</option>
-                {% for team in teams %}
-                  <option value="{{ team.id }}" {% if team.code == "operations" %}selected{% endif %}>{{ team.name }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>
-              Classificação
-              <input type="text" name="subcategory" maxlength="120">
-            </label>
             <label>
               Cliente
               <input type="text" name="customer_name" maxlength="200">

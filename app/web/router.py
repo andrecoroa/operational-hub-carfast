@@ -181,11 +181,19 @@ PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
 
 TASK_TYPES = [
-    ("task", "Tarefa"),
-    ("request", "Pedido"),
-    ("incident", "Incidente"),
+    ("operational_task", "Tarefa operacional"),
+    ("management_task", "Tarefa de gestão"),
+    ("request_info", "Pedido / Informação"),
+    ("operational_incident", "Incidente operacional"),
+    ("technical_incident", "Incidente técnico"),
+    ("entity_incident", "Incidente entidade"),
 ]
-TASK_TYPE_LABELS = dict(TASK_TYPES)
+TASK_LEGACY_TYPE_LABELS = {
+    "task": "Tarefa",
+    "request": "Pedido",
+    "incident": "Incidente",
+}
+TASK_TYPE_LABELS = {**dict(TASK_TYPES), **TASK_LEGACY_TYPE_LABELS}
 
 TASK_SOURCES = [
     ("manual", "Manual"),
@@ -371,7 +379,7 @@ def external_portal_request_create(
                 category=category,
                 station=station,
             ),
-            task_type="request",
+            task_type="request_info",
             source="external_portal",
             category=category,
             subcategory="Portal externo",
@@ -1026,7 +1034,7 @@ def vehicle_create_task(
         task = Task(
             title=clean_title,
             description=description.strip() or None,
-            task_type="task",
+            task_type="operational_task",
             source="manual",
             category="operations",
             subcategory="Frota",
@@ -2506,7 +2514,7 @@ def task_new_form(
 def task_create(
     request: Request,
     title: str = Form(...),
-    task_type: str = Form("task"),
+    task_type: str = Form("operational_task"),
     category: str = Form("operations"),
     subcategory: str = Form(""),
     source: str = Form("manual"),
@@ -2554,7 +2562,7 @@ def task_create(
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
         if task_type not in TASK_TYPE_LABELS:
-            task_type = "task"
+            task_type = "operational_task"
         if category not in TASK_CATEGORY_LABELS:
             category = "operations"
         assigned_user_id = parse_optional_int(assigned_to_id)
@@ -2694,13 +2702,13 @@ def task_update(
     task_id: int,
     status: str = Form("new"),
     priority: str = Form("normal"),
-    task_type: str = Form("task"),
-    category: str = Form("operations"),
-    subcategory: str = Form(""),
-    assigned_to_id: str = Form(""),
-    team_id: str = Form(""),
+    task_type: str = Form("operational_task"),
+    category: str | None = Form(None),
+    subcategory: str | None = Form(None),
+    assigned_to_id: str | None = Form(None),
+    team_id: str | None = Form(None),
     due_on: str = Form(""),
-    department: str = Form(""),
+    department: str | None = Form(None),
     station: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -2711,14 +2719,17 @@ def task_update(
     if status not in allowed_statuses:
         status = "new"
     if task_type not in TASK_TYPE_LABELS:
-        task_type = "task"
-    if category not in TASK_CATEGORY_LABELS:
-        category = "operations"
+        task_type = "operational_task"
 
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        clean_category = (category.strip() if category else None) or task.category or "operations"
+        if clean_category not in TASK_CATEGORY_LABELS:
+            clean_category = task.category or "operations"
+        clean_subcategory = subcategory.strip() if subcategory is not None else (task.subcategory or "")
+        clean_department = department.strip() if department is not None else (task.department or "")
 
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
@@ -2727,31 +2738,32 @@ def task_update(
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
         if not assigned_user_id and not assigned_team_id:
-            return RedirectResponse(f"/task-board/{task_id}?error=missing_destination", status_code=303)
+            assigned_user_id = task.assigned_to_id
+            assigned_team_id = task.team_id
         parsed_due_on = parse_optional_date(due_on)
 
         changes = [
             ("status", task.status, status),
             ("priority", task.priority, priority),
             ("task_type", task.task_type, task_type),
-            ("category", task.category, category),
-            ("subcategory", task.subcategory, subcategory.strip()),
+            ("category", task.category, clean_category),
+            ("subcategory", task.subcategory, clean_subcategory),
             ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
             ("team_id", str(task.team_id or ""), str(assigned_team_id or "")),
             ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
-            ("department", task.department, department.strip()),
+            ("department", task.department, clean_department),
             ("station", task.station, station.strip()),
         ]
 
         task.status = status
         task.priority = priority
         task.task_type = task_type
-        task.category = category
-        task.subcategory = subcategory.strip() or None
+        task.category = clean_category
+        task.subcategory = clean_subcategory or None
         task.assigned_to_id = assigned_user_id
         task.team_id = assigned_team_id
         task.due_on = parsed_due_on
-        task.department = department.strip() or None
+        task.department = clean_department or None
         task.station = station.strip() or None
         if status in {"resolved", "closed", "no_action_needed"}:
             task.resolved_at = task.resolved_at or datetime.now(UTC)

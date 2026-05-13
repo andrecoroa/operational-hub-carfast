@@ -54,10 +54,6 @@
           <p>{{ task.description or "Sem descrição registada." }}</p>
         </div>
         <div class="task-info-grid">
-          <div><span>Categoria</span><strong>{{ task_category_labels.get(task.category, task.category or "-") }}</strong></div>
-          <div><span>Classificação</span><strong>{{ task.subcategory or "-" }}</strong></div>
-          <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else "-" }}</strong></div>
-          <div><span>Equipa/Fila</span><strong>{{ assigned_team.name if assigned_team else "-" }}</strong></div>
           <div><span>Data limite</span><strong>{{ task.due_on or "-" }}</strong></div>
           <div><span>Estação</span><strong>{{ task.station or "-" }}</strong></div>
           <div><span>Cliente</span><strong>{{ task.customer_name or "-" }}</strong></div>
@@ -102,14 +98,6 @@
             </select>
           </label>
           <label>
-            Categoria
-            <select name="category">
-              {% for code, label in task_categories %}
-                <option value="{{ code }}" {% if task.category == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
             Prioridade
             <select name="priority">
               {% for code, label in priorities %}
@@ -122,38 +110,10 @@
             <input type="date" name="due_on" value="{{ task.due_on or "" }}">
           </label>
         </div>
-        <label>
-          Classificação
-          <input type="text" name="subcategory" maxlength="120" value="{{ task.subcategory or "" }}">
-        </label>
-        <div class="form-grid">
-          <label>
-            Responsável
-            <select name="assigned_to_id">
-              <option value="">Sem responsável</option>
-              {% for user in users %}
-                <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Equipa/Fila
-            <select name="team_id">
-              <option value="">Sem equipa</option>
-              {% for team in teams %}
-                <option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
         <div class="form-grid">
           <label>
             Estação
             <input type="text" name="station" maxlength="120" value="{{ task.station or "" }}">
-          </label>
-          <label>
-            Departamento/Fila
-            <input type="text" name="department" maxlength="120" value="{{ task.department or "" }}">
           </label>
         </div>
         <button type="submit">Atualizar tarefa</button>

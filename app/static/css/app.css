@@ -628,7 +628,7 @@ button:hover,
 }
 
 .cockpit-summary {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 18px;
 }
 
@@ -1477,6 +1477,109 @@ a.metric:hover {
   overflow-wrap: anywhere;
 }
 
+.workshop-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.workshop-summary-card,
+.workshop-flow-card {
+  margin-top: 0;
+}
+
+.workshop-info-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.workshop-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.workshop-feed {
+  padding: 0;
+  overflow: hidden;
+}
+
+.flat-heading {
+  background: #ffffff;
+}
+
+.workshop-record-group {
+  border-top: 1px solid var(--line);
+  padding: 0 18px 16px;
+}
+
+.workshop-record-group summary,
+.workshop-action-card summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 900;
+}
+
+.workshop-record-group summary::-webkit-details-marker,
+.workshop-action-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.workshop-record-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  color: var(--ink);
+}
+
+.workshop-record-group summary span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 12px;
+}
+
+.workshop-record-group:not([open]) {
+  padding-bottom: 0;
+}
+
+.workshop-record-group .event-list {
+  margin-top: 0;
+}
+
+.workshop-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.workshop-action-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--panel);
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
+}
+
+.workshop-action-card summary {
+  color: var(--brand-dark);
+}
+
+.workshop-action-card[open] summary {
+  margin-bottom: 14px;
+}
+
+.workshop-close-card {
+  margin-top: 0;
+}
+
 .event-list {
   display: grid;
   gap: 12px;
@@ -1609,7 +1712,9 @@ a.metric:hover {
 
   .task-layout,
   .detail-grid,
-  .form-page-grid {
+  .form-page-grid,
+  .workshop-overview-grid,
+  .workshop-board {
     grid-template-columns: 1fr;
   }
 
@@ -1757,6 +1862,7 @@ a.metric:hover {
   .step-row,
   .filter-grid,
   .task-info-grid,
+  .workshop-info-grid,
   .detail-grid,
   .detail-list div {
     grid-template-columns: 1fr;

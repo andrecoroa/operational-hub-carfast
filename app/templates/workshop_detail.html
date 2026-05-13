@@ -8,6 +8,7 @@
       <div>
         <p class="eyebrow">Processo de oficina</p>
         <h2>{{ process.title }}</h2>
+        <p class="breadcrumb">Oficina &gt; Gestão de processos &gt; <strong>Processo #{{ process.id }}</strong></p>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "workshop" %}
@@ -38,358 +39,366 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <section class="detail-grid">
-      <article class="section">
-        <h3>Resumo</h3>
-        <dl class="detail-list">
-          <div><dt>Estado</dt><dd><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></dd></div>
-          <div><dt>Abertura</dt><dd>{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</dd></div>
-          <div><dt>Prioridade</dt><dd>{% if process.priority %}<span class="pill priority-{{ process.priority }}">{{ process.priority }}</span>{% else %}-{% endif %}</dd></div>
-          <div><dt>Viatura</dt><dd><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></dd></div>
-          <div><dt>Entrada</dt><dd>{{ process.opened_on or "-" }}</dd></div>
-          <div><dt>KM entrada</dt><dd>{{ process.km_entry or "-" }}</dd></div>
-          <div><dt>Saída prevista</dt><dd>{{ process.expected_exit_on or "-" }}</dd></div>
-          <div><dt>Decisão</dt><dd>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</dd></div>
-          <div><dt>Nota decisão</dt><dd>{{ process.decision_note or "-" }}</dd></div>
-          <div><dt>Nota inicial</dt><dd>{{ process.note or "-" }}</dd></div>
-        </dl>
+    <section class="workshop-overview-grid">
+      <article class="section workshop-summary-card">
+        <div class="panel-heading compact-heading">
+          <p class="eyebrow">Resumo</p>
+          <h3>{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</h3>
+        </div>
+        <div class="pill-row">
+          <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
+          <span class="pill">{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</span>
+          {% if process.priority %}<span class="pill priority-{{ process.priority }}">{{ process.priority }}</span>{% endif %}
+        </div>
+        <div class="task-info-grid workshop-info-grid">
+          <div><span>Entrada</span><strong>{{ process.opened_on or "-" }}</strong></div>
+          <div><span>KM entrada</span><strong>{{ process.km_entry or "-" }}</strong></div>
+          <div><span>Saída prevista</span><strong>{{ process.expected_exit_on or "-" }}</strong></div>
+          <div><span>Decisão</span><strong>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</strong></div>
+        </div>
+        <div class="task-description-box">
+          <span>Nota inicial / decisão</span>
+          <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
+        </div>
       </article>
 
-      <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack">
-        <div class="panel-heading">
+      <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack workshop-flow-card">
+        <div class="panel-heading compact-heading">
           <p class="eyebrow">Fluxo</p>
           <h3>Atualizar estado</h3>
         </div>
-        <label>
-          Estado
-          <select name="status">
-            {% for code, label in statuses %}
-              <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Decisão
-          <select name="decision">
-            <option value="">Sem decisão</option>
-            {% for code, label in decisions %}
-              <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        <div class="compact-form-grid two-col">
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in statuses %}
+                <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Decisão
+            <select name="decision">
+              <option value="">Sem decisão</option>
+              {% for code, label in decisions %}
+                <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
         <label>
           Nota da decisão
-          <textarea name="decision_note" rows="4">{{ process.decision_note or "" }}</textarea>
+          <textarea name="decision_note" rows="3">{{ process.decision_note or "" }}</textarea>
         </label>
         <button type="submit">Atualizar fluxo</button>
       </form>
     </section>
 
-    <section class="detail-grid">
-      <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-panel form-stack">
-        <div class="panel-heading">
-          <p class="eyebrow">Anomalias</p>
-          <h3>Registar evidência</h3>
+    <section class="workshop-board">
+      <article class="section workshop-feed">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Acompanhamento</p>
+            <h3>Registos do processo</h3>
+          </div>
         </div>
-        <label>
-          Fase
-          <select name="phase">
-            {% for code, label in statuses %}
-              <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <div class="form-grid">
-          <label>
-            Tipo
-            <select name="evidence_type">
-              {% for code, label in evidence_types %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Categoria
-            <select name="anomaly_category">
-              {% for code, label in evidence_categories %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
-        <label>
-          Estado
-          <select name="status">
-            {% for code, label in evidence_statuses %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Link externo
-          <input name="external_url" type="url" placeholder="https://...">
-        </label>
-        <label>
-          Descrição
-          <textarea name="description" rows="4" placeholder="Pode ficar vazio se ainda não houver detalhe"></textarea>
-        </label>
-        <input name="storage_provider" type="hidden" value="external">
-        <button type="submit">Gravar evidência</button>
-      </form>
 
-      <article class="section">
-        <h3>Evidências de anomalia</h3>
-        <div class="event-list">
-          {% for item in evidences %}
-            <article class="event-item">
-              <div>
-                <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
-                <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
-              </div>
-              <p>
-                {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
-                &middot; {{ status_labels.get(item.phase, item.phase) }}
-                &middot; {{ evidence_status_labels.get(item.status, item.status) }}
-              </p>
-              <p>{{ item.description }}</p>
-              {% if item.external_url %}
-                <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
-              {% endif %}
-            </article>
-          {% else %}
-            <p class="muted">Sem evidências registadas.</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
-
-    <section class="detail-grid">
-      <form method="post" action="/workshop/{{ process.id }}/incidents" class="form-panel form-stack">
-        <div class="panel-heading">
-          <p class="eyebrow">Incidentes</p>
-          <h3>Criar incidente</h3>
-        </div>
-        <label>
-          Título
-          <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
-        </label>
-        <div class="form-grid">
-          <label>
-            Tipo
-            <select name="incident_type">
-              {% for code, label in incident_types %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Categoria
-            <select name="category">
-              {% for code, label in incident_categories %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
-        <label>
-          Gravidade
-          <select name="severity">
-            {% for code, label in incident_severities %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Descrição
-          <textarea name="description" rows="4" placeholder="Regista o que aconteceu, sem obrigar a preencher campos que ainda não sabes"></textarea>
-        </label>
-        <div class="form-grid">
-          <label>
-            Tipo de evidência
-            <select name="evidence_type">
-              {% for code, label in incident_evidence_types %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Link da evidência
-            <input name="evidence_url" type="url" placeholder="SharePoint, OneDrive ou outro link">
-          </label>
-        </div>
-        <label>
-          Explicação da evidência
-          <textarea name="evidence_description" rows="3" placeholder="Pode ser uma nota sobre foto, vídeo ou áudio"></textarea>
-        </label>
-        <input name="storage_provider" type="hidden" value="external">
-        <button type="submit">Criar incidente</button>
-      </form>
-
-      <article class="section">
-        <h3>Incidentes do processo</h3>
-        <div class="event-list">
-          {% for item in incidents %}
-            <article class="event-item">
-              <div>
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
-              </div>
-              <p>
-                {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
-                &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
-                &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
-                &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
-              </p>
-              {% if item.description %}
-                <p>{{ item.description }}</p>
-              {% endif %}
-              {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
-                <p class="table-note">
-                  Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
-                  {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
-                  {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
+        <details class="workshop-record-group" open>
+          <summary>Evidências <span>{{ evidences|length }}</span></summary>
+          <div class="event-list">
+            {% for item in evidences %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
+                  <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
+                </div>
+                <p>
+                  {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
+                  &middot; {{ status_labels.get(item.phase, item.phase) }}
+                  &middot; {{ evidence_status_labels.get(item.status, item.status) }}
                 </p>
-              {% endfor %}
-            </article>
-          {% else %}
-            <p class="muted">Sem incidentes registados.</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
+                <p>{{ item.description }}</p>
+                {% if item.external_url %}
+                  <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem evidências registadas.</p>
+            {% endfor %}
+          </div>
+        </details>
 
-    <section class="detail-grid">
-      <form method="post" action="/workshop/{{ process.id }}/documents" class="form-panel form-stack">
-        <div class="panel-heading">
-          <p class="eyebrow">Arquivo</p>
-          <h3>Adicionar documento</h3>
-        </div>
-        <label>
-          Título
-          <input type="text" name="title" maxlength="200" required>
-        </label>
-        <div class="form-grid">
-          <label>
-            Estado
-            <select name="status">
-              {% for code, label in document_statuses %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Data do documento
-            <input type="date" name="document_date">
-          </label>
-        </div>
-        <div class="form-grid">
-          <label>
-            Origem
-            <select name="source">
-              {% for code, label in document_sources %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Canal de entrada
-            <input type="text" name="entry_channel" maxlength="120" placeholder="oficina@carfast.pt">
-          </label>
-        </div>
-        <div class="form-grid">
-          <label>
-            Remetente
-            <input type="text" name="source_sender" maxlength="255">
-          </label>
-          <label>
-            Assunto original
-            <input type="text" name="source_subject" maxlength="255">
-          </label>
-        </div>
-        <label>
-          Link original / entrada 365
-          <input type="url" name="url_original" placeholder="https://...">
-        </label>
-        <label>
-          Link arquivado
-          <input type="url" name="url_archive" placeholder="https://...">
-        </label>
-        <label>
-          Fornecedor
-          <input type="text" name="supplier_name" maxlength="200">
-        </label>
-        <label>
-          Notas
-          <textarea name="notes" rows="3"></textarea>
-        </label>
-        <button type="submit">Adicionar documento</button>
-      </form>
+        <details class="workshop-record-group" {% if incidents %}open{% endif %}>
+          <summary>Incidentes do processo <span>{{ incidents|length }}</span></summary>
+          <div class="event-list">
+            {% for item in incidents %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
+                </div>
+                <p>
+                  {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
+                  &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
+                  &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
+                  &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
+                </p>
+                {% if item.description %}
+                  <p>{{ item.description }}</p>
+                {% endif %}
+                {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
+                  <p class="table-note">
+                    Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
+                    {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
+                    {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
+                  </p>
+                {% endfor %}
+              </article>
+            {% else %}
+              <p class="muted">Sem incidentes registados.</p>
+            {% endfor %}
+          </div>
+        </details>
 
-      <article class="section">
-        <h3>Documentos do processo</h3>
-        <div class="event-list">
-          {% for document in documents %}
-            <article class="event-item">
-              <div>
-                <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
-                <span>{{ document_status_labels.get(document.status, document.status) }}</span>
-              </div>
-              <p>
-                {{ document_area_labels.get(document.classification, document.classification or "-") }}
-                &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
-              </p>
-              <p>{{ document.folder_path or "-" }}</p>
-              {% if document.external_url %}
-                <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
-              {% endif %}
-            </article>
-          {% else %}
-            <p class="muted">Sem documentos associados a este processo.</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
+        <details class="workshop-record-group" {% if documents %}open{% endif %}>
+          <summary>Documentos <span>{{ documents|length }}</span></summary>
+          <div class="event-list">
+            {% for document in documents %}
+              <article class="event-item">
+                <div>
+                  <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                  <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                </div>
+                <p>
+                  {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                  &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                </p>
+                <p>{{ document.folder_path or "-" }}</p>
+                {% if document.external_url %}
+                  <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem documentos associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
 
-    <section class="detail-grid">
-      <form method="post" action="/workshop/{{ process.id }}/notes" class="form-panel form-stack">
-        <div class="panel-heading">
-          <p class="eyebrow">Acompanhamento</p>
-          <h3>Adicionar nota</h3>
-        </div>
-        <label>
-          Nota
-          <textarea name="note" rows="5" placeholder="Registar apenas quando houver informacao nova"></textarea>
-        </label>
-        <button type="submit">Gravar nota</button>
-      </form>
-
-      <article class="section">
-        <h3>Notas</h3>
-        <div class="event-list">
-          {% for item in notes %}
-            <article class="event-item">
-              <div>
-                <strong>Utilizador #{{ item.user_id or "-" }}</strong>
-                <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
-              </div>
-              <p>{{ item.note }}</p>
-            </article>
-          {% else %}
-            <p class="muted">Sem notas adicionais.</p>
-          {% endfor %}
-        </div>
+        <details class="workshop-record-group" {% if notes %}open{% endif %}>
+          <summary>Notas <span>{{ notes|length }}</span></summary>
+          <div class="event-list">
+            {% for item in notes %}
+              <article class="event-item">
+                <div>
+                  <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                  <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+                </div>
+                <p>{{ item.note }}</p>
+              </article>
+            {% else %}
+              <p class="muted">Sem notas adicionais.</p>
+            {% endfor %}
+          </div>
+        </details>
       </article>
 
-      <article class="section">
-        <h3>Fecho</h3>
-        {% if process.closed_at %}
-          <p class="muted">Processo fechado em {{ process.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
-        {% else %}
-          <form method="post" action="/workshop/{{ process.id }}/close" class="form-stack">
-            <button type="submit">Fechar processo</button>
+      <aside class="workshop-actions">
+        <details class="workshop-action-card" open>
+          <summary>Registar evidência</summary>
+          <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Fase
+                <select name="phase">
+                  {% for code, label in statuses %}
+                    <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Tipo
+                <select name="evidence_type">
+                  {% for code, label in evidence_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Categoria
+                <select name="anomaly_category">
+                  {% for code, label in evidence_categories %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in evidence_statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Link externo
+              <input name="external_url" type="url" placeholder="https://...">
+            </label>
+            <label>
+              Descrição
+              <textarea name="description" rows="3" placeholder="Pode ficar vazio se ainda não houver detalhe"></textarea>
+            </label>
+            <input name="storage_provider" type="hidden" value="external">
+            <button type="submit">Gravar evidência</button>
           </form>
-        {% endif %}
-      </article>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Criar incidente</summary>
+          <form method="post" action="/workshop/{{ process.id }}/incidents" class="form-stack">
+            <label>
+              Título
+              <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
+            </label>
+            <div class="compact-form-grid two-col">
+              <label>
+                Tipo
+                <select name="incident_type">
+                  {% for code, label in incident_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Categoria
+                <select name="category">
+                  {% for code, label in incident_categories %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Gravidade
+                <select name="severity">
+                  {% for code, label in incident_severities %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Tipo de evidência
+                <select name="evidence_type">
+                  {% for code, label in incident_evidence_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Descrição
+              <textarea name="description" rows="3" placeholder="Regista o que aconteceu, sem obrigar a preencher campos que ainda não sabes"></textarea>
+            </label>
+            <label>
+              Link da evidência
+              <input name="evidence_url" type="url" placeholder="SharePoint, OneDrive ou outro link">
+            </label>
+            <label>
+              Explicação da evidência
+              <textarea name="evidence_description" rows="2" placeholder="Nota sobre foto, vídeo ou áudio"></textarea>
+            </label>
+            <input name="storage_provider" type="hidden" value="external">
+            <button type="submit">Criar incidente</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Adicionar documento</summary>
+          <form method="post" action="/workshop/{{ process.id }}/documents" class="form-stack">
+            <label>
+              Título
+              <input type="text" name="title" maxlength="200" required>
+            </label>
+            <div class="compact-form-grid two-col">
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in document_statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Data do documento
+                <input type="date" name="document_date">
+              </label>
+              <label>
+                Origem
+                <select name="source">
+                  {% for code, label in document_sources %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Fornecedor
+                <input type="text" name="supplier_name" maxlength="200">
+              </label>
+            </div>
+            <label>
+              Link original / entrada 365
+              <input type="url" name="url_original" placeholder="https://...">
+            </label>
+            <label>
+              Link arquivado
+              <input type="url" name="url_archive" placeholder="https://...">
+            </label>
+            <details class="advanced-panel">
+              <summary>Dados adicionais</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Canal de entrada
+                  <input type="text" name="entry_channel" maxlength="120" placeholder="oficina@carfast.pt">
+                </label>
+                <label>
+                  Remetente
+                  <input type="text" name="source_sender" maxlength="255">
+                </label>
+              </div>
+              <label>
+                Assunto original
+                <input type="text" name="source_subject" maxlength="255">
+              </label>
+              <label>
+                Notas
+                <textarea name="notes" rows="2"></textarea>
+              </label>
+            </details>
+            <button type="submit">Adicionar documento</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Adicionar nota</summary>
+          <form method="post" action="/workshop/{{ process.id }}/notes" class="form-stack">
+            <label>
+              Nota
+              <textarea name="note" rows="4" placeholder="Registar apenas quando houver informação nova"></textarea>
+            </label>
+            <button type="submit">Gravar nota</button>
+          </form>
+        </details>
+
+        <article class="section workshop-close-card">
+          <h3>Fecho</h3>
+          {% if process.closed_at %}
+            <p class="muted">Processo fechado em {{ process.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+          {% else %}
+            <form method="post" action="/workshop/{{ process.id }}/close" class="form-stack">
+              <button type="submit">Fechar processo</button>
+            </form>
+          {% endif %}
+        </article>
+      </aside>
     </section>
   </main>
 </div>

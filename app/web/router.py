@@ -2353,7 +2353,7 @@ def task_board_manage(
             "closed_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     Task.closed_at.is_not(None),
-                    func.date(Task.closed_at) == today.isoformat(),
+                    func.date(Task.closed_at) == today,
                 )
             )
             or 0,

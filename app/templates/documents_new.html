@@ -22,23 +22,17 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <section class="form-page-grid">
-      <form method="post" action="/documents/new" class="form-panel form-stack task-form task-create-page">
-        <div class="step-row">
-          <span class="step-item active"><span class="step-number">1</span>Entrada</span>
-          <span class="step-item"><span class="step-number">2</span>Classificação</span>
-          <span class="step-item"><span class="step-number">3</span>Arquivo</span>
-          <span class="step-item"><span class="step-number">4</span>Associações</span>
-        </div>
+    <section class="compact-create-layout">
+      <form method="post" action="/documents/new" class="form-panel form-stack task-form compact-create-page">
         <div class="panel-heading">
           <p class="eyebrow">Entrada documental</p>
-          <h3>Registar documento</h3>
+          <h3>Registo rápido</h3>
         </div>
         <label>
           Título
           <input type="text" name="title" maxlength="200" required>
         </label>
-        <div class="form-grid">
+        <div class="compact-form-grid">
           <label>
             Área
             <select name="classification">
@@ -55,8 +49,6 @@
               {% endfor %}
             </select>
           </label>
-        </div>
-        <div class="form-grid">
           <label>
             Estado
             <select name="status">
@@ -65,44 +57,18 @@
               {% endfor %}
             </select>
           </label>
+        </div>
+        <div class="compact-form-grid two-col">
           <label>
-            Data do documento
-            <input type="date" name="document_date">
+            Link original / entrada 365
+            <input type="url" name="url_original" placeholder="https://...">
+          </label>
+          <label>
+            Link arquivado
+            <input type="url" name="url_archive" placeholder="https://...">
           </label>
         </div>
-        <div class="form-grid">
-          <label>
-            Origem
-            <select name="source">
-              {% for code, label in sources %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Canal de entrada
-            <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
-          </label>
-        </div>
-        <div class="form-grid">
-          <label>
-            Remetente
-            <input type="text" name="source_sender" maxlength="255">
-          </label>
-          <label>
-            Assunto original
-            <input type="text" name="source_subject" maxlength="255">
-          </label>
-        </div>
-        <label>
-          Link original / entrada 365
-          <input type="url" name="url_original" placeholder="https://...">
-        </label>
-        <label>
-          Link arquivado
-          <input type="url" name="url_archive" placeholder="https://...">
-        </label>
-        <div class="form-grid">
+        <div class="compact-form-grid">
           <label>
             Matrícula
             <input type="text" name="plate" maxlength="40">
@@ -111,48 +77,59 @@
             Fornecedor
             <input type="text" name="supplier_name" maxlength="200">
           </label>
-        </div>
-        <div class="form-grid">
           <label>
-            Cliente
-            <input type="text" name="customer_name" maxlength="200">
+            Data do documento
+            <input type="date" name="document_date">
           </label>
           <label>
-            Tarefa associada
-            <input type="number" name="task_id" min="1">
-          </label>
-        </div>
-        <div class="form-grid">
-          <label>
-            Processo oficina
-            <input type="number" name="workshop_process_id" min="1">
-          </label>
-          <label>
-            Lote importação
-            <input type="number" name="import_batch_id" min="1">
+            Origem
+            <select name="source">
+              {% for code, label in sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
           </label>
         </div>
-        <label>
-          Notas
-          <textarea name="notes" rows="3"></textarea>
-        </label>
+
+        <details class="advanced-panel">
+          <summary>Dados adicionais</summary>
+          <div class="compact-form-grid">
+            <label>
+              Canal de entrada
+              <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+            </label>
+            <label>
+              Remetente
+              <input type="text" name="source_sender" maxlength="255">
+            </label>
+            <label>
+              Assunto original
+              <input type="text" name="source_subject" maxlength="255">
+            </label>
+            <label>
+              Cliente
+              <input type="text" name="customer_name" maxlength="200">
+            </label>
+            <label>
+              Tarefa associada
+              <input type="number" name="task_id" min="1">
+            </label>
+            <label>
+              Processo oficina
+              <input type="number" name="workshop_process_id" min="1">
+            </label>
+            <label>
+              Lote importação
+              <input type="number" name="import_batch_id" min="1">
+            </label>
+          </div>
+          <label>
+            Notas
+            <textarea name="notes" rows="3"></textarea>
+          </label>
+        </details>
         <button type="submit">Registar documento</button>
       </form>
-
-      <aside class="side-panel">
-        <article class="summary-card">
-          <h3>Regra base</h3>
-          <p class="muted">Guardamos referência, classificação e link 365. O ficheiro fica fora da base de dados.</p>
-        </article>
-        <article class="best-practices-card">
-          <h3>Boas práticas</h3>
-          <ul class="best-practices-list">
-            <li>Use uma tipologia simples quando ainda não houver certeza.</li>
-            <li>Associe matrícula, tarefa ou processo quando existir contexto.</li>
-            <li>Atualize o link arquivado quando o ficheiro estiver na pasta final.</li>
-          </ul>
-        </article>
-      </aside>
     </section>
   </main>
 </div>

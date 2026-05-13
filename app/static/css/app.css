@@ -1228,6 +1228,55 @@ a.metric:hover {
   align-items: start;
 }
 
+.compact-create-layout {
+  display: grid;
+  max-width: 1120px;
+  margin-top: 18px;
+}
+
+.compact-create-page {
+  margin-top: 0;
+}
+
+.compact-create-page .panel-heading {
+  padding: 0;
+}
+
+.compact-create-page textarea {
+  min-height: 92px;
+}
+
+.compact-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.compact-form-grid.two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.advanced-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfc;
+}
+
+.advanced-panel summary {
+  cursor: pointer;
+  color: var(--brand-dark);
+  font-weight: 800;
+}
+
+.advanced-panel[open] summary {
+  margin-bottom: 14px;
+}
+
+.advanced-panel > label {
+  margin-top: 12px;
+}
+
 .task-create-page {
   max-width: none;
 }
@@ -1677,6 +1726,8 @@ a.metric:hover {
 
   .task-layout,
   .form-grid,
+  .compact-form-grid,
+  .compact-form-grid.two-col,
   .step-row,
   .filter-grid,
   .task-info-grid,

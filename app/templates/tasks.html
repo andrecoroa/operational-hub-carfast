@@ -119,69 +119,52 @@
       </form>
     </section>
 
-    <section class="table-shell">
-        <div class="table-heading">
-          <div>
-            <p class="eyebrow">Backlog</p>
-            <h3>{% if filters.view == "archived" %}Tarefas em arquivo{% elif filters.view == "all" %}Todas as tarefas{% else %}Tarefas abertas{% endif %}</h3>
+    <section class="task-board-groups">
+      {% for group in task_groups %}
+        <article class="task-type-board">
+          <div class="task-type-heading">
+            <div>
+              <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
+              <h3>{{ group.label }}</h3>
+            </div>
+            <span>{{ group.count }}</span>
           </div>
-        </div>
-        <table class="task-table responsive-card-table">
-          <colgroup>
-            <col class="task-col-main">
-            <col class="task-col-type">
-            <col class="task-col-priority">
-            <col class="task-col-status">
-            <col class="task-col-station">
-            <col class="task-col-date">
-            <col class="task-col-action">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Nº / Tarefa</th>
-              <th>Natureza</th>
-              <th>Prioridade</th>
-              <th>Estado</th>
-              <th>Estação</th>
-              <th>SLA</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for task in tasks %}
-              <tr>
-                <td data-label="Nº / Tarefa">
-                  <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong><br>
-                  <a class="table-link" href="/task-board/{{ task.id }}">{{ task.title }}</a>
-                  <p class="table-note">
+          <div class="task-board-list">
+            {% for task in group.tasks %}
+              <article class="task-board-row">
+                <a class="task-board-main" href="/task-board/{{ task.id }}">
+                  <strong>CF-TASK-{{ "%05d"|format(task.id) }} · {{ task.title }}</strong>
+                  <small>
                     {% if task.customer_name %}{{ task.customer_name }}{% endif %}
-                    {% if task.plate %} &middot; {{ task.plate }}{% endif %}
+                    {% if task.plate %}{% if task.customer_name %} · {% endif %}{{ task.plate }}{% endif %}
                     {% if not task.customer_name and not task.plate %}{{ task_source_labels.get(task.source, task.source or "Manual") }}{% endif %}
-                  </p>
+                  </small>
                   {% if task.description %}
-                    <p class="table-note table-note-clamp">{{ task.description }}</p>
+                    <span>{{ task.description }}</span>
                   {% endif %}
-                </td>
-                <td data-label="Natureza">{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</td>
-                <td data-label="Prioridade"><span class="priority-dot {{ task.priority }}"></span>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</td>
-                <td data-label="Estado"><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
-                <td data-label="Estação">{{ task.station or "-" }}</td>
-                <td data-label="SLA">{{ task.due_on or "-" }}</td>
-                <td data-label="Ação" class="row-action">
+                </a>
+                <div class="task-board-meta">
+                  <span><i class="priority-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                  <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                  <span>{{ task.due_on or "Sem SLA" }}</span>
+                </div>
+                <div class="task-board-action">
                   {% if task.status not in archive_statuses %}
                     <form method="post" action="/task-board/{{ task.id }}/close">
                       <button type="submit" class="secondary small-button">Fechar</button>
                     </form>
                   {% endif %}
-                </td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="7" class="muted">Sem tarefas abertas.</td>
-              </tr>
+                </div>
+              </article>
             {% endfor %}
-          </tbody>
-        </table>
+          </div>
+        </article>
+      {% else %}
+        <article class="section empty-board">
+          <h3>Sem tarefas para apresentar.</h3>
+          <p class="muted">Ajusta os filtros ou cria uma nova tarefa.</p>
+        </article>
+      {% endfor %}
     </section>
   </main>
 </div>

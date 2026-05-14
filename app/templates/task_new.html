@@ -28,27 +28,42 @@
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
+    {% if duplicate_tasks %}
+      <div class="alert duplicate-warning">
+        <strong>Já existem tarefas abertas para a matrícula {{ form_values.plate }}.</strong>
+        <p>Confirma se queres criar uma nova tarefa para a mesma viatura.</p>
+        <ul>
+          {% for item in duplicate_tasks %}
+            <li>
+              <a class="table-link" href="/task-board/{{ item.id }}">CF-TASK-{{ "%05d"|format(item.id) }} · {{ item.title }}</a>
+              <span>{{ task_status_labels.get(item.status, item.status) if task_status_labels is defined else item.status }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
 
     <section class="compact-create-layout">
       <form method="post" action="/task-board/new" class="form-panel form-stack task-form compact-create-page">
+        {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
         <div class="panel-heading">
           <p class="eyebrow">Novo registo</p>
           <h3>Registo rápido</h3>
         </div>
         <label>
           Assunto
-          <input type="text" name="title" maxlength="200" required placeholder="Ex.: Dano na porta traseira esquerda">
+          <input type="text" name="title" maxlength="200" required placeholder="Ex.: Dano na porta traseira esquerda" value="{{ form_values.title or "" }}">
         </label>
         <label>
           Descrição
-          <textarea name="description" rows="3" placeholder="Registe apenas a informação disponível."></textarea>
+          <textarea name="description" rows="3" placeholder="Registe apenas a informação disponível.">{{ form_values.description or "" }}</textarea>
         </label>
         <div class="compact-form-grid">
           <label>
             Natureza
             <select name="task_type">
               {% for code, label in task_types %}
-                <option value="{{ code }}">{{ label }}</option>
+                <option value="{{ code }}" {% if (form_values.task_type or "operational_task") == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -56,7 +71,7 @@
             Prioridade
             <select name="priority">
               {% for code, label in priorities %}
-                <option value="{{ code }}">{{ label }}</option>
+                <option value="{{ code }}" {% if (form_values.priority or "normal") == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -64,7 +79,7 @@
             Origem
             <select name="source">
               {% for code, label in task_sources %}
-                <option value="{{ code }}">{{ label }}</option>
+                <option value="{{ code }}" {% if (form_values.source or "manual") == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -72,15 +87,16 @@
         <div class="compact-form-grid">
           <label>
             Matrícula
-            <input type="text" name="plate" maxlength="40">
+            <input type="text" name="plate" maxlength="40" list="task-vehicle-plates" data-vehicle-search value="{{ form_values.plate or "" }}" autocomplete="off">
+            <datalist id="task-vehicle-plates"></datalist>
           </label>
           <label>
             Estação
-            <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa">
+            <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa" value="{{ form_values.station or "" }}">
           </label>
           <label>
             Data limite
-            <input type="date" name="due_on">
+            <input type="date" name="due_on" value="{{ form_values.due_on or "" }}">
           </label>
         </div>
 
@@ -89,44 +105,89 @@
           <div class="compact-form-grid">
             <label>
               Cliente
-              <input type="text" name="customer_name" maxlength="200">
+              <input type="text" name="customer_name" maxlength="200" value="{{ form_values.customer_name or "" }}">
             </label>
             <label>
               Contacto
-              <input type="text" name="customer_contact" maxlength="200">
+              <input type="text" name="customer_contact" maxlength="200" value="{{ form_values.customer_contact or "" }}">
             </label>
             <label>
               E-mail
-              <input type="email" name="customer_email" maxlength="255">
+              <input type="email" name="customer_email" maxlength="255" value="{{ form_values.customer_email or "" }}">
             </label>
             <label>
               Telefone
-              <input type="text" name="customer_phone" maxlength="80">
+              <input type="text" name="customer_phone" maxlength="80" value="{{ form_values.customer_phone or "" }}">
             </label>
             <label>
               Reserva
-              <input type="text" name="reservation_number" maxlength="120">
+              <input type="text" name="reservation_number" maxlength="120" value="{{ form_values.reservation_number or "" }}">
             </label>
             <label>
               Contrato
-              <input type="text" name="contract_number" maxlength="120">
+              <input type="text" name="contract_number" maxlength="120" value="{{ form_values.contract_number or "" }}">
+            </label>
+            <label>
+              Responsável
+              <select name="assigned_to_id">
+                <option value="">Sem responsável direto</option>
+                {% for user in users %}
+                  <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }} · {{ user.email }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Equipa/Fila
+              <select name="team_id">
+                <option value="">Fila padrão</option>
+                {% for team in teams %}
+                  <option value="{{ team.id }}" {% if form_values.team_id|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>
+                {% endfor %}
+              </select>
             </label>
             <label>
               Departamento/Fila
-              <input type="text" name="department" maxlength="120">
+              <input type="text" name="department" maxlength="120" value="{{ form_values.department or "" }}">
             </label>
             <label>
               ID externo
-              <input type="text" name="external_source_id" maxlength="255">
+              <input type="text" name="external_source_id" maxlength="255" value="{{ form_values.external_source_id or "" }}">
             </label>
           </div>
         </details>
         <div class="button-row">
           <a class="button-link secondary-link" href="/task-board">Cancelar</a>
-          <button type="submit">Criar tarefa</button>
+          <button type="submit">{% if duplicate_tasks %}Criar mesmo assim{% else %}Criar tarefa{% endif %}</button>
         </div>
       </form>
     </section>
   </main>
 </div>
+<script>
+  const plateInput = document.querySelector("[data-vehicle-search]");
+  const plateList = document.getElementById("task-vehicle-plates");
+  let plateSearchTimer;
+  if (plateInput && plateList) {
+    plateInput.addEventListener("input", () => {
+      clearTimeout(plateSearchTimer);
+      plateSearchTimer = setTimeout(async () => {
+        const query = plateInput.value.trim();
+        if (!query) {
+          plateList.innerHTML = "";
+          return;
+        }
+        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        plateList.innerHTML = "";
+        for (const item of data.items || []) {
+          const option = document.createElement("option");
+          option.value = item.plate;
+          option.label = item.label;
+          plateList.appendChild(option);
+        }
+      }, 160);
+    });
+  }
+</script>
 {% endblock %}

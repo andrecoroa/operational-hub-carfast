@@ -59,6 +59,8 @@
           <div><span>Cliente</span><strong>{{ task.customer_name or "-" }}</strong></div>
           <div><span>Contacto</span><strong>{{ task.customer_contact or task.customer_email or task.customer_phone or "-" }}</strong></div>
           <div><span>Matrícula</span><strong>{{ task.plate or "-" }}</strong></div>
+          <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else "-" }}</strong></div>
+          <div><span>Equipa/Fila</span><strong>{{ assigned_team.name if assigned_team else "-" }}</strong></div>
           <div><span>Reserva</span><strong>{{ task.reservation_number or "-" }}</strong></div>
           <div><span>Contrato</span><strong>{{ task.contract_number or "-" }}</strong></div>
           <div><span>ID externo</span><strong>{{ task.external_source_id or "-" }}</strong></div>
@@ -114,6 +116,24 @@
           <label>
             Estação
             <input type="text" name="station" maxlength="120" value="{{ task.station or "" }}">
+          </label>
+          <label>
+            Responsável
+            <select name="assigned_to_id">
+              <option value="">Sem responsável direto</option>
+              {% for user in users %}
+                <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }} · {{ user.email }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Equipa/Fila
+            <select name="team_id">
+              <option value="">Sem equipa/fila</option>
+              {% for team in teams %}
+                <option value="{{ team.id }}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
+              {% endfor %}
+            </select>
           </label>
         </div>
         <button type="submit">Atualizar tarefa</button>

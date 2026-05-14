@@ -204,7 +204,7 @@
         </form>
 
         <div class="workshop-actions">
-        <details class="workshop-action-card" open>
+        <details class="workshop-action-card">
           <summary>Registar evidência</summary>
           <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
             <div class="compact-form-grid two-col">
@@ -389,8 +389,8 @@
           </form>
         </details>
 
-        <article class="section workshop-close-card">
-          <h3>Fecho</h3>
+        <details class="workshop-action-card workshop-close-card">
+          <summary>Fecho</summary>
           {% if process.closed_at %}
             <p class="muted">Processo fechado em {{ process.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
           {% else %}
@@ -398,7 +398,7 @@
               <button type="submit">Fechar processo</button>
             </form>
           {% endif %}
-        </article>
+        </details>
         </div>
       </aside>
     </section>

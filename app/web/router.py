@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import monotonic
 
 from fastapi import APIRouter, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 
@@ -193,7 +193,19 @@ TASK_LEGACY_TYPE_LABELS = {
     "request": "Pedido",
     "incident": "Incidente",
 }
+LEGACY_TASK_TYPES = list(TASK_LEGACY_TYPE_LABELS.items())
 TASK_TYPE_LABELS = {**dict(TASK_TYPES), **TASK_LEGACY_TYPE_LABELS}
+TASK_BOARD_TYPE_LABELS = {
+    "operational_task": "Tarefas operacionais",
+    "management_task": "Tarefas de gestão",
+    "request_info": "Pedidos / Informação",
+    "operational_incident": "Incidentes operacionais",
+    "technical_incident": "Incidentes técnicos",
+    "entity_incident": "Incidentes entidade",
+    "task": "Tarefas",
+    "request": "Pedidos",
+    "incident": "Incidentes",
+}
 
 TASK_SOURCES = [
     ("manual", "Manual"),
@@ -2422,7 +2434,38 @@ def task_board_manage(
         if station.strip():
             stmt = stmt.where(Task.station.ilike(f"%{station.strip()}%"))
 
-        tasks = db.scalars(stmt.order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc()).limit(100)).all()
+        tasks = db.scalars(
+            stmt.order_by(
+                Task.due_on.is_(None),
+                Task.due_on,
+                Task.priority.desc(),
+                Task.id.desc(),
+            ).limit(100)
+        ).all()
+        grouped_tasks = []
+        used_task_types = set()
+        for type_code, type_label in TASK_TYPES + LEGACY_TASK_TYPES:
+            group_items = [task for task in tasks if (task.task_type or "task") == type_code]
+            if group_items:
+                grouped_tasks.append(
+                    {
+                        "code": type_code,
+                        "label": TASK_BOARD_TYPE_LABELS.get(type_code, type_label),
+                        "tasks": group_items,
+                        "count": len(group_items),
+                    }
+                )
+                used_task_types.add(type_code)
+        other_tasks = [task for task in tasks if (task.task_type or "task") not in used_task_types]
+        if other_tasks:
+            grouped_tasks.append(
+                {
+                    "code": "other",
+                    "label": "Outras",
+                    "tasks": other_tasks,
+                    "count": len(other_tasks),
+                }
+            )
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -2443,6 +2486,7 @@ def task_board_manage(
             "tasks.html",
             {
                 "tasks": tasks,
+                "task_groups": grouped_tasks,
                 "users": users,
                 "current_user": user_by_id.get(user_id),
                 "user_by_id": user_by_id,
@@ -2501,12 +2545,45 @@ def task_new_form(
                 "current_user": current_user,
                 "teams": teams,
                 "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "form_values": {},
+                "duplicate_tasks": [],
                 "task_types": TASK_TYPES,
                 "task_sources": TASK_SOURCES,
                 "task_categories": TASK_CATEGORIES,
                 "priorities": PRIORITIES,
             },
         )
+
+
+@web_router.get("/task-board/vehicle-search")
+def task_vehicle_search(request: Request):
+    if not get_web_user_id(request):
+        return JSONResponse({"items": []}, status_code=401)
+
+    query = (request.query_params.get("q") or "").strip().upper().replace(" ", "")
+    with SessionLocal() as db:
+        statement = select(Vehicle).where(Vehicle.plate.is_not(None), Vehicle.plate != "")
+        if query:
+            statement = statement.where(Vehicle.plate.ilike(f"{query}%"))
+        vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
+        return {
+            "items": [
+                {
+                    "plate": vehicle.plate,
+                    "label": " · ".join(
+                        item
+                        for item in [
+                            vehicle.plate or "",
+                            " ".join(part for part in [vehicle.brand, vehicle.model] if part).strip(),
+                            vehicle.operational_status or "",
+                        ]
+                        if item
+                    ),
+                }
+                for vehicle in vehicles
+                if vehicle.plate
+            ]
+        }
 
 
 @web_router.post("/task-board", response_class=HTMLResponse)
@@ -2533,6 +2610,7 @@ def task_create(
     department: str = Form(""),
     external_source_id: str = Form(""),
     description: str = Form(""),
+    confirm_duplicate: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -2541,6 +2619,7 @@ def task_create(
     clean_title = title.strip()
     if not clean_title:
         with SessionLocal() as db:
+            current_user = db.get(User, user_id)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
@@ -2548,8 +2627,11 @@ def task_create(
             "task_new.html",
             {
                 "users": users,
+                "current_user": current_user,
                 "teams": teams,
                 "error": "Indica um título para a tarefa.",
+                "form_values": {},
+                "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
                 "task_types": TASK_TYPES,
                 "task_categories": TASK_CATEGORIES,
@@ -2559,6 +2641,7 @@ def task_create(
         )
 
     with SessionLocal() as db:
+        clean_plate = plate.strip().upper().replace(" ", "")
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
         if task_type not in TASK_TYPE_LABELS:
@@ -2574,6 +2657,58 @@ def task_create(
         assigned_team_id = assigned_team_id or default_team_id(db, "operations")
         if not assigned_user_id and not assigned_team_id:
             return RedirectResponse("/task-board/new?error=missing_destination", status_code=303)
+        duplicate_tasks = []
+        if clean_plate and confirm_duplicate != "1":
+            duplicate_tasks = db.scalars(
+                select(Task)
+                .where(
+                    Task.plate == clean_plate,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+                .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
+                .limit(8)
+            ).all()
+        if duplicate_tasks:
+            users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+            return templates.TemplateResponse(
+                request,
+                "task_new.html",
+                {
+                    "users": users,
+                    "current_user": db.get(User, user_id),
+                    "teams": teams,
+                    "error": None,
+                    "duplicate_tasks": duplicate_tasks,
+                    "form_values": {
+                        "title": clean_title,
+                        "description": description,
+                        "task_type": task_type,
+                        "priority": priority,
+                        "source": source,
+                        "plate": clean_plate,
+                        "station": station,
+                        "due_on": due_on,
+                        "customer_name": customer_name,
+                        "customer_contact": customer_contact,
+                        "customer_email": customer_email,
+                        "customer_phone": customer_phone,
+                        "reservation_number": reservation_number,
+                        "contract_number": contract_number,
+                        "assigned_to_id": assigned_to_id,
+                        "team_id": team_id,
+                        "department": department,
+                        "external_source_id": external_source_id,
+                    },
+                    "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
+                    "task_sources": TASK_SOURCES,
+                    "task_types": TASK_TYPES,
+                    "task_categories": TASK_CATEGORIES,
+                    "priorities": PRIORITIES,
+                },
+                status_code=409,
+            )
         task = Task(
             title=clean_title,
             description=description.strip() or None,
@@ -2587,7 +2722,7 @@ def task_create(
             customer_contact=customer_contact.strip() or None,
             customer_email=customer_email.strip().lower() or None,
             customer_phone=customer_phone.strip() or None,
-            plate=plate.strip().upper().replace(" ", "") or None,
+            plate=clean_plate or None,
             reservation_number=reservation_number.strip() or None,
             contract_number=contract_number.strip() or None,
             station=station.strip() or None,

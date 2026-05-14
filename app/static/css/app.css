@@ -1905,6 +1905,24 @@ a.metric:hover {
   margin-top: 14px;
 }
 
+.vehicle-summary-card .workshop-info-grid {
+  margin-top: 10px;
+}
+
+.vehicle-snapshot-list {
+  margin: 0 0 16px;
+  padding: 0 18px;
+}
+
+.vehicle-quick-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.vehicle-quick-actions .button-link {
+  width: 100%;
+}
+
 .event-list {
   display: grid;
   gap: 12px;

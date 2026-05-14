@@ -131,7 +131,8 @@
           </div>
           <div class="task-board-list">
             {% for task in group.tasks %}
-              <article class="task-board-row">
+              <article class="task-board-row {% if loop.index > 5 %}is-extra{% endif %}">
+                <span class="task-board-dot {{ task.priority }}"></span>
                 <a class="task-board-main" href="/task-board/{{ task.id }}">
                   <strong>CF-TASK-{{ "%05d"|format(task.id) }} · {{ task.title }}</strong>
                   <small>
@@ -144,19 +145,20 @@
                   {% endif %}
                 </a>
                 <div class="task-board-meta">
-                  <span><i class="priority-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                  <span>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
                   <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
                   <span>{{ task.due_on or "Sem SLA" }}</span>
                 </div>
                 <div class="task-board-action">
-                  {% if task.status not in archive_statuses %}
-                    <form method="post" action="/task-board/{{ task.id }}/close">
-                      <button type="submit" class="secondary small-button">Fechar</button>
-                    </form>
-                  {% endif %}
+                  <a class="button-link secondary-link small-button" href="/task-board/{{ task.id }}">Abrir</a>
                 </div>
               </article>
+            {% else %}
+              <p class="muted empty-panel">Sem tarefas neste tipo.</p>
             {% endfor %}
+            {% if group.count > 5 %}
+              <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver todas deste tipo</a>
+            {% endif %}
           </div>
         </article>
       {% else %}

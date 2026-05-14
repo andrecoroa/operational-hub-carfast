@@ -2446,7 +2446,7 @@ def task_board_manage(
         used_task_types = set()
         for type_code, type_label in TASK_TYPES + LEGACY_TASK_TYPES:
             group_items = [task for task in tasks if (task.task_type or "task") == type_code]
-            if group_items:
+            if not task_type or task_type == type_code or group_items:
                 grouped_tasks.append(
                     {
                         "code": type_code,

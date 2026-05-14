@@ -2569,6 +2569,7 @@ def task_vehicle_search(request: Request):
         return {
             "items": [
                 {
+                    "id": vehicle.id,
                     "plate": vehicle.plate,
                     "label": " · ".join(
                         item

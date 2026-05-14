@@ -36,16 +36,10 @@
         </div>
         <label>
           Viatura
-          <select name="vehicle_id" required>
-            <option value="">Escolher viatura</option>
-            {% for vehicle in vehicles %}
-              <option value="{{ vehicle.id }}">
-                {% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }} · {% endif %}
-                {{ vehicle.plate or ("Viatura #" ~ vehicle.id) }}
-                {% if vehicle.brand or vehicle.model %} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}{% endif %}
-              </option>
-            {% endfor %}
-          </select>
+          <input type="search" name="vehicle_search" list="workshop-vehicle-options" placeholder="Escreve a matrícula, ex.: B" autocomplete="off" required data-workshop-vehicle-search>
+          <input type="hidden" name="vehicle_id" data-workshop-vehicle-id>
+          <datalist id="workshop-vehicle-options"></datalist>
+          <span class="field-hint">Começa a escrever a matrícula e escolhe a viatura sugerida.</span>
         </label>
         <label>
           Título
@@ -107,4 +101,51 @@
     </section>
   </main>
 </div>
+<script>
+  const workshopVehicleInput = document.querySelector("[data-workshop-vehicle-search]");
+  const workshopVehicleId = document.querySelector("[data-workshop-vehicle-id]");
+  const workshopVehicleOptions = document.getElementById("workshop-vehicle-options");
+  let workshopVehicleTimer;
+
+  function syncWorkshopVehicleId() {
+    if (!workshopVehicleInput || !workshopVehicleId || !workshopVehicleOptions) return;
+    const selected = [...workshopVehicleOptions.options].find((option) => option.value === workshopVehicleInput.value);
+    workshopVehicleId.value = selected ? selected.dataset.id : "";
+  }
+
+  if (workshopVehicleInput && workshopVehicleId && workshopVehicleOptions) {
+    workshopVehicleInput.addEventListener("input", () => {
+      workshopVehicleId.value = "";
+      clearTimeout(workshopVehicleTimer);
+      workshopVehicleTimer = setTimeout(async () => {
+        const query = workshopVehicleInput.value.trim();
+        if (!query) {
+          workshopVehicleOptions.innerHTML = "";
+          return;
+        }
+        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        workshopVehicleOptions.innerHTML = "";
+        for (const item of data.items || []) {
+          const option = document.createElement("option");
+          option.value = item.plate;
+          option.label = item.label;
+          option.dataset.id = item.id;
+          workshopVehicleOptions.appendChild(option);
+        }
+        syncWorkshopVehicleId();
+      }, 140);
+    });
+
+    workshopVehicleInput.addEventListener("change", syncWorkshopVehicleId);
+    workshopVehicleInput.form?.addEventListener("submit", (event) => {
+      syncWorkshopVehicleId();
+      if (!workshopVehicleId.value) {
+        event.preventDefault();
+        workshopVehicleInput.focus();
+      }
+    });
+  }
+</script>
 {% endblock %}

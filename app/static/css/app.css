@@ -131,6 +131,11 @@ label {
   font-size: 14px;
 }
 
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 input,
 select,
 textarea {

@@ -130,9 +130,15 @@
             <span>{{ group.count }}</span>
           </div>
           <div class="task-board-list">
+            <div class="task-board-columns" aria-hidden="true">
+              <span>Tarefa</span>
+              <span>Prioridade</span>
+              <span>Estado</span>
+              <span>SLA</span>
+              <span></span>
+            </div>
             {% for task in group.tasks %}
               <article class="task-board-row {% if loop.index > 5 %}is-extra{% endif %}">
-                <span class="task-board-dot {{ task.priority }}"></span>
                 <a class="task-board-main" href="/task-board/{{ task.id }}">
                   <strong>CF-TASK-{{ "%05d"|format(task.id) }} · {{ task.title }}</strong>
                   <small>
@@ -144,17 +150,17 @@
                     <span>{{ task.description }}</span>
                   {% endif %}
                 </a>
-                <div class="task-board-meta">
-                  <span>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
-                  <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
-                  <span>{{ task.due_on or "Sem SLA" }}</span>
-                </div>
-                <div class="task-board-action">
-                  <a class="button-link secondary-link small-button" href="/task-board/{{ task.id }}">Abrir</a>
-                </div>
+                <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
+                <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
               </article>
             {% else %}
-              <p class="muted empty-panel">Sem tarefas neste tipo.</p>
+              <div class="task-board-empty">
+                <span>✓</span>
+                <p>Sem registos.</p>
+                <small>Tudo em dia.</small>
+              </div>
             {% endfor %}
             {% if group.count > 5 %}
               <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver todas deste tipo</a>

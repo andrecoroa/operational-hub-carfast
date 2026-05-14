@@ -1208,15 +1208,21 @@ a.metric:hover {
 
 .filter-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   align-items: end;
 }
 
+.filter-grid label:first-of-type {
+  grid-column: span 2;
+}
+
 .filter-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(86px, 1fr));
   gap: 10px;
   align-items: end;
+  min-width: 180px;
 }
 
 .filter-actions button,
@@ -1316,20 +1322,35 @@ a.metric:hover {
 
 .task-board-list {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  padding: 0 16px 16px;
+}
+
+.task-board-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 94px 88px 86px 34px;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .task-board-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-  min-height: 92px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) 94px 88px 86px 34px;
+  gap: 10px;
+  align-items: center;
+  min-height: 74px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
   background: #ffffff;
+}
+
+.task-board-row:last-of-type {
+  border-bottom: 0;
 }
 
 .task-board-row.is-extra {
@@ -1341,23 +1362,21 @@ a.metric:hover {
 }
 
 .task-board-dot {
-  width: 18px;
-  height: 18px;
-  margin-top: 4px;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
   border-radius: 50%;
   background: #f59e0b;
-  box-shadow: 0 0 0 7px rgba(245, 158, 11, 0.13);
 }
 
 .task-board-dot.high,
 .task-board-dot.urgent {
   background: #b24634;
-  box-shadow: 0 0 0 7px rgba(178, 70, 52, 0.13);
 }
 
 .task-board-dot.low {
   background: #16a34a;
-  box-shadow: 0 0 0 7px rgba(22, 163, 74, 0.12);
 }
 
 .task-board-main {
@@ -1368,7 +1387,7 @@ a.metric:hover {
 .task-board-main strong {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.3;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1377,50 +1396,78 @@ a.metric:hover {
 .task-board-main small,
 .task-board-main span {
   display: block;
-  margin-top: 5px;
+  margin-top: 3px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-board-meta {
-  grid-column: 2 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.task-board-meta > span:first-child {
+.task-board-priority,
+.task-board-sla {
   color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.task-board-meta .pill {
+.task-board-row .pill {
+  justify-self: start;
   padding: 6px 9px;
+  font-size: 11px;
 }
 
-.task-board-action {
-  grid-column: 3;
-  grid-row: 1;
-  display: flex;
-  justify-content: flex-end;
+.task-board-open {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--brand-dark);
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
 }
 
-.task-board-action .button-link {
-  min-height: 32px;
-  padding: 7px 10px;
+.task-board-open:hover {
+  background: var(--brand-soft);
+}
+
+.task-board-empty {
+  display: grid;
+  place-items: center;
+  min-height: 170px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  text-align: center;
+}
+
+.task-board-empty span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.task-board-empty p {
+  margin: 8px 0 0;
+  font-weight: 800;
+}
+
+.task-board-empty small {
+  margin-top: 2px;
 }
 
 .task-board-footer {
   display: flex;
-  justify-content: center;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  padding: 10px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 0;
   color: var(--brand-dark);
   font-size: 13px;
   font-weight: 900;
@@ -2004,6 +2051,10 @@ a.metric:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .filter-grid label:first-of-type {
+    grid-column: span 1;
+  }
+
   .filter-actions {
     grid-column: 1 / -1;
   }
@@ -2082,24 +2133,22 @@ a.metric:hover {
   }
 
   .task-board-groups,
+  .task-board-columns,
   .task-board-row {
     grid-template-columns: 1fr;
   }
 
-  .task-board-dot {
+  .task-board-columns {
     display: none;
   }
 
-  .task-board-meta,
-  .task-board-action,
-  .task-board-main {
-    grid-column: auto;
-    grid-row: auto;
+  .task-board-row {
+    gap: 8px;
+    padding: 12px 0;
   }
 
-  .task-board-meta,
-  .task-board-action {
-    justify-content: flex-start;
+  .task-board-open {
+    justify-self: start;
   }
 
   .compact-metrics {

@@ -123,20 +123,10 @@
             </div>
             <span>{{ group.count }}</span>
           </div>
-          <table class="task-table task-board-table responsive-card-table">
-            <thead>
-              <tr>
-                <th>Tarefa</th>
-                <th>Prioridade</th>
-                <th>Estado</th>
-                <th>SLA</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <div class="task-board-list compact-task-list">
             {% for task in group.tasks %}
-              <tr class="{% if loop.index > 5 %}is-extra{% endif %}">
-                <td data-label="Tarefa">
+              <article class="task-card-row {% if loop.index > 5 %}is-extra{% endif %}">
+                <div class="task-card-main">
                   <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
                   <p class="task-row-title">{{ task.title }}</p>
                   <p class="table-note">
@@ -147,24 +137,21 @@
                   {% if task.description %}
                     <p class="table-note table-note-clamp">{{ task.description }}</p>
                   {% endif %}
-                </td>
-                <td data-label="Prioridade"><span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span></td>
-                <td data-label="Estado"><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
-                <td data-label="SLA"><span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span></td>
-                <td data-label="Ação" class="row-action"><a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a></td>
-              </tr>
+                </div>
+                <div class="task-card-side">
+                  <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                  <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                  <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
+                  <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
+                </div>
+              </article>
             {% else %}
-              <tr>
-                <td colspan="5" class="task-board-empty">
-                  <span>✓</span>
-                  <p>Sem registos.</p>
-                  <small>Tudo em dia.</small>
-                </td>
-              </tr>
+              <div class="task-board-empty">
+                <span>✓</span>
+                <p>Sem registos.</p>
+                <small>Tudo em dia.</small>
+              </div>
             {% endfor %}
-            </tbody>
-          </table>
-          <div class="task-board-list">
             {% if group.count > 5 %}
               <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver todas deste tipo</a>
             {% endif %}

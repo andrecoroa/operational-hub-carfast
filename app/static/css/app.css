@@ -1322,7 +1322,7 @@ a.metric:hover {
 }
 
 .task-management-groups {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
   align-items: start;
 }
 
@@ -1369,46 +1369,38 @@ a.metric:hover {
 
 .task-board-list {
   display: grid;
-  padding: 0 16px 16px;
+  padding: 0;
 }
 
-.task-board-table {
-  min-width: 0;
-  table-layout: fixed;
-}
-
-.task-board-table th,
-.task-board-table td {
-  padding: 11px 12px;
-}
-
-.task-board-table th:first-child,
-.task-board-table td:first-child {
-  width: 44%;
-}
-
-.task-board-table th:nth-child(2),
-.task-board-table td:nth-child(2) {
-  width: 18%;
-}
-
-.task-board-table th:nth-child(3),
-.task-board-table td:nth-child(3) {
-  width: 17%;
-}
-
-.task-board-table th:nth-child(4),
-.task-board-table td:nth-child(4) {
-  width: 14%;
-}
-
-.task-board-table th:last-child,
-.task-board-table td:last-child {
-  width: 7%;
-}
-
-.task-board-table tr.is-extra {
+.compact-task-list .is-extra {
   display: none;
+}
+
+.task-card-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 88px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 18px;
+  background: #ffffff;
+}
+
+.task-card-row:hover {
+  background: #fbfcfc;
+}
+
+.task-card-main {
+  min-width: 0;
+}
+
+.task-card-side {
+  display: grid;
+  grid-template-columns: auto auto 76px 30px;
+  gap: 8px;
+  align-items: center;
+  justify-content: end;
 }
 
 .task-row-title {
@@ -1638,7 +1630,7 @@ a.metric:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 0 0;
+  padding: 12px 18px 16px;
   color: var(--brand-dark);
   font-size: 13px;
   font-weight: 900;

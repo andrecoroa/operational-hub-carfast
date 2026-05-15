@@ -99,6 +99,30 @@
     </section>
 
     <section class="section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Roadmap interno</p>
+          <h3>Implementações previstas</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        {% for item in implementation_roadmap %}
+          <article class="implementation-card">
+            <div>
+              <span class="pill muted-pill">{{ item.area }}</span>
+              <span class="pill priority-{{ "high" if item.priority == "Alta" else "normal" }}">{{ item.priority }}</span>
+            </div>
+            <h4>{{ item.title }}</h4>
+            <p>{{ item.summary }}</p>
+            <span class="implementation-status">{{ item.status }}</span>
+          </article>
+        {% else %}
+          <p class="muted">Sem implementações previstas.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
       <h3>Feedback do piloto</h3>
       <div class="metric-grid compact-metrics">
         <div class="metric">

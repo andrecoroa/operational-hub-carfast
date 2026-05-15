@@ -297,6 +297,65 @@ ADMIN_USER_ROLES = [
     ("viewer", "Consulta"),
 ]
 
+IMPLEMENTATION_ROADMAP = [
+    {
+        "area": "Piloto",
+        "title": "Gestão de relatos",
+        "status": "Próximo",
+        "priority": "Alta",
+        "summary": "Ver autor, responder, fechar ou converter relatos em tarefas.",
+    },
+    {
+        "area": "Documentos",
+        "title": "Anexos por link",
+        "status": "Próximo",
+        "priority": "Alta",
+        "summary": "Associar links 365, fotos, vídeos ou evidências a tarefas e processos.",
+    },
+    {
+        "area": "Stock",
+        "title": "Gestão de stock fase 1",
+        "status": "A avaliar",
+        "priority": "Alta",
+        "summary": "Artigos, movimentos simples, pedidos e consumo associado à operação.",
+    },
+    {
+        "area": "Tarefas",
+        "title": "Fluxos por tarefa tipo lego",
+        "status": "A desenhar",
+        "priority": "Alta",
+        "summary": "Montar fluxos com ações reutilizáveis por natureza ou contexto.",
+    },
+    {
+        "area": "Comunicação",
+        "title": "Envio e receção de e-mails",
+        "status": "A avaliar",
+        "priority": "Média",
+        "summary": "Criar tarefas a partir de e-mail e responder com histórico associado.",
+    },
+    {
+        "area": "Arquivo",
+        "title": "Estrutura documental 365",
+        "status": "A validar",
+        "priority": "Média",
+        "summary": "Regras leves de arquivo por Frota, Financeiro, Rentway e Arquivo Geral.",
+    },
+    {
+        "area": "Portal externo",
+        "title": "Portal externo fase 2",
+        "status": "Futuro",
+        "priority": "Média",
+        "summary": "Permitir anexos e melhor classificação de pedidos externos.",
+    },
+    {
+        "area": "Administração",
+        "title": "Permissões e áreas",
+        "status": "A validar",
+        "priority": "Média",
+        "summary": "Afinar áreas autorizadas, equipas, filas e níveis de acesso.",
+    },
+]
+
 DOCUMENT_AREAS = [
     ("fleet", "Frota"),
     ("finance", "Financeiro"),
@@ -637,6 +696,7 @@ def admin_page(
                 "pilot_feedback_counts": pilot_feedback_counts,
                 "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
                 "pilot_feedback_source_labels": PILOT_FEEDBACK_SOURCE_LABELS,
+                "implementation_roadmap": IMPLEMENTATION_ROADMAP,
                 "admin_user_roles": ADMIN_USER_ROLES,
                 "user_created": user_created,
                 "error": error,

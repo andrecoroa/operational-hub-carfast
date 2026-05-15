@@ -730,6 +730,20 @@ def pilot_feedback_form(
     )
 
 
+@web_router.get("/manual", response_class=HTMLResponse)
+def app_manual_page(request: Request, return_url: str = ""):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    safe_return_url = return_url if return_url.startswith("/") else ""
+    return templates.TemplateResponse(
+        request,
+        "app_manual.html",
+        {
+            "return_url": safe_return_url,
+        },
+    )
+
+
 @web_router.post("/pilot-feedback", response_class=HTMLResponse)
 def pilot_feedback_create(
     request: Request,

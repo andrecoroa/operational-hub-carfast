@@ -184,6 +184,19 @@ button {
   justify-content: flex-end;
 }
 
+.pilot-support {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.pilot-support > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .pilot-actions {
   flex: 0 0 auto;
 }
@@ -191,6 +204,12 @@ button {
 .secondary-link {
   background: var(--brand-soft);
   color: var(--brand-dark);
+}
+
+.manual-link {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
 
 .support-link {
@@ -1461,6 +1480,35 @@ a.metric:hover {
 
 .task-board-empty small {
   margin-top: 2px;
+}
+
+.manual-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.manual-card {
+  min-height: 0;
+}
+
+.manual-steps {
+  padding: 18px 20px 20px;
+}
+
+.manual-steps p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.manual-steps ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.manual-steps li {
+  color: var(--ink);
+  line-height: 1.45;
 }
 
 .task-board-footer {

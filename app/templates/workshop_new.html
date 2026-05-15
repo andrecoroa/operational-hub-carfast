@@ -123,7 +123,7 @@
           workshopVehicleOptions.innerHTML = "";
           return;
         }
-        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}&context=workshop`);
         if (!response.ok) return;
         const data = await response.json();
         workshopVehicleOptions.innerHTML = "";

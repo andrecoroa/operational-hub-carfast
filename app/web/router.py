@@ -195,6 +195,16 @@ TASK_LEGACY_TYPE_LABELS = {
 }
 LEGACY_TASK_TYPES = list(TASK_LEGACY_TYPE_LABELS.items())
 TASK_TYPE_LABELS = {**dict(TASK_TYPES), **TASK_LEGACY_TYPE_LABELS}
+TASK_TYPE_CANONICAL_GROUP = {
+    "task": "operational_task",
+    "request": "request_info",
+    "incident": "operational_incident",
+}
+TASK_TYPE_LEGACY_BY_CANONICAL = {
+    "operational_task": ["task"],
+    "request_info": ["request"],
+    "operational_incident": ["incident"],
+}
 TASK_BOARD_TYPE_LABELS = {
     "operational_task": "Tarefas operacionais",
     "management_task": "Tarefas de gestão",
@@ -202,10 +212,9 @@ TASK_BOARD_TYPE_LABELS = {
     "operational_incident": "Incidentes operacionais",
     "technical_incident": "Incidentes técnicos",
     "entity_incident": "Incidentes entidade",
-    "task": "Tarefas",
-    "request": "Pedidos",
-    "incident": "Incidentes",
 }
+
+WORKSHOP_BLOCKED_VEHICLE_STATUSES = {"sold", "written_off", "inactive"}
 
 TASK_SOURCES = [
     ("manual", "Manual"),
@@ -730,6 +739,7 @@ def pilot_feedback_create(
     entity_id: str = Form(""),
     subject: str = Form(""),
     body: str = Form(""),
+    attachment_url: str = Form(""),
     current_url: str = Form(""),
     return_url: str = Form(""),
 ):
@@ -741,6 +751,9 @@ def pilot_feedback_create(
 
     clean_subject = subject.strip()
     clean_body = body.strip() or "Registo criado sem detalhe."
+    clean_attachment_url = attachment_url.strip()
+    if clean_attachment_url:
+        clean_body = f"{clean_body}\n\nAnexo / evidência: {clean_attachment_url}"
     with SessionLocal() as db:
         item = PilotFeedback(
             kind=kind,
@@ -1256,18 +1269,21 @@ def workshop_create(
     parsed_vehicle_id = parse_optional_int(vehicle_id)
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
-        if not vehicle:
-            vehicles = sorted(
-                db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
-                key=rentway_unit_sort_key,
-                reverse=True,
+        vehicle_blocked_statuses = {
+            (vehicle.lifecycle_status or "").strip().lower(),
+            (vehicle.operational_status or "").strip().lower(),
+        } if vehicle else set()
+        if not vehicle or vehicle_blocked_statuses.intersection(WORKSHOP_BLOCKED_VEHICLE_STATUSES):
+            error_message = (
+                "A viatura selecionada já não está elegível para reparação interna."
+                if vehicle
+                else "Escolhe a viatura para ligar o processo ao histórico correto."
             )
             return templates.TemplateResponse(
                 request,
                 "workshop_new.html",
                 {
-                    "vehicles": vehicles,
-                    "error": "Escolhe a viatura para ligar o processo ao histórico correto.",
+                    "error": error_message,
                     "opening_types": WORKSHOP_OPENING_TYPES,
                     "opening_type_labels": WORKSHOP_OPENING_LABELS,
                 },
@@ -2420,7 +2436,8 @@ def task_board_manage(
         if status:
             stmt = stmt.where(Task.status == status)
         if task_type:
-            stmt = stmt.where(Task.task_type == task_type)
+            matching_task_types = [task_type, *TASK_TYPE_LEGACY_BY_CANONICAL.get(task_type, [])]
+            stmt = stmt.where(Task.task_type.in_(matching_task_types))
         if category:
             stmt = stmt.where(Task.category == category)
         if source:
@@ -2444,9 +2461,20 @@ def task_board_manage(
         ).all()
         grouped_tasks = []
         used_task_types = set()
-        for type_code, type_label in TASK_TYPES + LEGACY_TASK_TYPES:
-            group_items = [task for task in tasks if (task.task_type or "task") == type_code]
-            if not task_type or task_type == type_code or group_items:
+        canonical_task_type_filter = TASK_TYPE_CANONICAL_GROUP.get(task_type, task_type)
+        for type_code, type_label in TASK_TYPES:
+            group_items = [
+                task
+                for task in tasks
+                if TASK_TYPE_CANONICAL_GROUP.get(task.task_type or "task", task.task_type or "task")
+                == type_code
+            ]
+            should_show_group = (
+                not canonical_task_type_filter
+                or canonical_task_type_filter == type_code
+                or bool(group_items)
+            )
+            if should_show_group:
                 grouped_tasks.append(
                     {
                         "code": type_code,
@@ -2561,8 +2589,20 @@ def task_vehicle_search(request: Request):
         return JSONResponse({"items": []}, status_code=401)
 
     query = (request.query_params.get("q") or "").strip().upper().replace(" ", "")
+    context = (request.query_params.get("context") or "").strip().lower()
     with SessionLocal() as db:
         statement = select(Vehicle).where(Vehicle.plate.is_not(None), Vehicle.plate != "")
+        if context == "workshop":
+            statement = statement.where(
+                or_(
+                    Vehicle.lifecycle_status.is_(None),
+                    ~func.lower(Vehicle.lifecycle_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
+                ),
+                or_(
+                    Vehicle.operational_status.is_(None),
+                    ~func.lower(Vehicle.operational_status).in_(WORKSHOP_BLOCKED_VEHICLE_STATUSES),
+                ),
+            )
         if query:
             statement = statement.where(Vehicle.plate.ilike(f"{query}%"))
         vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
@@ -2575,8 +2615,9 @@ def task_vehicle_search(request: Request):
                         item
                         for item in [
                             vehicle.plate or "",
-                            " ".join(part for part in [vehicle.brand, vehicle.model] if part).strip(),
-                            vehicle.operational_status or "",
+                            " ".join(
+                                part for part in [vehicle.brand, vehicle.model] if part
+                            ).strip(),
                         ]
                         if item
                     ),

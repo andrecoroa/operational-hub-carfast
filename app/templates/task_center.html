@@ -6,55 +6,116 @@
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Centro operacional</p>
-        <h2>Centro de Tarefas</h2>
+        <p class="eyebrow">Centro de tarefas</p>
+        <h2>Operação, gestão e acompanhamento</h2>
+        <p class="breadcrumb">Escolha o espaço de trabalho ou a entrada operacional.</p>
       </div>
-      <div class="topbar-tools">
-        <label class="global-search" aria-label="Pesquisa global">
-          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
-        </label>
+      <div class="button-row">
         {% set feedback_source_area = "tasks" %}
         {% set feedback_return_url = "/task-board" %}
         {% include "_pilot_actions.html" %}
-        <span class="top-icon-button" aria-label="Notificações">3</span>
-        <span class="user-chip">
-          <span class="user-avatar">CF</span>
-          <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>
-        </span>
       </div>
     </header>
 
-    <section class="page-intro">
-      <h3>Centro de Tarefas</h3>
-      <p>Escolha o que pretende fazer.</p>
+    <section class="task-entry-grid">
+      <article class="task-entry-card quick-entry-card">
+        <div>
+          <p class="eyebrow">Entrada operacional</p>
+          <h3>Registo rápido</h3>
+          <p>Capturar pedido, comunicação, anomalia ou reclamação com poucos campos.</p>
+        </div>
+        <div class="entry-chip-row">
+          <span>Pedido</span>
+          <span>Informação / Comunicação</span>
+          <span>Anomalia / Incidente</span>
+          <span>Reclamação</span>
+          <span>Outro</span>
+        </div>
+        <a class="button-link" href="/task-board/new?mode=quick">Criar registo rápido</a>
+      </article>
+
+      <article class="task-entry-card direct-task-card">
+        <div>
+          <p class="eyebrow">Execução direta</p>
+          <h3>Nova tarefa</h3>
+          <p>Criar trabalho operacional com responsável, equipa/fila, prazo e acompanhamento.</p>
+        </div>
+        <div class="entry-chip-row muted-entry-row">
+          <span>Responsável</span>
+          <span>Equipa/Fila</span>
+          <span>Prazo</span>
+          <span>Prioridade</span>
+        </div>
+        <a class="button-link blue-link" href="/task-board/new?mode=task">Criar nova tarefa</a>
+      </article>
     </section>
 
-    <section class="task-center-grid">
-      <a class="task-center-card create-card" href="/task-board/new">
-        <span class="task-card-main">
-          <span class="task-card-icon">+</span>
-          <span>
-            <strong>Nova tarefa</strong>
-            <p>Criar uma nova tarefa, comunicação ou incidente no sistema.</p>
-          </span>
-        </span>
-        <span class="button-link">Criar nova tarefa</span>
+    <section class="workspace-grid">
+      <a class="workspace-card active-workspace" href="/task-board/manage">
+        <div>
+          <p class="eyebrow">Centro de Tarefas</p>
+          <h3>Operacional</h3>
+          <p>Execução diária, pedidos, comunicações, anomalias e reclamações.</p>
+        </div>
+        <strong>{{ open_count }}</strong>
+        <span>{{ due_today }} com limite hoje</span>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
-      <a class="task-center-card manage-card" href="/task-board/manage">
-        <span class="task-card-main">
-          <span class="task-card-icon">≡</span>
-          <span>
-            <strong>Gestão de tarefas</strong>
-            <p>Acompanhar, gerir e atualizar todas as tarefas existentes.</p>
-          </span>
-        </span>
-        <span class="button-link blue-link">Abrir gestão de tarefas</span>
-      </a>
-      <article class="info-card">
-        <h3>Dica rápida</h3>
-        <p>Se tiver dúvida, crie uma tarefa ou consulte a gestão para encontrar o que precisa.</p>
-        <p>{{ open_count }} tarefas abertas. {{ due_today }} com limite hoje.</p>
+      <article class="workspace-card planned-workspace">
+        <div>
+          <p class="eyebrow">A preparar</p>
+          <h3>Gestão</h3>
+          <p>Implementações, supervisão, melhoria contínua, reporte e decisões de gestão.</p>
+        </div>
+        <span>Modelo definido</span>
       </article>
+      <article class="workspace-card planned-workspace">
+        <div>
+          <p class="eyebrow">Restrito</p>
+          <h3>Administração</h3>
+          <p>Assuntos reservados da direção/administração, fora do backlog operacional.</p>
+        </div>
+        <span>Pendente de permissões</span>
+      </article>
+      <a class="workspace-card workshop-workspace" href="/workshop/manage">
+        <div>
+          <p class="eyebrow">Módulo próprio</p>
+          <h3>Oficina</h3>
+          <p>Processos, tarefas técnicas, evidências e histórico técnico da viatura.</p>
+        </div>
+        <span>Isolável do centro global</span>
+      </a>
+    </section>
+
+    <section class="section task-principles">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Modelo a implementar</p>
+          <h3>Regras de trabalho guardadas</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        <article class="implementation-card">
+          <span class="implementation-status">Responsabilidade</span>
+          <h4>Execução separada da intervenção</h4>
+          <p>A tarefa mantém equipa/fila ou pessoa responsável. Decisores e supervisores não assumem o SLA por defeito.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Pirâmide</span>
+          <h4>Atribuição por nível</h4>
+          <p>Perfis superiores recebem pedidos de decisão, ajuda ou validação, não responsabilidade operacional direta.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Módulos</span>
+          <h4>Tarefa mãe e subtarefas</h4>
+          <p>Uma tarefa pode pedir intervenção a outro módulo através de tarefa filha, mantendo contexto e resposta.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Recorrência</span>
+          <h4>Modelos que geram tarefas</h4>
+          <p>Tarefas periódicas serão criadas por modelos/agendamentos e protegidas por permissões próprias.</p>
+        </article>
+      </div>
     </section>
   </main>
 </div>

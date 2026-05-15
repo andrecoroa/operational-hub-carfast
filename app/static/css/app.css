@@ -874,6 +874,108 @@ button:hover,
   background: linear-gradient(135deg, #f7fbff 0%, #ffffff 70%);
 }
 
+.task-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.task-entry-card,
+.workspace-card {
+  display: grid;
+  align-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--panel);
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
+}
+
+.task-entry-card h3,
+.workspace-card h3 {
+  font-size: 22px;
+}
+
+.task-entry-card p,
+.workspace-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.quick-entry-card {
+  border-color: #f0d0cc;
+  background: linear-gradient(135deg, #fff7f5 0%, #ffffff 72%);
+}
+
+.direct-task-card {
+  border-color: #cbdcfb;
+  background: linear-gradient(135deg, #f7fbff 0%, #ffffff 72%);
+}
+
+.entry-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.entry-chip-row span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.muted-entry-row span {
+  background: #eef1f2;
+  color: var(--muted);
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.workspace-card {
+  min-height: 210px;
+  color: var(--ink);
+}
+
+.workspace-card strong {
+  color: var(--brand);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.workspace-card > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.active-workspace {
+  border-color: #f0d0cc;
+}
+
+.planned-workspace {
+  background: #fbfcfc;
+}
+
+.workshop-workspace {
+  border-color: #d5e3f8;
+}
+
+.task-principles {
+  padding: 0;
+  overflow: hidden;
+}
+
 .task-card-main {
   display: grid;
   grid-template-columns: 72px 1fr;
@@ -2214,7 +2316,8 @@ a.metric:hover {
 
   .task-metrics,
   .task-center-grid,
-  .task-board-groups {
+  .task-board-groups,
+  .workspace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2307,6 +2410,11 @@ a.metric:hover {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-entry-grid,
+  .workspace-grid {
     grid-template-columns: 1fr;
   }
 

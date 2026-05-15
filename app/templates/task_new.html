@@ -7,21 +7,14 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Centro operacional</p>
-        <h2>Nova tarefa</h2>
-        <p class="breadcrumb">Centro de Tarefas &gt; <strong>Nova tarefa</strong></p>
+        <h2>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</h2>
+        <p class="breadcrumb">Centro de Tarefas &gt; <strong>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</strong></p>
       </div>
       <div class="topbar-tools">
-        <label class="global-search" aria-label="Pesquisa global">
-          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
-        </label>
         <a class="button-link secondary-link" href="/task-board/manage">Gestão</a>
         {% set feedback_source_area = "tasks" %}
         {% set feedback_return_url = "/task-board/new" %}
         {% include "_pilot_actions.html" %}
-        <span class="user-chip">
-          <span class="user-avatar">CF</span>
-          <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>
-        </span>
       </div>
     </header>
 
@@ -47,15 +40,22 @@
       <form method="post" action="/task-board/new" class="form-panel form-stack task-form compact-create-page">
         {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
         <div class="panel-heading">
-          <p class="eyebrow">Novo registo</p>
-          <h3>Registo rápido</h3>
+          <p class="eyebrow">{% if form_mode == "quick" %}Captura rápida{% else %}Execução direta{% endif %}</p>
+          <h3>{% if form_mode == "quick" %}Registo rápido operacional{% else %}Nova tarefa operacional{% endif %}</h3>
+          <p class="muted">
+            {% if form_mode == "quick" %}
+              Use quando ainda não sabe se isto será uma tarefa, uma comunicação, uma anomalia ou uma reclamação.
+            {% else %}
+              Use quando já existe trabalho concreto a executar por uma pessoa ou equipa.
+            {% endif %}
+          </p>
         </div>
         <label>
           Assunto
-          <input type="text" name="title" maxlength="200" required placeholder="Ex.: Dano na porta traseira esquerda" value="{{ form_values.title or "" }}">
+          <input type="text" name="title" maxlength="200" required placeholder="{% if form_mode == 'quick' %}Ex.: Cliente informou ruído na viatura{% else %}Ex.: Ligar ao cliente sobre caução pendente{% endif %}" value="{{ form_values.title or "" }}">
         </label>
         <label>
-          Descrição
+          {% if form_mode == "quick" %}Descrição curta{% else %}Descrição{% endif %}
           <textarea name="description" rows="3" placeholder="Registe apenas a informação disponível.">{{ form_values.description or "" }}</textarea>
         </label>
         <div class="compact-form-grid">
@@ -157,7 +157,15 @@
         </details>
         <div class="button-row">
           <a class="button-link secondary-link" href="/task-board">Cancelar</a>
-          <button type="submit">{% if duplicate_tasks %}Criar mesmo assim{% else %}Criar tarefa{% endif %}</button>
+          <button type="submit">
+            {% if duplicate_tasks %}
+              Criar mesmo assim
+            {% elif form_mode == "quick" %}
+              Criar registo
+            {% else %}
+              Criar tarefa
+            {% endif %}
+          </button>
         </div>
       </form>
     </section>

@@ -2630,6 +2630,7 @@ def task_board_manage(
 def task_new_form(
     request: Request,
     error: str | None = None,
+    mode: str = "task",
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -2647,7 +2648,10 @@ def task_new_form(
                 "current_user": current_user,
                 "teams": teams,
                 "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
-                "form_values": {},
+                "form_mode": "quick" if mode == "quick" else "task",
+                "form_values": {
+                    "task_type": "request_info" if mode == "quick" else "operational_task",
+                },
                 "duplicate_tasks": [],
                 "task_types": TASK_TYPES,
                 "task_sources": TASK_SOURCES,
@@ -2746,6 +2750,7 @@ def task_create(
                 "current_user": current_user,
                 "teams": teams,
                 "error": "Indica um título para a tarefa.",
+                "form_mode": "task",
                 "form_values": {},
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
@@ -2797,6 +2802,7 @@ def task_create(
                     "teams": teams,
                     "error": None,
                     "duplicate_tasks": duplicate_tasks,
+                    "form_mode": "quick" if task_type == "request_info" else "task",
                     "form_values": {
                         "title": clean_title,
                         "description": description,

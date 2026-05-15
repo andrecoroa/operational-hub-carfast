@@ -11,16 +11,10 @@
         <p class="breadcrumb">Centro de Tarefas &gt; <strong>Gestão de tarefas</strong></p>
       </div>
       <div class="topbar-tools">
-        <label class="global-search" aria-label="Pesquisa global">
-          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
-        </label>
+        <a class="button-link secondary-link" href="/task-board/new">Nova tarefa</a>
         {% set feedback_source_area = "tasks" %}
         {% set feedback_return_url = "/task-board/manage" %}
         {% include "_pilot_actions.html" %}
-        <span class="user-chip">
-          <span class="user-avatar">CF</span>
-          <span><strong>{{ current_user.name if current_user else "Utilizador" }}</strong><span>Gestor operacional</span></span>
-        </span>
       </div>
     </header>
 
@@ -119,49 +113,58 @@
       </form>
     </section>
 
-    <section class="task-board-groups">
+    <section class="task-board-groups task-management-groups">
       {% for group in task_groups %}
-        <article class="task-type-board">
-          <div class="task-type-heading">
+        <article class="table-shell task-type-board">
+          <div class="table-heading task-type-heading">
             <div>
               <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
               <h3>{{ group.label }}</h3>
             </div>
             <span>{{ group.count }}</span>
           </div>
-          <div class="task-board-list">
-            <div class="task-board-columns" aria-hidden="true">
-              <span>Tarefa</span>
-              <span>Prioridade</span>
-              <span>Estado</span>
-              <span>SLA</span>
-              <span></span>
-            </div>
+          <table class="task-table task-board-table responsive-card-table">
+            <thead>
+              <tr>
+                <th>Tarefa</th>
+                <th>Prioridade</th>
+                <th>Estado</th>
+                <th>SLA</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
             {% for task in group.tasks %}
-              <article class="task-board-row {% if loop.index > 5 %}is-extra{% endif %}">
-                <a class="task-board-main" href="/task-board/{{ task.id }}">
-                  <strong>CF-TASK-{{ "%05d"|format(task.id) }} · {{ task.title }}</strong>
-                  <small>
+              <tr class="{% if loop.index > 5 %}is-extra{% endif %}">
+                <td data-label="Tarefa">
+                  <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                  <p class="task-row-title">{{ task.title }}</p>
+                  <p class="table-note">
                     {% if task.customer_name %}{{ task.customer_name }}{% endif %}
-                    {% if task.plate %}{% if task.customer_name %} · {% endif %}{{ task.plate }}{% endif %}
+                    {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
                     {% if not task.customer_name and not task.plate %}{{ task_source_labels.get(task.source, task.source or "Manual") }}{% endif %}
-                  </small>
+                  </p>
                   {% if task.description %}
-                    <span>{{ task.description }}</span>
+                    <p class="table-note table-note-clamp">{{ task.description }}</p>
                   {% endif %}
-                </a>
-                <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
-                <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
-                <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
-                <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
-              </article>
+                </td>
+                <td data-label="Prioridade"><span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span></td>
+                <td data-label="Estado"><span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
+                <td data-label="SLA"><span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span></td>
+                <td data-label="Ação" class="row-action"><a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a></td>
+              </tr>
             {% else %}
-              <div class="task-board-empty">
-                <span>✓</span>
-                <p>Sem registos.</p>
-                <small>Tudo em dia.</small>
-              </div>
+              <tr>
+                <td colspan="5" class="task-board-empty">
+                  <span>✓</span>
+                  <p>Sem registos.</p>
+                  <small>Tudo em dia.</small>
+                </td>
+              </tr>
             {% endfor %}
+            </tbody>
+          </table>
+          <div class="task-board-list">
             {% if group.count > 5 %}
               <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver todas deste tipo</a>
             {% endif %}

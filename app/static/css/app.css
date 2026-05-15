@@ -1321,6 +1321,11 @@ a.metric:hover {
   margin-top: 18px;
 }
 
+.task-management-groups {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
 .task-type-board {
   display: grid;
   align-content: start;
@@ -1343,6 +1348,10 @@ a.metric:hover {
   background: #ffffff;
 }
 
+.table-heading.task-type-heading {
+  background: #ffffff;
+}
+
 .task-type-heading h3 {
   font-size: 20px;
 }
@@ -1361,6 +1370,57 @@ a.metric:hover {
 .task-board-list {
   display: grid;
   padding: 0 16px 16px;
+}
+
+.task-board-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.task-board-table th,
+.task-board-table td {
+  padding: 11px 12px;
+}
+
+.task-board-table th:first-child,
+.task-board-table td:first-child {
+  width: 44%;
+}
+
+.task-board-table th:nth-child(2),
+.task-board-table td:nth-child(2) {
+  width: 18%;
+}
+
+.task-board-table th:nth-child(3),
+.task-board-table td:nth-child(3) {
+  width: 17%;
+}
+
+.task-board-table th:nth-child(4),
+.task-board-table td:nth-child(4) {
+  width: 14%;
+}
+
+.task-board-table th:last-child,
+.task-board-table td:last-child {
+  width: 7%;
+}
+
+.task-board-table tr.is-extra {
+  display: none;
+}
+
+.task-row-title {
+  display: -webkit-box;
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .task-board-columns {

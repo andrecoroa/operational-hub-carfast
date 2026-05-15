@@ -125,7 +125,7 @@
           </div>
           <div class="task-board-list compact-task-list">
             {% for task in group.tasks %}
-              <article class="task-card-row {% if loop.index > 5 %}is-extra{% endif %}">
+              <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
                 <div class="task-card-main">
                   <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
                   <p class="task-row-title">{{ task.title }}</p>
@@ -152,8 +152,8 @@
                 <small>Tudo em dia.</small>
               </div>
             {% endfor %}
-            {% if group.count > 5 %}
-              <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver todas deste tipo</a>
+            {% if group.count > 4 %}
+              <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
             {% endif %}
           </div>
         </article>

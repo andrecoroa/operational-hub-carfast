@@ -1322,7 +1322,7 @@ a.metric:hover {
 }
 
 .task-management-groups {
-  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
@@ -1398,9 +1398,10 @@ a.metric:hover {
 .task-card-side {
   display: grid;
   grid-template-columns: auto auto 76px 30px;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   justify-content: end;
+  min-width: 360px;
 }
 
 .task-row-title {
@@ -2326,6 +2327,16 @@ a.metric:hover {
   .task-board-row {
     gap: 8px;
     padding: 12px 0;
+  }
+
+  .task-card-row,
+  .task-card-side {
+    grid-template-columns: 1fr;
+  }
+
+  .task-card-side {
+    justify-content: start;
+    min-width: 0;
   }
 
   .task-board-open {

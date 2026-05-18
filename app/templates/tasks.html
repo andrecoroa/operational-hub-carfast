@@ -11,7 +11,8 @@
         <p class="breadcrumb">Centro de Tarefas &gt; <strong>Gestão de tarefas</strong></p>
       </div>
       <div class="topbar-tools">
-        <a class="button-link secondary-link" href="/task-board/new">Nova tarefa</a>
+        <a class="button-link secondary-link" href="/task-board/new?mode=quick">Registo rápido</a>
+        <a class="button-link secondary-link" href="/task-board/new?mode=task">Nova tarefa</a>
         {% set feedback_source_area = "tasks" %}
         {% set feedback_return_url = "/task-board/manage" %}
         {% include "_pilot_actions.html" %}
@@ -23,6 +24,9 @@
     {% endif %}
     {% if closed %}
       <div class="success">Tarefa fechada.</div>
+    {% endif %}
+    {% if quick_created %}
+      <div class="success">Registo rápido criado.</div>
     {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
@@ -51,6 +55,10 @@
       <a class="metric" href="/task-board/manage?view=archived">
         <span class="metric-icon blue">%</span>
         <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
+      </a>
+      <a class="metric" href="#registos-rapidos">
+        <span class="metric-icon amber">•</span>
+        <span class="metric-detail"><strong>{{ metrics.quick_open }}</strong><span>Registos rápidos</span></span>
       </a>
     </section>
 
@@ -113,6 +121,14 @@
       </form>
     </section>
 
+    <div class="task-board-section-heading">
+      <div>
+        <p class="eyebrow">Execução</p>
+        <h3>Tarefas</h3>
+      </div>
+      <span>Backlog por natureza</span>
+    </div>
+
     <section class="task-board-groups task-management-groups">
       {% for group in task_groups %}
         <article class="table-shell task-type-board">
@@ -161,6 +177,65 @@
         <article class="section empty-board">
           <h3>Sem tarefas para apresentar.</h3>
           <p class="muted">Ajusta os filtros ou cria uma nova tarefa.</p>
+        </article>
+      {% endfor %}
+    </section>
+
+    <div class="task-board-section-heading" id="registos-rapidos">
+      <div>
+        <p class="eyebrow">Entrada leve</p>
+        <h3>Registos rápidos</h3>
+      </div>
+      <span>Pedidos, comunicações, anomalias e reclamações para triagem</span>
+    </div>
+
+    <section class="task-board-groups task-management-groups">
+      {% for group in quick_record_groups %}
+        <article class="table-shell task-type-board">
+          <div class="table-heading task-type-heading">
+            <div>
+              <p class="eyebrow">Registos rápidos</p>
+              <h3>{{ group.label }}</h3>
+            </div>
+            <span>{{ group.count }}</span>
+          </div>
+          <div class="task-board-list compact-task-list">
+            {% for record in group.records %}
+              <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
+                <div class="task-card-main">
+                  <span class="table-link">CF-REG-{{ "%05d"|format(record.id) }}</span>
+                  <p class="task-row-title">{{ record.title }}</p>
+                  <p class="table-note">
+                    {% if record.customer_name %}{{ record.customer_name }}{% endif %}
+                    {% if record.plate %}{% if record.customer_name %} &middot; {% endif %}{{ record.plate }}{% endif %}
+                    {% if not record.customer_name and not record.plate %}{{ task_source_labels.get(record.source, record.source or "Manual") }}{% endif %}
+                  </p>
+                  {% if record.description %}
+                    <p class="table-note table-note-clamp">{{ record.description }}</p>
+                  {% endif %}
+                </div>
+                <div class="task-card-side quick-record-side">
+                  <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+                  <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+                  <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
+                </div>
+              </article>
+            {% else %}
+              <div class="task-board-empty">
+                <span>✓</span>
+                <p>Sem registos.</p>
+                <small>Tudo em dia.</small>
+              </div>
+            {% endfor %}
+            {% if group.count > 4 %}
+              <span class="task-board-footer">Mostrados 4 de {{ group.count }}</span>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <article class="section empty-board">
+          <h3>Sem registos rápidos para apresentar.</h3>
+          <p class="muted">Use o registo rápido quando ainda não existir execução concreta.</p>
         </article>
       {% endfor %}
     </section>

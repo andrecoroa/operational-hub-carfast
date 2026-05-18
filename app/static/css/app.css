@@ -1428,6 +1428,26 @@ a.metric:hover {
   align-items: start;
 }
 
+.task-board-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  margin-top: 24px;
+  padding: 0 2px;
+}
+
+.task-board-section-heading h3 {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+
+.task-board-section-heading > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .task-type-board {
   display: grid;
   align-content: start;
@@ -1504,6 +1524,11 @@ a.metric:hover {
   align-items: center;
   justify-content: end;
   min-width: 360px;
+}
+
+.quick-record-side {
+  grid-template-columns: auto auto 88px;
+  min-width: 300px;
 }
 
 .task-row-title {
@@ -2435,6 +2460,11 @@ a.metric:hover {
   .task-board-row {
     gap: 8px;
     padding: 12px 0;
+  }
+
+  .task-board-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .task-card-row,

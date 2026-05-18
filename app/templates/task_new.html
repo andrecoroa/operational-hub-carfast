@@ -37,8 +37,9 @@
     {% endif %}
 
     <section class="compact-create-layout">
-      <form method="post" action="/task-board/new" class="form-panel form-stack task-form compact-create-page">
+      <form method="post" action="{% if form_mode == 'quick' %}/task-board/quick/new{% else %}/task-board/new{% endif %}" class="form-panel form-stack task-form compact-create-page">
         {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
+        {% if form_mode == "quick" %}<input type="hidden" name="workspace" value="operational">{% endif %}
         <div class="panel-heading">
           <p class="eyebrow">{% if form_mode == "quick" %}Captura rápida{% else %}Execução direta{% endif %}</p>
           <h3>{% if form_mode == "quick" %}Registo rápido operacional{% else %}Nova tarefa operacional{% endif %}</h3>
@@ -60,12 +61,21 @@
         </label>
         <div class="compact-form-grid">
           <label>
-            Natureza
-            <select name="task_type">
-              {% for code, label in task_types %}
-                <option value="{{ code }}" {% if (form_values.task_type or "operational_task") == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            {% if form_mode == "quick" %}
+              Tipo de entrada
+              <select name="record_type">
+                {% for code, label in quick_record_types %}
+                  <option value="{{ code }}" {% if (form_values.record_type or "request") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              Natureza
+              <select name="task_type">
+                {% for code, label in task_types %}
+                  <option value="{{ code }}" {% if (form_values.task_type or "operational_task") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
           </label>
           <label>
             Prioridade
@@ -94,10 +104,12 @@
             Estação
             <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa" value="{{ form_values.station or "" }}">
           </label>
-          <label>
-            Data limite
-            <input type="date" name="due_on" value="{{ form_values.due_on or "" }}">
-          </label>
+          {% if form_mode != "quick" %}
+            <label>
+              Data limite
+              <input type="date" name="due_on" value="{{ form_values.due_on or "" }}">
+            </label>
+          {% endif %}
         </div>
 
         <details class="advanced-panel">
@@ -119,40 +131,42 @@
               Telefone
               <input type="text" name="customer_phone" maxlength="80" value="{{ form_values.customer_phone or "" }}">
             </label>
-            <label>
-              Reserva
-              <input type="text" name="reservation_number" maxlength="120" value="{{ form_values.reservation_number or "" }}">
-            </label>
-            <label>
-              Contrato
-              <input type="text" name="contract_number" maxlength="120" value="{{ form_values.contract_number or "" }}">
-            </label>
-            <label>
-              Responsável
-              <select name="assigned_to_id">
-                <option value="">Sem responsável direto</option>
-                {% for user in users %}
-                  <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }} · {{ user.email }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>
-              Equipa/Fila
-              <select name="team_id">
-                <option value="">Fila padrão</option>
-                {% for team in teams %}
-                  <option value="{{ team.id }}" {% if form_values.team_id|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>
-              Departamento/Fila
-              <input type="text" name="department" maxlength="120" value="{{ form_values.department or "" }}">
-            </label>
-            <label>
-              ID externo
-              <input type="text" name="external_source_id" maxlength="255" value="{{ form_values.external_source_id or "" }}">
-            </label>
+            {% if form_mode != "quick" %}
+              <label>
+                Reserva
+                <input type="text" name="reservation_number" maxlength="120" value="{{ form_values.reservation_number or "" }}">
+              </label>
+              <label>
+                Contrato
+                <input type="text" name="contract_number" maxlength="120" value="{{ form_values.contract_number or "" }}">
+              </label>
+              <label>
+                Responsável
+                <select name="assigned_to_id">
+                  <option value="">Sem responsável direto</option>
+                  {% for user in users %}
+                    <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }} · {{ user.email }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Equipa/Fila
+                <select name="team_id">
+                  <option value="">Fila padrão</option>
+                  {% for team in teams %}
+                    <option value="{{ team.id }}" {% if form_values.team_id|string == team.id|string %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Departamento/Fila
+                <input type="text" name="department" maxlength="120" value="{{ form_values.department or "" }}">
+              </label>
+              <label>
+                ID externo
+                <input type="text" name="external_source_id" maxlength="255" value="{{ form_values.external_source_id or "" }}">
+              </label>
+            {% endif %}
           </div>
         </details>
         <div class="button-row">

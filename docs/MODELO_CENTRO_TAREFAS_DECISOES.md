@@ -11,17 +11,33 @@ Estrutura de referência:
 ```text
 Centro de Tarefas
 ├── Operacional
+│   ├── Tarefas
+│   └── Registos rápidos
+├── Oficina
+│   ├── Tarefas da oficina
+│   ├── Registos rápidos
+│   └── Auditoria
 ├── Gestão
+│   ├── Tarefas
+│   └── Registos rápidos
 └── Administração
-
-Oficina
-├── Processos
-├── Tarefas da oficina
-├── Evidências
-└── Histórico técnico
+    ├── Tarefas
+    └── Registos rápidos
 ```
 
 A Oficina deve continuar a ser um módulo próprio. As tarefas da oficina devem usar o mesmo motor comum de tarefas, mas com visibilidade configurável: podem aparecer no Centro de Tarefas e no módulo Oficina, ou apenas no módulo Oficina.
+
+Estrutura funcional da Oficina:
+
+```text
+Oficina
+├── Processos
+├── Tarefas da oficina
+├── Registos rápidos
+├── Auditoria
+├── Evidências
+└── Histórico técnico
+```
 
 ## Registo rápido operacional
 
@@ -44,6 +60,10 @@ O registo rápido pode evoluir para:
 - sem ação necessária.
 
 Também deve existir sempre a possibilidade de criar uma tarefa diretamente, para evitar trabalho duplicado quando já se sabe que existe execução concreta.
+
+Os tipos de registo rápido devem poder evoluir por espaço de trabalho. A fase atual deixa a base preparada para que Operacional, Oficina, Gestão e Administração tenham listas próprias de tipos.
+
+Na Oficina, a auditoria fica no fim da grelha para não se misturar com tarefas técnicas correntes e registos rápidos.
 
 ## Responsabilidade e intervenção
 

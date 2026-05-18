@@ -70,3 +70,29 @@ class TaskHistory(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuickRecord(TimestampMixin, Base):
+    __tablename__ = "quick_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace: Mapped[str] = mapped_column(String(80), default="operational", index=True)
+    record_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(80), default="new", index=True)
+    priority: Mapped[str | None] = mapped_column(String(80), index=True)
+    source: Mapped[str | None] = mapped_column(String(80), index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200), index=True)
+    customer_contact: Mapped[str | None] = mapped_column(String(200))
+    customer_email: Mapped[str | None] = mapped_column(String(255), index=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(80), index=True)
+    plate: Mapped[str | None] = mapped_column(String(40), index=True)
+    station: Mapped[str | None] = mapped_column(String(120), index=True)
+    entity_type: Mapped[str | None] = mapped_column(String(120), index=True)
+    entity_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+    assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    converted_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

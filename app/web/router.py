@@ -331,10 +331,10 @@ QUICK_RECORD_STATUSES = [
     ("new", "Novo"),
     ("analysis", "Em análise"),
     ("converted", "Convertido"),
-    ("no_action_needed", "Sem ação necessária"),
     ("closed", "Fechado"),
 ]
 QUICK_RECORD_STATUS_LABELS = dict(QUICK_RECORD_STATUSES)
+QUICK_RECORD_ARCHIVE_STATUSES = ("closed", "converted", "no_action_needed")
 
 WORKSHOP_BLOCKED_VEHICLE_STATUSES = {"sold", "written_off", "inactive"}
 
@@ -2548,7 +2548,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(QuickRecord).where(
                     QuickRecord.workspace == workspace_code,
                     QuickRecord.closed_at.is_(None),
-                    ~QuickRecord.status.in_(("closed", "no_action_needed", "converted")),
+                    ~QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES),
                 )
             ) or 0
             workspace_metrics[workspace_code] = {
@@ -2673,7 +2673,7 @@ def task_board_manage(
                 select(func.count()).select_from(QuickRecord).where(
                     QuickRecord.workspace == current_workspace,
                     QuickRecord.closed_at.is_(None),
-                    ~QuickRecord.status.in_(("closed", "no_action_needed", "converted")),
+                    ~QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES),
                 )
             )
             or 0,
@@ -2732,7 +2732,7 @@ def task_board_manage(
 
         quick_archived_condition = (
             (QuickRecord.closed_at.is_not(None))
-            | (QuickRecord.status.in_(("closed", "no_action_needed", "converted")))
+            | (QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES))
         )
         quick_stmt = select(QuickRecord).where(QuickRecord.workspace == current_workspace)
         if view == "archived":

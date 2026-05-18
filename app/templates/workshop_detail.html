@@ -26,6 +26,9 @@
     {% if evidence_created %}
       <div class="success">Evidência registada.</div>
     {% endif %}
+    {% if technical_reading_created %}
+      <div class="success">Leitura técnica registada.</div>
+    {% endif %}
     {% if incident_created %}
       <div class="success">Incidente criado.</div>
     {% endif %}
@@ -63,6 +66,37 @@
         </div>
         </article>
 
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Histórico técnico da viatura</h3>
+            </div>
+          </div>
+          <details class="workshop-record-group" {% if previous_technical_readings or process.status == "diagnosis" %}open{% endif %}>
+            <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>
+            <div class="event-list">
+              {% for item in previous_technical_readings %}
+                <article class="event-item">
+                  <div>
+                    <strong>
+                      <a class="table-link" href="/workshop/{{ item.process_id }}">{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</a>
+                    </strong>
+                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                  </div>
+                  <p>Processo #{{ item.process_id }}{% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}</p>
+                  <p>{{ item.summary or "Sem resumo registado." }}</p>
+                  {% if item.differences_json %}
+                    <p class="table-note">Diferenças registadas: {{ item.differences_json|length }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem leituras técnicas anteriores para esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+
       <article class="section workshop-feed">
         <div class="table-heading flat-heading">
           <div>
@@ -92,6 +126,42 @@
               </article>
             {% else %}
               <p class="muted">Sem evidências registadas.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group" {% if technical_readings %}open{% endif %}>
+          <summary>Leituras técnicas / BSI <span>{{ technical_readings|length }}</span></summary>
+          <div class="event-list">
+            {% for item in technical_readings %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</strong>
+                  <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                </div>
+                <p>
+                  {% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}
+                  {% if item.external_url %} &middot; <a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir leitura externa</a>{% endif %}
+                </p>
+                <p>{{ item.summary or "Sem resumo registado." }}</p>
+                {% if item.data_json %}
+                  <dl class="technical-reading-list">
+                    {% for key, value in item.data_json.items() %}
+                      <div><dt>{{ key|replace("_", " ")|capitalize }}</dt><dd>{{ value }}</dd></div>
+                    {% endfor %}
+                  </dl>
+                {% endif %}
+                {% if item.differences_json %}
+                  <div class="technical-diff-box">
+                    <strong>Diferenças face à leitura anterior</strong>
+                    {% for diff in item.differences_json.values() %}
+                      <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem leituras técnicas neste processo.</p>
             {% endfor %}
           </div>
         </details>
@@ -251,6 +321,63 @@
             </label>
             <input name="storage_provider" type="hidden" value="external">
             <button type="submit">Gravar evidência</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Registar leitura técnica / BSI</summary>
+          <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Tipo de leitura
+                <select name="reading_type">
+                  {% for code, label in technical_reading_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Data da leitura
+                <input type="date" name="reading_date">
+              </label>
+              <label>
+                KM
+                <input type="number" name="odometer_km" min="0" step="1" value="{{ process.km_entry or "" }}">
+              </label>
+              <label>
+                Tensão bateria
+                <input type="text" name="battery_voltage" maxlength="80" placeholder="Ex.: 12.4V">
+              </label>
+            </div>
+            <label>
+              Resumo
+              <textarea name="summary" rows="3" placeholder="Síntese da leitura ou diagnóstico"></textarea>
+            </label>
+            <label>
+              Códigos de erro
+              <textarea name="fault_codes" rows="2" placeholder="Códigos, sistemas ou mensagens relevantes"></textarea>
+            </label>
+            <label>
+              Notas BSI
+              <textarea name="bsi_notes" rows="2" placeholder="Campo flexível para evoluir sem fechar já a grelha BSI"></textarea>
+            </label>
+            <details class="advanced-panel">
+              <summary>Campos técnicos adicionais</summary>
+              <label>
+                Sistemas verificados
+                <textarea name="systems_checked" rows="2"></textarea>
+              </label>
+              <label>
+                Recomendação
+                <textarea name="recommendation" rows="2"></textarea>
+              </label>
+              <label>
+                Link externo da leitura
+                <input name="external_url" type="url" placeholder="SharePoint, OneDrive ou relatório externo">
+              </label>
+            </details>
+            <input name="storage_provider" type="hidden" value="external">
+            <button type="submit">Gravar leitura técnica</button>
           </form>
         </details>
 

@@ -16,7 +16,12 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
-from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
+from app.models.workshop import (
+    WorkshopProcess,
+    WorkshopProcessEvidence,
+    WorkshopProcessNote,
+    WorkshopTechnicalReading,
+)
 
 __all__ = [
     "AuditLog",
@@ -58,4 +63,5 @@ __all__ = [
     "WorkshopProcess",
     "WorkshopProcessEvidence",
     "WorkshopProcessNote",
+    "WorkshopTechnicalReading",
 ]

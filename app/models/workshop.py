@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -54,3 +54,20 @@ class WorkshopProcessEvidence(Base):
     storage_provider: Mapped[str | None] = mapped_column(String(80))
     external_url: Mapped[str | None] = mapped_column(Text)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WorkshopTechnicalReading(TimestampMixin, Base):
+    __tablename__ = "workshop_technical_readings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(ForeignKey("workshop_processes.id", ondelete="CASCADE"), index=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reading_type: Mapped[str] = mapped_column(String(80), default="technical", index=True)
+    reading_date: Mapped[date | None] = mapped_column(Date, index=True)
+    odometer_km: Mapped[int | None] = mapped_column(Integer)
+    summary: Mapped[str | None] = mapped_column(Text)
+    data_json: Mapped[dict | None] = mapped_column(JSON)
+    differences_json: Mapped[dict | None] = mapped_column(JSON)
+    storage_provider: Mapped[str | None] = mapped_column(String(80))
+    external_url: Mapped[str | None] = mapped_column(Text)

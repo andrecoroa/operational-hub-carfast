@@ -19,7 +19,12 @@ from app.models.organization import Team
 from app.models.pilot import PilotFeedback
 from app.models.tasks import QuickRecord, Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
-from app.models.workshop import WorkshopProcess, WorkshopProcessEvidence, WorkshopProcessNote
+from app.models.workshop import (
+    WorkshopProcess,
+    WorkshopProcessEvidence,
+    WorkshopProcessNote,
+    WorkshopTechnicalReading,
+)
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
@@ -89,12 +94,21 @@ WORKSHOP_EVIDENCE_STATUSES = [
     ("no_action_needed", "Sem intervenção necessária"),
 ]
 
+WORKSHOP_READING_TYPES = [
+    ("technical", "Leitura técnica"),
+    ("bsi", "Leitura BSI"),
+    ("diagnostic", "Diagnóstico eletrónico"),
+    ("maintenance", "Manutenção"),
+    ("other", "Outra leitura"),
+]
+
 WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
 WORKSHOP_STATUS_LABELS = dict(WORKSHOP_STATUSES)
 WORKSHOP_DECISION_LABELS = dict(WORKSHOP_DECISIONS)
 WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
+WORKSHOP_READING_TYPE_LABELS = dict(WORKSHOP_READING_TYPES)
 
 INCIDENT_TYPES = [
     ("technical", "Técnico"),
@@ -1107,6 +1121,23 @@ def vehicle_detail(
             )
             .order_by(WorkshopProcess.id.desc())
         ).all()
+        technical_readings = db.scalars(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.is_(None),
+                WorkshopTechnicalReading.reading_date.desc(),
+                WorkshopTechnicalReading.id.desc(),
+            )
+            .limit(20)
+        ).all()
+        process_ids = {item.process_id for item in technical_readings}
+        reading_process_by_id = {
+            item.id: item
+            for item in db.scalars(
+                select(WorkshopProcess).where(WorkshopProcess.id.in_(process_ids))
+            ).all()
+        } if process_ids else {}
         documents = db.scalars(
             select(Document)
             .where(or_(Document.vehicle_id == vehicle.id, Document.plate == (vehicle.plate or "")))
@@ -1122,11 +1153,14 @@ def vehicle_detail(
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
+                "technical_readings": technical_readings,
+                "reading_process_by_id": reading_process_by_id,
                 "documents": documents,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
                 "document_area_labels": DOCUMENT_AREA_LABELS,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
                 "workshop_status_labels": WORKSHOP_STATUS_LABELS,
+                "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
                 "saved": saved,
                 "task_created": task_created,
                 "document_created": document_created,
@@ -1547,6 +1581,62 @@ def workshop_create(
     return RedirectResponse("/workshop/manage?created=1", status_code=303)
 
 
+TECHNICAL_READING_COMPARE_LABELS = {
+    "battery_voltage": "Tensão bateria",
+    "fault_codes": "Códigos de erro",
+    "bsi_notes": "Notas BSI",
+    "systems_checked": "Sistemas verificados",
+    "recommendation": "Recomendação",
+    "odometer_km": "KM",
+}
+
+
+def compact_reading_data(
+    *,
+    battery_voltage: str,
+    fault_codes: str,
+    bsi_notes: str,
+    systems_checked: str,
+    recommendation: str,
+) -> dict[str, str]:
+    values = {
+        "battery_voltage": battery_voltage.strip(),
+        "fault_codes": fault_codes.strip(),
+        "bsi_notes": bsi_notes.strip(),
+        "systems_checked": systems_checked.strip(),
+        "recommendation": recommendation.strip(),
+    }
+    return {key: value for key, value in values.items() if value}
+
+
+def technical_reading_differences(
+    current_data: dict[str, str],
+    previous_reading: WorkshopTechnicalReading | None,
+    current_odometer: int | None,
+) -> dict[str, dict[str, str | int | None]]:
+    if not previous_reading:
+        return {}
+
+    differences: dict[str, dict[str, str | int | None]] = {}
+    previous_data = previous_reading.data_json or {}
+    for key in sorted(set(current_data) | set(previous_data)):
+        current_value = current_data.get(key)
+        previous_value = previous_data.get(key)
+        if current_value != previous_value:
+            differences[key] = {
+                "label": TECHNICAL_READING_COMPARE_LABELS.get(key, key),
+                "previous": previous_value or "-",
+                "current": current_value or "-",
+            }
+    if current_odometer != previous_reading.odometer_km:
+        differences["odometer_km"] = {
+            "label": TECHNICAL_READING_COMPARE_LABELS["odometer_km"],
+            "previous": previous_reading.odometer_km,
+            "current": current_odometer,
+        }
+    return differences
+
+
 def render_workshop_detail(
     request: Request,
     db,
@@ -1554,6 +1644,7 @@ def render_workshop_detail(
     *,
     noted: str | None = None,
     evidence_created: str | None = None,
+    technical_reading_created: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
     feedback_saved: str | None = None,
@@ -1590,6 +1681,28 @@ def render_workshop_detail(
         .order_by(Document.id.desc())
         .limit(20)
     ).all()
+    technical_readings = db.scalars(
+        select(WorkshopTechnicalReading)
+        .where(WorkshopTechnicalReading.process_id == process.id)
+        .order_by(
+            WorkshopTechnicalReading.reading_date.is_(None),
+            WorkshopTechnicalReading.reading_date.desc(),
+            WorkshopTechnicalReading.id.desc(),
+        )
+    ).all()
+    previous_technical_readings = db.scalars(
+        select(WorkshopTechnicalReading)
+        .where(
+            WorkshopTechnicalReading.vehicle_id == process.vehicle_id,
+            WorkshopTechnicalReading.process_id != process.id,
+        )
+        .order_by(
+            WorkshopTechnicalReading.reading_date.is_(None),
+            WorkshopTechnicalReading.reading_date.desc(),
+            WorkshopTechnicalReading.id.desc(),
+        )
+        .limit(5)
+    ).all()
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -1601,8 +1714,11 @@ def render_workshop_detail(
             "incidents": incidents,
             "incident_evidences_by_incident": incident_evidences_by_incident,
             "documents": documents,
+            "technical_readings": technical_readings,
+            "previous_technical_readings": previous_technical_readings,
             "noted": noted,
             "evidence_created": evidence_created,
+            "technical_reading_created": technical_reading_created,
             "incident_created": incident_created,
             "document_created": document_created,
             "feedback_saved": feedback_saved,
@@ -1618,6 +1734,8 @@ def render_workshop_detail(
             "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
             "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
             "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
+            "technical_reading_types": WORKSHOP_READING_TYPES,
+            "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
             "incident_types": INCIDENT_TYPES,
             "incident_type_labels": INCIDENT_TYPE_LABELS,
             "incident_categories": INCIDENT_CATEGORIES,
@@ -1643,6 +1761,7 @@ def workshop_detail(
     process_id: int,
     noted: str | None = None,
     evidence_created: str | None = None,
+    technical_reading_created: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
     feedback_saved: str | None = None,
@@ -1660,6 +1779,7 @@ def workshop_detail(
             process,
             noted=noted,
             evidence_created=evidence_created,
+            technical_reading_created=technical_reading_created,
             incident_created=incident_created,
             document_created=document_created,
             feedback_saved=feedback_saved,
@@ -1780,6 +1900,102 @@ def workshop_add_evidence(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?evidence_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/technical-readings", response_class=HTMLResponse)
+def workshop_add_technical_reading(
+    request: Request,
+    process_id: int,
+    reading_type: str = Form("technical"),
+    reading_date: str = Form(""),
+    odometer_km: str = Form(""),
+    summary: str = Form(""),
+    battery_voltage: str = Form(""),
+    fault_codes: str = Form(""),
+    bsi_notes: str = Form(""),
+    systems_checked: str = Form(""),
+    recommendation: str = Form(""),
+    external_url: str = Form(""),
+    storage_provider: str = Form("external"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    if reading_type not in WORKSHOP_READING_TYPE_LABELS:
+        reading_type = "technical"
+    reading_data = compact_reading_data(
+        battery_voltage=battery_voltage,
+        fault_codes=fault_codes,
+        bsi_notes=bsi_notes,
+        systems_checked=systems_checked,
+        recommendation=recommendation,
+    )
+    clean_summary = summary.strip()
+    clean_url = external_url.strip()
+    clean_provider = storage_provider.strip() or "external"
+    parsed_odometer = parse_optional_int(odometer_km)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        previous_reading = db.scalar(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.vehicle_id == process.vehicle_id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.is_(None),
+                WorkshopTechnicalReading.reading_date.desc(),
+                WorkshopTechnicalReading.id.desc(),
+            )
+            .limit(1)
+        )
+        differences = technical_reading_differences(reading_data, previous_reading, parsed_odometer)
+        reading = WorkshopTechnicalReading(
+            process_id=process.id,
+            vehicle_id=process.vehicle_id,
+            user_id=user_id,
+            reading_type=reading_type,
+            reading_date=parse_optional_date(reading_date) or date.today(),
+            odometer_km=parsed_odometer,
+            summary=clean_summary or None,
+            data_json=reading_data or None,
+            differences_json=differences or None,
+            storage_provider=clean_provider,
+            external_url=clean_url or None,
+        )
+        db.add(reading)
+        db.flush()
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Leitura técnica registada: "
+                    f"{WORKSHOP_READING_TYPE_LABELS.get(reading_type, reading_type)}"
+                    f"{' - ' + clean_summary if clean_summary else ''}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.technical_reading.created",
+            entity_type="workshop_technical_reading",
+            entity_id=reading.id,
+            detail=f"Leitura técnica registada no processo: {process.title}",
+            after_json={
+                "workshop_process_id": process.id,
+                "vehicle_id": process.vehicle_id,
+                "reading_type": reading_type,
+                "fields": sorted(reading_data),
+                "has_external_url": bool(clean_url),
+                "differences": bool(differences),
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?technical_reading_created=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/incidents", response_class=HTMLResponse)

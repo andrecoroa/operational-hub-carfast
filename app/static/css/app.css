@@ -2346,6 +2346,45 @@ a.metric:hover {
   margin: 8px 0 0;
 }
 
+.technical-reading-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.technical-reading-list div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.technical-reading-list dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.technical-reading-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.technical-diff-box {
+  margin-top: 12px;
+  border-left: 3px solid var(--amber);
+  padding: 10px 12px;
+  background: var(--amber-soft);
+}
+
+.technical-diff-box p {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
 .status-opening,
 .status-reception,
 .status-diagnosis,

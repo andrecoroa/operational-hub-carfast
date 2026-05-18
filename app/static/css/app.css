@@ -943,20 +943,63 @@ button:hover,
 }
 
 .workspace-card {
-  min-height: 210px;
+  grid-template-rows: auto 1fr auto;
+  min-height: 310px;
   color: var(--ink);
 }
 
-.workspace-card strong {
+.workspace-card > div:first-child {
+  display: grid;
+  align-content: start;
+  min-height: 118px;
+}
+
+.workspace-card > div:first-child p {
+  display: -webkit-box;
+  min-height: 58px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.workspace-summary {
+  display: grid;
+  gap: 11px;
+  align-self: stretch;
+}
+
+.workspace-summary span {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.workspace-summary strong {
   color: var(--brand);
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1;
+}
+
+.workspace-summary small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .workspace-card > span {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.workspace-card .button-link {
+  justify-content: center;
+  width: 100%;
+  margin-top: 0;
 }
 
 .active-workspace {

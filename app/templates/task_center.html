@@ -57,9 +57,11 @@
           <h3>Operacional</h3>
           <p>Execução diária, pedidos, comunicações, anomalias e reclamações.</p>
         </div>
-        <strong>{{ workspace_metrics.operational.open }}</strong>
-        <span>{{ workspace_metrics.operational.due_today }} com limite hoje</span>
-        <span>{{ workspace_metrics.operational.quick_open }} registos rápidos por tratar</span>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.operational.open }}</strong><small>Tarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.operational.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.operational.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
       <a class="workspace-card workshop-workspace" href="/task-board/workshop/manage">
@@ -68,9 +70,12 @@
           <h3>Oficina</h3>
           <p>Processos, tarefas da oficina, registos rápidos e auditoria técnica.</p>
         </div>
-        <strong>{{ workspace_metrics.workshop.open }}</strong>
-        <span>{{ workspace_metrics.workshop.quick_open }} registos rápidos por tratar</span>
-        <span>Tarefas da oficina · Registos rápidos · Auditoria</span>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.workshop.open }}</strong><small>Tarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.workshop.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.workshop.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
       <a class="workspace-card planned-workspace" href="/task-board/management/manage">
         <div>
@@ -78,9 +83,12 @@
           <h3>Gestão</h3>
           <p>Implementações, supervisão, melhoria contínua, reporte e decisões de gestão.</p>
         </div>
-        <strong>{{ workspace_metrics.management.open }}</strong>
-        <span>{{ workspace_metrics.management.quick_open }} registos rápidos por tratar</span>
-        <span>Tarefas e registos rápidos</span>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.management.open }}</strong><small>Tarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.management.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.management.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
       <a class="workspace-card planned-workspace" href="/task-board/administration/manage">
         <div>
@@ -88,9 +96,12 @@
           <h3>Administração</h3>
           <p>Assuntos reservados da direção/administração, fora do backlog operacional.</p>
         </div>
-        <strong>{{ workspace_metrics.administration.open }}</strong>
-        <span>{{ workspace_metrics.administration.quick_open }} registos rápidos por tratar</span>
-        <span>Tarefas e registos rápidos</span>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.administration.open }}</strong><small>Tarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.administration.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.administration.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
     </section>
 

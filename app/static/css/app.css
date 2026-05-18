@@ -816,7 +816,8 @@ button:hover,
 }
 
 .task-metrics {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .task-center-grid {
@@ -1192,9 +1193,22 @@ tbody tr:hover {
 
 .task-metrics .metric {
   grid-template-columns: auto 1fr;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 18px;
+  padding: 14px 16px;
+}
+
+.task-metrics .metric-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.task-metrics .metric-detail strong {
+  font-size: 30px;
+}
+
+.task-metrics .metric-detail span {
+  font-size: 14px;
 }
 
 a.metric {

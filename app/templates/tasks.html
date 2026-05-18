@@ -40,6 +40,10 @@
         <span class="metric-icon">#</span>
         <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas abertas</span></span>
       </a>
+      <a class="metric" href="#registos-rapidos">
+        <span class="metric-icon amber">•</span>
+        <span class="metric-detail"><strong>{{ metrics.quick_open }}</strong><span>Registos rápidos</span></span>
+      </a>
       <a class="metric" href="{{ manage_url }}?status=in_treatment">
         <span class="metric-icon green">↗</span>
         <span class="metric-detail"><strong>{{ metrics.in_treatment }}</strong><span>Em tratamento</span></span>
@@ -55,10 +59,6 @@
       <a class="metric" href="{{ manage_url }}?view=archived">
         <span class="metric-icon blue">%</span>
         <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
-      </a>
-      <a class="metric" href="#registos-rapidos">
-        <span class="metric-icon amber">•</span>
-        <span class="metric-detail"><strong>{{ metrics.quick_open }}</strong><span>Registos rápidos</span></span>
       </a>
     </section>
 

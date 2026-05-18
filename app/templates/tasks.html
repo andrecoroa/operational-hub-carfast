@@ -23,7 +23,7 @@
       <div class="success">Tarefa criada.</div>
     {% endif %}
     {% if closed %}
-      <div class="success">Tarefa fechada.</div>
+      <div class="success">Registo fechado.</div>
     {% endif %}
     {% if quick_created %}
       <div class="success">Registo rápido criado.</div>
@@ -85,6 +85,9 @@
             {% for code, label in task_statuses %}
               <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
+            {% for code, label in quick_record_statuses %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
+            {% endfor %}
           </select>
         </label>
         <label>
@@ -126,59 +129,49 @@
         <p class="eyebrow">Execução</p>
         <h3>Tarefas</h3>
       </div>
-      <span>Backlog por natureza</span>
+      <span>{{ tasks|length }} registos na vista atual</span>
     </div>
 
     <section class="task-board-groups task-management-groups">
-      {% for group in task_groups %}
-        <article class="table-shell task-type-board">
-          <div class="table-heading task-type-heading">
-            <div>
-              <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
-              <h3>{{ group.label }}</h3>
-            </div>
-            <span>{{ group.count }}</span>
+      <article class="table-shell task-type-board">
+        <div class="table-heading task-type-heading">
+          <div>
+            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
+            <h3>Tarefas</h3>
           </div>
-          <div class="task-board-list compact-task-list">
-            {% for task in group.tasks %}
-              <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
-                <div class="task-card-main">
-                  <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
-                  <p class="task-row-title">{{ task.title }}</p>
-                  <p class="table-note">
-                    {% if task.customer_name %}{{ task.customer_name }}{% endif %}
-                    {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
-                    {% if not task.customer_name and not task.plate %}{{ task_source_labels.get(task.source, task.source or "Manual") }}{% endif %}
-                  </p>
-                  {% if task.description %}
-                    <p class="table-note table-note-clamp">{{ task.description }}</p>
-                  {% endif %}
-                </div>
-                <div class="task-card-side">
-                  <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
-                  <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
-                  <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
-                  <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
-                </div>
-              </article>
-            {% else %}
-              <div class="task-board-empty">
-                <span>✓</span>
-                <p>Sem registos.</p>
-                <small>Tudo em dia.</small>
+          <span>{{ tasks|length }}</span>
+        </div>
+        <div class="task-board-list">
+          {% for task in tasks %}
+            <article class="task-card-row">
+              <div class="task-card-main">
+                <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                <p class="task-row-title">{{ task.title }}</p>
+                <p class="table-note">
+                  {{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}
+                  {% if task.customer_name %} &middot; {{ task.customer_name }}{% endif %}
+                  {% if task.plate %} &middot; {{ task.plate }}{% endif %}
+                </p>
+                {% if task.description %}
+                  <p class="table-note table-note-clamp">{{ task.description }}</p>
+                {% endif %}
               </div>
-            {% endfor %}
-            {% if group.count > 4 %}
-              <a class="task-board-footer" href="{{ manage_url }}?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
-            {% endif %}
-          </div>
-        </article>
-      {% else %}
-        <article class="section empty-board">
-          <h3>Sem tarefas para apresentar.</h3>
-          <p class="muted">Ajusta os filtros ou cria uma nova tarefa.</p>
-        </article>
-      {% endfor %}
+              <div class="task-card-side">
+                <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
+                <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
+              </div>
+            </article>
+          {% else %}
+            <div class="task-board-empty">
+              <span>✓</span>
+              <p>Sem tarefas.</p>
+              <small>Tudo em dia nesta vista.</small>
+            </div>
+          {% endfor %}
+        </div>
+      </article>
     </section>
 
     <div class="task-board-section-heading" id="registos-rapidos">
@@ -186,110 +179,50 @@
         <p class="eyebrow">Entrada leve</p>
         <h3>Registos rápidos</h3>
       </div>
-      <span>Pedidos, comunicações, anomalias e reclamações para triagem</span>
+      <span>{{ quick_records|length }} registos na vista atual</span>
     </div>
 
     <section class="task-board-groups task-management-groups">
-      {% for group in quick_record_groups %}
-        <article class="table-shell task-type-board">
-          <div class="table-heading task-type-heading">
-            <div>
-              <p class="eyebrow">Registos rápidos</p>
-              <h3>{{ group.label }}</h3>
-            </div>
-            <span>{{ group.count }}</span>
+      <article class="table-shell task-type-board">
+        <div class="table-heading task-type-heading">
+          <div>
+            <p class="eyebrow">Triagem</p>
+            <h3>Registos rápidos</h3>
           </div>
-          <div class="task-board-list compact-task-list">
-            {% for record in group.records %}
-              <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
-                <div class="task-card-main">
-                  <span class="table-link">CF-REG-{{ "%05d"|format(record.id) }}</span>
-                  <p class="task-row-title">{{ record.title }}</p>
-                  <p class="table-note">
-                    {% if record.customer_name %}{{ record.customer_name }}{% endif %}
-                    {% if record.plate %}{% if record.customer_name %} &middot; {% endif %}{{ record.plate }}{% endif %}
-                    {% if not record.customer_name and not record.plate %}{{ task_source_labels.get(record.source, record.source or "Manual") }}{% endif %}
-                  </p>
-                  {% if record.description %}
-                    <p class="table-note table-note-clamp">{{ record.description }}</p>
-                  {% endif %}
-                </div>
-                <div class="task-card-side quick-record-side">
-                  <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
-                  <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
-                  <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
-                </div>
-              </article>
-            {% else %}
-              <div class="task-board-empty">
-                <span>✓</span>
-                <p>Sem registos.</p>
-                <small>Tudo em dia.</small>
-              </div>
-            {% endfor %}
-            {% if group.count > 4 %}
-              <span class="task-board-footer">Mostrados 4 de {{ group.count }}</span>
-            {% endif %}
-          </div>
-        </article>
-      {% else %}
-        <article class="section empty-board">
-          <h3>Sem registos rápidos para apresentar.</h3>
-          <p class="muted">Use o registo rápido quando ainda não existir execução concreta.</p>
-        </article>
-      {% endfor %}
-    </section>
-
-    {% if secondary_task_groups %}
-      <div class="task-board-section-heading">
-        <div>
-          <p class="eyebrow">Controlo</p>
-          <h3>{% if workspace == "workshop" %}Auditoria{% else %}Acompanhamento{% endif %}</h3>
+          <span>{{ quick_records|length }}</span>
         </div>
-        <span>Grelha independente para registos com acompanhamento próprio</span>
-      </div>
-
-      <section class="task-board-groups task-management-groups">
-        {% for group in secondary_task_groups %}
-          <article class="table-shell task-type-board">
-            <div class="table-heading task-type-heading">
-              <div>
-                <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
-                <h3>{{ group.label }}</h3>
+        <div class="task-board-list">
+          {% for record in quick_records %}
+            <article class="task-card-row">
+              <div class="task-card-main">
+                <a class="table-link" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
+                <p class="task-row-title">{{ record.title }}</p>
+                <p class="table-note">
+                  {{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}
+                  {% if record.customer_name %} &middot; {{ record.customer_name }}{% endif %}
+                  {% if record.plate %} &middot; {{ record.plate }}{% endif %}
+                </p>
+                {% if record.description %}
+                  <p class="table-note table-note-clamp">{{ record.description }}</p>
+                {% endif %}
               </div>
-              <span>{{ group.count }}</span>
+              <div class="task-card-side quick-record-side">
+                <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+                <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+                <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
+                <a class="task-board-open" href="/task-board/quick/{{ record.id }}" aria-label="Abrir registo rápido">›</a>
+              </div>
+            </article>
+          {% else %}
+            <div class="task-board-empty">
+              <span>✓</span>
+              <p>Sem registos rápidos.</p>
+              <small>Tudo em dia nesta vista.</small>
             </div>
-            <div class="task-board-list compact-task-list">
-              {% for task in group.tasks %}
-                <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
-                  <div class="task-card-main">
-                    <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
-                    <p class="task-row-title">{{ task.title }}</p>
-                    <p class="table-note">
-                      {% if task.customer_name %}{{ task.customer_name }}{% endif %}
-                      {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
-                      {% if not task.customer_name and not task.plate %}{{ task_source_labels.get(task.source, task.source or "Manual") }}{% endif %}
-                    </p>
-                    {% if task.description %}
-                      <p class="table-note table-note-clamp">{{ task.description }}</p>
-                    {% endif %}
-                  </div>
-                  <div class="task-card-side">
-                    <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
-                    <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
-                    <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
-                    <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
-                  </div>
-                </article>
-              {% endfor %}
-              {% if group.count > 4 %}
-                <a class="task-board-footer" href="{{ manage_url }}?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
-              {% endif %}
-            </div>
-          </article>
-        {% endfor %}
-      </section>
-    {% endif %}
+          {% endfor %}
+        </div>
+      </article>
+    </section>
   </main>
 </div>
 {% endblock %}

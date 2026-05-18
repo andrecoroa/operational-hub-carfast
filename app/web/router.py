@@ -2859,6 +2859,7 @@ def task_board_manage(
             "tasks.html",
             {
                 "tasks": tasks,
+                "quick_records": quick_records,
                 "task_groups": primary_task_groups,
                 "secondary_task_groups": secondary_task_groups,
                 "workspace": current_workspace,
@@ -2891,6 +2892,7 @@ def task_board_manage(
                 },
                 "archive_statuses": TASK_ARCHIVE_STATUSES,
                 "quick_record_groups": quick_record_groups,
+                "quick_record_statuses": QUICK_RECORD_STATUSES,
                 "quick_record_status_labels": QUICK_RECORD_STATUS_LABELS,
                 "quick_record_type_labels": QUICK_RECORD_TYPE_LABELS,
                 "stations": stations,
@@ -3101,6 +3103,250 @@ def quick_record_create(
         db.commit()
 
     return RedirectResponse(f"{task_workspace_manage_url(clean_workspace)}?quick_created=1", status_code=303)
+
+
+@web_router.get("/task-board/quick/{record_id}", response_class=HTMLResponse)
+def quick_record_detail(
+    request: Request,
+    record_id: int,
+    updated: str | None = None,
+    closed: str | None = None,
+    converted: str | None = None,
+    error: str | None = None,
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        record = db.get(QuickRecord, record_id)
+        if not record:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        workspace = normalize_task_workspace(record.workspace)
+        linked_task = db.get(Task, record.converted_task_id) if record.converted_task_id else None
+        linked_vehicle = None
+        if record.plate:
+            linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == record.plate))
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        user_by_id = {item.id: item for item in users}
+        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        return templates.TemplateResponse(
+            request,
+            "quick_record_detail.html",
+            {
+                "record": record,
+                "workspace": workspace,
+                "workspace_config": TASK_WORKSPACE_CONFIG[workspace],
+                "workspace_label": TASK_WORKSPACE_LABELS[workspace],
+                "manage_url": task_workspace_manage_url(workspace),
+                "linked_task": linked_task,
+                "linked_vehicle": linked_vehicle,
+                "users": users,
+                "user_by_id": user_by_id,
+                "teams": teams,
+                "current_user": db.get(User, user_id),
+                "updated": updated,
+                "closed": closed,
+                "converted": converted,
+                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "quick_record_statuses": QUICK_RECORD_STATUSES,
+                "quick_record_status_labels": QUICK_RECORD_STATUS_LABELS,
+                "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[workspace],
+                "quick_record_type_labels": QUICK_RECORD_TYPE_LABELS,
+                "task_types": workspace_task_type_options(workspace),
+                "task_sources": TASK_SOURCES,
+                "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
+                "priorities": PRIORITIES,
+                "priority_labels": PRIORITY_DISPLAY_LABELS,
+            },
+        )
+
+
+@web_router.post("/task-board/quick/{record_id}/update", response_class=HTMLResponse)
+def quick_record_update(
+    request: Request,
+    record_id: int,
+    title: str = Form(""),
+    record_type: str = Form("other"),
+    status: str = Form("new"),
+    priority: str = Form("normal"),
+    source: str = Form("manual"),
+    customer_name: str = Form(""),
+    customer_contact: str = Form(""),
+    customer_email: str = Form(""),
+    customer_phone: str = Form(""),
+    plate: str = Form(""),
+    station: str = Form(""),
+    description: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        record = db.get(QuickRecord, record_id)
+        if not record:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        workspace = normalize_task_workspace(record.workspace)
+        allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE[workspace]}
+        if record_type not in allowed_record_types:
+            record_type = "other"
+        if status not in QUICK_RECORD_STATUS_LABELS:
+            status = record.status or "new"
+        if priority not in PRIORITY_DISPLAY_LABELS:
+            priority = "normal"
+        if source not in TASK_SOURCE_DISPLAY_LABELS:
+            source = "manual"
+
+        record.title = title.strip() or record.title
+        record.record_type = record_type
+        record.status = status
+        record.priority = priority
+        record.source = source
+        record.customer_name = customer_name.strip() or None
+        record.customer_contact = customer_contact.strip() or None
+        record.customer_email = customer_email.strip().lower() or None
+        record.customer_phone = customer_phone.strip() or None
+        record.plate = plate.strip().upper().replace(" ", "") or None
+        record.station = station.strip() or None
+        record.description = description.strip() or None
+        if status in QUICK_RECORD_ARCHIVE_STATUSES:
+            record.closed_at = record.closed_at or datetime.now(UTC)
+        else:
+            record.closed_at = None
+
+        record_audit(
+            db,
+            action="quick_record.update",
+            entity_type="quick_record",
+            entity_id=record.id,
+            detail=f"Registo rápido atualizado: {record.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/task-board/quick/{record_id}?updated=1", status_code=303)
+
+
+@web_router.post("/task-board/quick/{record_id}/close", response_class=HTMLResponse)
+def quick_record_close(request: Request, record_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        record = db.get(QuickRecord, record_id)
+        if not record:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        workspace = normalize_task_workspace(record.workspace)
+        record.status = "closed"
+        record.closed_at = record.closed_at or datetime.now(UTC)
+        record_audit(
+            db,
+            action="quick_record.close",
+            entity_type="quick_record",
+            entity_id=record.id,
+            detail=f"Registo rápido fechado: {record.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"{task_workspace_manage_url(workspace)}?closed=1", status_code=303)
+
+
+@web_router.post("/task-board/quick/{record_id}/convert", response_class=HTMLResponse)
+def quick_record_convert(
+    request: Request,
+    record_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    task_type: str = Form(""),
+    priority: str = Form("normal"),
+    assigned_to_id: str = Form(""),
+    team_id: str = Form(""),
+    due_on: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        record = db.get(QuickRecord, record_id)
+        if not record:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        workspace = normalize_task_workspace(record.workspace)
+        workspace_config = TASK_WORKSPACE_CONFIG[workspace]
+        allowed_task_types = set(TASK_WORKSPACE_TASK_TYPES[workspace])
+        if task_type not in allowed_task_types:
+            task_type = workspace_config["default_task_type"]
+        if priority not in PRIORITY_DISPLAY_LABELS:
+            priority = record.priority or "normal"
+        assigned_user_id = parse_optional_int(assigned_to_id)
+        if assigned_user_id and not db.get(User, assigned_user_id):
+            assigned_user_id = None
+        assigned_team_id = parse_optional_int(team_id)
+        if assigned_team_id and not db.get(Team, assigned_team_id):
+            assigned_team_id = None
+        assigned_team_id = assigned_team_id or default_team_id(db, workspace_config["default_team_code"])
+        if not assigned_user_id and not assigned_team_id:
+            return RedirectResponse(f"/task-board/quick/{record_id}?error=missing_destination", status_code=303)
+
+        task = Task(
+            title=title.strip() or record.title,
+            description=description.strip() or record.description,
+            task_type=task_type,
+            source=record.source or "manual",
+            category=workspace_config["default_category"],
+            status="new",
+            priority=priority,
+            customer_name=record.customer_name,
+            customer_contact=record.customer_contact,
+            customer_email=record.customer_email,
+            customer_phone=record.customer_phone,
+            plate=record.plate,
+            station=record.station,
+            entity_type=record.entity_type,
+            entity_id=record.entity_id,
+            assigned_to_id=assigned_user_id,
+            team_id=assigned_team_id,
+            created_by_id=user_id,
+            due_on=parse_optional_date(due_on),
+        )
+        db.add(task)
+        db.flush()
+        task_id = task.id
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=None,
+                new_value="new",
+            )
+        )
+        record.status = "converted"
+        record.converted_task_id = task.id
+        record.closed_at = record.closed_at or datetime.now(UTC)
+        record_audit(
+            db,
+            action="quick_record.convert",
+            entity_type="quick_record",
+            entity_id=record.id,
+            detail=f"Registo rápido convertido em tarefa: {task.title}",
+            after_json={"task_id": task.id},
+            user_id=user_id,
+        )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Tarefa criada por conversão: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
 
 @web_router.post("/task-board", response_class=HTMLResponse)

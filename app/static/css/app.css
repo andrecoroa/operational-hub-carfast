@@ -2223,6 +2223,28 @@ a.metric:hover {
   gap: 12px;
 }
 
+.quick-record-guidance {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.quick-record-guidance article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.quick-record-guidance strong {
+  color: var(--ink);
+}
+
+.quick-record-guidance p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
 .workshop-action-card {
   border: 1px solid var(--line);
   border-radius: 8px;

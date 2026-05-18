@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Registo rápido</p>
+        <h2>{{ record.title }}</h2>
+        <p class="breadcrumb">Centro de Tarefas &gt; {{ workspace_label }} &gt; <strong>CF-REG-{{ "%05d"|format(record.id) }}</strong></p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_entity_type = "quick_record" %}
+        {% set feedback_entity_id = record.id %}
+        {% set feedback_return_url = "/task-board/quick/" ~ record.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="{{ manage_url }}">Voltar</a>
+      </div>
+    </header>
+
+    {% if updated %}
+      <div class="success">Registo rápido atualizado.</div>
+    {% endif %}
+    {% if closed %}
+      <div class="success">Registo rápido fechado.</div>
+    {% endif %}
+    {% if converted %}
+      <div class="success">Registo rápido convertido em tarefa.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="workshop-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Resumo</p>
+            <h3>CF-REG-{{ "%05d"|format(record.id) }}</h3>
+          </div>
+          <div class="pill-row">
+            <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+            <span class="pill">{{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}</span>
+            <span class="pill priority-{{ record.priority }}">{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+            <span class="pill muted-pill">{{ task_source_labels.get(record.source, record.source or "Manual") }}</span>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Criado em</span><strong>{{ record.created_at.strftime("%Y-%m-%d %H:%M") if record.created_at else "-" }}</strong></div>
+            <div><span>Estação</span><strong>{{ record.station or "-" }}</strong></div>
+            <div><span>Criado por</span><strong>{{ user_by_id.get(record.created_by_id).name if record.created_by_id and user_by_id.get(record.created_by_id) else "-" }}</strong></div>
+            <div><span>Matrícula</span><strong>{{ record.plate or "-" }}</strong></div>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Cliente</span><strong>{{ record.customer_name or "-" }}</strong></div>
+            <div><span>Contacto</span><strong>{{ record.customer_contact or "-" }}</strong></div>
+            <div><span>E-mail</span><strong>{{ record.customer_email or "-" }}</strong></div>
+            <div><span>Telefone</span><strong>{{ record.customer_phone or "-" }}</strong></div>
+          </div>
+          <div class="task-description-box">
+            <span>Descrição</span>
+            <p>{{ record.description or "Sem descrição registada." }}</p>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div>
+              <span>Viatura</span>
+              <strong>
+                {% if linked_vehicle %}
+                  <a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate }}</a>
+                {% else %}
+                  -
+                {% endif %}
+              </strong>
+            </div>
+            <div>
+              <span>Tarefa criada</span>
+              <strong>
+                {% if linked_task %}
+                  <a class="table-link" href="/task-board/{{ linked_task.id }}">CF-TASK-{{ "%05d"|format(linked_task.id) }}</a>
+                {% else %}
+                  -
+                {% endif %}
+              </strong>
+            </div>
+            <div><span>Fechado em</span><strong>{{ record.closed_at.strftime("%Y-%m-%d %H:%M") if record.closed_at else "-" }}</strong></div>
+            <div><span>Centro</span><strong>{{ workspace_label }}</strong></div>
+          </div>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Tratamento</p>
+              <h3>Como resolver este registo</h3>
+            </div>
+          </div>
+          <div class="quick-record-guidance">
+            <article>
+              <strong>Atualizar</strong>
+              <p>Corrige a classificação, estado, matrícula, cliente ou descrição quando o registo ainda é apenas informativo.</p>
+            </article>
+            <article>
+              <strong>Converter em tarefa</strong>
+              <p>Usa quando o registo precisa de responsável, equipa/fila, SLA ou acompanhamento operacional.</p>
+            </article>
+            <article>
+              <strong>Fechar</strong>
+              <p>Usa quando o registo ficou tratado sem necessidade de criar uma tarefa.</p>
+            </article>
+          </div>
+        </article>
+      </div>
+
+      <aside class="workshop-side-column">
+        <form method="post" action="/task-board/quick/{{ record.id }}/update" class="form-panel form-stack workshop-flow-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Gestão</p>
+            <h3>Atualizar registo</h3>
+          </div>
+          <div class="compact-form-grid two-col">
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in quick_record_statuses %}
+                  <option value="{{ code }}" {% if record.status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Tipo
+              <select name="record_type">
+                {% for code, label in quick_record_types %}
+                  <option value="{{ code }}" {% if record.record_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Prioridade
+              <select name="priority">
+                {% for code, label in priorities %}
+                  <option value="{{ code }}" {% if record.priority == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Origem
+              <select name="source">
+                {% for code, label in task_sources %}
+                  <option value="{{ code }}" {% if record.source == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <label>
+            Título
+            <input type="text" name="title" maxlength="200" value="{{ record.title }}" required>
+          </label>
+          <div class="compact-form-grid two-col">
+            <label>
+              Matrícula
+              <input type="text" name="plate" maxlength="40" value="{{ record.plate or '' }}">
+            </label>
+            <label>
+              Estação
+              <input type="text" name="station" maxlength="120" value="{{ record.station or '' }}">
+            </label>
+            <label>
+              Cliente
+              <input type="text" name="customer_name" maxlength="200" value="{{ record.customer_name or '' }}">
+            </label>
+            <label>
+              Contacto
+              <input type="text" name="customer_contact" maxlength="200" value="{{ record.customer_contact or '' }}">
+            </label>
+            <label>
+              E-mail
+              <input type="email" name="customer_email" maxlength="255" value="{{ record.customer_email or '' }}">
+            </label>
+            <label>
+              Telefone
+              <input type="text" name="customer_phone" maxlength="80" value="{{ record.customer_phone or '' }}">
+            </label>
+          </div>
+          <label>
+            Descrição
+            <textarea name="description" rows="4">{{ record.description or "" }}</textarea>
+          </label>
+          <button type="submit">Atualizar registo</button>
+        </form>
+
+        <div class="workshop-actions">
+          <details class="workshop-action-card">
+            <summary>Converter em tarefa</summary>
+            {% if linked_task %}
+              <p class="muted">Este registo já foi convertido na tarefa <a class="table-link" href="/task-board/{{ linked_task.id }}">CF-TASK-{{ "%05d"|format(linked_task.id) }}</a>.</p>
+            {% else %}
+              <form method="post" action="/task-board/quick/{{ record.id }}/convert" class="form-stack">
+                <label>
+                  Título da tarefa
+                  <input type="text" name="title" maxlength="200" value="{{ record.title }}" required>
+                </label>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Natureza
+                    <select name="task_type">
+                      {% for code, label in task_types %}
+                        <option value="{{ code }}">{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Prioridade
+                    <select name="priority">
+                      {% for code, label in priorities %}
+                        <option value="{{ code }}" {% if record.priority == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Responsável
+                    <select name="assigned_to_id">
+                      <option value="">Sem responsável direto</option>
+                      {% for user in users %}
+                        <option value="{{ user.id }}">{{ user.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Equipa/Fila
+                    <select name="team_id">
+                      <option value="">Usar fila padrão</option>
+                      {% for team in teams %}
+                        <option value="{{ team.id }}">{{ team.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Data limite
+                    <input type="date" name="due_on">
+                  </label>
+                </div>
+                <label>
+                  Descrição da tarefa
+                  <textarea name="description" rows="4">{{ record.description or "" }}</textarea>
+                </label>
+                <button type="submit">Converter em tarefa</button>
+              </form>
+            {% endif %}
+          </details>
+
+          <details class="workshop-action-card workshop-close-card">
+            <summary>Fechar registo</summary>
+            {% if record.closed_at %}
+              <p class="muted">Registo fechado em {{ record.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+            {% else %}
+              <form method="post" action="/task-board/quick/{{ record.id }}/close" class="form-stack">
+                <button type="submit">Fechar registo</button>
+              </form>
+            {% endif %}
+          </details>
+        </div>
+      </aside>
+    </section>
+  </main>
+</div>
+{% endblock %}

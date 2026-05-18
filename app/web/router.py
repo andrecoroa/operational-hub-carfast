@@ -23,6 +23,7 @@ from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
     WorkshopProcessNote,
+    WorkshopProcessService,
     WorkshopTechnicalReading,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
@@ -67,6 +68,46 @@ WORKSHOP_DECISIONS = [
     ("no_action_needed", "Sem intervenção necessária"),
 ]
 
+WORKSHOP_SERVICE_FAMILIES = [
+    ("revision", "Revisão"),
+    ("tyres", "Pneus"),
+    ("brakes", "Travões"),
+    ("dashboard_light", "Luz / avaria no painel"),
+    ("abnormal_noise", "Ruído anormal"),
+    ("accident_damage", "Acidente / dano"),
+    ("battery", "Bateria"),
+    ("periodic_check", "Verificação periódica"),
+    ("other", "Outro"),
+]
+
+WORKSHOP_SERVICE_DETAILS = [
+    ("brake_pads", "Calços", "brakes"),
+    ("brake_discs", "Discos", "brakes"),
+    ("brake_pads_discs", "Calços + discos", "brakes"),
+    ("brake_diagnosis", "Diagnóstico travões", "brakes"),
+    ("tyre_replacement", "Substituição", "tyres"),
+    ("tyre_puncture", "Furo", "tyres"),
+    ("tyre_wear", "Desgaste", "tyres"),
+    ("tyre_pressure", "Pressão", "tyres"),
+    ("tyre_alignment", "Alinhamento", "tyres"),
+    ("other", "Outro", "any"),
+]
+
+WORKSHOP_SERVICE_AXES = [
+    ("not_defined", "Não definido"),
+    ("front", "Frente"),
+    ("rear", "Trás"),
+    ("front_rear", "Frente + trás"),
+]
+
+WORKSHOP_SERVICE_STATUSES = [
+    ("to_assess", "Por avaliar"),
+    ("diagnosis", "Em diagnóstico"),
+    ("execution", "Em execução"),
+    ("completed", "Concluído"),
+    ("no_action_needed", "Sem intervenção"),
+]
+
 WORKSHOP_EVIDENCE_TYPES = [
     ("photo", "Foto"),
     ("video", "Vídeo"),
@@ -105,6 +146,10 @@ WORKSHOP_READING_TYPES = [
 WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
 WORKSHOP_STATUS_LABELS = dict(WORKSHOP_STATUSES)
 WORKSHOP_DECISION_LABELS = dict(WORKSHOP_DECISIONS)
+WORKSHOP_SERVICE_FAMILY_LABELS = dict(WORKSHOP_SERVICE_FAMILIES)
+WORKSHOP_SERVICE_DETAIL_LABELS = {code: label for code, label, _ in WORKSHOP_SERVICE_DETAILS}
+WORKSHOP_SERVICE_AXIS_LABELS = dict(WORKSHOP_SERVICE_AXES)
+WORKSHOP_SERVICE_STATUS_LABELS = dict(WORKSHOP_SERVICE_STATUSES)
 WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
@@ -1466,6 +1511,9 @@ def workshop_new_page(request: Request, error: str | None = None):
                 "error": task_detail_error_message(error),
                 "opening_types": WORKSHOP_OPENING_TYPES,
                 "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                "service_families": WORKSHOP_SERVICE_FAMILIES,
+                "service_details": WORKSHOP_SERVICE_DETAILS,
+                "service_axes": WORKSHOP_SERVICE_AXES,
             },
         )
 
@@ -1519,6 +1567,10 @@ def workshop_create(
     priority: str = Form("normal"),
     km_entry: str = Form(""),
     expected_exit_on: str = Form(""),
+    service_family: str = Form(""),
+    service_detail: str = Form(""),
+    service_axis: str = Form("not_defined"),
+    service_note: str = Form(""),
     note: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -1546,6 +1598,9 @@ def workshop_create(
                     "error": error_message,
                     "opening_types": WORKSHOP_OPENING_TYPES,
                     "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                    "service_families": WORKSHOP_SERVICE_FAMILIES,
+                    "service_details": WORKSHOP_SERVICE_DETAILS,
+                    "service_axes": WORKSHOP_SERVICE_AXES,
                 },
                 status_code=400,
             )
@@ -1568,6 +1623,25 @@ def workshop_create(
         )
         db.add(process)
         db.flush()
+        allowed_service_families = {code for code, _ in WORKSHOP_SERVICE_FAMILIES}
+        allowed_service_details = {code for code, _, _ in WORKSHOP_SERVICE_DETAILS}
+        allowed_service_axes = {code for code, _ in WORKSHOP_SERVICE_AXES}
+        clean_service_family = service_family if service_family in allowed_service_families else ""
+        clean_service_detail = service_detail if service_detail in allowed_service_details else ""
+        clean_service_axis = service_axis if service_axis in allowed_service_axes else "not_defined"
+        if clean_service_family:
+            db.add(
+                WorkshopProcessService(
+                    process_id=process.id,
+                    vehicle_id=vehicle.id,
+                    service_family=clean_service_family,
+                    service_detail=clean_service_detail or None,
+                    service_axis=clean_service_axis,
+                    status="to_assess",
+                    note=service_note.strip() or None,
+                    created_by_id=user_id,
+                )
+            )
         record_audit(
             db,
             action="workshop.process.created",
@@ -1681,6 +1755,11 @@ def render_workshop_detail(
         .order_by(Document.id.desc())
         .limit(20)
     ).all()
+    services = db.scalars(
+        select(WorkshopProcessService)
+        .where(WorkshopProcessService.process_id == process.id)
+        .order_by(WorkshopProcessService.id)
+    ).all()
     technical_readings = db.scalars(
         select(WorkshopTechnicalReading)
         .where(WorkshopTechnicalReading.process_id == process.id)
@@ -1714,6 +1793,7 @@ def render_workshop_detail(
             "incidents": incidents,
             "incident_evidences_by_incident": incident_evidences_by_incident,
             "documents": documents,
+            "services": services,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
             "noted": noted,
@@ -1731,6 +1811,14 @@ def render_workshop_detail(
             "opening_type_labels": WORKSHOP_OPENING_LABELS,
             "status_labels": WORKSHOP_STATUS_LABELS,
             "decision_labels": WORKSHOP_DECISION_LABELS,
+            "service_families": WORKSHOP_SERVICE_FAMILIES,
+            "service_details": WORKSHOP_SERVICE_DETAILS,
+            "service_axes": WORKSHOP_SERVICE_AXES,
+            "service_statuses": WORKSHOP_SERVICE_STATUSES,
+            "service_family_labels": WORKSHOP_SERVICE_FAMILY_LABELS,
+            "service_detail_labels": WORKSHOP_SERVICE_DETAIL_LABELS,
+            "service_axis_labels": WORKSHOP_SERVICE_AXIS_LABELS,
+            "service_status_labels": WORKSHOP_SERVICE_STATUS_LABELS,
             "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
             "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
             "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
@@ -1765,6 +1853,7 @@ def workshop_detail(
     incident_created: str | None = None,
     document_created: str | None = None,
     feedback_saved: str | None = None,
+    error: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -1783,6 +1872,7 @@ def workshop_detail(
             incident_created=incident_created,
             document_created=document_created,
             feedback_saved=feedback_saved,
+            error=error,
         )
 
 
@@ -1811,6 +1901,81 @@ def workshop_add_note(
             entity_type="workshop_process",
             entity_id=process.id,
             detail=f"Nota adicionada ao processo de oficina: {process.title}",
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/services", response_class=HTMLResponse)
+def workshop_add_service(
+    request: Request,
+    process_id: int,
+    service_family: str = Form(""),
+    service_detail: str = Form(""),
+    service_axis: str = Form("not_defined"),
+    status: str = Form("to_assess"),
+    note: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    allowed_service_families = {code for code, _ in WORKSHOP_SERVICE_FAMILIES}
+    allowed_service_details = {code for code, _, _ in WORKSHOP_SERVICE_DETAILS}
+    allowed_service_axes = {code for code, _ in WORKSHOP_SERVICE_AXES}
+    allowed_service_statuses = {code for code, _ in WORKSHOP_SERVICE_STATUSES}
+    if service_family not in allowed_service_families:
+        return RedirectResponse(f"/workshop/{process_id}?error=Seleciona%20o%20serviço.", status_code=303)
+    if service_detail not in allowed_service_details:
+        service_detail = ""
+    if service_axis not in allowed_service_axes:
+        service_axis = "not_defined"
+    if status not in allowed_service_statuses:
+        status = "to_assess"
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        service = WorkshopProcessService(
+            process_id=process.id,
+            vehicle_id=process.vehicle_id,
+            service_family=service_family,
+            service_detail=service_detail or None,
+            service_axis=service_axis,
+            status=status,
+            note=note.strip() or None,
+            created_by_id=user_id,
+        )
+        db.add(service)
+        db.flush()
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Serviço adicionado: "
+                    f"{WORKSHOP_SERVICE_FAMILY_LABELS.get(service_family, service_family)}"
+                    f"{' - ' + WORKSHOP_SERVICE_DETAIL_LABELS.get(service_detail, service_detail) if service_detail else ''}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.process.service.created",
+            entity_type="workshop_process_service",
+            entity_id=service.id,
+            detail=f"Serviço adicionado ao processo: {process.title}",
+            after_json={
+                "workshop_process_id": process.id,
+                "vehicle_id": process.vehicle_id,
+                "service_family": service_family,
+                "service_detail": service_detail or None,
+                "service_axis": service_axis,
+                "status": status,
+            },
             user_id=user_id,
         )
         db.commit()

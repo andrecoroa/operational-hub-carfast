@@ -69,6 +69,37 @@
         <article class="section workshop-feed">
           <div class="table-heading flat-heading">
             <div>
+              <p class="eyebrow">Receção</p>
+              <h3>Serviços do processo</h3>
+            </div>
+          </div>
+          <details class="workshop-record-group" open>
+            <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
+            <div class="event-list">
+              {% for service in services %}
+                <article class="event-item service-item">
+                  <div>
+                    <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
+                    <span>{{ service_status_labels.get(service.status, service.status) }}</span>
+                  </div>
+                  <p>
+                    {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
+                    &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
+                  </p>
+                  {% if service.note %}
+                    <p>{{ service.note }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem serviços associados a este processo.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
               <p class="eyebrow">Diagnóstico</p>
               <h3>Histórico técnico da viatura</h3>
             </div>
@@ -274,6 +305,52 @@
         </form>
 
         <div class="workshop-actions">
+        <details class="workshop-action-card">
+          <summary>Adicionar serviço</summary>
+          <form method="post" action="/workshop/{{ process.id }}/services" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Serviço / motivo
+                <select name="service_family" data-service-family>
+                  {% for code, label in service_families %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Detalhe
+                <select name="service_detail" data-service-detail>
+                  <option value="">Sem detalhe</option>
+                  {% for code, label, family in service_details %}
+                    <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Eixo / zona
+                <select name="service_axis">
+                  {% for code, label in service_axes %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in service_statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Observação
+              <textarea name="note" rows="2" placeholder="Nota curta sobre este serviço"></textarea>
+            </label>
+            <button type="submit">Adicionar serviço</button>
+          </form>
+        </details>
+
         <details class="workshop-action-card">
           <summary>Registar evidência</summary>
           <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
@@ -531,4 +608,26 @@
     </section>
   </main>
 </div>
+<script>
+  document.querySelectorAll("[data-service-family]").forEach((familySelect) => {
+    const form = familySelect.closest("form");
+    const detailSelect = form?.querySelector("[data-service-detail]");
+    const allOptions = detailSelect ? [...detailSelect.options].map((option) => option.cloneNode(true)) : [];
+
+    function syncDetails() {
+      if (!detailSelect) return;
+      const selectedFamily = familySelect.value;
+      detailSelect.innerHTML = "";
+      for (const option of allOptions) {
+        const family = option.dataset.family;
+        if (!option.value || family === "any" || family === selectedFamily) {
+          detailSelect.appendChild(option.cloneNode(true));
+        }
+      }
+    }
+
+    familySelect.addEventListener("change", syncDetails);
+    syncDetails();
+  });
+</script>
 {% endblock %}

@@ -56,6 +56,20 @@ class WorkshopProcessEvidence(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class WorkshopProcessService(TimestampMixin, Base):
+    __tablename__ = "workshop_process_services"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(ForeignKey("workshop_processes.id", ondelete="CASCADE"), index=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    service_family: Mapped[str] = mapped_column(String(80), index=True)
+    service_detail: Mapped[str | None] = mapped_column(String(120), index=True)
+    service_axis: Mapped[str | None] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(80), default="to_assess", index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
 class WorkshopTechnicalReading(TimestampMixin, Base):
     __tablename__ = "workshop_technical_readings"
 

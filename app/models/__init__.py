@@ -20,6 +20,7 @@ from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
     WorkshopProcessNote,
+    WorkshopProcessService,
     WorkshopTechnicalReading,
 )
 
@@ -63,5 +64,6 @@ __all__ = [
     "WorkshopProcess",
     "WorkshopProcessEvidence",
     "WorkshopProcessNote",
+    "WorkshopProcessService",
     "WorkshopTechnicalReading",
 ]

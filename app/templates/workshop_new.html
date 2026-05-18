@@ -61,6 +61,40 @@
         </div>
         <div class="form-grid">
           <label>
+            Serviço / motivo de entrada
+            <select name="service_family" data-service-family>
+              <option value="">Sem serviço definido</option>
+              {% for code, label in service_families %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Detalhe
+            <select name="service_detail" data-service-detail>
+              <option value="">Sem detalhe</option>
+              {% for code, label, family in service_details %}
+                <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Eixo / zona
+            <select name="service_axis">
+              {% for code, label in service_axes %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Observação do serviço
+            <input type="text" name="service_note" maxlength="255" placeholder="Ex.: frente com ruído ao travar">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
             Prioridade
             <select name="priority">
               <option value="normal">Normal</option>
@@ -146,6 +180,27 @@
         workshopVehicleInput.focus();
       }
     });
+  }
+
+  const serviceFamily = document.querySelector("[data-service-family]");
+  const serviceDetail = document.querySelector("[data-service-detail]");
+  const allServiceDetailOptions = serviceDetail ? [...serviceDetail.options].map((option) => option.cloneNode(true)) : [];
+
+  function syncServiceDetails() {
+    if (!serviceFamily || !serviceDetail) return;
+    const selectedFamily = serviceFamily.value;
+    serviceDetail.innerHTML = "";
+    for (const option of allServiceDetailOptions) {
+      const family = option.dataset.family;
+      if (!option.value || family === "any" || family === selectedFamily) {
+        serviceDetail.appendChild(option.cloneNode(true));
+      }
+    }
+  }
+
+  if (serviceFamily && serviceDetail) {
+    serviceFamily.addEventListener("change", syncServiceDetails);
+    syncServiceDetails();
   }
 </script>
 {% endblock %}

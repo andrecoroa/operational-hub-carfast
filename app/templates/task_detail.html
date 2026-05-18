@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Gestão de tarefa</p>
         <h2>{{ task.title }}</h2>
-        <p class="breadcrumb">Centro de Tarefas &gt; Gestão de tarefas &gt; <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong></p>
+        <p class="breadcrumb">Centro de Tarefas &gt; {{ task_workspace_label }} &gt; <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong></p>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "tasks" %}
@@ -16,7 +16,7 @@
         {% set feedback_entity_id = task.id %}
         {% set feedback_return_url = "/task-board/" ~ task.id %}
         {% include "_pilot_actions.html" %}
-        <a class="button-link secondary-link" href="/task-board/manage">Voltar</a>
+        <a class="button-link secondary-link" href="{{ task_manage_url }}">Voltar</a>
       </div>
     </header>
 

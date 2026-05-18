@@ -6,14 +6,14 @@
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Centro operacional</p>
+        <p class="eyebrow">{{ workspace_config.eyebrow }}</p>
         <h2>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</h2>
-        <p class="breadcrumb">Centro de Tarefas &gt; <strong>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</strong></p>
+        <p class="breadcrumb">{{ workspace_config.breadcrumb }} &gt; <strong>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</strong></p>
       </div>
       <div class="topbar-tools">
-        <a class="button-link secondary-link" href="/task-board/manage">Gestão</a>
+        <a class="button-link secondary-link" href="{{ manage_url }}">Gestão</a>
         {% set feedback_source_area = "tasks" %}
-        {% set feedback_return_url = "/task-board/new" %}
+        {% set feedback_return_url = "/task-board/new?mode=" ~ form_mode ~ "&workspace=" ~ workspace %}
         {% include "_pilot_actions.html" %}
       </div>
     </header>
@@ -39,10 +39,10 @@
     <section class="compact-create-layout">
       <form method="post" action="{% if form_mode == 'quick' %}/task-board/quick/new{% else %}/task-board/new{% endif %}" class="form-panel form-stack task-form compact-create-page">
         {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
-        {% if form_mode == "quick" %}<input type="hidden" name="workspace" value="operational">{% endif %}
+        <input type="hidden" name="workspace" value="{{ workspace }}">
         <div class="panel-heading">
           <p class="eyebrow">{% if form_mode == "quick" %}Captura rápida{% else %}Execução direta{% endif %}</p>
-          <h3>{% if form_mode == "quick" %}Registo rápido operacional{% else %}Nova tarefa operacional{% endif %}</h3>
+          <h3>{% if form_mode == "quick" %}Registo rápido - {{ workspace_label }}{% else %}Nova tarefa - {{ workspace_label }}{% endif %}</h3>
           <p class="muted">
             {% if form_mode == "quick" %}
               Use quando ainda não sabe se isto será uma tarefa, uma comunicação, uma anomalia ou uma reclamação.
@@ -170,7 +170,7 @@
           </div>
         </details>
         <div class="button-row">
-          <a class="button-link secondary-link" href="/task-board">Cancelar</a>
+          <a class="button-link secondary-link" href="{{ manage_url }}">Cancelar</a>
           <button type="submit">
             {% if duplicate_tasks %}
               Criar mesmo assim

@@ -31,7 +31,7 @@
           <span>Reclamação</span>
           <span>Outro</span>
         </div>
-        <a class="button-link" href="/task-board/new?mode=quick">Criar registo rápido</a>
+        <a class="button-link" href="/task-board/new?mode=quick&workspace=operational">Criar registo rápido</a>
       </article>
 
       <article class="task-entry-card direct-task-card">
@@ -46,7 +46,7 @@
           <span>Prazo</span>
           <span>Prioridade</span>
         </div>
-        <a class="button-link blue-link" href="/task-board/new?mode=task">Criar nova tarefa</a>
+        <a class="button-link blue-link" href="/task-board/new?mode=task&workspace=operational">Criar nova tarefa</a>
       </article>
     </section>
 
@@ -57,35 +57,41 @@
           <h3>Operacional</h3>
           <p>Execução diária, pedidos, comunicações, anomalias e reclamações.</p>
         </div>
-        <strong>{{ open_count }}</strong>
-        <span>{{ due_today }} com limite hoje</span>
-        <span>{{ quick_open_count }} registos rápidos por tratar</span>
+        <strong>{{ workspace_metrics.operational.open }}</strong>
+        <span>{{ workspace_metrics.operational.due_today }} com limite hoje</span>
+        <span>{{ workspace_metrics.operational.quick_open }} registos rápidos por tratar</span>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
-      <a class="workspace-card workshop-workspace" href="/workshop/manage">
+      <a class="workspace-card workshop-workspace" href="/task-board/workshop/manage">
         <div>
           <p class="eyebrow">Módulo próprio</p>
           <h3>Oficina</h3>
           <p>Processos, tarefas da oficina, registos rápidos e auditoria técnica.</p>
         </div>
+        <strong>{{ workspace_metrics.workshop.open }}</strong>
+        <span>{{ workspace_metrics.workshop.quick_open }} registos rápidos por tratar</span>
         <span>Tarefas da oficina · Registos rápidos · Auditoria</span>
       </a>
-      <article class="workspace-card planned-workspace">
+      <a class="workspace-card planned-workspace" href="/task-board/management/manage">
         <div>
           <p class="eyebrow">A preparar</p>
           <h3>Gestão</h3>
           <p>Implementações, supervisão, melhoria contínua, reporte e decisões de gestão.</p>
         </div>
-        <span>Modelo definido</span>
-      </article>
-      <article class="workspace-card planned-workspace">
+        <strong>{{ workspace_metrics.management.open }}</strong>
+        <span>{{ workspace_metrics.management.quick_open }} registos rápidos por tratar</span>
+        <span>Tarefas e registos rápidos</span>
+      </a>
+      <a class="workspace-card planned-workspace" href="/task-board/administration/manage">
         <div>
           <p class="eyebrow">Restrito</p>
           <h3>Administração</h3>
           <p>Assuntos reservados da direção/administração, fora do backlog operacional.</p>
         </div>
-        <span>Pendente de permissões</span>
-      </article>
+        <strong>{{ workspace_metrics.administration.open }}</strong>
+        <span>{{ workspace_metrics.administration.quick_open }} registos rápidos por tratar</span>
+        <span>Tarefas e registos rápidos</span>
+      </a>
     </section>
 
     <section class="section task-principles">

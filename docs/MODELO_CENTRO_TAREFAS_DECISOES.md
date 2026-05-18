@@ -65,6 +65,15 @@ Os tipos de registo rápido devem poder evoluir por espaço de trabalho. A fase 
 
 Na Oficina, a auditoria fica no fim da grelha para não se misturar com tarefas técnicas correntes e registos rápidos.
 
+Implementação atual:
+
+- Operacional: tarefas + registos rápidos;
+- Oficina: tarefas da oficina + registos rápidos + auditoria;
+- Gestão: tarefas + registos rápidos;
+- Administração: tarefas + registos rápidos.
+
+Cada centro tem URL próprio, tipos próprios e criação separada, mas usa o mesmo motor técnico para evitar duplicação.
+
 ## Responsabilidade e intervenção
 
 Responsabilidade de execução e pedido de intervenção são conceitos separados.

@@ -182,7 +182,9 @@ TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
 
 TASK_TYPES = [
     ("operational_task", "Tarefa operacional"),
+    ("workshop_task", "Tarefa da oficina"),
     ("management_task", "Tarefa de gestão"),
+    ("administration_task", "Tarefa de administração"),
     ("request_info", "Pedido / Informação"),
     ("operational_incident", "Incidente operacional"),
     ("technical_incident", "Incidente técnico"),
@@ -208,7 +210,9 @@ TASK_TYPE_LEGACY_BY_CANONICAL = {
 }
 TASK_BOARD_TYPE_LABELS = {
     "operational_task": "Tarefas operacionais",
+    "workshop_task": "Tarefas da oficina",
     "management_task": "Tarefas de gestão",
+    "administration_task": "Tarefas de administração",
     "request_info": "Pedidos / Informação",
     "operational_incident": "Incidentes operacionais",
     "technical_incident": "Incidentes técnicos",
@@ -223,6 +227,69 @@ TASK_WORKSPACES = [
     ("administration", "Administração"),
 ]
 TASK_WORKSPACE_LABELS = dict(TASK_WORKSPACES)
+TASK_WORKSPACE_CONFIG = {
+    "operational": {
+        "label": "Operacional",
+        "eyebrow": "Centro operacional",
+        "title": "Gestão operacional",
+        "breadcrumb": "Centro de Tarefas > Operacional",
+        "description": "Execução diária, pedidos, comunicações, anomalias e reclamações.",
+        "default_task_type": "operational_task",
+        "primary_task_types": [
+            "operational_task",
+            "task",
+            "request_info",
+            "request",
+            "operational_incident",
+            "incident",
+            "technical_incident",
+            "entity_incident",
+        ],
+        "secondary_task_types": [],
+        "default_category": "operations",
+        "default_team_code": "operations",
+    },
+    "workshop": {
+        "label": "Oficina",
+        "eyebrow": "Centro de oficina",
+        "title": "Tarefas da oficina",
+        "breadcrumb": "Centro de Tarefas > Oficina",
+        "description": "Tarefas técnicas, registos rápidos e auditoria da oficina.",
+        "default_task_type": "workshop_task",
+        "primary_task_types": ["workshop_task"],
+        "secondary_task_types": ["workshop_audit"],
+        "default_category": "workshop",
+        "default_team_code": "workshop",
+    },
+    "management": {
+        "label": "Gestão",
+        "eyebrow": "Centro de gestão",
+        "title": "Tarefas de gestão",
+        "breadcrumb": "Centro de Tarefas > Gestão",
+        "description": "Implementações, supervisão, reporte, melhoria contínua e decisões de gestão.",
+        "default_task_type": "management_task",
+        "primary_task_types": ["management_task"],
+        "secondary_task_types": [],
+        "default_category": "operations",
+        "default_team_code": "support",
+    },
+    "administration": {
+        "label": "Administração",
+        "eyebrow": "Centro reservado",
+        "title": "Tarefas de administração",
+        "breadcrumb": "Centro de Tarefas > Administração",
+        "description": "Assuntos reservados da direção/administração, fora do backlog operacional.",
+        "default_task_type": "administration_task",
+        "primary_task_types": ["administration_task"],
+        "secondary_task_types": [],
+        "default_category": "finance",
+        "default_team_code": "finance",
+    },
+}
+TASK_WORKSPACE_TASK_TYPES = {
+    workspace: [*config["primary_task_types"], *config["secondary_task_types"]]
+    for workspace, config in TASK_WORKSPACE_CONFIG.items()
+}
 
 QUICK_RECORD_TYPES_BY_WORKSPACE = {
     "operational": [
@@ -270,6 +337,36 @@ QUICK_RECORD_STATUSES = [
 QUICK_RECORD_STATUS_LABELS = dict(QUICK_RECORD_STATUSES)
 
 WORKSHOP_BLOCKED_VEHICLE_STATUSES = {"sold", "written_off", "inactive"}
+
+
+def normalize_task_workspace(workspace: str | None) -> str:
+    return workspace if workspace in TASK_WORKSPACE_CONFIG else "operational"
+
+
+def task_workspace_manage_url(workspace: str | None) -> str:
+    clean_workspace = normalize_task_workspace(workspace)
+    if clean_workspace == "operational":
+        return "/task-board/manage"
+    return f"/task-board/{clean_workspace}/manage"
+
+
+def task_workspace_new_url(workspace: str | None, mode: str = "task") -> str:
+    clean_workspace = normalize_task_workspace(workspace)
+    return f"/task-board/new?mode={mode}&workspace={clean_workspace}"
+
+
+def workspace_task_type_options(workspace: str | None) -> list[tuple[str, str]]:
+    clean_workspace = normalize_task_workspace(workspace)
+    allowed_codes = set(TASK_WORKSPACE_TASK_TYPES[clean_workspace])
+    return [(code, label) for code, label in TASK_TYPES if code in allowed_codes]
+
+
+def workspace_for_task_type(task_type: str | None) -> str:
+    normalized_type = TASK_TYPE_CANONICAL_GROUP.get(task_type or "", task_type or "")
+    for workspace, codes in TASK_WORKSPACE_TASK_TYPES.items():
+        if (task_type or "") in codes or normalized_type in codes:
+            return workspace
+    return "operational"
 
 TASK_SOURCES = [
     ("manual", "Manual"),
@@ -478,7 +575,7 @@ def external_portal_request_create(
     name: str = Form(""),
     email: str = Form(""),
     phone: str = Form(""),
-    category: str = Form("operations"),
+    category: str = Form(""),
     subject: str = Form(""),
     message: str = Form(""),
     plate: str = Form(""),
@@ -2429,41 +2526,53 @@ def task_center(request: Request):
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
         today = date.today()
-        open_count = db.scalar(
-            select(func.count()).select_from(Task).where(
-                Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
-            )
-        ) or 0
-        due_today = db.scalar(
-            select(func.count()).select_from(Task).where(
-                Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
-                Task.due_on == today,
-            )
-        ) or 0
-        quick_open_count = db.scalar(
-            select(func.count()).select_from(QuickRecord).where(
-                QuickRecord.workspace == "operational",
-                QuickRecord.closed_at.is_(None),
-                ~QuickRecord.status.in_(("closed", "no_action_needed", "converted")),
-            )
-        ) or 0
+        workspace_metrics = {}
+        for workspace_code, workspace_config in TASK_WORKSPACE_CONFIG.items():
+            workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
+            open_count = db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            ) or 0
+            due_today = db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.due_on == today,
+                )
+            ) or 0
+            quick_open_count = db.scalar(
+                select(func.count()).select_from(QuickRecord).where(
+                    QuickRecord.workspace == workspace_code,
+                    QuickRecord.closed_at.is_(None),
+                    ~QuickRecord.status.in_(("closed", "no_action_needed", "converted")),
+                )
+            ) or 0
+            workspace_metrics[workspace_code] = {
+                "open": open_count,
+                "due_today": due_today,
+                "quick_open": quick_open_count,
+                "config": workspace_config,
+                "manage_url": task_workspace_manage_url(workspace_code),
+            }
         return templates.TemplateResponse(
             request,
             "task_center.html",
             {
-                "open_count": open_count,
-                "due_today": due_today,
-                "quick_open_count": quick_open_count,
+                "workspace_metrics": workspace_metrics,
                 "current_user": current_user,
             },
         )
 
 
 @web_router.get("/task-board/manage", response_class=HTMLResponse)
+@web_router.get("/task-board/{workspace}/manage", response_class=HTMLResponse)
 def task_board_manage(
     request: Request,
+    workspace: str = "operational",
     created: str | None = None,
     closed: str | None = None,
     quick_created: str | None = None,
@@ -2482,19 +2591,36 @@ def task_board_manage(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
+    current_workspace = normalize_task_workspace(workspace)
+    workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
+    workspace_task_codes = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
+    workspace_primary_task_codes = set(workspace_config["primary_task_types"])
+    workspace_secondary_task_codes = set(workspace_config["secondary_task_types"])
+    manage_url = task_workspace_manage_url(current_workspace)
+
     with SessionLocal() as db:
         today = date.today()
         today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
         tomorrow_start = datetime.fromtimestamp(today_start.timestamp() + 86400, UTC)
         archived_condition = (Task.closed_at.is_not(None)) | (Task.status.in_(TASK_ARCHIVE_STATUSES))
-        open_stmt = select(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+        workspace_task_filter = Task.task_type.in_(tuple(workspace_task_codes))
+        open_stmt = select(Task).where(
+            workspace_task_filter,
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+        )
         metrics = {
             "open": db.scalar(
-                select(func.count()).select_from(Task).where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
             )
             or 0,
             "in_treatment": db.scalar(
                 select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.status == "in_treatment",
@@ -2503,6 +2629,7 @@ def task_board_manage(
             or 0,
             "unassigned": db.scalar(
                 select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
@@ -2512,6 +2639,7 @@ def task_board_manage(
             or 0,
             "overdue": db.scalar(
                 select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on.is_not(None),
@@ -2521,6 +2649,7 @@ def task_board_manage(
             or 0,
             "due_today": db.scalar(
                 select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on == today,
@@ -2529,16 +2658,20 @@ def task_board_manage(
             or 0,
             "closed_today": db.scalar(
                 select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
                     Task.closed_at.is_not(None),
                     Task.closed_at >= today_start,
                     Task.closed_at < tomorrow_start,
                 )
             )
             or 0,
-            "archived": db.scalar(select(func.count()).select_from(Task).where(archived_condition)) or 0,
+            "archived": db.scalar(
+                select(func.count()).select_from(Task).where(workspace_task_filter, archived_condition)
+            )
+            or 0,
             "quick_open": db.scalar(
                 select(func.count()).select_from(QuickRecord).where(
-                    QuickRecord.workspace == "operational",
+                    QuickRecord.workspace == current_workspace,
                     QuickRecord.closed_at.is_(None),
                     ~QuickRecord.status.in_(("closed", "no_action_needed", "converted")),
                 )
@@ -2548,9 +2681,9 @@ def task_board_manage(
 
         stmt = open_stmt
         if view == "archived" or status in TASK_ARCHIVE_STATUSES:
-            stmt = select(Task).where(archived_condition)
+            stmt = select(Task).where(workspace_task_filter, archived_condition)
         elif view == "all":
-            stmt = select(Task)
+            stmt = select(Task).where(workspace_task_filter)
         elif view == "mine":
             stmt = stmt.where(Task.assigned_to_id == user_id)
         elif view == "team":
@@ -2601,7 +2734,7 @@ def task_board_manage(
             (QuickRecord.closed_at.is_not(None))
             | (QuickRecord.status.in_(("closed", "no_action_needed", "converted")))
         )
-        quick_stmt = select(QuickRecord).where(QuickRecord.workspace == "operational")
+        quick_stmt = select(QuickRecord).where(QuickRecord.workspace == current_workspace)
         if view == "archived":
             quick_stmt = quick_stmt.where(quick_archived_condition)
         elif view == "all":
@@ -2638,9 +2771,10 @@ def task_board_manage(
             quick_stmt.order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc()).limit(100)
         ).all()
         grouped_tasks = []
-        used_task_types = set()
+        used_task_ids = set()
         canonical_task_type_filter = TASK_TYPE_CANONICAL_GROUP.get(task_type, task_type)
-        for type_code, type_label in TASK_TYPES:
+        workspace_task_options = workspace_task_type_options(current_workspace)
+        for type_code, type_label in workspace_task_options:
             group_items = [
                 task
                 for task in tasks
@@ -2650,6 +2784,8 @@ def task_board_manage(
             should_show_group = (
                 bool(group_items)
                 or canonical_task_type_filter == type_code
+                or (current_workspace != "operational" and type_code in workspace_primary_task_codes)
+                or (current_workspace == "workshop" and type_code in workspace_secondary_task_codes)
             )
             if should_show_group:
                 grouped_tasks.append(
@@ -2658,10 +2794,11 @@ def task_board_manage(
                         "label": TASK_BOARD_TYPE_LABELS.get(type_code, type_label),
                         "tasks": group_items,
                         "count": len(group_items),
+                        "section": "secondary" if type_code in workspace_secondary_task_codes else "primary",
                     }
                 )
-                used_task_types.add(type_code)
-        other_tasks = [task for task in tasks if (task.task_type or "task") not in used_task_types]
+                used_task_ids.update(task.id for task in group_items)
+        other_tasks = [task for task in tasks if task.id not in used_task_ids]
         if other_tasks:
             grouped_tasks.append(
                 {
@@ -2669,11 +2806,15 @@ def task_board_manage(
                     "label": "Outras",
                     "tasks": other_tasks,
                     "count": len(other_tasks),
+                    "section": "primary",
                 }
             )
+        primary_task_groups = [group for group in grouped_tasks if group["section"] == "primary"]
+        secondary_task_groups = [group for group in grouped_tasks if group["section"] == "secondary"]
         quick_record_groups = []
-        operational_record_type_codes = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE["operational"]}
-        for type_code, type_label in QUICK_RECORD_TYPES_BY_WORKSPACE["operational"]:
+        workspace_record_types = QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace]
+        workspace_record_type_codes = {code for code, _ in workspace_record_types}
+        for type_code, type_label in workspace_record_types:
             group_items = [record for record in quick_records if (record.record_type or "other") == type_code]
             if group_items:
                 quick_record_groups.append(
@@ -2687,7 +2828,7 @@ def task_board_manage(
         other_quick_records = [
             record
             for record in quick_records
-            if (record.record_type or "other") not in operational_record_type_codes
+            if (record.record_type or "other") not in workspace_record_type_codes
         ]
         if other_quick_records:
             quick_record_groups.append(
@@ -2718,7 +2859,14 @@ def task_board_manage(
             "tasks.html",
             {
                 "tasks": tasks,
-                "task_groups": grouped_tasks,
+                "task_groups": primary_task_groups,
+                "secondary_task_groups": secondary_task_groups,
+                "workspace": current_workspace,
+                "workspace_config": workspace_config,
+                "workspace_label": workspace_config["label"],
+                "manage_url": manage_url,
+                "new_task_url": task_workspace_new_url(current_workspace, "task"),
+                "new_quick_url": task_workspace_new_url(current_workspace, "quick"),
                 "users": users,
                 "current_user": user_by_id.get(user_id),
                 "user_by_id": user_by_id,
@@ -2750,7 +2898,7 @@ def task_board_manage(
                 "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "priority_labels": PRIORITY_DISPLAY_LABELS,
-                "task_types": TASK_TYPES,
+                "task_types": workspace_task_options,
                 "task_type_labels": TASK_TYPE_LABELS,
                 "task_sources": TASK_SOURCES,
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
@@ -2765,11 +2913,14 @@ def task_new_form(
     request: Request,
     error: str | None = None,
     mode: str = "task",
+    workspace: str = "operational",
 ):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
+    current_workspace = normalize_task_workspace(workspace)
+    workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
@@ -2783,13 +2934,17 @@ def task_new_form(
                 "teams": teams,
                 "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
                 "form_mode": "quick" if mode == "quick" else "task",
+                "workspace": current_workspace,
+                "workspace_config": workspace_config,
+                "workspace_label": workspace_config["label"],
+                "manage_url": task_workspace_manage_url(current_workspace),
                 "form_values": {
-                    "task_type": "request_info" if mode == "quick" else "operational_task",
-                    "record_type": "request",
+                    "task_type": workspace_config["default_task_type"],
+                    "record_type": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace][0][0],
                 },
                 "duplicate_tasks": [],
-                "task_types": TASK_TYPES,
-                "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE["operational"],
+                "task_types": workspace_task_type_options(current_workspace),
+                "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
                 "workspaces": TASK_WORKSPACES,
                 "task_sources": TASK_SOURCES,
                 "task_categories": TASK_CATEGORIES,
@@ -2900,6 +3055,10 @@ def quick_record_create(
                 "teams": teams,
                 "error": "Indica um assunto para o registo rápido.",
                 "form_mode": "quick",
+                "workspace": clean_workspace,
+                "workspace_config": TASK_WORKSPACE_CONFIG[clean_workspace],
+                "workspace_label": TASK_WORKSPACE_LABELS[clean_workspace],
+                "manage_url": task_workspace_manage_url(clean_workspace),
                 "form_values": form_values,
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
@@ -2941,7 +3100,7 @@ def quick_record_create(
         )
         db.commit()
 
-    return RedirectResponse("/task-board/manage?quick_created=1", status_code=303)
+    return RedirectResponse(f"{task_workspace_manage_url(clean_workspace)}?quick_created=1", status_code=303)
 
 
 @web_router.post("/task-board", response_class=HTMLResponse)
@@ -2949,8 +3108,9 @@ def quick_record_create(
 def task_create(
     request: Request,
     title: str = Form(...),
+    workspace: str = Form("operational"),
     task_type: str = Form("operational_task"),
-    category: str = Form("operations"),
+    category: str = Form(""),
     subcategory: str = Form(""),
     source: str = Form("manual"),
     priority: str = Form("normal"),
@@ -2974,6 +3134,8 @@ def task_create(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
+    current_workspace = normalize_task_workspace(workspace)
+    workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
     clean_title = title.strip()
     if not clean_title:
         with SessionLocal() as db:
@@ -2989,11 +3151,15 @@ def task_create(
                 "teams": teams,
                 "error": "Indica um título para a tarefa.",
                 "form_mode": "task",
+                "workspace": current_workspace,
+                "workspace_config": workspace_config,
+                "workspace_label": workspace_config["label"],
+                "manage_url": task_workspace_manage_url(current_workspace),
                 "form_values": {},
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
-                "task_types": TASK_TYPES,
-                "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE["operational"],
+                "task_types": workspace_task_type_options(current_workspace),
+                "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
                 "workspaces": TASK_WORKSPACES,
                 "task_categories": TASK_CATEGORIES,
                 "priorities": PRIORITIES,
@@ -3005,19 +3171,23 @@ def task_create(
         clean_plate = plate.strip().upper().replace(" ", "")
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
-        if task_type not in TASK_TYPE_LABELS:
-            task_type = "operational_task"
+        allowed_workspace_task_types = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
+        if task_type not in allowed_workspace_task_types:
+            task_type = workspace_config["default_task_type"]
         if category not in TASK_CATEGORY_LABELS:
-            category = "operations"
+            category = workspace_config["default_category"]
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
-        assigned_team_id = assigned_team_id or default_team_id(db, "operations")
+        assigned_team_id = assigned_team_id or default_team_id(db, workspace_config["default_team_code"])
         if not assigned_user_id and not assigned_team_id:
-            return RedirectResponse("/task-board/new?error=missing_destination", status_code=303)
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=missing_destination",
+                status_code=303,
+            )
         duplicate_tasks = []
         if clean_plate and confirm_duplicate != "1":
             duplicate_tasks = db.scalars(
@@ -3042,7 +3212,11 @@ def task_create(
                     "teams": teams,
                     "error": None,
                     "duplicate_tasks": duplicate_tasks,
-                    "form_mode": "quick" if task_type == "request_info" else "task",
+                    "form_mode": "task",
+                    "workspace": current_workspace,
+                    "workspace_config": workspace_config,
+                    "workspace_label": workspace_config["label"],
+                    "manage_url": task_workspace_manage_url(current_workspace),
                     "form_values": {
                         "title": clean_title,
                         "description": description,
@@ -3065,8 +3239,8 @@ def task_create(
                     },
                     "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                     "task_sources": TASK_SOURCES,
-                    "task_types": TASK_TYPES,
-                    "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE["operational"],
+                    "task_types": workspace_task_type_options(current_workspace),
+                    "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
                     "workspaces": TASK_WORKSPACES,
                     "task_categories": TASK_CATEGORIES,
                     "priorities": PRIORITIES,
@@ -3118,7 +3292,7 @@ def task_create(
         )
         db.commit()
 
-    return RedirectResponse("/task-board/manage?created=1", status_code=303)
+    return RedirectResponse(f"{task_workspace_manage_url(current_workspace)}?created=1", status_code=303)
 
 
 @web_router.get("/task-board/{task_id}", response_class=HTMLResponse)
@@ -3137,6 +3311,8 @@ def task_detail(
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        task_workspace = workspace_for_task_type(task.task_type)
+        task_manage_url = task_workspace_manage_url(task_workspace)
         comments = db.scalars(
             select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
         ).all()
@@ -3164,6 +3340,9 @@ def task_detail(
             "task_detail.html",
             {
                 "task": task,
+                "task_workspace": task_workspace,
+                "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
+                "task_manage_url": task_manage_url,
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
@@ -3296,7 +3475,7 @@ def task_update(
         db.commit()
 
     if status in {"closed", "cancelled", "no_action_needed"}:
-        return RedirectResponse("/task-board/manage?closed=1", status_code=303)
+        return RedirectResponse(f"{task_workspace_manage_url(workspace_for_task_type(task_type))}?closed=1", status_code=303)
     return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
 
 
@@ -3343,11 +3522,15 @@ def task_add_comment(
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
             assigned_team = db.get(Team, task.team_id) if task.team_id else None
+            task_workspace = workspace_for_task_type(task.task_type)
             return templates.TemplateResponse(
                 request,
                 "task_detail.html",
                 {
                     "task": task,
+                    "task_workspace": task_workspace,
+                    "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
+                    "task_manage_url": task_workspace_manage_url(task_workspace),
                     "comments": comments,
                     "history": history,
                     "linked_vehicle": linked_vehicle,
@@ -3460,6 +3643,7 @@ def task_close(request: Request, task_id: int):
 
     with SessionLocal() as db:
         task = db.get(Task, task_id)
+        task_workspace = workspace_for_task_type(task.task_type) if task else "operational"
         if task and not task.closed_at:
             old_status = task.status
             task.status = "closed"
@@ -3484,7 +3668,7 @@ def task_close(request: Request, task_id: int):
             )
             db.commit()
 
-    return RedirectResponse("/task-board/manage?closed=1", status_code=303)
+    return RedirectResponse(f"{task_workspace_manage_url(task_workspace)}?closed=1", status_code=303)
 
 
 @web_router.get("/login", response_class=HTMLResponse)

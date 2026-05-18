@@ -6,15 +6,15 @@
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Centro operacional</p>
-        <h2>Gestão de Tarefas</h2>
-        <p class="breadcrumb">Centro de Tarefas &gt; <strong>Gestão de tarefas</strong></p>
+        <p class="eyebrow">{{ workspace_config.eyebrow }}</p>
+        <h2>{{ workspace_config.title }}</h2>
+        <p class="breadcrumb">{{ workspace_config.breadcrumb }} &gt; <strong>Gestão</strong></p>
       </div>
       <div class="topbar-tools">
-        <a class="button-link secondary-link" href="/task-board/new?mode=quick">Registo rápido</a>
-        <a class="button-link secondary-link" href="/task-board/new?mode=task">Nova tarefa</a>
+        <a class="button-link secondary-link" href="{{ new_quick_url }}">Registo rápido</a>
+        <a class="button-link secondary-link" href="{{ new_task_url }}">Nova tarefa</a>
         {% set feedback_source_area = "tasks" %}
-        {% set feedback_return_url = "/task-board/manage" %}
+        {% set feedback_return_url = manage_url %}
         {% include "_pilot_actions.html" %}
       </div>
     </header>
@@ -36,23 +36,23 @@
     {% endif %}
 
     <section class="metric-grid task-metrics">
-      <a class="metric" href="/task-board/manage">
+      <a class="metric" href="{{ manage_url }}">
         <span class="metric-icon">#</span>
         <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas abertas</span></span>
       </a>
-      <a class="metric" href="/task-board/manage?status=in_treatment">
+      <a class="metric" href="{{ manage_url }}?status=in_treatment">
         <span class="metric-icon green">↗</span>
         <span class="metric-detail"><strong>{{ metrics.in_treatment }}</strong><span>Em tratamento</span></span>
       </a>
-      <a class="metric" href="/task-board/manage?view=due_today">
+      <a class="metric" href="{{ manage_url }}?view=due_today">
         <span class="metric-icon blue">✓</span>
         <span class="metric-detail"><strong>{{ metrics.due_today }}</strong><span>Limite hoje</span></span>
       </a>
-      <a class="metric" href="/task-board/manage?view=overdue">
+      <a class="metric" href="{{ manage_url }}?view=overdue">
         <span class="metric-icon amber">!</span>
         <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Atrasadas</span></span>
       </a>
-      <a class="metric" href="/task-board/manage?view=archived">
+      <a class="metric" href="{{ manage_url }}?view=archived">
         <span class="metric-icon blue">%</span>
         <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
       </a>
@@ -63,16 +63,16 @@
     </section>
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
-      <a href="/task-board/manage" class="{% if not filters.view %}active{% endif %}">Backlog aberto</a>
-      <a href="/task-board/manage?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
-      <a href="/task-board/manage?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
-      <a href="/task-board/manage?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}">Limite hoje</a>
-      <a href="/task-board/manage?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}">Arquivo</a>
-      <a href="/task-board/manage?view=all" class="{% if filters.view == 'all' %}active{% endif %}">Todas</a>
+      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}">Backlog aberto</a>
+      <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
+      <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
+      <a href="{{ manage_url }}?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}">Limite hoje</a>
+      <a href="{{ manage_url }}?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}">Arquivo</a>
+      <a href="{{ manage_url }}?view=all" class="{% if filters.view == 'all' %}active{% endif %}">Todas</a>
     </nav>
 
     <section class="table-shell filter-panel" id="gestao-tarefas">
-      <form method="get" action="/task-board/manage" class="filter-grid">
+      <form method="get" action="{{ manage_url }}" class="filter-grid">
         {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
         <label>
           Pesquisa
@@ -116,7 +116,7 @@
         </label>
         <div class="filter-actions">
           <button type="submit">Filtrar</button>
-          <a class="button-link secondary-link" href="/task-board/manage">Limpar</a>
+          <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
         </div>
       </form>
     </section>
@@ -169,7 +169,7 @@
               </div>
             {% endfor %}
             {% if group.count > 4 %}
-              <a class="task-board-footer" href="/task-board/manage?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
+              <a class="task-board-footer" href="{{ manage_url }}?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
             {% endif %}
           </div>
         </article>
@@ -239,6 +239,57 @@
         </article>
       {% endfor %}
     </section>
+
+    {% if secondary_task_groups %}
+      <div class="task-board-section-heading">
+        <div>
+          <p class="eyebrow">Controlo</p>
+          <h3>{% if workspace == "workshop" %}Auditoria{% else %}Acompanhamento{% endif %}</h3>
+        </div>
+        <span>Grelha independente para registos com acompanhamento próprio</span>
+      </div>
+
+      <section class="task-board-groups task-management-groups">
+        {% for group in secondary_task_groups %}
+          <article class="table-shell task-type-board">
+            <div class="table-heading task-type-heading">
+              <div>
+                <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
+                <h3>{{ group.label }}</h3>
+              </div>
+              <span>{{ group.count }}</span>
+            </div>
+            <div class="task-board-list compact-task-list">
+              {% for task in group.tasks %}
+                <article class="task-card-row {% if loop.index > 4 %}is-extra{% endif %}">
+                  <div class="task-card-main">
+                    <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                    <p class="task-row-title">{{ task.title }}</p>
+                    <p class="table-note">
+                      {% if task.customer_name %}{{ task.customer_name }}{% endif %}
+                      {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
+                      {% if not task.customer_name and not task.plate %}{{ task_source_labels.get(task.source, task.source or "Manual") }}{% endif %}
+                    </p>
+                    {% if task.description %}
+                      <p class="table-note table-note-clamp">{{ task.description }}</p>
+                    {% endif %}
+                  </div>
+                  <div class="task-card-side">
+                    <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                    <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                    <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
+                    <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
+                  </div>
+                </article>
+              {% endfor %}
+              {% if group.count > 4 %}
+                <a class="task-board-footer" href="{{ manage_url }}?task_type={{ group.code }}{% if filters.view %}&view={{ filters.view }}{% endif %}">Ver mais</a>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
   </main>
 </div>
 {% endblock %}

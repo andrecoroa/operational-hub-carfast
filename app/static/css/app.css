@@ -2620,6 +2620,16 @@ a.metric:hover {
   padding: 18px;
 }
 
+.action-method-pill {
+  align-self: start;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .process-action-grid:empty {
   display: none;
 }

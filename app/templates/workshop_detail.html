@@ -52,6 +52,7 @@
           <p class="eyebrow">Ações complementares</p>
           <h3>Registos do processo</h3>
         </div>
+        <span class="action-method-pill">Adicionar</span>
       </div>
       <div class="process-action-grid" data-process-actions-target></div>
     </section>
@@ -392,7 +393,7 @@
 
         <div class="workshop-actions">
         <details class="workshop-action-card">
-          <summary>Adicionar serviço</summary>
+          <summary>Serviço</summary>
           <form method="post" action="/workshop/{{ process.id }}/services" class="form-stack">
             <div class="compact-form-grid two-col">
               <label>
@@ -438,7 +439,7 @@
         </details>
 
         <details class="workshop-action-card">
-          <summary>Registar evidência</summary>
+          <summary>Evidência</summary>
           <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
             <div class="compact-form-grid two-col">
               <label>
@@ -682,7 +683,7 @@
         </details>
 
         <details class="workshop-action-card">
-          <summary>Registar incidente técnico / comercial</summary>
+          <summary>Incidente técnico</summary>
           <form method="post" action="/workshop/{{ process.id }}/incidents" class="form-stack">
             <label>
               Título
@@ -735,12 +736,12 @@
               <textarea name="evidence_description" rows="2" placeholder="Nota sobre foto, vídeo ou áudio"></textarea>
             </label>
             <input name="storage_provider" type="hidden" value="external">
-            <button type="submit">Registar incidente</button>
+            <button type="submit">Registar incidente técnico</button>
           </form>
         </details>
 
         <details class="workshop-action-card">
-          <summary>Adicionar documento</summary>
+          <summary>Documento</summary>
           <form method="post" action="/workshop/{{ process.id }}/documents" class="form-stack">
             <label>
               Título
@@ -806,7 +807,7 @@
         </details>
 
         <details class="workshop-action-card">
-          <summary>Adicionar nota</summary>
+          <summary>Nota</summary>
           <form method="post" action="/workshop/{{ process.id }}/notes" class="form-stack">
             <label>
               Nota

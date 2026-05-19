@@ -407,7 +407,7 @@
             <div class="compact-form-grid two-col">
               <label>
                 Tipo de leitura
-                <select name="reading_type">
+                <select name="reading_type" data-reading-type>
                   {% for code, label in technical_reading_types %}
                     <option value="{{ code }}">{{ label }}</option>
                   {% endfor %}
@@ -426,7 +426,7 @@
                 <input type="text" name="battery_voltage" maxlength="80" placeholder="Ex.: 12.4V">
               </label>
             </div>
-            <details class="advanced-panel" open>
+            <details class="advanced-panel" data-reading-panel="maintenance_info maintenance">
               <summary>Manutenção</summary>
               <div class="compact-form-grid two-col">
                 <label>
@@ -480,7 +480,7 @@
               </div>
               <p class="muted">A app calcula a próxima manutenção e a última manutenção estimada quando existirem dias até próxima manutenção e duração em meses.</p>
             </details>
-            <details class="advanced-panel">
+            <details class="advanced-panel" data-reading-panel="lubrication_info">
               <summary>Lubrificação motor</summary>
               <div class="compact-form-grid two-col">
                 <label>
@@ -501,7 +501,7 @@
                 </label>
               </div>
             </details>
-            <details class="advanced-panel">
+            <details class="advanced-panel" data-reading-panel="fault_reading diagnostic bsi technical">
               <summary>Defeitos</summary>
               <div class="compact-form-grid two-col">
                 <label>
@@ -542,7 +542,7 @@
                 <textarea name="recommended_action" rows="2"></textarea>
               </label>
             </details>
-            <details class="advanced-panel">
+            <details class="advanced-panel" data-reading-panel="software_identification bsi technical">
               <summary>Telecarregamento</summary>
               <div class="compact-form-grid two-col">
                 <label>
@@ -575,7 +575,7 @@
               Notas BSI
               <textarea name="bsi_notes" rows="2" placeholder="Campo flexível para evoluir sem fechar já a grelha BSI"></textarea>
             </label>
-            <details class="advanced-panel">
+            <details class="advanced-panel" data-reading-panel="technical bsi diagnostic maintenance maintenance_info lubrication_info fault_reading software_identification other">
               <summary>Campos técnicos adicionais</summary>
               <label>
                 Sistemas verificados
@@ -789,6 +789,24 @@
 
     familySelect.addEventListener("change", syncDetails);
     syncDetails();
+  });
+
+  document.querySelectorAll("[data-reading-type]").forEach((readingTypeSelect) => {
+    const form = readingTypeSelect.closest("form");
+    const panels = form ? [...form.querySelectorAll("[data-reading-panel]")] : [];
+
+    function syncReadingPanels() {
+      const selectedType = readingTypeSelect.value;
+      for (const panel of panels) {
+        const allowedTypes = (panel.dataset.readingPanel || "").split(/\s+/).filter(Boolean);
+        const isRelevant = allowedTypes.includes(selectedType);
+        panel.hidden = !isRelevant;
+        panel.open = isRelevant;
+      }
+    }
+
+    readingTypeSelect.addEventListener("change", syncReadingPanels);
+    syncReadingPanels();
   });
 </script>
 {% endblock %}

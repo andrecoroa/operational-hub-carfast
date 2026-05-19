@@ -63,7 +63,8 @@
     </section>
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
-      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}">Backlog aberto</a>
+      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}">Em aberto</a>
+      <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}">Sem responsável</a>
       <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
       <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
       <a href="{{ manage_url }}?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}">Limite hoje</a>
@@ -87,15 +88,6 @@
             {% endfor %}
             {% for code, label in quick_record_statuses %}
               <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Natureza
-          <select name="task_type">
-            <option value="">Todas</option>
-            {% for code, label in task_types %}
-              <option value="{{ code }}" {% if filters.task_type == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -136,7 +128,7 @@
       <article class="table-shell task-type-board">
         <div class="table-heading task-type-heading">
           <div>
-            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% else %}Backlog{% endif %}</p>
+            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "unassigned" %}Sem responsável{% else %}Em aberto{% endif %}</p>
             <h3>Tarefas</h3>
           </div>
           <span>{{ tasks|length }}</span>
@@ -145,18 +137,27 @@
           {% for task in tasks %}
             <article class="task-card-row">
               <div class="task-card-main">
-                <a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
-                <p class="task-row-title">{{ task.title }}</p>
-                <p class="table-note">
-                  {{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}
-                  {% if task.customer_name %} &middot; {{ task.customer_name }}{% endif %}
-                  {% if task.plate %} &middot; {{ task.plate }}{% endif %}
-                </p>
-                {% if task.description %}
-                  <p class="table-note table-note-clamp">{{ task.description }}</p>
-                {% endif %}
+                <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                <div class="task-card-content">
+                  <p class="task-row-title">{{ task.title }}</p>
+                  <p class="table-note">
+                    {% if task.customer_name %}{{ task.customer_name }}{% endif %}
+                    {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
+                    {% if task.station %}{% if task.customer_name or task.plate %} &middot; {% endif %}{{ task.station }}{% endif %}
+                    {% if not task.customer_name and not task.plate and not task.station %}Sem contexto associado{% endif %}
+                  </p>
+                  {% if task.description %}
+                    <p class="table-note table-note-clamp">{{ task.description }}</p>
+                  {% endif %}
+                </div>
               </div>
+              {% set assigned_user = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else none %}
+              {% set assigned_team = team_by_id.get(task.team_id) if task.team_id else none %}
               <div class="task-card-side">
+                <span class="task-board-owner">
+                  <strong>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Sem responsável") }}</strong>
+                  {% if assigned_user and assigned_team %}<small>{{ assigned_team.name }}</small>{% elif not assigned_user and not assigned_team %}<small>Atribuir</small>{% endif %}
+                </span>
                 <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
                 <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
                 <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>

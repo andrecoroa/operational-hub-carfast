@@ -2460,6 +2460,26 @@ a.metric:hover {
   gap: 12px;
 }
 
+.workshop-action-strip {
+  padding: 0;
+  overflow: hidden;
+}
+
+.process-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px;
+}
+
+.process-action-grid:empty {
+  display: none;
+}
+
+.process-action-grid .workshop-action-card {
+  box-shadow: none;
+}
+
 .quick-record-guidance {
   display: grid;
   gap: 12px;
@@ -2922,6 +2942,7 @@ a.metric:hover {
   .form-grid,
   .compact-form-grid,
   .compact-form-grid.two-col,
+  .process-action-grid,
   .step-row,
   .filter-grid,
   .task-info-grid,

@@ -46,6 +46,16 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
+    <section class="section workshop-action-strip" aria-label="Ações complementares do processo">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Ações complementares</p>
+          <h3>Registos do processo</h3>
+        </div>
+      </div>
+      <div class="process-action-grid" data-process-actions-target></div>
+    </section>
+
     <section class="workshop-page-grid">
       <div class="workshop-main-column">
         <article class="section workshop-summary-card">
@@ -894,6 +904,14 @@
 </div>
 <script>
   const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
+
+  const processActionsTarget = document.querySelector("[data-process-actions-target]");
+  const sideActions = document.querySelector(".workshop-actions");
+  if (processActionsTarget && sideActions) {
+    sideActions.querySelectorAll(".workshop-action-card:not(.workshop-close-card)").forEach((card) => {
+      processActionsTarget.appendChild(card);
+    });
+  }
 
   document.querySelectorAll("[data-service-family]").forEach((familySelect) => {
     const form = familySelect.closest("form");

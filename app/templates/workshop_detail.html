@@ -369,6 +369,22 @@
 
             {% if process.status == "history_check" %}
               <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
+                <input type="hidden" name="status" value="stellantis_service_box">
+                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
+                <div>
+                  <strong>Revisão Stellantis / Service Box</strong>
+                  <span>Validar plano de manutenção, simulação por KM/idade e campanhas técnicas quando aplicável.</span>
+                </div>
+                <label>
+                  Preparação Service Box
+                  <textarea name="decision_note" rows="3" required placeholder="Regista plano consultado, simulação, campanhas e documentos anexados ou em falta."></textarea>
+                </label>
+                <button type="submit">Registar Service Box</button>
+              </form>
+            {% endif %}
+
+            {% if process.status == "stellantis_service_box" %}
+              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
                 <input type="hidden" name="status" value="bsi_initial">
                 <input type="hidden" name="decision" value="{{ process.decision or "" }}">
                 <div>

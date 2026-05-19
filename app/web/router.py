@@ -58,7 +58,11 @@ def snapshot_value(data: dict | None, candidates: list[str]) -> str | None:
         if normalized_key in normalized_candidates and value not in (None, ""):
             if isinstance(value, (date, datetime)):
                 return value.strftime("%Y-%m-%d")
-            return str(value)
+            text_value = str(value).strip()
+            iso_date_match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[T\s].*)?$", text_value)
+            if iso_date_match:
+                return iso_date_match.group(1)
+            return text_value
     return None
 
 
@@ -941,6 +945,12 @@ def admin_page(
         pilot_feedback_items = db.scalars(
             select(PilotFeedback).order_by(PilotFeedback.id.desc()).limit(20)
         ).all()
+        pilot_feedback_user_ids = {item.user_id for item in pilot_feedback_items if item.user_id}
+        pilot_feedback_users = (
+            db.scalars(select(User).where(User.id.in_(pilot_feedback_user_ids))).all()
+            if pilot_feedback_user_ids
+            else []
+        )
         pilot_feedback_counts = {
             "total": db.scalar(select(func.count()).select_from(PilotFeedback)) or 0,
             "open": db.scalar(
@@ -967,6 +977,7 @@ def admin_page(
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
                 "pilot_feedback_items": pilot_feedback_items,
                 "pilot_feedback_counts": pilot_feedback_counts,
+                "pilot_feedback_user_by_id": {item.id: item for item in pilot_feedback_users},
                 "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
                 "pilot_feedback_source_labels": PILOT_FEEDBACK_SOURCE_LABELS,
                 "implementation_roadmap": IMPLEMENTATION_ROADMAP,
@@ -2756,9 +2767,15 @@ def workshop_update_flow(
 
         old_status = process.status
         old_decision = process.decision
+        clean_decision_note = decision_note.strip()
+        if (status != old_status or (decision or None) != old_decision) and not clean_decision_note:
+            return RedirectResponse(
+                f"/workshop/{process_id}?error=Descreve%20o%20passo%20executado%20antes%20de%20alterar%20o%20fluxo.",
+                status_code=303,
+            )
         process.status = status
         process.decision = decision or None
-        process.decision_note = decision_note.strip() or None
+        process.decision_note = clean_decision_note or None
         if decision and decision != old_decision:
             process.decided_by_id = user_id
             process.decided_at = datetime.now(UTC)

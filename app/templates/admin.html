@@ -145,10 +145,12 @@
       <div class="event-list">
         {% for item in pilot_feedback_items %}
           <article class="event-item">
+            {% set feedback_user = pilot_feedback_user_by_id.get(item.user_id) if item.user_id else none %}
             <div>
               <strong>{{ pilot_feedback_kind_labels.get(item.kind, item.kind) }}</strong>
               <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
             </div>
+            <p class="muted">Criado por: {{ feedback_user.name if feedback_user else "Utilizador não identificado" }}{% if feedback_user and feedback_user.email %} · {{ feedback_user.email }}{% endif %}</p>
             <p>{{ item.subject or "-" }}</p>
             <p>{{ item.body }}</p>
             {% if item.entity_type or item.entity_id %}

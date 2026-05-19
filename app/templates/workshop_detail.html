@@ -337,11 +337,11 @@
         <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack workshop-flow-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Fluxo</p>
-            <h3>Atualizar estado</h3>
+            <h3>Registar passo do processo</h3>
           </div>
           <div class="compact-form-grid two-col">
             <label>
-              Estado
+              Próximo estado
               <select name="status">
                 {% for code, label in statuses %}
                   <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
@@ -359,10 +359,10 @@
             </label>
           </div>
           <label>
-            Nota da decisão
-            <textarea name="decision_note" rows="3">{{ process.decision_note or "" }}</textarea>
+            O que foi executado / contexto
+            <textarea name="decision_note" rows="3" required placeholder="Descreve o que foi feito, validado ou decidido antes de avançar o processo.">{{ process.decision_note or "" }}</textarea>
           </label>
-          <button type="submit">Atualizar fluxo</button>
+          <button type="submit">Registar passo</button>
         </form>
 
         <div class="workshop-actions">

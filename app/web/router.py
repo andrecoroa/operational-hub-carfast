@@ -4888,7 +4888,22 @@ def confirm_change_notice(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
     request.session[CHANGE_NOTICE_SESSION_KEY] = CHANGE_NOTICE_VERSION
-    return RedirectResponse(safe_internal_next(next_url), status_code=303)
+    clean_next_url = safe_internal_next(next_url)
+    with SessionLocal() as db:
+        record_audit(
+            db,
+            action="web.change_notice.confirmed",
+            entity_type="user",
+            entity_id=user_id,
+            detail=f"Confirmou leitura do aviso {CHANGE_NOTICE_VERSION}",
+            user_id=user_id,
+            after_json={
+                "notice_version": CHANGE_NOTICE_VERSION,
+                "next_url": clean_next_url,
+            },
+        )
+        db.commit()
+    return RedirectResponse(clean_next_url, status_code=303)
 
 
 @web_router.post("/logout")

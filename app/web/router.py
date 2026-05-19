@@ -42,6 +42,35 @@ def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
         return (1, int(match.group(0)), unit)
     return (0, 0, unit)
 
+
+def snapshot_value(data: dict | None, candidates: list[str]) -> str | None:
+    if not data:
+        return None
+    normalized_candidates = {re.sub(r"[^a-z0-9]", "", candidate.lower()) for candidate in candidates}
+    for key, value in data.items():
+        normalized_key = re.sub(r"[^a-z0-9]", "", str(key).lower())
+        if normalized_key in normalized_candidates and value not in (None, ""):
+            if isinstance(value, (date, datetime)):
+                return value.strftime("%Y-%m-%d")
+            return str(value)
+    return None
+
+
+def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+    data = snapshot.data_json if snapshot else None
+    return {
+        "plate_date": snapshot_value(data, ["plate_date", "platedate", "data_matricula", "registration_date"]),
+        "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
+        "last_service_done": snapshot_value(
+            data,
+            ["last_service_done", "lastservicedone", "last_service_date", "last_service", "ultimo_servico"],
+        ),
+        "next_service": snapshot_value(data, ["next_service", "nextservice", "next_service_date", "proximo_servico"]),
+        "last_service_km": snapshot_value(data, ["last_service_km", "lastservicekm"]),
+        "next_service_km": snapshot_value(data, ["next_service_km", "nextservicekm"]),
+    }
+
+
 WORKSHOP_OPENING_TYPES = [
     ("walk_in", "Entrada imediata"),
     ("appointment", "Marcação"),
@@ -1222,6 +1251,7 @@ def vehicle_detail(
             {
                 "vehicle": vehicle,
                 "snapshot": snapshot,
+                "vehicle_context": rentway_vehicle_context(snapshot),
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
@@ -1853,6 +1883,7 @@ def render_workshop_detail(
     noted: str | None = None,
     evidence_created: str | None = None,
     technical_reading_created: str | None = None,
+    reception_saved: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
     feedback_saved: str | None = None,
@@ -1916,12 +1947,18 @@ def render_workshop_detail(
         )
         .limit(5)
     ).all()
+    vehicle_snapshot = db.scalar(
+        select(VehicleExternalSnapshot)
+        .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
+        .order_by(VehicleExternalSnapshot.updated_at.desc())
+    )
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
         {
             "process": process,
             "vehicle": vehicle,
+            "vehicle_context": rentway_vehicle_context(vehicle_snapshot),
             "notes": notes,
             "evidences": evidences,
             "incidents": incidents,
@@ -1933,6 +1970,7 @@ def render_workshop_detail(
             "noted": noted,
             "evidence_created": evidence_created,
             "technical_reading_created": technical_reading_created,
+            "reception_saved": reception_saved,
             "incident_created": incident_created,
             "document_created": document_created,
             "feedback_saved": feedback_saved,
@@ -1985,6 +2023,7 @@ def workshop_detail(
     noted: str | None = None,
     evidence_created: str | None = None,
     technical_reading_created: str | None = None,
+    reception_saved: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
     feedback_saved: str | None = None,
@@ -2004,6 +2043,7 @@ def workshop_detail(
             noted=noted,
             evidence_created=evidence_created,
             technical_reading_created=technical_reading_created,
+            reception_saved=reception_saved,
             incident_created=incident_created,
             document_created=document_created,
             feedback_saved=feedback_saved,
@@ -2041,6 +2081,93 @@ def workshop_add_note(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?noted=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/reception", response_class=HTMLResponse)
+def workshop_confirm_reception(
+    request: Request,
+    process_id: int,
+    received_at: str = Form(""),
+    km_entry: str = Form(""),
+    service_family: str = Form(""),
+    service_detail: str = Form(""),
+    service_axis: str = Form("not_defined"),
+    service_note: str = Form(""),
+    reception_note: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    parsed_km = parse_optional_int(km_entry)
+    received_on = parse_optional_date(received_at.split("T", 1)[0] if received_at else "")
+    clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
+        service_family,
+        service_detail,
+        service_axis,
+    )
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+
+        old_status = process.status
+        old_km = process.km_entry
+        process.status = "reception"
+        process.opened_on = received_on or process.opened_on or date.today()
+        if parsed_km is not None:
+            process.km_entry = parsed_km
+
+        if clean_service_family:
+            db.add(
+                WorkshopProcessService(
+                    process_id=process.id,
+                    vehicle_id=process.vehicle_id,
+                    service_family=clean_service_family,
+                    service_detail=clean_service_detail,
+                    service_axis=clean_service_axis,
+                    status="to_assess",
+                    note=service_note.strip() or None,
+                    created_by_id=user_id,
+                )
+            )
+
+        note_lines = [
+            "Receção confirmada.",
+            f"Data/hora entrada: {received_at.strip() or '-'}",
+            f"KM entrada: {parsed_km if parsed_km is not None else '-'}",
+        ]
+        if clean_service_family:
+            note_lines.append(
+                "Serviço/motivo: "
+                f"{WORKSHOP_SERVICE_FAMILY_LABELS.get(clean_service_family, clean_service_family)}"
+                f"{' - ' + WORKSHOP_SERVICE_DETAIL_LABELS.get(clean_service_detail, clean_service_detail) if clean_service_detail else ''}"
+            )
+        if service_note.strip():
+            note_lines.append(f"Observação do serviço: {service_note.strip()}")
+        if reception_note.strip():
+            note_lines.append(f"Observação inicial: {reception_note.strip()}")
+        db.add(WorkshopProcessNote(process_id=process.id, user_id=user_id, note="\n".join(note_lines)))
+
+        record_audit(
+            db,
+            action="workshop.process.reception.confirmed",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Receção confirmada no processo: {process.title}",
+            before_json={"status": old_status, "km_entry": old_km},
+            after_json={
+                "status": process.status,
+                "opened_on": process.opened_on.isoformat() if process.opened_on else None,
+                "km_entry": process.km_entry,
+                "service_family": clean_service_family or None,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?reception_saved=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/services", response_class=HTMLResponse)

@@ -51,6 +51,10 @@
             <div><span>Modelo</span><strong>{{ vehicle.model or "-" }}</strong></div>
             <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
             <div><span>Versão</span><strong>{{ vehicle.version or "-" }}</strong></div>
+            <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+            <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+            <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+            <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
             <div><span>Ciclo</span><strong>{{ vehicle.lifecycle_status or "-" }}</strong></div>
             <div><span>Operacional</span><strong>{{ vehicle.operational_status or "-" }}</strong></div>
           </div>

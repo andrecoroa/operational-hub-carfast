@@ -29,6 +29,9 @@
     {% if technical_reading_created %}
       <div class="success">Leitura técnica registada.</div>
     {% endif %}
+    {% if reception_saved %}
+      <div class="success">Receção confirmada.</div>
+    {% endif %}
     {% if incident_created %}
       <div class="success">Incidente criado.</div>
     {% endif %}
@@ -59,6 +62,12 @@
           <div><span>KM entrada</span><strong>{{ process.km_entry or "-" }}</strong></div>
           <div><span>Saída prevista</span><strong>{{ process.expected_exit_on or "-" }}</strong></div>
           <div><span>Decisão</span><strong>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</strong></div>
+          <div><span>Marca / modelo</span><strong>{{ ((vehicle.brand or "") ~ " " ~ (vehicle.model or "") ~ " " ~ (vehicle.version or ""))|trim if vehicle else "-" }}</strong></div>
+          <div><span>Chassi</span><strong>{{ vehicle.vin if vehicle and vehicle.vin else "-" }}</strong></div>
+          <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+          <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+          <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+          <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
         </div>
         <div class="task-description-box">
           <span>Nota inicial / decisão</span>
@@ -273,6 +282,57 @@
       </div>
 
       <aside class="workshop-side-column">
+        <details class="workshop-action-card" {% if process.status == "opening" %}open{% endif %}>
+          <summary>Confirmar receção</summary>
+          <form method="post" action="/workshop/{{ process.id }}/reception" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Data/hora de entrada
+                <input type="datetime-local" name="received_at">
+              </label>
+              <label>
+                KM entrada
+                <input type="number" name="km_entry" min="0" step="1" value="{{ process.km_entry or "" }}">
+              </label>
+              <label>
+                Serviço / motivo
+                <select name="service_family" data-service-family>
+                  <option value="">Sem serviço definido</option>
+                  {% for code, label in service_families %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label data-service-detail-wrap hidden>
+                Detalhe
+                <select name="service_detail" data-service-detail>
+                  <option value="">Sem detalhe</option>
+                  {% for code, label, family in service_details %}
+                    <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label data-service-axis-wrap hidden>
+                Eixo / zona
+                <select name="service_axis">
+                  {% for code, label in service_axes %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Observação do serviço
+                <input type="text" name="service_note" maxlength="255" placeholder="Ex.: aviso de revisão no painel">
+              </label>
+            </div>
+            <label>
+              Observação inicial
+              <textarea name="reception_note" rows="3" placeholder="Condição da viatura, sintomas reportados, documentos entregues..."></textarea>
+            </label>
+            <button type="submit">Confirmar receção</button>
+          </form>
+        </details>
+
         <form method="post" action="/workshop/{{ process.id }}/flow" class="form-panel form-stack workshop-flow-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Fluxo</p>

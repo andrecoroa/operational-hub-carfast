@@ -3540,10 +3540,8 @@ def task_board_manage(
 
         tasks = db.scalars(
             stmt.order_by(
-                Task.due_on.is_(None),
-                Task.due_on,
-                Task.priority.desc(),
                 Task.id.desc(),
+                Task.created_at.desc(),
             ).limit(100)
         ).all()
         quick_records = db.scalars(

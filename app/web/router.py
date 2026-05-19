@@ -211,6 +211,112 @@ WORKSHOP_SERVICE_DETAIL_FAMILIES = {
 }
 WORKSHOP_SERVICE_AXIS_FAMILIES = {"brakes", "tyres"}
 
+WORKSHOP_FLOW_STEPS = [
+    {
+        "code": "history_check",
+        "title": "Verificar histórico",
+        "description": "Consultar histórico técnico, serviços anteriores e informação conhecida da viatura.",
+        "field_label": "Histórico consultado",
+        "placeholder": "Regista o que foi visto no histórico e se há pontos de atenção.",
+        "button": "Confirmar histórico",
+        "decision": "",
+    },
+    {
+        "code": "stellantis_service_box",
+        "title": "Revisão Stellantis / Service Box",
+        "description": "Validar plano de manutenção, simulação por KM/idade e campanhas técnicas quando aplicável.",
+        "field_label": "Preparação Service Box",
+        "placeholder": "Regista plano consultado, simulação, campanhas e documentos anexados ou em falta.",
+        "button": "Registar Service Box",
+        "decision": "",
+    },
+    {
+        "code": "bsi_initial",
+        "title": "Registo de leitura técnica / BSI inicial",
+        "description": "Registar leitura técnica inicial antes de fechar o diagnóstico.",
+        "field_label": "Objetivo da leitura",
+        "placeholder": "Indica que leitura será efetuada e que informação se pretende validar.",
+        "button": "Abrir leitura inicial",
+        "decision": "",
+    },
+    {
+        "code": "technical_info",
+        "title": "Registo de informação técnica",
+        "description": "Consolidar informação técnica recolhida nos relatórios, histórico e observações.",
+        "field_label": "Informação técnica registada",
+        "placeholder": "Resumo técnico, dados relevantes e pontos ainda por confirmar.",
+        "button": "Registar informação técnica",
+        "decision": "",
+    },
+    {
+        "code": "systematic_checks",
+        "title": "Verificações sistemáticas",
+        "description": "Executar confirmações base antes de decidir serviços ou orçamento.",
+        "field_label": "Verificações efetuadas",
+        "placeholder": "Checklist, verificações feitas e anomalias encontradas.",
+        "button": "Registar verificações",
+        "decision": "",
+    },
+    {
+        "code": "service_quote",
+        "title": "Serviços a executar / orçamento",
+        "description": "Definir trabalhos previstos, necessidade de orçamento ou material.",
+        "field_label": "Serviços ou orçamento",
+        "placeholder": "Serviços a executar, orçamento necessário, material previsto ou fornecedor.",
+        "button": "Registar serviços/orçamento",
+        "decision": "request_quote",
+    },
+    {
+        "code": "decision",
+        "title": "Registar decisão",
+        "description": "Registar a decisão com contexto e sugestão de resolução.",
+        "field_label": "Contexto e sugestão",
+        "placeholder": "Problema identificado, opção recomendada e impacto esperado.",
+        "button": "Registar decisão",
+        "decision": "",
+    },
+    {
+        "code": "bsi_final",
+        "title": "Registo de leitura técnica / BSI final",
+        "description": "Registar leitura final ou validação técnica após execução.",
+        "field_label": "Validação técnica necessária",
+        "placeholder": "Indica que leitura/validação final será registada.",
+        "button": "Abrir leitura final",
+        "decision": "",
+    },
+    {
+        "code": "technical_close",
+        "title": "Fecho técnico",
+        "description": "Confirmar que a intervenção técnica está validada.",
+        "field_label": "Conclusão técnica",
+        "placeholder": "Resultado técnico, teste efetuado e evidência relevante.",
+        "button": "Registar fecho técnico",
+        "decision": "",
+    },
+    {
+        "code": "administrative_close",
+        "title": "Fecho administrativo",
+        "description": "Confirmar documentos, custos, notas e condições de arquivo.",
+        "field_label": "Conferência administrativa",
+        "placeholder": "Documentos, orçamento/fatura, anexos ou pontos administrativos confirmados.",
+        "button": "Registar fecho administrativo",
+        "decision": "",
+    },
+    {
+        "code": "closed",
+        "title": "Fecho sem intervenção",
+        "description": "Usar quando a análise confirma que não existe necessidade de intervenção.",
+        "field_label": "Justificação",
+        "placeholder": "Explica porque não existe necessidade de intervenção.",
+        "button": "Fechar sem intervenção",
+        "decision": "no_action_needed",
+    },
+]
+for index, step in enumerate(WORKSHOP_FLOW_STEPS, start=2):
+    step["index"] = index
+WORKSHOP_FLOW_ORDER = ["opening", "reception", *[step["code"] for step in WORKSHOP_FLOW_STEPS]]
+WORKSHOP_FLOW_TITLES = {step["code"]: step["title"] for step in WORKSHOP_FLOW_STEPS}
+
 INCIDENT_TYPES = [
     ("technical", "Técnico"),
     ("damage", "Dano"),
@@ -1978,6 +2084,23 @@ def render_workshop_detail(
         .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
         .order_by(VehicleExternalSnapshot.updated_at.desc())
     )
+    completed_flow_statuses = {"opening"}
+    if process.status == "reception" or process.opened_on or process.km_entry:
+        completed_flow_statuses.add("reception")
+    note_text = "\n".join(item.note or "" for item in notes)
+    for code, label in WORKSHOP_STATUS_LABELS.items():
+        if label and label in note_text:
+            completed_flow_statuses.add(code)
+    if technical_readings:
+        completed_flow_statuses.add("bsi_initial")
+    if process.status in WORKSHOP_FLOW_ORDER:
+        current_flow_index = WORKSHOP_FLOW_ORDER.index(process.status)
+    elif process.status == "diagnosis":
+        current_flow_index = WORKSHOP_FLOW_ORDER.index("bsi_initial")
+    elif process.status in {"waiting_analysis", "waiting_parts", "in_progress", "validation"}:
+        current_flow_index = WORKSHOP_FLOW_ORDER.index("decision")
+    else:
+        current_flow_index = 0
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -1993,6 +2116,11 @@ def render_workshop_detail(
             "services": services,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
+            "workshop_flow_steps": WORKSHOP_FLOW_STEPS,
+            "workshop_flow_order": WORKSHOP_FLOW_ORDER,
+            "workshop_flow_titles": WORKSHOP_FLOW_TITLES,
+            "completed_flow_statuses": completed_flow_statuses,
+            "current_flow_index": current_flow_index,
             "noted": noted,
             "evidence_created": evidence_created,
             "technical_reading_created": technical_reading_created,

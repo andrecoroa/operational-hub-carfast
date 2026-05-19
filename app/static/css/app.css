@@ -2455,6 +2455,78 @@ a.metric:hover {
   background: #ffffff;
 }
 
+.phase-action-card summary,
+.flow-step-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.phase-action-card summary::-webkit-details-marker,
+.flow-step-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.phase-action-card summary span,
+.flow-step-panel summary span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #eef1f2;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.phase-action-card summary strong,
+.flow-step-panel summary strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-action-card[open] summary {
+  margin-bottom: 2px;
+}
+
+.flow-step-panel {
+  border-left: 5px solid var(--line);
+}
+
+.flow-step-complete {
+  border-color: rgba(43, 138, 62, 0.42);
+  background: #fbfffc;
+}
+
+.flow-step-complete summary span {
+  background: #eaf7ed;
+  color: #2b8a3e;
+}
+
+.flow-step-skipped {
+  border-color: rgba(225, 138, 32, 0.56);
+  background: #fffaf1;
+}
+
+.flow-step-skipped summary span {
+  background: #fff1d6;
+  color: #946200;
+}
+
+.flow-step-current {
+  border-color: rgba(166, 75, 55, 0.55);
+  background: #fffdfb;
+}
+
+.flow-step-current summary span {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
 .phase-action-card > div {
   display: grid;
   gap: 4px;

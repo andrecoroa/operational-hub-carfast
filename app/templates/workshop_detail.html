@@ -293,8 +293,12 @@
       </div>
 
       <aside class="workshop-side-column">
-        <details class="workshop-action-card" {% if process.status == "opening" %}open{% endif %}>
-          <summary>Confirmar receção</summary>
+        {% set reception_state = "current" if process.status in ["opening", "reception"] else ("complete" if "reception" in completed_flow_statuses else ("skipped" if current_flow_index > 1 else "pending")) %}
+        <details class="workshop-action-card flow-step-panel flow-step-{{ reception_state }}">
+          <summary>
+            <strong>Confirmar receção</strong>
+            <span>{{ "Atual" if reception_state == "current" else ("Concluído" if reception_state == "complete" else ("Por rever" if reception_state == "skipped" else "Pendente")) }}</span>
+          </summary>
           <form method="post" action="/workshop/{{ process.id }}/reception" class="form-stack">
             <div class="compact-form-grid two-col">
               <label>
@@ -347,245 +351,42 @@
         <article class="section workshop-flow-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Fluxo</p>
-            <h3>Próximo passo</h3>
+            <h3>Fluxo do serviço</h3>
           </div>
-          <p class="muted">Estado atual: <strong>{{ status_labels.get(process.status, process.status) }}</strong>. Cada avanço exige contexto do que foi confirmado, executado ou decidido.</p>
+          <p class="muted">Estado atual: <strong>{{ status_labels.get(process.status, process.status) }}</strong>. Verde indica passo registado; laranja indica etapa ultrapassada sem registo claro.</p>
           <div class="phase-action-stack">
-            {% if process.status in ["opening", "reception"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="history_check">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Verificar histórico</strong>
-                  <span>Consultar histórico técnico, serviços anteriores e informação conhecida da viatura.</span>
-                </div>
-                <label>
-                  Histórico consultado
-                  <textarea name="decision_note" rows="3" required placeholder="Regista o que foi visto no histórico e se há pontos de atenção."></textarea>
-                </label>
-                <button type="submit">Confirmar histórico</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "history_check" %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="stellantis_service_box">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Revisão Stellantis / Service Box</strong>
-                  <span>Validar plano de manutenção, simulação por KM/idade e campanhas técnicas quando aplicável.</span>
-                </div>
-                <label>
-                  Preparação Service Box
-                  <textarea name="decision_note" rows="3" required placeholder="Regista plano consultado, simulação, campanhas e documentos anexados ou em falta."></textarea>
-                </label>
-                <button type="submit">Registar Service Box</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "stellantis_service_box" %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="bsi_initial">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Registo de leitura técnica / BSI inicial</strong>
-                  <span>Passar para o momento de leitura técnica inicial antes de fechar o diagnóstico.</span>
-                </div>
-                <label>
-                  Objetivo da leitura
-                  <textarea name="decision_note" rows="3" required placeholder="Indica que leitura será efetuada e que informação se pretende validar."></textarea>
-                </label>
-                <button type="submit">Abrir leitura inicial</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["bsi_initial", "diagnosis"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="technical_info">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Registo de informação técnica</strong>
-                  <span>Consolidar informação técnica recolhida nos relatórios, histórico e observações.</span>
-                </div>
-                <label>
-                  Informação técnica registada
-                  <textarea name="decision_note" rows="3" required placeholder="Resumo técnico, dados relevantes e pontos ainda por confirmar."></textarea>
-                </label>
-                <button type="submit">Registar informação técnica</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "technical_info" %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="systematic_checks">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Verificações sistemáticas</strong>
-                  <span>Executar confirmações base antes de decidir serviços ou orçamento.</span>
-                </div>
-                <label>
-                  Verificações efetuadas
-                  <textarea name="decision_note" rows="3" required placeholder="Checklist, verificações feitas e anomalias encontradas."></textarea>
-                </label>
-                <button type="submit">Registar verificações</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "systematic_checks" %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="service_quote">
-                <input type="hidden" name="decision" value="request_quote">
-                <div>
-                  <strong>Serviços a executar / orçamento</strong>
-                  <span>Definir trabalhos previstos, necessidade de orçamento ou material.</span>
-                </div>
-                <label>
-                  Serviços ou orçamento
-                  <textarea name="decision_note" rows="3" required placeholder="Serviços a executar, orçamento necessário, material previsto ou fornecedor."></textarea>
-                </label>
-                <button type="submit">Registar serviços/orçamento</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["service_quote", "decision", "waiting_analysis"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="decision">
-                <div>
-                  <strong>Registar decisão</strong>
-                  <span>Usar quando já existe análise suficiente para orientar o processo.</span>
-                </div>
-                <label>
-                  Decisão
-                  <select name="decision" required>
-                    <option value="">Selecionar decisão</option>
-                    {% for code, label in decisions %}
-                      <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>
-                  Contexto e sugestão
-                  <textarea name="decision_note" rows="3" required placeholder="Problema identificado, opção recomendada e impacto esperado."></textarea>
-                </label>
-                <button type="submit">Registar decisão</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["decision", "waiting_analysis", "waiting_parts"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="waiting_analysis">
-                <input type="hidden" name="decision" value="wait_analysis">
-                <div>
-                  <strong>Aguardar análise</strong>
-                  <span>Usar quando falta confirmação interna, técnica ou documental.</span>
-                </div>
-                <label>
-                  O que falta analisar
-                  <textarea name="decision_note" rows="2" required placeholder="Indica o ponto pendente e quem deve desbloquear."></textarea>
-                </label>
-                <button type="submit">Aguardar análise</button>
-              </form>
-
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="waiting_parts">
-                <input type="hidden" name="decision" value="order_parts">
-                <div>
-                  <strong>Encomendar material</strong>
-                  <span>Usar quando a reparação depende de peças ou consumíveis.</span>
-                </div>
-                <label>
-                  Material necessário
-                  <textarea name="decision_note" rows="2" required placeholder="Peças, fornecedor, referência ou informação mínima conhecida."></textarea>
-                </label>
-                <button type="submit">Aguardar material</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["decision", "waiting_analysis", "waiting_parts"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="in_progress">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Iniciar execução</strong>
-                  <span>Usar quando já há decisão e condições para executar.</span>
-                </div>
-                <label>
-                  Trabalho a executar
-                  <textarea name="decision_note" rows="2" required placeholder="Indica a ação principal que vai ser feita."></textarea>
-                </label>
-                <button type="submit">Iniciar execução</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["in_progress", "waiting_parts"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="bsi_final">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Registo de leitura técnica / BSI final</strong>
-                  <span>Usar após execução para registar leitura final ou validação técnica.</span>
-                </div>
-                <label>
-                  Validação técnica necessária
-                  <textarea name="decision_note" rows="2" required placeholder="Indica que leitura/validação final será registada."></textarea>
-                </label>
-                <button type="submit">Abrir leitura final</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["bsi_final", "validation"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="technical_close">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Fecho técnico</strong>
-                  <span>Confirmar que a intervenção técnica está validada.</span>
-                </div>
-                <label>
-                  Conclusão técnica
-                  <textarea name="decision_note" rows="2" required placeholder="Resultado técnico, teste efetuado e evidência relevante."></textarea>
-                </label>
-                <button type="submit">Registar fecho técnico</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "technical_close" %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="administrative_close">
-                <input type="hidden" name="decision" value="{{ process.decision or "" }}">
-                <div>
-                  <strong>Fecho administrativo</strong>
-                  <span>Confirmar documentos, custos, notas e condições de arquivo.</span>
-                </div>
-                <label>
-                  Conferência administrativa
-                  <textarea name="decision_note" rows="2" required placeholder="Documentos, orçamento/fatura, anexos ou pontos administrativos confirmados."></textarea>
-                </label>
-                <button type="submit">Registar fecho administrativo</button>
-              </form>
-            {% endif %}
-
-            {% if process.status in ["service_quote", "decision", "waiting_analysis", "technical_info", "systematic_checks"] %}
-              <form method="post" action="/workshop/{{ process.id }}/flow" class="phase-action-card">
-                <input type="hidden" name="status" value="closed">
-                <input type="hidden" name="decision" value="no_action_needed">
-                <div>
-                  <strong>Fecho sem intervenção</strong>
-                  <span>Usar quando a análise confirma que não existe necessidade de intervenção.</span>
-                </div>
-                <label>
-                  Justificação
-                  <textarea name="decision_note" rows="2" required placeholder="Explica porque não existe necessidade de intervenção."></textarea>
-                </label>
-                <button type="submit">Fechar sem intervenção</button>
-              </form>
-            {% endif %}
-
-            {% if process.status == "closed" %}
-              <p class="muted">Processo fechado. Consulta o relatório para rever a decisão, evidências, documentos e notas.</p>
-            {% elif process.status == "administrative_close" %}
-              <p class="muted">Processo com fecho administrativo registado. Usa o bloco de fecho no fim da página para encerrar.</p>
-            {% endif %}
+            {% for step in workshop_flow_steps %}
+              {% set step_index = step.index %}
+              {% set step_state = "current" if process.status == step.code else ("complete" if step.code in completed_flow_statuses else ("skipped" if current_flow_index > step_index else "pending")) %}
+              <details class="phase-action-card flow-step-panel flow-step-{{ step_state }}">
+                <summary>
+                  <strong>{{ step.title }}</strong>
+                  <span>{{ "Atual" if step_state == "current" else ("Concluído" if step_state == "complete" else ("Por rever" if step_state == "skipped" else "Pendente")) }}</span>
+                </summary>
+                <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
+                  <input type="hidden" name="status" value="{{ step.code }}">
+                  {% if step.code == "decision" %}
+                    <label>
+                      Decisão
+                      <select name="decision" required>
+                        <option value="">Selecionar decisão</option>
+                        {% for code, label in decisions %}
+                          <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  {% else %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                  {% endif %}
+                  <p>{{ step.description }}</p>
+                  <label>
+                    {{ step.field_label }}
+                    <textarea name="decision_note" rows="3" required placeholder="{{ step.placeholder }}"></textarea>
+                  </label>
+                  <button type="submit">{{ step.button }}</button>
+                </form>
+              </details>
+            {% endfor %}
           </div>
         </article>
 

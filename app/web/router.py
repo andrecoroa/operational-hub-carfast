@@ -253,7 +253,8 @@ PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
 TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
-TASK_ASSIGNMENT_RESTRICTED_EMAILS = {"andrecoroa@daccordinvest.pt"}
+TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS = {"andrecoroa@daccordinvest.pt"}
+TASK_NEVER_ASSIGNMENT_NAMES = {"codex carfast"}
 TASK_WAITING_REASONS = [
     ("customer", "Cliente"),
     ("partner_broker", "Parceiro / Broker"),
@@ -4690,22 +4691,32 @@ def format_delegation_target(user_id: int | None, team_id: int | None) -> str:
 
 
 def assignable_users_for_workspace(users: list[User], workspace: str) -> list[User]:
-    if normalize_task_workspace(workspace) == "administration":
-        return users
-    return [
+    clean_workspace = normalize_task_workspace(workspace)
+    assignable_users = [
         user
         for user in users
-        if user.email.strip().lower() not in TASK_ASSIGNMENT_RESTRICTED_EMAILS
+        if user.name.strip().lower() not in TASK_NEVER_ASSIGNMENT_NAMES
+    ]
+    if clean_workspace == "administration":
+        return assignable_users
+    return [
+        user
+        for user in assignable_users
+        if user.email.strip().lower() not in TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS
     ]
 
 
 def is_assignment_allowed_for_workspace(db, user_id: int | None, workspace: str) -> bool:
-    if not user_id or normalize_task_workspace(workspace) == "administration":
+    if not user_id:
         return True
     user = db.get(User, user_id)
     if not user:
         return False
-    return user.email.strip().lower() not in TASK_ASSIGNMENT_RESTRICTED_EMAILS
+    if user.name.strip().lower() in TASK_NEVER_ASSIGNMENT_NAMES:
+        return False
+    if normalize_task_workspace(workspace) == "administration":
+        return True
+    return user.email.strip().lower() not in TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS
 
 
 def can_supervise_task(db, user: User | None, task: Task) -> bool:

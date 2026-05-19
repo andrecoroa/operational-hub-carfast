@@ -91,7 +91,7 @@
               Responsável
               <select name="assigned_to_id">
                 <option value="">Por atribuir</option>
-                {% for user in users %}
+                {% for user in assignable_users %}
                   <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }}</option>
                 {% endfor %}
               </select>
@@ -162,7 +162,7 @@
                 <select name="delegated_to">
                   <option value="">Sem execução delegada</option>
                   <optgroup label="Pessoas">
-                    {% for user in users %}
+                    {% for user in assignable_users %}
                       {% set option_value = "user:" ~ user.id %}
                       <option value="{{ option_value }}" {% if (form_values.delegated_to or delegation_value or '') == option_value %}selected{% endif %}>{{ user.name }}</option>
                     {% endfor %}

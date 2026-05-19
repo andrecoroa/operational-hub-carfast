@@ -253,6 +253,7 @@ PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
 TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
+TASK_ASSIGNMENT_RESTRICTED_EMAILS = {"andrecoroa@daccordinvest.pt"}
 TASK_WAITING_REASONS = [
     ("customer", "Cliente"),
     ("partner_broker", "Parceiro / Broker"),
@@ -3244,7 +3245,13 @@ def task_board_manage(
         elif view == "all":
             stmt = select(Task).where(workspace_task_filter)
         elif view == "mine":
-            stmt = stmt.where(or_(Task.assigned_to_id == user_id, Task.delegated_to_user_id == user_id))
+            stmt = stmt.where(
+                or_(
+                    Task.assigned_to_id == user_id,
+                    Task.delegated_to_user_id == user_id,
+                    Task.waiting_for_user_id == user_id,
+                )
+            )
         elif view == "team":
             stmt = stmt.where(Task.team_id.is_not(None))
         elif view == "urgent":
@@ -3400,6 +3407,7 @@ def task_board_manage(
             )
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
+        assignable_users = assignable_users_for_workspace(users, current_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         team_by_id = {item.id: item for item in teams}
         stations = [
@@ -3428,6 +3436,7 @@ def task_board_manage(
                 "new_task_url": task_workspace_new_url(current_workspace, "task"),
                 "new_quick_url": task_workspace_new_url(current_workspace, "quick"),
                 "users": users,
+                "assignable_users": assignable_users,
                 "current_user": user_by_id.get(user_id),
                 "user_by_id": user_by_id,
                 "teams": teams,
@@ -3485,15 +3494,17 @@ def task_new_form(
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+        assignable_users = assignable_users_for_workspace(users, current_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
             request,
             "task_new.html",
             {
                 "users": users,
+                "assignable_users": assignable_users,
                 "current_user": current_user,
                 "teams": teams,
-                "error": None,
+                "error": "Este utilizador só pode ser responsável ou delegado em tarefas de Administração." if error == "assignment_not_allowed" else None,
                 "form_mode": "quick" if mode == "quick" else "task",
                 "workspace": current_workspace,
                 "workspace_config": workspace_config,
@@ -3607,12 +3618,14 @@ def quick_record_create(
         with SessionLocal() as db:
             current_user = db.get(User, user_id)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            assignable_users = assignable_users_for_workspace(users, current_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
             request,
             "task_new.html",
             {
                 "users": users,
+                "assignable_users": assignable_users,
                 "current_user": current_user,
                 "teams": teams,
                 "error": "Indica um assunto para o registo rápido.",
@@ -3689,6 +3702,7 @@ def quick_record_detail(
             linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == record.plate))
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
+        assignable_users = assignable_users_for_workspace(users, workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
             request,
@@ -3702,13 +3716,14 @@ def quick_record_detail(
                 "linked_task": linked_task,
                 "linked_vehicle": linked_vehicle,
                 "users": users,
+                "assignable_users": assignable_users,
                 "user_by_id": user_by_id,
                 "teams": teams,
                 "current_user": db.get(User, user_id),
                 "updated": updated,
                 "closed": closed,
                 "converted": converted,
-                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "error": task_detail_error_message(error),
                 "quick_record_statuses": QUICK_RECORD_STATUSES,
                 "quick_record_status_labels": QUICK_RECORD_STATUS_LABELS,
                 "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[workspace],
@@ -3845,12 +3860,22 @@ def quick_record_convert(
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
+        if not is_assignment_allowed_for_workspace(db, assigned_user_id, current_workspace):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
+        if not is_assignment_allowed_for_workspace(db, delegated_user_id, current_workspace):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         if delegated_team_id and not db.get(Team, delegated_team_id):
             delegated_team_id = None
 
@@ -3953,12 +3978,14 @@ def task_create(
         with SessionLocal() as db:
             current_user = db.get(User, user_id)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            assignable_users = assignable_users_for_workspace(users, current_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
             request,
             "task_new.html",
             {
                 "users": users,
+                "assignable_users": assignable_users,
                 "current_user": current_user,
                 "teams": teams,
                 "error": "Indica um título para a tarefa.",
@@ -3992,12 +4019,16 @@ def task_create(
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
+        if not is_assignment_allowed_for_workspace(db, assigned_user_id, workspace):
+            return RedirectResponse(f"/task-board/quick/{record_id}?error=assignment_not_allowed", status_code=303)
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
+        if not is_assignment_allowed_for_workspace(db, delegated_user_id, workspace):
+            return RedirectResponse(f"/task-board/quick/{record_id}?error=assignment_not_allowed", status_code=303)
         if delegated_team_id and not db.get(Team, delegated_team_id):
             delegated_team_id = None
         duplicate_tasks = []
@@ -4014,12 +4045,14 @@ def task_create(
             ).all()
         if duplicate_tasks:
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+            assignable_users = assignable_users_for_workspace(users, current_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             return templates.TemplateResponse(
                 request,
                 "task_new.html",
                 {
                     "users": users,
+                    "assignable_users": assignable_users,
                     "current_user": db.get(User, user_id),
                     "teams": teams,
                     "error": None,
@@ -4146,11 +4179,14 @@ def task_detail(
         ).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
+        assignable_users = assignable_users_for_workspace(users, task_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
         assigned_team = db.get(Team, task.team_id) if task.team_id else None
         delegated_user = db.get(User, task.delegated_to_user_id) if task.delegated_to_user_id else None
         delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
+        waiting_for_user = db.get(User, task.waiting_for_user_id) if task.waiting_for_user_id else None
+        waiting_for_team = db.get(Team, task.waiting_for_team_id) if task.waiting_for_team_id else None
         return templates.TemplateResponse(
             request,
             "task_detail.html",
@@ -4164,6 +4200,7 @@ def task_detail(
                 "linked_vehicle": linked_vehicle,
                 "documents": documents,
                 "users": users,
+                "assignable_users": assignable_users,
                 "current_user": current_user,
                 "user_by_id": user_by_id,
                 "teams": teams,
@@ -4172,6 +4209,9 @@ def task_detail(
                 "delegated_user": delegated_user,
                 "delegated_team": delegated_team,
                 "delegation_value": format_delegation_target(task.delegated_to_user_id, task.delegated_to_team_id),
+                "waiting_for_user": waiting_for_user,
+                "waiting_for_team": waiting_for_team,
+                "waiting_for_value": format_delegation_target(task.waiting_for_user_id, task.waiting_for_team_id),
                 "commented": commented,
                 "feedback_saved": feedback_saved,
                 "error": task_detail_error_message(error),
@@ -4207,6 +4247,7 @@ def task_update(
     assigned_to_id: str | None = Form(None),
     team_id: str | None = Form(None),
     delegated_to: str = Form(""),
+    waiting_for: str = Form(""),
     waiting_reason: str = Form(""),
     waiting_reason_detail: str = Form(""),
     due_on: str = Form(""),
@@ -4229,6 +4270,7 @@ def task_update(
             return RedirectResponse("/task-board/manage", status_code=303)
         current_user = db.get(User, user_id)
         can_supervise = can_supervise_task(db, current_user, task)
+        target_workspace = workspace_for_task_type(task_type)
         clean_category = (category.strip() if category else None) or task.category or "operations"
         if clean_category not in TASK_CATEGORY_LABELS:
             clean_category = task.category or "operations"
@@ -4238,14 +4280,23 @@ def task_update(
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
+        if not is_assignment_allowed_for_workspace(db, assigned_user_id, target_workspace):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
+        if not is_assignment_allowed_for_workspace(db, delegated_user_id, target_workspace):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         if delegated_team_id and not db.get(Team, delegated_team_id):
             delegated_team_id = None
+        waiting_for_user_id, waiting_for_team_id = parse_delegation_target(waiting_for)
+        if waiting_for_user_id and not db.get(User, waiting_for_user_id):
+            waiting_for_user_id = None
+        if waiting_for_team_id and not db.get(Team, waiting_for_team_id):
+            waiting_for_team_id = None
         parsed_due_on = parse_optional_date(due_on)
         clean_waiting_reason = waiting_reason.strip()
         clean_waiting_reason_detail = waiting_reason_detail.strip()
@@ -4268,6 +4319,8 @@ def task_update(
         else:
             clean_waiting_reason = ""
             clean_waiting_reason_detail = ""
+            waiting_for_user_id = None
+            waiting_for_team_id = None
 
         changes = [
             ("status", task.status, status),
@@ -4279,6 +4332,8 @@ def task_update(
             ("team_id", str(task.team_id or ""), str(assigned_team_id or "")),
             ("delegated_to_user_id", str(task.delegated_to_user_id or ""), str(delegated_user_id or "")),
             ("delegated_to_team_id", str(task.delegated_to_team_id or ""), str(delegated_team_id or "")),
+            ("waiting_for_user_id", str(task.waiting_for_user_id or ""), str(waiting_for_user_id or "")),
+            ("waiting_for_team_id", str(task.waiting_for_team_id or ""), str(waiting_for_team_id or "")),
             ("waiting_reason", task.waiting_reason, clean_waiting_reason),
             ("waiting_reason_detail", task.waiting_reason_detail, clean_waiting_reason_detail),
             ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
@@ -4295,6 +4350,8 @@ def task_update(
         task.team_id = assigned_team_id
         task.delegated_to_user_id = delegated_user_id
         task.delegated_to_team_id = delegated_team_id
+        task.waiting_for_user_id = waiting_for_user_id
+        task.waiting_for_team_id = waiting_for_team_id
         task.waiting_reason = clean_waiting_reason or None
         task.waiting_reason_detail = clean_waiting_reason_detail or None
         task.due_on = parsed_due_on
@@ -4376,12 +4433,15 @@ def task_add_comment(
             ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             user_by_id = {item.id: item for item in users}
+            task_workspace = workspace_for_task_type(task.task_type)
+            assignable_users = assignable_users_for_workspace(users, task_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
             assigned_team = db.get(Team, task.team_id) if task.team_id else None
             delegated_user = db.get(User, task.delegated_to_user_id) if task.delegated_to_user_id else None
             delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
-            task_workspace = workspace_for_task_type(task.task_type)
+            waiting_for_user = db.get(User, task.waiting_for_user_id) if task.waiting_for_user_id else None
+            waiting_for_team = db.get(Team, task.waiting_for_team_id) if task.waiting_for_team_id else None
             return templates.TemplateResponse(
                 request,
                 "task_detail.html",
@@ -4395,6 +4455,7 @@ def task_add_comment(
                     "linked_vehicle": linked_vehicle,
                     "documents": documents,
                     "users": users,
+                    "assignable_users": assignable_users,
                     "user_by_id": user_by_id,
                     "teams": teams,
                     "assigned_user": assigned_user,
@@ -4402,6 +4463,9 @@ def task_add_comment(
                     "delegated_user": delegated_user,
                     "delegated_team": delegated_team,
                     "delegation_value": format_delegation_target(task.delegated_to_user_id, task.delegated_to_team_id),
+                    "waiting_for_user": waiting_for_user,
+                    "waiting_for_team": waiting_for_team,
+                    "waiting_for_value": format_delegation_target(task.waiting_for_user_id, task.waiting_for_team_id),
                     "commented": None,
                     "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
@@ -4625,6 +4689,25 @@ def format_delegation_target(user_id: int | None, team_id: int | None) -> str:
     return ""
 
 
+def assignable_users_for_workspace(users: list[User], workspace: str) -> list[User]:
+    if normalize_task_workspace(workspace) == "administration":
+        return users
+    return [
+        user
+        for user in users
+        if user.email.strip().lower() not in TASK_ASSIGNMENT_RESTRICTED_EMAILS
+    ]
+
+
+def is_assignment_allowed_for_workspace(db, user_id: int | None, workspace: str) -> bool:
+    if not user_id or normalize_task_workspace(workspace) == "administration":
+        return True
+    user = db.get(User, user_id)
+    if not user:
+        return False
+    return user.email.strip().lower() not in TASK_ASSIGNMENT_RESTRICTED_EMAILS
+
+
 def can_supervise_task(db, user: User | None, task: Task) -> bool:
     if not user:
         return False
@@ -4696,6 +4779,8 @@ def task_detail_error_message(error: str | None) -> str | None:
         return "Este estado só pode ser colocado pelo responsável da tarefa ou por um perfil autorizado."
     if error == "delegation_not_allowed":
         return "Só o responsável da tarefa ou um perfil autorizado pode delegar a execução."
+    if error == "assignment_not_allowed":
+        return "Este utilizador só pode ser responsável ou delegado em tarefas de Administração."
     return None
 
 

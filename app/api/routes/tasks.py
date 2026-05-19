@@ -65,7 +65,15 @@ def create_task(
     current_user: CurrentUser,
     _: TaskWriter = None,
 ):
-    validate_task_links(db, payload.team_id, payload.assigned_to_id, payload.delegated_to_team_id, payload.delegated_to_user_id)
+    validate_task_links(
+        db,
+        payload.team_id,
+        payload.assigned_to_id,
+        payload.delegated_to_team_id,
+        payload.delegated_to_user_id,
+        payload.waiting_for_team_id,
+        payload.waiting_for_user_id,
+    )
     validate_task_state(payload.status, payload.waiting_reason, payload.waiting_reason_detail, payload.delegated_to_user_id, payload.delegated_to_team_id)
     task = Task(**payload.model_dump(), created_by_id=current_user.id)
     db.add(task)
@@ -111,6 +119,8 @@ def update_task(
         changes.get("assigned_to_id"),
         changes.get("delegated_to_team_id"),
         changes.get("delegated_to_user_id"),
+        changes.get("waiting_for_team_id"),
+        changes.get("waiting_for_user_id"),
     )
     next_status = changes.get("status", task.status)
     next_waiting_reason = changes.get("waiting_reason", task.waiting_reason)
@@ -205,6 +215,8 @@ def validate_task_links(
     assigned_to_id: int | None,
     delegated_to_team_id: int | None = None,
     delegated_to_user_id: int | None = None,
+    waiting_for_team_id: int | None = None,
+    waiting_for_user_id: int | None = None,
 ) -> None:
     if team_id and not db.get(Team, team_id):
         raise HTTPException(status_code=400, detail="Team does not exist.")
@@ -214,6 +226,10 @@ def validate_task_links(
         raise HTTPException(status_code=400, detail="Delegated team does not exist.")
     if delegated_to_user_id and not db.get(User, delegated_to_user_id):
         raise HTTPException(status_code=400, detail="Delegated user does not exist.")
+    if waiting_for_team_id and not db.get(Team, waiting_for_team_id):
+        raise HTTPException(status_code=400, detail="Waiting target team does not exist.")
+    if waiting_for_user_id and not db.get(User, waiting_for_user_id):
+        raise HTTPException(status_code=400, detail="Waiting target user does not exist.")
 
 
 def validate_task_state(

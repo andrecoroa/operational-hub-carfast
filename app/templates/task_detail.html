@@ -75,6 +75,7 @@
             <div><span>Origem</span><strong>{{ task_source_labels.get(task.source, task.source or "Manual") }}</strong></div>
             {% if task.status == "waiting" %}
               <div><span>Motivo de espera</span><strong>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason or "-") }}</strong></div>
+              <div><span>A aguardar por</span><strong>{{ waiting_for_user.name if waiting_for_user else (waiting_for_team.name if waiting_for_team else "-") }}</strong></div>
               <div><span>Detalhe</span><strong>{{ task.waiting_reason_detail or "-" }}</strong></div>
             {% endif %}
           </div>
@@ -189,7 +190,7 @@
               Responsável
               <select name="assigned_to_id">
                 <option value="">Por atribuir</option>
-                {% for user in users %}
+                {% for user in assignable_users %}
                   <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
                 {% endfor %}
               </select>
@@ -199,7 +200,7 @@
               <select name="delegated_to">
                 <option value="">Sem execução delegada</option>
                 <optgroup label="Pessoas">
-                  {% for user in users %}
+                  {% for user in assignable_users %}
                     {% set option_value = "user:" ~ user.id %}
                     <option value="{{ option_value }}" {% if delegation_value == option_value %}selected{% endif %}>{{ user.name }}</option>
                   {% endfor %}
@@ -219,6 +220,24 @@
                 {% for code, label in waiting_reasons %}
                   <option value="{{ code }}" {% if task.waiting_reason == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
+              </select>
+            </label>
+            <label>
+              A aguardar por
+              <select name="waiting_for">
+                <option value="">Sem destinatário</option>
+                <optgroup label="Pessoas">
+                  {% for user in users %}
+                    {% set option_value = "user:" ~ user.id %}
+                    <option value="{{ option_value }}" {% if waiting_for_value == option_value %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Equipas / filas">
+                  {% for team in teams %}
+                    {% set option_value = "team:" ~ team.id %}
+                    <option value="{{ option_value }}" {% if waiting_for_value == option_value %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </optgroup>
               </select>
             </label>
             <label>

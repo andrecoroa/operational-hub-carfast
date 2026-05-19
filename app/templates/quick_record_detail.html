@@ -214,7 +214,7 @@
                     Responsável
                     <select name="assigned_to_id">
                       <option value="">Por atribuir</option>
-                      {% for user in users %}
+                      {% for user in assignable_users %}
                         <option value="{{ user.id }}">{{ user.name }}</option>
                       {% endfor %}
                     </select>
@@ -224,7 +224,7 @@
                     <select name="delegated_to">
                       <option value="">Sem execução delegada</option>
                       <optgroup label="Pessoas">
-                        {% for user in users %}
+                        {% for user in assignable_users %}
                           <option value="user:{{ user.id }}">{{ user.name }}</option>
                         {% endfor %}
                       </optgroup>

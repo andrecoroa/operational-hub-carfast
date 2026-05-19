@@ -161,11 +161,17 @@
               {% set assigned_team = team_by_id.get(task.team_id) if task.team_id else none %}
               {% set delegated_user = user_by_id.get(task.delegated_to_user_id) if task.delegated_to_user_id else none %}
               {% set delegated_team = team_by_id.get(task.delegated_to_team_id) if task.delegated_to_team_id else none %}
+              {% set waiting_user = user_by_id.get(task.waiting_for_user_id) if task.waiting_for_user_id else none %}
+              {% set waiting_team = team_by_id.get(task.waiting_for_team_id) if task.waiting_for_team_id else none %}
               <div class="task-card-side">
                 <span class="task-board-owner">
                   <strong>{{ assigned_user.name if assigned_user else "Por atribuir" }}</strong>
                   <small>
-                    {% if delegated_user %}
+                    {% if task.status == "waiting" and waiting_user %}
+                      Aguarda: {{ waiting_user.name }}
+                    {% elif task.status == "waiting" and waiting_team %}
+                      Aguarda: {{ waiting_team.name }}
+                    {% elif delegated_user %}
                       Delegado: {{ delegated_user.name }}
                     {% elif delegated_team %}
                       Delegado: {{ delegated_team.name }}

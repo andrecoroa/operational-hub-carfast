@@ -36,6 +36,8 @@ class Task(TimestampMixin, Base):
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     delegated_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     delegated_to_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+    waiting_for_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    waiting_for_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     waiting_reason: Mapped[str | None] = mapped_column(String(80), index=True)
     waiting_reason_detail: Mapped[str | None] = mapped_column(Text)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

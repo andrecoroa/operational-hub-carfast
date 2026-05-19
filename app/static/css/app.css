@@ -1545,6 +1545,7 @@ a.metric:hover {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 7px 11px;
@@ -1554,9 +1555,25 @@ a.metric:hover {
   font-weight: 800;
 }
 
+.quick-filter-row a strong {
+  min-width: 24px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #eef1f6;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+
 .quick-filter-row a.active {
   border-color: #f0c6ba;
   background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+.quick-filter-row a.active strong {
+  background: #ffffff;
   color: var(--brand-dark);
 }
 
@@ -1578,6 +1595,65 @@ a.metric:hover {
 .duplicate-warning li span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.subtask-parent-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.subtask-parent-banner span {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.subtask-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.subtask-row {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr) 150px 90px;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
+}
+
+.subtask-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.subtask-row strong,
+.subtask-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtask-row div span,
+.subtask-row > span:last-child {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.compact-empty {
+  min-height: auto;
+  padding: 16px;
 }
 
 .task-board-groups {
@@ -2863,7 +2939,7 @@ a.metric:hover {
     grid-column: auto;
   }
 
-  .task-card-row.task-row-fixed .task-code-link,
+  .task-card-row.task-row-fixed .task-identity-block,
   .task-card-row.task-row-fixed .task-card-content,
   .task-card-row.task-row-fixed .task-board-owner,
   .task-card-row.task-row-fixed .task-board-priority,
@@ -2884,6 +2960,10 @@ a.metric:hover {
 
   .task-board-open {
     justify-self: start;
+  }
+
+  .subtask-row {
+    grid-template-columns: 1fr;
   }
 
   .compact-metrics {

@@ -23,6 +23,7 @@
         {% set feedback_entity_id = task.id %}
         {% set feedback_return_url = "/task-board/" ~ task.id %}
         {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
         <a class="button-link secondary-link" href="{{ task_manage_url }}">Voltar</a>
       </div>
     </header>
@@ -79,6 +80,47 @@
               <div><span>A aguardar por</span><strong>{{ waiting_for_user.name if waiting_for_user else (waiting_for_team.name if waiting_for_team else "-") }}</strong></div>
               <div><span>Detalhe</span><strong>{{ task.waiting_reason_detail or "-" }}</strong></div>
             {% endif %}
+          </div>
+        </article>
+
+        <article class="section workshop-summary-card">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Relações</p>
+              <h3>Tarefa mãe e subtarefas</h3>
+            </div>
+            <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+          </div>
+          {% if parent_task %}
+            <div class="subtask-parent-banner">
+              <span>Esta tarefa é subtarefa de</span>
+              <a class="table-link" href="/task-board/{{ parent_task.id }}">CF-TASK-{{ "%05d"|format(parent_task.id) }} · {{ parent_task.title }}</a>
+            </div>
+          {% endif %}
+          <div class="subtask-list">
+            {% for subtask in subtasks %}
+              {% set subtask_assigned_user = user_by_id.get(subtask.assigned_to_id) if subtask.assigned_to_id else None %}
+              {% set subtask_delegated_user = user_by_id.get(subtask.delegated_to_user_id) if subtask.delegated_to_user_id else None %}
+              {% set subtask_delegated_team = team_by_id.get(subtask.delegated_to_team_id) if subtask.delegated_to_team_id else None %}
+              <article class="subtask-row">
+                <a class="table-link" href="/task-board/{{ subtask.id }}">CF-TASK-{{ "%05d"|format(subtask.id) }}</a>
+                <div>
+                  <strong>{{ subtask.title }}</strong>
+                  <span>
+                    {{ subtask_assigned_user.name if subtask_assigned_user else "Por atribuir" }}
+                    {% if subtask_delegated_user %} · Delegado: {{ subtask_delegated_user.name }}{% endif %}
+                    {% if subtask_delegated_team %} · Delegado: {{ subtask_delegated_team.name }}{% endif %}
+                  </span>
+                </div>
+                <span class="pill status-{{ subtask.status }}">{{ task_status_labels.get(subtask.status, subtask.status) }}</span>
+                <span>{{ subtask.due_on or "Sem SLA" }}</span>
+              </article>
+            {% else %}
+              <div class="task-board-empty compact-empty">
+                <p>Sem subtarefas.</p>
+                <small>Cria subtarefas quando for preciso envolver outra pessoa ou equipa sem perder o contexto da tarefa principal.</small>
+              </div>
+            {% endfor %}
           </div>
         </article>
 

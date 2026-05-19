@@ -36,41 +36,33 @@
     {% endif %}
 
     <section class="metric-grid task-metrics">
-      <a class="metric" href="{{ manage_url }}">
-        <span class="metric-icon">#</span>
-        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas abertas</span></span>
+      <a class="metric" href="{{ manage_url }}?view=urgent">
+        <span class="metric-icon warn">!</span>
+        <span class="metric-detail"><strong>{{ metrics.urgent }}</strong><span>Urgentes</span></span>
       </a>
-      <a class="metric" href="#registos-rapidos">
-        <span class="metric-icon amber">•</span>
-        <span class="metric-detail"><strong>{{ metrics.quick_open }}</strong><span>Registos rápidos</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?status=in_execution">
-        <span class="metric-icon green">↗</span>
-        <span class="metric-detail"><strong>{{ metrics.in_treatment }}</strong><span>Em execução</span></span>
+      <a class="metric" href="{{ manage_url }}?view=overdue">
+        <span class="metric-icon amber">!</span>
+        <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Vencidas</span></span>
       </a>
       <a class="metric" href="{{ manage_url }}?view=due_today">
         <span class="metric-icon blue">✓</span>
         <span class="metric-detail"><strong>{{ metrics.due_today }}</strong><span>Limite hoje</span></span>
       </a>
-      <a class="metric" href="{{ manage_url }}?view=overdue">
-        <span class="metric-icon amber">!</span>
-        <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Atrasadas</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=archived">
-        <span class="metric-icon blue">%</span>
-        <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
+      <a class="metric" href="{{ manage_url }}?view=unassigned">
+        <span class="metric-icon">?</span>
+        <span class="metric-detail"><strong>{{ metrics.unassigned }}</strong><span>Sem responsável</span></span>
       </a>
     </section>
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
-      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}">Em aberto</a>
-      <a href="{{ manage_url }}?view=mine" class="{% if filters.view == 'mine' %}active{% endif %}">Minhas</a>
-      <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}">Sem responsável</a>
-      <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
-      <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
-      <a href="{{ manage_url }}?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}">Limite hoje</a>
-      <a href="{{ manage_url }}?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}">Arquivo</a>
-      <a href="{{ manage_url }}?view=all" class="{% if filters.view == 'all' %}active{% endif %}">Todas</a>
+      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}"><span>Em aberto</span><strong>{{ metrics.open }}</strong></a>
+      <a href="{{ manage_url }}?view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
+      <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}"><span>Sem responsável</span><strong>{{ metrics.unassigned }}</strong></a>
+      <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}"><span>Urgentes</span><strong>{{ metrics.urgent }}</strong></a>
+      <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}"><span>Vencidas</span><strong>{{ metrics.overdue }}</strong></a>
+      <a href="{{ manage_url }}?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}"><span>Limite hoje</span><strong>{{ metrics.due_today }}</strong></a>
+      <a href="{{ manage_url }}?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}"><span>Arquivo</span><strong>{{ metrics.archived }}</strong></a>
+      <a href="{{ manage_url }}?view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
     </nav>
 
     <section class="table-shell filter-panel" id="gestao-tarefas">

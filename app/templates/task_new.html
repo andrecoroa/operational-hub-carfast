@@ -40,6 +40,7 @@
       <form method="post" action="{% if form_mode == 'quick' %}/task-board/quick/new{% else %}/task-board/new{% endif %}" class="form-panel form-stack task-form compact-create-page">
         {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
         <input type="hidden" name="workspace" value="{{ workspace }}">
+        {% if form_values.parent_task_id %}<input type="hidden" name="parent_task_id" value="{{ form_values.parent_task_id }}">{% endif %}
         <div class="panel-heading">
           <p class="eyebrow">{% if form_mode == "quick" %}Captura rápida{% else %}Execução direta{% endif %}</p>
           <h3>{% if form_mode == "quick" %}Registo rápido - {{ workspace_label }}{% else %}Nova tarefa - {{ workspace_label }}{% endif %}</h3>
@@ -51,6 +52,12 @@
             {% endif %}
           </p>
         </div>
+        {% if parent_task %}
+          <div class="subtask-parent-banner">
+            <span>Subtarefa de</span>
+            <a class="table-link" href="/task-board/{{ parent_task.id }}">CF-TASK-{{ "%05d"|format(parent_task.id) }} · {{ parent_task.title }}</a>
+          </div>
+        {% endif %}
         <label>
           Assunto
           <input type="text" name="title" maxlength="200" required placeholder="{% if form_mode == 'quick' %}Ex.: Cliente informou ruído na viatura{% else %}Ex.: Ligar ao cliente sobre caução pendente{% endif %}" value="{{ form_values.title or '' }}">

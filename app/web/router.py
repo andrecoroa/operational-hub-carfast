@@ -90,6 +90,7 @@ WORKSHOP_STATUSES = [
     ("opening", "Abertura"),
     ("reception", "Receção"),
     ("history_check", "Verificar histórico"),
+    ("stellantis_service_box", "Revisão Stellantis / Service Box"),
     ("bsi_initial", "Registo de leitura técnica / BSI inicial"),
     ("diagnosis", "Diagnóstico"),
     ("technical_info", "Registo de informação técnica"),
@@ -3423,6 +3424,28 @@ def task_board_manage(
                 )
             )
             or 0,
+            "mine": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    or_(
+                        Task.assigned_to_id == user_id,
+                        Task.delegated_to_user_id == user_id,
+                        Task.waiting_for_user_id == user_id,
+                    ),
+                )
+            )
+            or 0,
+            "urgent": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.priority == "urgent",
+                )
+            )
+            or 0,
             "in_treatment": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
@@ -3473,6 +3496,7 @@ def task_board_manage(
                 select(func.count()).select_from(Task).where(workspace_task_filter, archived_condition)
             )
             or 0,
+            "all": db.scalar(select(func.count()).select_from(Task).where(workspace_task_filter)) or 0,
             "quick_open": db.scalar(
                 select(func.count()).select_from(QuickRecord).where(
                     QuickRecord.workspace == current_workspace,
@@ -3726,6 +3750,7 @@ def task_new_form(
     error: str | None = None,
     mode: str = "task",
     workspace: str = "operational",
+    parent_task_id: str = "",
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -3735,6 +3760,10 @@ def task_new_form(
     workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
+        parent_task = db.get(Task, parse_optional_int(parent_task_id)) if parse_optional_int(parent_task_id) else None
+        if parent_task:
+            current_workspace = workspace_for_task_type(parent_task.task_type)
+            workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         assignable_users = assignable_users_for_workspace(users, current_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -3755,7 +3784,18 @@ def task_new_form(
                 "form_values": {
                     "task_type": workspace_config["default_task_type"],
                     "record_type": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace][0][0],
+                    "parent_task_id": parent_task.id if parent_task else "",
+                    "priority": parent_task.priority if parent_task else "normal",
+                    "plate": parent_task.plate if parent_task else "",
+                    "station": parent_task.station if parent_task else "",
+                    "customer_name": parent_task.customer_name if parent_task else "",
+                    "customer_contact": parent_task.customer_contact if parent_task else "",
+                    "customer_email": parent_task.customer_email if parent_task else "",
+                    "customer_phone": parent_task.customer_phone if parent_task else "",
+                    "reservation_number": parent_task.reservation_number if parent_task else "",
+                    "contract_number": parent_task.contract_number if parent_task else "",
                 },
+                "parent_task": parent_task,
                 "duplicate_tasks": [],
                 "task_types": workspace_task_type_options(current_workspace),
                 "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
@@ -3877,6 +3917,7 @@ def quick_record_create(
                 "workspace_label": TASK_WORKSPACE_LABELS[clean_workspace],
                 "manage_url": task_workspace_manage_url(clean_workspace),
                 "form_values": form_values,
+                "parent_task": None,
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
                 "task_types": TASK_TYPES,
@@ -4206,6 +4247,7 @@ def task_create(
     station: str = Form(""),
     department: str = Form(""),
     external_source_id: str = Form(""),
+    parent_task_id: str = Form(""),
     description: str = Form(""),
     confirm_duplicate: str = Form(""),
 ):
@@ -4216,9 +4258,11 @@ def task_create(
     current_workspace = normalize_task_workspace(workspace)
     workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
     clean_title = title.strip()
+    parsed_parent_task_id = parse_optional_int(parent_task_id)
     if not clean_title:
         with SessionLocal() as db:
             current_user = db.get(User, user_id)
+            parent_task = db.get(Task, parsed_parent_task_id) if parsed_parent_task_id else None
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             assignable_users = assignable_users_for_workspace(users, current_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -4236,7 +4280,8 @@ def task_create(
                 "workspace_config": workspace_config,
                 "workspace_label": workspace_config["label"],
                 "manage_url": task_workspace_manage_url(current_workspace),
-                "form_values": {},
+                "form_values": {"parent_task_id": parent_task.id if parent_task else ""},
+                "parent_task": parent_task,
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
                 "task_types": workspace_task_type_options(current_workspace),
@@ -4251,6 +4296,7 @@ def task_create(
 
     with SessionLocal() as db:
         clean_plate = plate.strip().upper().replace(" ", "")
+        parent_task = db.get(Task, parsed_parent_task_id) if parsed_parent_task_id else None
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
         allowed_workspace_task_types = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
@@ -4262,7 +4308,7 @@ def task_create(
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
         if not is_assignment_allowed_for_workspace(db, assigned_user_id, workspace):
-            return RedirectResponse(f"/task-board/quick/{record_id}?error=assignment_not_allowed", status_code=303)
+            return RedirectResponse(f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed", status_code=303)
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
@@ -4270,11 +4316,12 @@ def task_create(
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
         if not is_assignment_allowed_for_workspace(db, delegated_user_id, workspace):
-            return RedirectResponse(f"/task-board/quick/{record_id}?error=assignment_not_allowed", status_code=303)
+            return RedirectResponse(f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed", status_code=303)
         if delegated_team_id and not db.get(Team, delegated_team_id):
             delegated_team_id = None
+        parent_task_redirect_id = parent_task.id if parent_task else None
         duplicate_tasks = []
-        if clean_plate and confirm_duplicate != "1":
+        if clean_plate and confirm_duplicate != "1" and not parent_task:
             duplicate_tasks = db.scalars(
                 select(Task)
                 .where(
@@ -4323,7 +4370,9 @@ def task_create(
                         "delegated_to": delegated_to,
                         "department": department,
                         "external_source_id": external_source_id,
+                        "parent_task_id": parent_task.id if parent_task else "",
                     },
+                    "parent_task": parent_task,
                     "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                     "task_sources": TASK_SOURCES,
                     "task_types": workspace_task_type_options(current_workspace),
@@ -4353,6 +4402,7 @@ def task_create(
             station=station.strip() or None,
             department=department.strip() or None,
             external_source_id=external_source_id.strip() or None,
+            parent_task_id=parent_task.id if parent_task else None,
             assigned_to_id=assigned_user_id,
             team_id=assigned_team_id,
             delegated_to_user_id=delegated_user_id,
@@ -4377,10 +4427,13 @@ def task_create(
             entity_type="task",
             entity_id=task.id,
             detail=f"Tarefa criada: {task.title}",
+            after_json={"parent_task_id": task.parent_task_id} if task.parent_task_id else None,
             user_id=user_id,
         )
         db.commit()
 
+    if parent_task_redirect_id:
+        return RedirectResponse(f"/task-board/{parent_task_redirect_id}?commented=1", status_code=303)
     return RedirectResponse(f"{task_workspace_manage_url(current_workspace)}?created=1", status_code=303)
 
 
@@ -4413,6 +4466,13 @@ def task_detail(
             linked_vehicle = db.get(Vehicle, int(task.entity_id))
         elif task.plate:
             linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate))
+        parent_task = db.get(Task, task.parent_task_id) if task.parent_task_id else None
+        subtasks = db.scalars(
+            select(Task)
+            .where(Task.parent_task_id == task.id)
+            .order_by(Task.id.desc(), Task.created_at.desc())
+            .limit(50)
+        ).all()
         documents = db.scalars(
             select(Document)
             .where(Document.task_id == task.id)
@@ -4423,6 +4483,7 @@ def task_detail(
         user_by_id = {item.id: item for item in users}
         assignable_users = assignable_users_for_workspace(users, task_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        team_by_id = {item.id: item for item in teams}
         assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
         assigned_team = db.get(Team, task.team_id) if task.team_id else None
         delegated_user = db.get(User, task.delegated_to_user_id) if task.delegated_to_user_id else None
@@ -4440,12 +4501,15 @@ def task_detail(
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
+                "parent_task": parent_task,
+                "subtasks": subtasks,
                 "documents": documents,
                 "users": users,
                 "assignable_users": assignable_users,
                 "current_user": current_user,
                 "user_by_id": user_by_id,
                 "teams": teams,
+                "team_by_id": team_by_id,
                 "assigned_user": assigned_user,
                 "assigned_team": assigned_team,
                 "delegated_user": delegated_user,

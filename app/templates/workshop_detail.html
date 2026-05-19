@@ -16,6 +16,7 @@
         {% set feedback_entity_id = process.id %}
         {% set feedback_return_url = "/workshop/" ~ process.id %}
         {% include "_pilot_actions.html" %}
+        <a class="button-link" href="/workshop/{{ process.id }}/report">Ver relatório</a>
         <a class="button-link secondary-link" href="/workshop/manage">Voltar</a>
       </div>
     </header>

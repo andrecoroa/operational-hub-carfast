@@ -2051,6 +2051,91 @@ def workshop_detail(
         )
 
 
+@web_router.get("/workshop/{process_id}/report", response_class=HTMLResponse)
+def workshop_report(request: Request, process_id: int):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop/manage", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        vehicle_snapshot = db.scalar(
+            select(VehicleExternalSnapshot)
+            .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
+            .order_by(VehicleExternalSnapshot.updated_at.desc())
+        )
+        services = db.scalars(
+            select(WorkshopProcessService)
+            .where(WorkshopProcessService.process_id == process.id)
+            .order_by(WorkshopProcessService.id)
+        ).all()
+        technical_readings = db.scalars(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.process_id == process.id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.is_(None),
+                WorkshopTechnicalReading.reading_date.desc(),
+                WorkshopTechnicalReading.id.desc(),
+            )
+        ).all()
+        evidences = db.scalars(
+            select(WorkshopProcessEvidence)
+            .where(WorkshopProcessEvidence.process_id == process.id)
+            .order_by(WorkshopProcessEvidence.id.desc())
+        ).all()
+        incidents = db.scalars(
+            select(Incident)
+            .where(Incident.workshop_process_id == process.id)
+            .order_by(Incident.id.desc())
+        ).all()
+        documents = db.scalars(
+            select(Document)
+            .where(Document.workshop_process_id == process.id)
+            .order_by(Document.id.desc())
+        ).all()
+        notes = db.scalars(
+            select(WorkshopProcessNote)
+            .where(WorkshopProcessNote.process_id == process.id)
+            .order_by(WorkshopProcessNote.created_at.asc())
+        ).all()
+
+        return templates.TemplateResponse(
+            request,
+            "workshop_report.html",
+            {
+                "process": process,
+                "vehicle": vehicle,
+                "vehicle_context": rentway_vehicle_context(vehicle_snapshot),
+                "services": services,
+                "technical_readings": technical_readings,
+                "evidences": evidences,
+                "incidents": incidents,
+                "documents": documents,
+                "notes": notes,
+                "status_labels": WORKSHOP_STATUS_LABELS,
+                "decision_labels": WORKSHOP_DECISION_LABELS,
+                "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                "service_family_labels": WORKSHOP_SERVICE_FAMILY_LABELS,
+                "service_detail_labels": WORKSHOP_SERVICE_DETAIL_LABELS,
+                "service_axis_labels": WORKSHOP_SERVICE_AXIS_LABELS,
+                "service_status_labels": WORKSHOP_SERVICE_STATUS_LABELS,
+                "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+                "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
+                "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
+                "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
+                "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
+                "incident_type_labels": INCIDENT_TYPE_LABELS,
+                "incident_category_labels": INCIDENT_CATEGORY_LABELS,
+                "incident_severity_labels": INCIDENT_SEVERITY_LABELS,
+                "document_status_labels": DOCUMENT_STATUS_LABELS,
+                "document_area_labels": DOCUMENT_AREA_LABELS,
+                "document_type_labels": DOCUMENT_TYPE_LABELS,
+            },
+        )
+
+
 @web_router.post("/workshop/{process_id}/notes", response_class=HTMLResponse)
 def workshop_add_note(
     request: Request,

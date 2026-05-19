@@ -136,7 +136,7 @@
         </div>
         <div class="task-board-list">
           {% for task in tasks %}
-            <article class="task-card-row">
+            <article class="task-card-row task-row-fixed">
               <div class="task-card-main">
                 <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
                 <div class="task-card-content">

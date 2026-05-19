@@ -1569,6 +1569,45 @@ a.metric:hover {
   background: #ffffff;
 }
 
+.task-card-row.task-row-fixed {
+  grid-template-columns: 170px minmax(380px, 1fr) 220px 88px 160px 112px 32px;
+  column-gap: 16px;
+}
+
+.task-card-row.task-row-fixed .task-card-main,
+.task-card-row.task-row-fixed .task-card-side {
+  display: contents;
+}
+
+.task-card-row.task-row-fixed .task-code-link {
+  grid-column: 1;
+}
+
+.task-card-row.task-row-fixed .task-card-content {
+  grid-column: 2;
+}
+
+.task-card-row.task-row-fixed .task-board-owner {
+  grid-column: 3;
+}
+
+.task-card-row.task-row-fixed .task-board-priority {
+  grid-column: 4;
+}
+
+.task-card-row.task-row-fixed .pill {
+  grid-column: 5;
+  justify-self: start;
+}
+
+.task-card-row.task-row-fixed .task-board-sla {
+  grid-column: 6;
+}
+
+.task-card-row.task-row-fixed .task-board-open {
+  grid-column: 7;
+}
+
 .task-card-row:hover {
   background: #fbfcfc;
 }
@@ -2635,6 +2674,27 @@ a.metric:hover {
   .task-card-row,
   .task-card-side {
     grid-template-columns: 1fr;
+  }
+
+  .task-card-row.task-row-fixed {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .task-card-row.task-row-fixed .task-card-main,
+  .task-card-row.task-row-fixed .task-card-side {
+    display: grid;
+    grid-column: auto;
+  }
+
+  .task-card-row.task-row-fixed .task-code-link,
+  .task-card-row.task-row-fixed .task-card-content,
+  .task-card-row.task-row-fixed .task-board-owner,
+  .task-card-row.task-row-fixed .task-board-priority,
+  .task-card-row.task-row-fixed .pill,
+  .task-card-row.task-row-fixed .task-board-sla,
+  .task-card-row.task-row-fixed .task-board-open {
+    grid-column: auto;
   }
 
   .task-card-row .task-card-main {

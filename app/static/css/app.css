@@ -2365,6 +2365,39 @@ a.metric:hover {
   min-height: 92px;
 }
 
+.phase-action-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.phase-action-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.phase-action-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.phase-action-card strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.phase-action-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.phase-action-card textarea {
+  min-height: 76px;
+}
+
 .workshop-info-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

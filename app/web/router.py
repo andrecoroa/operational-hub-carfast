@@ -9,6 +9,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 
+from app.core.change_notice import (
+    CHANGE_NOTICE_SECTIONS,
+    CHANGE_NOTICE_SESSION_KEY,
+    CHANGE_NOTICE_TITLE,
+    CHANGE_NOTICE_VERSION,
+)
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import User
@@ -4844,6 +4850,45 @@ def login_submit(
         )
         db.commit()
     return RedirectResponse("/", status_code=303)
+
+
+def safe_internal_next(value: str | None) -> str:
+    clean_value = (value or "/").strip()
+    if not clean_value.startswith("/") or clean_value.startswith("//"):
+        return "/"
+    if clean_value.startswith("/login") or clean_value.startswith("/change-notice"):
+        return "/"
+    return clean_value
+
+
+@web_router.get("/change-notice", response_class=HTMLResponse)
+def change_notice(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "change_notice.html",
+        {
+            "title": CHANGE_NOTICE_TITLE,
+            "notice_title": CHANGE_NOTICE_TITLE,
+            "notice_version": CHANGE_NOTICE_VERSION,
+            "notice_sections": CHANGE_NOTICE_SECTIONS,
+            "next_url": safe_internal_next(request.query_params.get("next")),
+        },
+    )
+
+
+@web_router.post("/change-notice", response_class=HTMLResponse)
+def confirm_change_notice(
+    request: Request,
+    next_url: str = Form("/"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    request.session[CHANGE_NOTICE_SESSION_KEY] = CHANGE_NOTICE_VERSION
+    return RedirectResponse(safe_internal_next(next_url), status_code=303)
 
 
 @web_router.post("/logout")

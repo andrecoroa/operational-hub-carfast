@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="notice-page">
+  <section class="notice-modal" role="dialog" aria-labelledby="notice-title" aria-modal="true">
+    <div class="notice-header">
+      <p class="eyebrow">Leitura obrigatória</p>
+      <h1 id="notice-title">{{ notice_title }}</h1>
+      <p>Antes de entrar na plataforma, confirma que leste as alterações recentes ao Centro de tarefas e ao processo de oficina.</p>
+    </div>
+
+    <div class="notice-content">
+      {% for section in notice_sections %}
+        <article class="notice-section">
+          <h2>{{ section["title"] }}</h2>
+          <ul>
+            {% for item in section["items"] %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </article>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="/change-notice" class="notice-confirm-form">
+      <input type="hidden" name="next_url" value="{{ next_url }}">
+      <label class="notice-check">
+        <input type="checkbox" required>
+        <span>Confirmo que li e compreendi as alterações.</span>
+      </label>
+      <button type="submit">Confirmar leitura e entrar</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

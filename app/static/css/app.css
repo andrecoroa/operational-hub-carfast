@@ -516,6 +516,25 @@ button:hover,
   min-width: min(650px, 52vw);
 }
 
+.task-header-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.task-header-meta > strong {
+  margin-right: 4px;
+  color: var(--ink);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.task-header-meta .pill {
+  margin: 0;
+}
+
 .global-search {
   position: relative;
   width: min(420px, 100%);

@@ -215,14 +215,20 @@ INCIDENT_EVIDENCE_TYPE_LABELS = dict(INCIDENT_EVIDENCE_TYPES)
 
 TASK_STATUSES = [
     ("new", "Nova"),
-    ("in_treatment", "Em tratamento"),
+    ("in_execution", "Em execução"),
+    ("delegated", "Execução delegada"),
     ("waiting", "A aguardar"),
+    ("execution_done", "Execução concluída"),
+    ("ready_validation", "Pronta para validação"),
     ("closed", "Fechada"),
+    ("cancelled", "Cancelada"),
+    ("no_action_needed", "Sem ação necessária"),
 ]
 
 TASK_STATUS_LABELS = dict(TASK_STATUSES)
 TASK_LEGACY_STATUS_LABELS = {
     "analysis": "Em análise",
+    "in_treatment": "Em tratamento",
     "waiting_customer": "A aguardar cliente",
     "waiting_internal": "A aguardar interno",
     "waiting_supplier": "A aguardar fornecedor",
@@ -242,6 +248,17 @@ PRIORITY_LABELS = dict(PRIORITIES)
 PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
+TASK_WAITING_REASONS = [
+    ("customer", "Cliente"),
+    ("partner_broker", "Parceiro / Broker"),
+    ("other_entity", "Outro tipo de entidade"),
+    ("clarification", "Esclarecimento"),
+    ("validation", "Validação"),
+    ("decision", "Decisão"),
+    ("other", "Outro motivo"),
+]
+TASK_WAITING_REASON_LABELS = dict(TASK_WAITING_REASONS)
 
 TASK_TYPES = [
     ("operational_task", "Tarefa operacional"),
@@ -3029,7 +3046,7 @@ def task_board_manage(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
-                    Task.status == "in_treatment",
+                    Task.status.in_(("in_execution", "delegated")),
                 )
             )
             or 0,
@@ -3039,7 +3056,6 @@ def task_board_manage(
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
-                    Task.team_id.is_(None),
                 )
             )
             or 0,
@@ -3091,13 +3107,13 @@ def task_board_manage(
         elif view == "all":
             stmt = select(Task).where(workspace_task_filter)
         elif view == "mine":
-            stmt = stmt.where(Task.assigned_to_id == user_id)
+            stmt = stmt.where(or_(Task.assigned_to_id == user_id, Task.delegated_to_user_id == user_id))
         elif view == "team":
             stmt = stmt.where(Task.team_id.is_not(None))
         elif view == "urgent":
             stmt = stmt.where(Task.priority == "urgent")
         elif view == "unassigned":
-            stmt = stmt.where(Task.assigned_to_id.is_(None), Task.team_id.is_(None))
+            stmt = stmt.where(Task.assigned_to_id.is_(None))
         elif view == "overdue":
             stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
         elif view == "due_today":
@@ -3340,7 +3356,7 @@ def task_new_form(
                 "users": users,
                 "current_user": current_user,
                 "teams": teams,
-                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "error": None,
                 "form_mode": "quick" if mode == "quick" else "task",
                 "workspace": current_workspace,
                 "workspace_config": workspace_config,
@@ -3357,6 +3373,7 @@ def task_new_form(
                 "task_sources": TASK_SOURCES,
                 "task_categories": TASK_CATEGORIES,
                 "priorities": PRIORITIES,
+                "delegation_value": "",
             },
         )
 
@@ -3670,6 +3687,7 @@ def quick_record_convert(
     priority: str = Form("normal"),
     assigned_to_id: str = Form(""),
     team_id: str = Form(""),
+    delegated_to: str = Form(""),
     due_on: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -3693,9 +3711,11 @@ def quick_record_convert(
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
-        assigned_team_id = assigned_team_id or default_team_id(db, workspace_config["default_team_code"])
-        if not assigned_user_id and not assigned_team_id:
-            return RedirectResponse(f"/task-board/quick/{record_id}?error=missing_destination", status_code=303)
+        delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
+        if delegated_user_id and not db.get(User, delegated_user_id):
+            delegated_user_id = None
+        if delegated_team_id and not db.get(Team, delegated_team_id):
+            delegated_team_id = None
 
         task = Task(
             title=title.strip() or record.title,
@@ -3715,6 +3735,8 @@ def quick_record_convert(
             entity_id=record.entity_id,
             assigned_to_id=assigned_user_id,
             team_id=assigned_team_id,
+            delegated_to_user_id=delegated_user_id,
+            delegated_to_team_id=delegated_team_id,
             created_by_id=user_id,
             due_on=parse_optional_date(due_on),
         )
@@ -3768,6 +3790,7 @@ def task_create(
     priority: str = Form("normal"),
     assigned_to_id: str = Form(""),
     team_id: str = Form(""),
+    delegated_to: str = Form(""),
     due_on: str = Form(""),
     customer_name: str = Form(""),
     customer_contact: str = Form(""),
@@ -3815,6 +3838,7 @@ def task_create(
                 "workspaces": TASK_WORKSPACES,
                 "task_categories": TASK_CATEGORIES,
                 "priorities": PRIORITIES,
+                "delegation_value": delegated_to,
             },
             status_code=400,
         )
@@ -3834,12 +3858,11 @@ def task_create(
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
-        assigned_team_id = assigned_team_id or default_team_id(db, workspace_config["default_team_code"])
-        if not assigned_user_id and not assigned_team_id:
-            return RedirectResponse(
-                f"{task_workspace_new_url(current_workspace, 'task')}&error=missing_destination",
-                status_code=303,
-            )
+        delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
+        if delegated_user_id and not db.get(User, delegated_user_id):
+            delegated_user_id = None
+        if delegated_team_id and not db.get(Team, delegated_team_id):
+            delegated_team_id = None
         duplicate_tasks = []
         if clean_plate and confirm_duplicate != "1":
             duplicate_tasks = db.scalars(
@@ -3885,7 +3908,7 @@ def task_create(
                         "reservation_number": reservation_number,
                         "contract_number": contract_number,
                         "assigned_to_id": assigned_to_id,
-                        "team_id": team_id,
+                        "delegated_to": delegated_to,
                         "department": department,
                         "external_source_id": external_source_id,
                     },
@@ -3920,6 +3943,8 @@ def task_create(
             external_source_id=external_source_id.strip() or None,
             assigned_to_id=assigned_user_id,
             team_id=assigned_team_id,
+            delegated_to_user_id=delegated_user_id,
+            delegated_to_team_id=delegated_team_id,
             created_by_id=user_id,
             due_on=parse_optional_date(due_on),
         )
@@ -3987,6 +4012,8 @@ def task_detail(
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
         assigned_team = db.get(Team, task.team_id) if task.team_id else None
+        delegated_user = db.get(User, task.delegated_to_user_id) if task.delegated_to_user_id else None
+        delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
         return templates.TemplateResponse(
             request,
             "task_detail.html",
@@ -4005,11 +4032,16 @@ def task_detail(
                 "teams": teams,
                 "assigned_user": assigned_user,
                 "assigned_team": assigned_team,
+                "delegated_user": delegated_user,
+                "delegated_team": delegated_team,
+                "delegation_value": format_delegation_target(task.delegated_to_user_id, task.delegated_to_team_id),
                 "commented": commented,
                 "feedback_saved": feedback_saved,
-                "error": "Escolhe uma pessoa responsável ou uma equipa/fila." if error == "missing_destination" else None,
+                "error": task_detail_error_message(error),
                 "task_statuses": TASK_STATUSES,
                 "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
+                "waiting_reasons": TASK_WAITING_REASONS,
+                "waiting_reason_labels": TASK_WAITING_REASON_LABELS,
                 "priorities": PRIORITIES,
                 "priority_labels": PRIORITY_DISPLAY_LABELS,
                 "task_types": TASK_TYPES,
@@ -4037,6 +4069,9 @@ def task_update(
     subcategory: str | None = Form(None),
     assigned_to_id: str | None = Form(None),
     team_id: str | None = Form(None),
+    delegated_to: str = Form(""),
+    waiting_reason: str = Form(""),
+    waiting_reason_detail: str = Form(""),
     due_on: str = Form(""),
     department: str | None = Form(None),
     station: str = Form(""),
@@ -4055,6 +4090,8 @@ def task_update(
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        current_user = db.get(User, user_id)
+        can_supervise = can_supervise_task(db, current_user, task)
         clean_category = (category.strip() if category else None) or task.category or "operations"
         if clean_category not in TASK_CATEGORY_LABELS:
             clean_category = task.category or "operations"
@@ -4067,10 +4104,33 @@ def task_update(
         assigned_team_id = parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
-        if not assigned_user_id and not assigned_team_id:
-            assigned_user_id = task.assigned_to_id
-            assigned_team_id = task.team_id
+        delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
+        if delegated_user_id and not db.get(User, delegated_user_id):
+            delegated_user_id = None
+        if delegated_team_id and not db.get(Team, delegated_team_id):
+            delegated_team_id = None
         parsed_due_on = parse_optional_date(due_on)
+        clean_waiting_reason = waiting_reason.strip()
+        clean_waiting_reason_detail = waiting_reason_detail.strip()
+        has_delegate_changed = (
+            str(task.delegated_to_user_id or "") != str(delegated_user_id or "")
+            or str(task.delegated_to_team_id or "") != str(delegated_team_id or "")
+        )
+
+        if status in TASK_RESPONSIBLE_ONLY_STATUSES and not can_supervise:
+            return task_update_error_url(task_id, "responsible_required")
+        if (status == "delegated" or has_delegate_changed) and not can_supervise:
+            return task_update_error_url(task_id, "delegation_not_allowed")
+        if status == "delegated" and not delegated_user_id and not delegated_team_id:
+            return task_update_error_url(task_id, "delegation_required")
+        if status == "waiting":
+            if clean_waiting_reason not in TASK_WAITING_REASON_LABELS:
+                return task_update_error_url(task_id, "waiting_reason_required")
+            if clean_waiting_reason == "other" and not clean_waiting_reason_detail:
+                return task_update_error_url(task_id, "waiting_reason_detail_required")
+        else:
+            clean_waiting_reason = ""
+            clean_waiting_reason_detail = ""
 
         changes = [
             ("status", task.status, status),
@@ -4080,6 +4140,10 @@ def task_update(
             ("subcategory", task.subcategory, clean_subcategory),
             ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
             ("team_id", str(task.team_id or ""), str(assigned_team_id or "")),
+            ("delegated_to_user_id", str(task.delegated_to_user_id or ""), str(delegated_user_id or "")),
+            ("delegated_to_team_id", str(task.delegated_to_team_id or ""), str(delegated_team_id or "")),
+            ("waiting_reason", task.waiting_reason, clean_waiting_reason),
+            ("waiting_reason_detail", task.waiting_reason_detail, clean_waiting_reason_detail),
             ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
             ("department", task.department, clean_department),
             ("station", task.station, station.strip()),
@@ -4092,6 +4156,10 @@ def task_update(
         task.subcategory = clean_subcategory or None
         task.assigned_to_id = assigned_user_id
         task.team_id = assigned_team_id
+        task.delegated_to_user_id = delegated_user_id
+        task.delegated_to_team_id = delegated_team_id
+        task.waiting_reason = clean_waiting_reason or None
+        task.waiting_reason_detail = clean_waiting_reason_detail or None
         task.due_on = parsed_due_on
         task.department = clean_department or None
         task.station = station.strip() or None
@@ -4174,6 +4242,8 @@ def task_add_comment(
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
             assigned_team = db.get(Team, task.team_id) if task.team_id else None
+            delegated_user = db.get(User, task.delegated_to_user_id) if task.delegated_to_user_id else None
+            delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
             task_workspace = workspace_for_task_type(task.task_type)
             return templates.TemplateResponse(
                 request,
@@ -4192,10 +4262,15 @@ def task_add_comment(
                     "teams": teams,
                     "assigned_user": assigned_user,
                     "assigned_team": assigned_team,
+                    "delegated_user": delegated_user,
+                    "delegated_team": delegated_team,
+                    "delegation_value": format_delegation_target(task.delegated_to_user_id, task.delegated_to_team_id),
                     "commented": None,
                     "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
                     "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
+                    "waiting_reasons": TASK_WAITING_REASONS,
+                    "waiting_reason_labels": TASK_WAITING_REASON_LABELS,
                     "priorities": PRIORITIES,
                     "priority_labels": PRIORITY_DISPLAY_LABELS,
                     "task_types": TASK_TYPES,
@@ -4297,6 +4372,9 @@ def task_close(request: Request, task_id: int):
         task = db.get(Task, task_id)
         task_workspace = workspace_for_task_type(task.task_type) if task else "operational"
         if task and not task.closed_at:
+            current_user = db.get(User, user_id)
+            if not can_supervise_task(db, current_user, task):
+                return task_update_error_url(task_id, "responsible_required")
             old_status = task.status
             task.status = "closed"
             task.resolved_at = task.resolved_at or datetime.now(UTC)
@@ -4384,6 +4462,45 @@ def default_team_id(db, code: str) -> int | None:
     return team.id if team else None
 
 
+def parse_delegation_target(value: str | None) -> tuple[int | None, int | None]:
+    clean_value = (value or "").strip()
+    if not clean_value:
+        return None, None
+    target_kind, separator, target_id = clean_value.partition(":")
+    if not separator:
+        return None, None
+    try:
+        parsed_id = int(target_id)
+    except ValueError:
+        return None, None
+    if target_kind == "user":
+        return parsed_id, None
+    if target_kind == "team":
+        return None, parsed_id
+    return None, None
+
+
+def format_delegation_target(user_id: int | None, team_id: int | None) -> str:
+    if user_id:
+        return f"user:{user_id}"
+    if team_id:
+        return f"team:{team_id}"
+    return ""
+
+
+def can_supervise_task(db, user: User | None, task: Task) -> bool:
+    if not user:
+        return False
+    if task.assigned_to_id and task.assigned_to_id == user.id:
+        return True
+    permissions = get_user_permission_codes(db, user)
+    return bool({"admin.manage", "users.manage", "settings.manage"} & permissions)
+
+
+def task_update_error_url(task_id: int, error: str) -> RedirectResponse:
+    return RedirectResponse(f"/task-board/{task_id}?error={error}", status_code=303)
+
+
 def external_client_key(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if forwarded_for:
@@ -4432,6 +4549,16 @@ def task_detail_error_message(error: str | None) -> str | None:
         return "Escolhe uma pessoa responsável ou uma equipa/fila."
     if error == "missing_document_fields":
         return "Indica título e pelo menos um link para associar o documento."
+    if error == "delegation_required":
+        return "Para colocar em execução delegada, seleciona primeiro quem executa por delegação."
+    if error == "waiting_reason_required":
+        return "Para colocar a tarefa a aguardar, seleciona o motivo."
+    if error == "waiting_reason_detail_required":
+        return "Quando o motivo é outro, descreve o motivo em texto."
+    if error == "responsible_required":
+        return "Este estado só pode ser colocado pelo responsável da tarefa ou por um perfil autorizado."
+    if error == "delegation_not_allowed":
+        return "Só o responsável da tarefa ou um perfil autorizado pode delegar a execução."
     return None
 
 

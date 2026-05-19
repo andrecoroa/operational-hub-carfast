@@ -44,9 +44,9 @@
         <span class="metric-icon amber">•</span>
         <span class="metric-detail"><strong>{{ metrics.quick_open }}</strong><span>Registos rápidos</span></span>
       </a>
-      <a class="metric" href="{{ manage_url }}?status=in_treatment">
+      <a class="metric" href="{{ manage_url }}?status=in_execution">
         <span class="metric-icon green">↗</span>
-        <span class="metric-detail"><strong>{{ metrics.in_treatment }}</strong><span>Em tratamento</span></span>
+        <span class="metric-detail"><strong>{{ metrics.in_treatment }}</strong><span>Em execução</span></span>
       </a>
       <a class="metric" href="{{ manage_url }}?view=due_today">
         <span class="metric-icon blue">✓</span>
@@ -64,6 +64,7 @@
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
       <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}">Em aberto</a>
+      <a href="{{ manage_url }}?view=mine" class="{% if filters.view == 'mine' %}active{% endif %}">Minhas</a>
       <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}">Sem responsável</a>
       <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}">Urgentes</a>
       <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}">Vencidas</a>
@@ -153,10 +154,20 @@
               </div>
               {% set assigned_user = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else none %}
               {% set assigned_team = team_by_id.get(task.team_id) if task.team_id else none %}
+              {% set delegated_user = user_by_id.get(task.delegated_to_user_id) if task.delegated_to_user_id else none %}
+              {% set delegated_team = team_by_id.get(task.delegated_to_team_id) if task.delegated_to_team_id else none %}
               <div class="task-card-side">
                 <span class="task-board-owner">
-                  <strong>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Sem responsável") }}</strong>
-                  {% if assigned_user and assigned_team %}<small>{{ assigned_team.name }}</small>{% elif not assigned_user and not assigned_team %}<small>Atribuir</small>{% endif %}
+                  <strong>{{ assigned_user.name if assigned_user else "Por atribuir" }}</strong>
+                  <small>
+                    {% if delegated_user %}
+                      Delegado: {{ delegated_user.name }}
+                    {% elif delegated_team %}
+                      Delegado: {{ delegated_team.name }}
+                    {% else %}
+                      Sem delegação
+                    {% endif %}
+                  </small>
                 </span>
                 <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
                 <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>

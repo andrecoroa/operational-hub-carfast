@@ -16,6 +16,10 @@ class TaskBase(ApiModel):
     entity_id: str | None = Field(default=None, max_length=120)
     team_id: int | None = None
     assigned_to_id: int | None = None
+    delegated_to_user_id: int | None = None
+    delegated_to_team_id: int | None = None
+    waiting_reason: str | None = Field(default=None, max_length=80)
+    waiting_reason_detail: str | None = None
     due_on: date | None = None
 
 
@@ -34,6 +38,10 @@ class TaskUpdate(ApiModel):
     entity_id: str | None = Field(default=None, max_length=120)
     team_id: int | None = None
     assigned_to_id: int | None = None
+    delegated_to_user_id: int | None = None
+    delegated_to_team_id: int | None = None
+    waiting_reason: str | None = Field(default=None, max_length=80)
+    waiting_reason_detail: str | None = None
     due_on: date | None = None
 
 

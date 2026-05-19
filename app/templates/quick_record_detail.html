@@ -200,15 +200,8 @@
                   Título da tarefa
                   <input type="text" name="title" maxlength="200" value="{{ record.title }}" required>
                 </label>
+                <input type="hidden" name="task_type" value="{{ task_types[0][0] if task_types else 'operational_task' }}">
                 <div class="compact-form-grid two-col">
-                  <label>
-                    Natureza
-                    <select name="task_type">
-                      {% for code, label in task_types %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
                   <label>
                     Prioridade
                     <select name="priority">
@@ -220,19 +213,26 @@
                   <label>
                     Responsável
                     <select name="assigned_to_id">
-                      <option value="">Sem responsável direto</option>
+                      <option value="">Por atribuir</option>
                       {% for user in users %}
                         <option value="{{ user.id }}">{{ user.name }}</option>
                       {% endfor %}
                     </select>
                   </label>
                   <label>
-                    Equipa/Fila
-                    <select name="team_id">
-                      <option value="">Usar fila padrão</option>
-                      {% for team in teams %}
-                        <option value="{{ team.id }}">{{ team.name }}</option>
-                      {% endfor %}
+                    Execução delegada a
+                    <select name="delegated_to">
+                      <option value="">Sem execução delegada</option>
+                      <optgroup label="Pessoas">
+                        {% for user in users %}
+                          <option value="user:{{ user.id }}">{{ user.name }}</option>
+                        {% endfor %}
+                      </optgroup>
+                      <optgroup label="Equipas / filas">
+                        {% for team in teams %}
+                          <option value="team:{{ team.id }}">{{ team.name }}</option>
+                        {% endfor %}
+                      </optgroup>
                     </select>
                   </label>
                   <label>

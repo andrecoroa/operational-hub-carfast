@@ -1549,6 +1549,8 @@ a.metric:hover {
 .task-board-list {
   display: grid;
   padding: 0;
+  max-height: 504px;
+  overflow-y: auto;
 }
 
 .compact-task-list .is-extra {
@@ -1560,7 +1562,8 @@ a.metric:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  min-height: 78px;
+  min-height: 84px;
+  height: 84px;
   border-bottom: 1px solid var(--line);
   padding: 12px 18px;
   background: #ffffff;
@@ -1634,6 +1637,7 @@ a.metric:hover {
 .table-note-clamp {
   display: -webkit-box;
   overflow: hidden;
+  line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -2436,6 +2440,7 @@ a.metric:hover {
 .status-decision,
 .status-waiting_analysis,
 .status-waiting_parts,
+.status-waiting,
 .status-waiting_customer,
 .status-waiting_internal,
 .status-waiting_supplier,
@@ -2445,8 +2450,12 @@ a.metric:hover {
 }
 
 .status-in_progress,
+.status-in_execution,
+.status-delegated,
 .status-in_treatment,
 .status-validation,
+.status-execution_done,
+.status-ready_validation,
 .status-answered,
 .status-resolved {
   background: var(--brand-soft);

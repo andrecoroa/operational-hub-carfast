@@ -11,10 +11,22 @@ from app.models.tasks import Task, TaskComment, TaskHistory
 from app.models.organization import Team
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
 from app.services.audit import record_audit
+from app.services.authorization import get_user_permission_codes
 
 router = APIRouter(prefix="/tasks")
 TaskReader = Annotated[object, Depends(require_permission("tasks.read"))]
 TaskWriter = Annotated[object, Depends(require_permission("tasks.write"))]
+TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
+TASK_WAITING_REASONS = {
+    "customer",
+    "partner_broker",
+    "other_entity",
+    "clarification",
+    "validation",
+    "decision",
+    "other",
+}
 
 
 @router.get("", response_model=list[TaskRead])
@@ -53,9 +65,8 @@ def create_task(
     current_user: CurrentUser,
     _: TaskWriter = None,
 ):
-    if not payload.team_id and not payload.assigned_to_id:
-        raise HTTPException(status_code=400, detail="Task requires an assigned user or team.")
-    validate_task_links(db, payload.team_id, payload.assigned_to_id)
+    validate_task_links(db, payload.team_id, payload.assigned_to_id, payload.delegated_to_team_id, payload.delegated_to_user_id)
+    validate_task_state(payload.status, payload.waiting_reason, payload.waiting_reason_detail, payload.delegated_to_user_id, payload.delegated_to_team_id)
     task = Task(**payload.model_dump(), created_by_id=current_user.id)
     db.add(task)
     db.flush()
@@ -94,11 +105,33 @@ def update_task(
         raise HTTPException(status_code=404, detail="Task not found.")
 
     changes = payload.model_dump(exclude_unset=True)
-    validate_task_links(db, changes.get("team_id"), changes.get("assigned_to_id"))
-    next_team_id = changes.get("team_id", task.team_id)
-    next_assigned_to_id = changes.get("assigned_to_id", task.assigned_to_id)
-    if not next_team_id and not next_assigned_to_id:
-        raise HTTPException(status_code=400, detail="Task requires an assigned user or team.")
+    validate_task_links(
+        db,
+        changes.get("team_id"),
+        changes.get("assigned_to_id"),
+        changes.get("delegated_to_team_id"),
+        changes.get("delegated_to_user_id"),
+    )
+    next_status = changes.get("status", task.status)
+    next_waiting_reason = changes.get("waiting_reason", task.waiting_reason)
+    next_waiting_reason_detail = changes.get("waiting_reason_detail", task.waiting_reason_detail)
+    next_delegated_user_id = changes.get("delegated_to_user_id", task.delegated_to_user_id)
+    next_delegated_team_id = changes.get("delegated_to_team_id", task.delegated_to_team_id)
+    if next_status in TASK_RESPONSIBLE_ONLY_STATUSES and not can_supervise_task(db, current_user, task):
+        raise HTTPException(status_code=403, detail="Only the responsible user or an authorized profile can set this status.")
+    if (
+        "delegated_to_user_id" in changes
+        or "delegated_to_team_id" in changes
+        or next_status == "delegated"
+    ) and not can_supervise_task(db, current_user, task):
+        raise HTTPException(status_code=403, detail="Only the responsible user or an authorized profile can delegate execution.")
+    validate_task_state(
+        next_status,
+        next_waiting_reason,
+        next_waiting_reason_detail,
+        next_delegated_user_id,
+        next_delegated_team_id,
+    )
 
     before = {
         "status": task.status,
@@ -111,7 +144,7 @@ def update_task(
         setattr(task, field, value)
         record_task_history(db, task.id, current_user.id, field, old_value, value)
 
-    if changes.get("status") in {"done", "cancelled"} and task.closed_at is None:
+    if changes.get("status") in TASK_ARCHIVE_STATUSES and task.closed_at is None:
         task.closed_at = datetime.now(timezone.utc)
 
     record_audit(
@@ -166,11 +199,44 @@ def create_task_comment(
     return comment
 
 
-def validate_task_links(db: DbSession, team_id: int | None, assigned_to_id: int | None) -> None:
+def validate_task_links(
+    db: DbSession,
+    team_id: int | None,
+    assigned_to_id: int | None,
+    delegated_to_team_id: int | None = None,
+    delegated_to_user_id: int | None = None,
+) -> None:
     if team_id and not db.get(Team, team_id):
         raise HTTPException(status_code=400, detail="Team does not exist.")
     if assigned_to_id and not db.get(User, assigned_to_id):
         raise HTTPException(status_code=400, detail="Assigned user does not exist.")
+    if delegated_to_team_id and not db.get(Team, delegated_to_team_id):
+        raise HTTPException(status_code=400, detail="Delegated team does not exist.")
+    if delegated_to_user_id and not db.get(User, delegated_to_user_id):
+        raise HTTPException(status_code=400, detail="Delegated user does not exist.")
+
+
+def validate_task_state(
+    status_value: str | None,
+    waiting_reason: str | None,
+    waiting_reason_detail: str | None,
+    delegated_to_user_id: int | None,
+    delegated_to_team_id: int | None,
+) -> None:
+    if status_value == "delegated" and not delegated_to_user_id and not delegated_to_team_id:
+        raise HTTPException(status_code=400, detail="Delegated execution requires a delegated user or team.")
+    if status_value == "waiting":
+        if waiting_reason not in TASK_WAITING_REASONS:
+            raise HTTPException(status_code=400, detail="Waiting status requires a reason.")
+        if waiting_reason == "other" and not (waiting_reason_detail or "").strip():
+            raise HTTPException(status_code=400, detail="Other waiting reason requires detail.")
+
+
+def can_supervise_task(db: DbSession, user: User, task: Task) -> bool:
+    if task.assigned_to_id and task.assigned_to_id == user.id:
+        return True
+    permissions = get_user_permission_codes(db, user)
+    return bool({"admin.manage", "users.manage", "settings.manage"} & permissions)
 
 
 def record_task_history(

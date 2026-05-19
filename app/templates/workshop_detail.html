@@ -178,7 +178,7 @@
                 {% if item.data_json %}
                   <dl class="technical-reading-list">
                     {% for key, value in item.data_json.items() %}
-                      <div><dt>{{ key|replace("_", " ")|capitalize }}</dt><dd>{{ value }}</dd></div>
+                      <div><dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt><dd>{{ value }}</dd></div>
                     {% endfor %}
                   </dl>
                 {% endif %}
@@ -426,6 +426,143 @@
                 <input type="text" name="battery_voltage" maxlength="80" placeholder="Ex.: 12.4V">
               </label>
             </div>
+            <details class="advanced-panel" open>
+              <summary>Manutenção</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  KM última reposição manutenção
+                  <input type="text" name="maintenance_last_reset_km" maxlength="80" placeholder="Ex.: 9233,5">
+                </label>
+                <label>
+                  KM até próxima manutenção
+                  <input type="text" name="maintenance_km_until_next" maxlength="80" placeholder="Ex.: 3280">
+                </label>
+                <label>
+                  Dias até próxima manutenção
+                  <input type="number" name="maintenance_days_until_next" min="0" step="1" placeholder="Ex.: 476">
+                </label>
+                <label>
+                  Nº manutenções efetuadas
+                  <input type="number" name="maintenance_count" min="0" step="1">
+                </label>
+                <label>
+                  Limite temporal ultrapassado
+                  <select name="maintenance_temporal_limit_exceeded">
+                    <option value="">Por preencher</option>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </label>
+                <label>
+                  Limite quilométrico ultrapassado
+                  <select name="maintenance_distance_limit_exceeded">
+                    <option value="">Por preencher</option>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </label>
+                <label>
+                  Limiar manutenção
+                  <input type="number" name="maintenance_threshold_km" min="0" step="1" placeholder="Ex.: 40000">
+                </label>
+                <label>
+                  Duração manutenção
+                  <input type="number" name="maintenance_duration_months" min="0" step="1" placeholder="Meses">
+                </label>
+                <label>
+                  Gestão manutenção
+                  <select name="maintenance_management_mode">
+                    <option value="">Por preencher</option>
+                    <option value="Dinâmica">Dinâmica</option>
+                    <option value="Estática">Estática</option>
+                  </select>
+                </label>
+              </div>
+              <p class="muted">A app calcula a próxima manutenção e a última manutenção estimada quando existirem dias até próxima manutenção e duração em meses.</p>
+            </details>
+            <details class="advanced-panel">
+              <summary>Lubrificação motor</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Taxa de diluição do óleo
+                  <input type="text" name="oil_dilution_rate" maxlength="80" placeholder="Ex.: 18,813%">
+                </label>
+                <label>
+                  Taxa de carbono no óleo
+                  <input type="text" name="oil_carbon_rate" maxlength="80" placeholder="Ex.: 2,125%">
+                </label>
+                <label>
+                  Proteção anti-diluição
+                  <input type="text" name="oil_anti_dilution_status" maxlength="120" placeholder="Ex.: Proteção inativa">
+                </label>
+                <label>
+                  Intervalo calculado pelo calculador
+                  <input type="number" name="engine_calculated_interval_km" min="0" step="1" placeholder="Km">
+                </label>
+              </div>
+            </details>
+            <details class="advanced-panel">
+              <summary>Defeitos</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Existem defeitos?
+                  <select name="faults_present">
+                    <option value="">Por preencher</option>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </label>
+                <label>
+                  Defeito crítico?
+                  <select name="critical_fault">
+                    <option value="">Por preencher</option>
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                  </select>
+                </label>
+                <label>
+                  Estado principal
+                  <select name="fault_main_status">
+                    <option value="">Por preencher</option>
+                    <option value="Fugitivo">Fugitivo</option>
+                    <option value="Permanente">Permanente</option>
+                  </select>
+                </label>
+                <label>
+                  KM associado ao defeito
+                  <input type="number" name="fault_odometer_km" min="0" step="1">
+                </label>
+              </div>
+              <label>
+                Caracterização
+                <input type="text" name="fault_characterization" maxlength="255" placeholder="Descrição curta do defeito principal">
+              </label>
+              <label>
+                Ação recomendada
+                <textarea name="recommended_action" rows="2"></textarea>
+              </label>
+            </details>
+            <details class="advanced-panel">
+              <summary>Telecarregamento</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Referência software
+                  <input type="text" name="software_reference" maxlength="120">
+                </label>
+                <label>
+                  Edição calibração
+                  <input type="text" name="calibration_edition" maxlength="80">
+                </label>
+                <label>
+                  Data telecarregamento
+                  <input type="date" name="download_date">
+                </label>
+                <label>
+                  Nº telecarregamentos
+                  <input type="number" name="download_count" min="0" step="1">
+                </label>
+              </div>
+            </details>
             <label>
               Resumo
               <textarea name="summary" rows="3" placeholder="Síntese da leitura ou diagnóstico"></textarea>

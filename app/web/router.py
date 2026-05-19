@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
@@ -140,6 +140,10 @@ WORKSHOP_READING_TYPES = [
     ("bsi", "Leitura BSI"),
     ("diagnostic", "Diagnóstico eletrónico"),
     ("maintenance", "Manutenção"),
+    ("maintenance_info", "Informações manutenção"),
+    ("lubrication_info", "Informações lubrificação motor"),
+    ("fault_reading", "Leitura de defeitos"),
+    ("software_identification", "Identificação / telecarregamento"),
     ("other", "Outra leitura"),
 ]
 
@@ -1227,6 +1231,7 @@ def vehicle_detail(
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
                 "workshop_status_labels": WORKSHOP_STATUS_LABELS,
                 "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+                "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
                 "saved": saved,
                 "task_created": task_created,
                 "document_created": document_created,
@@ -1676,6 +1681,32 @@ def workshop_create(
 
 
 TECHNICAL_READING_COMPARE_LABELS = {
+    "maintenance_last_reset_km": "KM última reposição manutenção",
+    "maintenance_km_until_next": "KM até próxima manutenção",
+    "maintenance_days_until_next": "Dias até próxima manutenção",
+    "maintenance_temporal_limit_exceeded": "Limite temporal ultrapassado",
+    "maintenance_distance_limit_exceeded": "Limite quilométrico ultrapassado",
+    "maintenance_count": "Nº manutenções efetuadas",
+    "maintenance_threshold_km": "Limiar manutenção",
+    "maintenance_duration_months": "Duração manutenção",
+    "maintenance_management_mode": "Gestão manutenção",
+    "maintenance_next_due_date": "Data prevista próxima manutenção",
+    "maintenance_days_since_last_estimated": "Dias estimados desde última manutenção",
+    "maintenance_last_date_estimated": "Data estimada última manutenção",
+    "oil_dilution_rate": "Taxa de diluição do óleo",
+    "oil_carbon_rate": "Taxa de carbono no óleo",
+    "oil_anti_dilution_status": "Proteção anti-diluição",
+    "engine_calculated_interval_km": "Intervalo calculado pelo calculador",
+    "faults_present": "Existem defeitos",
+    "critical_fault": "Defeito crítico",
+    "fault_main_status": "Estado principal",
+    "fault_characterization": "Caracterização",
+    "fault_odometer_km": "KM associado ao defeito",
+    "recommended_action": "Ação recomendada",
+    "software_reference": "Referência software",
+    "calibration_edition": "Edição calibração",
+    "download_date": "Data telecarregamento",
+    "download_count": "Nº telecarregamentos",
     "battery_voltage": "Tensão bateria",
     "fault_codes": "Códigos de erro",
     "bsi_notes": "Notas BSI",
@@ -1687,6 +1718,30 @@ TECHNICAL_READING_COMPARE_LABELS = {
 
 def compact_reading_data(
     *,
+    reading_date: date,
+    maintenance_last_reset_km: str,
+    maintenance_km_until_next: str,
+    maintenance_days_until_next: str,
+    maintenance_temporal_limit_exceeded: str,
+    maintenance_distance_limit_exceeded: str,
+    maintenance_count: str,
+    maintenance_threshold_km: str,
+    maintenance_duration_months: str,
+    maintenance_management_mode: str,
+    oil_dilution_rate: str,
+    oil_carbon_rate: str,
+    oil_anti_dilution_status: str,
+    engine_calculated_interval_km: str,
+    faults_present: str,
+    critical_fault: str,
+    fault_main_status: str,
+    fault_characterization: str,
+    fault_odometer_km: str,
+    recommended_action: str,
+    software_reference: str,
+    calibration_edition: str,
+    download_date: str,
+    download_count: str,
     battery_voltage: str,
     fault_codes: str,
     bsi_notes: str,
@@ -1694,13 +1749,46 @@ def compact_reading_data(
     recommendation: str,
 ) -> dict[str, str]:
     values = {
+        "maintenance_last_reset_km": maintenance_last_reset_km.strip(),
+        "maintenance_km_until_next": maintenance_km_until_next.strip(),
+        "maintenance_days_until_next": maintenance_days_until_next.strip(),
+        "maintenance_temporal_limit_exceeded": maintenance_temporal_limit_exceeded.strip(),
+        "maintenance_distance_limit_exceeded": maintenance_distance_limit_exceeded.strip(),
+        "maintenance_count": maintenance_count.strip(),
+        "maintenance_threshold_km": maintenance_threshold_km.strip(),
+        "maintenance_duration_months": maintenance_duration_months.strip(),
+        "maintenance_management_mode": maintenance_management_mode.strip(),
+        "oil_dilution_rate": oil_dilution_rate.strip(),
+        "oil_carbon_rate": oil_carbon_rate.strip(),
+        "oil_anti_dilution_status": oil_anti_dilution_status.strip(),
+        "engine_calculated_interval_km": engine_calculated_interval_km.strip(),
+        "faults_present": faults_present.strip(),
+        "critical_fault": critical_fault.strip(),
+        "fault_main_status": fault_main_status.strip(),
+        "fault_characterization": fault_characterization.strip(),
+        "fault_odometer_km": fault_odometer_km.strip(),
+        "recommended_action": recommended_action.strip(),
+        "software_reference": software_reference.strip(),
+        "calibration_edition": calibration_edition.strip(),
+        "download_date": download_date.strip(),
+        "download_count": download_count.strip(),
         "battery_voltage": battery_voltage.strip(),
         "fault_codes": fault_codes.strip(),
         "bsi_notes": bsi_notes.strip(),
         "systems_checked": systems_checked.strip(),
         "recommendation": recommendation.strip(),
     }
-    return {key: value for key, value in values.items() if value}
+    data = {key: value for key, value in values.items() if value}
+    maintenance_days = parse_optional_int(maintenance_days_until_next)
+    maintenance_months = parse_optional_int(maintenance_duration_months)
+    if maintenance_days is not None:
+        data["maintenance_next_due_date"] = (reading_date + timedelta(days=maintenance_days)).isoformat()
+    if maintenance_days is not None and maintenance_months is not None:
+        plan_days = round(maintenance_months * 365 / 12)
+        days_since_last = max(plan_days - maintenance_days, 0)
+        data["maintenance_days_since_last_estimated"] = str(days_since_last)
+        data["maintenance_last_date_estimated"] = (reading_date - timedelta(days=days_since_last)).isoformat()
+    return data
 
 
 def technical_reading_differences(
@@ -1868,6 +1956,7 @@ def render_workshop_detail(
             "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
             "technical_reading_types": WORKSHOP_READING_TYPES,
             "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+            "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
             "incident_types": INCIDENT_TYPES,
             "incident_type_labels": INCIDENT_TYPE_LABELS,
             "incident_categories": INCIDENT_CATEGORIES,
@@ -2117,6 +2206,29 @@ def workshop_add_technical_reading(
     reading_date: str = Form(""),
     odometer_km: str = Form(""),
     summary: str = Form(""),
+    maintenance_last_reset_km: str = Form(""),
+    maintenance_km_until_next: str = Form(""),
+    maintenance_days_until_next: str = Form(""),
+    maintenance_temporal_limit_exceeded: str = Form(""),
+    maintenance_distance_limit_exceeded: str = Form(""),
+    maintenance_count: str = Form(""),
+    maintenance_threshold_km: str = Form(""),
+    maintenance_duration_months: str = Form(""),
+    maintenance_management_mode: str = Form(""),
+    oil_dilution_rate: str = Form(""),
+    oil_carbon_rate: str = Form(""),
+    oil_anti_dilution_status: str = Form(""),
+    engine_calculated_interval_km: str = Form(""),
+    faults_present: str = Form(""),
+    critical_fault: str = Form(""),
+    fault_main_status: str = Form(""),
+    fault_characterization: str = Form(""),
+    fault_odometer_km: str = Form(""),
+    recommended_action: str = Form(""),
+    software_reference: str = Form(""),
+    calibration_edition: str = Form(""),
+    download_date: str = Form(""),
+    download_count: str = Form(""),
     battery_voltage: str = Form(""),
     fault_codes: str = Form(""),
     bsi_notes: str = Form(""),
@@ -2131,7 +2243,32 @@ def workshop_add_technical_reading(
 
     if reading_type not in WORKSHOP_READING_TYPE_LABELS:
         reading_type = "technical"
+    parsed_reading_date = parse_optional_date(reading_date) or date.today()
     reading_data = compact_reading_data(
+        reading_date=parsed_reading_date,
+        maintenance_last_reset_km=maintenance_last_reset_km,
+        maintenance_km_until_next=maintenance_km_until_next,
+        maintenance_days_until_next=maintenance_days_until_next,
+        maintenance_temporal_limit_exceeded=maintenance_temporal_limit_exceeded,
+        maintenance_distance_limit_exceeded=maintenance_distance_limit_exceeded,
+        maintenance_count=maintenance_count,
+        maintenance_threshold_km=maintenance_threshold_km,
+        maintenance_duration_months=maintenance_duration_months,
+        maintenance_management_mode=maintenance_management_mode,
+        oil_dilution_rate=oil_dilution_rate,
+        oil_carbon_rate=oil_carbon_rate,
+        oil_anti_dilution_status=oil_anti_dilution_status,
+        engine_calculated_interval_km=engine_calculated_interval_km,
+        faults_present=faults_present,
+        critical_fault=critical_fault,
+        fault_main_status=fault_main_status,
+        fault_characterization=fault_characterization,
+        fault_odometer_km=fault_odometer_km,
+        recommended_action=recommended_action,
+        software_reference=software_reference,
+        calibration_edition=calibration_edition,
+        download_date=download_date,
+        download_count=download_count,
         battery_voltage=battery_voltage,
         fault_codes=fault_codes,
         bsi_notes=bsi_notes,
@@ -2163,7 +2300,7 @@ def workshop_add_technical_reading(
             vehicle_id=process.vehicle_id,
             user_id=user_id,
             reading_type=reading_type,
-            reading_date=parse_optional_date(reading_date) or date.today(),
+            reading_date=parsed_reading_date,
             odometer_km=parsed_odometer,
             summary=clean_summary or None,
             data_json=reading_data or None,

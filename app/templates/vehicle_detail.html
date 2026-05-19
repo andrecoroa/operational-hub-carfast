@@ -146,6 +146,13 @@
                     {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
                   </p>
                   <p>{{ item.summary or "Sem resumo registado." }}</p>
+                  {% if item.data_json %}
+                    <dl class="technical-reading-list">
+                      {% for key, value in item.data_json.items() %}
+                        <div><dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt><dd>{{ value }}</dd></div>
+                      {% endfor %}
+                    </dl>
+                  {% endif %}
                   {% if item.differences_json %}
                     <div class="technical-diff-box">
                       <strong>Diferenças face à leitura anterior</strong>

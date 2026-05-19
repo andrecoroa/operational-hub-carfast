@@ -139,13 +139,13 @@
             {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else none %}
             <article class="task-card-row task-row-fixed">
               <div class="task-card-main">
-                <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                <div class="task-identity-block">
+                  <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                  <span>Criada por {{ created_user.name if created_user else "Sistema" }}</span>
+                  <span>{{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "-" }}</span>
+                </div>
                 <div class="task-card-content">
                   <p class="task-row-title">{{ task.title }}</p>
-                  <p class="table-note">
-                    Criada por {{ created_user.name if created_user else "Sistema" }}
-                    {% if task.created_at %} &middot; {{ task.created_at.strftime("%Y-%m-%d") }}{% endif %}
-                  </p>
                   <p class="table-note">
                     {% if task.customer_name %}{{ task.customer_name }}{% endif %}
                     {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}

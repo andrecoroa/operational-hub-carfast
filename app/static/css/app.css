@@ -1686,7 +1686,7 @@ a.metric:hover {
   display: contents;
 }
 
-.task-card-row.task-row-fixed .task-code-link {
+.task-card-row.task-row-fixed .task-identity-block {
   grid-column: 1;
 }
 
@@ -1753,6 +1753,22 @@ a.metric:hover {
 }
 
 .task-code-link {
+  white-space: nowrap;
+}
+
+.task-identity-block {
+  display: grid;
+  align-self: start;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.task-identity-block span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

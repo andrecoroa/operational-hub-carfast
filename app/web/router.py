@@ -154,6 +154,10 @@ WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 WORKSHOP_READING_TYPE_LABELS = dict(WORKSHOP_READING_TYPES)
+WORKSHOP_SERVICE_DETAIL_FAMILIES = {
+    family for _, _, family in WORKSHOP_SERVICE_DETAILS if family != "any"
+}
+WORKSHOP_SERVICE_AXIS_FAMILIES = {"brakes", "tyres"}
 
 INCIDENT_TYPES = [
     ("technical", "Técnico"),
@@ -1623,19 +1627,18 @@ def workshop_create(
         )
         db.add(process)
         db.flush()
-        allowed_service_families = {code for code, _ in WORKSHOP_SERVICE_FAMILIES}
-        allowed_service_details = {code for code, _, _ in WORKSHOP_SERVICE_DETAILS}
-        allowed_service_axes = {code for code, _ in WORKSHOP_SERVICE_AXES}
-        clean_service_family = service_family if service_family in allowed_service_families else ""
-        clean_service_detail = service_detail if service_detail in allowed_service_details else ""
-        clean_service_axis = service_axis if service_axis in allowed_service_axes else "not_defined"
+        clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
+            service_family,
+            service_detail,
+            service_axis,
+        )
         if clean_service_family:
             db.add(
                 WorkshopProcessService(
                     process_id=process.id,
                     vehicle_id=vehicle.id,
                     service_family=clean_service_family,
-                    service_detail=clean_service_detail or None,
+                    service_detail=clean_service_detail,
                     service_axis=clean_service_axis,
                     status="to_assess",
                     note=service_note.strip() or None,
@@ -1709,6 +1712,30 @@ def technical_reading_differences(
             "current": current_odometer,
         }
     return differences
+
+
+def normalize_workshop_service_fields(
+    service_family: str,
+    service_detail: str | None,
+    service_axis: str | None,
+) -> tuple[str, str | None, str]:
+    allowed_service_families = {code for code, _ in WORKSHOP_SERVICE_FAMILIES}
+    allowed_service_axes = {code for code, _ in WORKSHOP_SERVICE_AXES}
+    if service_family not in allowed_service_families:
+        return "", None, "not_defined"
+
+    allowed_details = {
+        code
+        for code, _, family in WORKSHOP_SERVICE_DETAILS
+        if family == service_family or (family == "any" and service_family in WORKSHOP_SERVICE_DETAIL_FAMILIES)
+    }
+    clean_detail = service_detail if service_detail in allowed_details else None
+    clean_axis = (
+        service_axis
+        if service_family in WORKSHOP_SERVICE_AXIS_FAMILIES and service_axis in allowed_service_axes
+        else "not_defined"
+    )
+    return service_family, clean_detail, clean_axis
 
 
 def render_workshop_detail(
@@ -1922,16 +1949,14 @@ def workshop_add_service(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    allowed_service_families = {code for code, _ in WORKSHOP_SERVICE_FAMILIES}
-    allowed_service_details = {code for code, _, _ in WORKSHOP_SERVICE_DETAILS}
-    allowed_service_axes = {code for code, _ in WORKSHOP_SERVICE_AXES}
     allowed_service_statuses = {code for code, _ in WORKSHOP_SERVICE_STATUSES}
-    if service_family not in allowed_service_families:
+    clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
+        service_family,
+        service_detail,
+        service_axis,
+    )
+    if not clean_service_family:
         return RedirectResponse(f"/workshop/{process_id}?error=Seleciona%20o%20serviço.", status_code=303)
-    if service_detail not in allowed_service_details:
-        service_detail = ""
-    if service_axis not in allowed_service_axes:
-        service_axis = "not_defined"
     if status not in allowed_service_statuses:
         status = "to_assess"
 
@@ -1942,9 +1967,9 @@ def workshop_add_service(
         service = WorkshopProcessService(
             process_id=process.id,
             vehicle_id=process.vehicle_id,
-            service_family=service_family,
-            service_detail=service_detail or None,
-            service_axis=service_axis,
+            service_family=clean_service_family,
+            service_detail=clean_service_detail,
+            service_axis=clean_service_axis,
             status=status,
             note=note.strip() or None,
             created_by_id=user_id,
@@ -1957,8 +1982,8 @@ def workshop_add_service(
                 user_id=user_id,
                 note=(
                     "Serviço adicionado: "
-                    f"{WORKSHOP_SERVICE_FAMILY_LABELS.get(service_family, service_family)}"
-                    f"{' - ' + WORKSHOP_SERVICE_DETAIL_LABELS.get(service_detail, service_detail) if service_detail else ''}"
+                    f"{WORKSHOP_SERVICE_FAMILY_LABELS.get(clean_service_family, clean_service_family)}"
+                    f"{' - ' + WORKSHOP_SERVICE_DETAIL_LABELS.get(clean_service_detail, clean_service_detail) if clean_service_detail else ''}"
                 ),
             )
         )
@@ -1971,9 +1996,9 @@ def workshop_add_service(
             after_json={
                 "workshop_process_id": process.id,
                 "vehicle_id": process.vehicle_id,
-                "service_family": service_family,
-                "service_detail": service_detail or None,
-                "service_axis": service_axis,
+                "service_family": clean_service_family,
+                "service_detail": clean_service_detail,
+                "service_axis": clean_service_axis,
                 "status": status,
             },
             user_id=user_id,

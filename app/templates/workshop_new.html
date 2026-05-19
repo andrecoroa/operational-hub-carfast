@@ -69,7 +69,7 @@
               {% endfor %}
             </select>
           </label>
-          <label>
+          <label data-service-detail-wrap hidden>
             Detalhe
             <select name="service_detail" data-service-detail>
               <option value="">Sem detalhe</option>
@@ -80,7 +80,7 @@
           </label>
         </div>
         <div class="form-grid">
-          <label>
+          <label data-service-axis-wrap hidden>
             Eixo / zona
             <select name="service_axis">
               {% for code, label in service_axes %}
@@ -182,19 +182,42 @@
     });
   }
 
+  const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
   const serviceFamily = document.querySelector("[data-service-family]");
   const serviceDetail = document.querySelector("[data-service-detail]");
+  const serviceDetailWrap = document.querySelector("[data-service-detail-wrap]");
+  const serviceAxisWrap = document.querySelector("[data-service-axis-wrap]");
+  const serviceAxis = document.querySelector("select[name='service_axis']");
   const allServiceDetailOptions = serviceDetail ? [...serviceDetail.options].map((option) => option.cloneNode(true)) : [];
 
   function syncServiceDetails() {
     if (!serviceFamily || !serviceDetail) return;
     const selectedFamily = serviceFamily.value;
+    const hasSpecificDetails = allServiceDetailOptions.some((option) => {
+      return option.value && option.dataset.family === selectedFamily;
+    });
+
+    if (serviceDetailWrap) {
+      serviceDetailWrap.hidden = !hasSpecificDetails;
+    }
+
     serviceDetail.innerHTML = "";
     for (const option of allServiceDetailOptions) {
       const family = option.dataset.family;
-      if (!option.value || family === "any" || family === selectedFamily) {
+      if (!option.value || family === selectedFamily || (family === "any" && hasSpecificDetails)) {
         serviceDetail.appendChild(option.cloneNode(true));
       }
+    }
+    if (!hasSpecificDetails) {
+      serviceDetail.value = "";
+    }
+
+    const hasAxis = serviceFamiliesWithAxis.has(selectedFamily);
+    if (serviceAxisWrap) {
+      serviceAxisWrap.hidden = !hasAxis;
+    }
+    if (!hasAxis && serviceAxis) {
+      serviceAxis.value = "not_defined";
     }
   }
 

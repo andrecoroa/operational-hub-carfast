@@ -317,7 +317,7 @@
                   {% endfor %}
                 </select>
               </label>
-              <label>
+              <label data-service-detail-wrap hidden>
                 Detalhe
                 <select name="service_detail" data-service-detail>
                   <option value="">Sem detalhe</option>
@@ -326,7 +326,7 @@
                   {% endfor %}
                 </select>
               </label>
-              <label>
+              <label data-service-axis-wrap hidden>
                 Eixo / zona
                 <select name="service_axis">
                   {% for code, label in service_axes %}
@@ -609,20 +609,44 @@
   </main>
 </div>
 <script>
+  const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
+
   document.querySelectorAll("[data-service-family]").forEach((familySelect) => {
     const form = familySelect.closest("form");
     const detailSelect = form?.querySelector("[data-service-detail]");
+    const detailWrap = form?.querySelector("[data-service-detail-wrap]");
+    const axisWrap = form?.querySelector("[data-service-axis-wrap]");
+    const axisSelect = form?.querySelector("select[name='service_axis']");
     const allOptions = detailSelect ? [...detailSelect.options].map((option) => option.cloneNode(true)) : [];
 
     function syncDetails() {
       if (!detailSelect) return;
       const selectedFamily = familySelect.value;
+      const hasSpecificDetails = allOptions.some((option) => {
+        return option.value && option.dataset.family === selectedFamily;
+      });
+
+      if (detailWrap) {
+        detailWrap.hidden = !hasSpecificDetails;
+      }
+
       detailSelect.innerHTML = "";
       for (const option of allOptions) {
         const family = option.dataset.family;
-        if (!option.value || family === "any" || family === selectedFamily) {
+        if (!option.value || family === selectedFamily || (family === "any" && hasSpecificDetails)) {
           detailSelect.appendChild(option.cloneNode(true));
         }
+      }
+      if (!hasSpecificDetails) {
+        detailSelect.value = "";
+      }
+
+      const hasAxis = serviceFamiliesWithAxis.has(selectedFamily);
+      if (axisWrap) {
+        axisWrap.hidden = !hasAxis;
+      }
+      if (!hasAxis && axisSelect) {
+        axisSelect.value = "not_defined";
       }
     }
 

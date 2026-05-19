@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.core.database import SessionLocal
 from app.models.admin import User
+from app.models.audit import AuditLog
 from app.models.tasks import Task, TaskComment, TaskHistory
 from app.services.audit import record_audit
 
@@ -25,6 +26,7 @@ SYSTEM_CREATOR_NAMES = {"codex carfast"}
 WAITING_REASON = "decision"
 WAITING_DETAIL = "A aguardar decisao de Andre Coroa. Responsabilidade devolvida ao criador."
 COMMENT_TEXT = "Migracao pontual: tarefa devolvida ao criador e colocada a aguardar decisao de Andre Coroa."
+COMPLETED_ACTION = "task.one_off.andre_tasks_to_creators.completed"
 
 
 @dataclass
@@ -84,6 +86,10 @@ def find_candidates(db: Session, andre: User, limit: int | None = None) -> list[
         creator, skip_reason = validate_creator(db, task, andre)
         candidates.append(Candidate(task=task, creator=creator, skip_reason=skip_reason))
     return candidates
+
+
+def already_completed(db: Session) -> bool:
+    return db.scalar(select(AuditLog.id).where(AuditLog.action == COMPLETED_ACTION).limit(1)) is not None
 
 
 def add_history(
@@ -191,10 +197,15 @@ def main() -> None:
         )
     )
     parser.add_argument("--apply", action="store_true", help="Aplica as alteracoes. Sem isto faz apenas simulacao.")
+    parser.add_argument("--force", action="store_true", help="Permite reaplicar mesmo existindo marca de conclusao.")
     parser.add_argument("--limit", type=int, default=None, help="Limita o numero de tarefas processadas.")
     args = parser.parse_args()
 
     with SessionLocal() as db:
+        if args.apply and already_completed(db) and not args.force:
+            print("Migracao ja executada anteriormente. Nada a fazer.")
+            return
+
         andre = get_andre(db)
         candidates = find_candidates(db, andre, args.limit)
         print_report(candidates, args.apply)
@@ -203,9 +214,26 @@ def main() -> None:
             db.rollback()
             return
 
+        changed_count = 0
+        skipped_count = 0
         for candidate in candidates:
             if candidate.skip_reason is None:
                 apply_candidate(db, candidate, andre)
+                changed_count += 1
+            else:
+                skipped_count += 1
+
+        record_audit(
+            db,
+            action=COMPLETED_ACTION,
+            entity_type="task",
+            detail="Migracao pontual de tarefas de Andre para criadores concluida.",
+            user_id=andre.id,
+            after_json={
+                "changed_count": changed_count,
+                "skipped_count": skipped_count,
+            },
+        )
 
         db.commit()
         print("Alteracoes aplicadas.")

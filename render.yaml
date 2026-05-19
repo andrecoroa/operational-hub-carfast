@@ -19,6 +19,8 @@ services:
         fromDatabase:
           name: operational-hub-carfast-db
           property: connectionString
+      - key: CARFAST_ONE_OFF_202605_ANDRE_TASKS_TO_CREATORS
+        value: apply
 
 databases:
   - name: operational-hub-carfast-db

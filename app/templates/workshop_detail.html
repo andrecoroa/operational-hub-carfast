@@ -558,7 +558,7 @@
           </form>
         </details>
 
-        <details class="workshop-action-card">
+        <details class="workshop-action-card workshop-flow-action" {% if process.status == "diagnosis" %}open{% endif %}>
           <summary>Registar leitura técnica / BSI</summary>
           <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
             <div class="compact-form-grid two-col">
@@ -908,7 +908,7 @@
   const processActionsTarget = document.querySelector("[data-process-actions-target]");
   const sideActions = document.querySelector(".workshop-actions");
   if (processActionsTarget && sideActions) {
-    sideActions.querySelectorAll(".workshop-action-card:not(.workshop-close-card)").forEach((card) => {
+    sideActions.querySelectorAll(".workshop-action-card:not(.workshop-close-card):not(.workshop-flow-action)").forEach((card) => {
       processActionsTarget.appendChild(card);
     });
   }

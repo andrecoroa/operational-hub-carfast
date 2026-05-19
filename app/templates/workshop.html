@@ -31,12 +31,18 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
+    <nav class="quick-filter-row" aria-label="Filtro de processos de oficina">
+      <a href="/workshop/manage" class="{% if scope == 'open' %}active{% endif %}"><span>Abertos</span><strong>{{ process_counts.open }}</strong></a>
+      <a href="/workshop/manage?scope=closed" class="{% if scope == 'closed' %}active{% endif %}"><span>Fechados</span><strong>{{ process_counts.closed }}</strong></a>
+      <a href="/workshop/manage?scope=all" class="{% if scope == 'all' %}active{% endif %}"><span>Todos</span><strong>{{ process_counts.all }}</strong></a>
+    </nav>
+
     <section class="task-layout tasks-layout">
       <section class="table-shell">
         <div class="table-heading">
           <div>
-            <p class="eyebrow">Em curso</p>
-            <h3>Processos abertos</h3>
+            <p class="eyebrow">{{ "Arquivo" if scope == "closed" else ("Geral" if scope == "all" else "Em curso") }}</p>
+            <h3>{{ "Processos fechados" if scope == "closed" else ("Todos os processos" if scope == "all" else "Processos abertos") }}</h3>
           </div>
         </div>
         <table class="task-table responsive-card-table">
@@ -68,14 +74,17 @@
                 <td data-label="Estado"><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
                 <td data-label="Decisão">{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
                 <td data-label="Ação" class="row-action">
-                  <form method="post" action="/workshop/{{ process.id }}/close">
-                    <button type="submit" class="secondary small-button">Fechar</button>
-                  </form>
+                  <a class="button-link secondary small-button" href="/workshop/{{ process.id }}">Abrir</a>
+                  {% if not process.closed_at %}
+                    <form method="post" action="/workshop/{{ process.id }}/close">
+                      <button type="submit" class="secondary small-button">Fechar</button>
+                    </form>
+                  {% endif %}
                 </td>
               </tr>
             {% else %}
               <tr>
-                <td colspan="5" class="muted">Sem processos de oficina abertos.</td>
+                <td colspan="5" class="muted">{{ "Sem processos de oficina fechados." if scope == "closed" else ("Sem processos de oficina registados." if scope == "all" else "Sem processos de oficina abertos.") }}</td>
               </tr>
             {% endfor %}
           </tbody>

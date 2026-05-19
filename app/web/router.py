@@ -1714,17 +1714,31 @@ def workshop_manage_page(
     created: str | None = None,
     closed: str | None = None,
     feedback_saved: str | None = None,
+    scope: str = "open",
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
-        processes = db.scalars(
-            select(WorkshopProcess)
-            .where(WorkshopProcess.closed_at.is_(None))
-            .order_by(WorkshopProcess.id.desc())
-            .limit(100)
-        ).all()
+        if scope not in {"open", "closed", "all"}:
+            scope = "open"
+        process_stmt = select(WorkshopProcess)
+        if scope == "open":
+            process_stmt = process_stmt.where(WorkshopProcess.closed_at.is_(None))
+        elif scope == "closed":
+            process_stmt = process_stmt.where(WorkshopProcess.closed_at.is_not(None))
+        processes = db.scalars(process_stmt.order_by(WorkshopProcess.id.desc()).limit(100)).all()
+        process_counts = {
+            "open": db.scalar(
+                select(func.count()).select_from(WorkshopProcess).where(WorkshopProcess.closed_at.is_(None))
+            )
+            or 0,
+            "closed": db.scalar(
+                select(func.count()).select_from(WorkshopProcess).where(WorkshopProcess.closed_at.is_not(None))
+            )
+            or 0,
+        }
+        process_counts["all"] = process_counts["open"] + process_counts["closed"]
         vehicles = sorted(
             db.scalars(select(Vehicle).order_by(Vehicle.id.desc()).limit(5000)).all(),
             key=rentway_unit_sort_key,
@@ -1743,6 +1757,8 @@ def workshop_manage_page(
                 "status_labels": WORKSHOP_STATUS_LABELS,
                 "decision_labels": WORKSHOP_DECISION_LABELS,
                 "opening_type_labels": WORKSHOP_OPENING_LABELS,
+                "scope": scope,
+                "process_counts": process_counts,
             },
         )
 

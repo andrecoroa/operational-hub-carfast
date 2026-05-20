@@ -400,7 +400,7 @@
                   <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
                     <input type="hidden" name="status" value="{{ step.code }}">
                     {% if step.mode == "history_check" %}
-                    <input type="hidden" name="decision" value="">
+                    <input type="hidden" name="decision" value="{{ process.decision or '' }}">
                     <p>{{ step.description }}</p>
                     <label>
                       Resultado da consulta

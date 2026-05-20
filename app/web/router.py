@@ -3054,7 +3054,7 @@ def workshop_create_document(
 def workshop_update_flow(
     request: Request,
     process_id: int,
-    status: str = Form(...),
+    status: str = Form(""),
     decision: str = Form(""),
     decision_note: str = Form(""),
     history_result: str = Form(""),
@@ -3077,17 +3077,16 @@ def workshop_update_flow(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    allowed_statuses = {code for code, _ in WORKSHOP_STATUSES}
-    allowed_decisions = {code for code, _ in WORKSHOP_DECISIONS}
-    if status not in allowed_statuses:
-        status = "opening"
-    if decision and decision not in allowed_decisions:
-        decision = ""
-
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)
         if not process:
             return RedirectResponse("/workshop", status_code=303)
+        allowed_statuses = {code for code, _ in WORKSHOP_STATUSES} | {process.status}
+        allowed_decisions = {code for code, _ in WORKSHOP_DECISIONS}
+        if status not in allowed_statuses:
+            status = process.status
+        if decision not in allowed_decisions:
+            decision = process.decision or ""
 
         old_status = process.status
         old_decision = process.decision
@@ -4586,10 +4585,10 @@ def quick_record_update(
     request: Request,
     record_id: int,
     title: str = Form(""),
-    record_type: str = Form("other"),
-    status: str = Form("new"),
-    priority: str = Form("normal"),
-    source: str = Form("manual"),
+    record_type: str = Form(""),
+    status: str = Form(""),
+    priority: str = Form(""),
+    source: str = Form(""),
     customer_name: str = Form(""),
     customer_contact: str = Form(""),
     customer_email: str = Form(""),
@@ -4609,13 +4608,13 @@ def quick_record_update(
         workspace = normalize_task_workspace(record.workspace)
         allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE[workspace]}
         if record_type not in allowed_record_types:
-            record_type = "other"
+            record_type = record.record_type or "other"
         if status not in QUICK_RECORD_STATUS_LABELS:
             status = record.status or "new"
         if priority not in PRIORITY_DISPLAY_LABELS:
-            priority = "normal"
+            priority = record.priority or "normal"
         if source not in TASK_SOURCE_DISPLAY_LABELS:
-            source = "manual"
+            source = record.source or "manual"
 
         record.title = title.strip() or record.title
         record.record_type = record_type

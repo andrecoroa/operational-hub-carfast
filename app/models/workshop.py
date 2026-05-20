@@ -74,7 +74,10 @@ class WorkshopTechnicalReading(TimestampMixin, Base):
     __tablename__ = "workshop_technical_readings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    process_id: Mapped[int] = mapped_column(ForeignKey("workshop_processes.id", ondelete="CASCADE"), index=True)
+    process_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workshop_processes.id", ondelete="SET NULL"),
+        index=True,
+    )
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     reading_type: Mapped[str] = mapped_column(String(80), default="technical", index=True)

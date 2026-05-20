@@ -138,14 +138,18 @@
                 <article class="event-item">
                   <div>
                     <strong>
-                      <a class="table-link" href="/workshop/{{ item.process_id }}">
+                      {% if item.process_id %}
+                        <a class="table-link" href="/workshop/{{ item.process_id }}">
+                          {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
+                        </a>
+                      {% else %}
                         {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
-                      </a>
+                      {% endif %}
                     </strong>
                     <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
                   </div>
                   <p>
-                    Processo #{{ item.process_id }}
+                    {% if item.process_id %}Processo #{{ item.process_id }}{% else %}Histórico importado{% endif %}
                     {% if origin_process %} &middot; {{ origin_process.title }}{% endif %}
                     {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
                   </p>

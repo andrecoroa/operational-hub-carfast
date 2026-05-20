@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import monotonic
 
 from fastapi import APIRouter, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 
@@ -33,6 +33,11 @@ from app.models.workshop import (
     WorkshopTechnicalReading,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
+from app.services.workshop_history_importer import (
+    TECHNICAL_HISTORY_IMPORT_COLUMNS,
+    import_workshop_technical_history_file,
+    technical_history_template_csv,
+)
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.users import create_user
@@ -1397,7 +1402,7 @@ def vehicle_detail(
             )
             .limit(20)
         ).all()
-        process_ids = {item.process_id for item in technical_readings}
+        process_ids = {item.process_id for item in technical_readings if item.process_id}
         reading_process_by_id = {
             item.id: item
             for item in db.scalars(
@@ -1897,6 +1902,8 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "maintenance_last_reset_km": "KM última reposição manutenção",
     "maintenance_km_until_next": "KM até próxima manutenção",
     "maintenance_days_until_next": "Dias até próxima manutenção",
+    "maintenance_days_since_last_reset": "Dias desde última reposição de manutenção",
+    "maintenance_last_reset_date_estimated": "Data estimada última reposição",
     "maintenance_temporal_limit_exceeded": "Limite temporal ultrapassado",
     "maintenance_distance_limit_exceeded": "Limite quilométrico ultrapassado",
     "maintenance_count": "Nº manutenções efetuadas",
@@ -1936,6 +1943,7 @@ def compact_reading_data(
     maintenance_last_reset_km: str,
     maintenance_km_until_next: str,
     maintenance_days_until_next: str,
+    maintenance_days_since_last_reset: str,
     maintenance_temporal_limit_exceeded: str,
     maintenance_distance_limit_exceeded: str,
     maintenance_count: str,
@@ -1967,6 +1975,7 @@ def compact_reading_data(
         "maintenance_last_reset_km": maintenance_last_reset_km.strip(),
         "maintenance_km_until_next": maintenance_km_until_next.strip(),
         "maintenance_days_until_next": maintenance_days_until_next.strip(),
+        "maintenance_days_since_last_reset": maintenance_days_since_last_reset.strip(),
         "maintenance_temporal_limit_exceeded": maintenance_temporal_limit_exceeded.strip(),
         "maintenance_distance_limit_exceeded": maintenance_distance_limit_exceeded.strip(),
         "maintenance_count": maintenance_count.strip(),
@@ -1999,6 +2008,11 @@ def compact_reading_data(
     maintenance_months = parse_optional_int(maintenance_duration_months)
     if maintenance_days is not None:
         data["maintenance_next_due_date"] = (reading_date + timedelta(days=maintenance_days)).isoformat()
+    maintenance_days_since_reset = parse_optional_int(maintenance_days_since_last_reset)
+    if maintenance_days_since_reset is not None:
+        data["maintenance_last_reset_date_estimated"] = (
+            reading_date - timedelta(days=maintenance_days_since_reset)
+        ).isoformat()
     if maintenance_days is not None and maintenance_months is not None:
         plan_days = round(maintenance_months * 365 / 12)
         days_since_last = max(plan_days - maintenance_days, 0)
@@ -2122,7 +2136,10 @@ def render_workshop_detail(
         select(WorkshopTechnicalReading)
         .where(
             WorkshopTechnicalReading.vehicle_id == process.vehicle_id,
-            WorkshopTechnicalReading.process_id != process.id,
+            or_(
+                WorkshopTechnicalReading.process_id.is_(None),
+                WorkshopTechnicalReading.process_id != process.id,
+            ),
         )
         .order_by(
             WorkshopTechnicalReading.reading_date.is_(None),
@@ -2638,6 +2655,7 @@ def workshop_add_technical_reading(
     maintenance_last_reset_km: str = Form(""),
     maintenance_km_until_next: str = Form(""),
     maintenance_days_until_next: str = Form(""),
+    maintenance_days_since_last_reset: str = Form(""),
     maintenance_temporal_limit_exceeded: str = Form(""),
     maintenance_distance_limit_exceeded: str = Form(""),
     maintenance_count: str = Form(""),
@@ -2681,6 +2699,7 @@ def workshop_add_technical_reading(
         maintenance_last_reset_km=maintenance_last_reset_km,
         maintenance_km_until_next=maintenance_km_until_next,
         maintenance_days_until_next=maintenance_days_until_next,
+        maintenance_days_since_last_reset=maintenance_days_since_last_reset,
         maintenance_temporal_limit_exceeded=maintenance_temporal_limit_exceeded,
         maintenance_distance_limit_exceeded=maintenance_distance_limit_exceeded,
         maintenance_count=maintenance_count,
@@ -3170,6 +3189,66 @@ def fleet_import_submit(request: Request, file: UploadFile):
         f"/fleet?imported={stats['created_rows']}+criadas,+{stats['updated_rows']}+atualizadas",
         status_code=303,
     )
+
+
+@web_router.get("/imports/technical-history", response_class=HTMLResponse)
+def technical_history_import_form(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "technical_history_import.html",
+        {
+            "error": None,
+            "columns": TECHNICAL_HISTORY_IMPORT_COLUMNS,
+        },
+    )
+
+
+@web_router.get("/imports/technical-history/template.csv")
+def technical_history_import_template(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    return Response(
+        technical_history_template_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="carfast_historico_tecnico_template.csv"'},
+    )
+
+
+@web_router.post("/imports/technical-history", response_class=HTMLResponse)
+def technical_history_import_submit(request: Request, file: UploadFile):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not file.filename.lower().endswith((".xlsx", ".csv")):
+        return templates.TemplateResponse(
+            request,
+            "technical_history_import.html",
+            {
+                "error": "Carrega um ficheiro XLSX ou CSV.",
+                "columns": TECHNICAL_HISTORY_IMPORT_COLUMNS,
+            },
+            status_code=400,
+        )
+
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        with SessionLocal() as db:
+            stats = import_workshop_technical_history_file(
+                db,
+                tmp_path,
+                original_name=file.filename,
+                imported_by_id=user_id,
+            )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return RedirectResponse(f"/imports/{stats['batch_id']}", status_code=303)
 
 
 @web_router.get("/imports", response_class=HTMLResponse)

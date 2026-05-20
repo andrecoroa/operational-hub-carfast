@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Oficina</p>
+        <h2>Importar histórico técnico</h2>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/imports/technical-history/template.csv">Modelo CSV</a>
+        <a class="button-link secondary-link" href="/imports">Histórico</a>
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports/technical-history" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="flash error">{{ error }}</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <article class="section">
+        <p class="eyebrow">Ficheiro</p>
+        <h3>Carregar leituras técnicas antigas</h3>
+        <p class="muted">
+          Usa este importador para criar histórico técnico ligado à viatura, com ou sem processo de oficina associado.
+          Os PDFs e evidências continuam fora da base de dados; aqui guardamos apenas o link do documento original.
+        </p>
+        <form method="post" action="/imports/technical-history" enctype="multipart/form-data" class="form-stack">
+          <label>
+            Ficheiro XLSX ou CSV
+            <input type="file" name="file" accept=".xlsx,.csv" required>
+          </label>
+          <button type="submit">Importar histórico técnico</button>
+        </form>
+      </article>
+
+      <article class="section">
+        <p class="eyebrow">Validação</p>
+        <h3>Regras da fase 1</h3>
+        <div class="event-list compact-events">
+          <article class="event-item">
+            <strong>Viatura existente</strong>
+            <p>O importador procura por matrícula ou VIN. Se não encontrar a viatura, a linha fica em erro.</p>
+          </article>
+          <article class="event-item">
+            <strong>Documento externo</strong>
+            <p>O campo do link do documento original é obrigatório para manter rastreabilidade sem guardar binários.</p>
+          </article>
+          <article class="event-item">
+            <strong>Processo opcional</strong>
+            <p>Se indicares processo de oficina, ele tem de pertencer à mesma viatura.</p>
+          </article>
+        </div>
+      </article>
+    </section>
+
+    <section class="table-shell">
+      <div class="table-heading">
+        <div>
+          <p class="eyebrow">Modelo</p>
+          <h3>Campos previstos</h3>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Campo</th>
+            <th>Descrição</th>
+            <th>Regra</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for column, label, rule in columns %}
+            <tr>
+              <td><code>{{ column }}</code></td>
+              <td>{{ label }}</td>
+              <td>{{ rule }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+{% endblock %}

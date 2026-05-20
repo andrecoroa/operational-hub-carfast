@@ -94,7 +94,7 @@
               <h3>Serviços do processo</h3>
             </div>
           </div>
-          <details class="workshop-record-group" open>
+          <details class="workshop-record-group">
             <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
             <div class="event-list">
               {% for service in services %}
@@ -125,7 +125,7 @@
               <h3>Histórico técnico da viatura</h3>
             </div>
           </div>
-          <details class="workshop-record-group" {% if previous_technical_readings or process.status == "diagnosis" %}open{% endif %}>
+          <details class="workshop-record-group">
             <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>
             <div class="event-list">
               {% for item in previous_technical_readings %}
@@ -157,17 +157,20 @@
         </article>
 
         <article id="bsi-workspace" class="section workshop-bsi-workspace">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Diagnóstico</p>
-              <h3>Registo de leitura técnica / BSI</h3>
-              <p class="muted">Cada relatório tem o seu próprio cartão. Abre apenas o relatório que vais preencher.</p>
-            </div>
-          </div>
-          <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
-            {% set reading_submit_label = "Gravar leitura técnica" %}
-            {% include "_workshop_technical_reading_fields.html" %}
-          </form>
+          <details id="bsi-reading-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI</h3>
+                <p class="muted">Cada relatório tem o seu próprio cartão. Abre apenas o relatório que vais preencher.</p>
+              </div>
+              <span class="action-method-pill">Abrir</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura técnica" %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
         </article>
 
       <article class="section workshop-feed">
@@ -178,7 +181,7 @@
           </div>
         </div>
 
-        <details class="workshop-record-group" open>
+        <details class="workshop-record-group">
           <summary>Evidências <span>{{ evidences|length }}</span></summary>
           <div class="event-list">
             {% for item in evidences %}
@@ -203,7 +206,7 @@
           </div>
         </details>
 
-        <details class="workshop-record-group" {% if technical_readings %}open{% endif %}>
+        <details class="workshop-record-group">
           <summary>Leituras técnicas / BSI <span>{{ technical_readings|length }}</span></summary>
           <div class="event-list">
             {% for item in technical_readings %}
@@ -242,7 +245,7 @@
           </div>
         </details>
 
-        <details class="workshop-record-group" {% if incidents %}open{% endif %}>
+        <details class="workshop-record-group">
           <summary>Incidentes do processo <span>{{ incidents|length }}</span></summary>
           <div class="event-list">
             {% for item in incidents %}
@@ -274,7 +277,7 @@
           </div>
         </details>
 
-        <details class="workshop-record-group" {% if documents %}open{% endif %}>
+        <details class="workshop-record-group">
           <summary>Documentos <span>{{ documents|length }}</span></summary>
           <div class="event-list">
             {% for document in documents %}
@@ -298,7 +301,7 @@
           </div>
         </details>
 
-        <details class="workshop-record-group" {% if notes %}open{% endif %}>
+        <details class="workshop-record-group">
           <summary>Notas <span>{{ notes|length }}</span></summary>
           <div class="event-list">
             {% for item in notes %}
@@ -391,7 +394,7 @@
                 {% if step.code in ["bsi_initial", "bsi_final"] %}
                   <div class="form-stack">
                     <p>{{ step.description }}</p>
-                    <a class="button-link" href="#bsi-workspace">{{ step.button }}</a>
+                    <a class="button-link" href="#bsi-workspace" data-open-details="#bsi-reading-details">{{ step.button }}</a>
                   </div>
                 {% else %}
                   <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
@@ -821,6 +824,16 @@
       processActionsTarget.appendChild(card);
     });
   }
+
+  document.querySelectorAll("[data-open-details]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const target = document.querySelector(trigger.dataset.openDetails);
+      if (target) {
+        target.open = true;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
 
   document.querySelectorAll("[data-service-family]").forEach((familySelect) => {
     const form = familySelect.closest("form");

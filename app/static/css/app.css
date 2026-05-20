@@ -2555,8 +2555,25 @@ a.metric:hover {
   box-shadow: 0 14px 34px rgba(12, 18, 28, 0.08);
 }
 
-.workshop-bsi-workspace .table-heading {
+.bsi-reading-details summary {
+  display: flex;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bsi-reading-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.bsi-reading-details summary h3 {
+  margin: 2px 0 8px;
+}
+
+.bsi-reading-details form {
+  margin-top: 18px;
 }
 
 .workshop-bsi-workspace .reading-card-grid {

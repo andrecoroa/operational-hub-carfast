@@ -426,6 +426,72 @@
                       <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
                     </label>
                     <button type="submit">Guardar verificação de histórico</button>
+                  {% elif step.code == "stellantis_service_box" %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                    <p>{{ step.description }}</p>
+                    <div class="compact-form-grid two-col">
+                      <label>
+                        Plano de manutenção obtido no Service Box?
+                        <select name="servicebox_plan_obtained">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_plan_detail" rows="2" placeholder="Indica plano consultado, data, KM ou referência."></textarea>
+                      </label>
+                      <label>
+                        Simulação por KM e idade efetuada?
+                        <select name="servicebox_simulation_done">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_simulation_detail" rows="2" placeholder="Indica KM, idade, resultado da simulação ou dúvida."></textarea>
+                      </label>
+                      <label>
+                        Campanhas técnicas verificadas?
+                        <select name="servicebox_campaigns_checked">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_campaigns_detail" rows="2" placeholder="Indica se existem campanhas, referência ou documento exportado."></textarea>
+                      </label>
+                      <label>
+                        Documentos de suporte anexados ao processo?
+                        <select name="servicebox_documents_attached">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_documents_detail" rows="2" placeholder="Indica plano, simulação, campanhas ou documentos em falta."></textarea>
+                      </label>
+                    </div>
+                    <label>
+                      Observação geral
+                      <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
+                    </label>
+                    <button type="submit">Guardar verificação Service Box</button>
                   {% elif step.code == "decision" %}
                     <label>
                       Decisão

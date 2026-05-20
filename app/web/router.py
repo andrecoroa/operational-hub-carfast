@@ -2909,6 +2909,14 @@ def workshop_update_flow(
     history_invoice_without_work_order_detail: str = Form(""),
     history_services_match_invoice: str = Form(""),
     history_services_match_invoice_detail: str = Form(""),
+    servicebox_plan_obtained: str = Form(""),
+    servicebox_plan_detail: str = Form(""),
+    servicebox_simulation_done: str = Form(""),
+    servicebox_simulation_detail: str = Form(""),
+    servicebox_campaigns_checked: str = Form(""),
+    servicebox_campaigns_detail: str = Form(""),
+    servicebox_documents_attached: str = Form(""),
+    servicebox_documents_detail: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -2970,6 +2978,46 @@ def workshop_update_flow(
             if clean_decision_note:
                 history_lines.append(f"Observação: {clean_decision_note}")
             clean_decision_note = "\n".join(history_lines)
+        elif status == "stellantis_service_box":
+            answer_labels = {
+                "yes": "Sim",
+                "no": "Não",
+                "partial": "Parcial",
+                "na": "Não aplicável",
+            }
+            servicebox_lines = []
+            servicebox_checks = [
+                (
+                    "Plano de manutenção obtido no Service Box",
+                    servicebox_plan_obtained,
+                    servicebox_plan_detail,
+                ),
+                (
+                    "Simulação por KM e idade efetuada",
+                    servicebox_simulation_done,
+                    servicebox_simulation_detail,
+                ),
+                (
+                    "Campanhas técnicas verificadas",
+                    servicebox_campaigns_checked,
+                    servicebox_campaigns_detail,
+                ),
+                (
+                    "Documentos de suporte anexados ao processo",
+                    servicebox_documents_attached,
+                    servicebox_documents_detail,
+                ),
+            ]
+            for label, answer, detail in servicebox_checks:
+                if answer in answer_labels:
+                    line = f"{label}: {answer_labels[answer]}"
+                    clean_detail = detail.strip()
+                    if clean_detail:
+                        line = f"{line} - {clean_detail}"
+                    servicebox_lines.append(line)
+            if clean_decision_note:
+                servicebox_lines.append(f"Observação: {clean_decision_note}")
+            clean_decision_note = "\n".join(servicebox_lines)
         if (status != old_status or (decision or None) != old_decision) and not clean_decision_note:
             return RedirectResponse(
                 f"/workshop/{process_id}?error=Descreve%20o%20passo%20executado%20antes%20de%20alterar%20o%20fluxo.",

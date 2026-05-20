@@ -5113,6 +5113,7 @@ def task_detail(
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": current_category_options,
                 "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                "task_history_field_labels": TASK_HISTORY_FIELD_LABELS,
                 "document_statuses": DOCUMENT_STATUSES,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
                 "document_area_labels": DOCUMENT_AREA_LABELS,
@@ -5215,24 +5216,65 @@ def task_update(
             waiting_for_user_id = None
             waiting_for_team_id = None
 
-        changes = [
-            ("status", task.status, status),
-            ("priority", task.priority, priority),
-            ("task_type", task.task_type, task_type),
-            ("category", task.category, clean_category),
-            ("subcategory", task.subcategory, clean_subcategory),
-            ("assigned_to_id", str(task.assigned_to_id or ""), str(assigned_user_id or "")),
-            ("team_id", str(task.team_id or ""), str(assigned_team_id or "")),
-            ("delegated_to_user_id", str(task.delegated_to_user_id or ""), str(delegated_user_id or "")),
-            ("delegated_to_team_id", str(task.delegated_to_team_id or ""), str(delegated_team_id or "")),
-            ("waiting_for_user_id", str(task.waiting_for_user_id or ""), str(waiting_for_user_id or "")),
-            ("waiting_for_team_id", str(task.waiting_for_team_id or ""), str(waiting_for_team_id or "")),
-            ("waiting_reason", task.waiting_reason, clean_waiting_reason),
-            ("waiting_reason_detail", task.waiting_reason_detail, clean_waiting_reason_detail),
-            ("due_on", task.due_on.isoformat() if task.due_on else "", parsed_due_on.isoformat() if parsed_due_on else ""),
-            ("department", task.department, clean_department),
-            ("station", task.station, station.strip()),
-        ]
+        changes: list[tuple[str, str, str]] = []
+        add_visible_task_change(
+            changes,
+            "Estado",
+            TASK_STATUS_DISPLAY_LABELS.get(task.status, task.status),
+            TASK_STATUS_DISPLAY_LABELS.get(status, status),
+        )
+        add_visible_task_change(
+            changes,
+            "Prioridade",
+            PRIORITY_DISPLAY_LABELS.get(task.priority, task.priority),
+            PRIORITY_DISPLAY_LABELS.get(priority, priority),
+        )
+        add_visible_task_change(
+            changes,
+            "Tipo de tarefa",
+            TASK_TYPE_LABELS.get(task.task_type, task.task_type),
+            TASK_TYPE_LABELS.get(task_type, task_type),
+        )
+        add_visible_task_change(
+            changes,
+            "Classificação",
+            TASK_CATEGORY_DISPLAY_LABELS.get(task.category, task.category),
+            TASK_CATEGORY_DISPLAY_LABELS.get(clean_category, clean_category),
+        )
+        add_visible_task_change(changes, "Subcategoria", task.subcategory, clean_subcategory)
+        add_visible_task_change(
+            changes,
+            "Responsável",
+            task_target_label(db, task.assigned_to_id, task.team_id),
+            task_target_label(db, assigned_user_id, assigned_team_id),
+        )
+        add_visible_task_change(
+            changes,
+            "Execução delegada a",
+            task_target_label(db, task.delegated_to_user_id, task.delegated_to_team_id),
+            task_target_label(db, delegated_user_id, delegated_team_id),
+        )
+        add_visible_task_change(
+            changes,
+            "A aguardar por",
+            task_target_label(db, task.waiting_for_user_id, task.waiting_for_team_id),
+            task_target_label(db, waiting_for_user_id, waiting_for_team_id),
+        )
+        add_visible_task_change(
+            changes,
+            "Motivo de espera",
+            TASK_WAITING_REASON_LABELS.get(task.waiting_reason or "", task.waiting_reason),
+            TASK_WAITING_REASON_LABELS.get(clean_waiting_reason, clean_waiting_reason),
+        )
+        add_visible_task_change(changes, "Detalhe do motivo", task.waiting_reason_detail, clean_waiting_reason_detail)
+        add_visible_task_change(
+            changes,
+            "Data limite",
+            task.due_on.isoformat() if task.due_on else "",
+            parsed_due_on.isoformat() if parsed_due_on else "",
+        )
+        add_visible_task_change(changes, "Área", task.department, clean_department)
+        add_visible_task_change(changes, "Estação", task.station, station.strip())
 
         task.status = status
         task.priority = priority
@@ -5260,16 +5302,15 @@ def task_update(
             task.closed_at = None
 
         for field_name, old_value, new_value in changes:
-            if old_value != new_value:
-                db.add(
-                    TaskHistory(
-                        task_id=task.id,
-                        user_id=user_id,
-                        field_name=field_name,
-                        old_value=old_value or None,
-                        new_value=new_value or None,
-                    )
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name=field_name,
+                    old_value=old_value or None,
+                    new_value=new_value or None,
                 )
+            )
 
         record_audit(
             db,
@@ -5372,6 +5413,7 @@ def task_add_comment(
                     "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                     "task_categories": TASK_CATEGORIES,
                     "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                    "task_history_field_labels": TASK_HISTORY_FIELD_LABELS,
                     "document_statuses": DOCUMENT_STATUSES,
                     "document_status_labels": DOCUMENT_STATUS_LABELS,
                     "document_area_labels": DOCUMENT_AREA_LABELS,
@@ -5634,6 +5676,46 @@ def format_delegation_target(user_id: int | None, team_id: int | None) -> str:
     if team_id:
         return f"team:{team_id}"
     return ""
+
+
+def task_target_label(db, user_id: int | None, team_id: int | None) -> str:
+    if user_id:
+        user = db.get(User, user_id)
+        return user.name if user else f"Utilizador #{user_id}"
+    if team_id:
+        team = db.get(Team, team_id)
+        return team.name if team else f"Equipa #{team_id}"
+    return ""
+
+
+def add_visible_task_change(changes: list[tuple[str, str, str]], field_name: str, old_value, new_value) -> None:
+    old_text = str(old_value or "").strip()
+    new_text = str(new_value or "").strip()
+    if old_text != new_text:
+        changes.append((field_name, old_text, new_text))
+
+
+TASK_HISTORY_FIELD_LABELS = {
+    "status": "Estado",
+    "priority": "Prioridade",
+    "task_type": "Tipo de tarefa",
+    "category": "Classificação",
+    "subcategory": "Subcategoria",
+    "assigned_to_id": "Responsável",
+    "team_id": "Fila / equipa responsável",
+    "delegated_to_user_id": "Execução delegada a",
+    "delegated_to_team_id": "Equipa delegada",
+    "waiting_for_user_id": "A aguardar por",
+    "waiting_for_team_id": "A aguardar por equipa",
+    "waiting_reason": "Motivo de espera",
+    "waiting_reason_detail": "Detalhe do motivo",
+    "due_on": "Data limite",
+    "department": "Área",
+    "station": "Estação",
+    "responsible": "Responsável",
+    "delegation": "Execução delegada a",
+    "waiting_for": "A aguardar por",
+}
 
 
 def assignable_users_for_workspace(users: list[User], workspace: str) -> list[User]:

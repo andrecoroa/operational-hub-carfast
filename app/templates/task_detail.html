@@ -181,7 +181,7 @@
                 {% set history_user = user_by_id.get(item.user_id) if item.user_id else None %}
                 <article class="event-item">
                   <div>
-                    <strong>{{ item.field_name }}{% if history_user %} · {{ history_user.name }}{% endif %}</strong>
+                    <strong>{{ task_history_field_labels.get(item.field_name, item.field_name) }}{% if history_user %} · {{ history_user.name }}{% endif %}</strong>
                     <span>{{ item.changed_at.strftime("%Y-%m-%d %H:%M") if item.changed_at else "" }}</span>
                   </div>
                   <p>{{ item.old_value or "-" }} -&gt; {{ item.new_value or "-" }}</p>

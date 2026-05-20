@@ -13,7 +13,9 @@ Pontos fechados até esta revisão:
 - Os serviços iniciais disponíveis são: revisão, pneus, calços, discos, luz/avaria no painel, ruído anormal, acidente/dano, bateria, verificação periódica e outro.
 - Nos travões, quando aplicável, deve distinguir frente e trás.
 - Em viaturas Stellantis, o passo Service Box entra após a verificação de histórico e deve suportar plano de manutenção, simulação por KM/idade e campanhas técnicas.
-- O diagnóstico técnico fica flexível. Ainda não está fechada a checklist definitiva de todos os campos BSI.
+- O diagnóstico técnico fica dividido por relatório: informações de manutenção, programação manutenção, lubrificação do motor, leitura de defeitos e identificação/telecarregamento.
+- Cada relatório deve mostrar apenas os campos que lhe pertencem, para não misturar dados de PDFs diferentes.
+- Ainda não está fechada a checklist definitiva de todos os campos BSI.
 - A app não faz OCR dos PDFs nesta fase. O utilizador regista metadados e links para documentos externos.
 - O histórico técnico é sempre acrescentado à viatura. Não substitui leituras anteriores.
 - Ficheiros PDF, fotos e vídeos ficam em OneDrive/SharePoint ou storage externo. A base de dados guarda metadados, links, decisões, notas e histórico.

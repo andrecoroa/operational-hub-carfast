@@ -189,15 +189,19 @@ WORKSHOP_EVIDENCE_STATUSES = [
 ]
 
 WORKSHOP_READING_TYPES = [
-    ("technical", "Leitura técnica"),
-    ("bsi", "Leitura BSI"),
-    ("diagnostic", "Diagnóstico eletrónico"),
-    ("maintenance", "Manutenção"),
     ("maintenance_info", "Informações manutenção"),
+    ("maintenance_program", "Programação manutenção"),
     ("lubrication_info", "Informações lubrificação motor"),
     ("fault_reading", "Leitura de defeitos"),
     ("software_identification", "Identificação / telecarregamento"),
     ("other", "Outra leitura"),
+]
+
+WORKSHOP_LEGACY_READING_TYPES = [
+    ("technical", "Leitura técnica"),
+    ("bsi", "Leitura BSI"),
+    ("diagnostic", "Diagnóstico eletrónico"),
+    ("maintenance", "Manutenção"),
 ]
 
 WORKSHOP_OPENING_LABELS = dict(WORKSHOP_OPENING_TYPES)
@@ -210,7 +214,7 @@ WORKSHOP_SERVICE_STATUS_LABELS = dict(WORKSHOP_SERVICE_STATUSES)
 WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
-WORKSHOP_READING_TYPE_LABELS = dict(WORKSHOP_READING_TYPES)
+WORKSHOP_READING_TYPE_LABELS = dict([*WORKSHOP_LEGACY_READING_TYPES, *WORKSHOP_READING_TYPES])
 WORKSHOP_SERVICE_DETAIL_FAMILIES = {
     family for _, _, family in WORKSHOP_SERVICE_DETAILS if family != "any"
 }

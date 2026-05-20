@@ -1068,7 +1068,9 @@
         const allowedTypes = (panel.dataset.readingPanel || "").split(/\s+/).filter(Boolean);
         const isRelevant = allowedTypes.includes(selectedType);
         panel.hidden = !isRelevant;
-        panel.open = isRelevant;
+        if ("open" in panel) {
+          panel.open = isRelevant;
+        }
       }
     }
 

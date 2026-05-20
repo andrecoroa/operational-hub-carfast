@@ -2550,6 +2550,19 @@ a.metric:hover {
   margin-top: 0;
 }
 
+.workshop-bsi-workspace {
+  border-color: rgba(166, 75, 55, 0.18);
+  box-shadow: 0 14px 34px rgba(12, 18, 28, 0.08);
+}
+
+.workshop-bsi-workspace .table-heading {
+  align-items: flex-start;
+}
+
+.workshop-bsi-workspace .reading-card-grid {
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+}
+
 .workshop-summary-card {
   min-height: 300px;
   padding: 20px;

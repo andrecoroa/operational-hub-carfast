@@ -578,6 +578,38 @@ QUICK_RECORD_STATUS_LABELS = dict(QUICK_RECORD_STATUSES)
 QUICK_RECORD_ARCHIVE_STATUSES = ("closed", "converted", "no_action_needed")
 
 WORKSHOP_BLOCKED_VEHICLE_STATUSES = {"sold", "written_off", "inactive"}
+STELLANTIS_BRANDS = {
+    "abarth",
+    "alfa romeo",
+    "chrysler",
+    "citroen",
+    "dodge",
+    "ds",
+    "fiat",
+    "jeep",
+    "lancia",
+    "maserati",
+    "opel",
+    "peugeot",
+    "ram",
+    "vauxhall",
+}
+
+
+def normalize_vehicle_brand(brand: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (brand or "").casefold()).strip()
+
+
+def is_stellantis_vehicle(vehicle: Vehicle | None) -> bool:
+    return normalize_vehicle_brand(vehicle.brand if vehicle else None) in STELLANTIS_BRANDS
+
+
+def workshop_flow_steps_for_vehicle(vehicle: Vehicle | None) -> list[dict]:
+    if is_stellantis_vehicle(vehicle):
+        steps = WORKSHOP_FLOW_STEPS
+    else:
+        steps = [step for step in WORKSHOP_FLOW_STEPS if step["code"] != "stellantis_service_box"]
+    return [dict(step, index=index) for index, step in enumerate(steps, start=2)]
 
 
 def normalize_task_workspace(workspace: str | None) -> str:
@@ -2101,6 +2133,9 @@ def render_workshop_detail(
         .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
         .order_by(VehicleExternalSnapshot.updated_at.desc())
     )
+    workshop_flow_steps = workshop_flow_steps_for_vehicle(vehicle)
+    workshop_flow_order = ["opening", "reception", *[step["code"] for step in workshop_flow_steps]]
+    workshop_flow_titles = {step["code"]: step["title"] for step in workshop_flow_steps}
     completed_flow_statuses = {"opening"}
     if process.status == "reception" or process.opened_on or process.km_entry:
         completed_flow_statuses.add("reception")
@@ -2110,12 +2145,12 @@ def render_workshop_detail(
             completed_flow_statuses.add(code)
     if technical_readings:
         completed_flow_statuses.add("bsi_initial")
-    if process.status in WORKSHOP_FLOW_ORDER:
-        current_flow_index = WORKSHOP_FLOW_ORDER.index(process.status)
+    if process.status in workshop_flow_order:
+        current_flow_index = workshop_flow_order.index(process.status)
     elif process.status == "diagnosis":
-        current_flow_index = WORKSHOP_FLOW_ORDER.index("bsi_initial")
+        current_flow_index = workshop_flow_order.index("bsi_initial")
     elif process.status in {"waiting_analysis", "waiting_parts", "in_progress", "validation"}:
-        current_flow_index = WORKSHOP_FLOW_ORDER.index("decision")
+        current_flow_index = workshop_flow_order.index("decision")
     else:
         current_flow_index = 0
     return templates.TemplateResponse(
@@ -2133,9 +2168,10 @@ def render_workshop_detail(
             "services": services,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
-            "workshop_flow_steps": WORKSHOP_FLOW_STEPS,
-            "workshop_flow_order": WORKSHOP_FLOW_ORDER,
-            "workshop_flow_titles": WORKSHOP_FLOW_TITLES,
+            "workshop_flow_steps": workshop_flow_steps,
+            "workshop_flow_order": workshop_flow_order,
+            "workshop_flow_titles": workshop_flow_titles,
+            "is_stellantis_vehicle": is_stellantis_vehicle(vehicle),
             "completed_flow_statuses": completed_flow_statuses,
             "current_flow_index": current_flow_index,
             "noted": noted,

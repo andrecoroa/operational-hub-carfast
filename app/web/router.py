@@ -1938,11 +1938,15 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "maintenance_days_until_next": "Dias até próxima manutenção",
     "maintenance_days_since_last_reset": "Dias desde última reposição de manutenção",
     "maintenance_last_reset_date_estimated": "Data estimada última reposição",
+    "maintenance_days_since_first_circulation": "Dias desde início de circulação",
+    "maintenance_first_circulation_date_estimated": "Data estimada início de circulação",
     "maintenance_temporal_limit_exceeded": "Limite temporal ultrapassado",
     "maintenance_distance_limit_exceeded": "Limite quilométrico ultrapassado",
     "maintenance_count": "Nº manutenções efetuadas",
     "maintenance_threshold_km": "Limiar manutenção",
     "maintenance_duration_months": "Duração manutenção",
+    "maintenance_first_start_km": "Início primeira manutenção",
+    "maintenance_first_duration_months": "Duração antes primeira manutenção",
     "maintenance_management_mode": "Gestão manutenção",
     "maintenance_next_due_date": "Data prevista próxima manutenção",
     "maintenance_days_since_last_estimated": "Dias estimados desde última manutenção",
@@ -1979,11 +1983,14 @@ def compact_reading_data(
     maintenance_km_until_next: str,
     maintenance_days_until_next: str,
     maintenance_days_since_last_reset: str,
+    maintenance_days_since_first_circulation: str,
     maintenance_temporal_limit_exceeded: str,
     maintenance_distance_limit_exceeded: str,
     maintenance_count: str,
     maintenance_threshold_km: str,
     maintenance_duration_months: str,
+    maintenance_first_start_km: str,
+    maintenance_first_duration_months: str,
     maintenance_management_mode: str,
     oil_dilution_rate: str,
     oil_carbon_rate: str,
@@ -2012,11 +2019,14 @@ def compact_reading_data(
         "maintenance_km_until_next": maintenance_km_until_next.strip(),
         "maintenance_days_until_next": maintenance_days_until_next.strip(),
         "maintenance_days_since_last_reset": maintenance_days_since_last_reset.strip(),
+        "maintenance_days_since_first_circulation": maintenance_days_since_first_circulation.strip(),
         "maintenance_temporal_limit_exceeded": maintenance_temporal_limit_exceeded.strip(),
         "maintenance_distance_limit_exceeded": maintenance_distance_limit_exceeded.strip(),
         "maintenance_count": maintenance_count.strip(),
         "maintenance_threshold_km": maintenance_threshold_km.strip(),
         "maintenance_duration_months": maintenance_duration_months.strip(),
+        "maintenance_first_start_km": maintenance_first_start_km.strip(),
+        "maintenance_first_duration_months": maintenance_first_duration_months.strip(),
         "maintenance_management_mode": maintenance_management_mode.strip(),
         "oil_dilution_rate": oil_dilution_rate.strip(),
         "oil_carbon_rate": oil_carbon_rate.strip(),
@@ -2049,6 +2059,11 @@ def compact_reading_data(
     if maintenance_days_since_reset is not None:
         data["maintenance_last_reset_date_estimated"] = (
             reading_date - timedelta(days=maintenance_days_since_reset)
+        ).isoformat()
+    maintenance_days_since_first_circulation_value = parse_optional_int(maintenance_days_since_first_circulation)
+    if maintenance_days_since_first_circulation_value is not None:
+        data["maintenance_first_circulation_date_estimated"] = (
+            reading_date - timedelta(days=maintenance_days_since_first_circulation_value)
         ).isoformat()
     if maintenance_days is not None and maintenance_months is not None:
         plan_days = round(maintenance_months * 365 / 12)
@@ -2695,11 +2710,14 @@ def workshop_add_technical_reading(
     maintenance_km_until_next: str = Form(""),
     maintenance_days_until_next: str = Form(""),
     maintenance_days_since_last_reset: str = Form(""),
+    maintenance_days_since_first_circulation: str = Form(""),
     maintenance_temporal_limit_exceeded: str = Form(""),
     maintenance_distance_limit_exceeded: str = Form(""),
     maintenance_count: str = Form(""),
     maintenance_threshold_km: str = Form(""),
     maintenance_duration_months: str = Form(""),
+    maintenance_first_start_km: str = Form(""),
+    maintenance_first_duration_months: str = Form(""),
     maintenance_management_mode: str = Form(""),
     oil_dilution_rate: str = Form(""),
     oil_carbon_rate: str = Form(""),
@@ -2740,11 +2758,14 @@ def workshop_add_technical_reading(
         maintenance_km_until_next=maintenance_km_until_next,
         maintenance_days_until_next=maintenance_days_until_next,
         maintenance_days_since_last_reset=maintenance_days_since_last_reset,
+        maintenance_days_since_first_circulation=maintenance_days_since_first_circulation,
         maintenance_temporal_limit_exceeded=maintenance_temporal_limit_exceeded,
         maintenance_distance_limit_exceeded=maintenance_distance_limit_exceeded,
         maintenance_count=maintenance_count,
         maintenance_threshold_km=maintenance_threshold_km,
         maintenance_duration_months=maintenance_duration_months,
+        maintenance_first_start_km=maintenance_first_start_km,
+        maintenance_first_duration_months=maintenance_first_duration_months,
         maintenance_management_mode=maintenance_management_mode,
         oil_dilution_rate=oil_dilution_rate,
         oil_carbon_rate=oil_carbon_rate,

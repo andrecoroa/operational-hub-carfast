@@ -41,6 +41,7 @@ TECHNICAL_HISTORY_IMPORT_COLUMNS = [
     ("km_ate_proxima_manutencao", "KM até próxima manutenção", "Opcional"),
     ("dias_ate_proxima_manutencao", "Dias até próxima manutenção", "Opcional"),
     ("dias_desde_ultima_reposicao_manutencao", "Dias desde última reposição manutenção", "Opcional"),
+    ("dias_desde_inicio_circulacao", "Dias desde início de circulação", "Opcional"),
     ("numero_manutencoes_efetuadas", "Nº manutenções efetuadas", "Opcional"),
     ("limite_temporal_ultrapassado", "Limite temporal ultrapassado", "Opcional"),
     ("limite_quilometrico_ultrapassado", "Limite quilométrico ultrapassado", "Opcional"),
@@ -105,7 +106,14 @@ TEXT_FIELD_MAP = {
     "maintenance_days_since_last_reset": [
         "dias_desde_ultima_reposicao_manutencao",
         "dias_desde_ultima_reposicao",
+        "numero_dias_desde_ultima_reposicao_zero",
         "maintenance_days_since_last_reset",
+    ],
+    "maintenance_days_since_first_circulation": [
+        "dias_desde_inicio_circulacao",
+        "dias_desde_inicio_de_circulacao",
+        "numero_dias_desde_inicio_circulacao",
+        "maintenance_days_since_first_circulation",
     ],
     "maintenance_count": ["numero_manutencoes_efetuadas", "n_manutencoes", "maintenance_count"],
     "maintenance_temporal_limit_exceeded": ["limite_temporal_ultrapassado"],
@@ -181,6 +189,7 @@ def technical_history_template_csv() -> str:
             "380",
             "542",
             "188",
+            "1034",
             "2",
             "Não",
             "Sim",
@@ -296,6 +305,11 @@ def build_reading_data(row: tuple[Any, ...], col: dict[str, int], reading_date: 
     if days_since_reset is not None:
         data["maintenance_last_reset_date_estimated"] = (
             reading_date - timedelta(days=days_since_reset)
+        ).isoformat()
+    days_since_first_circulation = clean_int(data.get("maintenance_days_since_first_circulation"))
+    if days_since_first_circulation is not None:
+        data["maintenance_first_circulation_date_estimated"] = (
+            reading_date - timedelta(days=days_since_first_circulation)
         ).isoformat()
     duration_months = clean_int(data.get("maintenance_duration_months"))
     if days_until_next is not None and duration_months is not None:

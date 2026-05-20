@@ -215,11 +215,12 @@ WORKSHOP_FLOW_STEPS = [
     {
         "code": "history_check",
         "title": "Verificar histórico",
-        "description": "Consultar histórico técnico, serviços anteriores e informação conhecida da viatura.",
+        "description": "Consultar histórico disponível ou sinalizar que não existe histórico suficiente para apoiar a decisão.",
         "field_label": "Histórico consultado",
-        "placeholder": "Regista o que foi visto no histórico e se há pontos de atenção.",
+        "placeholder": "Regista apenas se houver algum ponto essencial para a decisão.",
         "button": "Confirmar histórico",
         "decision": "",
+        "mode": "history_check",
     },
     {
         "code": "stellantis_service_box",

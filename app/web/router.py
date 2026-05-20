@@ -1947,6 +1947,7 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "maintenance_next_due_date": "Data prevista próxima manutenção",
     "maintenance_days_since_last_estimated": "Dias estimados desde última manutenção",
     "maintenance_last_date_estimated": "Data estimada última manutenção",
+    "machine_source": "Máquina / origem",
     "oil_dilution_rate": "Taxa de diluição do óleo",
     "oil_carbon_rate": "Taxa de carbono no óleo",
     "oil_anti_dilution_status": "Proteção anti-diluição",
@@ -2004,6 +2005,7 @@ def compact_reading_data(
     systems_checked: str,
     recommendation: str,
     flow_phase: str,
+    machine_source: str,
 ) -> dict[str, str]:
     values = {
         "maintenance_last_reset_km": maintenance_last_reset_km.strip(),
@@ -2036,6 +2038,7 @@ def compact_reading_data(
         "systems_checked": systems_checked.strip(),
         "recommendation": recommendation.strip(),
         "flow_phase": flow_phase.strip(),
+        "machine_source": machine_source.strip(),
     }
     data = {key: value for key, value in values.items() if value}
     maintenance_days = parse_optional_int(maintenance_days_until_next)
@@ -2718,6 +2721,7 @@ def workshop_add_technical_reading(
     systems_checked: str = Form(""),
     recommendation: str = Form(""),
     flow_phase: str = Form("bsi_initial"),
+    machine_source: str = Form(""),
     external_url: str = Form(""),
     storage_provider: str = Form("external"),
 ):
@@ -2762,6 +2766,7 @@ def workshop_add_technical_reading(
         systems_checked=systems_checked,
         recommendation=recommendation,
         flow_phase=flow_phase,
+        machine_source=machine_source,
     )
     clean_summary = summary.strip()
     clean_url = external_url.strip()

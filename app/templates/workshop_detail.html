@@ -374,9 +374,17 @@
                   <strong>{{ step.title }}</strong>
                   <span>{{ "Atual" if step_state == "current" else ("Concluído" if step_state == "complete" else ("Por rever" if step_state == "skipped" else "Pendente")) }}</span>
                 </summary>
-                <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
-                  <input type="hidden" name="status" value="{{ step.code }}">
-                  {% if step.mode == "history_check" %}
+                {% if step.code in ["bsi_initial", "bsi_final"] %}
+                  <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+                    <p>{{ step.description }}</p>
+                    {% set fixed_reading_phase = step.code %}
+                    {% set reading_submit_label = step.button %}
+                    {% include "_workshop_technical_reading_fields.html" %}
+                  </form>
+                {% else %}
+                  <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
+                    <input type="hidden" name="status" value="{{ step.code }}">
+                    {% if step.mode == "history_check" %}
                     <input type="hidden" name="decision" value="">
                     <p>{{ step.description }}</p>
                     <label>
@@ -526,8 +534,9 @@
                       <textarea name="decision_note" rows="3" required placeholder="{{ step.placeholder }}"></textarea>
                     </label>
                     <button type="submit">{{ step.button }}</button>
-                  {% endif %}
-                </form>
+                    {% endif %}
+                  </form>
+                {% endif %}
               </details>
             {% endfor %}
           </div>
@@ -630,7 +639,7 @@
           </form>
         </details>
 
-        <details class="workshop-action-card workshop-flow-action" {% if process.status in ["bsi_initial", "bsi_final", "diagnosis"] %}open{% endif %}>
+        <details class="workshop-action-card workshop-flow-action" hidden>
           <summary>Registo de leitura técnica / BSI</summary>
           <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
             <div class="compact-form-grid two-col">

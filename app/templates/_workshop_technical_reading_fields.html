@@ -1,0 +1,218 @@
+{% set is_fixed_phase = fixed_reading_phase is defined and fixed_reading_phase %}
+<div class="compact-form-grid two-col">
+  <label>
+    Tipo de leitura
+    <select name="reading_type" data-reading-type>
+      {% for code, label in technical_reading_types %}
+        <option value="{{ code }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if is_fixed_phase %}
+    <input type="hidden" name="flow_phase" value="{{ fixed_reading_phase }}">
+    <label>
+      Fase do processo
+      <input type="text" value="{{ 'Leitura final' if fixed_reading_phase == 'bsi_final' else 'Leitura inicial' }}" readonly>
+    </label>
+  {% else %}
+    <label>
+      Fase do processo
+      <select name="flow_phase">
+        <option value="bsi_initial" {% if process.status != "bsi_final" %}selected{% endif %}>Leitura inicial</option>
+        <option value="bsi_final" {% if process.status == "bsi_final" %}selected{% endif %}>Leitura final</option>
+      </select>
+    </label>
+  {% endif %}
+  <label>
+    Máquina / origem
+    <select name="machine_source">
+      <option value="">Por preencher</option>
+      <option value="PSA-DIAG/Stellantis">PSA-DIAG/Stellantis</option>
+      <option value="Autel">Autel</option>
+      <option value="Service Box">Service Box</option>
+      <option value="Outro">Outro</option>
+    </select>
+  </label>
+  <label>
+    Data da leitura
+    <input type="date" name="reading_date">
+  </label>
+  <label>
+    KM
+    <input type="number" name="odometer_km" min="0" step="1" value="{{ process.km_entry or "" }}">
+  </label>
+  <label>
+    Tensão bateria
+    <input type="text" name="battery_voltage" maxlength="80" placeholder="Ex.: 12.4V">
+  </label>
+</div>
+<details class="advanced-panel" data-reading-panel="maintenance_info maintenance">
+  <summary>Manutenção</summary>
+  <div class="compact-form-grid two-col">
+    <label>
+      KM última reposição manutenção
+      <input type="text" name="maintenance_last_reset_km" maxlength="80" placeholder="Ex.: 9233,5">
+    </label>
+    <label>
+      KM até próxima manutenção
+      <input type="text" name="maintenance_km_until_next" maxlength="80" placeholder="Ex.: 3280">
+    </label>
+    <label>
+      Dias até próxima manutenção
+      <input type="number" name="maintenance_days_until_next" min="0" step="1" placeholder="Ex.: 476">
+    </label>
+    <label>
+      Dias desde última reposição
+      <input type="number" name="maintenance_days_since_last_reset" min="0" step="1" placeholder="Ex.: 188">
+    </label>
+    <label>
+      Nº manutenções efetuadas
+      <input type="number" name="maintenance_count" min="0" step="1">
+    </label>
+    <label>
+      Limite temporal ultrapassado
+      <select name="maintenance_temporal_limit_exceeded">
+        <option value="">Por preencher</option>
+        <option value="Não">Não</option>
+        <option value="Sim">Sim</option>
+      </select>
+    </label>
+    <label>
+      Limite quilométrico ultrapassado
+      <select name="maintenance_distance_limit_exceeded">
+        <option value="">Por preencher</option>
+        <option value="Não">Não</option>
+        <option value="Sim">Sim</option>
+      </select>
+    </label>
+    <label>
+      Limiar manutenção
+      <input type="number" name="maintenance_threshold_km" min="0" step="1" placeholder="Ex.: 40000">
+    </label>
+    <label>
+      Duração manutenção
+      <input type="number" name="maintenance_duration_months" min="0" step="1" placeholder="Meses">
+    </label>
+    <label>
+      Gestão manutenção
+      <select name="maintenance_management_mode">
+        <option value="">Por preencher</option>
+        <option value="Dinâmica">Dinâmica</option>
+        <option value="Estática">Estática</option>
+      </select>
+    </label>
+  </div>
+  <p class="muted">A app calcula a próxima manutenção e a última manutenção estimada quando existirem dias até próxima manutenção e duração em meses.</p>
+</details>
+<details class="advanced-panel" data-reading-panel="lubrication_info">
+  <summary>Lubrificação motor</summary>
+  <div class="compact-form-grid two-col">
+    <label>
+      Taxa de diluição do óleo
+      <input type="text" name="oil_dilution_rate" maxlength="80" placeholder="Ex.: 18,813%">
+    </label>
+    <label>
+      Taxa de carbono no óleo
+      <input type="text" name="oil_carbon_rate" maxlength="80" placeholder="Ex.: 2,125%">
+    </label>
+    <label>
+      Proteção anti-diluição
+      <input type="text" name="oil_anti_dilution_status" maxlength="120" placeholder="Ex.: Proteção inativa">
+    </label>
+    <label>
+      Intervalo calculado pelo calculador
+      <input type="number" name="engine_calculated_interval_km" min="0" step="1" placeholder="Km">
+    </label>
+  </div>
+</details>
+<details class="advanced-panel" data-reading-panel="fault_reading diagnostic bsi technical">
+  <summary>Defeitos</summary>
+  <div class="compact-form-grid two-col">
+    <label>
+      Existem defeitos?
+      <select name="faults_present">
+        <option value="">Por preencher</option>
+        <option value="Não">Não</option>
+        <option value="Sim">Sim</option>
+      </select>
+    </label>
+    <label>
+      Defeito crítico?
+      <select name="critical_fault">
+        <option value="">Por preencher</option>
+        <option value="Não">Não</option>
+        <option value="Sim">Sim</option>
+      </select>
+    </label>
+    <label>
+      Estado principal
+      <select name="fault_main_status">
+        <option value="">Por preencher</option>
+        <option value="Fugitivo">Fugitivo</option>
+        <option value="Permanente">Permanente</option>
+      </select>
+    </label>
+    <label>
+      KM associado ao defeito
+      <input type="number" name="fault_odometer_km" min="0" step="1">
+    </label>
+  </div>
+  <label>
+    Caracterização
+    <input type="text" name="fault_characterization" maxlength="255" placeholder="Descrição curta do defeito principal">
+  </label>
+  <label>
+    Ação recomendada
+    <textarea name="recommended_action" rows="2"></textarea>
+  </label>
+</details>
+<details class="advanced-panel" data-reading-panel="software_identification bsi technical">
+  <summary>Telecarregamento</summary>
+  <div class="compact-form-grid two-col">
+    <label>
+      Referência software
+      <input type="text" name="software_reference" maxlength="120">
+    </label>
+    <label>
+      Edição calibração
+      <input type="text" name="calibration_edition" maxlength="80">
+    </label>
+    <label>
+      Data telecarregamento
+      <input type="date" name="download_date">
+    </label>
+    <label>
+      Nº telecarregamentos
+      <input type="number" name="download_count" min="0" step="1">
+    </label>
+  </div>
+</details>
+<label>
+  Resumo
+  <textarea name="summary" rows="3" placeholder="Síntese da leitura ou diagnóstico"></textarea>
+</label>
+<label>
+  Códigos de erro
+  <textarea name="fault_codes" rows="2" placeholder="Códigos, sistemas ou mensagens relevantes"></textarea>
+</label>
+<label>
+  Notas BSI
+  <textarea name="bsi_notes" rows="2" placeholder="Campo flexível para evoluir sem fechar já a grelha BSI"></textarea>
+</label>
+<details class="advanced-panel" data-reading-panel="technical bsi diagnostic maintenance maintenance_info lubrication_info fault_reading software_identification other">
+  <summary>Campos técnicos adicionais</summary>
+  <label>
+    Sistemas verificados
+    <textarea name="systems_checked" rows="2"></textarea>
+  </label>
+  <label>
+    Recomendação
+    <textarea name="recommendation" rows="2"></textarea>
+  </label>
+  <label>
+    Link externo da leitura
+    <input name="external_url" type="url" placeholder="SharePoint, OneDrive ou relatório externo">
+  </label>
+</details>
+<input name="storage_provider" type="hidden" value="external">
+<button type="submit">{{ reading_submit_label if reading_submit_label is defined and reading_submit_label else "Gravar leitura técnica" }}</button>

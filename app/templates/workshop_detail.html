@@ -369,10 +369,63 @@
                   {% if step.mode == "history_check" %}
                     <input type="hidden" name="decision" value="">
                     <p>{{ step.description }}</p>
-                    <div class="button-row compact-action-row">
-                      <button type="submit" name="decision_note" value="Histórico consultado.">Histórico consultado</button>
-                      <button class="secondary" type="submit" name="decision_note" value="Sem histórico disponível.">Sem histórico disponível</button>
+                    <label>
+                      Resultado da consulta
+                      <select name="history_result" required>
+                        <option value="">Selecionar</option>
+                        <option value="consulted">Histórico consultado</option>
+                        <option value="no_history">Sem histórico disponível</option>
+                      </select>
+                    </label>
+                    <div class="compact-form-grid two-col">
+                      <label>
+                        Folhas de obra de reparação com fatura?
+                        <select name="history_repair_orders_with_invoice">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_repair_orders_with_invoice_detail" rows="2" placeholder="Indica folhas de obra, faturas ou exceções."></textarea>
+                      </label>
+                      <label>
+                        Fatura sem folha de obra?
+                        <select name="history_invoice_without_work_order">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_invoice_without_work_order_detail" rows="2" placeholder="Indica faturas sem suporte ou dúvidas."></textarea>
+                      </label>
+                      <label>
+                        Serviços da folha de obra e faturados correspondem?
+                        <select name="history_services_match_invoice">
+                          <option value="">Não verificado</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="partial">Parcial</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_services_match_invoice_detail" rows="2" placeholder="Indica diferenças, serviços em dúvida ou validações."></textarea>
+                      </label>
                     </div>
+                    <label>
+                      Observação geral
+                      <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
+                    </label>
+                    <button type="submit">Guardar verificação de histórico</button>
                   {% elif step.code == "decision" %}
                     <label>
                       Decisão

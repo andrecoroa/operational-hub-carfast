@@ -2902,6 +2902,13 @@ def workshop_update_flow(
     status: str = Form(...),
     decision: str = Form(""),
     decision_note: str = Form(""),
+    history_result: str = Form(""),
+    history_repair_orders_with_invoice: str = Form(""),
+    history_repair_orders_with_invoice_detail: str = Form(""),
+    history_invoice_without_work_order: str = Form(""),
+    history_invoice_without_work_order_detail: str = Form(""),
+    history_services_match_invoice: str = Form(""),
+    history_services_match_invoice_detail: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -2922,6 +2929,47 @@ def workshop_update_flow(
         old_status = process.status
         old_decision = process.decision
         clean_decision_note = decision_note.strip()
+        if status == "history_check":
+            result_labels = {
+                "consulted": "Histórico consultado",
+                "no_history": "Sem histórico disponível",
+            }
+            answer_labels = {
+                "yes": "Sim",
+                "no": "Não",
+                "partial": "Parcial",
+                "na": "Não aplicável",
+            }
+            history_lines = []
+            if history_result in result_labels:
+                history_lines.append(f"Resultado da consulta: {result_labels[history_result]}.")
+            history_checks = [
+                (
+                    "Folhas de obra de reparação com fatura",
+                    history_repair_orders_with_invoice,
+                    history_repair_orders_with_invoice_detail,
+                ),
+                (
+                    "Fatura sem folha de obra",
+                    history_invoice_without_work_order,
+                    history_invoice_without_work_order_detail,
+                ),
+                (
+                    "Serviços da folha de obra e serviço faturado correspondem",
+                    history_services_match_invoice,
+                    history_services_match_invoice_detail,
+                ),
+            ]
+            for label, answer, detail in history_checks:
+                if answer in answer_labels:
+                    line = f"{label}: {answer_labels[answer]}"
+                    clean_detail = detail.strip()
+                    if clean_detail:
+                        line = f"{line} - {clean_detail}"
+                    history_lines.append(line)
+            if clean_decision_note:
+                history_lines.append(f"Observação: {clean_decision_note}")
+            clean_decision_note = "\n".join(history_lines)
         if (status != old_status or (decision or None) != old_decision) and not clean_decision_note:
             return RedirectResponse(
                 f"/workshop/{process_id}?error=Descreve%20o%20passo%20executado%20antes%20de%20alterar%20o%20fluxo.",

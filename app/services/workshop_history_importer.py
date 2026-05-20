@@ -76,12 +76,22 @@ TEXT_FIELD_MAP = {
     "machine_source": ["origem_maquina", "maquina", "machine", "source_machine", "origem"],
     "report_type": ["tipo_registo", "tipo_relatorio", "reading_type", "tipo"],
     "summary": ["resumo", "summary", "descricao", "descrição"],
-    "external_url": ["link_documento_original", "link_documento", "document_url", "external_url", "url"],
+    "external_url": [
+        "link_documento_original",
+        "link_documento",
+        "document_url",
+        "external_url",
+        "url",
+        "ficheiro_arquivo",
+    ],
     "module_name": ["modulo_calculador", "módulo_calculador", "modulo", "calculador", "ecu"],
     "source_file": ["origem_ficheiro", "ficheiro_origem", "source_file", "pdf_origem"],
     "import_note": ["observacoes_importacao", "observações_importação", "notas_importacao"],
-    "import_status": ["estado_importacao"],
+    "import_status": ["estado_importacao", "estado"],
     "import_key": ["chave_importacao"],
+    "copied_to_archive": ["copiado"],
+    "file_sha1": ["sha1"],
+    "archive_file": ["ficheiro_arquivo"],
     "duplicate_candidate": ["duplicado_provavel"],
     "chronological_order": ["ordem_cronologica"],
     "work_order_reference": ["folha_obra"],
@@ -251,6 +261,19 @@ def row_text(row: tuple[Any, ...], col: dict[str, int], field: str) -> str:
     return clean_text(first_row_value(row, col, TEXT_FIELD_MAP[field])) or ""
 
 
+def is_copied_archive_row(value: str | None) -> bool:
+    text = normalize_header(value or "")
+    return text in {"sim", "yes", "true", "1"}
+
+
+def should_skip_preparation_row(row: tuple[Any, ...], col: dict[str, int]) -> bool:
+    copied = row_text(row, col, "copied_to_archive")
+    if copied and not is_copied_archive_row(copied):
+        return True
+    status = normalize_header(row_text(row, col, "import_status"))
+    return bool(status and status not in {"ok", "validado", "ready"})
+
+
 def build_reading_data(row: tuple[Any, ...], col: dict[str, int], reading_date: date, batch_id: int) -> dict[str, str]:
     data = {
         key: row_text(row, col, key)
@@ -307,6 +330,8 @@ def import_workshop_technical_history_file(
     )
     db.add(batch)
     db.flush()
+    seen_import_keys: set[str] = set()
+    seen_file_hashes: set[str] = set()
 
     try:
         for sheet_name, headers, row_number, row, raw in iter_import_rows(file_path):
@@ -340,6 +365,21 @@ def import_workshop_technical_history_file(
             )
 
             try:
+                if should_skip_preparation_row(row, col):
+                    stats["skipped_rows"] += 1
+                    continue
+                import_key = row_text(row, col, "import_key")
+                file_sha1 = row_text(row, col, "file_sha1")
+                if import_key and import_key in seen_import_keys:
+                    stats["skipped_rows"] += 1
+                    continue
+                if file_sha1 and file_sha1 in seen_file_hashes:
+                    stats["skipped_rows"] += 1
+                    continue
+                if import_key:
+                    seen_import_keys.add(import_key)
+                if file_sha1:
+                    seen_file_hashes.add(file_sha1)
                 if not external_reference:
                     raise ValueError("Linha sem matrícula ou VIN.")
                 vehicle = find_vehicle_by_any_identifier(db, plate=plate, vin=vin)

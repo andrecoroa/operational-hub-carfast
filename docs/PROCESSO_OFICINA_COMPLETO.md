@@ -4,6 +4,21 @@ Documento de referência operacional e funcional
 
 Data: 15/05/2026
 
+## Estado fechado para implementação
+
+Pontos fechados até esta revisão:
+
+- O fluxo base é: abertura, receção, verificar histórico, revisão Stellantis / Service Box quando aplicável, registo de leitura técnica / BSI, registo de informação técnica, verificações sistemáticas, serviços a executar / orçamento, registar decisão, registo de leitura técnica / BSI final, fecho técnico, fecho administrativo e fecho sem intervenção.
+- A receção deve recolher data de entrada, KM de entrada, serviço/motivo de entrada e observação inicial.
+- Os serviços iniciais disponíveis são: revisão, pneus, calços, discos, luz/avaria no painel, ruído anormal, acidente/dano, bateria, verificação periódica e outro.
+- Nos travões, quando aplicável, deve distinguir frente e trás.
+- Em viaturas Stellantis, o passo Service Box entra após a verificação de histórico e deve suportar plano de manutenção, simulação por KM/idade e campanhas técnicas.
+- O diagnóstico técnico fica flexível. Ainda não está fechada a checklist definitiva de todos os campos BSI.
+- A app não faz OCR dos PDFs nesta fase. O utilizador regista metadados e links para documentos externos.
+- O histórico técnico é sempre acrescentado à viatura. Não substitui leituras anteriores.
+- Ficheiros PDF, fotos e vídeos ficam em OneDrive/SharePoint ou storage externo. A base de dados guarda metadados, links, decisões, notas e histórico.
+- Para oficina, a estrutura documental inicial deve ser por matrícula e tipologia: `Oficina / Matrículas / {MATRÍCULA} / {TIPO_DOCUMENTO}`.
+
 ## 1. Objetivo
 
 O módulo de Oficina da CarFast v2 serve para acompanhar processos técnicos temporários associados a uma viatura permanente.
@@ -592,36 +607,34 @@ Nota técnica:
 
 Ficheiros devem ficar em SharePoint/OneDrive ou storage externo.
 
-Estrutura recomendada inicial:
+Estrutura recomendada inicial para oficina:
 
 ```text
-CarFast/
-  Oficina/
-    2026/
-      05/
-        AA-00-AA/
-          Processo-000123/
-            Evidencias/
-            Documentos/
-            Videos/
-            Audio/
+Oficina/
+  Matrículas/
+    AA-00-AA/
+      Diagnóstico/
+      BSI - Dados técnicos/
+      Orçamentos/
+      Faturas - Documentos fornecedor/
+      Evidências foto-vídeo/
+      Relatórios/
+      Outros documentos de oficina/
 ```
 
-Alternativa por matrícula:
+Quando não existir matrícula:
 
 ```text
-CarFast/
-  Viaturas/
-    AA-00-AA/
-      Oficina/
-        2026/
-          05/
-            Processo-000123/
+Oficina/
+  Sem matrícula/
+    2026/
+      05/
+        Tipo documento/
 ```
 
 Recomendação:
 
-> Para oficina, a estrutura por matrícula é mais útil a longo prazo, porque a viatura é a entidade permanente.
+> Para oficina, a estrutura por matrícula é a regra base, porque a viatura é a entidade permanente. A data/mês deve ser usada apenas quando não há matrícula ou quando a tipologia futura o justificar.
 
 ## 12. Incidentes dentro da oficina
 
@@ -952,8 +965,34 @@ Exemplo:
 Viatura AA-00-AA
 Processo oficina #123
 Documento: Fatura oficina
-Pasta: Viaturas/AA-00-AA/Oficina/2026/05/Processo-123/
+Pasta: Oficina/Matrículas/AA-00-AA/Faturas - Documentos fornecedor/
 ```
+
+## 22.1 Importação de histórico técnico
+
+A importação de histórico técnico aceita um ficheiro de preparação com metadados dos PDFs já organizados.
+
+Campos aceites nesta fase:
+
+- matrícula;
+- VIN/chassi;
+- data do documento;
+- tipo de registo;
+- origem/máquina;
+- ficheiro de origem;
+- ficheiro de arquivo;
+- estado da preparação;
+- indicação se o ficheiro foi copiado para o arquivo;
+- hash SHA1;
+- chave de importação.
+
+Regras:
+
+- só devem entrar as linhas finais copiadas para o arquivo;
+- linhas duplicadas por `sha1` ou `chave_importacao` não devem criar leituras repetidas;
+- quando não existe matrícula, o VIN/chassi deve permitir associar a leitura à viatura;
+- o caminho do PDF fica como referência/link externo;
+- a importação cria histórico técnico na ficha da viatura, sem fechar os campos técnicos detalhados do BSI.
 
 ## 23. Botões de apoio no piloto
 

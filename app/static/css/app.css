@@ -2233,6 +2233,86 @@ a.metric:hover {
   background: #fff;
 }
 
+.reading-report-selector {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+
+.reading-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reading-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 112px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 14px;
+  text-align: left;
+}
+
+.reading-card strong,
+.reading-card small {
+  display: block;
+}
+
+.reading-card strong {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.reading-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+.reading-card em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 5px 8px;
+}
+
+.reading-card.is-active {
+  border-color: rgba(166, 75, 55, 0.45);
+  background: #fffaf8;
+  box-shadow: inset 4px 0 0 var(--brand);
+}
+
+.reading-card.is-active em {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+.reading-card.is-registered {
+  border-color: rgba(43, 138, 62, 0.32);
+  background: #fbfffc;
+}
+
+.reading-card.is-registered em {
+  background: #eaf7ed;
+  color: #2b8a3e;
+}
+
 .reading-report-panel[hidden] {
   display: none;
 }
@@ -3158,6 +3238,8 @@ a.metric:hover {
   .form-grid,
   .compact-form-grid,
   .compact-form-grid.two-col,
+  .reading-card-grid,
+  .reading-calculated-grid,
   .process-action-grid,
   .step-row,
   .filter-grid,

@@ -1061,6 +1061,8 @@
   document.querySelectorAll("[data-reading-type]").forEach((readingTypeSelect) => {
     const form = readingTypeSelect.closest("form");
     const panels = form ? [...form.querySelectorAll("[data-reading-panel]")] : [];
+    const cards = form ? [...form.querySelectorAll("[data-reading-card]")] : [];
+    const submitButton = form ? form.querySelector("[data-reading-submit]") : null;
 
     function syncReadingPanels() {
       const selectedType = readingTypeSelect.value;
@@ -1072,8 +1074,28 @@
           panel.open = isRelevant;
         }
       }
+      for (const card of cards) {
+        const isActive = card.dataset.readingCard === selectedType;
+        const isRegistered = card.dataset.registered === "1";
+        const status = card.querySelector("[data-reading-card-status]");
+        card.classList.toggle("is-active", isActive);
+        card.classList.toggle("is-registered", isRegistered && !isActive);
+        if (status) {
+          status.textContent = isActive ? "Atual" : (isRegistered ? "Registado" : "Pendente");
+        }
+      }
+      const activeCard = cards.find((card) => card.dataset.readingCard === selectedType);
+      if (submitButton && activeCard) {
+        submitButton.textContent = `Gravar ${activeCard.dataset.readingLabel.toLowerCase()}`;
+      }
     }
 
+    for (const card of cards) {
+      card.addEventListener("click", () => {
+        readingTypeSelect.value = card.dataset.readingCard;
+        readingTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
     readingTypeSelect.addEventListener("change", syncReadingPanels);
     syncReadingPanels();
   });

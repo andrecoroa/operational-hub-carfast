@@ -1,14 +1,53 @@
 {% set is_fixed_phase = fixed_reading_phase is defined and fixed_reading_phase %}
+{% set active_phase = fixed_reading_phase if is_fixed_phase else ("bsi_final" if process.status == "bsi_final" else "bsi_initial") %}
+{% set report_cards = [
+  ("maintenance_info", "Informações manutenção", "KM, dias, limites e número de manutenções."),
+  ("maintenance_program", "Programação manutenção", "Limiar, duração, circulação e primeira manutenção."),
+  ("lubrication_info", "Lubrificação motor", "Óleo, carbono, proteção e intervalo calculado."),
+  ("fault_reading", "Leitura defeitos", "Defeitos, códigos, estado e ação recomendada."),
+  ("software_identification", "Telecarregamento", "Software, calibração, data e número de telecarregamentos."),
+  ("other", "Outra leitura", "Relatório ainda sem categoria própria.")
+] %}
 <div class="reading-form-shell">
-  <div class="compact-form-grid two-col">
-    <label>
-      Tipo de relatório
-      <select name="reading_type" data-reading-type>
-        {% for code, label in technical_reading_types %}
-          <option value="{{ code }}">{{ label }}</option>
+  <select name="reading_type" data-reading-type hidden>
+    {% for code, label in technical_reading_types %}
+      <option value="{{ code }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+
+  <div class="reading-report-selector">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatórios BSI</p>
+        <h4>Selecionar relatório a preencher</h4>
+      </div>
+    </div>
+    <div class="reading-card-grid">
+      {% for code, label, description in report_cards %}
+        {% set marker = namespace(registered=false) %}
+        {% for reading in technical_readings %}
+          {% if reading.reading_type == code and (reading.data_json or {}).get("flow_phase") == active_phase %}
+            {% set marker.registered = true %}
+          {% endif %}
         {% endfor %}
-      </select>
-    </label>
+        <button
+          class="reading-card {% if loop.first %}is-active{% endif %} {% if marker.registered %}is-registered{% endif %}"
+          type="button"
+          data-reading-card="{{ code }}"
+          data-reading-label="{{ label }}"
+          data-registered="{{ 1 if marker.registered else 0 }}"
+        >
+          <span>
+            <strong>{{ label }}</strong>
+            <small>{{ description }}</small>
+          </span>
+          <em data-reading-card-status>{{ "Atual" if loop.first else ("Registado" if marker.registered else "Pendente") }}</em>
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="compact-form-grid two-col">
     {% if is_fixed_phase %}
       <input type="hidden" name="flow_phase" value="{{ fixed_reading_phase }}">
       <label>
@@ -312,4 +351,4 @@
   </div>
 </div>
 <input name="storage_provider" type="hidden" value="external">
-<button type="submit">{{ reading_submit_label if reading_submit_label is defined and reading_submit_label else "Gravar leitura técnica" }}</button>
+<button type="submit" data-reading-submit>{{ reading_submit_label if reading_submit_label is defined and reading_submit_label else "Gravar leitura técnica" }}</button>

@@ -48,6 +48,10 @@
         <span class="metric-icon blue">↳</span>
         <span class="metric-detail"><strong>{{ metrics.open_parent }}</strong><span>Tarefas mãe</span></span>
       </a>
+      <a class="metric" href="{{ manage_url }}?view=with_subtasks">
+        <span class="metric-icon blue">↳</span>
+        <span class="metric-detail"><strong>{{ metrics.open_subtasks }}</strong><span>Subtarefas abertas</span></span>
+      </a>
       <a class="metric" href="{{ manage_url }}?view=urgent">
         <span class="metric-icon warn">!</span>
         <span class="metric-detail"><strong>{{ metrics.urgent }}</strong><span>Urgentes</span></span>
@@ -63,10 +67,6 @@
       <a class="metric" href="{{ manage_url }}?view=unassigned">
         <span class="metric-icon">?</span>
         <span class="metric-detail"><strong>{{ metrics.unassigned }}</strong><span>Sem responsável</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=with_subtasks">
-        <span class="metric-icon blue">↳</span>
-        <span class="metric-detail"><strong>{{ metrics.open_subtasks }}</strong><span>Subtarefas abertas</span></span>
       </a>
     </section>
 

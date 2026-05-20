@@ -38,7 +38,15 @@
     <section class="metric-grid task-metrics">
       <a class="metric" href="{{ manage_url }}">
         <span class="metric-icon green">✓</span>
-        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas mãe</span></span>
+        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas abertas</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=simple">
+        <span class="metric-icon">#</span>
+        <span class="metric-detail"><strong>{{ metrics.open_simple }}</strong><span>Tarefas simples</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=parents">
+        <span class="metric-icon blue">↳</span>
+        <span class="metric-detail"><strong>{{ metrics.open_parent }}</strong><span>Tarefas mãe</span></span>
       </a>
       <a class="metric" href="{{ manage_url }}?view=urgent">
         <span class="metric-icon warn">!</span>
@@ -63,7 +71,9 @@
     </section>
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
-      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}"><span>Tarefas mãe</span><strong>{{ metrics.open }}</strong></a>
+      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}"><span>Tarefas abertas</span><strong>{{ metrics.open }}</strong></a>
+      <a href="{{ manage_url }}?view=simple" class="{% if filters.view == 'simple' %}active{% endif %}"><span>Simples</span><strong>{{ metrics.open_simple }}</strong></a>
+      <a href="{{ manage_url }}?view=parents" class="{% if filters.view == 'parents' %}active{% endif %}"><span>Tarefas mãe</span><strong>{{ metrics.open_parent }}</strong></a>
       <a href="{{ manage_url }}?view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
       <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}"><span>Sem responsável</span><strong>{{ metrics.unassigned }}</strong></a>
       <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}"><span>Urgentes</span><strong>{{ metrics.urgent }}</strong></a>
@@ -121,17 +131,17 @@
     <div class="task-board-section-heading">
       <div>
         <p class="eyebrow">Execução</p>
-        <h3>Tarefas mãe</h3>
+        <h3>{% if filters.view == "simple" %}Tarefas simples{% elif filters.view == "parents" or filters.view == "with_subtasks" %}Tarefas mãe{% else %}Tarefas abertas{% endif %}</h3>
       </div>
-      <span>{{ tasks|length }} tarefas mãe · {{ metrics.open_subtasks }} subtarefas abertas</span>
+      <span>{{ tasks|length }} tarefas nesta vista · {{ metrics.open_subtasks }} subtarefas abertas</span>
     </div>
 
     <section class="task-board-groups task-management-groups">
       <article class="table-shell task-type-board">
         <div class="table-heading task-type-heading">
           <div>
-            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "with_subtasks" %}Com subtarefas{% else %}Em aberto{% endif %}</p>
-            <h3>Tarefas mãe</h3>
+            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "simple" %}Simples{% elif filters.view == "parents" %}Mãe{% elif filters.view == "with_subtasks" %}Com subtarefas{% else %}Em aberto{% endif %}</p>
+            <h3>{% if filters.view == "simple" %}Tarefas simples{% elif filters.view == "parents" or filters.view == "with_subtasks" %}Tarefas mãe{% else %}Tarefas abertas{% endif %}</h3>
           </div>
           <span>{{ tasks|length }}</span>
         </div>

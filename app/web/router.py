@@ -3932,6 +3932,7 @@ def task_board_manage(
             )
             .distinct()
         )
+        subtask_parent_ids = select(Subtask.parent_task_id).where(Subtask.parent_task_id.is_not(None)).distinct()
         open_stmt = select(Task).where(
             workspace_task_filter,
             parent_task_filter,
@@ -3954,6 +3955,26 @@ def task_board_manage(
                     subtask_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            )
+            or 0,
+            "open_simple": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    parent_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.id.in_(subtask_parent_ids),
+                )
+            )
+            or 0,
+            "open_parent": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    parent_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.id.in_(subtask_parent_ids),
                 )
             )
             or 0,
@@ -4087,6 +4108,10 @@ def task_board_manage(
             stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
         elif view == "due_today":
             stmt = stmt.where(Task.due_on == today)
+        elif view == "simple":
+            stmt = stmt.where(~Task.id.in_(subtask_parent_ids))
+        elif view == "parents":
+            stmt = stmt.where(Task.id.in_(subtask_parent_ids))
         elif view == "with_subtasks":
             stmt = stmt.where(Task.id.in_(open_subtask_parent_ids))
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import aliased
 
 from app.core.change_notice import (
     CHANGE_NOTICE_SECTIONS,
@@ -996,7 +997,16 @@ def dashboard(request: Request):
         if not user:
             return RedirectResponse("/login", status_code=303)
         today = date.today()
-        open_task_condition = (Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+        open_task_condition = (
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            Task.parent_task_id.is_(None),
+        )
+        open_subtask_condition = (
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            Task.parent_task_id.is_not(None),
+        )
         unavailable_vehicle_statuses = {"blocked", "in_maintenance", "in_preparation", "in_impro"}
         open_workshop_statuses = {code for code, _ in WORKSHOP_STATUSES if code != "closed"}
         metrics = {
@@ -1007,6 +1017,10 @@ def dashboard(request: Request):
             or 0,
             "open_tasks": db.scalar(
                 select(func.count()).select_from(Task).where(*open_task_condition)
+            )
+            or 0,
+            "open_subtasks": db.scalar(
+                select(func.count()).select_from(Task).where(*open_subtask_condition)
             )
             or 0,
             "imports": count_rows(db, ImportBatch),
@@ -1069,7 +1083,12 @@ def dashboard(request: Request):
             .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
             .limit(5)
         ).all()
-        recent_tasks = db.scalars(select(Task).order_by(Task.created_at.desc(), Task.id.desc()).limit(3)).all()
+        recent_tasks = db.scalars(
+            select(Task)
+            .where(Task.parent_task_id.is_(None))
+            .order_by(Task.created_at.desc(), Task.id.desc())
+            .limit(3)
+        ).all()
         recent_workshop = db.scalars(
             select(WorkshopProcess).order_by(WorkshopProcess.created_at.desc(), WorkshopProcess.id.desc()).limit(3)
         ).all()
@@ -3790,6 +3809,15 @@ def task_center(request: Request):
                     workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.parent_task_id.is_(None),
+                )
+            ) or 0
+            open_subtask_count = db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.parent_task_id.is_not(None),
                 )
             ) or 0
             due_today = db.scalar(
@@ -3797,6 +3825,7 @@ def task_center(request: Request):
                     workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.parent_task_id.is_(None),
                     Task.due_on == today,
                 )
             ) or 0
@@ -3809,6 +3838,7 @@ def task_center(request: Request):
             ) or 0
             workspace_metrics[workspace_code] = {
                 "open": open_count,
+                "open_subtasks": open_subtask_count,
                 "due_today": due_today,
                 "quick_open": quick_open_count,
                 "config": workspace_config,
@@ -3860,8 +3890,21 @@ def task_board_manage(
         tomorrow_start = datetime.fromtimestamp(today_start.timestamp() + 86400, UTC)
         archived_condition = (Task.closed_at.is_not(None)) | (Task.status.in_(TASK_ARCHIVE_STATUSES))
         workspace_task_filter = Task.task_type.in_(tuple(workspace_task_codes))
+        parent_task_filter = Task.parent_task_id.is_(None)
+        subtask_filter = Task.parent_task_id.is_not(None)
+        Subtask = aliased(Task)
+        open_subtask_parent_ids = (
+            select(Subtask.parent_task_id)
+            .where(
+                Subtask.parent_task_id.is_not(None),
+                Subtask.closed_at.is_(None),
+                ~Subtask.status.in_(TASK_ARCHIVE_STATUSES),
+            )
+            .distinct()
+        )
         open_stmt = select(Task).where(
             workspace_task_filter,
+            parent_task_filter,
             Task.closed_at.is_(None),
             ~Task.status.in_(TASK_ARCHIVE_STATUSES),
         )
@@ -3869,14 +3912,35 @@ def task_board_manage(
             "open": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            )
+            or 0,
+            "open_subtasks": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    subtask_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            )
+            or 0,
+            "with_subtasks": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    parent_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.id.in_(open_subtask_parent_ids),
                 )
             )
             or 0,
             "mine": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     or_(
@@ -3890,6 +3954,7 @@ def task_board_manage(
             "urgent": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.priority == "urgent",
@@ -3899,6 +3964,7 @@ def task_board_manage(
             "in_treatment": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.status.in_(("in_execution", "delegated")),
@@ -3908,6 +3974,7 @@ def task_board_manage(
             "unassigned": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
@@ -3917,6 +3984,7 @@ def task_board_manage(
             "overdue": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on.is_not(None),
@@ -3927,6 +3995,7 @@ def task_board_manage(
             "due_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on == today,
@@ -3936,6 +4005,7 @@ def task_board_manage(
             "closed_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
+                    parent_task_filter,
                     Task.closed_at.is_not(None),
                     Task.closed_at >= today_start,
                     Task.closed_at < tomorrow_start,
@@ -3943,10 +4013,17 @@ def task_board_manage(
             )
             or 0,
             "archived": db.scalar(
-                select(func.count()).select_from(Task).where(workspace_task_filter, archived_condition)
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    parent_task_filter,
+                    archived_condition,
+                )
             )
             or 0,
-            "all": db.scalar(select(func.count()).select_from(Task).where(workspace_task_filter)) or 0,
+            "all": db.scalar(
+                select(func.count()).select_from(Task).where(workspace_task_filter, parent_task_filter)
+            )
+            or 0,
             "quick_open": db.scalar(
                 select(func.count()).select_from(QuickRecord).where(
                     QuickRecord.workspace == current_workspace,
@@ -3959,9 +4036,9 @@ def task_board_manage(
 
         stmt = open_stmt
         if view == "archived" or status in TASK_ARCHIVE_STATUSES:
-            stmt = select(Task).where(workspace_task_filter, archived_condition)
+            stmt = select(Task).where(workspace_task_filter, parent_task_filter, archived_condition)
         elif view == "all":
-            stmt = select(Task).where(workspace_task_filter)
+            stmt = select(Task).where(workspace_task_filter, parent_task_filter)
         elif view == "mine":
             stmt = stmt.where(
                 or_(
@@ -3980,11 +4057,27 @@ def task_board_manage(
             stmt = stmt.where(Task.due_on.is_not(None), Task.due_on < today)
         elif view == "due_today":
             stmt = stmt.where(Task.due_on == today)
+        elif view == "with_subtasks":
+            stmt = stmt.where(Task.id.in_(open_subtask_parent_ids))
 
         clean_q = q.strip()
         if clean_q:
             like_q = f"%{clean_q}%"
             normalized_plate = clean_q.upper().replace(" ", "")
+            matching_subtask_parent_ids = select(Subtask.parent_task_id).where(
+                Subtask.parent_task_id.is_not(None),
+                (
+                    (Subtask.title.ilike(like_q))
+                    | (Subtask.description.ilike(like_q))
+                    | (Subtask.customer_name.ilike(like_q))
+                    | (Subtask.customer_email.ilike(like_q))
+                    | (Subtask.customer_phone.ilike(like_q))
+                    | (Subtask.plate == normalized_plate)
+                    | (Subtask.reservation_number.ilike(like_q))
+                    | (Subtask.contract_number.ilike(like_q))
+                    | (Subtask.external_source_id.ilike(like_q))
+                ),
+            )
             stmt = stmt.where(
                 (Task.title.ilike(like_q))
                 | (Task.description.ilike(like_q))
@@ -3995,6 +4088,7 @@ def task_board_manage(
                 | (Task.reservation_number.ilike(like_q))
                 | (Task.contract_number.ilike(like_q))
                 | (Task.external_source_id.ilike(like_q))
+                | (Task.id.in_(matching_subtask_parent_ids))
             )
         if status:
             stmt = stmt.where(Task.status == status)
@@ -4049,6 +4143,22 @@ def task_board_manage(
                 Task.created_at.desc(),
             ).limit(100)
         ).all()
+        task_ids = [task.id for task in tasks]
+        subtask_counts_by_parent = {}
+        if task_ids:
+            subtask_counts_by_parent = {
+                parent_id: count
+                for parent_id, count in db.execute(
+                    select(Task.parent_task_id, func.count())
+                    .where(
+                        Task.parent_task_id.in_(task_ids),
+                        Task.closed_at.is_(None),
+                        ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    )
+                    .group_by(Task.parent_task_id)
+                ).all()
+                if parent_id is not None
+            }
         quick_records = db.scalars(
             quick_stmt.order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc()).limit(100)
         ).all()
@@ -4142,6 +4252,7 @@ def task_board_manage(
             "tasks.html",
             {
                 "tasks": tasks,
+                "subtask_counts_by_parent": subtask_counts_by_parent,
                 "quick_records": quick_records,
                 "task_groups": primary_task_groups,
                 "secondary_task_groups": secondary_task_groups,

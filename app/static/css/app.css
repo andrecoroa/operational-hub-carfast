@@ -1651,6 +1651,22 @@ a.metric:hover {
   font-size: 13px;
 }
 
+.task-parent-subtask-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 8px;
+  border: 1px solid rgba(65, 99, 218, 0.18);
+  border-radius: 999px;
+  background: #eef3ff;
+  color: #3150b7;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+
 .compact-empty {
   min-height: auto;
   padding: 16px;

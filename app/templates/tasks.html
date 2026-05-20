@@ -36,6 +36,10 @@
     {% endif %}
 
     <section class="metric-grid task-metrics">
+      <a class="metric" href="{{ manage_url }}">
+        <span class="metric-icon green">✓</span>
+        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Tarefas mãe</span></span>
+      </a>
       <a class="metric" href="{{ manage_url }}?view=urgent">
         <span class="metric-icon warn">!</span>
         <span class="metric-detail"><strong>{{ metrics.urgent }}</strong><span>Urgentes</span></span>
@@ -52,15 +56,20 @@
         <span class="metric-icon">?</span>
         <span class="metric-detail"><strong>{{ metrics.unassigned }}</strong><span>Sem responsável</span></span>
       </a>
+      <a class="metric" href="{{ manage_url }}?view=with_subtasks">
+        <span class="metric-icon blue">↳</span>
+        <span class="metric-detail"><strong>{{ metrics.open_subtasks }}</strong><span>Subtarefas abertas</span></span>
+      </a>
     </section>
 
     <nav class="quick-filter-row" aria-label="Atalhos de tarefas">
-      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}"><span>Em aberto</span><strong>{{ metrics.open }}</strong></a>
+      <a href="{{ manage_url }}" class="{% if not filters.view %}active{% endif %}"><span>Tarefas mãe</span><strong>{{ metrics.open }}</strong></a>
       <a href="{{ manage_url }}?view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
       <a href="{{ manage_url }}?view=unassigned" class="{% if filters.view == 'unassigned' %}active{% endif %}"><span>Sem responsável</span><strong>{{ metrics.unassigned }}</strong></a>
       <a href="{{ manage_url }}?view=urgent" class="{% if filters.view == 'urgent' %}active{% endif %}"><span>Urgentes</span><strong>{{ metrics.urgent }}</strong></a>
       <a href="{{ manage_url }}?view=overdue" class="{% if filters.view == 'overdue' %}active{% endif %}"><span>Vencidas</span><strong>{{ metrics.overdue }}</strong></a>
       <a href="{{ manage_url }}?view=due_today" class="{% if filters.view == 'due_today' %}active{% endif %}"><span>Limite hoje</span><strong>{{ metrics.due_today }}</strong></a>
+      <a href="{{ manage_url }}?view=with_subtasks" class="{% if filters.view == 'with_subtasks' %}active{% endif %}"><span>Com subtarefas</span><strong>{{ metrics.with_subtasks }}</strong></a>
       <a href="{{ manage_url }}?view=archived" class="{% if filters.view == 'archived' %}active{% endif %}"><span>Arquivo</span><strong>{{ metrics.archived }}</strong></a>
       <a href="{{ manage_url }}?view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
     </nav>
@@ -112,23 +121,24 @@
     <div class="task-board-section-heading">
       <div>
         <p class="eyebrow">Execução</p>
-        <h3>Tarefas</h3>
+        <h3>Tarefas mãe</h3>
       </div>
-      <span>{{ tasks|length }} registos na vista atual</span>
+      <span>{{ tasks|length }} tarefas mãe · {{ metrics.open_subtasks }} subtarefas abertas</span>
     </div>
 
     <section class="task-board-groups task-management-groups">
       <article class="table-shell task-type-board">
         <div class="table-heading task-type-heading">
           <div>
-            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "unassigned" %}Sem responsável{% else %}Em aberto{% endif %}</p>
-            <h3>Tarefas</h3>
+            <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "with_subtasks" %}Com subtarefas{% else %}Em aberto{% endif %}</p>
+            <h3>Tarefas mãe</h3>
           </div>
           <span>{{ tasks|length }}</span>
         </div>
         <div class="task-board-list">
           {% for task in tasks %}
             {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else none %}
+            {% set open_subtask_count = subtask_counts_by_parent.get(task.id, 0) %}
             <article class="task-card-row task-row-fixed">
               <div class="task-card-main">
                 <div class="task-identity-block">
@@ -146,6 +156,11 @@
                   </p>
                   {% if task.description %}
                     <p class="table-note table-note-clamp">{{ task.description }}</p>
+                  {% endif %}
+                  {% if open_subtask_count %}
+                    <a class="task-parent-subtask-pill" href="/task-board/{{ task.id }}">
+                      {{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}
+                    </a>
                   {% endif %}
                 </div>
               </div>

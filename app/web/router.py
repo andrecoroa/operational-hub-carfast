@@ -5051,6 +5051,25 @@ def task_detail(
         delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
         waiting_for_user = db.get(User, task.waiting_for_user_id) if task.waiting_for_user_id else None
         waiting_for_team = db.get(Team, task.waiting_for_team_id) if task.waiting_for_team_id else None
+        for current_option in (assigned_user, delegated_user, waiting_for_user):
+            if current_option and current_option.id not in {item.id for item in users}:
+                users.append(current_option)
+                user_by_id[current_option.id] = current_option
+            if current_option and current_option.id not in {item.id for item in assignable_users}:
+                assignable_users.append(current_option)
+        for current_option in (assigned_team, delegated_team, waiting_for_team):
+            if current_option and current_option.id not in {item.id for item in teams}:
+                teams.append(current_option)
+                team_by_id[current_option.id] = current_option
+        current_status_options = list(TASK_STATUSES)
+        if task.status and task.status not in {code for code, _ in current_status_options}:
+            current_status_options.insert(0, (task.status, TASK_STATUS_DISPLAY_LABELS.get(task.status, task.status)))
+        current_priority_options = list(PRIORITIES)
+        if task.priority and task.priority not in {code for code, _ in current_priority_options}:
+            current_priority_options.insert(0, (task.priority, PRIORITY_DISPLAY_LABELS.get(task.priority, task.priority)))
+        current_category_options = list(TASK_CATEGORIES)
+        if task.category and task.category not in {code for code, _ in current_category_options}:
+            current_category_options.insert(0, (task.category, TASK_CATEGORY_DISPLAY_LABELS.get(task.category, task.category)))
         return templates.TemplateResponse(
             request,
             "task_detail.html",
@@ -5075,6 +5094,7 @@ def task_detail(
                 "assigned_team": assigned_team,
                 "delegated_user": delegated_user,
                 "delegated_team": delegated_team,
+                "responsible_value": format_delegation_target(task.assigned_to_id, task.team_id),
                 "delegation_value": format_delegation_target(task.delegated_to_user_id, task.delegated_to_team_id),
                 "waiting_for_user": waiting_for_user,
                 "waiting_for_team": waiting_for_team,
@@ -5082,16 +5102,16 @@ def task_detail(
                 "commented": commented,
                 "feedback_saved": feedback_saved,
                 "error": task_detail_error_message(error),
-                "task_statuses": TASK_STATUSES,
+                "task_statuses": current_status_options,
                 "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
                 "waiting_reasons": TASK_WAITING_REASONS,
                 "waiting_reason_labels": TASK_WAITING_REASON_LABELS,
-                "priorities": PRIORITIES,
+                "priorities": current_priority_options,
                 "priority_labels": PRIORITY_DISPLAY_LABELS,
                 "task_types": TASK_TYPES,
                 "task_type_labels": TASK_TYPE_LABELS,
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
-                "task_categories": TASK_CATEGORIES,
+                "task_categories": current_category_options,
                 "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
                 "document_statuses": DOCUMENT_STATUSES,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
@@ -5106,11 +5126,12 @@ def task_detail(
 def task_update(
     request: Request,
     task_id: int,
-    status: str = Form("new"),
-    priority: str = Form("normal"),
-    task_type: str = Form("operational_task"),
+    status: str = Form(""),
+    priority: str = Form(""),
+    task_type: str = Form(""),
     category: str | None = Form(None),
     subcategory: str | None = Form(None),
+    responsible_to: str = Form(""),
     assigned_to_id: str | None = Form(None),
     team_id: str | None = Form(None),
     delegated_to: str = Form(""),
@@ -5125,16 +5146,17 @@ def task_update(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    allowed_statuses = {code for code, _ in TASK_STATUSES} | TASK_ARCHIVE_STATUSES
-    if status not in allowed_statuses:
-        status = "new"
-    if task_type not in TASK_TYPE_LABELS:
-        task_type = "operational_task"
-
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        allowed_statuses = {code for code, _ in TASK_STATUSES} | TASK_ARCHIVE_STATUSES | {task.status}
+        if status not in allowed_statuses:
+            status = task.status
+        if priority not in PRIORITY_DISPLAY_LABELS:
+            priority = task.priority or "normal"
+        if task_type not in TASK_TYPE_LABELS:
+            task_type = task.task_type or "operational_task"
         current_user = db.get(User, user_id)
         can_supervise = can_supervise_task(db, current_user, task)
         target_workspace = workspace_for_task_type(task_type)
@@ -5144,18 +5166,27 @@ def task_update(
         clean_subcategory = subcategory.strip() if subcategory is not None else (task.subcategory or "")
         clean_department = department.strip() if department is not None else (task.department or "")
 
-        assigned_user_id = parse_optional_int(assigned_to_id)
+        responsible_user_id, responsible_team_id = parse_delegation_target(responsible_to)
+        assigned_user_id = responsible_user_id if responsible_to else parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
-        if not is_assignment_allowed_for_workspace(db, assigned_user_id, target_workspace):
-            return task_update_error_url(task_id, "assignment_not_allowed")
-        assigned_team_id = parse_optional_int(team_id)
+        assigned_team_id = responsible_team_id if responsible_to else parse_optional_int(team_id)
         if assigned_team_id and not db.get(Team, assigned_team_id):
             assigned_team_id = None
+        assignment_changed = (
+            str(task.assigned_to_id or "") != str(assigned_user_id or "")
+            or str(task.team_id or "") != str(assigned_team_id or "")
+        )
+        if assignment_changed and not is_assignment_allowed_for_workspace(db, assigned_user_id, target_workspace):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
-        if not is_assignment_allowed_for_workspace(db, delegated_user_id, target_workspace):
+        delegate_changed = (
+            str(task.delegated_to_user_id or "") != str(delegated_user_id or "")
+            or str(task.delegated_to_team_id or "") != str(delegated_team_id or "")
+        )
+        if delegate_changed and not is_assignment_allowed_for_workspace(db, delegated_user_id, target_workspace):
             return task_update_error_url(task_id, "assignment_not_allowed")
         if delegated_team_id and not db.get(Team, delegated_team_id):
             delegated_team_id = None
@@ -5167,14 +5198,9 @@ def task_update(
         parsed_due_on = parse_optional_date(due_on)
         clean_waiting_reason = waiting_reason.strip()
         clean_waiting_reason_detail = waiting_reason_detail.strip()
-        has_delegate_changed = (
-            str(task.delegated_to_user_id or "") != str(delegated_user_id or "")
-            or str(task.delegated_to_team_id or "") != str(delegated_team_id or "")
-        )
-
         if status in TASK_RESPONSIBLE_ONLY_STATUSES and not can_supervise:
             return task_update_error_url(task_id, "responsible_required")
-        if (status == "delegated" or has_delegate_changed) and not can_supervise:
+        if (status == "delegated" or delegate_changed) and not can_supervise:
             return task_update_error_url(task_id, "delegation_not_allowed")
         if status == "delegated" and not delegated_user_id and not delegated_team_id:
             return task_update_error_url(task_id, "delegation_required")

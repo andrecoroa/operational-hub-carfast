@@ -48,7 +48,7 @@
           <div class="task-info-grid workshop-info-grid">
             <div><span>Data limite</span><strong>{{ task.due_on or "-" }}</strong></div>
             <div><span>Estação</span><strong>{{ task.station or "-" }}</strong></div>
-            <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else "-" }}</strong></div>
+            <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "-") }}</strong></div>
             <div><span>Execução delegada a</span><strong>{{ delegated_user.name if delegated_user else (delegated_team.name if delegated_team else "-") }}</strong></div>
           </div>
           <div class="task-info-grid workshop-info-grid">
@@ -231,11 +231,20 @@
             </label>
             <label>
               Responsável
-              <select name="assigned_to_id">
+              <select name="responsible_to">
                 <option value="">Por atribuir</option>
-                {% for user in assignable_users %}
-                  <option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>
-                {% endfor %}
+                <optgroup label="Pessoas">
+                  {% for user in assignable_users %}
+                    {% set option_value = "user:" ~ user.id %}
+                    <option value="{{ option_value }}" {% if responsible_value == option_value %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Equipas / filas">
+                  {% for team in teams %}
+                    {% set option_value = "team:" ~ team.id %}
+                    <option value="{{ option_value }}" {% if responsible_value == option_value %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </optgroup>
               </select>
             </label>
             <label>
@@ -289,7 +298,6 @@
             </label>
           </div>
           <input type="hidden" name="task_type" value="{{ task.task_type }}">
-          <input type="hidden" name="team_id" value="{{ task.team_id or '' }}">
           <label>
             Estação
             <input type="text" name="station" maxlength="120" value="{{ task.station or '' }}">

@@ -3803,12 +3803,41 @@ def task_center(request: Request):
         workspace_metrics = {}
         for workspace_code, workspace_config in TASK_WORKSPACE_CONFIG.items():
             workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
+            Subtask = aliased(Task)
+            open_subtask_parent_ids = (
+                select(Subtask.parent_task_id)
+                .where(
+                    Subtask.parent_task_id.is_not(None),
+                    Subtask.closed_at.is_(None),
+                    ~Subtask.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+                .distinct()
+            )
+            subtask_parent_ids = select(Subtask.parent_task_id).where(Subtask.parent_task_id.is_not(None)).distinct()
             open_count = db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.parent_task_id.is_(None),
+                )
+            ) or 0
+            open_simple_count = db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.parent_task_id.is_(None),
+                    ~Task.id.in_(subtask_parent_ids),
+                )
+            ) or 0
+            open_parent_count = db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.parent_task_id.is_(None),
+                    Task.id.in_(subtask_parent_ids),
                 )
             ) or 0
             open_subtask_count = db.scalar(
@@ -3837,6 +3866,8 @@ def task_center(request: Request):
             ) or 0
             workspace_metrics[workspace_code] = {
                 "open": open_count,
+                "open_simple": open_simple_count,
+                "open_parent": open_parent_count,
                 "open_subtasks": open_subtask_count,
                 "due_today": due_today,
                 "quick_open": quick_open_count,

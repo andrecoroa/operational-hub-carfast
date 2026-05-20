@@ -261,15 +261,7 @@ def row_text(row: tuple[Any, ...], col: dict[str, int], field: str) -> str:
     return clean_text(first_row_value(row, col, TEXT_FIELD_MAP[field])) or ""
 
 
-def is_copied_archive_row(value: str | None) -> bool:
-    text = normalize_header(value or "")
-    return text in {"sim", "yes", "true", "1"}
-
-
 def should_skip_preparation_row(row: tuple[Any, ...], col: dict[str, int]) -> bool:
-    copied = row_text(row, col, "copied_to_archive")
-    if copied and not is_copied_archive_row(copied):
-        return True
     status = normalize_header(row_text(row, col, "import_status"))
     return bool(status and status not in {"ok", "validado", "ready"})
 

@@ -199,7 +199,10 @@
                 {% if item.data_json %}
                   <dl class="technical-reading-list">
                     {% for key, value in item.data_json.items() %}
-                      <div><dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt><dd>{{ value }}</dd></div>
+                      <div>
+                        <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
+                        <dd>{{ status_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                      </div>
                     {% endfor %}
                   </dl>
                 {% endif %}
@@ -633,6 +636,13 @@
                 </select>
               </label>
               <label>
+                Fase do processo
+                <select name="flow_phase">
+                  <option value="bsi_initial" {% if process.status != "bsi_final" %}selected{% endif %}>Leitura inicial</option>
+                  <option value="bsi_final" {% if process.status == "bsi_final" %}selected{% endif %}>Leitura final</option>
+                </select>
+              </label>
+              <label>
                 Data da leitura
                 <input type="date" name="reading_date">
               </label>
@@ -720,6 +730,27 @@
                 </label>
               </div>
             </details>
+            <details class="advanced-panel" data-reading-panel="fuel_recharge_info">
+              <summary>Reabastecimento / recarregamento</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Nível combustível/carga
+                  <input type="text" name="fuel_recharge_level" maxlength="80" placeholder="Ex.: 78% ou 1/2 depósito">
+                </label>
+                <label>
+                  Autonomia indicada
+                  <input type="text" name="fuel_recharge_range" maxlength="80" placeholder="Ex.: 420 km">
+                </label>
+                <label>
+                  Estado
+                  <input type="text" name="fuel_recharge_status" maxlength="120" placeholder="Ex.: normal, aviso, incoerente">
+                </label>
+              </div>
+              <label>
+                Notas
+                <textarea name="fuel_recharge_notes" rows="2" placeholder="Regista apenas informação relevante para o diagnóstico."></textarea>
+              </label>
+            </details>
             <details class="advanced-panel" data-reading-panel="fault_reading diagnostic bsi technical">
               <summary>Defeitos</summary>
               <div class="compact-form-grid two-col">
@@ -794,7 +825,7 @@
               Notas BSI
               <textarea name="bsi_notes" rows="2" placeholder="Campo flexível para evoluir sem fechar já a grelha BSI"></textarea>
             </label>
-            <details class="advanced-panel" data-reading-panel="technical bsi diagnostic maintenance maintenance_info lubrication_info fault_reading software_identification other">
+            <details class="advanced-panel" data-reading-panel="technical bsi diagnostic maintenance maintenance_info lubrication_info fuel_recharge_info fault_reading software_identification other">
               <summary>Campos técnicos adicionais</summary>
               <label>
                 Sistemas verificados

@@ -153,7 +153,10 @@
                   {% if item.data_json %}
                     <dl class="technical-reading-list">
                       {% for key, value in item.data_json.items() %}
-                        <div><dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt><dd>{{ value }}</dd></div>
+                        <div>
+                          <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
+                          <dd>{{ workshop_status_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                        </div>
                       {% endfor %}
                     </dl>
                   {% endif %}

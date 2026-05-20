@@ -190,6 +190,7 @@ WORKSHOP_READING_TYPES = [
     ("maintenance", "Manutenção"),
     ("maintenance_info", "Informações manutenção"),
     ("lubrication_info", "Informações lubrificação motor"),
+    ("fuel_recharge_info", "Informações reabastecimento / recarregamento"),
     ("fault_reading", "Leitura de defeitos"),
     ("software_identification", "Identificação / telecarregamento"),
     ("other", "Outra leitura"),
@@ -1910,6 +1911,10 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "oil_carbon_rate": "Taxa de carbono no óleo",
     "oil_anti_dilution_status": "Proteção anti-diluição",
     "engine_calculated_interval_km": "Intervalo calculado pelo calculador",
+    "fuel_recharge_level": "Nível combustível/carga",
+    "fuel_recharge_range": "Autonomia indicada",
+    "fuel_recharge_status": "Estado reabastecimento/recarregamento",
+    "fuel_recharge_notes": "Notas reabastecimento/recarregamento",
     "faults_present": "Existem defeitos",
     "critical_fault": "Defeito crítico",
     "fault_main_status": "Estado principal",
@@ -1925,6 +1930,7 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "bsi_notes": "Notas BSI",
     "systems_checked": "Sistemas verificados",
     "recommendation": "Recomendação",
+    "flow_phase": "Fase do processo",
     "odometer_km": "KM",
 }
 
@@ -1945,6 +1951,10 @@ def compact_reading_data(
     oil_carbon_rate: str,
     oil_anti_dilution_status: str,
     engine_calculated_interval_km: str,
+    fuel_recharge_level: str,
+    fuel_recharge_range: str,
+    fuel_recharge_status: str,
+    fuel_recharge_notes: str,
     faults_present: str,
     critical_fault: str,
     fault_main_status: str,
@@ -1960,6 +1970,7 @@ def compact_reading_data(
     bsi_notes: str,
     systems_checked: str,
     recommendation: str,
+    flow_phase: str,
 ) -> dict[str, str]:
     values = {
         "maintenance_last_reset_km": maintenance_last_reset_km.strip(),
@@ -1975,6 +1986,10 @@ def compact_reading_data(
         "oil_carbon_rate": oil_carbon_rate.strip(),
         "oil_anti_dilution_status": oil_anti_dilution_status.strip(),
         "engine_calculated_interval_km": engine_calculated_interval_km.strip(),
+        "fuel_recharge_level": fuel_recharge_level.strip(),
+        "fuel_recharge_range": fuel_recharge_range.strip(),
+        "fuel_recharge_status": fuel_recharge_status.strip(),
+        "fuel_recharge_notes": fuel_recharge_notes.strip(),
         "faults_present": faults_present.strip(),
         "critical_fault": critical_fault.strip(),
         "fault_main_status": fault_main_status.strip(),
@@ -1990,6 +2005,7 @@ def compact_reading_data(
         "bsi_notes": bsi_notes.strip(),
         "systems_checked": systems_checked.strip(),
         "recommendation": recommendation.strip(),
+        "flow_phase": flow_phase.strip(),
     }
     data = {key: value for key, value in values.items() if value}
     maintenance_days = parse_optional_int(maintenance_days_until_next)
@@ -2144,7 +2160,12 @@ def render_workshop_detail(
         if label and label in note_text:
             completed_flow_statuses.add(code)
     if technical_readings:
-        completed_flow_statuses.add("bsi_initial")
+        for reading in technical_readings:
+            flow_phase = (reading.data_json or {}).get("flow_phase")
+            if flow_phase in {"bsi_initial", "bsi_final"}:
+                completed_flow_statuses.add(flow_phase)
+        if not completed_flow_statuses.intersection({"bsi_initial", "bsi_final"}):
+            completed_flow_statuses.add("bsi_initial")
     if process.status in workshop_flow_order:
         current_flow_index = workshop_flow_order.index(process.status)
     elif process.status == "diagnosis":
@@ -2640,6 +2661,10 @@ def workshop_add_technical_reading(
     oil_carbon_rate: str = Form(""),
     oil_anti_dilution_status: str = Form(""),
     engine_calculated_interval_km: str = Form(""),
+    fuel_recharge_level: str = Form(""),
+    fuel_recharge_range: str = Form(""),
+    fuel_recharge_status: str = Form(""),
+    fuel_recharge_notes: str = Form(""),
     faults_present: str = Form(""),
     critical_fault: str = Form(""),
     fault_main_status: str = Form(""),
@@ -2655,6 +2680,7 @@ def workshop_add_technical_reading(
     bsi_notes: str = Form(""),
     systems_checked: str = Form(""),
     recommendation: str = Form(""),
+    flow_phase: str = Form("bsi_initial"),
     external_url: str = Form(""),
     storage_provider: str = Form("external"),
 ):
@@ -2664,6 +2690,8 @@ def workshop_add_technical_reading(
 
     if reading_type not in WORKSHOP_READING_TYPE_LABELS:
         reading_type = "technical"
+    if flow_phase not in {"bsi_initial", "bsi_final"}:
+        flow_phase = "bsi_initial"
     parsed_reading_date = parse_optional_date(reading_date) or date.today()
     reading_data = compact_reading_data(
         reading_date=parsed_reading_date,
@@ -2680,6 +2708,10 @@ def workshop_add_technical_reading(
         oil_carbon_rate=oil_carbon_rate,
         oil_anti_dilution_status=oil_anti_dilution_status,
         engine_calculated_interval_km=engine_calculated_interval_km,
+        fuel_recharge_level=fuel_recharge_level,
+        fuel_recharge_range=fuel_recharge_range,
+        fuel_recharge_status=fuel_recharge_status,
+        fuel_recharge_notes=fuel_recharge_notes,
         faults_present=faults_present,
         critical_fault=critical_fault,
         fault_main_status=fault_main_status,
@@ -2695,6 +2727,7 @@ def workshop_add_technical_reading(
         bsi_notes=bsi_notes,
         systems_checked=systems_checked,
         recommendation=recommendation,
+        flow_phase=flow_phase,
     )
     clean_summary = summary.strip()
     clean_url = external_url.strip()
@@ -2737,6 +2770,7 @@ def workshop_add_technical_reading(
                 user_id=user_id,
                 note=(
                     "Leitura técnica registada: "
+                    f"{WORKSHOP_STATUS_LABELS.get(flow_phase, flow_phase)} - "
                     f"{WORKSHOP_READING_TYPE_LABELS.get(reading_type, reading_type)}"
                     f"{' - ' + clean_summary if clean_summary else ''}"
                 ),
@@ -2752,6 +2786,7 @@ def workshop_add_technical_reading(
                 "workshop_process_id": process.id,
                 "vehicle_id": process.vehicle_id,
                 "reading_type": reading_type,
+                "flow_phase": flow_phase,
                 "fields": sorted(reading_data),
                 "has_external_url": bool(clean_url),
                 "differences": bool(differences),

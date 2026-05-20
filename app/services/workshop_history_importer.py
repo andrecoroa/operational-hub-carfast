@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,15 @@ TEXT_FIELD_MAP = {
     "module_name": ["modulo_calculador", "módulo_calculador", "modulo", "calculador", "ecu"],
     "source_file": ["origem_ficheiro", "ficheiro_origem", "source_file", "pdf_origem"],
     "import_note": ["observacoes_importacao", "observações_importação", "notas_importacao"],
+    "import_status": ["estado_importacao"],
+    "import_key": ["chave_importacao"],
+    "duplicate_candidate": ["duplicado_provavel"],
+    "chronological_order": ["ordem_cronologica"],
+    "work_order_reference": ["folha_obra"],
+    "document_time": ["hora_documento"],
+    "document_datetime": ["data_hora_documento"],
+    "source_created_by": ["criado_por"],
+    "source_created_at": ["criado_em"],
     "maintenance_last_reset_km": ["km_ultima_reposicao_manutencao", "maintenance_last_reset_km"],
     "maintenance_km_until_next": ["km_ate_proxima_manutencao", "maintenance_km_until_next"],
     "maintenance_days_until_next": ["dias_ate_proxima_manutencao", "maintenance_days_until_next"],
@@ -95,8 +105,8 @@ TEXT_FIELD_MAP = {
     "maintenance_first_start_km": ["inicio_primeira_manutencao_km"],
     "maintenance_first_duration_months": ["duracao_antes_primeira_manutencao_meses"],
     "maintenance_management_mode": ["gestao_manutencao", "maintenance_management_mode"],
-    "oil_dilution_rate": ["taxa_diluicao_oleo", "oil_dilution_rate"],
-    "oil_carbon_rate": ["taxa_carbono_oleo", "oil_carbon_rate"],
+    "oil_dilution_rate": ["taxa_diluicao_oleo", "taxa_diluicao_oleo_pct", "oil_dilution_rate"],
+    "oil_carbon_rate": ["taxa_carbono_oleo", "taxa_carbono_oleo_pct", "oil_carbon_rate"],
     "oil_anti_dilution_status": ["protecao_anti_diluicao", "oil_anti_dilution_status"],
     "engine_calculated_interval_km": ["intervalo_calculado_calculador_km"],
     "faults_present": ["existem_defeitos", "faults_present"],
@@ -104,7 +114,12 @@ TEXT_FIELD_MAP = {
     "fault_codes": ["codigos_principais", "fault_codes"],
     "critical_fault": ["defeito_critico", "critical_fault"],
     "fault_main_status": ["estado_principal", "fault_main_status"],
-    "fault_characterization": ["caracterizacao_defeito", "caracterização_defeito", "fault_characterization"],
+    "fault_characterization": [
+        "caracterizacao_defeito",
+        "caracterização_defeito",
+        "caracterizacao_resumo_defeito",
+        "fault_characterization",
+    ],
     "fault_odometer_km": ["km_associado_defeito", "fault_odometer_km"],
     "recommended_action": ["acao_recomendada", "ação_recomendada", "recommended_action"],
     "ecu_supplier": ["fornecedor_ecu", "nome_fornecedor"],
@@ -120,6 +135,7 @@ REPORT_TYPE_TO_READING_TYPE = {
     "informacoesmanutencao": "maintenance_info",
     "informacaomanutencao": "maintenance_info",
     "manutencao": "maintenance_info",
+    "parametrizacaomanutencao": "maintenance_info",
     "parametrizacaointervalomanutencao": "maintenance_info",
     "parametrosmanutencaorecuperadosdoveiculo": "maintenance_info",
     "lubrificacaomotor": "lubrication_info",
@@ -221,6 +237,16 @@ def parse_date_value(value: Any) -> date | None:
         return None
 
 
+def parse_process_reference(value: Any) -> int | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    number_match = re.search(r"\d+", text)
+    if not number_match:
+        return None
+    return clean_int(number_match.group(0))
+
+
 def row_text(row: tuple[Any, ...], col: dict[str, int], field: str) -> str:
     return clean_text(first_row_value(row, col, TEXT_FIELD_MAP[field])) or ""
 
@@ -301,7 +327,7 @@ def import_workshop_technical_history_file(
             raw_json = json.dumps(raw, ensure_ascii=False, default=str, sort_keys=True)
             raw_hash = hashlib.sha1(raw_json.encode("utf-8")).hexdigest()
             plate = normalize_identifier(clean_text(first_row_value(row, col, ["matricula", "plate"])))
-            vin = normalize_identifier(clean_text(first_row_value(row, col, ["vin", "chassi", "chassis"])))
+            vin = normalize_identifier(clean_text(first_row_value(row, col, ["vin", "vin_chassi", "chassi", "chassis"])))
             external_reference = plate or vin
             db.add(
                 ImportRawRow(
@@ -334,7 +360,9 @@ def import_workshop_technical_history_file(
                 if not external_url:
                     raise ValueError("Link do documento original em falta.")
 
-                process_id = clean_int(first_row_value(row, col, ["processo_oficina_id", "process_id"]))
+                process_id = parse_process_reference(
+                    first_row_value(row, col, ["processo_oficina_id", "processo_oficina", "process_id"])
+                )
                 process = db.get(WorkshopProcess, process_id) if process_id else None
                 if process_id and not process:
                     raise ValueError(f"Processo de oficina #{process_id} não encontrado.")

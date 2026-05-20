@@ -110,7 +110,7 @@
         <form method="post" action="/documents/{{ document.id }}/update" class="form-stack">
           <label>
             Área
-            <select name="classification">
+            <select name="classification" data-document-area>
               {% for code, label in areas %}
                 <option value="{{ code }}" {% if document.classification == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
@@ -118,9 +118,9 @@
           </label>
           <label>
             Tipologia
-            <select name="document_type">
+            <select name="document_type" data-document-type>
               {% for code, label in document_types %}
-                <option value="{{ code }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -163,4 +163,25 @@
     </section>
   </main>
 </div>
+<script>
+  const documentArea = document.querySelector("[data-document-area]");
+  const documentType = document.querySelector("[data-document-type]");
+  function filterDocumentTypes() {
+    if (!documentArea || !documentType) return;
+    const area = documentArea.value;
+    let firstVisible = "";
+    documentType.querySelectorAll("option").forEach((option) => {
+      const optionArea = option.dataset.area;
+      const visible = !optionArea || optionArea === area || option.value === "{{ document.document_type or '' }}";
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option.value;
+    });
+    const selected = documentType.selectedOptions[0];
+    if (selected && selected.hidden && firstVisible) {
+      documentType.value = firstVisible;
+    }
+  }
+  documentArea?.addEventListener("change", filterDocumentTypes);
+  filterDocumentTypes();
+</script>
 {% endblock %}

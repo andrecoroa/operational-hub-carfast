@@ -902,10 +902,20 @@
             </label>
             <div class="compact-form-grid two-col">
               <label>
+                Tipologia
+                <select name="document_type">
+                  {% for code, label in document_types %}
+                    {% if document_type_areas.get(code) == "workshop" %}
+                      <option value="{{ code }}">{{ label }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
                 Estado
                 <select name="status">
                   {% for code, label in document_statuses %}
-                    <option value="{{ code }}">{{ label }}</option>
+                    <option value="{{ code }}" {% if code == "received" %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>

@@ -787,22 +787,56 @@ IMPLEMENTATION_ROADMAP = [
 ]
 
 DOCUMENT_AREAS = [
-    ("fleet", "Frota"),
+    ("workshop", "Oficina"),
     ("finance", "Financeiro"),
-    ("rentway_imports", "Rentway Importações"),
-    ("general_archive", "Arquivo Geral"),
 ]
-DOCUMENT_AREA_LABELS = dict(DOCUMENT_AREAS)
+DOCUMENT_AREA_LABELS = {
+    **dict(DOCUMENT_AREAS),
+    "fleet": "Frota",
+    "rentway_imports": "Rentway Importações",
+    "general_archive": "Arquivo Geral",
+}
 
 DOCUMENT_TYPES = [
-    ("general_fleet", "Geral Frota"),
-    ("general_finance", "Geral Financeiro"),
-    ("general_rentway", "Geral Rentway"),
-    ("general_archive", "Geral Arquivo"),
+    ("workshop_diagnostic", "Diagnóstico"),
+    ("workshop_bsi", "BSI / Dados técnicos"),
+    ("workshop_quote", "Orçamento"),
+    ("workshop_supplier_invoice", "Fatura / Documento fornecedor"),
+    ("workshop_evidence", "Evidência foto/vídeo"),
+    ("workshop_report", "Relatório"),
+    ("workshop_other", "Outro documento de oficina"),
+    ("finance_supplier_invoice", "Fatura fornecedor"),
+    ("finance_credit_note", "Nota de crédito"),
+    ("finance_receipt", "Recibo"),
+    ("finance_payment_proof", "Comprovativo pagamento"),
+    ("finance_customer_document", "Documento cliente"),
+    ("finance_other", "Outro documento financeiro"),
 ]
-DOCUMENT_TYPE_LABELS = dict(DOCUMENT_TYPES)
+DOCUMENT_TYPE_LABELS = {
+    **dict(DOCUMENT_TYPES),
+    "general_fleet": "Geral Frota",
+    "general_finance": "Geral Financeiro",
+    "general_rentway": "Geral Rentway",
+    "general_archive": "Geral Arquivo",
+}
+DOCUMENT_TYPE_AREAS = {
+    "workshop_diagnostic": "workshop",
+    "workshop_bsi": "workshop",
+    "workshop_quote": "workshop",
+    "workshop_supplier_invoice": "workshop",
+    "workshop_evidence": "workshop",
+    "workshop_report": "workshop",
+    "workshop_other": "workshop",
+    "finance_supplier_invoice": "finance",
+    "finance_credit_note": "finance",
+    "finance_receipt": "finance",
+    "finance_payment_proof": "finance",
+    "finance_customer_document": "finance",
+    "finance_other": "finance",
+}
 
 DOCUMENT_STATUSES = [
+    ("received", "Recebido"),
     ("unclassified", "Por classificar"),
     ("classified", "Classificado"),
     ("archived", "Arquivado"),
@@ -1632,7 +1666,7 @@ def vehicle_create_document(
     request: Request,
     vehicle_id: int,
     title: str = Form(""),
-    status: str = Form("unclassified"),
+    status: str = Form("received"),
     document_date: str = Form(""),
     source: str = Form("email"),
     entry_channel: str = Form(""),
@@ -1655,8 +1689,8 @@ def vehicle_create_document(
             add_document_record(
                 db,
                 title=title,
-                classification="fleet",
-                document_type="general_fleet",
+                classification="workshop",
+                document_type="workshop_other",
                 status=status,
                 document_date=parse_optional_date(document_date),
                 source=source,
@@ -2241,7 +2275,9 @@ def render_workshop_detail(
             "document_statuses": DOCUMENT_STATUSES,
             "document_status_labels": DOCUMENT_STATUS_LABELS,
             "document_area_labels": DOCUMENT_AREA_LABELS,
+            "document_types": DOCUMENT_TYPES,
             "document_type_labels": DOCUMENT_TYPE_LABELS,
+            "document_type_areas": DOCUMENT_TYPE_AREAS,
             "document_sources": DOCUMENT_SOURCES,
         },
         status_code=status_code,
@@ -2914,7 +2950,8 @@ def workshop_create_document(
     request: Request,
     process_id: int,
     title: str = Form(""),
-    status: str = Form("unclassified"),
+    document_type: str = Form("workshop_other"),
+    status: str = Form("received"),
     document_date: str = Form(""),
     source: str = Form("email"),
     entry_channel: str = Form(""),
@@ -2938,8 +2975,8 @@ def workshop_create_document(
             add_document_record(
                 db,
                 title=title,
-                classification="fleet",
-                document_type="general_fleet",
+                classification="workshop",
+                document_type=document_type if document_type in DOCUMENT_TYPE_LABELS else "workshop_other",
                 status=status,
                 document_date=parse_optional_date(document_date),
                 source=source,
@@ -3312,7 +3349,7 @@ def documents_center_page(
         metrics = {
             "total": db.scalar(select(func.count()).select_from(Document)) or 0,
             "unclassified": db.scalar(
-                select(func.count()).select_from(Document).where(Document.status == "unclassified")
+                select(func.count()).select_from(Document).where(Document.status.in_(("received", "unclassified")))
             )
             or 0,
             "classified": db.scalar(
@@ -3346,6 +3383,7 @@ def documents_new_page(request: Request, error: str | None = None):
         {
             "areas": DOCUMENT_AREAS,
             "document_types": DOCUMENT_TYPES,
+            "document_type_areas": DOCUMENT_TYPE_AREAS,
             "statuses": DOCUMENT_STATUSES,
             "sources": DOCUMENT_SOURCES,
             "error": error,
@@ -3399,7 +3437,7 @@ def documents_manage_page(
         metrics = {
             "total": db.scalar(select(func.count()).select_from(Document)) or 0,
             "unclassified": db.scalar(
-                select(func.count()).select_from(Document).where(Document.status == "unclassified")
+                select(func.count()).select_from(Document).where(Document.status.in_(("received", "unclassified")))
             )
             or 0,
             "classified": db.scalar(
@@ -3428,6 +3466,7 @@ def documents_manage_page(
                 "area_labels": DOCUMENT_AREA_LABELS,
                 "document_types": DOCUMENT_TYPES,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
+                "document_type_areas": DOCUMENT_TYPE_AREAS,
                 "statuses": DOCUMENT_STATUSES,
                 "status_labels": DOCUMENT_STATUS_LABELS,
                 "sources": DOCUMENT_SOURCES,
@@ -3443,9 +3482,9 @@ def documents_manage_page(
 def document_create(
     request: Request,
     title: str = Form(""),
-    classification: str = Form("fleet"),
-    document_type: str = Form("general_fleet"),
-    status: str = Form("unclassified"),
+    classification: str = Form("workshop"),
+    document_type: str = Form("workshop_other"),
+    status: str = Form("received"),
     document_date: str = Form(""),
     source: str = Form("email"),
     entry_channel: str = Form(""),
@@ -3473,15 +3512,21 @@ def document_create(
     if not clean_original_url and not clean_archive_url:
         return RedirectResponse("/documents/new?error=Indica%20pelo%20menos%20um%20link.", status_code=303)
     if classification not in DOCUMENT_AREA_LABELS:
-        classification = "general_archive"
-    if document_type not in DOCUMENT_TYPE_LABELS:
-        document_type = default_document_type_for_area(classification)
+        classification = "workshop"
+    document_type = normalize_document_type_for_area(document_type, classification)
     if status not in DOCUMENT_STATUS_LABELS:
-        status = "unclassified"
+        status = "received"
 
     parsed_document_date = parse_optional_date(document_date)
     clean_plate = plate.strip().upper()
-    folder_path = suggest_document_folder_path(classification, parsed_document_date, clean_plate)
+    folder_path = suggest_document_folder_path(
+        classification,
+        parsed_document_date,
+        clean_plate,
+        document_type,
+        supplier_name,
+        customer_name,
+    )
     archived = status == "archived"
 
     with SessionLocal() as db:
@@ -3606,6 +3651,7 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "area_labels": DOCUMENT_AREA_LABELS,
                 "document_types": DOCUMENT_TYPES,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
+                "document_type_areas": DOCUMENT_TYPE_AREAS,
                 "statuses": DOCUMENT_STATUSES,
                 "status_labels": DOCUMENT_STATUS_LABELS,
                 "sources": DOCUMENT_SOURCES,
@@ -3637,9 +3683,10 @@ def document_update(
         if classification in DOCUMENT_AREA_LABELS and classification != document.classification:
             changes.append(("classification", document.classification, classification))
             document.classification = classification
-        if document_type in DOCUMENT_TYPE_LABELS and document_type != document.document_type:
-            changes.append(("document_type", document.document_type, document_type))
-            document.document_type = document_type
+        clean_document_type = normalize_document_type_for_area(document_type, document.classification or "workshop")
+        if clean_document_type != document.document_type:
+            changes.append(("document_type", document.document_type, clean_document_type))
+            document.document_type = clean_document_type
         if status in DOCUMENT_STATUS_LABELS and status != document.status:
             changes.append(("status", document.status, status))
             document.status = status
@@ -3651,6 +3698,9 @@ def document_update(
             document.classification or "general_archive",
             document.document_date,
             document.plate,
+            document.document_type,
+            document.supplier_name,
+            document.customer_name,
         )
         if document.status == "archived":
             document.archived = True
@@ -5497,11 +5547,43 @@ def build_external_portal_description(*, message: str, category: str, station: s
 
 def default_document_type_for_area(area: str) -> str:
     return {
-        "fleet": "general_fleet",
-        "finance": "general_finance",
+        "workshop": "workshop_other",
+        "fleet": "workshop_other",
+        "finance": "finance_other",
         "rentway_imports": "general_rentway",
         "general_archive": "general_archive",
-    }.get(area, "general_archive")
+    }.get(area, "workshop_other")
+
+
+def normalize_document_type_for_area(document_type: str, area: str) -> str:
+    if document_type not in DOCUMENT_TYPE_LABELS:
+        return default_document_type_for_area(area)
+    expected_area = DOCUMENT_TYPE_AREAS.get(document_type)
+    if expected_area and expected_area != area:
+        return default_document_type_for_area(area)
+    return document_type
+
+
+def document_folder_label(document_type: str | None) -> str:
+    labels = {
+        "workshop_diagnostic": "Diagnóstico",
+        "workshop_bsi": "BSI - Dados técnicos",
+        "workshop_quote": "Orçamentos",
+        "workshop_supplier_invoice": "Faturas fornecedor",
+        "workshop_evidence": "Evidências",
+        "workshop_report": "Relatórios",
+        "workshop_other": "Outros documentos de oficina",
+        "finance_supplier_invoice": "Faturas fornecedor",
+        "finance_credit_note": "Notas de crédito",
+        "finance_receipt": "Recibos",
+        "finance_payment_proof": "Comprovativos pagamento",
+        "finance_customer_document": "Documentos cliente",
+        "finance_other": "Outros documentos financeiros",
+        "general_fleet": "Geral Frota",
+        "general_finance": "Geral Financeiro",
+        "general_archive": "Geral Arquivo",
+    }
+    return labels.get(document_type or "", DOCUMENT_TYPE_LABELS.get(document_type or "", "Outros"))
 
 
 def task_detail_error_message(error: str | None) -> str | None:
@@ -5553,11 +5635,10 @@ def add_document_record(
     if not clean_title or not (clean_original_url or clean_archive_url):
         raise ValueError("title_and_link_required")
     if classification not in DOCUMENT_AREA_LABELS:
-        classification = "general_archive"
-    if document_type not in DOCUMENT_TYPE_LABELS:
-        document_type = default_document_type_for_area(classification)
+        classification = "workshop"
+    document_type = normalize_document_type_for_area(document_type, classification)
     if status not in DOCUMENT_STATUS_LABELS:
-        status = "unclassified"
+        status = "received"
 
     clean_plate = plate.strip().upper()
     archived = status == "archived"
@@ -5578,7 +5659,14 @@ def add_document_record(
         storage_path=clean_original_url or clean_archive_url,
         storage_key=clean_original_url or None,
         external_url=clean_archive_url or clean_original_url,
-        folder_path=suggest_document_folder_path(classification, document_date, clean_plate),
+        folder_path=suggest_document_folder_path(
+            classification,
+            document_date,
+            clean_plate,
+            document_type,
+            supplier_name,
+            customer_name,
+        ),
         vehicle_id=vehicle_id,
         task_id=task_id,
         workshop_process_id=workshop_process_id,
@@ -5636,15 +5724,25 @@ def suggest_document_folder_path(
     area: str,
     document_date: date | None,
     plate: str | None = None,
+    document_type: str | None = None,
+    supplier_name: str | None = None,
+    customer_name: str | None = None,
 ) -> str:
     reference_date = document_date or date.today()
     year = f"{reference_date.year:04d}"
     month = f"{reference_date.month:02d}"
     clean_plate = (plate or "").strip().upper()
-    if area == "fleet":
-        return f"Frota/{clean_plate or 'Sem_Matricula'}"
+    type_folder = document_folder_label(document_type)
+    if area in {"workshop", "fleet"}:
+        if clean_plate:
+            return f"Oficina/Matrículas/{clean_plate}/{type_folder}"
+        return f"Oficina/Sem matrícula/{year}/{month}/{type_folder}"
     if area == "finance":
-        return f"Financeiro/{year}/{month}"
+        if supplier_name and supplier_name.strip():
+            return f"Financeiro/Fornecedores/{year}/{month}"
+        if customer_name and customer_name.strip():
+            return f"Financeiro/Clientes/{year}/{month}"
+        return f"Financeiro/{year}/{month}/{type_folder}"
     if area == "rentway_imports":
         return f"Rentway_Importacoes/{year}/{month}"
     return f"Arquivo_Geral/{year}/{month}"

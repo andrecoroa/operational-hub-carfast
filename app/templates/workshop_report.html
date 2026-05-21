@@ -98,7 +98,7 @@
                       {% for key, value in item.data_json.items() %}
                         <div>
                           <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
-                          <dd>{{ status_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                          <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
                         </div>
                       {% endfor %}
                     </dl>

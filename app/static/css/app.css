@@ -2249,6 +2249,29 @@ a.metric:hover {
   gap: 14px;
 }
 
+.reading-phase-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(166, 75, 55, 0.22);
+  border-radius: 8px;
+  background: #fff8f5;
+  padding: 12px 14px;
+}
+
+.reading-phase-banner span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reading-phase-banner strong {
+  color: var(--brand-dark);
+  font-size: 15px;
+}
+
 .reading-block,
 .reading-report-panel {
   border: 1px solid var(--line);
@@ -2594,6 +2617,10 @@ a.metric:hover {
 
 .bsi-reading-details summary h3 {
   margin: 2px 0 8px;
+}
+
+.bsi-reading-details + .bsi-reading-details {
+  margin-top: 14px;
 }
 
 .bsi-reading-details form {

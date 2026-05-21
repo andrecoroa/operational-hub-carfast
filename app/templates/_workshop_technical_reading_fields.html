@@ -1,5 +1,6 @@
-{% set is_fixed_phase = fixed_reading_phase is defined and fixed_reading_phase %}
-{% set active_phase = fixed_reading_phase if is_fixed_phase else ("bsi_final" if process.status == "bsi_final" else "bsi_initial") %}
+{% set active_phase = fixed_reading_phase if fixed_reading_phase is defined and fixed_reading_phase else "initial" %}
+{% set phase_label = "Leitura final" if active_phase == "final" else "Leitura inicial" %}
+{% set legacy_phase = "bsi_final" if active_phase == "final" else "bsi_initial" %}
 {% set report_cards = [
   ("maintenance_info", "Informações manutenção", "KM, dias, limites e número de manutenções."),
   ("maintenance_program", "Programação manutenção", "Limiar, duração, circulação e primeira manutenção."),
@@ -8,12 +9,22 @@
   ("software_identification", "Telecarregamento", "Software, calibração, data e número de telecarregamentos."),
   ("other", "Outra leitura", "Relatório ainda sem categoria própria.")
 ] %}
+{% set default_allowed_report_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
+{% set allowed_report_types = reading_allowed_types if reading_allowed_types is defined and reading_allowed_types else default_allowed_report_types %}
 <div class="reading-form-shell">
+  <input type="hidden" name="flow_phase" value="{{ active_phase }}">
   <select name="reading_type" data-reading-type hidden>
     {% for code, label in technical_reading_types %}
-      <option value="{{ code }}">{{ label }}</option>
+      {% if code in allowed_report_types %}
+        <option value="{{ code }}">{{ label }}</option>
+      {% endif %}
     {% endfor %}
   </select>
+
+  <div class="reading-phase-banner">
+    <span>Fase definida pelo fluxo</span>
+    <strong>{{ phase_label }}</strong>
+  </div>
 
   <div class="reading-report-selector">
     <div class="table-heading flat-heading">
@@ -23,10 +34,10 @@
       </div>
     </div>
     <div class="reading-card-grid">
-      {% for code, label, description in report_cards %}
+      {% for code, label, description in report_cards if code in allowed_report_types %}
         {% set marker = namespace(registered=false) %}
         {% for reading in technical_readings %}
-          {% if reading.reading_type == code and (reading.data_json or {}).get("flow_phase") == active_phase %}
+          {% if reading.reading_type == code and (reading.data_json or {}).get("flow_phase") in [active_phase, legacy_phase] %}
             {% set marker.registered = true %}
           {% endif %}
         {% endfor %}
@@ -45,24 +56,6 @@
         </button>
       {% endfor %}
     </div>
-  </div>
-
-  <div class="compact-form-grid two-col">
-    {% if is_fixed_phase %}
-      <input type="hidden" name="flow_phase" value="{{ fixed_reading_phase }}">
-      <label>
-        Fase do processo
-        <input type="text" value="{{ 'Leitura final' if fixed_reading_phase == 'bsi_final' else 'Leitura inicial' }}" readonly>
-      </label>
-    {% else %}
-      <label>
-        Fase do processo
-        <select name="flow_phase">
-          <option value="bsi_initial" {% if process.status != "bsi_final" %}selected{% endif %}>Leitura inicial</option>
-          <option value="bsi_final" {% if process.status == "bsi_final" %}selected{% endif %}>Leitura final</option>
-        </select>
-      </label>
-    {% endif %}
   </div>
 
   <div class="reading-block">

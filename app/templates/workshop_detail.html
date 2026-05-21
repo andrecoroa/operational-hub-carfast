@@ -157,17 +157,36 @@
         </article>
 
         <article id="bsi-workspace" class="section workshop-bsi-workspace">
-          <details id="bsi-reading-details" class="bsi-reading-details">
+          <details id="bsi-reading-initial-details" class="bsi-reading-details">
             <summary>
               <div>
                 <p class="eyebrow">Diagnóstico</p>
-                <h3>Registo de leitura técnica / BSI</h3>
-                <p class="muted">Cada relatório tem o seu próprio cartão. Abre apenas o relatório que vais preencher.</p>
+                <h3>Registo de leitura técnica / BSI inicial</h3>
+                <p class="muted">Leitura inicial do diagnóstico. Abre apenas o relatório que vais preencher.</p>
               </div>
-              <span class="action-method-pill">Abrir</span>
+              <span class="action-method-pill">Leitura inicial</span>
             </summary>
             <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
-              {% set reading_submit_label = "Gravar leitura técnica" %}
+              {% set reading_submit_label = "Gravar leitura inicial" %}
+              {% set fixed_reading_phase = "initial" %}
+              {% set reading_allowed_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
+
+          <details id="bsi-reading-final-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI final</h3>
+                <p class="muted">Leitura final antes do fecho técnico. Apenas manutenção e lubrificação motor.</p>
+              </div>
+              <span class="action-method-pill">Leitura final</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura final" %}
+              {% set fixed_reading_phase = "final" %}
+              {% set reading_allowed_types = ["maintenance_info", "lubrication_info"] %}
               {% include "_workshop_technical_reading_fields.html" %}
             </form>
           </details>
@@ -225,7 +244,7 @@
                     {% for key, value in item.data_json.items() %}
                       <div>
                         <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
-                        <dd>{{ status_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                        <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
                       </div>
                     {% endfor %}
                   </dl>
@@ -394,7 +413,7 @@
                 {% if step.code in ["bsi_initial", "bsi_final"] %}
                   <div class="form-stack">
                     <p>{{ step.description }}</p>
-                    <a class="button-link" href="#bsi-workspace" data-open-details="#bsi-reading-details">{{ step.button }}</a>
+                    <a class="button-link" href="#bsi-workspace" data-open-details="{{ '#bsi-reading-final-details' if step.code == 'bsi_final' else '#bsi-reading-initial-details' }}">{{ step.button }}</a>
                   </div>
                 {% else %}
                   <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">

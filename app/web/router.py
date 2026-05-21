@@ -160,6 +160,8 @@ def technical_history_matrix(
             if value in (None, ""):
                 value = "-"
             else:
+                if field == "flow_phase":
+                    value = WORKSHOP_READING_PHASE_DISPLAY_LABELS.get(value, value)
                 has_value = True
             if previous_value not in (None, value, "-") and value != "-":
                 changed = True
@@ -307,6 +309,34 @@ WORKSHOP_EVIDENCE_TYPE_LABELS = dict(WORKSHOP_EVIDENCE_TYPES)
 WORKSHOP_EVIDENCE_CATEGORY_LABELS = dict(WORKSHOP_EVIDENCE_CATEGORIES)
 WORKSHOP_EVIDENCE_STATUS_LABELS = dict(WORKSHOP_EVIDENCE_STATUSES)
 WORKSHOP_READING_TYPE_LABELS = dict([*WORKSHOP_LEGACY_READING_TYPES, *WORKSHOP_READING_TYPES])
+WORKSHOP_READING_PHASES = {
+    "initial": {
+        "label": "Leitura inicial",
+        "flow_status": "bsi_initial",
+        "allowed_types": {
+            "maintenance_info",
+            "maintenance_program",
+            "lubrication_info",
+            "fault_reading",
+            "software_identification",
+            "other",
+        },
+    },
+    "final": {
+        "label": "Leitura final",
+        "flow_status": "bsi_final",
+        "allowed_types": {
+            "maintenance_info",
+            "lubrication_info",
+        },
+    },
+}
+WORKSHOP_READING_PHASE_DISPLAY_LABELS = {
+    "initial": "Leitura inicial",
+    "final": "Leitura final",
+    "bsi_initial": "Leitura inicial",
+    "bsi_final": "Leitura final",
+}
 WORKSHOP_SERVICE_DETAIL_FAMILIES = {
     family for _, _, family in WORKSHOP_SERVICE_DETAILS if family != "any"
 }
@@ -2468,7 +2498,9 @@ def render_workshop_detail(
     if technical_readings:
         for reading in technical_readings:
             flow_phase = (reading.data_json or {}).get("flow_phase")
-            if flow_phase in {"bsi_initial", "bsi_final"}:
+            if flow_phase in WORKSHOP_READING_PHASES:
+                completed_flow_statuses.add(WORKSHOP_READING_PHASES[flow_phase]["flow_status"])
+            elif flow_phase in {"bsi_initial", "bsi_final"}:
                 completed_flow_statuses.add(flow_phase)
         if not completed_flow_statuses.intersection({"bsi_initial", "bsi_final"}):
             completed_flow_statuses.add("bsi_initial")
@@ -2531,6 +2563,7 @@ def render_workshop_detail(
             "technical_reading_types": WORKSHOP_READING_TYPES,
             "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
             "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
+            "technical_reading_phase_labels": WORKSHOP_READING_PHASE_DISPLAY_LABELS,
             "incident_types": INCIDENT_TYPES,
             "incident_type_labels": INCIDENT_TYPE_LABELS,
             "incident_categories": INCIDENT_CATEGORIES,
@@ -2659,6 +2692,7 @@ def workshop_report(request: Request, process_id: int):
                 "service_status_labels": WORKSHOP_SERVICE_STATUS_LABELS,
                 "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
                 "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
+                "technical_reading_phase_labels": WORKSHOP_READING_PHASE_DISPLAY_LABELS,
                 "evidence_type_labels": WORKSHOP_EVIDENCE_TYPE_LABELS,
                 "evidence_category_labels": WORKSHOP_EVIDENCE_CATEGORY_LABELS,
                 "evidence_status_labels": WORKSHOP_EVIDENCE_STATUS_LABELS,
@@ -2997,10 +3031,14 @@ def workshop_add_technical_reading(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    if reading_type not in WORKSHOP_READING_TYPE_LABELS:
-        reading_type = "technical"
-    if flow_phase not in {"bsi_initial", "bsi_final"}:
-        flow_phase = "bsi_initial"
+    if flow_phase not in WORKSHOP_READING_PHASES:
+        return RedirectResponse(f"/workshop/{process_id}?error=Fase%20de%20leitura%20inválida.", status_code=303)
+    allowed_reading_types = WORKSHOP_READING_PHASES[flow_phase]["allowed_types"]
+    if reading_type not in allowed_reading_types:
+        return RedirectResponse(
+            f"/workshop/{process_id}?error=Tipo%20de%20relatório%20não%20permitido%20para%20esta%20fase.",
+            status_code=303,
+        )
     parsed_reading_date = parse_optional_date(reading_date) or date.today()
     reading_data = compact_reading_data(
         reading_date=parsed_reading_date,
@@ -3080,7 +3118,7 @@ def workshop_add_technical_reading(
                 user_id=user_id,
                 note=(
                     "Leitura técnica registada: "
-                    f"{WORKSHOP_STATUS_LABELS.get(flow_phase, flow_phase)} - "
+                    f"{WORKSHOP_READING_PHASES[flow_phase]['label']} - "
                     f"{WORKSHOP_READING_TYPE_LABELS.get(reading_type, reading_type)}"
                     f"{' - ' + clean_summary if clean_summary else ''}"
                 ),

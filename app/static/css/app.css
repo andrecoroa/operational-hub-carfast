@@ -2988,6 +2988,205 @@ a.metric:hover {
   font-size: 13px;
 }
 
+.technical-history-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 4px 0 16px;
+}
+
+.technical-history-summary p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.technical-history-hero {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.technical-history-hero h3 {
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+.technical-history-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.technical-history-meta div {
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.technical-history-meta span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.technical-history-meta strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.technical-history-page {
+  padding: 0;
+  overflow: hidden;
+}
+
+.technical-history-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.technical-history-tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.technical-history-tabs a strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 12px;
+}
+
+.technical-history-tabs a.active {
+  border-color: rgba(166, 75, 55, 0.45);
+  background: var(--brand);
+  color: #ffffff;
+}
+
+.technical-history-tabs a.active strong {
+  background: #ffffff;
+}
+
+.technical-history-table-wrap {
+  overflow-x: auto;
+}
+
+.technical-history-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.technical-history-table th,
+.technical-history-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.technical-history-table th {
+  background: #fbfcfc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.technical-history-table th:first-child,
+.technical-history-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 250px;
+  background: #ffffff;
+  font-weight: 900;
+}
+
+.technical-history-table th:first-child {
+  background: #fbfcfc;
+}
+
+.technical-history-table th:not(:first-child) {
+  min-width: 220px;
+}
+
+.technical-history-table th span,
+.technical-history-table th small,
+.technical-history-table th a {
+  display: block;
+}
+
+.technical-history-table th span {
+  color: var(--ink);
+  font-size: 14px;
+  text-transform: none;
+}
+
+.technical-history-table th small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.technical-history-table th a {
+  margin-top: 7px;
+  color: var(--brand);
+  font-size: 12px;
+  text-transform: none;
+}
+
+.technical-history-table td {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
+.history-change-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.history-change-pill.stable {
+  background: #eaf7ed;
+  color: #2b8a3e;
+}
+
+.history-change-pill.changed {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.history-change-pill.neutral {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
 .status-opening,
 .status-reception,
 .status-diagnosis,
@@ -3074,7 +3273,8 @@ a.metric:hover {
   .task-layout,
   .detail-grid,
   .form-page-grid,
-  .workshop-page-grid {
+  .workshop-page-grid,
+  .technical-history-hero {
     grid-template-columns: 1fr;
   }
 
@@ -3298,9 +3498,19 @@ a.metric:hover {
   .filter-grid,
   .task-info-grid,
   .workshop-info-grid,
+  .technical-history-meta,
   .detail-grid,
   .detail-list div {
     grid-template-columns: 1fr;
+  }
+
+  .technical-history-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .technical-history-summary .button-link {
+    width: 100%;
   }
 
   .filter-actions {

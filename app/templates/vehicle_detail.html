@@ -130,52 +130,18 @@
             </div>
           </details>
 
-          <details class="workshop-record-group" {% if technical_readings %}open{% endif %}>
-            <summary>Histórico técnico / Diagnósticos <span>{{ technical_readings|length }}</span></summary>
-            <div class="event-list">
-              {% for item in technical_readings %}
-                {% set origin_process = reading_process_by_id.get(item.process_id) %}
-                <article class="event-item">
-                  <div>
-                    <strong>
-                      {% if item.process_id %}
-                        <a class="table-link" href="/workshop/{{ item.process_id }}">
-                          {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
-                        </a>
-                      {% else %}
-                        {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
-                      {% endif %}
-                    </strong>
-                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
-                  </div>
-                  <p>
-                    {% if item.process_id %}Processo #{{ item.process_id }}{% else %}Histórico importado{% endif %}
-                    {% if origin_process %} &middot; {{ origin_process.title }}{% endif %}
-                    {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
-                  </p>
-                  <p>{{ item.summary or "Sem resumo registado." }}</p>
-                  {% if item.data_json %}
-                    <dl class="technical-reading-list">
-                      {% for key, value in item.data_json.items() %}
-                        <div>
-                          <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
-                          <dd>{{ workshop_status_labels.get(value, value) if key == "flow_phase" else value }}</dd>
-                        </div>
-                      {% endfor %}
-                    </dl>
-                  {% endif %}
-                  {% if item.differences_json %}
-                    <div class="technical-diff-box">
-                      <strong>Diferenças face à leitura anterior</strong>
-                      {% for diff in item.differences_json.values() %}
-                        <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                </article>
+          <details class="workshop-record-group" {% if technical_readings_count %}open{% endif %}>
+            <summary>Histórico técnico / Diagnósticos <span>{{ technical_readings_count }}</span></summary>
+            <div class="technical-history-summary">
+              {% if technical_readings_count %}
+                <div>
+                  <strong>{{ technical_readings_count }} leituras técnicas associadas</strong>
+                  <p>Consulta a evolução por tipo de relatório, com cada leitura organizada em coluna.</p>
+                </div>
+                <a class="button-link" href="/fleet/{{ vehicle.id }}/technical-history">Ver histórico técnico</a>
               {% else %}
                 <p class="muted">Sem leituras técnicas associadas a esta viatura.</p>
-              {% endfor %}
+              {% endif %}
             </div>
           </details>
 

@@ -87,6 +87,97 @@ def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[st
     }
 
 
+def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
+    if reading.reading_date:
+        label = reading.reading_date.strftime("%Y-%m-%d")
+    elif reading.created_at:
+        label = reading.created_at.strftime("%Y-%m-%d")
+    else:
+        label = f"Leitura #{reading.id}"
+    data = reading.data_json or {}
+    document_time = data.get("document_time")
+    if document_time:
+        label = f"{label} {document_time}"
+    return label
+
+
+def technical_history_tabs(readings: list[WorkshopTechnicalReading]) -> list[dict[str, str | int]]:
+    counts = {code: 0 for code, _ in WORKSHOP_READING_TYPES}
+    legacy_codes = [code for code, _ in WORKSHOP_LEGACY_READING_TYPES]
+    for code in legacy_codes:
+        counts.setdefault(code, 0)
+    for reading in readings:
+        counts[reading.reading_type] = counts.get(reading.reading_type, 0) + 1
+
+    tabs = []
+    ordered_codes = [code for code, _ in WORKSHOP_READING_TYPES] + legacy_codes
+    for code in ordered_codes:
+        total = counts.get(code, 0)
+        if total:
+            tabs.append({"code": code, "label": WORKSHOP_READING_TYPE_LABELS.get(code, code), "count": total})
+    return tabs
+
+
+def technical_history_matrix(
+    readings: list[WorkshopTechnicalReading],
+    reading_type: str,
+) -> dict[str, list[dict] | list[WorkshopTechnicalReading]]:
+    selected = [item for item in readings if item.reading_type == reading_type]
+    selected.sort(key=lambda item: (item.reading_date or date.min, item.created_at.isoformat() if item.created_at else "", item.id))
+    fields = list(TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type, TECHNICAL_HISTORY_FIELD_GROUPS["other"]))
+    present_fields = {
+        key
+        for reading in selected
+        for key, value in (reading.data_json or {}).items()
+        if value not in (None, "")
+    }
+    extra_fields = [
+        key
+        for key in present_fields
+        if key not in fields
+        and key
+        not in {
+            "record_origin",
+            "import_batch_id",
+            "import_status",
+            "import_key",
+            "duplicate_candidate",
+            "chronological_order",
+            "copied_to_archive",
+            "archive_file",
+        }
+    ]
+    fields.extend(sorted(extra_fields))
+
+    rows = []
+    for field in fields:
+        values = []
+        previous_value = None
+        has_value = False
+        changed = False
+        for reading in selected:
+            value = (reading.data_json or {}).get(field)
+            if value in (None, ""):
+                value = "-"
+            else:
+                has_value = True
+            if previous_value not in (None, value, "-") and value != "-":
+                changed = True
+            if value != "-":
+                previous_value = value
+            values.append({"reading_id": reading.id, "value": value})
+        if has_value:
+            rows.append(
+                {
+                    "key": field,
+                    "label": TECHNICAL_READING_COMPARE_LABELS.get(field, field.replace("_", " ").capitalize()),
+                    "values": values,
+                    "changed": changed,
+                }
+            )
+    return {"readings": selected, "rows": rows}
+
+
 WORKSHOP_OPENING_TYPES = [
     ("walk_in", "Entrada imediata"),
     ("appointment", "Marcação"),
@@ -220,6 +311,86 @@ WORKSHOP_SERVICE_DETAIL_FAMILIES = {
     family for _, _, family in WORKSHOP_SERVICE_DETAILS if family != "any"
 }
 WORKSHOP_SERVICE_AXIS_FAMILIES = {"brakes", "tyres"}
+
+TECHNICAL_HISTORY_FIELD_GROUPS = {
+    "maintenance_info": [
+        "maintenance_last_reset_km",
+        "maintenance_km_until_next",
+        "maintenance_days_until_next",
+        "maintenance_days_since_last_reset",
+        "maintenance_count",
+        "maintenance_temporal_limit_exceeded",
+        "maintenance_distance_limit_exceeded",
+        "maintenance_next_due_date",
+        "maintenance_last_reset_date_estimated",
+    ],
+    "maintenance_program": [
+        "maintenance_threshold_km",
+        "maintenance_duration_months",
+        "maintenance_days_since_first_circulation",
+        "maintenance_first_start_km",
+        "maintenance_first_duration_months",
+        "maintenance_management_mode",
+        "maintenance_first_circulation_date_estimated",
+    ],
+    "lubrication_info": [
+        "module_name",
+        "oil_dilution_rate",
+        "oil_carbon_rate",
+        "oil_anti_dilution_status",
+        "engine_calculated_interval_km",
+    ],
+    "fault_reading": [
+        "faults_present",
+        "fault_event_count",
+        "fault_codes",
+        "critical_fault",
+        "fault_main_status",
+        "fault_characterization",
+        "fault_odometer_km",
+        "recommended_action",
+    ],
+    "software_identification": [
+        "module_name",
+        "software_reference",
+        "calibration_edition",
+        "software_edition",
+        "download_date",
+        "download_count",
+        "ecu_supplier",
+        "material_reference",
+    ],
+    "technical": [
+        "machine_source",
+        "source_report_type",
+        "source_file",
+        "import_note",
+    ],
+    "bsi": [
+        "machine_source",
+        "source_report_type",
+        "source_file",
+        "import_note",
+    ],
+    "diagnostic": [
+        "machine_source",
+        "source_report_type",
+        "fault_codes",
+        "recommended_action",
+    ],
+    "maintenance": [
+        "maintenance_last_reset_km",
+        "maintenance_km_until_next",
+        "maintenance_days_until_next",
+        "maintenance_next_due_date",
+    ],
+    "other": [
+        "machine_source",
+        "source_report_type",
+        "source_file",
+        "import_note",
+    ],
+}
 
 WORKSHOP_FLOW_STEPS = [
     {
@@ -1459,6 +1630,11 @@ def vehicle_detail(
             )
             .limit(20)
         ).all()
+        technical_readings_count = db.scalar(
+            select(func.count()).select_from(WorkshopTechnicalReading).where(
+                WorkshopTechnicalReading.vehicle_id == vehicle.id
+            )
+        ) or 0
         process_ids = {item.process_id for item in technical_readings if item.process_id}
         reading_process_by_id = {
             item.id: item
@@ -1483,6 +1659,7 @@ def vehicle_detail(
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
                 "technical_readings": technical_readings,
+                "technical_readings_count": technical_readings_count,
                 "reading_process_by_id": reading_process_by_id,
                 "documents": documents,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
@@ -1495,6 +1672,56 @@ def vehicle_detail(
                 "task_created": task_created,
                 "document_created": document_created,
                 "error": None,
+            },
+        )
+
+
+@web_router.get("/fleet/{vehicle_id}/technical-history", response_class=HTMLResponse)
+def vehicle_technical_history(
+    request: Request,
+    vehicle_id: int,
+    report_type: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+
+        snapshot = db.scalar(
+            select(VehicleExternalSnapshot)
+            .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+            .order_by(VehicleExternalSnapshot.updated_at.desc())
+        )
+        readings = db.scalars(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.asc(),
+                WorkshopTechnicalReading.id.asc(),
+            )
+        ).all()
+        tabs = technical_history_tabs(readings)
+        selected_type = report_type if report_type in {item["code"] for item in tabs} else None
+        if not selected_type and tabs:
+            selected_type = str(tabs[0]["code"])
+        matrix = technical_history_matrix(readings, selected_type) if selected_type else {"readings": [], "rows": []}
+        return templates.TemplateResponse(
+            request,
+            "vehicle_technical_history.html",
+            {
+                "vehicle": vehicle,
+                "vehicle_context": rentway_vehicle_context(snapshot),
+                "tabs": tabs,
+                "selected_type": selected_type,
+                "selected_label": WORKSHOP_READING_TYPE_LABELS.get(selected_type or "", selected_type or ""),
+                "matrix": matrix,
+                "total_readings": len(readings),
+                "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+                "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
+                "compact_reading_label": compact_reading_label,
             },
         )
 

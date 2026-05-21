@@ -118,6 +118,29 @@ def technical_history_tabs(readings: list[WorkshopTechnicalReading]) -> list[dic
     return tabs
 
 
+TECHNICAL_HISTORY_METADATA_FIELDS = {
+    "record_origin",
+    "import_batch_id",
+    "import_status",
+    "import_key",
+    "duplicate_candidate",
+    "chronological_order",
+    "copied_to_archive",
+    "archive_file",
+    "source_file",
+    "file_sha1",
+    "source_report_type",
+    "module_name",
+    "machine_source",
+    "import_note",
+    "work_order_reference",
+    "document_time",
+    "document_datetime",
+    "source_created_by",
+    "source_created_at",
+}
+
+
 def technical_history_matrix(
     readings: list[WorkshopTechnicalReading],
     reading_type: str,
@@ -134,18 +157,7 @@ def technical_history_matrix(
     extra_fields = [
         key
         for key in present_fields
-        if key not in fields
-        and key
-        not in {
-            "record_origin",
-            "import_batch_id",
-            "import_status",
-            "import_key",
-            "duplicate_candidate",
-            "chronological_order",
-            "copied_to_archive",
-            "archive_file",
-        }
+        if key not in fields and key not in TECHNICAL_HISTORY_METADATA_FIELDS
     ]
     fields.extend(sorted(extra_fields))
 

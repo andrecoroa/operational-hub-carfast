@@ -3210,6 +3210,16 @@ a.metric:hover {
   overflow-wrap: anywhere;
 }
 
+.history-inline-empty {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.history-inline-empty strong {
+  color: var(--ink);
+}
+
 .history-change-pill {
   display: inline-flex;
   align-items: center;

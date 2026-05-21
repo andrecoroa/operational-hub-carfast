@@ -81,21 +81,33 @@
                   {% endfor %}
                   <td><span class="history-change-pill neutral">Contexto</span></td>
                 </tr>
-                {% for row in matrix.rows %}
+                {% if matrix.rows %}
+                  {% for row in matrix.rows %}
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      {% for value in row["values"] %}
+                        <td>{{ value.value }}</td>
+                      {% endfor %}
+                      <td>
+                        {% if row.changed %}
+                          <span class="history-change-pill changed">Alterou</span>
+                        {% else %}
+                          <span class="history-change-pill stable">Sem alteração</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
                   <tr>
-                    <td>{{ row.label }}</td>
-                    {% for value in row["values"] %}
-                      <td>{{ value.value }}</td>
-                    {% endfor %}
-                    <td>
-                      {% if row.changed %}
-                        <span class="history-change-pill changed">Alterou</span>
-                      {% else %}
-                        <span class="history-change-pill stable">Sem alteração</span>
-                      {% endif %}
+                    <td>Dados técnicos</td>
+                    <td colspan="{{ matrix.readings|length + 1 }}">
+                      <div class="history-inline-empty">
+                        <strong>Sem dados técnicos estruturados neste relatório.</strong>
+                        <span>O PDF está indexado e pode ser aberto, mas a importação ainda não trouxe campos técnicos preenchidos para comparar.</span>
+                      </div>
                     </td>
                   </tr>
-                {% endfor %}
+                {% endif %}
               </tbody>
             </table>
           </div>

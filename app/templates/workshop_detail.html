@@ -435,11 +435,10 @@
                     <div class="compact-form-grid two-col">
                       <label>
                         Folhas de obra de reparação com fatura?
-                        <select name="history_repair_orders_with_invoice">
-                          <option value="">Não verificado</option>
+                        <select name="history_repair_orders_with_invoice" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -449,11 +448,10 @@
                       </label>
                       <label>
                         Fatura sem folha de obra?
-                        <select name="history_invoice_without_work_order">
-                          <option value="">Não verificado</option>
+                        <select name="history_invoice_without_work_order" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -463,11 +461,10 @@
                       </label>
                       <label>
                         Serviços da folha de obra e faturados correspondem?
-                        <select name="history_services_match_invoice">
-                          <option value="">Não verificado</option>
+                        <select name="history_services_match_invoice" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -487,11 +484,10 @@
                     <div class="compact-form-grid two-col">
                       <label>
                         Plano de manutenção obtido no Service Box?
-                        <select name="servicebox_plan_obtained">
-                          <option value="">Não verificado</option>
+                        <select name="servicebox_plan_obtained" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -501,11 +497,10 @@
                       </label>
                       <label>
                         Simulação por KM e idade efetuada?
-                        <select name="servicebox_simulation_done">
-                          <option value="">Não verificado</option>
+                        <select name="servicebox_simulation_done" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -515,11 +510,10 @@
                       </label>
                       <label>
                         Campanhas técnicas verificadas?
-                        <select name="servicebox_campaigns_checked">
-                          <option value="">Não verificado</option>
+                        <select name="servicebox_campaigns_checked" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -529,11 +523,10 @@
                       </label>
                       <label>
                         Documentos de suporte anexados ao processo?
-                        <select name="servicebox_documents_attached">
-                          <option value="">Não verificado</option>
+                        <select name="servicebox_documents_attached" required>
+                          <option value="">Selecionar</option>
                           <option value="yes">Sim</option>
                           <option value="no">Não</option>
-                          <option value="partial">Parcial</option>
                           <option value="na">Não aplicável</option>
                         </select>
                       </label>
@@ -554,42 +547,38 @@
                       <section class="checklist-panel">
                         <h4>Segurança</h4>
                         <label>
-                          Travões: calços/discos/nível óleo travões
+                          Travões verificados sem anomalia?
                           <select name="check_brakes" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Pneus: estado, desgaste, pressão, danos visíveis
+                          Pneus verificados sem anomalia?
                           <select name="check_tyres" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Luzes exteriores
+                          Luzes exteriores verificadas sem anomalia?
                           <select name="check_lights" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Escovas / limpa-vidros
+                          Escovas / limpa-vidros verificados sem anomalia?
                           <select name="check_wipers" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
@@ -597,42 +586,38 @@
                       <section class="checklist-panel">
                         <h4>Mecânica rápida</h4>
                         <label>
-                          Níveis: óleo, líquido refrigeração, lava-vidros
+                          Níveis verificados sem anomalia?
                           <select name="check_levels" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Fugas visíveis
+                          Sem fugas visíveis?
                           <select name="check_leaks" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Ruídos anormais
+                          Sem ruídos anormais?
                           <select name="check_noises" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>
                         <label>
-                          Bateria / arranque
+                          Bateria / arranque verificados sem anomalia?
                           <select name="check_battery" required>
                             <option value="">Selecionar</option>
-                            <option value="ok">OK</option>
-                            <option value="issue">Anomalia</option>
-                            <option value="not_checked">Não verificado</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
                             <option value="na">Não aplicável</option>
                           </select>
                         </label>

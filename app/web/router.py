@@ -1961,15 +1961,16 @@ def vehicle_create_task(
         task = Task(
             title=clean_title,
             description=description.strip() or None,
-            task_type="operational_task",
+            task_type="workshop_task",
             source="manual",
-            category="operations",
-            subcategory="Frota",
+            category="workshop",
+            subcategory="Ficha da viatura",
             status="new",
             priority=priority,
-            team_id=default_team_id(db, "operations"),
+            team_id=default_team_id(db, "workshop"),
             entity_type="vehicle",
             entity_id=str(vehicle.id),
+            plate=vehicle.plate,
             created_by_id=user_id,
         )
         db.add(task)
@@ -3431,9 +3432,18 @@ def workshop_update_flow(
             answer_labels = {
                 "yes": "Sim",
                 "no": "Não",
-                "partial": "Parcial",
                 "na": "Não aplicável",
             }
+            if (
+                history_result not in result_labels
+                or history_repair_orders_with_invoice not in answer_labels
+                or history_invoice_without_work_order not in answer_labels
+                or history_services_match_invoice not in answer_labels
+            ):
+                return RedirectResponse(
+                    f"/workshop/{process_id}?error=Preenche%20todos%20os%20campos%20obrigatorios%20da%20verificacao%20de%20historico.",
+                    status_code=303,
+                )
             history_lines = []
             if history_result in result_labels:
                 history_lines.append(f"Resultado da consulta: {result_labels[history_result]}.")
@@ -3468,9 +3478,18 @@ def workshop_update_flow(
             answer_labels = {
                 "yes": "Sim",
                 "no": "Não",
-                "partial": "Parcial",
                 "na": "Não aplicável",
             }
+            if (
+                servicebox_plan_obtained not in answer_labels
+                or servicebox_simulation_done not in answer_labels
+                or servicebox_campaigns_checked not in answer_labels
+                or servicebox_documents_attached not in answer_labels
+            ):
+                return RedirectResponse(
+                    f"/workshop/{process_id}?error=Preenche%20todos%20os%20campos%20obrigatorios%20da%20verificacao%20Service%20Box.",
+                    status_code=303,
+                )
             servicebox_lines = []
             servicebox_checks = [
                 (
@@ -3506,23 +3525,37 @@ def workshop_update_flow(
             clean_decision_note = "\n".join(servicebox_lines)
         elif status == "systematic_checks":
             check_labels = {
-                "ok": "OK",
-                "issue": "Anomalia",
-                "not_checked": "Não verificado",
+                "yes": "Sim",
+                "no": "Não",
                 "na": "Não aplicável",
             }
+            required_checks = (
+                check_brakes,
+                check_tyres,
+                check_lights,
+                check_wipers,
+                check_levels,
+                check_leaks,
+                check_noises,
+                check_battery,
+            )
+            if any(answer not in check_labels for answer in required_checks):
+                return RedirectResponse(
+                    f"/workshop/{process_id}?error=Preenche%20todos%20os%20campos%20obrigatorios%20das%20verificacoes%20sistematicas.",
+                    status_code=303,
+                )
             check_lines = []
             safety_checks = [
-                ("Travões: calços/discos/nível óleo travões", check_brakes),
-                ("Pneus: estado, desgaste, pressão, danos visíveis", check_tyres),
-                ("Luzes exteriores", check_lights),
-                ("Escovas / limpa-vidros", check_wipers),
+                ("Travões verificados sem anomalia", check_brakes),
+                ("Pneus verificados sem anomalia", check_tyres),
+                ("Luzes exteriores verificadas sem anomalia", check_lights),
+                ("Escovas / limpa-vidros verificados sem anomalia", check_wipers),
             ]
             mechanic_checks = [
-                ("Níveis: óleo, líquido refrigeração, lava-vidros", check_levels),
-                ("Fugas visíveis", check_leaks),
-                ("Ruídos anormais", check_noises),
-                ("Bateria / arranque", check_battery),
+                ("Níveis verificados sem anomalia", check_levels),
+                ("Sem fugas visíveis", check_leaks),
+                ("Sem ruídos anormais", check_noises),
+                ("Bateria / arranque verificados sem anomalia", check_battery),
             ]
             if any(answer in check_labels for _, answer in safety_checks):
                 check_lines.append("Segurança")

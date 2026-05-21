@@ -525,6 +525,102 @@
                       <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
                     </label>
                     <button type="submit">Guardar verificação Service Box</button>
+                  {% elif step.code == "systematic_checks" %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                    <p>{{ step.description }}</p>
+                    <div class="systematic-checks-grid">
+                      <section class="checklist-panel">
+                        <h4>Segurança</h4>
+                        <label>
+                          Travões: calços/discos/nível óleo travões
+                          <select name="check_brakes" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Pneus: estado, desgaste, pressão, danos visíveis
+                          <select name="check_tyres" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Luzes exteriores
+                          <select name="check_lights" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Escovas / limpa-vidros
+                          <select name="check_wipers" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                      </section>
+                      <section class="checklist-panel">
+                        <h4>Mecânica rápida</h4>
+                        <label>
+                          Níveis: óleo, líquido refrigeração, lava-vidros
+                          <select name="check_levels" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Fugas visíveis
+                          <select name="check_leaks" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Ruídos anormais
+                          <select name="check_noises" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Bateria / arranque
+                          <select name="check_battery" required>
+                            <option value="">Selecionar</option>
+                            <option value="ok">OK</option>
+                            <option value="issue">Anomalia</option>
+                            <option value="not_checked">Não verificado</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                      </section>
+                    </div>
+                    <label>
+                      Anomalias / observações
+                      <textarea name="decision_note" rows="3" placeholder="{{ step.placeholder }}"></textarea>
+                    </label>
+                    <button type="submit">{{ step.button }}</button>
                   {% elif step.code == "decision" %}
                     <label>
                       Decisão

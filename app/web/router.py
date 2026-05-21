@@ -433,9 +433,9 @@ WORKSHOP_FLOW_STEPS = [
     {
         "code": "systematic_checks",
         "title": "Verificações sistemáticas",
-        "description": "Executar confirmações base antes de decidir serviços ou orçamento.",
+        "description": "Confirmar segurança e mecânica base antes de decidir serviços ou orçamento.",
         "field_label": "Verificações efetuadas",
-        "placeholder": "Checklist, verificações feitas e anomalias encontradas.",
+        "placeholder": "Anomalias encontradas, evidências necessárias ou recomendação técnica.",
         "button": "Registar verificações",
         "decision": "",
     },
@@ -3299,6 +3299,14 @@ def workshop_update_flow(
     servicebox_campaigns_detail: str = Form(""),
     servicebox_documents_attached: str = Form(""),
     servicebox_documents_detail: str = Form(""),
+    check_brakes: str = Form(""),
+    check_tyres: str = Form(""),
+    check_lights: str = Form(""),
+    check_wipers: str = Form(""),
+    check_levels: str = Form(""),
+    check_leaks: str = Form(""),
+    check_noises: str = Form(""),
+    check_battery: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -3399,6 +3407,39 @@ def workshop_update_flow(
             if clean_decision_note:
                 servicebox_lines.append(f"Observação: {clean_decision_note}")
             clean_decision_note = "\n".join(servicebox_lines)
+        elif status == "systematic_checks":
+            check_labels = {
+                "ok": "OK",
+                "issue": "Anomalia",
+                "not_checked": "Não verificado",
+                "na": "Não aplicável",
+            }
+            check_lines = []
+            safety_checks = [
+                ("Travões: calços/discos/nível óleo travões", check_brakes),
+                ("Pneus: estado, desgaste, pressão, danos visíveis", check_tyres),
+                ("Luzes exteriores", check_lights),
+                ("Escovas / limpa-vidros", check_wipers),
+            ]
+            mechanic_checks = [
+                ("Níveis: óleo, líquido refrigeração, lava-vidros", check_levels),
+                ("Fugas visíveis", check_leaks),
+                ("Ruídos anormais", check_noises),
+                ("Bateria / arranque", check_battery),
+            ]
+            if any(answer in check_labels for _, answer in safety_checks):
+                check_lines.append("Segurança")
+            for label, answer in safety_checks:
+                if answer in check_labels:
+                    check_lines.append(f"- {label}: {check_labels[answer]}")
+            if any(answer in check_labels for _, answer in mechanic_checks):
+                check_lines.append("Mecânica rápida")
+            for label, answer in mechanic_checks:
+                if answer in check_labels:
+                    check_lines.append(f"- {label}: {check_labels[answer]}")
+            if clean_decision_note:
+                check_lines.append(f"Observações: {clean_decision_note}")
+            clean_decision_note = "\n".join(check_lines)
         if (status != old_status or (decision or None) != old_decision) and not clean_decision_note:
             return RedirectResponse(
                 f"/workshop/{process_id}?error=Descreve%20o%20passo%20executado%20antes%20de%20alterar%20o%20fluxo.",

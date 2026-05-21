@@ -131,7 +131,6 @@ TECHNICAL_HISTORY_METADATA_FIELDS = {
     "file_sha1",
     "source_report_type",
     "module_name",
-    "machine_source",
     "import_note",
     "work_order_reference",
     "document_time",
@@ -141,25 +140,25 @@ TECHNICAL_HISTORY_METADATA_FIELDS = {
 }
 
 
+TECHNICAL_HISTORY_BASE_FIELDS = [
+    "machine_source",
+    "odometer_km",
+    "battery_voltage",
+]
+
+
 def technical_history_matrix(
     readings: list[WorkshopTechnicalReading],
     reading_type: str,
 ) -> dict[str, list[dict] | list[WorkshopTechnicalReading]]:
     selected = [item for item in readings if item.reading_type == reading_type]
     selected.sort(key=lambda item: (item.reading_date or date.min, item.created_at.isoformat() if item.created_at else "", item.id))
-    fields = list(TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type, TECHNICAL_HISTORY_FIELD_GROUPS["other"]))
-    present_fields = {
-        key
-        for reading in selected
-        for key, value in (reading.data_json or {}).items()
-        if value not in (None, "")
-    }
-    extra_fields = [
-        key
-        for key in present_fields
-        if key not in fields and key not in TECHNICAL_HISTORY_METADATA_FIELDS
+    fields = [
+        field
+        for field in TECHNICAL_HISTORY_BASE_FIELDS
+        + TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type, TECHNICAL_HISTORY_FIELD_GROUPS["other"])
+        if field not in TECHNICAL_HISTORY_METADATA_FIELDS
     ]
-    fields.extend(sorted(extra_fields))
 
     rows = []
     for field in fields:
@@ -374,9 +373,10 @@ TECHNICAL_HISTORY_FIELD_GROUPS = {
         "maintenance_first_duration_months",
         "maintenance_management_mode",
         "maintenance_first_circulation_date_estimated",
+        "maintenance_days_since_last_estimated",
+        "maintenance_last_date_estimated",
     ],
     "lubrication_info": [
-        "module_name",
         "oil_dilution_rate",
         "oil_carbon_rate",
         "oil_anti_dilution_status",
@@ -393,7 +393,6 @@ TECHNICAL_HISTORY_FIELD_GROUPS = {
         "recommended_action",
     ],
     "software_identification": [
-        "module_name",
         "software_reference",
         "calibration_edition",
         "software_edition",
@@ -402,21 +401,9 @@ TECHNICAL_HISTORY_FIELD_GROUPS = {
         "ecu_supplier",
         "material_reference",
     ],
-    "technical": [
-        "machine_source",
-        "source_report_type",
-        "source_file",
-        "import_note",
-    ],
-    "bsi": [
-        "machine_source",
-        "source_report_type",
-        "source_file",
-        "import_note",
-    ],
+    "technical": [],
+    "bsi": [],
     "diagnostic": [
-        "machine_source",
-        "source_report_type",
         "fault_codes",
         "recommended_action",
     ],
@@ -426,12 +413,7 @@ TECHNICAL_HISTORY_FIELD_GROUPS = {
         "maintenance_days_until_next",
         "maintenance_next_due_date",
     ],
-    "other": [
-        "machine_source",
-        "source_report_type",
-        "source_file",
-        "import_note",
-    ],
+    "other": [],
 }
 
 WORKSHOP_FLOW_STEPS = [
@@ -2310,6 +2292,7 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "oil_anti_dilution_status": "Proteção anti-diluição",
     "engine_calculated_interval_km": "Intervalo calculado pelo calculador",
     "faults_present": "Existem defeitos",
+    "fault_event_count": "Nº eventos de defeito",
     "critical_fault": "Defeito crítico",
     "fault_main_status": "Estado principal",
     "fault_characterization": "Caracterização",
@@ -2317,8 +2300,11 @@ TECHNICAL_READING_COMPARE_LABELS = {
     "recommended_action": "Ação recomendada",
     "software_reference": "Referência software",
     "calibration_edition": "Edição calibração",
+    "software_edition": "Edição software",
     "download_date": "Data telecarregamento",
     "download_count": "Nº telecarregamentos",
+    "ecu_supplier": "Fornecedor calculador",
+    "material_reference": "Referência material",
     "battery_voltage": "Tensão bateria",
     "fault_codes": "Códigos de erro",
     "bsi_notes": "Notas BSI",

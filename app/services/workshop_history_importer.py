@@ -349,7 +349,7 @@ def import_workshop_technical_history_file(
     )
     db.add(batch)
     db.flush()
-    seen_import_keys: set[str] = set()
+    seen_source_files: set[str] = set()
     seen_file_hashes: set[str] = set()
 
     try:
@@ -387,16 +387,16 @@ def import_workshop_technical_history_file(
                 if should_skip_preparation_row(row, col):
                     stats["skipped_rows"] += 1
                     continue
-                import_key = row_text(row, col, "import_key")
+                source_file = row_text(row, col, "source_file")
                 file_sha1 = row_text(row, col, "file_sha1")
-                if import_key and import_key in seen_import_keys:
+                if source_file and source_file in seen_source_files:
                     stats["skipped_rows"] += 1
                     continue
                 if file_sha1 and file_sha1 in seen_file_hashes:
                     stats["skipped_rows"] += 1
                     continue
-                if import_key:
-                    seen_import_keys.add(import_key)
+                if source_file:
+                    seen_source_files.add(source_file)
                 if file_sha1:
                     seen_file_hashes.add(file_sha1)
                 if not external_reference:

@@ -272,7 +272,20 @@ def row_text(row: tuple[Any, ...], col: dict[str, int], field: str) -> str:
 
 def should_skip_preparation_row(row: tuple[Any, ...], col: dict[str, int]) -> bool:
     status = normalize_header(row_text(row, col, "import_status"))
-    return bool(status and status not in {"ok", "validado", "ready"})
+    skip_statuses = {
+        "ignorar",
+        "ignorado",
+        "skip",
+        "excluir",
+        "excluido",
+        "excluído",
+        "naoimportar",
+        "nãoimportar",
+        "erro",
+        "invalido",
+        "inválido",
+    }
+    return status in skip_statuses
 
 
 def build_reading_data(row: tuple[Any, ...], col: dict[str, int], reading_date: date, batch_id: int) -> dict[str, str]:

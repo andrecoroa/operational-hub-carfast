@@ -124,6 +124,9 @@
               <p class="eyebrow">Diagnóstico</p>
               <h3>Histórico técnico da viatura</h3>
             </div>
+            {% if vehicle %}
+              <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-history">Consultar relatórios</a>
+            {% endif %}
           </div>
           <details class="workshop-record-group">
             <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>

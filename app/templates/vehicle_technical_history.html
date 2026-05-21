@@ -1,17 +1,20 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell">
-  {% set active_menu = "fleet" %}
+  {% set active_menu = technical_history_active_menu if technical_history_active_menu is defined else "fleet" %}
   {% include "_sidebar.html" %}
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Viatura permanente</p>
+        <p class="eyebrow">{{ technical_history_eyebrow if technical_history_eyebrow is defined else "Viatura permanente" }}</p>
         <h2>{{ vehicle.plate or "Sem matrícula" }}</h2>
-        <p class="topbar-subtitle">Histórico técnico / Diagnósticos</p>
+        <p class="topbar-subtitle">{{ technical_history_subtitle if technical_history_subtitle is defined else "Histórico técnico / Diagnósticos" }}</p>
       </div>
       <div class="button-row">
-        <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Voltar à viatura</a>
+        {% if technical_history_back_url is defined and technical_history_back_url %}
+          <a class="button-link secondary-link" href="{{ technical_history_back_url }}">{{ technical_history_back_label if technical_history_back_label is defined else "Voltar" }}</a>
+        {% endif %}
+        <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Ver ficha da viatura</a>
         <a class="button-link secondary-link" href="/fleet">Voltar à frota</a>
       </div>
     </header>
@@ -42,7 +45,7 @@
       {% if tabs %}
         <nav class="technical-history-tabs" aria-label="Tipos de relatório">
           {% for tab in tabs %}
-            <a class="{% if tab.code == selected_type %}active{% endif %}" href="/fleet/{{ vehicle.id }}/technical-history?report_type={{ tab.code }}">
+            <a class="{% if tab.code == selected_type %}active{% endif %}" href="{{ technical_history_url }}?report_type={{ tab.code }}">
               <span>{{ tab.label }}</span>
               <strong>{{ tab.count }}</strong>
             </a>

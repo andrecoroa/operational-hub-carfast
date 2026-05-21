@@ -1752,6 +1752,67 @@ def vehicle_technical_history(
                 "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
                 "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
                 "compact_reading_label": compact_reading_label,
+                "technical_history_url": f"/fleet/{vehicle.id}/technical-history",
+            },
+        )
+
+
+@web_router.get("/workshop/{process_id}/technical-history", response_class=HTMLResponse)
+def workshop_process_technical_history(
+    request: Request,
+    process_id: int,
+    report_type: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop/manage", status_code=303)
+
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        if not vehicle:
+            return RedirectResponse(f"/workshop/{process.id}", status_code=303)
+
+        snapshot = db.scalar(
+            select(VehicleExternalSnapshot)
+            .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+            .order_by(VehicleExternalSnapshot.updated_at.desc())
+        )
+        readings = db.scalars(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.asc(),
+                WorkshopTechnicalReading.id.asc(),
+            )
+        ).all()
+        tabs = technical_history_tabs(readings)
+        selected_type = report_type if report_type in {item["code"] for item in tabs} else None
+        if not selected_type and tabs:
+            selected_type = str(tabs[0]["code"])
+        matrix = technical_history_matrix(readings, selected_type) if selected_type else {"readings": [], "rows": []}
+        return templates.TemplateResponse(
+            request,
+            "vehicle_technical_history.html",
+            {
+                "vehicle": vehicle,
+                "vehicle_context": rentway_vehicle_context(snapshot),
+                "tabs": tabs,
+                "selected_type": selected_type,
+                "selected_label": WORKSHOP_READING_TYPE_LABELS.get(selected_type or "", selected_type or ""),
+                "matrix": matrix,
+                "total_readings": len(readings),
+                "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+                "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
+                "compact_reading_label": compact_reading_label,
+                "technical_history_active_menu": "workshop",
+                "technical_history_eyebrow": "Processo de oficina",
+                "technical_history_subtitle": f"Consulta técnica no Processo #{process.id}",
+                "technical_history_url": f"/workshop/{process.id}/technical-history",
+                "technical_history_back_url": f"/workshop/{process.id}",
+                "technical_history_back_label": "Voltar ao processo",
             },
         )
 

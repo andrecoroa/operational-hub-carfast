@@ -136,11 +136,15 @@
             {% if form_mode != "quick" %}
               <label>
                 Classificação
-                <select name="category">
+                <select name="category" data-task-category>
                   {% for code, label in task_categories %}
                     <option value="{{ code }}" {% if (form_values.category or workspace_config.default_category) == code %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
+              </label>
+              <label>
+                Subclassificação
+                <select name="subcategory" data-task-subcategory data-current-subcategory="{{ form_values.subcategory or '' }}" required></select>
               </label>
             {% endif %}
             <label>
@@ -202,6 +206,36 @@
   </main>
 </div>
 <script>
+  const subcategoriesByCategory = {{ task_subcategories_by_category|tojson }};
+  const categorySelect = document.querySelector("[data-task-category]");
+  const subcategorySelect = document.querySelector("[data-task-subcategory]");
+
+  function refreshSubcategories() {
+    if (!categorySelect || !subcategorySelect) return;
+    const currentValue = subcategorySelect.dataset.currentSubcategory || subcategorySelect.value;
+    const options = subcategoriesByCategory[categorySelect.value] || subcategoriesByCategory.other || [];
+    subcategorySelect.innerHTML = "";
+    for (const [value, label] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === currentValue) option.selected = true;
+      subcategorySelect.appendChild(option);
+    }
+    if (!subcategorySelect.value && subcategorySelect.options.length) {
+      subcategorySelect.options[0].selected = true;
+    }
+    subcategorySelect.dataset.currentSubcategory = "";
+  }
+
+  if (categorySelect && subcategorySelect) {
+    refreshSubcategories();
+    categorySelect.addEventListener("change", () => {
+      subcategorySelect.dataset.currentSubcategory = "";
+      refreshSubcategories();
+    });
+  }
+
   const plateInput = document.querySelector("[data-vehicle-search]");
   const plateList = document.getElementById("task-vehicle-plates");
   let plateSearchTimer;

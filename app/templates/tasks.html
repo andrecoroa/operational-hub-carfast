@@ -164,6 +164,10 @@
                     {% if task.station %}{% if task.customer_name or task.plate %} &middot; {% endif %}{{ task.station }}{% endif %}
                     {% if not task.customer_name and not task.plate and not task.station %}Sem contexto associado{% endif %}
                   </p>
+                  <p class="table-note">
+                    {{ task_category_labels.get(task.category, task.category or "-") }}
+                    · {{ task_subcategory_labels.get(task.subcategory, task.subcategory or "A definir") }}
+                  </p>
                   {% if task.description %}
                     <p class="table-note table-note-clamp">{{ task.description }}</p>
                   {% endif %}

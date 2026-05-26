@@ -734,7 +734,7 @@ TASK_WORKSPACE_CONFIG = {
         "default_task_type": "administration_task",
         "primary_task_types": ["administration_task"],
         "secondary_task_types": [],
-        "default_category": "finance",
+        "default_category": "other",
         "default_team_code": "finance",
     },
 }
@@ -852,6 +852,18 @@ def workspace_for_task_type(task_type: str | None) -> str:
             return workspace
     return "operational"
 
+
+def default_task_subcategory(category: str | None) -> str:
+    options = TASK_SUBCATEGORIES_BY_CATEGORY.get(category or "", TASK_SUBCATEGORIES_BY_CATEGORY["other"])
+    return options[0][0]
+
+
+def normalize_task_subcategory(category: str | None, subcategory: str | None) -> str:
+    clean_category = category if category in TASK_CATEGORY_LABELS else "other"
+    clean_subcategory = (subcategory or "").strip()
+    allowed = {code for code, _ in TASK_SUBCATEGORIES_BY_CATEGORY.get(clean_category, [])}
+    return clean_subcategory if clean_subcategory in allowed else default_task_subcategory(clean_category)
+
 TASK_SOURCES = [
     ("manual", "Manual"),
     ("system", "Sistema"),
@@ -872,11 +884,35 @@ TASK_CATEGORIES = [
     ("support", "Suporte"),
     ("operations", "Operações"),
     ("workshop", "Oficina"),
-    ("finance", "Financeira"),
+    ("other", "Outro"),
 ]
 
 TASK_CATEGORY_LABELS = dict(TASK_CATEGORIES)
+TASK_SUBCATEGORIES_BY_CATEGORY = {
+    "support": [
+        ("support_tbd", "A definir"),
+        ("support_other", "Outro suporte"),
+    ],
+    "operations": [
+        ("operations_tbd", "A definir"),
+        ("operations_other", "Outro operacional"),
+    ],
+    "workshop": [
+        ("workshop_tbd", "A definir"),
+        ("workshop_other", "Outro oficina"),
+    ],
+    "other": [
+        ("other_tbd", "A classificar"),
+        ("other", "Outro"),
+    ],
+}
+TASK_SUBCATEGORY_LABELS = {
+    code: label
+    for subcategories in TASK_SUBCATEGORIES_BY_CATEGORY.values()
+    for code, label in subcategories
+}
 TASK_LEGACY_CATEGORY_LABELS = {
+    "finance": "Financeira",
     "reservas": "Reservas",
     "alteracoes": "Alterações",
     "cancelamentos": "Cancelamentos",
@@ -894,6 +930,7 @@ TASK_LEGACY_CATEGORY_LABELS = {
     "sem_acao_necessaria": "Sem ação necessária",
 }
 TASK_CATEGORY_DISPLAY_LABELS = {**TASK_CATEGORY_LABELS, **TASK_LEGACY_CATEGORY_LABELS}
+TASK_SUBCATEGORY_DISPLAY_LABELS = {**TASK_SUBCATEGORY_LABELS}
 
 EXTERNAL_PORTAL_CATEGORIES = [
     ("operations", "Pedido geral"),
@@ -1132,7 +1169,7 @@ def external_portal_request_create(
             task_type="request_info",
             source="external_portal",
             category=category,
-            subcategory="Portal externo",
+            subcategory=normalize_task_subcategory(category, ""),
             status="new",
             priority="normal",
             customer_name=clean_name[:200] or None,
@@ -2147,7 +2184,7 @@ def vehicle_create_task(
             task_type="workshop_task",
             source="manual",
             category="workshop",
-            subcategory="Ficha da viatura",
+            subcategory=default_task_subcategory("workshop"),
             status="new",
             priority=priority,
             team_id=default_team_id(db, "workshop"),
@@ -5293,6 +5330,8 @@ def task_board_manage(
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": TASK_CATEGORIES,
                 "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
             },
         )
 
@@ -5337,6 +5376,10 @@ def task_new_form(
                 "form_values": {
                     "task_type": workspace_config["default_task_type"],
                     "record_type": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace][0][0],
+                    "category": parent_task.category if parent_task else workspace_config["default_category"],
+                    "subcategory": parent_task.subcategory
+                    if parent_task
+                    else default_task_subcategory(workspace_config["default_category"]),
                     "parent_task_id": parent_task.id if parent_task else "",
                     "priority": parent_task.priority if parent_task else "normal",
                     "plate": parent_task.plate if parent_task else "",
@@ -5355,6 +5398,8 @@ def task_new_form(
                 "workspaces": TASK_WORKSPACES,
                 "task_sources": TASK_SOURCES,
                 "task_categories": TASK_CATEGORIES,
+                "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "delegation_value": "",
             },
@@ -5477,6 +5522,8 @@ def quick_record_create(
                 "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE.get(clean_workspace, []),
                 "workspaces": TASK_WORKSPACES,
                 "task_categories": TASK_CATEGORIES,
+                "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
             },
             status_code=400,
@@ -5721,6 +5768,7 @@ def quick_record_convert(
             task_type=task_type,
             source=record.source or "manual",
             category=workspace_config["default_category"],
+            subcategory=default_task_subcategory(workspace_config["default_category"]),
             status="new",
             priority=priority,
             customer_name=record.customer_name,
@@ -5833,7 +5881,11 @@ def task_create(
                 "workspace_config": workspace_config,
                 "workspace_label": workspace_config["label"],
                 "manage_url": task_workspace_manage_url(current_workspace),
-                "form_values": {"parent_task_id": parent_task.id if parent_task else ""},
+                "form_values": {
+                    "parent_task_id": parent_task.id if parent_task else "",
+                    "category": workspace_config["default_category"],
+                    "subcategory": default_task_subcategory(workspace_config["default_category"]),
+                },
                 "parent_task": parent_task,
                 "duplicate_tasks": [],
                 "task_sources": TASK_SOURCES,
@@ -5841,6 +5893,8 @@ def task_create(
                 "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
                 "workspaces": TASK_WORKSPACES,
                 "task_categories": TASK_CATEGORIES,
+                "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "delegation_value": delegated_to,
             },
@@ -5857,6 +5911,7 @@ def task_create(
             task_type = workspace_config["default_task_type"]
         if category not in TASK_CATEGORY_LABELS:
             category = workspace_config["default_category"]
+        subcategory = normalize_task_subcategory(category, subcategory)
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
@@ -5910,6 +5965,8 @@ def task_create(
                         "task_type": task_type,
                         "priority": priority,
                         "source": source,
+                        "category": category,
+                        "subcategory": subcategory,
                         "plate": clean_plate,
                         "station": station,
                         "due_on": due_on,
@@ -5932,6 +5989,8 @@ def task_create(
                     "quick_record_types": QUICK_RECORD_TYPES_BY_WORKSPACE[current_workspace],
                     "workspaces": TASK_WORKSPACES,
                     "task_categories": TASK_CATEGORIES,
+                    "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                    "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                     "priorities": PRIORITIES,
                 },
                 status_code=409,
@@ -5942,7 +6001,7 @@ def task_create(
             task_type=task_type,
             source=source,
             category=category,
-            subcategory=subcategory.strip() or None,
+            subcategory=subcategory,
             status="new",
             priority=priority,
             customer_name=customer_name.strip() or None,
@@ -6105,6 +6164,8 @@ def task_detail(
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "task_categories": current_category_options,
                 "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "task_history_field_labels": TASK_HISTORY_FIELD_LABELS,
                 "document_statuses": DOCUMENT_STATUSES,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
@@ -6156,7 +6217,9 @@ def task_update(
         clean_category = (category.strip() if category else None) or task.category or "operations"
         if clean_category not in TASK_CATEGORY_LABELS:
             clean_category = task.category or "operations"
-        clean_subcategory = subcategory.strip() if subcategory is not None else (task.subcategory or "")
+        if clean_category not in TASK_CATEGORY_LABELS:
+            clean_category = "other"
+        clean_subcategory = normalize_task_subcategory(clean_category, subcategory)
         clean_department = department.strip() if department is not None else (task.department or "")
 
         responsible_user_id, responsible_team_id = parse_delegation_target(responsible_to)
@@ -6233,7 +6296,12 @@ def task_update(
             TASK_CATEGORY_DISPLAY_LABELS.get(task.category, task.category),
             TASK_CATEGORY_DISPLAY_LABELS.get(clean_category, clean_category),
         )
-        add_visible_task_change(changes, "Subcategoria", task.subcategory, clean_subcategory)
+        add_visible_task_change(
+            changes,
+            "Subcategoria",
+            TASK_SUBCATEGORY_DISPLAY_LABELS.get(task.subcategory or "", task.subcategory),
+            TASK_SUBCATEGORY_DISPLAY_LABELS.get(clean_subcategory, clean_subcategory),
+        )
         add_visible_task_change(
             changes,
             "Responsável",
@@ -6405,6 +6473,8 @@ def task_add_comment(
                     "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                     "task_categories": TASK_CATEGORIES,
                     "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+                    "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
+                    "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                     "task_history_field_labels": TASK_HISTORY_FIELD_LABELS,
                     "document_statuses": DOCUMENT_STATUSES,
                     "document_status_labels": DOCUMENT_STATUS_LABELS,

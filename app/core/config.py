@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Operational Hub Carfast"
     app_env: str = "local"
     app_secret_key: str = Field(default="change-me")
+    integration_api_key: str | None = None
     database_url: str = "postgresql+psycopg://carfast:carfast@localhost:5432/carfast_v2"
 
     @property

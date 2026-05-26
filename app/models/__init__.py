@@ -2,6 +2,7 @@ from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.documents import Document, DocumentEvent, DocumentLink
+from app.models.integrations import EmailIntake
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
@@ -30,6 +31,7 @@ __all__ = [
     "Document",
     "DocumentEvent",
     "DocumentLink",
+    "EmailIntake",
     "Incident",
     "IncidentEvent",
     "IncidentEvidence",

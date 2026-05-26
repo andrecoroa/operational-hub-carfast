@@ -1478,6 +1478,13 @@ def admin_page(
         )
 
 
+def can_manage_admin(db, user: User | None) -> bool:
+    if not user:
+        return False
+    permissions = get_user_permission_codes(db, user)
+    return bool({"admin.manage", "users.manage", "settings.manage"} & permissions)
+
+
 @web_router.post("/admin/users", response_class=HTMLResponse)
 def admin_create_user(
     request: Request,

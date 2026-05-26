@@ -2826,6 +2826,25 @@ def render_workshop_detail(
         .where(WorkshopProcessService.process_id == process.id)
         .order_by(WorkshopProcessService.id)
     ).all()
+    reception_service = services[0] if services else None
+    reception_note_data = {
+        "received_at": "",
+        "service_note": "",
+        "reception_note": "",
+    }
+    for note in notes:
+        note_lines = (note.note or "").splitlines()
+        if not note_lines or note_lines[0].strip() != "Receção confirmada.":
+            continue
+        for line in note_lines[1:]:
+            if line.startswith("Data/hora entrada: "):
+                raw_received_at = line.replace("Data/hora entrada: ", "", 1).strip()
+                reception_note_data["received_at"] = "" if raw_received_at == "-" else raw_received_at
+            elif line.startswith("Observação do serviço: "):
+                reception_note_data["service_note"] = line.replace("Observação do serviço: ", "", 1).strip()
+            elif line.startswith("Observação inicial: "):
+                reception_note_data["reception_note"] = line.replace("Observação inicial: ", "", 1).strip()
+        break
     technical_readings = db.scalars(
         select(WorkshopTechnicalReading)
         .where(WorkshopTechnicalReading.process_id == process.id)
@@ -2897,6 +2916,8 @@ def render_workshop_detail(
             "incident_evidences_by_incident": incident_evidences_by_incident,
             "documents": documents,
             "services": services,
+            "reception_service": reception_service,
+            "reception_note_data": reception_note_data,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
             "workshop_flow_steps": workshop_flow_steps,
@@ -3148,8 +3169,19 @@ def workshop_confirm_reception(
             process.km_entry = parsed_km
 
         if clean_service_family:
-            db.add(
-                WorkshopProcessService(
+            reception_service = db.scalar(
+                select(WorkshopProcessService)
+                .where(WorkshopProcessService.process_id == process.id)
+                .order_by(WorkshopProcessService.id)
+            )
+            if reception_service:
+                reception_service.service_family = clean_service_family
+                reception_service.service_detail = clean_service_detail
+                reception_service.service_axis = clean_service_axis
+                reception_service.note = service_note.strip() or None
+            else:
+                db.add(
+                    WorkshopProcessService(
                     process_id=process.id,
                     vehicle_id=process.vehicle_id,
                     service_family=clean_service_family,
@@ -3158,8 +3190,8 @@ def workshop_confirm_reception(
                     status="to_assess",
                     note=service_note.strip() or None,
                     created_by_id=user_id,
+                    )
                 )
-            )
 
         note_lines = [
             "Receção confirmada.",

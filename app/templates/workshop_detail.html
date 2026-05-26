@@ -386,7 +386,7 @@
             <div class="compact-form-grid two-col">
               <label>
                 Data/hora de entrada
-                <input type="datetime-local" name="received_at">
+                <input type="datetime-local" name="received_at" value="{{ reception_note_data.received_at }}">
               </label>
               <label>
                 KM entrada
@@ -394,10 +394,10 @@
               </label>
               <label>
                 Serviço / motivo
-                <select name="service_family" data-service-family>
+                <select name="service_family" data-service-family data-current-detail="{{ reception_service.service_detail if reception_service else '' }}">
                   <option value="">Sem serviço definido</option>
                   {% for code, label in service_families %}
-                    <option value="{{ code }}">{{ label }}</option>
+                    <option value="{{ code }}" {% if reception_service and reception_service.service_family == code %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>
@@ -406,7 +406,7 @@
                 <select name="service_detail" data-service-detail>
                   <option value="">Sem detalhe</option>
                   {% for code, label, family in service_details %}
-                    <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
+                    <option value="{{ code }}" data-family="{{ family }}" {% if reception_service and reception_service.service_detail == code %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>
@@ -414,18 +414,18 @@
                 Eixo / zona
                 <select name="service_axis">
                   {% for code, label in service_axes %}
-                    <option value="{{ code }}">{{ label }}</option>
+                    <option value="{{ code }}" {% if reception_service and reception_service.service_axis == code %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>
               <label>
                 Observação do serviço
-                <input type="text" name="service_note" maxlength="255" placeholder="Ex.: aviso de revisão no painel">
+                <input type="text" name="service_note" maxlength="255" value="{{ reception_note_data.service_note }}" placeholder="Ex.: aviso de revisão no painel">
               </label>
             </div>
             <label>
               Observação inicial
-              <textarea name="reception_note" rows="3" placeholder="Condição da viatura, sintomas reportados, documentos entregues..."></textarea>
+              <textarea name="reception_note" rows="3" placeholder="Condição da viatura, sintomas reportados, documentos entregues...">{{ reception_note_data.reception_note }}</textarea>
             </label>
             <button type="submit">Confirmar receção</button>
           </form>
@@ -978,6 +978,7 @@
     const axisWrap = form?.querySelector("[data-service-axis-wrap]");
     const axisSelect = form?.querySelector("select[name='service_axis']");
     const allOptions = detailSelect ? [...detailSelect.options].map((option) => option.cloneNode(true)) : [];
+    const currentDetail = familySelect.dataset.currentDetail || "";
 
     function syncDetails() {
       if (!detailSelect) return;
@@ -999,6 +1000,8 @@
       }
       if (!hasSpecificDetails) {
         detailSelect.value = "";
+      } else if (currentDetail && [...detailSelect.options].some((option) => option.value === currentDetail)) {
+        detailSelect.value = currentDetail;
       }
 
       const hasAxis = serviceFamiliesWithAxis.has(selectedFamily);

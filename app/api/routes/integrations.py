@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import html as html_lib
+import json
+import re
 from datetime import UTC, date, datetime
 from secrets import compare_digest
+from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -18,26 +22,74 @@ router = APIRouter(prefix="/integrations")
 
 
 class EmailIntakePayload(BaseModel):
-    source_mailbox: str = Field(..., min_length=3, max_length=255)
-    sender: str | None = Field(default=None, max_length=255)
-    subject: str | None = Field(default=None, max_length=255)
-    body_preview: str | None = None
+    source_mailbox: Any = Field(...)
+    sender: Any | None = None
+    subject: Any | None = None
+    body_preview: Any | None = None
     received_at: datetime | None = None
-    email_url: str | None = None
-    attachments_url: str | None = None
-    list_item_id: str | None = Field(default=None, max_length=255)
-    list_item_url: str | None = None
-    external_message_id: str | None = Field(default=None, max_length=255)
-    conversation_id: str | None = Field(default=None, max_length=255)
-    target_kind: str | None = Field(default=None, max_length=80)
-    target_area: str | None = Field(default=None, max_length=80)
+    email_url: Any | None = None
+    attachments_url: Any | None = None
+    list_item_id: Any | None = None
+    list_item_url: Any | None = None
+    external_message_id: Any | None = None
+    conversation_id: Any | None = None
+    target_kind: Any | None = None
+    target_area: Any | None = None
 
 
-def clip(value: str | None, length: int) -> str | None:
+def extract_sharepoint_value(value: Any, *, prefer_url: bool = False) -> Any:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                return extract_sharepoint_value(json.loads(stripped), prefer_url=prefer_url)
+            except json.JSONDecodeError:
+                return value
+        return value
+    if isinstance(value, dict):
+        ordered_keys = (
+            ("Url", "url", "Value", "Email", "DisplayName", "Description")
+            if prefer_url
+            else ("Value", "Email", "DisplayName", "Description", "Url", "url")
+        )
+        for key in ordered_keys:
+            candidate = value.get(key)
+            if candidate:
+                return candidate
+        return " ".join(str(part) for part in value.values() if part)
+    if isinstance(value, list):
+        return " ".join(str(extract_sharepoint_value(item, prefer_url=prefer_url)) for item in value if item)
+    return value
+
+
+def as_text(value: Any, length: int | None = None, *, prefer_url: bool = False) -> str | None:
     if value is None:
         return None
-    clean_value = value.strip()
-    return clean_value[:length] if clean_value else None
+    clean_value = str(extract_sharepoint_value(value, prefer_url=prefer_url)).strip()
+    if not clean_value:
+        return None
+    return clean_value[:length] if length else clean_value
+
+
+def clean_html_preview(value: Any, length: int = 4000) -> str | None:
+    text = as_text(value, 20000)
+    if not text:
+        return None
+    text = html_lib.unescape(text)
+    text = re.sub(r"(?is)<(script|style|head).*?</\1>", " ", text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</(p|div|tr|table|li|h[1-6])\s*>", "\n", text)
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    text = re.sub(r"\r", "\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    text = text.strip()
+    return text[:length] if text else None
+
+
+def clip(value: Any, length: int) -> str | None:
+    return as_text(value, length)
 
 
 def require_integration_key(header_key: str | None) -> None:
@@ -52,7 +104,7 @@ def require_integration_key(header_key: str | None) -> None:
 
 
 def normalize_area(value: str | None) -> str | None:
-    normalized = (value or "").strip().lower()
+    normalized = (as_text(value) or "").strip().lower()
     if normalized in {"workshop", "oficina"}:
         return "workshop"
     if normalized in {"finance", "financial", "financeiro"}:
@@ -77,9 +129,9 @@ def suggest_folder_path(area: str, document_date: date | None, document_type: st
 
 
 def classify_payload(payload: EmailIntakePayload) -> tuple[str, str, str]:
-    requested_kind = (payload.target_kind or "").strip().lower()
+    requested_kind = (as_text(payload.target_kind) or "").strip().lower()
     requested_area = normalize_area(payload.target_area)
-    mailbox = payload.source_mailbox.lower()
+    mailbox = (as_text(payload.source_mailbox) or "").lower()
 
     if requested_kind in {"document", "documento"}:
         area = requested_area or ("workshop" if "oficina" in mailbox else "finance")
@@ -94,35 +146,48 @@ def classify_payload(payload: EmailIntakePayload) -> tuple[str, str, str]:
         return "document", "finance", "E-mail recebido na caixa financeira."
     if "document" in mailbox or "arquivo" in mailbox:
         return "document", requested_area or "finance", "E-mail recebido na caixa documental."
+    if "hub" in mailbox or "operacional" in mailbox:
+        return "quick_record", "operational", "E-mail recebido na caixa operacional."
     return "quick_record", "operational", "E-mail recebido sem regra específica."
 
 
 def existing_intake(db: DbSession, payload: EmailIntakePayload) -> EmailIntake | None:
     conditions = []
-    if payload.external_message_id:
-        conditions.append(EmailIntake.external_message_id == payload.external_message_id.strip())
-    if payload.list_item_id:
-        conditions.append(EmailIntake.list_item_id == payload.list_item_id.strip())
-    if payload.email_url:
-        conditions.append(EmailIntake.email_url == payload.email_url.strip())
+    external_message_id = clip(payload.external_message_id, 255)
+    list_item_id = clip(payload.list_item_id, 255)
+    email_url = as_text(payload.email_url, 2000, prefer_url=True)
+    if external_message_id:
+        conditions.append(EmailIntake.external_message_id == external_message_id)
+    if list_item_id:
+        conditions.append(EmailIntake.list_item_id == list_item_id)
+    if email_url:
+        conditions.append(EmailIntake.email_url == email_url)
     if not conditions:
         return None
     return db.scalar(select(EmailIntake).where(or_(*conditions)).order_by(EmailIntake.id.desc()))
 
 
 def source_link(payload: EmailIntakePayload) -> str | None:
-    return clip(payload.attachments_url, 2000) or clip(payload.email_url, 2000) or clip(payload.list_item_url, 2000)
+    return (
+        as_text(payload.attachments_url, 2000, prefer_url=True)
+        or as_text(payload.email_url, 2000, prefer_url=True)
+        or as_text(payload.list_item_url, 2000, prefer_url=True)
+    )
 
 
 def create_quick_record(db: DbSession, intake: EmailIntake, payload: EmailIntakePayload, workspace: str) -> QuickRecord:
     clean_workspace = workspace if workspace in {"operational", "workshop", "management", "administration"} else "operational"
     record_type = "technical_request" if clean_workspace == "workshop" else "information"
+    mailbox = clip(payload.source_mailbox, 255) or "desconhecida"
+    sender = clip(payload.sender, 255)
+    email_url = as_text(payload.email_url, 2000, prefer_url=True)
+    attachments_url = as_text(payload.attachments_url, 2000, prefer_url=True) or as_text(payload.list_item_url, 2000, prefer_url=True)
     description_parts = [
-        clip(payload.body_preview, 4000),
-        f"Remetente: {payload.sender}" if payload.sender else None,
-        f"Caixa de entrada: {payload.source_mailbox}",
-        f"Link do e-mail: {payload.email_url}" if payload.email_url else None,
-        f"Link de anexos/lista: {payload.attachments_url or payload.list_item_url}" if (payload.attachments_url or payload.list_item_url) else None,
+        clean_html_preview(payload.body_preview, 4000),
+        f"Remetente: {sender}" if sender else None,
+        f"Caixa de entrada: {mailbox}",
+        f"Link do e-mail: {email_url}" if email_url else None,
+        f"Link de anexos/lista: {attachments_url}" if attachments_url else None,
     ]
     record = QuickRecord(
         workspace=clean_workspace,
@@ -132,7 +197,7 @@ def create_quick_record(db: DbSession, intake: EmailIntake, payload: EmailIntake
         status="new",
         priority="normal",
         source="email",
-        customer_email=clip(payload.sender, 255),
+        customer_email=sender,
         entity_type="email_intake",
         entity_id=str(intake.id),
     )
@@ -183,13 +248,14 @@ def create_document(db: DbSession, intake: EmailIntake, payload: EmailIntakePayl
             user_id=None,
         )
     )
-    if payload.body_preview:
+    preview = clean_html_preview(payload.body_preview, 4000)
+    if preview:
         db.add(
             DocumentEvent(
                 document_id=document.id,
                 action="source_preview",
                 old_value=None,
-                new_value=clip(payload.body_preview, 4000),
+                new_value=preview,
                 user_id=None,
             )
         )
@@ -215,16 +281,18 @@ def intake_email(
         }
 
     target_kind, target_area, routing_note = classify_payload(payload)
+    mailbox = clip(payload.source_mailbox, 255) or "desconhecida"
+    preview = clean_html_preview(payload.body_preview, 4000)
     intake = EmailIntake(
-        source_mailbox=payload.source_mailbox.strip().lower(),
+        source_mailbox=mailbox.lower(),
         sender=clip(payload.sender, 255),
         subject=clip(payload.subject, 255),
-        body_preview=payload.body_preview.strip() if payload.body_preview else None,
+        body_preview=preview,
         received_at=payload.received_at,
-        email_url=clip(payload.email_url, 2000),
-        attachments_url=clip(payload.attachments_url, 2000),
+        email_url=as_text(payload.email_url, 2000, prefer_url=True),
+        attachments_url=as_text(payload.attachments_url, 2000, prefer_url=True),
         list_item_id=clip(payload.list_item_id, 255),
-        list_item_url=clip(payload.list_item_url, 2000),
+        list_item_url=as_text(payload.list_item_url, 2000, prefer_url=True),
         external_message_id=clip(payload.external_message_id, 255),
         conversation_id=clip(payload.conversation_id, 255),
         status="received",
@@ -251,7 +319,7 @@ def intake_email(
             action="integration.email_intake.created",
             entity_type=intake.target_entity_type,
             entity_id=intake.target_entity_id,
-            detail=f"E-mail recebido de {payload.source_mailbox} criado na app.",
+            detail=f"E-mail recebido de {mailbox} criado na app.",
             after_json={
                 "intake_id": intake.id,
                 "target_type": intake.target_entity_type,

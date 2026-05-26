@@ -6,15 +6,19 @@ from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 
 INITIAL_PERMISSIONS = [
+    ("dashboard.read", "Ver dashboard"),
     ("admin.manage", "Gerir administracao"),
     ("settings.manage", "Gerir parametrizacao"),
     ("users.manage", "Gerir utilizadores"),
     ("vehicles.read", "Ver viaturas"),
     ("vehicles.write", "Editar viaturas"),
+    ("workshop.read", "Ver oficina"),
+    ("workshop.write", "Gerir oficina"),
     ("imports.run", "Executar importacoes"),
     ("imports.approve", "Aprovar importacoes"),
     ("tasks.read", "Ver tarefas"),
     ("tasks.write", "Editar tarefas"),
+    ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
 ]
 
@@ -24,6 +28,38 @@ INITIAL_ROLES = [
     ("operator", "Operador"),
     ("viewer", "Consulta"),
 ]
+
+DEFAULT_ROLE_PERMISSIONS = {
+    "manager": {
+        "dashboard.read",
+        "vehicles.read",
+        "vehicles.write",
+        "workshop.read",
+        "workshop.write",
+        "imports.run",
+        "tasks.read",
+        "tasks.write",
+        "documents.read",
+        "documents.write",
+    },
+    "operator": {
+        "dashboard.read",
+        "vehicles.read",
+        "workshop.read",
+        "workshop.write",
+        "tasks.read",
+        "tasks.write",
+        "documents.read",
+        "documents.write",
+    },
+    "viewer": {
+        "dashboard.read",
+        "vehicles.read",
+        "workshop.read",
+        "tasks.read",
+        "documents.read",
+    },
+}
 
 INITIAL_UNITS = [
     ("carfast", "CarFast", "business_area", None),
@@ -100,6 +136,7 @@ def seed_roles(db: Session) -> None:
         return
 
     permissions = db.scalars(select(Permission)).all()
+    permissions_by_code = {permission.code: permission for permission in permissions}
     for permission in permissions:
         exists = db.scalar(
             select(RolePermission).where(
@@ -109,6 +146,24 @@ def seed_roles(db: Session) -> None:
         )
         if not exists:
             db.add(RolePermission(role_id=admin.id, permission_id=permission.id))
+
+    roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
+    for role_code, permission_codes in DEFAULT_ROLE_PERMISSIONS.items():
+        role = roles_by_code.get(role_code)
+        if not role:
+            continue
+        for permission_code in permission_codes:
+            permission = permissions_by_code.get(permission_code)
+            if not permission:
+                continue
+            exists = db.scalar(
+                select(RolePermission).where(
+                    RolePermission.role_id == role.id,
+                    RolePermission.permission_id == permission.id,
+                )
+            )
+            if not exists:
+                db.add(RolePermission(role_id=role.id, permission_id=permission.id))
 
 
 def seed_organizational_units(db: Session) -> None:

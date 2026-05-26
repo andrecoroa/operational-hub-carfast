@@ -7,7 +7,7 @@ from time import monotonic
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import aliased
 
 from app.core.change_notice import (
@@ -18,11 +18,11 @@ from app.core.change_notice import (
 )
 from app.core.database import SessionLocal
 from app.core.security import verify_password
-from app.models.admin import User
+from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import Document, DocumentEvent
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
-from app.models.organization import Team
+from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.tasks import QuickRecord, Task, TaskComment, TaskHistory
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
@@ -348,6 +348,12 @@ WORKSHOP_READING_PHASE_DISPLAY_LABELS = {
     "bsi_initial": "Leitura inicial",
     "bsi_final": "Leitura final",
 }
+WORKSHOP_READING_STATUSES = [
+    ("active", "Ativa"),
+    ("voided", "Anulada"),
+    ("replaced", "Substituída"),
+]
+WORKSHOP_READING_STATUS_LABELS = dict(WORKSHOP_READING_STATUSES)
 WORKSHOP_SERVICE_DETAIL_FAMILIES = {
     family for _, _, family in WORKSHOP_SERVICE_DETAILS if family != "any"
 }
@@ -980,9 +986,9 @@ IMPLEMENTATION_ROADMAP = [
     {
         "area": "Administração",
         "title": "Permissões e áreas",
-        "status": "A validar",
-        "priority": "Média",
-        "summary": "Afinar áreas autorizadas, equipas, filas e níveis de acesso.",
+        "status": "Base ativa",
+        "priority": "Alta",
+        "summary": "Permissões principais por perfil já ativas; áreas por utilizador existem e falta aplicar a filtragem fina por contexto.",
     },
 ]
 
@@ -1337,6 +1343,8 @@ def dashboard(request: Request):
 def admin_page(
     request: Request,
     user_created: str | None = None,
+    access_updated: str | None = None,
+    permissions_updated: str | None = None,
     error: str | None = None,
 ):
     user_id = get_web_user_id(request)
@@ -1347,6 +1355,8 @@ def admin_page(
         user = db.get(User, user_id)
         if not user:
             return RedirectResponse("/login", status_code=303)
+        if not can_manage_admin(db, user):
+            return RedirectResponse("/", status_code=303)
         pilot_feedback_items = db.scalars(
             select(PilotFeedback).order_by(PilotFeedback.id.desc()).limit(20)
         ).all()
@@ -1371,13 +1381,49 @@ def admin_page(
             )
             or 0,
         }
-        users = db.scalars(select(User).order_by(User.name, User.email).limit(50)).all()
+        users = db.scalars(select(User).order_by(User.name, User.email).limit(100)).all()
+        roles = db.scalars(select(Role).order_by(Role.name, Role.code)).all()
+        permissions = db.scalars(select(Permission).order_by(Permission.code)).all()
+        organizational_units = db.scalars(
+            select(OrganizationalUnit)
+            .where(OrganizationalUnit.active.is_(True))
+            .order_by(OrganizationalUnit.sort_order, OrganizationalUnit.name)
+        ).all()
+        user_role_rows = db.execute(
+            select(UserRole.user_id, Role.code)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(UserRole.user_id.in_([item.id for item in users]))
+        ).all()
+        user_unit_rows = db.execute(
+            select(UserOrganizationalUnit.user_id, OrganizationalUnit.code)
+            .join(OrganizationalUnit, OrganizationalUnit.id == UserOrganizationalUnit.organizational_unit_id)
+            .where(UserOrganizationalUnit.user_id.in_([item.id for item in users]))
+        ).all()
+        role_permission_rows = db.execute(
+            select(RolePermission.role_id, Permission.code)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+        ).all()
+        user_roles_by_id: dict[int, set[str]] = {}
+        for row in user_role_rows:
+            user_roles_by_id.setdefault(row[0], set()).add(row[1])
+        user_units_by_id: dict[int, set[str]] = {}
+        for row in user_unit_rows:
+            user_units_by_id.setdefault(row[0], set()).add(row[1])
+        role_permissions_by_id: dict[int, set[str]] = {}
+        for row in role_permission_rows:
+            role_permissions_by_id.setdefault(row[0], set()).add(row[1])
         return templates.TemplateResponse(
             request,
             "admin.html",
             {
                 "user": user,
                 "users": users,
+                "roles": roles,
+                "permissions_catalog": permissions,
+                "organizational_units": organizational_units,
+                "user_roles_by_id": user_roles_by_id,
+                "user_units_by_id": user_units_by_id,
+                "role_permissions_by_id": role_permissions_by_id,
                 "permissions": sorted(get_user_permission_codes(db, user)),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
                 "pilot_feedback_items": pilot_feedback_items,
@@ -1388,6 +1434,8 @@ def admin_page(
                 "implementation_roadmap": IMPLEMENTATION_ROADMAP,
                 "admin_user_roles": ADMIN_USER_ROLES,
                 "user_created": user_created,
+                "access_updated": access_updated,
+                "permissions_updated": permissions_updated,
                 "error": error,
             },
         )
@@ -1423,6 +1471,8 @@ def admin_create_user(
         current_user = db.get(User, user_id)
         if not current_user:
             return RedirectResponse("/login", status_code=303)
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/", status_code=303)
         existing = db.scalar(select(User).where(User.email == clean_email))
         if existing:
             return RedirectResponse("/admin?error=Já%20existe%20um%20utilizador%20com%20esse%20email.", status_code=303)
@@ -1447,6 +1497,139 @@ def admin_create_user(
         db.commit()
 
     return RedirectResponse("/admin?user_created=1", status_code=303)
+
+
+@web_router.post("/admin/users/{target_user_id}/access", response_class=HTMLResponse)
+def admin_update_user_access(
+    request: Request,
+    target_user_id: int,
+    role_codes: list[str] = Form(default=[]),
+    unit_codes: list[str] = Form(default=[]),
+    active: str | None = Form(default=None),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        target_user = db.get(User, target_user_id)
+        if not current_user or not target_user:
+            return RedirectResponse("/admin?error=Utilizador%20não%20encontrado.", status_code=303)
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/", status_code=303)
+
+        valid_roles = db.scalars(select(Role).where(Role.code.in_(role_codes))).all() if role_codes else []
+        valid_units = (
+            db.scalars(select(OrganizationalUnit).where(OrganizationalUnit.code.in_(unit_codes))).all()
+            if unit_codes
+            else []
+        )
+        if target_user.id == current_user.id and active != "on":
+            return RedirectResponse(
+                "/admin?error=Não%20podes%20desativar%20o%20teu%20próprio%20utilizador.",
+                status_code=303,
+            )
+
+        before = {
+            "active": target_user.active,
+            "roles": sorted(
+                row[0]
+                for row in db.execute(
+                    select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == target_user.id)
+                ).all()
+            ),
+            "units": sorted(
+                row[0]
+                for row in db.execute(
+                    select(OrganizationalUnit.code)
+                    .join(UserOrganizationalUnit, UserOrganizationalUnit.organizational_unit_id == OrganizationalUnit.id)
+                    .where(UserOrganizationalUnit.user_id == target_user.id)
+                ).all()
+            ),
+        }
+        target_user.active = active == "on"
+        db.execute(delete(UserRole).where(UserRole.user_id == target_user.id))
+        db.execute(delete(UserOrganizationalUnit).where(UserOrganizationalUnit.user_id == target_user.id))
+        for role in valid_roles:
+            db.add(UserRole(user_id=target_user.id, role_id=role.id))
+        for unit in valid_units:
+            db.add(UserOrganizationalUnit(user_id=target_user.id, organizational_unit_id=unit.id))
+
+        after = {
+            "active": target_user.active,
+            "roles": sorted(role.code for role in valid_roles),
+            "units": sorted(unit.code for unit in valid_units),
+        }
+        record_audit(
+            db,
+            action="admin.user.access.updated",
+            entity_type="user",
+            entity_id=target_user.id,
+            detail=f"Acessos atualizados: {target_user.email}",
+            before_json=before,
+            after_json=after,
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/admin?access_updated=1", status_code=303)
+
+
+@web_router.post("/admin/roles/{role_id}/permissions", response_class=HTMLResponse)
+def admin_update_role_permissions(
+    request: Request,
+    role_id: int,
+    permission_codes: list[str] = Form(default=[]),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        role = db.get(Role, role_id)
+        if not current_user or not role:
+            return RedirectResponse("/admin?error=Perfil%20não%20encontrado.", status_code=303)
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/", status_code=303)
+        if role.code == "admin":
+            return RedirectResponse(
+                "/admin?error=O%20perfil%20Admin%20mantém%20todas%20as%20permissões%20por%20segurança.",
+                status_code=303,
+            )
+
+        before_permissions = sorted(
+            row[0]
+            for row in db.execute(
+                select(Permission.code)
+                .join(RolePermission, RolePermission.permission_id == Permission.id)
+                .where(RolePermission.role_id == role.id)
+            ).all()
+        )
+        valid_permissions = (
+            db.scalars(select(Permission).where(Permission.code.in_(permission_codes))).all()
+            if permission_codes
+            else []
+        )
+        db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
+        for permission in valid_permissions:
+            db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+
+        after_permissions = sorted(permission.code for permission in valid_permissions)
+        record_audit(
+            db,
+            action="admin.role.permissions.updated",
+            entity_type="role",
+            entity_id=role.id,
+            detail=f"Permissões atualizadas para o perfil: {role.code}",
+            before_json={"permissions": before_permissions},
+            after_json={"permissions": after_permissions},
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse("/admin?permissions_updated=1", status_code=303)
 
 
 @web_router.get("/pilot-feedback/new", response_class=HTMLResponse)
@@ -2441,6 +2624,90 @@ def technical_reading_differences(
     return differences
 
 
+def normalize_technical_reading_phase(flow_phase: str | None) -> str:
+    if flow_phase == "bsi_initial":
+        return "initial"
+    if flow_phase == "bsi_final":
+        return "final"
+    return flow_phase if flow_phase in WORKSHOP_READING_PHASES else "initial"
+
+
+def technical_reading_snapshot(reading: WorkshopTechnicalReading) -> dict[str, object | None]:
+    return {
+        "reading_type": reading.reading_type,
+        "reading_date": reading.reading_date.isoformat() if reading.reading_date else None,
+        "odometer_km": reading.odometer_km,
+        "summary": reading.summary,
+        "data_json": reading.data_json or {},
+        "storage_provider": reading.storage_provider,
+        "external_url": reading.external_url,
+        "status": reading.status,
+        "replaced_by_id": reading.replaced_by_id,
+        "void_reason": reading.void_reason,
+    }
+
+
+def technical_reading_form_values(reading: WorkshopTechnicalReading) -> dict[str, str]:
+    data = reading.data_json or {}
+    values = {key: str(value) for key, value in data.items() if value is not None}
+    values.update(
+        {
+            "reading_type": reading.reading_type or "technical",
+            "flow_phase": normalize_technical_reading_phase(str(data.get("flow_phase") or "")),
+            "reading_date": reading.reading_date.isoformat() if reading.reading_date else "",
+            "odometer_km": str(reading.odometer_km) if reading.odometer_km is not None else "",
+            "summary": reading.summary or "",
+            "external_url": reading.external_url or "",
+            "storage_provider": reading.storage_provider or "external",
+        }
+    )
+    return values
+
+
+def compact_reading_data_from_form(form, reading_date: date) -> dict[str, str]:
+    def field(name: str) -> str:
+        value = form.get(name, "")
+        return str(value or "")
+
+    return compact_reading_data(
+        reading_date=reading_date,
+        maintenance_last_reset_km=field("maintenance_last_reset_km"),
+        maintenance_km_until_next=field("maintenance_km_until_next"),
+        maintenance_days_until_next=field("maintenance_days_until_next"),
+        maintenance_days_since_last_reset=field("maintenance_days_since_last_reset"),
+        maintenance_days_since_first_circulation=field("maintenance_days_since_first_circulation"),
+        maintenance_temporal_limit_exceeded=field("maintenance_temporal_limit_exceeded"),
+        maintenance_distance_limit_exceeded=field("maintenance_distance_limit_exceeded"),
+        maintenance_count=field("maintenance_count"),
+        maintenance_threshold_km=field("maintenance_threshold_km"),
+        maintenance_duration_months=field("maintenance_duration_months"),
+        maintenance_first_start_km=field("maintenance_first_start_km"),
+        maintenance_first_duration_months=field("maintenance_first_duration_months"),
+        maintenance_management_mode=field("maintenance_management_mode"),
+        oil_dilution_rate=field("oil_dilution_rate"),
+        oil_carbon_rate=field("oil_carbon_rate"),
+        oil_anti_dilution_status=field("oil_anti_dilution_status"),
+        engine_calculated_interval_km=field("engine_calculated_interval_km"),
+        faults_present=field("faults_present"),
+        critical_fault=field("critical_fault"),
+        fault_main_status=field("fault_main_status"),
+        fault_characterization=field("fault_characterization"),
+        fault_odometer_km=field("fault_odometer_km"),
+        recommended_action=field("recommended_action"),
+        software_reference=field("software_reference"),
+        calibration_edition=field("calibration_edition"),
+        download_date=field("download_date"),
+        download_count=field("download_count"),
+        battery_voltage=field("battery_voltage"),
+        fault_codes=field("fault_codes"),
+        bsi_notes=field("bsi_notes"),
+        systems_checked=field("systems_checked"),
+        recommendation=field("recommendation"),
+        flow_phase=normalize_technical_reading_phase(field("flow_phase")),
+        machine_source=field("machine_source"),
+    )
+
+
 def normalize_workshop_service_fields(
     service_family: str,
     service_detail: str | None,
@@ -2528,6 +2795,7 @@ def render_workshop_detail(
         select(WorkshopTechnicalReading)
         .where(
             WorkshopTechnicalReading.vehicle_id == process.vehicle_id,
+            WorkshopTechnicalReading.status == "active",
             or_(
                 WorkshopTechnicalReading.process_id.is_(None),
                 WorkshopTechnicalReading.process_id != process.id,
@@ -2624,6 +2892,7 @@ def render_workshop_detail(
             "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
             "technical_reading_field_labels": TECHNICAL_READING_COMPARE_LABELS,
             "technical_reading_phase_labels": WORKSHOP_READING_PHASE_DISPLAY_LABELS,
+            "technical_reading_status_labels": WORKSHOP_READING_STATUS_LABELS,
             "incident_types": INCIDENT_TYPES,
             "incident_type_labels": INCIDENT_TYPE_LABELS,
             "incident_categories": INCIDENT_CATEGORIES,
@@ -3148,7 +3417,10 @@ def workshop_add_technical_reading(
             return RedirectResponse("/workshop", status_code=303)
         previous_reading = db.scalar(
             select(WorkshopTechnicalReading)
-            .where(WorkshopTechnicalReading.vehicle_id == process.vehicle_id)
+            .where(
+                WorkshopTechnicalReading.vehicle_id == process.vehicle_id,
+                WorkshopTechnicalReading.status == "active",
+            )
             .order_by(
                 WorkshopTechnicalReading.reading_date.is_(None),
                 WorkshopTechnicalReading.reading_date.desc(),
@@ -3204,6 +3476,273 @@ def workshop_add_technical_reading(
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?technical_reading_created=1", status_code=303)
+
+
+@web_router.get("/workshop/{process_id}/technical-readings/{reading_id}/edit", response_class=HTMLResponse)
+def workshop_edit_technical_reading(request: Request, process_id: int, reading_id: int):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        reading = db.get(WorkshopTechnicalReading, reading_id)
+        if not process or not reading or reading.process_id != process.id:
+            return RedirectResponse("/workshop", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        technical_readings = db.scalars(
+            select(WorkshopTechnicalReading)
+            .where(WorkshopTechnicalReading.process_id == process.id)
+            .order_by(
+                WorkshopTechnicalReading.reading_date.is_(None),
+                WorkshopTechnicalReading.reading_date.desc(),
+                WorkshopTechnicalReading.id.desc(),
+            )
+        ).all()
+        form_values = technical_reading_form_values(reading)
+        fixed_phase = normalize_technical_reading_phase(form_values.get("flow_phase"))
+        return templates.TemplateResponse(
+            request,
+            "workshop_technical_reading_edit.html",
+            {
+                "process": process,
+                "vehicle": vehicle,
+                "reading": reading,
+                "technical_readings": technical_readings,
+                "technical_reading_types": WORKSHOP_READING_TYPES,
+                "technical_reading_type_labels": WORKSHOP_READING_TYPE_LABELS,
+                "technical_reading_status_labels": WORKSHOP_READING_STATUS_LABELS,
+                "reading_form_values": form_values,
+                "fixed_reading_phase": fixed_phase,
+                "reading_allowed_types": WORKSHOP_READING_PHASES[fixed_phase]["allowed_types"],
+                "reading_submit_label": "Guardar correção",
+            },
+        )
+
+
+@web_router.post("/workshop/{process_id}/technical-readings/{reading_id}/update", response_class=HTMLResponse)
+async def workshop_update_technical_reading(request: Request, process_id: int, reading_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    form = await request.form()
+    flow_phase = normalize_technical_reading_phase(str(form.get("flow_phase") or ""))
+    reading_type = str(form.get("reading_type") or "")
+    if flow_phase not in WORKSHOP_READING_PHASES:
+        return RedirectResponse(f"/workshop/{process_id}?error=Fase%20de%20leitura%20inválida.", status_code=303)
+    if reading_type not in WORKSHOP_READING_PHASES[flow_phase]["allowed_types"]:
+        return RedirectResponse(
+            f"/workshop/{process_id}?error=Tipo%20de%20relatório%20não%20permitido%20para%20esta%20fase.",
+            status_code=303,
+        )
+
+    parsed_reading_date = parse_optional_date(str(form.get("reading_date") or "")) or date.today()
+    parsed_odometer = parse_optional_int(str(form.get("odometer_km") or ""))
+    reading_data = compact_reading_data_from_form(form, parsed_reading_date)
+    clean_summary = str(form.get("summary") or "").strip()
+    clean_url = str(form.get("external_url") or "").strip()
+    clean_provider = str(form.get("storage_provider") or "").strip() or "external"
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        reading = db.get(WorkshopTechnicalReading, reading_id)
+        if not process or not reading or reading.process_id != process.id:
+            return RedirectResponse("/workshop", status_code=303)
+        if reading.status != "active":
+            return RedirectResponse(
+                f"/workshop/{process_id}?error=Só%20é%20possível%20editar%20leituras%20ativas.",
+                status_code=303,
+            )
+
+        before = technical_reading_snapshot(reading)
+        previous_reading = db.scalar(
+            select(WorkshopTechnicalReading)
+            .where(
+                WorkshopTechnicalReading.vehicle_id == process.vehicle_id,
+                WorkshopTechnicalReading.id != reading.id,
+                WorkshopTechnicalReading.status == "active",
+            )
+            .order_by(
+                WorkshopTechnicalReading.reading_date.is_(None),
+                WorkshopTechnicalReading.reading_date.desc(),
+                WorkshopTechnicalReading.id.desc(),
+            )
+            .limit(1)
+        )
+        differences = technical_reading_differences(reading_data, previous_reading, parsed_odometer)
+        reading.reading_type = reading_type
+        reading.reading_date = parsed_reading_date
+        reading.odometer_km = parsed_odometer
+        reading.summary = clean_summary or None
+        reading.data_json = reading_data or None
+        reading.differences_json = differences or None
+        reading.storage_provider = clean_provider
+        reading.external_url = clean_url or None
+        reading.updated_by_id = user_id
+
+        after = technical_reading_snapshot(reading)
+        changed_fields = [field for field in after if before.get(field) != after.get(field)]
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Leitura técnica corrigida: "
+                    f"{WORKSHOP_READING_TYPE_LABELS.get(reading_type, reading_type)}"
+                    f" ({', '.join(changed_fields) if changed_fields else 'sem alterações relevantes'})."
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.technical_reading.updated",
+            entity_type="workshop_technical_reading",
+            entity_id=reading.id,
+            detail=f"Leitura técnica corrigida no processo: {process.title}",
+            before_json=before,
+            after_json=after,
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?technical_reading_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/technical-readings/{reading_id}/void", response_class=HTMLResponse)
+def workshop_void_technical_reading(
+    request: Request,
+    process_id: int,
+    reading_id: int,
+    reason: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return RedirectResponse(
+            f"/workshop/{process_id}?error=Indica%20o%20motivo%20para%20anular%20a%20leitura.",
+            status_code=303,
+        )
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        reading = db.get(WorkshopTechnicalReading, reading_id)
+        if not process or not reading or reading.process_id != process.id:
+            return RedirectResponse("/workshop", status_code=303)
+        if reading.status != "active":
+            return RedirectResponse(
+                f"/workshop/{process_id}?error=A%20leitura%20já%20não%20está%20ativa.",
+                status_code=303,
+            )
+        before = technical_reading_snapshot(reading)
+        reading.status = "voided"
+        reading.void_reason = clean_reason
+        reading.voided_by_id = user_id
+        reading.voided_at = datetime.now(UTC)
+        reading.updated_by_id = user_id
+        after = technical_reading_snapshot(reading)
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Leitura técnica anulada: "
+                    f"{WORKSHOP_READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)}. "
+                    f"Motivo: {clean_reason}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.technical_reading.voided",
+            entity_type="workshop_technical_reading",
+            entity_id=reading.id,
+            detail=f"Leitura técnica anulada no processo: {process.title}",
+            before_json=before,
+            after_json=after,
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?technical_reading_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/technical-readings/{reading_id}/replace", response_class=HTMLResponse)
+def workshop_replace_technical_reading(
+    request: Request,
+    process_id: int,
+    reading_id: int,
+    reason: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_reason = reason.strip() or "Substituição por nova leitura corrigida."
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        reading = db.get(WorkshopTechnicalReading, reading_id)
+        if not process or not reading or reading.process_id != process.id:
+            return RedirectResponse("/workshop", status_code=303)
+        if reading.status != "active":
+            return RedirectResponse(
+                f"/workshop/{process_id}?error=Só%20é%20possível%20substituir%20leituras%20ativas.",
+                status_code=303,
+            )
+
+        before = technical_reading_snapshot(reading)
+        replacement = WorkshopTechnicalReading(
+            process_id=reading.process_id,
+            vehicle_id=reading.vehicle_id,
+            user_id=user_id,
+            reading_type=reading.reading_type,
+            reading_date=reading.reading_date,
+            odometer_km=reading.odometer_km,
+            summary=reading.summary,
+            data_json=dict(reading.data_json or {}),
+            differences_json=dict(reading.differences_json or {}),
+            storage_provider=reading.storage_provider,
+            external_url=reading.external_url,
+            status="active",
+        )
+        db.add(replacement)
+        db.flush()
+        reading.status = "replaced"
+        reading.replaced_by_id = replacement.id
+        reading.void_reason = clean_reason
+        reading.updated_by_id = user_id
+        after = technical_reading_snapshot(reading)
+
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=(
+                    "Leitura técnica substituída: "
+                    f"{WORKSHOP_READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)}. "
+                    f"Motivo: {clean_reason}"
+                ),
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.technical_reading.replaced",
+            entity_type="workshop_technical_reading",
+            entity_id=reading.id,
+            detail=f"Leitura técnica substituída no processo: {process.title}",
+            before_json=before,
+            after_json={**after, "replacement_id": replacement.id},
+            user_id=user_id,
+        )
+        db.commit()
+        replacement_id = replacement.id
+
+    return RedirectResponse(
+        f"/workshop/{process_id}/technical-readings/{replacement_id}/edit?replaced=1",
+        status_code=303,
+    )
 
 
 @web_router.post("/workshop/{process_id}/incidents", response_class=HTMLResponse)
@@ -6088,6 +6627,43 @@ def get_web_user_id(request: Request) -> int | None:
     if not user_id:
         return None
     return int(user_id)
+
+
+def web_user_permissions(request: Request) -> set[str]:
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return set()
+    cached_permissions = getattr(request.state, "permission_codes", None)
+    if cached_permissions is not None:
+        return set(cached_permissions)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user else set()
+    request.state.permission_codes = permissions
+    return permissions
+
+
+def has_any_web_permission(request: Request, *permission_codes: str) -> bool:
+    permissions = web_user_permissions(request)
+    return bool(permissions.intersection(permission_codes))
+
+
+def permission_denied_redirect(request: Request) -> RedirectResponse:
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    return RedirectResponse("/", status_code=303)
+
+
+def require_any_web_permission(request: Request, *permission_codes: str) -> RedirectResponse | None:
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not has_any_web_permission(request, *permission_codes):
+        return RedirectResponse("/", status_code=303)
+    return None
+
+
+templates.env.globals["nav_permissions"] = web_user_permissions
+templates.env.globals["nav_has_permission"] = has_any_web_permission
 
 
 def count_rows(db, model) -> int:

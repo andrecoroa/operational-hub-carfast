@@ -17,6 +17,12 @@
     {% if user_created %}
       <div class="success">Utilizador criado.</div>
     {% endif %}
+    {% if access_updated %}
+      <div class="success">Acessos do utilizador atualizados.</div>
+    {% endif %}
+    {% if permissions_updated %}
+      <div class="success">Permissões do perfil atualizadas.</div>
+    {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
@@ -40,6 +46,44 @@
           {% endfor %}
         </div>
       </article>
+    </section>
+
+    <section class="section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Estado atual</p>
+          <h3>Permissões e acessos</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-high">Ativo</span>
+            <span class="pill muted-pill">Por perfil</span>
+          </div>
+          <h4>Permissões principais</h4>
+          <p>O acesso aos módulos principais já é controlado por permissões do perfil: Dashboard, Tarefas, Oficina, Frota, Documentos, Importações e Administração.</p>
+          <span class="implementation-status">Servidor + menu lateral</span>
+        </article>
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-high">Ativo</span>
+            <span class="pill muted-pill">Por utilizador</span>
+          </div>
+          <h4>Áreas autorizadas</h4>
+          <p>Cada utilizador já pode ter áreas autorizadas próprias. Esta camada está pronta para limitar o contexto onde atua.</p>
+          <span class="implementation-status">Gestão disponível</span>
+        </article>
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-normal">Próximo</span>
+            <span class="pill muted-pill">Camada fina</span>
+          </div>
+          <h4>Filtros por área e ação</h4>
+          <p>Falta aplicar restrições finas por centro de tarefas, oficina, estação, equipa, ação sensível e dados visíveis.</p>
+          <span class="implementation-status">A implementar por módulo</span>
+        </article>
+      </div>
     </section>
 
     <section class="detail-grid">
@@ -72,7 +116,7 @@
       </form>
 
       <article class="section">
-        <h3>Utilizadores</h3>
+        <h3>Utilizadores e acessos</h3>
         <div class="event-list">
           {% for item in users %}
             <article class="event-item">
@@ -81,6 +125,38 @@
                 <span>{{ "Ativo" if item.active else "Inativo" }}</span>
               </div>
               <p>{{ item.email }}</p>
+              <details class="workshop-record-group">
+                <summary>Gerir acessos <span>{{ user_roles_by_id.get(item.id, [])|length }} perfis</span></summary>
+                <form method="post" action="/admin/users/{{ item.id }}/access" class="form-stack">
+                  <label class="checkbox-row">
+                    <input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}>
+                    Utilizador ativo
+                  </label>
+                  <div>
+                    <p class="eyebrow">Perfis</p>
+                    <div class="pill-row">
+                      {% for role in roles %}
+                        <label class="pill muted-pill">
+                          <input type="checkbox" name="role_codes" value="{{ role.code }}" {% if role.code in user_roles_by_id.get(item.id, []) %}checked{% endif %}>
+                          {{ role.name }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div>
+                    <p class="eyebrow">Áreas autorizadas</p>
+                    <div class="pill-row">
+                      {% for unit in organizational_units %}
+                        <label class="pill muted-pill">
+                          <input type="checkbox" name="unit_codes" value="{{ unit.code }}" {% if unit.code in user_units_by_id.get(item.id, []) %}checked{% endif %}>
+                          {{ unit.name }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <button type="submit">Guardar acessos</button>
+                </form>
+              </details>
             </article>
           {% else %}
             <p class="muted">Sem utilizadores.</p>
@@ -90,10 +166,42 @@
     </section>
 
     <section class="section">
-      <h3>Permissões</h3>
-      <div class="pill-row">
-        {% for permission in permissions %}
-          <span class="pill muted-pill">{{ permission }}</span>
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Segurança</p>
+          <h3>Perfis e permissões</h3>
+        </div>
+      </div>
+      <p class="muted">As permissões são atribuídas por perfil. O perfil Admin mantém todas as permissões por segurança.</p>
+      <div class="event-list">
+        {% for role in roles %}
+          <article class="event-item">
+            <div>
+              <strong>{{ role.name }}</strong>
+              <span>{{ role.code }}</span>
+            </div>
+            <form method="post" action="/admin/roles/{{ role.id }}/permissions" class="form-stack">
+              <div class="pill-row">
+                {% for permission in permissions_catalog %}
+                  <label class="pill muted-pill">
+                    <input
+                      type="checkbox"
+                      name="permission_codes"
+                      value="{{ permission.code }}"
+                      {% if role.code == "admin" or permission.code in role_permissions_by_id.get(role.id, []) %}checked{% endif %}
+                      {% if role.code == "admin" %}disabled{% endif %}
+                    >
+                    {{ permission.code }}
+                  </label>
+                {% endfor %}
+              </div>
+              {% if role.code != "admin" %}
+                <button type="submit">Guardar permissões</button>
+              {% else %}
+                <p class="muted">Admin protegido contra alterações acidentais.</p>
+              {% endif %}
+            </form>
+          </article>
         {% endfor %}
       </div>
     </section>

@@ -241,6 +241,15 @@
                   {% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}
                   {% if item.external_url %} &middot; <a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir leitura externa</a>{% endif %}
                 </p>
+                <p>
+                  <span class="pill status-{{ item.status }}">{{ technical_reading_status_labels.get(item.status, item.status or "Ativa") }}</span>
+                  {% if item.replaced_by_id %}
+                    &middot; Substituída pela leitura #{{ item.replaced_by_id }}
+                  {% endif %}
+                  {% if item.void_reason %}
+                    &middot; Motivo: {{ item.void_reason }}
+                  {% endif %}
+                </p>
                 <p>{{ item.summary or "Sem resumo registado." }}</p>
                 {% if item.data_json %}
                   <dl class="technical-reading-list">
@@ -258,6 +267,30 @@
                     {% for diff in item.differences_json.values() %}
                       <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
                     {% endfor %}
+                  </div>
+                {% endif %}
+                {% if item.status == "active" and not process.closed_at %}
+                  <div class="button-row">
+                    <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/edit">Editar</a>
+                    <details class="workshop-record-group compact-record-group">
+                      <summary>Corrigir leitura <span>3 opções</span></summary>
+                      <div class="compact-form-grid two-col">
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/replace" class="form-stack">
+                          <label>
+                            Motivo da substituição
+                            <input name="reason" maxlength="255" placeholder="Ex.: relatório errado ou correção necessária">
+                          </label>
+                          <button type="submit" class="secondary-link">Substituir e corrigir</button>
+                        </form>
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/void" class="form-stack">
+                          <label>
+                            Motivo da anulação
+                            <input name="reason" maxlength="255" required placeholder="Obrigatório">
+                          </label>
+                          <button type="submit" class="secondary-link">Anular leitura</button>
+                        </form>
+                      </div>
+                    </details>
                   </div>
                 {% endif %}
               </article>

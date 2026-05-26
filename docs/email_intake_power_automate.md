@@ -8,7 +8,7 @@ Fluxo fase 1:
 
 1. Outlook recebe e-mail numa caixa funcional.
 2. Power Automate cria/atualiza item numa Microsoft List apenas como auditoria técnica.
-3. Power Automate chama a app em `POST /integrations/email-intake`.
+3. Power Automate chama a app em `POST /api/integrations/email-intake`.
 4. A app cria:
    - registo rápido, quando for assunto operacional/oficina;
    - documento por classificar, quando for assunto documental/financeiro com link.
@@ -33,8 +33,10 @@ Sem esta variável, a integração fica bloqueada.
 ## Endpoint
 
 ```text
-POST https://operational-hub-carfast.onrender.com/integrations/email-intake
+POST https://operational-hub-carfast.onrender.com/api/integrations/email-intake
 ```
+
+Também existe o alias interno `/integrations/email-intake`.
 
 Payload mínimo:
 

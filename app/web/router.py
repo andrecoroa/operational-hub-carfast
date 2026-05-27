@@ -5432,22 +5432,29 @@ def task_board_manage(
         if station.strip():
             quick_stmt = quick_stmt.where(QuickRecord.station.ilike(f"%{station.strip()}%"))
 
-        tasks = db.scalars(
+        raw_tasks = db.scalars(
             stmt.order_by(
                 Task.id.desc(),
                 Task.created_at.desc(),
             ).limit(100)
         ).all()
-        task_ids = [task.id for task in tasks]
+        task_ids = [task.id for task in raw_tasks]
         subtask_counts_by_parent = {}
         parent_tasks_by_id = {}
-        if task_ids:
+        parent_task_ids = sorted({task.parent_task_id for task in raw_tasks if task.parent_task_id})
+        if parent_task_ids:
+            parent_tasks_by_id = {
+                task.id: task
+                for task in db.scalars(select(Task).where(Task.id.in_(parent_task_ids))).all()
+            }
+        task_ids_for_subtask_counts = sorted(set(task_ids) | set(parent_task_ids))
+        if task_ids_for_subtask_counts:
             subtask_counts_by_parent = {
                 parent_id: count
                 for parent_id, count in db.execute(
                     select(Task.parent_task_id, func.count())
                     .where(
-                        Task.parent_task_id.in_(task_ids),
+                        Task.parent_task_id.in_(task_ids_for_subtask_counts),
                         Task.closed_at.is_(None),
                         ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     )
@@ -5455,12 +5462,34 @@ def task_board_manage(
                 ).all()
                 if parent_id is not None
             }
-            parent_task_ids = sorted({task.parent_task_id for task in tasks if task.parent_task_id})
-            if parent_task_ids:
-                parent_tasks_by_id = {
-                    task.id: task
-                    for task in db.scalars(select(Task).where(Task.id.in_(parent_task_ids))).all()
-                }
+        tasks_by_id = {task.id: task for task in raw_tasks}
+        child_tasks_by_parent = {}
+        for task in raw_tasks:
+            if task.parent_task_id:
+                child_tasks_by_parent.setdefault(task.parent_task_id, []).append(task)
+        tasks = []
+        used_task_ids_for_order = set()
+
+        def append_task_with_children(task: Task | None) -> None:
+            if task is None or task.id in used_task_ids_for_order:
+                return
+            tasks.append(task)
+            used_task_ids_for_order.add(task.id)
+            if not task.parent_task_id:
+                for child_task in child_tasks_by_parent.get(task.id, []):
+                    append_task_with_children(child_task)
+
+        for task in raw_tasks:
+            if task.id in used_task_ids_for_order:
+                continue
+            if task.parent_task_id:
+                parent_task = tasks_by_id.get(task.parent_task_id) or parent_tasks_by_id.get(task.parent_task_id)
+                if parent_task:
+                    append_task_with_children(parent_task)
+                append_task_with_children(task)
+            else:
+                append_task_with_children(task)
+        task_ids = [task.id for task in tasks]
         quick_records = db.scalars(
             quick_stmt.order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc()).limit(100)
         ).all()

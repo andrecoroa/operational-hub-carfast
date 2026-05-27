@@ -280,25 +280,20 @@
             </div>
             <div class="task-board-list">
               {% for record in quick_records %}
-                <article class="task-card-row">
-                  <div class="task-card-main">
-                    <a class="table-link" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
+                <article class="quick-record-row">
+                  <a class="table-link task-code-link quick-record-code" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
+                  <div class="quick-record-main">
                     <p class="task-row-title">{{ record.title }}</p>
                     <p class="table-note">
                       {{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}
                       {% if record.customer_name %} &middot; {{ record.customer_name }}{% endif %}
                       {% if record.plate %} &middot; {{ record.plate }}{% endif %}
                     </p>
-                    {% if record.description %}
-                      <p class="table-note table-note-clamp">{{ record.description }}</p>
-                    {% endif %}
                   </div>
-                  <div class="task-card-side quick-record-side">
-                    <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
-                    <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
-                    <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
-                    <a class="task-board-open" href="/task-board/quick/{{ record.id }}" aria-label="Abrir registo rápido">›</a>
-                  </div>
+                  <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+                  <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+                  <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
+                  <a class="task-board-open" href="/task-board/quick/{{ record.id }}" aria-label="Abrir registo rápido">›</a>
                 </article>
               {% else %}
                 <div class="task-board-empty">

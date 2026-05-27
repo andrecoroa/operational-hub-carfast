@@ -82,8 +82,11 @@
       {% set current_view_label = "Arquivo" %}
       {% set current_view_count = metrics.archived %}
     {% endif %}
+    {% set active_filter_count = (1 if filters.status else 0) + (1 if filters.source else 0) + (1 if filters.station else 0) %}
 
-    <section class="task-control-strip" aria-label="Vista e classificação">
+    <form method="get" action="{{ manage_url }}" class="task-command-row" aria-label="Pesquisa e filtros">
+      {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
+      {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
       <details class="task-view-menu">
         <summary>Vista: <strong>{{ current_view_label }} {{ current_view_count }}</strong></summary>
         <div class="task-view-options">
@@ -94,6 +97,13 @@
           <a href="{{ manage_url }}?view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
         </div>
       </details>
+
+      <label class="task-search-box">
+        <span>Pesquisa</span>
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar...">
+        <button type="submit" aria-label="Pesquisar">⌕</button>
+      </label>
+
       <div class="task-category-tabs" aria-label="Classificação">
         <span>Classificação</span>
         <a href="{{ manage_url }}{% if filters.view %}?view={{ filters.view }}{% endif %}" class="{% if not filters.category %}active{% endif %}">
@@ -105,52 +115,47 @@
           </a>
         {% endfor %}
       </div>
-    </section>
 
-    <section class="table-shell filter-panel compact-task-filter-panel" id="gestao-tarefas">
-      <form method="get" action="{{ manage_url }}" class="filter-grid task-filter-grid">
-        {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
-        {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
-        <label>
-          Pesquisa
-          <input type="search" name="q" value="{{ filters.q }}" placeholder="Assunto, cliente, matrícula, reserva, contrato">
-        </label>
-        <label>
-          Estado
-          <select name="status">
-            <option value="">Todos</option>
-            {% for code, label in task_statuses %}
-              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-            {% for code, label in quick_record_statuses %}
-              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Origem
-          <select name="source">
-            <option value="">Todas</option>
-            {% for code, label in task_sources %}
-              <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Estação
-          <input list="stations" name="station" value="{{ filters.station }}">
-          <datalist id="stations">
-            {% for item in stations %}
-              <option value="{{ item }}"></option>
-            {% endfor %}
-          </datalist>
-        </label>
-        <div class="filter-actions">
-          <button type="submit">Filtrar</button>
-          <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
+      <details class="task-filter-drawer">
+        <summary>Filtros <strong>{{ active_filter_count }}</strong></summary>
+        <div class="task-filter-popover">
+          <label>
+            Estado
+            <select name="status">
+              <option value="">Todos</option>
+              {% for code, label in task_statuses %}
+                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% for code, label in quick_record_statuses %}
+                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Origem
+            <select name="source">
+              <option value="">Todas</option>
+              {% for code, label in task_sources %}
+                <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estação
+            <input list="stations" name="station" value="{{ filters.station }}">
+            <datalist id="stations">
+              {% for item in stations %}
+                <option value="{{ item }}"></option>
+              {% endfor %}
+            </datalist>
+          </label>
+          <div class="filter-actions">
+            <button type="submit">Aplicar</button>
+            <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
+          </div>
         </div>
-      </form>
-    </section>
+      </details>
+    </form>
 
     <section class="task-management-split">
       <div class="task-management-column">
@@ -170,6 +175,15 @@
                 <h3>{% if filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas{% endif %}</h3>
               </div>
               <span>{{ tasks|length }}</span>
+            </div>
+            <div class="task-list-header task-list-header-main" aria-hidden="true">
+              <span>ID / Contexto</span>
+              <span>Assunto</span>
+              <span>Responsável</span>
+              <span>Prioridade</span>
+              <span>Estado</span>
+              <span>Limite</span>
+              <span>⚙</span>
             </div>
             <div class="task-board-list">
               {% for task in tasks %}
@@ -276,29 +290,27 @@
                 <p class="eyebrow">Triagem</p>
                 <h3>Registos rápidos</h3>
               </div>
-              <span>{{ quick_records|length }}</span>
+              <a href="#registos-rapidos">Ver todos</a>
+            </div>
+            <div class="quick-record-header" aria-hidden="true">
+              <span>ID</span>
+              <span>Assunto</span>
+              <span>Tipo</span>
+              <span>Prioridade</span>
+              <span>Estado</span>
+              <span>Data</span>
+              <span></span>
             </div>
             <div class="task-board-list">
               {% for record in quick_records %}
                 <article class="quick-record-row">
-                  <div class="quick-record-main">
-                    <div class="quick-record-head">
-                      <a class="table-link task-code-link quick-record-code" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
-                      <span>{{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}</span>
-                    </div>
-                    <p class="task-row-title">{{ record.title }}</p>
-                    <p class="table-note">
-                      {% if record.customer_name %} &middot; {{ record.customer_name }}{% endif %}
-                      {% if record.plate %} &middot; {{ record.plate }}{% endif %}
-                      {% if not record.customer_name and not record.plate %}Sem contexto associado{% endif %}
-                    </p>
-                  </div>
+                  <a class="table-link task-code-link quick-record-code" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
+                  <span class="quick-record-title">{{ record.title }}</span>
+                  <span class="quick-record-type">{{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}</span>
+                  <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+                  <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+                  <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
                   <a class="task-board-open" href="/task-board/quick/{{ record.id }}" aria-label="Abrir registo rápido">›</a>
-                  <div class="quick-record-meta">
-                    <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
-                    <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
-                    <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
-                  </div>
                 </article>
               {% else %}
                 <div class="task-board-empty">

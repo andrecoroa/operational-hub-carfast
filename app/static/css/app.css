@@ -3123,6 +3123,34 @@ a.metric:hover {
   margin-top: 10px;
 }
 
+.phase-record-preview {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(35, 116, 72, 0.2);
+  border-radius: 8px;
+  background: #f7fbf8;
+}
+
+.phase-record-preview div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.phase-record-preview strong {
+  color: #237448;
+}
+
+.phase-record-preview p {
+  margin: 0;
+  color: var(--ink);
+  white-space: pre-line;
+}
+
 .compact-details {
   border-top: 1px solid var(--line);
   padding-top: 12px;

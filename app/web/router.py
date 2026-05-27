@@ -530,6 +530,75 @@ for index, step in enumerate(WORKSHOP_FLOW_STEPS, start=2):
 WORKSHOP_FLOW_ORDER = ["opening", "reception", *[step["code"] for step in WORKSHOP_FLOW_STEPS]]
 WORKSHOP_FLOW_TITLES = {step["code"]: step["title"] for step in WORKSHOP_FLOW_STEPS}
 
+
+def workshop_phase_records(
+    notes: list[WorkshopProcessNote],
+    process: WorkshopProcess,
+    technical_readings: list[WorkshopTechnicalReading],
+) -> dict[str, dict]:
+    records: dict[str, dict] = {}
+
+    for reading in technical_readings:
+        flow_phase = (reading.data_json or {}).get("flow_phase")
+        if flow_phase in WORKSHOP_READING_PHASES:
+            code = WORKSHOP_READING_PHASES[flow_phase]["flow_status"]
+        elif flow_phase in {"bsi_initial", "bsi_final"}:
+            code = flow_phase
+        else:
+            continue
+        if code in records:
+            continue
+        body_lines = [
+            WORKSHOP_READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type),
+        ]
+        if reading.reading_date:
+            body_lines.append(f"Data da leitura: {reading.reading_date}")
+        if reading.odometer_km is not None:
+            body_lines.append(f"KM: {reading.odometer_km}")
+        if reading.summary:
+            body_lines.append(reading.summary)
+        if reading.external_url:
+            body_lines.append("Relatório externo associado.")
+        records[code] = {
+            "title": WORKSHOP_FLOW_TITLES.get(code, WORKSHOP_STATUS_LABELS.get(code, code)),
+            "body": "\n".join(body_lines),
+            "created_at": reading.created_at,
+            "user_id": reading.user_id,
+        }
+
+    label_to_code = {label: code for code, label in WORKSHOP_STATUS_LABELS.items()}
+    for note in notes:
+        lines = [line.strip() for line in (note.note or "").splitlines() if line.strip()]
+        if not lines:
+            continue
+        code = ""
+        body_lines: list[str] = []
+        if lines[0] == "Receção confirmada.":
+            code = "reception"
+            body_lines = lines[1:]
+        elif lines[0].startswith("Fase registada: "):
+            raw_code = lines[0].replace("Fase registada: ", "", 1).strip()
+            code = raw_code if raw_code in WORKSHOP_STATUS_LABELS else label_to_code.get(raw_code, "")
+            body_lines = [line for line in lines[1:] if not line.startswith("Fluxo atualizado:")]
+        if code and code not in records:
+            records[code] = {
+                "title": WORKSHOP_FLOW_TITLES.get(code, WORKSHOP_STATUS_LABELS.get(code, code)),
+                "body": "\n".join(body_lines) or "Registo sem detalhe.",
+                "created_at": note.created_at,
+                "user_id": note.user_id,
+            }
+
+    if process.status and process.decision_note and process.status not in records:
+        records[process.status] = {
+            "title": WORKSHOP_FLOW_TITLES.get(process.status, WORKSHOP_STATUS_LABELS.get(process.status, process.status)),
+            "body": process.decision_note,
+            "created_at": process.updated_at,
+            "user_id": process.decided_by_id,
+        }
+
+    return records
+
+
 INCIDENT_TYPES = [
     ("technical", "Técnico"),
     ("damage", "Dano"),
@@ -2925,6 +2994,7 @@ def render_workshop_detail(
         )
         .limit(5)
     ).all()
+    phase_records = workshop_phase_records(notes, process, technical_readings)
     vehicle_snapshot = db.scalar(
         select(VehicleExternalSnapshot)
         .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
@@ -2936,6 +3006,7 @@ def render_workshop_detail(
     completed_flow_statuses = {"opening"}
     if process.status == "reception" or process.opened_on or process.km_entry:
         completed_flow_statuses.add("reception")
+    completed_flow_statuses.update(phase_records.keys())
     note_text = "\n".join(item.note or "" for item in notes)
     for code, label in WORKSHOP_STATUS_LABELS.items():
         if label and label in note_text:
@@ -2974,6 +3045,7 @@ def render_workshop_detail(
             "reception_note_data": reception_note_data,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
+            "phase_records": phase_records,
             "workshop_flow_steps": workshop_flow_steps,
             "workshop_flow_order": workshop_flow_order,
             "workshop_flow_titles": workshop_flow_titles,
@@ -4260,9 +4332,11 @@ def workshop_update_flow(
                 process_id=process.id,
                 user_id=user_id,
                 note=(
+                    f"Fase registada: {status}\n"
                     "Fluxo atualizado: "
                     f"{WORKSHOP_STATUS_LABELS.get(old_status, old_status)} -> "
                     f"{WORKSHOP_STATUS_LABELS.get(status, status)}"
+                    f"{chr(10) + clean_decision_note if clean_decision_note else ''}"
                 ),
             )
         )

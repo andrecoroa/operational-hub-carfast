@@ -1,0 +1,16 @@
+{% if phase_record %}
+  <div class="phase-record-preview">
+    <div>
+      <strong>Último registo</strong>
+      <span>
+        {% if phase_record.created_at %}
+          {{ phase_record.created_at.strftime("%Y-%m-%d %H:%M") }}
+        {% endif %}
+        {% if phase_record.user_id %}
+          · Utilizador #{{ phase_record.user_id }}
+        {% endif %}
+      </span>
+    </div>
+    <p>{{ phase_record.body }}</p>
+  </div>
+{% endif %}

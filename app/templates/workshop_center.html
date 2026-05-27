@@ -30,7 +30,7 @@
       <p>Escolha se pretende abrir um novo processo ou acompanhar processos em curso.</p>
     </section>
 
-    <section class="task-center-grid">
+    <section class="task-center-grid workshop-center-grid">
       <a class="task-center-card create-card" href="/workshop/new">
         <span class="task-card-main">
           <span class="task-card-icon">+</span>
@@ -51,6 +51,18 @@
         </span>
         <span class="button-link blue-link">Abrir gestão de oficina</span>
       </a>
+      {% if can_access_workshop_tasks %}
+      <a class="task-center-card tasks-card" href="{{ workshop_tasks_url }}">
+        <span class="task-card-main">
+          <span class="task-card-icon">✓</span>
+          <span>
+            <strong>Tarefas de oficina</strong>
+            <p>Acompanhar tarefas, registos rápidos e auditoria técnica da oficina.</p>
+          </span>
+        </span>
+        <span class="button-link success-link">Abrir tarefas de oficina</span>
+      </a>
+      {% endif %}
       <article class="info-card">
         <h3>Estado da oficina</h3>
         <p>{{ open_count }} processos abertos.</p>

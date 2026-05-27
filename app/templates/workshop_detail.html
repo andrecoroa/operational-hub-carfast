@@ -382,6 +382,8 @@
             <strong>Confirmar receção</strong>
             <span>{{ "Atual" if reception_state == "current" else ("Concluído" if reception_state == "complete" else ("Por rever" if reception_state == "skipped" else "Pendente")) }}</span>
           </summary>
+          {% set phase_record = phase_records.get("reception") %}
+          {% include "_workshop_phase_record.html" %}
           <form method="post" action="/workshop/{{ process.id }}/reception" class="form-stack">
             <div class="compact-form-grid two-col">
               <label>
@@ -446,6 +448,8 @@
                   <strong>{{ step.title }}</strong>
                   <span>{{ "Atual" if step_state == "current" else ("Concluído" if step_state == "complete" else ("Por rever" if step_state == "skipped" else "Pendente")) }}</span>
                 </summary>
+                {% set phase_record = phase_records.get(step.code) %}
+                {% include "_workshop_phase_record.html" %}
                 {% if step.code in ["bsi_initial", "bsi_final"] %}
                   <div class="form-stack">
                     <p>{{ step.description }}</p>

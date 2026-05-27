@@ -1547,7 +1547,7 @@ a.metric:hover {
 }
 
 .task-filter-grid {
-  grid-template-columns: minmax(220px, 0.85fr) repeat(3, minmax(135px, 0.55fr)) auto;
+  grid-template-columns: minmax(240px, 420px) repeat(3, minmax(150px, 1fr)) auto;
 }
 
 .task-filter-grid label:first-of-type {
@@ -1895,7 +1895,7 @@ a.metric:hover {
 
 .task-management-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.75fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(460px, 0.9fr);
   gap: 18px;
   align-items: start;
 }
@@ -2002,8 +2002,8 @@ a.metric:hover {
 }
 
 .task-management-split .task-card-row.task-row-fixed {
-  grid-template-columns: 150px minmax(260px, 1fr) 170px 78px 138px 96px 32px;
-  column-gap: 12px;
+  grid-template-columns: 140px minmax(230px, 1fr) 152px 70px 126px 84px 30px;
+  column-gap: 10px;
 }
 
 .task-card-row.task-row-fixed .task-card-main,
@@ -2054,12 +2054,12 @@ a.metric:hover {
 
 .quick-record-row {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) auto auto 86px 30px;
-  gap: 8px;
-  align-items: center;
-  min-height: 58px;
+  grid-template-columns: 104px minmax(0, 1fr) 30px;
+  gap: 5px 10px;
+  align-items: start;
+  min-height: 68px;
   border-bottom: 1px solid var(--line);
-  padding: 9px 12px;
+  padding: 10px 12px;
   background: #fff;
 }
 
@@ -2071,6 +2071,7 @@ a.metric:hover {
   font-size: 12px;
   line-height: 1.2;
   white-space: nowrap;
+  padding-top: 2px;
 }
 
 .quick-record-main {
@@ -2087,11 +2088,30 @@ a.metric:hover {
 }
 
 .quick-record-main .task-row-title {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.25;
 }
 
 .quick-record-main .table-note {
+  font-size: 12px;
+}
+
+.quick-record-row .task-board-open {
+  justify-self: end;
+  margin-top: 1px;
+}
+
+.quick-record-meta {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quick-record-meta .task-board-priority,
+.quick-record-meta .task-board-sla {
   font-size: 12px;
 }
 

@@ -177,12 +177,11 @@
               <span>{{ tasks|length }}</span>
             </div>
             <div class="task-list-header task-list-header-main" aria-hidden="true">
-              <span>ID / Contexto</span>
-              <span>Assunto</span>
-              <span>Responsável</span>
-              <span>Prioridade</span>
-              <span>Estado</span>
-              <span>Limite</span>
+              <span>ID / Relação / Classificação</span>
+              <span>Assunto / Descrição</span>
+              <span>Intervenientes</span>
+              <span>Datas</span>
+              <span>Situação</span>
               <span>⚙</span>
             </div>
             <div class="task-board-list">
@@ -194,33 +193,34 @@
                   <div class="task-card-main">
                     <div class="task-identity-block">
                       <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
-                      {% if task.parent_task_id %}
-                        <span class="task-identity-subtype">Subtarefa</span>
+                      {% if open_subtask_count %}
+                        <span>{{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}</span>
+                      {% elif task.parent_task_id %}
+                        <span>Subtarefa</span>
+                      {% else %}
+                        <span>Sem subtarefas</span>
                       {% endif %}
-                      <span>Criada por {{ created_user.name if created_user else "Sistema" }}</span>
-                      <span>{{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "-" }}</span>
+                      <span class="task-category-pill category-{{ task.category or 'other' }}">{{ task_category_labels.get(task.category, task.category or "Outro") }}</span>
                     </div>
                     <div class="task-card-content">
                       <p class="task-row-title">{{ task.title }}</p>
+                      {% if task.description %}
+                        <p class="table-note table-note-clamp">{{ task.description }}</p>
+                      {% else %}
+                        <p class="table-note table-note-clamp">Sem descrição registada.</p>
+                      {% endif %}
                       <p class="table-note">
                         {% if task.customer_name %}{{ task.customer_name }}{% endif %}
                         {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
                         {% if task.station %}{% if task.customer_name or task.plate %} &middot; {% endif %}{{ task.station }}{% endif %}
-                        {% if not task.customer_name and not task.plate and not task.station %}Sem contexto associado{% endif %}
+                        {% if task.reservation_number %}{% if task.customer_name or task.plate or task.station %} &middot; {% endif %}Reserva {{ task.reservation_number }}{% endif %}
+                        {% if task.contract_number %}{% if task.customer_name or task.plate or task.station or task.reservation_number %} &middot; {% endif %}Contrato {{ task.contract_number }}{% endif %}
+                        {% if not task.customer_name and not task.plate and not task.station and not task.reservation_number and not task.contract_number %}Sem contexto associado{% endif %}
                       </p>
-                      <p class="table-note task-context-line">
-                        <span class="task-category-pill category-{{ task.category or 'other' }}">{{ task_category_labels.get(task.category, task.category or "Outro") }}</span>
-                        {% if parent_task %}
+                      {% if parent_task %}
+                        <p class="table-note task-context-line">
                           <a class="task-parent-link" href="/task-board/{{ parent_task.id }}">Mãe: CF-TASK-{{ "%05d"|format(parent_task.id) }}</a>
-                        {% endif %}
-                      </p>
-                      {% if task.description %}
-                        <p class="table-note table-note-clamp">{{ task.description }}</p>
-                      {% endif %}
-                      {% if open_subtask_count %}
-                        <a class="task-parent-subtask-pill" href="/task-board/{{ task.id }}">
-                          {{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}
-                        </a>
+                        </p>
                       {% endif %}
                     </div>
                   </div>
@@ -241,24 +241,27 @@
                           <em class="task-my-role">A aguardar por mim</em>
                         {% endif %}
                       {% endif %}
-                      <strong>{{ assigned_user.name if assigned_user else "Por atribuir" }}</strong>
-                      <small>
-                        {% if task.status == "waiting" and waiting_user %}
-                          Aguarda: {{ waiting_user.name }}
-                        {% elif task.status == "waiting" and waiting_team %}
-                          Aguarda: {{ waiting_team.name }}
-                        {% elif delegated_user %}
-                          Delegado: {{ delegated_user.name }}
-                        {% elif delegated_team %}
-                          Delegado: {{ delegated_team.name }}
-                        {% else %}
-                          Sem delegação
-                        {% endif %}
-                      </small>
+                      <small>Criada por: {{ created_user.name if created_user else "Sistema" }}</small>
+                      <strong>Resp.: {{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Por atribuir") }}</strong>
+                      {% if delegated_user %}
+                        <small>Delegada a: {{ delegated_user.name }}</small>
+                      {% elif delegated_team %}
+                        <small>Delegada a: {{ delegated_team.name }}</small>
+                      {% endif %}
+                      {% if task.status == "waiting" and waiting_user %}
+                        <small>A aguardar por: {{ waiting_user.name }}</small>
+                      {% elif task.status == "waiting" and waiting_team %}
+                        <small>A aguardar por: {{ waiting_team.name }}</small>
+                      {% endif %}
                     </span>
-                    <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
-                    <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
-                    <span class="task-board-sla">{{ task.due_on or "Sem SLA" }}</span>
+                    <span class="task-board-dates">
+                      <small>Criada: {{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "-" }}</small>
+                      <strong>Limite: {{ task.due_on or "Sem SLA" }}</strong>
+                    </span>
+                    <span class="task-board-state">
+                      <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                      <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                    </span>
                     <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
                   </div>
                 </article>

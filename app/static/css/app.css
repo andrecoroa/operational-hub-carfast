@@ -2080,8 +2080,8 @@ a.metric:hover {
 }
 
 .task-list-header-main {
-  grid-template-columns: 170px minmax(380px, 1fr) 220px 88px 160px 112px 32px;
-  column-gap: 16px;
+  grid-template-columns: 240px minmax(360px, 1fr) 260px 170px 160px 32px;
+  column-gap: 18px;
 }
 
 .quick-record-header {
@@ -2106,16 +2106,16 @@ a.metric:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  min-height: 86px;
-  height: 86px;
+  min-height: 108px;
+  height: 108px;
   border-bottom: 1px solid var(--line);
   padding: 12px 18px;
   background: #ffffff;
 }
 
 .task-card-row.task-row-fixed {
-  grid-template-columns: 170px minmax(380px, 1fr) 220px 88px 160px 112px 32px;
-  column-gap: 16px;
+  grid-template-columns: 240px minmax(360px, 1fr) 260px 170px 160px 32px;
+  column-gap: 18px;
 }
 
 .task-card-row.task-row-fixed .task-card-main,
@@ -2135,21 +2135,16 @@ a.metric:hover {
   grid-column: 3;
 }
 
-.task-card-row.task-row-fixed .task-board-priority {
+.task-card-row.task-row-fixed .task-board-dates {
   grid-column: 4;
 }
 
-.task-card-row.task-row-fixed .pill {
+.task-card-row.task-row-fixed .task-board-state {
   grid-column: 5;
-  justify-self: start;
-}
-
-.task-card-row.task-row-fixed .task-board-sla {
-  grid-column: 6;
 }
 
 .task-card-row.task-row-fixed .task-board-open {
-  grid-column: 7;
+  grid-column: 6;
 }
 
 .task-card-row:hover {
@@ -2240,7 +2235,7 @@ a.metric:hover {
 
 .task-identity-block {
   display: grid;
-  align-self: start;
+  align-self: center;
   gap: 3px;
   min-width: 0;
   color: var(--muted);
@@ -2258,7 +2253,9 @@ a.metric:hover {
   min-width: 0;
 }
 
-.task-board-owner {
+.task-board-owner,
+.task-board-dates,
+.task-board-state {
   display: grid;
   min-width: 0;
   color: var(--ink);
@@ -2267,15 +2264,23 @@ a.metric:hover {
 }
 
 .task-board-owner strong,
-.task-board-owner small {
+.task-board-owner small,
+.task-board-dates strong,
+.task-board-dates small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-board-owner small {
+.task-board-owner small,
+.task-board-dates small {
   margin-top: 2px;
   color: var(--muted);
+}
+
+.task-board-state {
+  justify-items: start;
+  gap: 8px;
 }
 
 .task-my-role {
@@ -4094,6 +4099,8 @@ a.metric:hover {
   .task-card-row.task-row-fixed .task-identity-block,
   .task-card-row.task-row-fixed .task-card-content,
   .task-card-row.task-row-fixed .task-board-owner,
+  .task-card-row.task-row-fixed .task-board-dates,
+  .task-card-row.task-row-fixed .task-board-state,
   .task-card-row.task-row-fixed .task-board-priority,
   .task-card-row.task-row-fixed .pill,
   .task-card-row.task-row-fixed .task-board-sla,

@@ -1,17 +1,21 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell">
-  {% set active_menu = "tasks" %}
+  {% set active_menu = active_menu or "tasks" %}
   {% include "_sidebar.html" %}
   <main class="content">
     <header class="topbar">
       <div>
         <p class="eyebrow">E-mail original</p>
-        <h2>{{ intake.subject or record.title }}</h2>
-        <p class="breadcrumb">Centro de Tarefas &gt; Registo rápido &gt; <strong>CF-REG-{{ "%05d"|format(record.id) }}</strong></p>
+        <h2>{{ intake.subject or (record.title if record else document.title) }}</h2>
+        {% if record %}
+          <p class="breadcrumb">Centro de Tarefas &gt; Registo rápido &gt; <strong>CF-REG-{{ "%05d"|format(record.id) }}</strong></p>
+        {% else %}
+          <p class="breadcrumb">Documentos &gt; Entrada documental &gt; <strong>{{ breadcrumb_label }}</strong></p>
+        {% endif %}
       </div>
       <div class="button-row">
-        <a class="button-link secondary-link" href="/task-board/quick/{{ record.id }}">Voltar ao registo</a>
+        <a class="button-link secondary-link" href="{{ return_url or ('/task-board/quick/' ~ record.id) }}">Voltar</a>
       </div>
     </header>
 

@@ -2027,6 +2027,23 @@ a.metric:hover {
   box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
 }
 
+.document-attachment-list {
+  display: grid;
+  gap: 14px;
+}
+
+.document-attachment-card {
+  padding: 18px;
+}
+
+.document-attachment-card .table-heading {
+  margin-bottom: 12px;
+}
+
+.document-attachment-card .workshop-record-group {
+  margin: 14px -18px -18px;
+}
+
 .task-type-heading {
   display: flex;
   justify-content: space-between;

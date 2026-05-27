@@ -8,13 +8,13 @@ from secrets import compare_digest
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 
 from app.api.deps import DbSession
 from app.core.config import settings
 from app.models.documents import Document, DocumentEvent
-from app.models.integrations import EmailIntake
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.tasks import QuickRecord
 from app.services.audit import record_audit
 
@@ -53,6 +53,14 @@ class EmailIntakePayload(BaseModel):
     conversation_id: Any | None = None
     target_kind: Any | None = None
     target_area: Any | None = None
+    attachments: Any | None = None
+
+    @field_validator("received_at", mode="before")
+    @classmethod
+    def empty_received_at_as_none(cls, value: Any) -> Any:
+        if value == "":
+            return None
+        return value
 
 
 def extract_sharepoint_value(value: Any, *, prefer_url: bool = False) -> Any:
@@ -87,6 +95,71 @@ def as_text(value: Any, length: int | None = None, *, prefer_url: bool = False) 
     if not clean_value:
         return None
     return clean_value[:length] if length else clean_value
+
+
+def as_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_attachments(value: Any) -> list[dict[str, Any]]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        try:
+            return normalize_attachments(json.loads(stripped))
+        except json.JSONDecodeError:
+            return []
+    if isinstance(value, dict):
+        if isinstance(value.get("value"), list):
+            return normalize_attachments(value["value"])
+        if isinstance(value.get("attachments"), list):
+            return normalize_attachments(value["attachments"])
+        return [value]
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for idx, item in enumerate(value, start=1):
+        if isinstance(item, str):
+            url = as_text(item, 2000, prefer_url=True)
+            if url:
+                normalized.append({"name": f"Anexo {idx}", "url": url})
+            continue
+        if not isinstance(item, dict):
+            continue
+        url = (
+            as_text(item.get("url"), 2000, prefer_url=True)
+            or as_text(item.get("link"), 2000, prefer_url=True)
+            or as_text(item.get("webUrl"), 2000, prefer_url=True)
+            or as_text(item.get("Link"), 2000, prefer_url=True)
+            or as_text(item.get("Url"), 2000, prefer_url=True)
+        )
+        if not url:
+            continue
+        name = (
+            as_text(item.get("name"), 255)
+            or as_text(item.get("fileName"), 255)
+            or as_text(item.get("displayName"), 255)
+            or as_text(item.get("Name"), 255)
+            or f"Anexo {idx}"
+        )
+        normalized.append(
+            {
+                "name": name,
+                "url": url,
+                "content_type": as_text(item.get("content_type") or item.get("contentType") or item.get("mimeType"), 160),
+                "size": as_int(item.get("size") or item.get("Size") or item.get("length")),
+            }
+        )
+    return normalized
 
 
 def clean_html_preview(value: Any, length: int = 4000) -> str | None:
@@ -233,10 +306,12 @@ def existing_intake(db: DbSession, payload: EmailIntakePayload) -> EmailIntake |
 
 
 def source_link(payload: EmailIntakePayload) -> str | None:
+    attachments = normalize_attachments(payload.attachments)
     return (
         as_text(payload.attachments_url, 2000, prefer_url=True)
         or as_text(payload.email_url, 2000, prefer_url=True)
         or as_text(payload.list_item_url, 2000, prefer_url=True)
+        or (attachments[0]["url"] if attachments else None)
     )
 
 
@@ -327,6 +402,38 @@ def create_document(db: DbSession, intake: EmailIntake, payload: EmailIntakePayl
     return document
 
 
+def create_email_attachments(
+    db: DbSession,
+    intake: EmailIntake,
+    payload: EmailIntakePayload,
+    document: Document | None = None,
+) -> list[EmailIntakeAttachment]:
+    created: list[EmailIntakeAttachment] = []
+    for item in normalize_attachments(payload.attachments):
+        attachment = EmailIntakeAttachment(
+            email_intake_id=intake.id,
+            document_id=document.id if document else None,
+            name=item["name"],
+            url=item["url"],
+            content_type=item.get("content_type"),
+            size=item.get("size"),
+            status="pending",
+        )
+        db.add(attachment)
+        created.append(attachment)
+    if document and created:
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="attachments.received",
+                old_value=None,
+                new_value=f"{len(created)} anexos recebidos para tratamento.",
+                user_id=None,
+            )
+        )
+    return created
+
+
 @router.post("/email-intake", status_code=status.HTTP_201_CREATED)
 def intake_email(
     payload: EmailIntakePayload,
@@ -370,11 +477,13 @@ def intake_email(
     try:
         if target_kind == "document":
             target = create_document(db, intake, payload, target_area)
+            create_email_attachments(db, intake, payload, target)
             intake.target_entity_type = "document"
             intake.target_entity_id = str(target.id)
             intake.target_url = f"/documents/{target.id}"
         else:
             target = create_quick_record(db, intake, payload, target_area)
+            create_email_attachments(db, intake, payload)
             intake.target_entity_type = "quick_record"
             intake.target_entity_id = str(target.id)
             intake.target_url = f"/task-board/quick/{target.id}"

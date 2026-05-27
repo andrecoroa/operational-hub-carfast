@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -29,3 +29,19 @@ class EmailIntake(TimestampMixin, Base):
     routing_note: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
     payload_json: Mapped[dict | None] = mapped_column(JSON)
+
+
+class EmailIntakeAttachment(TimestampMixin, Base):
+    __tablename__ = "email_intake_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email_intake_id: Mapped[int] = mapped_column(ForeignKey("email_intakes.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str | None] = mapped_column(String(160))
+    size: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    archive_url: Mapped[str | None] = mapped_column(Text)
+    archive_folder_path: Mapped[str | None] = mapped_column(Text)
+    decision_note: Mapped[str | None] = mapped_column(Text)

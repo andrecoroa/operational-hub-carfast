@@ -20,7 +20,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import Document, DocumentEvent
-from app.models.integrations import EmailIntake
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
@@ -1120,6 +1120,14 @@ DOCUMENT_STATUSES = [
     ("rejected", "Rejeitado / Sem interesse"),
 ]
 DOCUMENT_STATUS_LABELS = dict(DOCUMENT_STATUSES)
+
+DOCUMENT_ATTACHMENT_STATUSES = [
+    ("pending", "Por tratar"),
+    ("classified", "Classificado / a arquivar"),
+    ("archived", "Arquivado"),
+    ("rejected", "Rejeitado / sem interesse"),
+]
+DOCUMENT_ATTACHMENT_STATUS_LABELS = dict(DOCUMENT_ATTACHMENT_STATUSES)
 
 DOCUMENT_SOURCES = [
     ("email", "E-mail"),
@@ -4743,6 +4751,23 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
             .where(DocumentEvent.document_id == document.id)
             .order_by(DocumentEvent.id.desc())
         ).all()
+        linked_email_intake = db.scalar(
+            select(EmailIntake)
+            .where(
+                EmailIntake.target_entity_type == "document",
+                EmailIntake.target_entity_id == str(document.id),
+            )
+            .order_by(EmailIntake.id.desc())
+        )
+        attachments_statement = select(EmailIntakeAttachment).where(EmailIntakeAttachment.document_id == document.id)
+        if linked_email_intake:
+            attachments_statement = select(EmailIntakeAttachment).where(
+                or_(
+                    EmailIntakeAttachment.document_id == document.id,
+                    EmailIntakeAttachment.email_intake_id == linked_email_intake.id,
+                )
+            )
+        attachments = db.scalars(attachments_statement.order_by(EmailIntakeAttachment.id.asc())).all()
         return templates.TemplateResponse(
             request,
             "document_detail.html",
@@ -4750,6 +4775,10 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "user": user,
                 "document": document,
                 "events": events,
+                "linked_email_intake": linked_email_intake,
+                "attachments": attachments,
+                "attachment_statuses": DOCUMENT_ATTACHMENT_STATUSES,
+                "attachment_status_labels": DOCUMENT_ATTACHMENT_STATUS_LABELS,
                 "areas": DOCUMENT_AREAS,
                 "area_labels": DOCUMENT_AREA_LABELS,
                 "document_types": DOCUMENT_TYPES,
@@ -4761,6 +4790,102 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "updated": updated,
             },
         )
+
+
+@web_router.get("/documents/{document_id}/email-original", response_class=HTMLResponse)
+def document_email_original(request: Request, document_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        document = db.get(Document, document_id)
+        intake = db.scalar(
+            select(EmailIntake)
+            .where(
+                EmailIntake.target_entity_type == "document",
+                EmailIntake.target_entity_id == str(document_id),
+            )
+            .order_by(EmailIntake.id.desc())
+        )
+        if not user or not document or not intake:
+            return RedirectResponse(f"/documents/{document_id}", status_code=303)
+        payload = intake.payload_json or {}
+        original_body = payload.get("body_preview") or intake.body_preview or ""
+        return templates.TemplateResponse(
+            request,
+            "email_original.html",
+            {
+                "user": user,
+                "record": None,
+                "document": document,
+                "intake": intake,
+                "original_body": original_body,
+                "return_url": f"/documents/{document.id}",
+                "breadcrumb_label": f"Documento #{document.id}",
+                "active_menu": "documents",
+            },
+        )
+
+
+@web_router.post("/documents/{document_id}/attachments/{attachment_id}/update", response_class=HTMLResponse)
+def document_attachment_update(
+    request: Request,
+    document_id: int,
+    attachment_id: int,
+    status: str = Form("pending"),
+    archive_url: str = Form(""),
+    archive_folder_path: str = Form(""),
+    decision_note: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        attachment = db.get(EmailIntakeAttachment, attachment_id)
+        if not document or not attachment or attachment.document_id != document.id:
+            return RedirectResponse(f"/documents/{document_id}", status_code=303)
+
+        clean_status = status if status in DOCUMENT_ATTACHMENT_STATUS_LABELS else "pending"
+        changes = []
+        if clean_status != attachment.status:
+            changes.append(f"Estado: {DOCUMENT_ATTACHMENT_STATUS_LABELS.get(attachment.status, attachment.status)} -> {DOCUMENT_ATTACHMENT_STATUS_LABELS.get(clean_status, clean_status)}")
+            attachment.status = clean_status
+        clean_archive_url = archive_url.strip()
+        if clean_archive_url != (attachment.archive_url or ""):
+            changes.append("Link arquivado atualizado.")
+            attachment.archive_url = clean_archive_url or None
+        clean_folder = archive_folder_path.strip()
+        if clean_folder != (attachment.archive_folder_path or ""):
+            changes.append("Destino de arquivo atualizado.")
+            attachment.archive_folder_path = clean_folder or None
+        clean_note = decision_note.strip()
+        if clean_note:
+            changes.append(f"Nota: {clean_note}")
+            attachment.decision_note = clean_note
+
+        if changes:
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="attachment.updated",
+                    old_value=attachment.name,
+                    new_value="; ".join(changes),
+                    user_id=user_id,
+                )
+            )
+            record_audit(
+                db,
+                action="document.attachment.updated",
+                entity_type="document",
+                entity_id=document.id,
+                detail=f"Anexo tratado: {attachment.name}",
+                after_json={"attachment_id": attachment.id, "status": attachment.status},
+                user_id=user_id,
+            )
+        db.commit()
+    return RedirectResponse(f"/documents/{document_id}?updated=1", status_code=303)
 
 
 @web_router.post("/documents/{document_id}/update", response_class=HTMLResponse)

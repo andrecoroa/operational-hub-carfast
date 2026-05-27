@@ -20,6 +20,24 @@ from app.services.audit import record_audit
 
 router = APIRouter(prefix="/integrations")
 
+EMAIL_HEADER_RE = re.compile(r"^(de|from|enviado|sent|para|to|cc|assunto|subject)\s*:", re.IGNORECASE)
+EMAIL_CONTACT_RE = re.compile(r"(@|www\.|https?://|\+\d{2,}|\btel\.?:)", re.IGNORECASE)
+SIGNATURE_MARKERS = (
+    "melhores cumprimentos",
+    "best regards",
+    "cumprimentos",
+)
+SIGNATURE_ROLE_LINES = {
+    "administrador",
+    "gestor",
+    "gestor operacional",
+    "diretor",
+    "director",
+    "diretor geral",
+    "director geral",
+    "financeiro",
+}
+
 
 class EmailIntakePayload(BaseModel):
     source_mailbox: Any = Field(...)
@@ -84,8 +102,55 @@ def clean_html_preview(value: Any, length: int = 4000) -> str | None:
     text = re.sub(r"\r", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n", text)
-    text = text.strip()
+    text = reduce_email_noise(text.strip())
     return text[:length] if text else None
+
+
+def is_likely_signature_name(line: str, next_line: str | None) -> bool:
+    if not next_line:
+        return False
+    if EMAIL_CONTACT_RE.search(next_line) or next_line.strip().lower() in SIGNATURE_ROLE_LINES:
+        words = line.split()
+        return 1 <= len(words) <= 4 and all(part[:1].isupper() for part in words if part[:1].isalpha())
+    return False
+
+
+def reduce_email_noise(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return ""
+
+    first_header_index = next((idx for idx, line in enumerate(lines[:12]) if EMAIL_HEADER_RE.match(line)), None)
+    if first_header_index is not None and first_header_index > 0:
+        lines = lines[first_header_index:]
+
+    result: list[str] = []
+    skip_signature = False
+    for idx, line in enumerate(lines):
+        lowered = line.lower()
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else None
+
+        if EMAIL_HEADER_RE.match(line):
+            skip_signature = False
+            continue
+        if any(marker in lowered for marker in SIGNATURE_MARKERS):
+            skip_signature = True
+            continue
+        if skip_signature:
+            continue
+        if EMAIL_CONTACT_RE.search(line):
+            continue
+        if lowered in SIGNATURE_ROLE_LINES:
+            continue
+        if is_likely_signature_name(line, next_line):
+            continue
+
+        result.append(line)
+
+    compacted = "\n".join(result)
+    compacted = re.sub(r"\n{3,}", "\n\n", compacted)
+    return compacted.strip()
 
 
 def clip(value: Any, length: int) -> str | None:

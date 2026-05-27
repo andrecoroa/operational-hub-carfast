@@ -175,10 +175,14 @@
               {% for task in tasks %}
                 {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else none %}
                 {% set open_subtask_count = subtask_counts_by_parent.get(task.id, 0) %}
+                {% set parent_task = parent_tasks_by_id.get(task.parent_task_id) if task.parent_task_id else none %}
                 <article class="task-card-row task-row-fixed">
                   <div class="task-card-main">
                     <div class="task-identity-block">
                       <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                      {% if task.parent_task_id %}
+                        <span class="task-identity-subtype">Subtarefa</span>
+                      {% endif %}
                       <span>Criada por {{ created_user.name if created_user else "Sistema" }}</span>
                       <span>{{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "-" }}</span>
                     </div>
@@ -192,6 +196,9 @@
                       </p>
                       <p class="table-note task-context-line">
                         <span class="task-category-pill category-{{ task.category or 'other' }}">{{ task_category_labels.get(task.category, task.category or "Outro") }}</span>
+                        {% if parent_task %}
+                          <a class="task-parent-link" href="/task-board/{{ parent_task.id }}">Mãe: CF-TASK-{{ "%05d"|format(parent_task.id) }}</a>
+                        {% endif %}
                       </p>
                       {% if task.description %}
                         <p class="table-note table-note-clamp">{{ task.description }}</p>

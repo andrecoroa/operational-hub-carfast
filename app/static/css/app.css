@@ -1851,6 +1851,31 @@ a.metric:hover {
   color: var(--muted);
 }
 
+.task-parent-link,
+.task-identity-subtype {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #f6f8fb;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.task-parent-link {
+  color: #3150b7;
+  text-decoration: none;
+}
+
+.task-identity-subtype {
+  border: 1px solid rgba(65, 99, 218, 0.18);
+  background: #eef3ff;
+  color: #3150b7;
+}
+
 .compact-empty {
   min-height: auto;
   padding: 16px;

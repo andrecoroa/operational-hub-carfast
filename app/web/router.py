@@ -4991,6 +4991,10 @@ def task_board_manage(
         workspace_task_filter = Task.task_type.in_(tuple(workspace_task_codes))
         parent_task_filter = Task.parent_task_id.is_(None)
         subtask_filter = Task.parent_task_id.is_not(None)
+        active_task_filter = (
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+        )
         Subtask = aliased(Task)
         open_subtask_parent_ids = (
             select(Subtask.parent_task_id)
@@ -5004,17 +5008,13 @@ def task_board_manage(
         subtask_parent_ids = select(Subtask.parent_task_id).where(Subtask.parent_task_id.is_not(None)).distinct()
         open_stmt = select(Task).where(
             workspace_task_filter,
-            parent_task_filter,
-            Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            *active_task_filter,
         )
         metrics = {
             "open": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                 )
             )
             or 0,
@@ -5073,9 +5073,7 @@ def task_board_manage(
             "urgent": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                     Task.priority == "urgent",
                 )
             )
@@ -5083,9 +5081,7 @@ def task_board_manage(
             "in_treatment": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                     Task.status.in_(("in_execution", "delegated")),
                 )
             )
@@ -5093,9 +5089,7 @@ def task_board_manage(
             "unassigned": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                     Task.assigned_to_id.is_(None),
                 )
             )
@@ -5103,9 +5097,7 @@ def task_board_manage(
             "overdue": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                     Task.due_on.is_not(None),
                     Task.due_on < today,
                 )
@@ -5114,9 +5106,7 @@ def task_board_manage(
             "due_today": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *active_task_filter,
                     Task.due_on == today,
                 )
             )
@@ -5248,8 +5238,7 @@ def task_board_manage(
         else:
             category_count_conditions = [
                 workspace_task_filter,
-                Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                *active_task_filter,
             ]
 
         if view == "mine":
@@ -5265,7 +5254,6 @@ def task_board_manage(
         elif view == "subtasks":
             category_count_conditions.append(subtask_filter)
         elif view not in {"all", "archived"}:
-            category_count_conditions.append(parent_task_filter)
             if view == "urgent":
                 category_count_conditions.append(Task.priority == "urgent")
             elif view == "unassigned":
@@ -5325,6 +5313,7 @@ def task_board_manage(
         ).all()
         task_ids = [task.id for task in tasks]
         subtask_counts_by_parent = {}
+        parent_tasks_by_id = {}
         if task_ids:
             subtask_counts_by_parent = {
                 parent_id: count
@@ -5339,6 +5328,12 @@ def task_board_manage(
                 ).all()
                 if parent_id is not None
             }
+            parent_task_ids = sorted({task.parent_task_id for task in tasks if task.parent_task_id})
+            if parent_task_ids:
+                parent_tasks_by_id = {
+                    task.id: task
+                    for task in db.scalars(select(Task).where(Task.id.in_(parent_task_ids))).all()
+                }
         quick_records = db.scalars(
             quick_stmt.order_by(QuickRecord.created_at.desc(), QuickRecord.id.desc()).limit(100)
         ).all()
@@ -5433,6 +5428,7 @@ def task_board_manage(
             {
                 "tasks": tasks,
                 "subtask_counts_by_parent": subtask_counts_by_parent,
+                "parent_tasks_by_id": parent_tasks_by_id,
                 "quick_records": quick_records,
                 "task_groups": primary_task_groups,
                 "secondary_task_groups": secondary_task_groups,

@@ -31,7 +31,7 @@
       <div class="success">Documento atualizado.</div>
     {% endif %}
 
-    <section class="document-workbench">
+    <section class="document-workbench document-workbench-single">
       <section class="document-summary-card">
         <div class="document-panel-heading">
           <div>
@@ -50,6 +50,9 @@
           {% if document.source_subject %}<div class="wide"><span>Assunto original</span><strong>{{ document.source_subject }}</strong></div>{% endif %}
         </div>
         <div class="document-source-row">
+          {% if linked_email_intake %}
+            <a class="button-link secondary-link compact-action-link" href="/documents/{{ document.id }}/email-original">Ver e-mail original</a>
+          {% endif %}
           {% if document.storage_key %}
             <a class="button-link secondary-link compact-action-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original recebido</a>
           {% endif %}
@@ -75,45 +78,59 @@
       <section class="document-treatment-card">
         <div class="document-panel-heading">
           <div>
-          <p class="eyebrow">Tratamento</p>
-          <h3>Atualizar</h3>
+          <p class="eyebrow">Tratamento documental</p>
+          <h3>Classificar e arquivar</h3>
+          <span>Define a área, tipologia, estado e destino final num único passo.</span>
           </div>
         </div>
         <form method="post" action="/documents/{{ document.id }}/update" class="form-stack">
-          <label>
-            Área
-            <select name="classification" data-document-area>
-              {% for code, label in areas %}
-                <option value="{{ code }}" {% if document.classification == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Tipologia
-            <select name="document_type" data-document-type>
-              {% for code, label in document_types %}
-                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Estado
-            <select name="status">
-              {% for code, label in statuses %}
-                <option value="{{ code }}" {% if document.status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          {% if can_manage_document_links %}
-            <details class="compact-details admin-only-block" {% if document.external_url %}open{% endif %}>
-              <summary>Arquivo 365 <span>Admin</span></summary>
+          <div class="form-grid two-columns">
+            <label>
+              Área
+              <select name="classification" data-document-area>
+                {% for code, label in areas %}
+                  <option value="{{ code }}" {% if document.classification == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Tipologia
+              <select name="document_type" data-document-type>
+                {% for code, label in document_types %}
+                  <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in statuses %}
+                  <option value="{{ code }}" {% if document.status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            {% if can_manage_document_links %}
               <label>
-                Link arquivado
-                <input type="url" name="url_archive" value="{{ document.external_url or '' }}">
+                Link arquivado 365
+                <input type="url" name="url_archive" value="{{ document.external_url or '' }}" placeholder="https://...">
               </label>
-            </details>
-          {% else %}
-            <input type="hidden" name="url_archive" value="{{ document.external_url or '' }}">
+            {% else %}
+              <input type="hidden" name="url_archive" value="{{ document.external_url or '' }}">
+              <label>
+                Arquivo 365
+                <input type="text" value="{% if document.external_url %}Arquivado{% else %}Por arquivar{% endif %}" disabled>
+              </label>
+            {% endif %}
+          </div>
+          {% if attachments %}
+            <div class="document-treatment-links">
+              <span>Links recebidos para análise</span>
+              <div>
+                {% for attachment in attachments %}
+                  <a href="{{ attachment.url }}" target="_blank" rel="noopener">{{ loop.index }}. {{ attachment.name }}</a>
+                {% endfor %}
+              </div>
+            </div>
           {% endif %}
           <label>
             Nota de tratamento
@@ -124,13 +141,13 @@
       </section>
     </section>
 
-    <section class="document-attachments-section">
+    <section class="document-attachments-section document-links-section">
       <div class="table-heading">
         <div>
           <p class="eyebrow">Entrada documental</p>
-          <h3>Anexos recebidos</h3>
+          <h3>Links recebidos</h3>
         </div>
-        <span>{{ attachments|length }} links</span>
+        <span>{{ attachments|length }} anexos</span>
       </div>
       <div class="document-attachment-list">
         {% for attachment in attachments %}
@@ -143,9 +160,9 @@
               </div>
               <span class="pill status-{{ attachment.status }}">{{ attachment_status_labels.get(attachment.status, attachment.status) }}</span>
               <div class="button-row document-attachment-actions">
-                <a class="button-link secondary-link compact-action-link" href="{{ attachment.url }}" target="_blank" rel="noopener">Abrir original</a>
+                <a class="button-link secondary-link compact-action-link" href="{{ attachment.url }}" target="_blank" rel="noopener">Ver anexo</a>
                 {% if can_manage_document_links and attachment.archive_url %}
-                <a class="button-link secondary-link compact-action-link" href="{{ attachment.archive_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
+                <a class="button-link secondary-link compact-action-link" href="{{ attachment.archive_url }}" target="_blank" rel="noopener">Ver arquivo</a>
                 {% endif %}
               </div>
             </div>
@@ -155,39 +172,6 @@
                 {% if attachment.decision_note %}<br><strong>Nota:</strong> {{ attachment.decision_note }}{% endif %}
               </p>
             {% endif %}
-            <details class="workshop-record-group document-inline-treatment">
-              <summary>Tratar</summary>
-              <form method="post" action="/documents/{{ document.id }}/attachments/{{ attachment.id }}/update" class="form-stack">
-                <div class="form-grid two-columns">
-                  <label>
-                    Estado
-                    <select name="status">
-                      {% for code, label in attachment_statuses %}
-                        <option value="{{ code }}" {% if attachment.status == code %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Link arquivado
-                    {% if can_manage_document_links %}
-                      <input type="url" name="archive_url" value="{{ attachment.archive_url or '' }}" placeholder="https://...">
-                    {% else %}
-                      <input type="hidden" name="archive_url" value="{{ attachment.archive_url or '' }}">
-                      <input type="text" value="{% if attachment.archive_url %}Arquivado no 365{% else %}Sem link de arquivo{% endif %}" disabled>
-                    {% endif %}
-                  </label>
-                </div>
-                <label>
-                  Caminho final / destino
-                  <input type="text" name="archive_folder_path" value="{{ attachment.archive_folder_path or document.folder_path or '' }}">
-                </label>
-                <label>
-                  Nota de tratamento
-                  <textarea name="decision_note" rows="3" placeholder="Ex.: assinatura rejeitada, fatura classificada, aguarda arquivo final..."></textarea>
-                </label>
-                <button type="submit">Guardar tratamento</button>
-              </form>
-            </details>
           </article>
         {% else %}
           <p class="muted">Sem anexos individuais recebidos. Usa o link original/lista enquanto a automação não enviar a lista de anexos.</p>

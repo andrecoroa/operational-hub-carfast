@@ -3225,6 +3225,10 @@ a.metric:hover {
   align-items: start;
 }
 
+.document-workbench-single {
+  grid-template-columns: minmax(0, 0.85fr) minmax(460px, 1fr);
+}
+
 .document-workbench .document-summary-card,
 .document-workbench .document-treatment-card,
 .document-attachments-section {
@@ -3254,6 +3258,12 @@ a.metric:hover {
 .document-panel-heading h3 {
   margin: 3px 0 0;
   font-size: 22px;
+}
+
+.document-panel-heading span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
 }
 
 .document-fact-grid {
@@ -3357,6 +3367,42 @@ a.metric:hover {
   margin-top: 10px;
 }
 
+.document-treatment-links {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.document-treatment-links > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.document-treatment-links div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.document-treatment-links a {
+  max-width: 280px;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #fff4f0;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .phase-record-preview {
   display: grid;
   gap: 8px;
@@ -3407,6 +3453,10 @@ a.metric:hover {
   padding: 0;
 }
 
+.document-links-section {
+  margin-top: 14px;
+}
+
 .document-attachments-section > .table-heading {
   min-height: 82px;
   padding: 18px 22px;
@@ -3432,6 +3482,7 @@ a.metric:hover {
 
 .document-attachment-summary h4 {
   margin: 6px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .document-attachment-actions {

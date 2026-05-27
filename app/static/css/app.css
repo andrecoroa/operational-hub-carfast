@@ -1970,14 +1970,21 @@ a.metric:hover {
   align-items: start;
 }
 
-.task-management-split {
+.task-management-split,
+.task-management-stack {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(500px, 0.95fr);
   gap: 18px;
   align-items: start;
 }
 
-.task-management-split .task-board-section-heading {
+.task-management-stack {
+  grid-template-columns: 1fr;
+  gap: 22px;
+}
+
+.task-management-split .task-board-section-heading,
+.task-management-stack .task-board-section-heading {
   min-height: 54px;
 }
 
@@ -2073,12 +2080,12 @@ a.metric:hover {
 }
 
 .task-list-header-main {
-  grid-template-columns: 136px minmax(220px, 1fr) 142px 68px 124px 82px 30px;
-  column-gap: 9px;
+  grid-template-columns: 170px minmax(380px, 1fr) 220px 88px 160px 112px 32px;
+  column-gap: 16px;
 }
 
 .quick-record-header {
-  grid-template-columns: 118px minmax(115px, 1fr) 76px 74px 112px 74px 30px;
+  grid-template-columns: 140px minmax(240px, 1fr) 130px 120px 140px 100px 34px;
   column-gap: 10px;
   padding: 0 14px;
 }
@@ -2109,11 +2116,6 @@ a.metric:hover {
 .task-card-row.task-row-fixed {
   grid-template-columns: 170px minmax(380px, 1fr) 220px 88px 160px 112px 32px;
   column-gap: 16px;
-}
-
-.task-management-split .task-card-row.task-row-fixed {
-  grid-template-columns: 136px minmax(220px, 1fr) 142px 68px 124px 82px 30px;
-  column-gap: 9px;
 }
 
 .task-card-row.task-row-fixed .task-card-main,
@@ -2164,7 +2166,7 @@ a.metric:hover {
 
 .quick-record-row {
   display: grid;
-  grid-template-columns: 118px minmax(115px, 1fr) 76px 74px 112px 74px 30px;
+  grid-template-columns: 140px minmax(240px, 1fr) 130px 120px 140px 100px 34px;
   column-gap: 10px;
   align-items: center;
   min-height: 56px;

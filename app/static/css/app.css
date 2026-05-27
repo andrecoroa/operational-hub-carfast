@@ -2560,6 +2560,13 @@ a.metric:hover {
   text-transform: none;
 }
 
+.inline-action-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .task-description-box p {
   margin: 8px 0 0;
   white-space: pre-wrap;

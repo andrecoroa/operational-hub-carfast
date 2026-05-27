@@ -34,6 +34,16 @@
             {% endif %}
           </strong>
         </div>
+        <div>
+          <span>Anexos / lista</span>
+          <strong>
+            {% if intake.attachments_url or intake.list_item_url %}
+              <a class="table-link" href="{{ intake.attachments_url or intake.list_item_url }}" target="_blank" rel="noopener noreferrer">Abrir anexos</a>
+            {% else %}
+              -
+            {% endif %}
+          </strong>
+        </div>
       </div>
 
       <div class="email-original-viewer">

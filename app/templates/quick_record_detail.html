@@ -62,7 +62,12 @@
             <div class="description-heading-row">
               <span>Descrição</span>
               {% if linked_email_intake %}
-                <a class="button-link secondary-link compact-action-link" href="/task-board/quick/{{ record.id }}/email-original">Ver e-mail original</a>
+                <span class="inline-action-buttons">
+                  <a class="button-link secondary-link compact-action-link" href="/task-board/quick/{{ record.id }}/email-original">Ver e-mail original</a>
+                  {% if linked_email_intake.attachments_url or linked_email_intake.list_item_url %}
+                    <a class="button-link secondary-link compact-action-link" href="{{ linked_email_intake.attachments_url or linked_email_intake.list_item_url }}" target="_blank" rel="noopener noreferrer">Ver anexos</a>
+                  {% endif %}
+                </span>
               {% endif %}
             </div>
             <p>{{ record.description or "Sem descrição registada." }}</p>

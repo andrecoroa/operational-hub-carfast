@@ -40,54 +40,68 @@
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
-    <section class="workshop-page-grid">
+    <section class="workshop-page-grid task-detail-page-grid">
       <div class="workshop-main-column">
         <article class="section workshop-summary-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Resumo</p>
             <h3>Dados da tarefa</h3>
           </div>
-          <div class="task-info-grid workshop-info-grid">
-            <div><span>Data limite</span><strong>{{ task.due_on or "-" }}</strong></div>
-            <div><span>Estação</span><strong>{{ task.station or "-" }}</strong></div>
-            <div><span>Responsável</span><strong>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "-") }}</strong></div>
-            <div><span>Execução delegada a</span><strong>{{ delegated_user.name if delegated_user else (delegated_team.name if delegated_team else "-") }}</strong></div>
-          </div>
-          <div class="task-info-grid workshop-info-grid">
-            <div><span>Cliente</span><strong>{{ task.customer_name or "-" }}</strong></div>
-            <div><span>Contacto</span><strong>{{ task.customer_contact or task.customer_email or task.customer_phone or "-" }}</strong></div>
-            <div><span>Matrícula</span><strong>{{ task.plate or "-" }}</strong></div>
-            <div>
-              <span>Ligação</span>
-              <strong>
-                {% if linked_vehicle %}
-                  <a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a>
-                {% else %}
-                  -
-                {% endif %}
-              </strong>
-            </div>
+          <div class="task-summary-chips">
+            <span>{{ task_category_labels.get(task.category, task.category or "Sem classificação") }}</span>
+            <span>{{ task_subcategory_labels.get(task.subcategory, task.subcategory or "A definir") }}</span>
+            <span>{{ task_source_labels.get(task.source, task.source or "Manual") }}</span>
           </div>
           <div class="task-description-box">
             <span>Descrição</span>
             <p>{{ task.description or "Sem descrição registada." }}</p>
           </div>
-          <div class="task-info-grid workshop-info-grid">
-            <div><span>Reserva</span><strong>{{ task.reservation_number or "-" }}</strong></div>
-            <div><span>Contrato</span><strong>{{ task.contract_number or "-" }}</strong></div>
-            <div><span>Classificação</span><strong>{{ task_category_labels.get(task.category, task.category or "-") }}</strong></div>
-            <div><span>Subclassificação</span><strong>{{ task_subcategory_labels.get(task.subcategory, task.subcategory or "-") }}</strong></div>
-            <div><span>Origem</span><strong>{{ task_source_labels.get(task.source, task.source or "Manual") }}</strong></div>
-            {% if task.status == "waiting" %}
-              <div><span>Motivo de espera</span><strong>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason or "-") }}</strong></div>
-              <div><span>A aguardar por</span><strong>{{ waiting_for_user.name if waiting_for_user else (waiting_for_team.name if waiting_for_team else "-") }}</strong></div>
-              <div><span>Detalhe</span><strong>{{ task.waiting_reason_detail or "-" }}</strong></div>
-            {% endif %}
+          <div class="task-summary-sections">
+            <section>
+              <h4>Operação</h4>
+              <dl>
+                <div><dt>Estado</dt><dd>{{ task_status_labels.get(task.status, task.status) }}</dd></div>
+                <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
+                <div><dt>Data limite</dt><dd>{{ task.due_on or "Sem SLA" }}</dd></div>
+              </dl>
+            </section>
+            <section>
+              {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else None %}
+              <h4>Intervenientes</h4>
+              <dl>
+                <div><dt>Criada por</dt><dd>{{ created_user.name if created_user else "Sistema" }}</dd></div>
+                <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Por atribuir") }}</dd></div>
+                {% if delegated_user or delegated_team %}
+                  <div><dt>Delegada a</dt><dd>{{ delegated_user.name if delegated_user else delegated_team.name }}</dd></div>
+                {% endif %}
+                {% if waiting_for_user or waiting_for_team %}
+                  <div><dt>A aguardar por</dt><dd>{{ waiting_for_user.name if waiting_for_user else waiting_for_team.name }}</dd></div>
+                {% endif %}
+              </dl>
+            </section>
+            <section>
+              <h4>Dados adicionais</h4>
+              {% if task.station or task.customer_name or task.customer_contact or task.customer_email or task.customer_phone or task.plate or linked_vehicle or task.reservation_number or task.contract_number or task.waiting_reason or task.waiting_reason_detail %}
+                <dl>
+                  {% if task.station %}<div><dt>Estação</dt><dd>{{ task.station }}</dd></div>{% endif %}
+                  {% if task.customer_name %}<div><dt>Cliente</dt><dd>{{ task.customer_name }}</dd></div>{% endif %}
+                  {% if task.customer_contact or task.customer_email or task.customer_phone %}<div><dt>Contacto</dt><dd>{{ task.customer_contact or task.customer_email or task.customer_phone }}</dd></div>{% endif %}
+                  {% if task.plate %}<div><dt>Matrícula</dt><dd>{{ task.plate }}</dd></div>{% endif %}
+                  {% if linked_vehicle %}<div><dt>Ligação</dt><dd><a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a></dd></div>{% endif %}
+                  {% if task.reservation_number %}<div><dt>Reserva</dt><dd>{{ task.reservation_number }}</dd></div>{% endif %}
+                  {% if task.contract_number %}<div><dt>Contrato</dt><dd>{{ task.contract_number }}</dd></div>{% endif %}
+                  {% if task.status == "waiting" and task.waiting_reason %}<div><dt>Motivo de espera</dt><dd>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason) }}</dd></div>{% endif %}
+                  {% if task.status == "waiting" and task.waiting_reason_detail %}<div><dt>Detalhe</dt><dd>{{ task.waiting_reason_detail }}</dd></div>{% endif %}
+                </dl>
+              {% else %}
+                <p class="muted">Sem dados adicionais.</p>
+              {% endif %}
+            </section>
           </div>
         </article>
 
-        <article class="section workshop-summary-card">
-          <div class="table-heading flat-heading">
+        <article class="section workshop-summary-card task-relations-card">
+          <div class="table-heading flat-heading compact-task-heading">
             <div>
               <p class="eyebrow">Relações</p>
               <h3>Tarefa mãe e subtarefas</h3>
@@ -123,21 +137,20 @@
             {% else %}
               <div class="task-board-empty compact-empty">
                 <p>Sem subtarefas.</p>
-                <small>Cria subtarefas quando for preciso envolver outra pessoa ou equipa sem perder o contexto da tarefa principal.</small>
               </div>
             {% endfor %}
           </div>
         </article>
 
         <article class="section workshop-feed">
-          <div class="table-heading flat-heading">
+          <div class="table-heading flat-heading compact-task-heading">
             <div>
               <p class="eyebrow">Acompanhamento</p>
               <h3>Registos da tarefa</h3>
             </div>
           </div>
 
-          <details class="workshop-record-group" {% if comments %}open{% endif %}>
+          <details class="workshop-record-group">
             <summary>Comentários <span>{{ comments|length }}</span></summary>
             <div class="event-list">
               {% for item in comments %}
@@ -155,7 +168,7 @@
             </div>
           </details>
 
-          <details class="workshop-record-group" {% if documents %}open{% endif %}>
+          <details class="workshop-record-group">
             <summary>Documentos <span>{{ documents|length }}</span></summary>
             <div class="event-list">
               {% for document in documents %}
@@ -179,7 +192,7 @@
             </div>
           </details>
 
-          <details class="workshop-record-group" {% if history %}open{% endif %}>
+          <details class="workshop-record-group">
             <summary>Histórico <span>{{ history|length }}</span></summary>
             <div class="event-list">
               {% for item in history %}
@@ -201,11 +214,13 @@
 
       <aside class="workshop-side-column">
         {% if can_write_workspace %}
-        <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack workshop-flow-card">
+        <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack workshop-flow-card task-update-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Gestão</p>
             <h3>Atualizar tarefa</h3>
           </div>
+          <section class="task-update-section">
+            <h4>Estado e prioridade</h4>
           <div class="compact-form-grid two-col">
             <label>
               Estado
@@ -224,23 +239,36 @@
               </select>
             </label>
             <label>
-              Classificação
-              <select name="category" data-task-category>
-                {% for code, label in task_categories %}
-                  <option value="{{ code }}" {% if task.category == code %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>
-              Subclassificação
-              <select name="subcategory" data-task-subcategory data-current-subcategory="{{ task.subcategory or '' }}" required></select>
-            </label>
-            <label>
               Data limite
               <input type="date" name="due_on" value="{{ task.due_on or '' }}">
             </label>
+          </div>
+          </section>
+
+          <section class="task-update-section">
+            <h4>Classificação</h4>
+            <div class="compact-form-grid two-col">
+              <label>
+                Classificação
+                <select name="category" data-task-category>
+                  {% for code, label in task_categories %}
+                    <option value="{{ code }}" {% if task.category == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Subclassificação
+                <select name="subcategory" data-task-subcategory data-current-subcategory="{{ task.subcategory or '' }}" required></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="task-update-section">
+            <h4>Responsabilidade</h4>
+            <div class="compact-form-grid two-col">
             <label>
               Responsável
+              <small>Quem valida e fecha a tarefa.</small>
               <select name="responsible_to">
                 <option value="">Por atribuir</option>
                 <optgroup label="Pessoas">
@@ -259,6 +287,7 @@
             </label>
             <label>
               Execução delegada a
+              <small>Quem executa, mas não fecha.</small>
               <select name="delegated_to">
                 <option value="">Sem execução delegada</option>
                 <optgroup label="Pessoas">
@@ -307,12 +336,17 @@
               <input type="text" name="waiting_reason_detail" maxlength="500" value="{{ task.waiting_reason_detail or '' }}" placeholder="Obrigatório se o motivo for outro">
             </label>
           </div>
+          </section>
+
           <input type="hidden" name="task_type" value="{{ task.task_type }}">
-          <label>
-            Estação
-            <input type="text" name="station" maxlength="120" value="{{ task.station or '' }}">
-          </label>
-          <button type="submit">Atualizar tarefa</button>
+          <section class="task-update-section">
+            <h4>Dados adicionais</h4>
+            <label>
+              Estação
+              <input type="text" name="station" maxlength="120" value="{{ task.station or '' }}">
+            </label>
+          </section>
+          <button type="submit">Guardar alterações</button>
         </form>
 
         <div class="workshop-actions">

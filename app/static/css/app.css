@@ -3015,6 +3015,11 @@ a.metric:hover {
   margin-top: 18px;
 }
 
+.task-detail-page-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 20px;
+}
+
 .workshop-main-column,
 .workshop-side-column {
   display: grid;
@@ -3031,6 +3036,147 @@ a.metric:hover {
 .workshop-summary-card,
 .workshop-flow-card {
   margin-top: 0;
+}
+
+.task-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.task-summary-chips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #f6f8fb;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.task-summary-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.task-summary-sections section {
+  min-width: 0;
+}
+
+.task-summary-sections h4,
+.task-update-section h4 {
+  margin: 0 0 10px;
+  color: var(--brand-dark);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.task-summary-sections dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.task-summary-sections div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.task-summary-sections dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-summary-sections dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.compact-task-heading {
+  min-height: auto;
+  padding: 14px 18px;
+}
+
+.compact-task-heading h3 {
+  font-size: 18px;
+}
+
+.compact-task-heading .button-link {
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.task-relations-card .subtask-parent-banner {
+  margin-top: 0;
+}
+
+.task-relations-card .subtask-list {
+  margin-top: 12px;
+}
+
+.task-relations-card .compact-empty {
+  justify-items: start;
+  min-height: auto;
+  padding: 10px 0 0;
+}
+
+.task-relations-card .compact-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.task-update-card {
+  padding: 18px;
+}
+
+.task-update-card .compact-form-grid {
+  gap: 10px;
+}
+
+.task-update-card label {
+  gap: 6px;
+}
+
+.task-update-card label small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-update-card input,
+.task-update-card select {
+  min-height: 42px;
+}
+
+.task-update-card button[type="submit"] {
+  min-height: 46px;
+}
+
+.task-update-section {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.task-update-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .workshop-bsi-workspace {

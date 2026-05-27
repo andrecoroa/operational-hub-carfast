@@ -204,12 +204,12 @@
                 {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else none %}
                 {% set open_subtask_count = subtask_counts_by_parent.get(task.id, 0) %}
                 {% set parent_task = parent_tasks_by_id.get(task.parent_task_id) if task.parent_task_id else none %}
-                <article class="task-card-row task-row-fixed">
+                <article class="task-card-row task-row-fixed {% if open_subtask_count %}has-open-subtasks{% endif %}">
                   <div class="task-card-main">
                     <div class="task-identity-block">
                       <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
                       {% if open_subtask_count %}
-                        <span>{{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}</span>
+                        <span class="task-subtask-alert">{{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}</span>
                       {% elif task.parent_task_id %}
                         <span>Subtarefa</span>
                       {% else %}

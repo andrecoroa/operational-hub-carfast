@@ -2423,6 +2423,15 @@ a.metric:hover {
   background: #fbfcfc;
 }
 
+.task-card-row.has-open-subtasks {
+  border-left: 4px solid #b24634;
+  background: linear-gradient(90deg, rgba(178, 70, 52, 0.08), #ffffff 26%);
+}
+
+.task-card-row.has-open-subtasks:hover {
+  background: linear-gradient(90deg, rgba(178, 70, 52, 0.12), #fbfcfc 30%);
+}
+
 .task-card-row .task-card-main {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
@@ -2519,6 +2528,17 @@ a.metric:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-identity-block .task-subtask-alert {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #fff1e6;
+  color: #8b2f20;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .task-card-content {

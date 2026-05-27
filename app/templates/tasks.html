@@ -120,13 +120,13 @@
       <div class="task-content-tabs" aria-label="Conteúdo">
         <span>Conteúdo</span>
         <button type="submit" name="content" value="tasks" class="{% if filters.content == 'tasks' %}active{% endif %}">
-          Tarefas <strong>{{ tasks|length }}</strong>
+          Tarefas <strong>{{ task_result_count }}</strong>
         </button>
         <button type="submit" name="content" value="quick" class="{% if filters.content == 'quick' %}active{% endif %}">
           Registos rápidos <strong>{{ quick_records|length }}</strong>
         </button>
         <button type="submit" name="content" value="all" class="{% if filters.content == 'all' %}active{% endif %}">
-          Tudo <strong>{{ tasks|length + quick_records|length }}</strong>
+          Tudo <strong>{{ task_result_count + quick_records|length }}</strong>
         </button>
       </div>
 
@@ -179,7 +179,7 @@
             <p class="eyebrow">Execução</p>
             <h3>{% if filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas abertas{% endif %}</h3>
           </div>
-          <span>{{ tasks|length }} tarefas nesta vista · {{ metrics.open_subtasks }} subtarefas abertas</span>
+          <span>{{ task_result_count }} tarefas nesta vista · {{ metrics.open_subtasks }} subtarefas abertas</span>
         </div>
 
         <section class="task-board-groups task-management-groups">
@@ -189,7 +189,7 @@
                 <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "mine" %}Minhas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "with_subtasks" %}Com subtarefas{% elif filters.view == "subtasks" %}Subtarefas{% else %}Em aberto{% endif %}</p>
                 <h3>{% if filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas{% endif %}</h3>
               </div>
-              <span>{{ tasks|length }}</span>
+              <span>{{ task_result_count }}</span>
             </div>
             <div class="task-list-header task-list-header-main" aria-hidden="true">
               <span>ID / Relação / Classificação</span>

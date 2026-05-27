@@ -5518,6 +5518,7 @@ def task_board_manage(
                 Task.created_at.desc(),
             ).limit(100)
         ).all()
+        task_result_count = len(raw_tasks)
         task_ids = [task.id for task in raw_tasks]
         subtask_counts_by_parent = {}
         parent_tasks_by_id = {}
@@ -5663,6 +5664,7 @@ def task_board_manage(
             "tasks.html",
             {
                 "tasks": tasks,
+                "task_result_count": task_result_count,
                 "subtask_counts_by_parent": subtask_counts_by_parent,
                 "parent_tasks_by_id": parent_tasks_by_id,
                 "quick_records": quick_records,

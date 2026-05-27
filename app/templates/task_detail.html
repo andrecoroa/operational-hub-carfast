@@ -4,6 +4,7 @@
   {% set active_menu = "tasks" %}
   {% include "_sidebar.html" %}
   <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
     <header class="topbar">
       <div>
         <p class="eyebrow">Gestão de tarefa</p>
@@ -182,8 +183,8 @@
                     &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
                   </p>
                   <p>{{ document.folder_path or "-" }}</p>
-                  {% if document.external_url %}
-                    <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir link</a></p>
+                  {% if can_manage_document_links and document.external_url %}
+                    <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
                   {% endif %}
                 </article>
               {% else %}

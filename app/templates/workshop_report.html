@@ -4,6 +4,7 @@
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
   <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
     <header class="topbar">
       <div>
         <p class="eyebrow">Relatório de oficina</p>
@@ -156,12 +157,12 @@
               {% for document in documents %}
                 <article class="event-item">
                   <div>
-                    <strong>{{ document.title or document.original_name }}</strong>
+                    <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
                     <span>{{ document_status_labels.get(document.status, document.status) }}</span>
                   </div>
                   <p>{{ document_area_labels.get(document.classification, document.classification or "-") }} &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}</p>
                   <p>{{ document.folder_path or "-" }}</p>
-                  {% if document.external_url %}<p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir documento</a></p>{% endif %}
+                  {% if can_manage_document_links and document.external_url %}<p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>{% endif %}
                 </article>
               {% else %}
                 <p class="muted">Sem documentos associados.</p>

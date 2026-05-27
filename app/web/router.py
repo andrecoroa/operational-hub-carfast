@@ -828,6 +828,39 @@ def normalize_task_workspace(workspace: str | None) -> str:
     return workspace if workspace in TASK_WORKSPACE_CONFIG else "operational"
 
 
+def task_workspace_read_permissions(workspace: str | None) -> set[str]:
+    clean_workspace = normalize_task_workspace(workspace)
+    return {f"tasks.{clean_workspace}.read", f"tasks.{clean_workspace}.write", "admin.manage"}
+
+
+def task_workspace_write_permissions(workspace: str | None) -> set[str]:
+    clean_workspace = normalize_task_workspace(workspace)
+    return {f"tasks.{clean_workspace}.write", "admin.manage"}
+
+
+def user_can_access_task_workspace(db, user: User | None, workspace: str | None, *, write: bool = False) -> bool:
+    if not user or not user.active:
+        return False
+    permissions = get_user_permission_codes(db, user)
+    required = task_workspace_write_permissions(workspace) if write else task_workspace_read_permissions(workspace)
+    return bool(permissions.intersection(required))
+
+
+def user_task_workspace_codes(db, user: User | None, *, write: bool = False) -> list[str]:
+    return [
+        workspace_code
+        for workspace_code in TASK_WORKSPACE_CONFIG
+        if user_can_access_task_workspace(db, user, workspace_code, write=write)
+    ]
+
+
+def user_accessible_task_type_codes(db, user: User | None) -> list[str]:
+    task_types: list[str] = []
+    for workspace_code in user_task_workspace_codes(db, user):
+        task_types.extend(TASK_WORKSPACE_TASK_TYPES[workspace_code])
+    return task_types
+
+
 def task_workspace_manage_url(workspace: str | None) -> str:
     clean_workspace = normalize_task_workspace(workspace)
     if clean_workspace == "operational":
@@ -1236,12 +1269,20 @@ def dashboard(request: Request):
         if not user:
             return RedirectResponse("/login", status_code=303)
         today = date.today()
+        accessible_task_types = user_accessible_task_type_codes(db, user)
+        task_access_condition = (
+            Task.task_type.in_(tuple(accessible_task_types))
+            if accessible_task_types
+            else Task.id == -1
+        )
         open_task_condition = (
+            task_access_condition,
             Task.closed_at.is_(None),
             ~Task.status.in_(TASK_ARCHIVE_STATUSES),
             Task.parent_task_id.is_(None),
         )
         open_subtask_condition = (
+            task_access_condition,
             Task.closed_at.is_(None),
             ~Task.status.in_(TASK_ARCHIVE_STATUSES),
             Task.parent_task_id.is_not(None),
@@ -1324,7 +1365,7 @@ def dashboard(request: Request):
         ).all()
         recent_tasks = db.scalars(
             select(Task)
-            .where(Task.parent_task_id.is_(None))
+            .where(task_access_condition, Task.parent_task_id.is_(None))
             .order_by(Task.created_at.desc(), Task.id.desc())
             .limit(3)
         ).all()
@@ -4815,7 +4856,16 @@ def task_center(request: Request):
         current_user = db.get(User, user_id)
         today = date.today()
         workspace_metrics = {}
+        authorized_workspaces = [
+            workspace_code
+            for workspace_code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, current_user, workspace_code)
+        ]
+        if not authorized_workspaces:
+            return RedirectResponse("/", status_code=303)
         for workspace_code, workspace_config in TASK_WORKSPACE_CONFIG.items():
+            if workspace_code not in authorized_workspaces:
+                continue
             workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
             Subtask = aliased(Task)
             open_subtask_parent_ids = (
@@ -4893,6 +4943,7 @@ def task_center(request: Request):
             "task_center.html",
             {
                 "workspace_metrics": workspace_metrics,
+                "authorized_workspaces": authorized_workspaces,
                 "current_user": current_user,
             },
         )
@@ -4929,6 +4980,10 @@ def task_board_manage(
     manage_url = task_workspace_manage_url(current_workspace)
 
     with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, current_workspace):
+            return RedirectResponse("/task-board", status_code=303)
+        can_write_workspace = user_can_access_task_workspace(db, current_user, current_workspace, write=True)
         today = date.today()
         today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
         tomorrow_start = datetime.fromtimestamp(today_start.timestamp() + 86400, UTC)
@@ -5390,6 +5445,7 @@ def task_board_manage(
                 "users": users,
                 "assignable_users": assignable_users,
                 "current_user": user_by_id.get(user_id),
+                "can_write_workspace": can_write_workspace,
                 "user_by_id": user_by_id,
                 "teams": teams,
                 "team_by_id": team_by_id,
@@ -5453,6 +5509,8 @@ def task_new_form(
         if parent_task:
             current_workspace = workspace_for_task_type(parent_task.task_type)
             workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
+        if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         assignable_users = assignable_users_for_workspace(users, current_workspace)
         teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -5569,6 +5627,10 @@ def quick_record_create(
         return RedirectResponse("/login", status_code=303)
 
     clean_workspace = workspace if workspace in TASK_WORKSPACE_LABELS else "operational"
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, clean_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
     allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE.get(clean_workspace, [])}
     if record_type not in allowed_record_types:
         record_type = "other"
@@ -5595,7 +5657,7 @@ def quick_record_create(
         with SessionLocal() as db:
             current_user = db.get(User, user_id)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
-            assignable_users = assignable_users_for_workspace(users, current_workspace)
+            assignable_users = assignable_users_for_workspace(users, clean_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
         return templates.TemplateResponse(
             request,
@@ -5676,6 +5738,9 @@ def quick_record_detail(
         if not record:
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, workspace):
+            return RedirectResponse("/task-board", status_code=303)
         linked_task = db.get(Task, record.converted_task_id) if record.converted_task_id else None
         linked_email_intake = None
         if record.entity_type == "email_intake" and record.entity_id:
@@ -5702,11 +5767,12 @@ def quick_record_detail(
                 "linked_task": linked_task,
                 "linked_email_intake": linked_email_intake,
                 "linked_vehicle": linked_vehicle,
+                "can_write_workspace": user_can_access_task_workspace(db, current_user, workspace, write=True),
                 "users": users,
                 "assignable_users": assignable_users,
                 "user_by_id": user_by_id,
                 "teams": teams,
-                "current_user": db.get(User, user_id),
+                "current_user": current_user,
                 "updated": updated,
                 "closed": closed,
                 "converted": converted,
@@ -5734,6 +5800,10 @@ def quick_record_email_original(request: Request, record_id: int):
         record = db.get(QuickRecord, record_id)
         if not record or record.entity_type != "email_intake" or not record.entity_id:
             return RedirectResponse(f"/task-board/quick/{record_id}", status_code=303)
+        workspace = normalize_task_workspace(record.workspace)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, workspace):
+            return RedirectResponse("/task-board", status_code=303)
         try:
             intake_id = int(record.entity_id)
         except ValueError:
@@ -5750,7 +5820,7 @@ def quick_record_email_original(request: Request, record_id: int):
                 "record": record,
                 "intake": intake,
                 "original_body": original_body,
-                "current_user": db.get(User, user_id),
+                "current_user": current_user,
             },
         )
 
@@ -5781,6 +5851,9 @@ def quick_record_update(
         if not record:
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE[workspace]}
         if record_type not in allowed_record_types:
             record_type = record.record_type or "other"
@@ -5832,6 +5905,9 @@ def quick_record_close(request: Request, record_id: int):
         if not record:
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         record.status = "closed"
         record.closed_at = record.closed_at or datetime.now(UTC)
         record_audit(
@@ -5869,6 +5945,9 @@ def quick_record_convert(
         if not record:
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         workspace_config = TASK_WORKSPACE_CONFIG[workspace]
         allowed_task_types = set(TASK_WORKSPACE_TASK_TYPES[workspace])
         if task_type not in allowed_task_types:
@@ -5999,6 +6078,11 @@ def task_create(
         with SessionLocal() as db:
             current_user = db.get(User, user_id)
             parent_task = db.get(Task, parsed_parent_task_id) if parsed_parent_task_id else None
+            if parent_task:
+                current_workspace = workspace_for_task_type(parent_task.task_type)
+                workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
+            if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
+                return RedirectResponse("/task-board", status_code=303)
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             assignable_users = assignable_users_for_workspace(users, current_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
@@ -6039,6 +6123,12 @@ def task_create(
     with SessionLocal() as db:
         clean_plate = plate.strip().upper().replace(" ", "")
         parent_task = db.get(Task, parsed_parent_task_id) if parsed_parent_task_id else None
+        if parent_task:
+            current_workspace = workspace_for_task_type(parent_task.task_type)
+            workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
         allowed_workspace_task_types = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
@@ -6201,6 +6291,8 @@ def task_detail(
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
         task_workspace = workspace_for_task_type(task.task_type)
+        if not user_can_access_task_workspace(db, current_user, task_workspace):
+            return RedirectResponse("/task-board", status_code=303)
         task_manage_url = task_workspace_manage_url(task_workspace)
         comments = db.scalars(
             select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at.desc())
@@ -6264,6 +6356,7 @@ def task_detail(
                 "task_workspace": task_workspace,
                 "task_workspace_label": TASK_WORKSPACE_LABELS[task_workspace],
                 "task_manage_url": task_manage_url,
+                "can_write_workspace": user_can_access_task_workspace(db, current_user, task_workspace, write=True),
                 "comments": comments,
                 "history": history,
                 "linked_vehicle": linked_vehicle,
@@ -6348,7 +6441,14 @@ def task_update(
             task_type = task.task_type or "operational_task"
         current_user = db.get(User, user_id)
         can_supervise = can_supervise_task(db, current_user, task)
+        current_workspace = workspace_for_task_type(task.task_type)
         target_workspace = workspace_for_task_type(task_type)
+        if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
+        if target_workspace != current_workspace and not user_can_access_task_workspace(
+            db, current_user, target_workspace, write=True
+        ):
+            return RedirectResponse("/task-board", status_code=303)
         clean_category = (category.strip() if category else None) or task.category or "operations"
         if clean_category not in TASK_CATEGORY_LABELS:
             clean_category = task.category or "operations"
@@ -6537,6 +6637,10 @@ def task_add_comment(
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        task_workspace = workspace_for_task_type(task.task_type)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
 
         if not clean_comment:
             comments = db.scalars(
@@ -6562,7 +6666,6 @@ def task_add_comment(
             ).all()
             users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
             user_by_id = {item.id: item for item in users}
-            task_workspace = workspace_for_task_type(task.task_type)
             assignable_users = assignable_users_for_workspace(users, task_workspace)
             teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
             assigned_user = db.get(User, task.assigned_to_id) if task.assigned_to_id else None
@@ -6585,6 +6688,8 @@ def task_add_comment(
                     "documents": documents,
                     "users": users,
                     "assignable_users": assignable_users,
+                    "current_user": current_user,
+                    "can_write_workspace": True,
                     "user_by_id": user_by_id,
                     "teams": teams,
                     "assigned_user": assigned_user,
@@ -6660,6 +6765,10 @@ def task_create_document(
         task = db.get(Task, task_id)
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
+        task_workspace = workspace_for_task_type(task.task_type)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate)) if task.plate else None
         if classification not in DOCUMENT_AREA_LABELS:
             classification = "general_archive"
@@ -6704,8 +6813,10 @@ def task_close(request: Request, task_id: int):
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         task_workspace = workspace_for_task_type(task.task_type) if task else "operational"
+        current_user = db.get(User, user_id)
+        if task and not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
         if task and not task.closed_at:
-            current_user = db.get(User, user_id)
             if not can_supervise_task(db, current_user, task):
                 return task_update_error_url(task_id, "responsible_required")
             old_status = task.status

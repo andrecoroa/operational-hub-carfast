@@ -23,7 +23,9 @@
         {% set feedback_entity_id = task.id %}
         {% set feedback_return_url = "/task-board/" ~ task.id %}
         {% include "_pilot_actions.html" %}
-        <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+        {% if can_write_workspace %}
+          <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+        {% endif %}
         <a class="button-link secondary-link" href="{{ task_manage_url }}">Voltar</a>
       </div>
     </header>
@@ -90,7 +92,9 @@
               <p class="eyebrow">Relações</p>
               <h3>Tarefa mãe e subtarefas</h3>
             </div>
-            <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+            {% if can_write_workspace %}
+              <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+            {% endif %}
           </div>
           {% if parent_task %}
             <div class="subtask-parent-banner">
@@ -196,6 +200,7 @@
       </div>
 
       <aside class="workshop-side-column">
+        {% if can_write_workspace %}
         <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack workshop-flow-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Gestão</p>
@@ -405,6 +410,13 @@
             {% endif %}
           </details>
         </div>
+        {% else %}
+          <article class="section workshop-summary-card">
+            <p class="eyebrow">Consulta</p>
+            <h3>Acesso só de leitura</h3>
+            <p class="muted">Este perfil pode consultar este centro de tarefas, mas não pode alterar, fechar ou anexar informação.</p>
+          </article>
+        {% endif %}
       </aside>
     </section>
   </main>

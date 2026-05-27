@@ -123,6 +123,7 @@
       </div>
 
       <aside class="workshop-side-column">
+        {% if can_write_workspace %}
         <form method="post" action="/task-board/quick/{{ record.id }}/update" class="form-panel form-stack workshop-flow-card">
           <div class="panel-heading compact-heading">
             <p class="eyebrow">Gestão</p>
@@ -270,6 +271,13 @@
             {% endif %}
           </details>
         </div>
+        {% else %}
+          <article class="section workshop-summary-card">
+            <p class="eyebrow">Consulta</p>
+            <h3>Acesso só de leitura</h3>
+            <p class="muted">Este perfil pode consultar este centro de tarefas, mas não pode alterar, fechar ou converter registos.</p>
+          </article>
+        {% endif %}
       </aside>
     </section>
   </main>

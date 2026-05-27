@@ -43,7 +43,29 @@ PERMISSION_ALLOWED_PREFIXES = (
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
     (("/admin",), {"GET": {"admin.manage", "users.manage", "settings.manage"}, "POST": {"admin.manage", "users.manage"}}),
-    (("/task-board",), {"GET": {"tasks.read"}, "POST": {"tasks.write"}}),
+    (
+        ("/task-board",),
+        {
+            "GET": {
+                "tasks.read",
+                "tasks.operational.read",
+                "tasks.operational.write",
+                "tasks.workshop.read",
+                "tasks.workshop.write",
+                "tasks.management.read",
+                "tasks.management.write",
+                "tasks.administration.read",
+                "tasks.administration.write",
+            },
+            "POST": {
+                "tasks.write",
+                "tasks.operational.write",
+                "tasks.workshop.write",
+                "tasks.management.write",
+                "tasks.administration.write",
+            },
+        },
+    ),
     (("/workshop",), {"GET": {"workshop.read"}, "POST": {"workshop.write"}}),
     (("/fleet",), {"GET": {"vehicles.read"}, "POST": {"vehicles.write"}}),
     (("/imports",), {"GET": {"imports.run", "imports.approve"}, "POST": {"imports.run"}}),

@@ -18,6 +18,7 @@
     </header>
 
     <section class="task-entry-grid">
+      {% if "operational" in authorized_workspaces and nav_has_permission(request, "tasks.operational.write", "admin.manage") %}
       <article class="task-entry-card quick-entry-card">
         <div>
           <p class="eyebrow">Entrada operacional</p>
@@ -48,9 +49,11 @@
         </div>
         <a class="button-link blue-link" href="/task-board/new?mode=task&workspace=operational">Criar nova tarefa</a>
       </article>
+      {% endif %}
     </section>
 
     <section class="workspace-grid">
+      {% if "operational" in authorized_workspaces %}
       <a class="workspace-card active-workspace" href="/task-board/manage">
         <div>
           <p class="eyebrow">Centro de Tarefas</p>
@@ -66,6 +69,8 @@
         </div>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
+      {% endif %}
+      {% if "workshop" in authorized_workspaces %}
       <a class="workspace-card workshop-workspace" href="/task-board/workshop/manage">
         <div>
           <p class="eyebrow">Módulo próprio</p>
@@ -81,6 +86,8 @@
         </div>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
+      {% endif %}
+      {% if "management" in authorized_workspaces %}
       <a class="workspace-card planned-workspace" href="/task-board/management/manage">
         <div>
           <p class="eyebrow">A preparar</p>
@@ -96,6 +103,8 @@
         </div>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
+      {% endif %}
+      {% if "administration" in authorized_workspaces %}
       <a class="workspace-card planned-workspace" href="/task-board/administration/manage">
         <div>
           <p class="eyebrow">Restrito</p>
@@ -111,6 +120,7 @@
         </div>
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
+      {% endif %}
     </section>
 
     <section class="section task-principles">

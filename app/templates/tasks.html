@@ -11,8 +11,10 @@
         <p class="breadcrumb">{{ workspace_config.breadcrumb }} &gt; <strong>Gestão</strong></p>
       </div>
       <div class="topbar-tools">
-        <a class="button-link secondary-link" href="{{ new_quick_url }}">Registo rápido</a>
-        <a class="button-link secondary-link" href="{{ new_task_url }}">Nova tarefa</a>
+        {% if can_write_workspace %}
+          <a class="button-link secondary-link" href="{{ new_quick_url }}">Registo rápido</a>
+          <a class="button-link secondary-link" href="{{ new_task_url }}">Nova tarefa</a>
+        {% endif %}
         {% set feedback_source_area = "tasks" %}
         {% set feedback_return_url = manage_url %}
         {% include "_pilot_actions.html" %}

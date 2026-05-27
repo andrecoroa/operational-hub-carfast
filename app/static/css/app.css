@@ -3532,8 +3532,8 @@ a.metric:hover {
 
 .workshop-page-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.8fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(500px, 1fr);
+  gap: 16px;
   align-items: start;
   margin-top: 18px;
 }
@@ -3737,15 +3737,15 @@ a.metric:hover {
 }
 
 .workshop-summary-card {
-  min-height: 300px;
-  padding: 20px;
+  min-height: auto;
+  padding: 18px;
 }
 
 .workshop-flow-card {
   gap: 14px;
   max-width: none;
-  min-height: 300px;
-  padding: 20px;
+  min-height: auto;
+  padding: 18px;
 }
 
 .workshop-flow-card .form-stack,
@@ -3759,16 +3759,20 @@ a.metric:hover {
 
 .phase-action-stack {
   display: grid;
-  gap: 12px;
+  gap: 9px;
 }
 
 .phase-action-card {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.phase-action-card:not([open]) {
+  padding: 10px 12px;
 }
 
 .phase-action-card summary,
@@ -3884,7 +3888,7 @@ a.metric:hover {
 }
 
 .workshop-info-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .workshop-feed {
@@ -3917,7 +3921,7 @@ a.metric:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 52px;
+  min-height: 46px;
   color: var(--ink);
 }
 
@@ -3953,8 +3957,8 @@ a.metric:hover {
 .process-action-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  padding: 18px;
+  gap: 10px;
+  padding: 14px;
 }
 
 .action-method-pill {
@@ -3977,6 +3981,33 @@ a.metric:hover {
 
 .process-action-grid .workshop-action-card[open] {
   grid-column: 1 / -1;
+}
+
+.workshop-secondary-details {
+  padding: 0;
+  overflow: hidden;
+}
+
+.secondary-section-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.secondary-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.secondary-section-summary h3 {
+  margin: 2px 0 6px;
+}
+
+.workshop-secondary-details > .bsi-reading-details {
+  margin: 0 18px 14px;
 }
 
 .quick-record-guidance {

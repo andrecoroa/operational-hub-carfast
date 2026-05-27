@@ -159,7 +159,15 @@
           </details>
         </article>
 
-        <article id="bsi-workspace" class="section workshop-bsi-workspace">
+        <details id="bsi-workspace" class="section workshop-bsi-workspace workshop-secondary-details">
+          <summary class="secondary-section-summary">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Leituras técnicas / BSI</h3>
+              <p class="muted">Abrir apenas quando for necessário registar ou consultar leituras do processo.</p>
+            </div>
+            <span class="action-method-pill">Abrir</span>
+          </summary>
           <details id="bsi-reading-initial-details" class="bsi-reading-details">
             <summary>
               <div>
@@ -193,7 +201,7 @@
               {% include "_workshop_technical_reading_fields.html" %}
             </form>
           </details>
-        </article>
+        </details>
 
       <article class="section workshop-feed">
         <div class="table-heading flat-heading">
@@ -969,6 +977,10 @@
     trigger.addEventListener("click", () => {
       const target = document.querySelector(trigger.dataset.openDetails);
       if (target) {
+        const bsiWorkspace = document.getElementById("bsi-workspace");
+        if (bsiWorkspace && target.closest("#bsi-workspace")) {
+          bsiWorkspace.open = true;
+        }
         target.open = true;
         target.scrollIntoView({ behavior: "smooth", block: "start" });
       }

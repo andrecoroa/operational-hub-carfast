@@ -5005,7 +5005,6 @@ def task_board_manage(
             "mine": db.scalar(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
-                    parent_task_filter,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     or_(
@@ -5105,7 +5104,10 @@ def task_board_manage(
         elif view == "all":
             stmt = select(Task).where(workspace_task_filter, parent_task_filter)
         elif view == "mine":
-            stmt = stmt.where(
+            stmt = select(Task).where(
+                workspace_task_filter,
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                 or_(
                     Task.assigned_to_id == user_id,
                     Task.delegated_to_user_id == user_id,
@@ -5128,6 +5130,13 @@ def task_board_manage(
             stmt = stmt.where(Task.id.in_(subtask_parent_ids))
         elif view == "with_subtasks":
             stmt = stmt.where(Task.id.in_(open_subtask_parent_ids))
+        elif view == "subtasks":
+            stmt = select(Task).where(
+                workspace_task_filter,
+                subtask_filter,
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            )
 
         clean_q = q.strip()
         if clean_q:
@@ -5176,6 +5185,53 @@ def task_board_manage(
             stmt = stmt.where(Task.team_id == parsed_team_id)
         if station.strip():
             stmt = stmt.where(Task.station.ilike(f"%{station.strip()}%"))
+
+        if view == "archived":
+            category_count_conditions = [workspace_task_filter, parent_task_filter, archived_condition]
+        elif view == "all":
+            category_count_conditions = [workspace_task_filter, parent_task_filter]
+        else:
+            category_count_conditions = [
+                workspace_task_filter,
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ]
+
+        if view == "mine":
+            category_count_conditions.append(
+                or_(
+                    Task.assigned_to_id == user_id,
+                    Task.delegated_to_user_id == user_id,
+                    Task.waiting_for_user_id == user_id,
+                )
+            )
+        elif view == "with_subtasks":
+            category_count_conditions.extend([parent_task_filter, Task.id.in_(open_subtask_parent_ids)])
+        elif view == "subtasks":
+            category_count_conditions.append(subtask_filter)
+        elif view not in {"all", "archived"}:
+            category_count_conditions.append(parent_task_filter)
+            if view == "urgent":
+                category_count_conditions.append(Task.priority == "urgent")
+            elif view == "unassigned":
+                category_count_conditions.append(Task.assigned_to_id.is_(None))
+            elif view == "overdue":
+                category_count_conditions.extend([Task.due_on.is_not(None), Task.due_on < today])
+            elif view == "due_today":
+                category_count_conditions.append(Task.due_on == today)
+
+        category_counts = {
+            "all": db.scalar(select(func.count()).select_from(Task).where(*category_count_conditions)) or 0
+        }
+        for category_code, _ in TASK_CATEGORIES:
+            category_counts[category_code] = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Task)
+                    .where(*category_count_conditions, Task.category == category_code)
+                )
+                or 0
+            )
 
         quick_archived_condition = (
             (QuickRecord.closed_at.is_not(None))
@@ -5343,6 +5399,7 @@ def task_board_manage(
                 "feedback_saved": feedback_saved,
                 "error": None,
                 "metrics": metrics,
+                "category_counts": category_counts,
                 "filters": {
                     "q": q,
                     "status": status,

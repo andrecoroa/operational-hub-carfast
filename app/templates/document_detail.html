@@ -31,47 +31,53 @@
       <div class="success">Documento atualizado.</div>
     {% endif %}
 
-    <section class="detail-grid document-detail-grid">
-      <section class="section document-summary-card">
-        <div class="panel-heading">
-          <p class="eyebrow">Resumo</p>
-          <h3>Resumo do documento</h3>
+    <section class="document-workbench">
+      <section class="document-summary-card">
+        <div class="document-panel-heading">
+          <div>
+            <p class="eyebrow">Resumo</p>
+            <h3>Resumo do documento</h3>
+          </div>
+          <span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span>
         </div>
-        <dl class="detail-list document-summary-list">
-          <div><dt>Área</dt><dd>{{ area_labels.get(document.classification, document.classification or "-") }}</dd></div>
-          <div><dt>Tipologia</dt><dd>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</dd></div>
-          <div><dt>Estado</dt><dd><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></dd></div>
-          <div><dt>Caminho sugerido</dt><dd>{{ document.folder_path or "-" }}</dd></div>
-          <div><dt>Origem</dt><dd>{{ document.source or "-" }}</dd></div>
-          <div><dt>Canal</dt><dd>{{ document.entry_channel or "-" }}</dd></div>
-          {% if document.document_date %}<div><dt>Data</dt><dd>{{ document.document_date }}</dd></div>{% endif %}
-          {% if document.source_subject %}<div><dt>Assunto original</dt><dd>{{ document.source_subject }}</dd></div>{% endif %}
+        <div class="document-fact-grid">
+          <div><span>Área</span><strong>{{ area_labels.get(document.classification, document.classification or "-") }}</strong></div>
+          <div><span>Tipologia</span><strong>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</strong></div>
+          <div class="wide"><span>Caminho sugerido</span><strong>{{ document.folder_path or "-" }}</strong></div>
+          <div><span>Origem</span><strong>{{ document.source or "-" }}</strong></div>
+          <div><span>Canal</span><strong>{{ document.entry_channel or "-" }}</strong></div>
+          {% if document.document_date %}<div><span>Data</span><strong>{{ document.document_date }}</strong></div>{% endif %}
+          {% if document.source_subject %}<div class="wide"><span>Assunto original</span><strong>{{ document.source_subject }}</strong></div>{% endif %}
+        </div>
+        <div class="document-source-row">
           {% if document.storage_key %}
-            <div><dt>Original recebido</dt><dd><a class="table-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original</a></dd></div>
+            <a class="button-link secondary-link compact-action-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original recebido</a>
           {% endif %}
           {% if can_manage_document_links and document.external_url %}
-            <div><dt>Arquivo</dt><dd><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a></dd></div>
+            <a class="button-link secondary-link compact-action-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo 365</a>
           {% elif document.external_url %}
-            <div><dt>Arquivo</dt><dd>Arquivado no 365</dd></div>
+            <span>Arquivado no 365</span>
           {% endif %}
-        </dl>
+        </div>
         {% if document.source_sender or document.plate or document.supplier_name or document.customer_name %}
-          <details class="compact-details">
+          <details class="compact-details document-extra-details">
             <summary>Dados adicionais</summary>
-            <dl class="detail-list document-summary-list">
-              {% if document.source_sender %}<div><dt>Remetente</dt><dd>{{ document.source_sender }}</dd></div>{% endif %}
-              {% if document.plate %}<div><dt>Matrícula</dt><dd>{{ document.plate }}</dd></div>{% endif %}
-              {% if document.supplier_name %}<div><dt>Fornecedor</dt><dd>{{ document.supplier_name }}</dd></div>{% endif %}
-              {% if document.customer_name %}<div><dt>Cliente</dt><dd>{{ document.customer_name }}</dd></div>{% endif %}
-            </dl>
+            <div class="document-fact-grid">
+              {% if document.source_sender %}<div><span>Remetente</span><strong>{{ document.source_sender }}</strong></div>{% endif %}
+              {% if document.plate %}<div><span>Matrícula</span><strong>{{ document.plate }}</strong></div>{% endif %}
+              {% if document.supplier_name %}<div><span>Fornecedor</span><strong>{{ document.supplier_name }}</strong></div>{% endif %}
+              {% if document.customer_name %}<div><span>Cliente</span><strong>{{ document.customer_name }}</strong></div>{% endif %}
+            </div>
           </details>
         {% endif %}
       </section>
 
-      <section class="form-panel form-stack document-treatment-card">
-        <div class="panel-heading">
+      <section class="document-treatment-card">
+        <div class="document-panel-heading">
+          <div>
           <p class="eyebrow">Tratamento</p>
           <h3>Atualizar</h3>
+          </div>
         </div>
         <form method="post" action="/documents/{{ document.id }}/update" class="form-stack">
           <label>
@@ -118,7 +124,7 @@
       </section>
     </section>
 
-    <section class="section document-attachments-section">
+    <section class="document-attachments-section">
       <div class="table-heading">
         <div>
           <p class="eyebrow">Entrada documental</p>
@@ -128,7 +134,7 @@
       </div>
       <div class="document-attachment-list">
         {% for attachment in attachments %}
-          <article class="task-type-board document-attachment-card compact-document-attachment">
+          <article class="document-attachment-row">
             <div class="document-attachment-summary">
               <div>
                 <p class="eyebrow">{{ attachment.content_type or "Anexo" }}</p>
@@ -149,7 +155,7 @@
                 {% if attachment.decision_note %}<br><strong>Nota:</strong> {{ attachment.decision_note }}{% endif %}
               </p>
             {% endif %}
-            <details class="workshop-record-group">
+            <details class="workshop-record-group document-inline-treatment">
               <summary>Tratar</summary>
               <form method="post" action="/documents/{{ document.id }}/attachments/{{ attachment.id }}/update" class="form-stack">
                 <div class="form-grid two-columns">

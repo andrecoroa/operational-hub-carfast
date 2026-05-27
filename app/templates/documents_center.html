@@ -26,38 +26,34 @@
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
-    <section class="metric-grid task-metrics">
-      <article class="metric"><span>Total</span><strong>{{ metrics.total }}</strong></article>
-      <article class="metric"><span>Por classificar</span><strong>{{ metrics.unclassified }}</strong></article>
-      <article class="metric"><span>Classificados</span><strong>{{ metrics.classified }}</strong></article>
-      <article class="metric"><span>Arquivados</span><strong>{{ metrics.archived }}</strong></article>
+    <section class="document-metric-strip" aria-label="Resumo documental">
+      <article><span>Total</span><strong>{{ metrics.total }}</strong></article>
+      <article><span>Por classificar</span><strong>{{ metrics.unclassified }}</strong></article>
+      <article><span>Classificados</span><strong>{{ metrics.classified }}</strong></article>
+      <article><span>Arquivados</span><strong>{{ metrics.archived }}</strong></article>
     </section>
 
-    <section class="task-center-grid module-entry-grid document-entry-grid">
-      <a class="task-center-card create-card document-entry-card" href="/documents/new">
-        <span class="task-card-main">
-          <span class="task-card-icon">+</span>
-          <span>
-            <strong>Nova entrada documental</strong>
-            <p>Registar uma entrada documental e preparar classificação/arquivo.</p>
-          </span>
+    <section class="document-cockpit-grid">
+      <a class="document-action-card document-action-create" href="/documents/new">
+        <span class="document-action-icon">+</span>
+        <span>
+          <strong>Nova entrada documental</strong>
+          <p>Registar uma entrada, associar origem e preparar classificação ou arquivo.</p>
         </span>
-        <span class="button-link">Registar documento</span>
+        <em>Registar documento</em>
       </a>
-      <a class="task-center-card manage-card document-entry-card" href="/documents/manage">
-        <span class="task-card-main">
-          <span class="task-card-icon">≡</span>
-          <span>
-            <strong>Gestão documental</strong>
-            <p>Pesquisar, classificar, associar e acompanhar documentos.</p>
-          </span>
+      <a class="document-action-card document-action-manage" href="/documents/manage">
+        <span class="document-action-icon">≡</span>
+        <span>
+          <strong>Gestão documental</strong>
+          <p>Pesquisar, classificar, tratar e acompanhar documentos recebidos.</p>
         </span>
-        <span class="button-link blue-link">Abrir gestão</span>
+        <em>Abrir gestão</em>
       </a>
-      <article class="info-card document-info-card">
+      <article class="document-note-card">
         <p class="eyebrow">Fase atual</p>
         <h3>Arquivo por links 365</h3>
-        <p>Na fase atual guardamos links e caminhos 365, não ficheiros binários na base de dados.</p>
+        <p>Guardamos caminhos e referências para o Microsoft 365. Os ficheiros binários continuam fora da base de dados.</p>
       </article>
     </section>
   </main>

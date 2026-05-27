@@ -8,20 +8,21 @@
       <div>
         <p class="eyebrow">Arquivo operacional</p>
         <h2>{{ document.title or document.original_name }}</h2>
-        <span>{{ status_labels.get(document.status, document.status) }}</span>
+        <span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "documents" %}
         {% set feedback_entity_type = "document" %}
         {% set feedback_entity_id = document.id %}
         {% set feedback_return_url = "/documents/" ~ document.id %}
+        {% set pilot_support_compact = true %}
         {% include "_pilot_actions.html" %}
         <a class="button-link secondary-link" href="/documents/manage">Voltar</a>
         {% if linked_email_intake %}
           <a class="button-link secondary-link" href="/documents/{{ document.id }}/email-original">Ver e-mail original</a>
         {% endif %}
-        {% if document.external_url %}
-          <a class="button-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir link</a>
+        {% if can_manage_document_links and document.external_url %}
+          <a class="button-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
         {% endif %}
       </div>
     </header>
@@ -30,82 +31,44 @@
       <div class="success">Documento atualizado.</div>
     {% endif %}
 
-    <section class="detail-grid">
-      <section class="section">
-        <h3>Dados do documento</h3>
-        <dl class="detail-list">
-          <div>
-            <dt>Área</dt>
-            <dd>{{ area_labels.get(document.classification, document.classification or "-") }}</dd>
-          </div>
-          <div>
-            <dt>Tipologia</dt>
-            <dd>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</dd>
-          </div>
-          <div>
-            <dt>Estado</dt>
-            <dd><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></dd>
-          </div>
-          <div>
-            <dt>Caminho sugerido</dt>
-            <dd>{{ document.folder_path or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Data</dt>
-            <dd>{{ document.document_date or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Origem</dt>
-            <dd>{{ document.source or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Canal</dt>
-            <dd>{{ document.entry_channel or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Remetente</dt>
-            <dd>{{ document.source_sender or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Assunto original</dt>
-            <dd>{{ document.source_subject or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Matrícula</dt>
-            <dd>{{ document.plate or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Fornecedor</dt>
-            <dd>{{ document.supplier_name or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Cliente</dt>
-            <dd>{{ document.customer_name or "-" }}</dd>
-          </div>
-          <div>
-            <dt>Link original</dt>
-            <dd>
-              {% if document.storage_key %}
-                <a class="table-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original</a>
-              {% else %}
-                -
-              {% endif %}
-            </dd>
-          </div>
-          <div>
-            <dt>Link arquivado</dt>
-            <dd>
-              {% if document.external_url %}
-                <a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
-              {% else %}
-                -
-              {% endif %}
-            </dd>
-          </div>
+    <section class="detail-grid document-detail-grid">
+      <section class="section document-summary-card">
+        <div class="panel-heading">
+          <p class="eyebrow">Resumo</p>
+          <h3>Resumo do documento</h3>
+        </div>
+        <dl class="detail-list document-summary-list">
+          <div><dt>Área</dt><dd>{{ area_labels.get(document.classification, document.classification or "-") }}</dd></div>
+          <div><dt>Tipologia</dt><dd>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</dd></div>
+          <div><dt>Estado</dt><dd><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></dd></div>
+          <div><dt>Caminho sugerido</dt><dd>{{ document.folder_path or "-" }}</dd></div>
+          <div><dt>Origem</dt><dd>{{ document.source or "-" }}</dd></div>
+          <div><dt>Canal</dt><dd>{{ document.entry_channel or "-" }}</dd></div>
+          {% if document.document_date %}<div><dt>Data</dt><dd>{{ document.document_date }}</dd></div>{% endif %}
+          {% if document.source_subject %}<div><dt>Assunto original</dt><dd>{{ document.source_subject }}</dd></div>{% endif %}
+          {% if document.storage_key %}
+            <div><dt>Original recebido</dt><dd><a class="table-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original</a></dd></div>
+          {% endif %}
+          {% if can_manage_document_links and document.external_url %}
+            <div><dt>Arquivo</dt><dd><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a></dd></div>
+          {% elif document.external_url %}
+            <div><dt>Arquivo</dt><dd>Arquivado no 365</dd></div>
+          {% endif %}
         </dl>
+        {% if document.source_sender or document.plate or document.supplier_name or document.customer_name %}
+          <details class="compact-details">
+            <summary>Dados adicionais</summary>
+            <dl class="detail-list document-summary-list">
+              {% if document.source_sender %}<div><dt>Remetente</dt><dd>{{ document.source_sender }}</dd></div>{% endif %}
+              {% if document.plate %}<div><dt>Matrícula</dt><dd>{{ document.plate }}</dd></div>{% endif %}
+              {% if document.supplier_name %}<div><dt>Fornecedor</dt><dd>{{ document.supplier_name }}</dd></div>{% endif %}
+              {% if document.customer_name %}<div><dt>Cliente</dt><dd>{{ document.customer_name }}</dd></div>{% endif %}
+            </dl>
+          </details>
+        {% endif %}
       </section>
 
-      <section class="form-panel form-stack">
+      <section class="form-panel form-stack document-treatment-card">
         <div class="panel-heading">
           <p class="eyebrow">Tratamento</p>
           <h3>Atualizar</h3>
@@ -135,10 +98,17 @@
               {% endfor %}
             </select>
           </label>
-          <label>
-            Link arquivado
-            <input type="url" name="url_archive" value="{{ document.external_url or '' }}">
-          </label>
+          {% if can_manage_document_links %}
+            <details class="compact-details admin-only-block" {% if document.external_url %}open{% endif %}>
+              <summary>Arquivo 365 <span>Admin</span></summary>
+              <label>
+                Link arquivado
+                <input type="url" name="url_archive" value="{{ document.external_url or '' }}">
+              </label>
+            </details>
+          {% else %}
+            <input type="hidden" name="url_archive" value="{{ document.external_url or '' }}">
+          {% endif %}
           <label>
             Nota de tratamento
             <textarea name="notes" rows="4"></textarea>
@@ -148,7 +118,7 @@
       </section>
     </section>
 
-    <section class="section">
+    <section class="section document-attachments-section">
       <div class="table-heading">
         <div>
           <p class="eyebrow">Entrada documental</p>
@@ -158,19 +128,20 @@
       </div>
       <div class="document-attachment-list">
         {% for attachment in attachments %}
-          <article class="task-type-board document-attachment-card">
-            <div class="table-heading compact-heading">
+          <article class="task-type-board document-attachment-card compact-document-attachment">
+            <div class="document-attachment-summary">
               <div>
                 <p class="eyebrow">{{ attachment.content_type or "Anexo" }}</p>
                 <h4>{{ attachment.name }}</h4>
+                <p class="table-note">{{ attachment.archive_folder_path or document.folder_path or "Destino por confirmar" }}</p>
               </div>
               <span class="pill status-{{ attachment.status }}">{{ attachment_status_labels.get(attachment.status, attachment.status) }}</span>
-            </div>
-            <div class="button-row">
-              <a class="button-link secondary-link compact-action-link" href="{{ attachment.url }}" target="_blank" rel="noopener">Abrir original</a>
-              {% if attachment.archive_url %}
+              <div class="button-row document-attachment-actions">
+                <a class="button-link secondary-link compact-action-link" href="{{ attachment.url }}" target="_blank" rel="noopener">Abrir original</a>
+                {% if can_manage_document_links and attachment.archive_url %}
                 <a class="button-link secondary-link compact-action-link" href="{{ attachment.archive_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
-              {% endif %}
+                {% endif %}
+              </div>
             </div>
             {% if attachment.archive_folder_path or attachment.decision_note %}
               <p class="table-note">
@@ -179,7 +150,7 @@
               </p>
             {% endif %}
             <details class="workshop-record-group">
-              <summary>Tratar anexo</summary>
+              <summary>Tratar</summary>
               <form method="post" action="/documents/{{ document.id }}/attachments/{{ attachment.id }}/update" class="form-stack">
                 <div class="form-grid two-columns">
                   <label>
@@ -192,7 +163,12 @@
                   </label>
                   <label>
                     Link arquivado
-                    <input type="url" name="archive_url" value="{{ attachment.archive_url or '' }}" placeholder="https://...">
+                    {% if can_manage_document_links %}
+                      <input type="url" name="archive_url" value="{{ attachment.archive_url or '' }}" placeholder="https://...">
+                    {% else %}
+                      <input type="hidden" name="archive_url" value="{{ attachment.archive_url or '' }}">
+                      <input type="text" value="{% if attachment.archive_url %}Arquivado no 365{% else %}Sem link de arquivo{% endif %}" disabled>
+                    {% endif %}
                   </label>
                 </div>
                 <label>

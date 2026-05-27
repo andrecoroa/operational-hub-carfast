@@ -39,10 +39,20 @@
           </strong>
         </div>
         <div>
-          <span>Anexos / lista</span>
+          <span>Origem da entrada</span>
           <strong>
-            {% if intake.attachments_url or intake.list_item_url %}
-              <a class="table-link" href="{{ intake.attachments_url or intake.list_item_url }}" target="_blank" rel="noopener noreferrer">Abrir anexos</a>
+            {% if intake.list_item_url %}
+              {% if can_manage_document_links is defined and can_manage_document_links %}
+                <a class="table-link" href="{{ intake.list_item_url }}" target="_blank" rel="noopener noreferrer">Abrir item da lista</a>
+              {% else %}
+                Item da lista associado
+              {% endif %}
+            {% elif intake.attachments_url %}
+              {% if can_manage_document_links is defined and can_manage_document_links %}
+                <a class="table-link" href="{{ intake.attachments_url }}" target="_blank" rel="noopener noreferrer">Abrir origem</a>
+              {% else %}
+                Origem associada
+              {% endif %}
             {% else %}
               -
             {% endif %}

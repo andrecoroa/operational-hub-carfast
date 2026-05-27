@@ -2,7 +2,7 @@
 {% set _return = feedback_return_url if feedback_return_url is defined and feedback_return_url else request.url.path %}
 {% set _entity_type = feedback_entity_type if feedback_entity_type is defined else "" %}
 {% set _entity_id = feedback_entity_id if feedback_entity_id is defined else "" %}
-<div class="pilot-support">
+<div class="pilot-support{% if pilot_support_compact is defined and pilot_support_compact %} pilot-support-compact{% endif %}">
   <span>Apoio à utilização da app</span>
   <div class="button-row pilot-actions">
     <a class="button-link manual-link" href="/manual?return_url={{ _return }}">Manual da App</a>

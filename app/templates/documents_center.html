@@ -12,6 +12,7 @@
       </div>
       {% set feedback_source_area = "documents" %}
       {% set feedback_return_url = "/documents" %}
+      {% set pilot_support_compact = true %}
       {% include "_pilot_actions.html" %}
     </header>
 
@@ -32,18 +33,18 @@
       <article class="metric"><span>Arquivados</span><strong>{{ metrics.archived }}</strong></article>
     </section>
 
-    <section class="task-center-grid module-entry-grid">
-      <a class="task-center-card create-card" href="/documents/new">
+    <section class="task-center-grid module-entry-grid document-entry-grid">
+      <a class="task-center-card create-card document-entry-card" href="/documents/new">
         <span class="task-card-main">
           <span class="task-card-icon">+</span>
           <span>
-            <strong>Novo documento</strong>
+            <strong>Nova entrada documental</strong>
             <p>Registar uma entrada documental e preparar classificação/arquivo.</p>
           </span>
         </span>
         <span class="button-link">Registar documento</span>
       </a>
-      <a class="task-center-card manage-card" href="/documents/manage">
+      <a class="task-center-card manage-card document-entry-card" href="/documents/manage">
         <span class="task-card-main">
           <span class="task-card-icon">≡</span>
           <span>
@@ -51,10 +52,11 @@
             <p>Pesquisar, classificar, associar e acompanhar documentos.</p>
           </span>
         </span>
-        <span class="button-link blue-link">Abrir documentos</span>
+        <span class="button-link blue-link">Abrir gestão</span>
       </a>
-      <article class="info-card">
-        <h3>Dica rápida</h3>
+      <article class="info-card document-info-card">
+        <p class="eyebrow">Fase atual</p>
+        <h3>Arquivo por links 365</h3>
         <p>Na fase atual guardamos links e caminhos 365, não ficheiros binários na base de dados.</p>
       </article>
     </section>

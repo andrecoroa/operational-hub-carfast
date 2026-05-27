@@ -2335,10 +2335,12 @@ def workshop_center_page(
     closed: str | None = None,
     feedback_saved: str | None = None,
 ):
-    if not get_web_user_id(request):
+    user_id = get_web_user_id(request)
+    if not user_id:
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
+        user = db.get(User, user_id)
         open_query = select(func.count()).select_from(WorkshopProcess).where(WorkshopProcess.closed_at.is_(None))
         open_count = db.scalar(open_query) or 0
         waiting_parts_count = db.scalar(
@@ -2360,6 +2362,8 @@ def workshop_center_page(
                 "waiting_parts_count": waiting_parts_count,
                 "waiting_analysis_count": waiting_analysis_count,
                 "vehicles_preview": vehicles_preview,
+                "can_access_workshop_tasks": user_can_access_task_workspace(db, user, "workshop"),
+                "workshop_tasks_url": task_workspace_manage_url("workshop"),
                 "created": created,
                 "closed": closed,
                 "feedback_saved": feedback_saved,
@@ -4773,6 +4777,7 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
             "document_detail.html",
             {
                 "user": user,
+                "can_manage_document_links": can_manage_admin(db, user),
                 "document": document,
                 "events": events,
                 "linked_email_intake": linked_email_intake,
@@ -4817,6 +4822,7 @@ def document_email_original(request: Request, document_id: int):
             "email_original.html",
             {
                 "user": user,
+                "can_manage_document_links": can_manage_admin(db, user),
                 "record": None,
                 "document": document,
                 "intake": intake,

@@ -5092,6 +5092,7 @@ def task_board_manage(
     team_id: str = "",
     station: str = "",
     view: str = "",
+    content: str = "tasks",
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -5099,6 +5100,7 @@ def task_board_manage(
 
     current_workspace = normalize_task_workspace(workspace)
     workspace_config = TASK_WORKSPACE_CONFIG[current_workspace]
+    content_mode = content if content in {"tasks", "quick", "all"} else "tasks"
     workspace_task_codes = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
     workspace_primary_task_codes = set(workspace_config["primary_task_types"])
     workspace_secondary_task_codes = set(workspace_config["secondary_task_types"])
@@ -5587,6 +5589,7 @@ def task_board_manage(
                     "team_id": team_id,
                     "station": station,
                     "view": view,
+                    "content": content_mode,
                 },
                 "archive_statuses": TASK_ARCHIVE_STATUSES,
                 "quick_record_groups": quick_record_groups,

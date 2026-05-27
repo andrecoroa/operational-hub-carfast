@@ -1746,6 +1746,60 @@ a.metric:hover {
   white-space: nowrap;
 }
 
+.task-content-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+}
+
+.task-content-tabs > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.task-content-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.task-content-tabs button strong {
+  min-width: 24px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #eef1f6;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.task-content-tabs button.active {
+  border-color: #f0c6ba;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+.task-content-tabs button.active strong {
+  background: #ffffff;
+  color: var(--brand-dark);
+}
+
 .task-filter-drawer {
   position: relative;
   z-index: 4;

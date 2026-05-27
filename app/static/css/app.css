@@ -2546,10 +2546,44 @@ a.metric:hover {
   text-transform: uppercase;
 }
 
+.description-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.description-heading-row .compact-action-link {
+  min-height: 32px;
+  padding: 7px 12px;
+  font-size: 12px;
+  text-transform: none;
+}
+
 .task-description-box p {
   margin: 8px 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.email-original-page {
+  display: grid;
+  gap: 18px;
+}
+
+.email-original-viewer {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.email-original-viewer iframe {
+  display: block;
+  width: 100%;
+  min-height: 680px;
+  border: 0;
+  background: #fff;
 }
 
 .task-info-grid {

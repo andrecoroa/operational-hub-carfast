@@ -59,7 +59,12 @@
             <div><span>Telefone</span><strong>{{ record.customer_phone or "-" }}</strong></div>
           </div>
           <div class="task-description-box">
-            <span>Descrição</span>
+            <div class="description-heading-row">
+              <span>Descrição</span>
+              {% if linked_email_intake %}
+                <a class="button-link secondary-link compact-action-link" href="/task-board/quick/{{ record.id }}/email-original">Ver e-mail original</a>
+              {% endif %}
+            </div>
             <p>{{ record.description or "Sem descrição registada." }}</p>
           </div>
           <div class="task-info-grid workshop-info-grid">

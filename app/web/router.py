@@ -20,6 +20,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import Document, DocumentEvent
+from app.models.integrations import EmailIntake
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
@@ -5619,6 +5620,12 @@ def quick_record_detail(
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         linked_task = db.get(Task, record.converted_task_id) if record.converted_task_id else None
+        linked_email_intake = None
+        if record.entity_type == "email_intake" and record.entity_id:
+            try:
+                linked_email_intake = db.get(EmailIntake, int(record.entity_id))
+            except ValueError:
+                linked_email_intake = None
         linked_vehicle = None
         if record.plate:
             linked_vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == record.plate))
@@ -5636,6 +5643,7 @@ def quick_record_detail(
                 "workspace_label": TASK_WORKSPACE_LABELS[workspace],
                 "manage_url": task_workspace_manage_url(workspace),
                 "linked_task": linked_task,
+                "linked_email_intake": linked_email_intake,
                 "linked_vehicle": linked_vehicle,
                 "users": users,
                 "assignable_users": assignable_users,
@@ -5655,6 +5663,37 @@ def quick_record_detail(
                 "task_source_labels": TASK_SOURCE_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "priority_labels": PRIORITY_DISPLAY_LABELS,
+            },
+        )
+
+
+@web_router.get("/task-board/quick/{record_id}/email-original", response_class=HTMLResponse)
+def quick_record_email_original(request: Request, record_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        record = db.get(QuickRecord, record_id)
+        if not record or record.entity_type != "email_intake" or not record.entity_id:
+            return RedirectResponse(f"/task-board/quick/{record_id}", status_code=303)
+        try:
+            intake_id = int(record.entity_id)
+        except ValueError:
+            return RedirectResponse(f"/task-board/quick/{record_id}", status_code=303)
+        intake = db.get(EmailIntake, intake_id)
+        if not intake:
+            return RedirectResponse(f"/task-board/quick/{record_id}", status_code=303)
+        payload = intake.payload_json or {}
+        original_body = payload.get("body_preview") or intake.body_preview or ""
+        return templates.TemplateResponse(
+            request,
+            "email_original.html",
+            {
+                "record": record,
+                "intake": intake,
+                "original_body": original_body,
+                "current_user": db.get(User, user_id),
             },
         )
 

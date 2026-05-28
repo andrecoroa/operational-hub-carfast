@@ -2651,6 +2651,7 @@ def workshop_create(
         )
         db.add(process)
         db.flush()
+        process.document_folder_path = suggest_workshop_process_folder_path(process, vehicle)
         clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
             service_family,
             service_detail,
@@ -2963,6 +2964,15 @@ def normalize_workshop_service_fields(
     return service_family, clean_detail, clean_axis
 
 
+def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
+    reference_year = (process.opened_on or date.today()).year
+    process_ref = f"OF-{reference_year}-{process.id:05d}"
+    clean_plate = ((vehicle.plate if vehicle else "") or "").strip().upper()
+    if clean_plate:
+        return f"Oficina/Matrículas/{clean_plate}/Processos/{process_ref}"
+    return f"Oficina/Sem matrícula/{reference_year}/Processos/{process_ref}"
+
+
 def render_workshop_detail(
     request: Request,
     db,
@@ -2974,6 +2984,7 @@ def render_workshop_detail(
     reception_saved: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
+    document_zone_saved: str | None = None,
     feedback_saved: str | None = None,
     error: str | None = None,
     status_code: int = 200,
@@ -3092,6 +3103,7 @@ def render_workshop_detail(
         current_flow_index = workshop_flow_order.index("decision")
     else:
         current_flow_index = 0
+    suggested_document_folder_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -3122,6 +3134,7 @@ def render_workshop_detail(
             "reception_saved": reception_saved,
             "incident_created": incident_created,
             "document_created": document_created,
+            "document_zone_saved": document_zone_saved,
             "feedback_saved": feedback_saved,
             "error": error,
             "statuses": WORKSHOP_STATUSES,
@@ -3164,6 +3177,7 @@ def render_workshop_detail(
             "document_type_labels": DOCUMENT_TYPE_LABELS,
             "document_type_areas": DOCUMENT_TYPE_AREAS,
             "document_sources": DOCUMENT_SOURCES,
+            "suggested_document_folder_path": suggested_document_folder_path,
         },
         status_code=status_code,
     )
@@ -3179,6 +3193,7 @@ def workshop_detail(
     reception_saved: str | None = None,
     incident_created: str | None = None,
     document_created: str | None = None,
+    document_zone_saved: str | None = None,
     feedback_saved: str | None = None,
     error: str | None = None,
 ):
@@ -3199,6 +3214,7 @@ def workshop_detail(
             reception_saved=reception_saved,
             incident_created=incident_created,
             document_created=document_created,
+            document_zone_saved=document_zone_saved,
             feedback_saved=feedback_saved,
             error=error,
         )
@@ -4150,6 +4166,7 @@ def workshop_create_document(
         if not process:
             return RedirectResponse("/workshop", status_code=303)
         vehicle = db.get(Vehicle, process.vehicle_id)
+        folder_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
         try:
             add_document_record(
                 db,
@@ -4172,12 +4189,57 @@ def workshop_create_document(
                 workshop_process_id=process.id,
                 notes=notes,
                 user_id=user_id,
+                folder_path_override=folder_path,
             )
         except ValueError:
             return RedirectResponse(f"/workshop/{process_id}?error=Indica%20título%20e%20link.", status_code=303)
         db.commit()
 
     return RedirectResponse(f"/workshop/{process_id}?document_created=1", status_code=303)
+
+
+@web_router.post("/workshop/{process_id}/document-zone", response_class=HTMLResponse)
+def workshop_update_document_zone(
+    request: Request,
+    process_id: int,
+    document_folder_path: str = Form(""),
+    document_folder_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopProcess, process_id)
+        if not process:
+            return RedirectResponse("/workshop", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id)
+        clean_path = document_folder_path.strip() or suggest_workshop_process_folder_path(process, vehicle)
+        clean_url = document_folder_url.strip() or None
+        old_path = process.document_folder_path
+        old_url = process.document_folder_url
+        process.document_folder_path = clean_path
+        process.document_folder_url = clean_url
+        db.add(
+            WorkshopProcessNote(
+                process_id=process.id,
+                user_id=user_id,
+                note=f"Zona documental atualizada.\nPasta sugerida: {clean_path}\nLink: {clean_url or '-'}",
+            )
+        )
+        record_audit(
+            db,
+            action="workshop.document_zone.updated",
+            entity_type="workshop_process",
+            entity_id=process.id,
+            detail=f"Zona documental atualizada no processo #{process.id}",
+            before_json={"document_folder_path": old_path, "document_folder_url": old_url},
+            after_json={"document_folder_path": clean_path, "document_folder_url": clean_url},
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/workshop/{process_id}?document_zone_saved=1", status_code=303)
 
 
 @web_router.post("/workshop/{process_id}/flow")
@@ -7521,6 +7583,7 @@ def add_document_record(
     workshop_process_id: int | None,
     notes: str,
     user_id: int,
+    folder_path_override: str | None = None,
 ) -> Document:
     clean_title = title.strip()
     clean_original_url = url_original.strip()
@@ -7552,7 +7615,7 @@ def add_document_record(
         storage_path=clean_original_url or clean_archive_url,
         storage_key=clean_original_url or None,
         external_url=clean_archive_url or clean_original_url,
-        folder_path=suggest_document_folder_path(
+        folder_path=folder_path_override or suggest_document_folder_path(
             classification,
             document_date,
             clean_plate,

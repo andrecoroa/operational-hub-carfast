@@ -40,6 +40,9 @@
     {% if document_created %}
       <div class="success">Documento associado ao processo.</div>
     {% endif %}
+    {% if document_zone_saved %}
+      <div class="success">Zona documental atualizada.</div>
+    {% endif %}
     {% if feedback_saved %}
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
@@ -86,6 +89,36 @@
           <span>Nota inicial / decisão</span>
           <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
         </div>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Arquivo</p>
+              <h3>Entrada documental do processo</h3>
+            </div>
+            {% if process.document_folder_url %}
+              <a class="button-link secondary-link" href="{{ process.document_folder_url }}" target="_blank" rel="noopener">Abrir pasta 365</a>
+            {% endif %}
+          </div>
+          <details class="workshop-record-group">
+            <summary>Zona documental <span>{{ documents|length }}</span></summary>
+            <div class="task-description-box">
+              <span>Caminho sugerido</span>
+              <p>{{ suggested_document_folder_path }}</p>
+            </div>
+            <form method="post" action="/workshop/{{ process.id }}/document-zone" class="form-stack compact-form">
+              <label>
+                Caminho de arquivo
+                <input type="text" name="document_folder_path" value="{{ suggested_document_folder_path }}">
+              </label>
+              <label>
+                Link da pasta 365
+                <input type="url" name="document_folder_url" value="{{ process.document_folder_url or '' }}" placeholder="https://...">
+              </label>
+              <button type="submit">Guardar zona documental</button>
+            </form>
+          </details>
         </article>
 
         <article class="section workshop-feed">
@@ -342,7 +375,7 @@
         </details>
 
         <details class="workshop-record-group">
-          <summary>Documentos <span>{{ documents|length }}</span></summary>
+          <summary>Entrada documental <span>{{ documents|length }}</span></summary>
           <div class="event-list">
             {% for document in documents %}
               <article class="event-item">
@@ -360,7 +393,7 @@
                 {% endif %}
               </article>
             {% else %}
-              <p class="muted">Sem documentos associados a este processo.</p>
+                <p class="muted">Sem documentos associados a este processo.</p>
             {% endfor %}
           </div>
         </details>
@@ -866,7 +899,7 @@
           <form method="post" action="/workshop/{{ process.id }}/documents" class="form-stack">
             <label>
               Título
-              <input type="text" name="title" maxlength="200" required>
+              <input type="text" name="title" maxlength="200" required placeholder="Ex.: BSI inicial, orçamento, fatura, evidência">
             </label>
             <div class="compact-form-grid two-col">
               <label>
@@ -905,11 +938,11 @@
               </label>
             </div>
             <label>
-              Link original / entrada 365
+              Link do documento / anexo recebido
               <input type="url" name="url_original" placeholder="https://...">
             </label>
             <label>
-              Link arquivado
+              Link arquivado final
               <input type="url" name="url_archive" placeholder="https://...">
             </label>
             <details class="advanced-panel">

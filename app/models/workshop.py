@@ -26,6 +26,8 @@ class WorkshopProcess(TimestampMixin, Base):
     decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    document_folder_path: Mapped[str | None] = mapped_column(Text)
+    document_folder_url: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
 
 

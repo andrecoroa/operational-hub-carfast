@@ -1,26 +1,35 @@
 CHANGE_NOTICE_SESSION_KEY = "change_notice_ack"
-CHANGE_NOTICE_VERSION = "2026-05-tasks-workshop"
+CHANGE_NOTICE_VERSION = "2026-05-workshop-alerts-practices"
 
-CHANGE_NOTICE_TITLE = "Atualizações importantes"
+CHANGE_NOTICE_TITLE = "Novidades e boas práticas"
 CHANGE_NOTICE_SECTIONS = [
     {
-        "title": "Centro de tarefas",
+        "title": "Oficina: processo mais leve",
         "items": [
-            "A listagem passa a mostrar primeiro as tarefas mais recentes.",
-            "O campo Natureza foi removido na criação de tarefas operacionais.",
-            "O responsável passa a ser sempre uma pessoa. A execução pode ser delegada a pessoa ou equipa.",
-            "Os estados foram simplificados: Em execução, Execução delegada, A aguardar, Execução concluída, Pronta para validação, Fechada, Cancelada e Sem ação necessária.",
-            "Ao colocar uma tarefa a aguardar é obrigatório indicar o motivo. Em Outro motivo deve ser preenchido o detalhe.",
-            "Aguardar por decisão deve incluir comentário com a sugestão de resolução.",
+            "O processo de oficina passa a funcionar por pontos de controlo, evitando formulários longos e mantendo registos importantes para auditoria.",
+            "Os passos do fluxo devem ser preenchidos apenas quando existe informação real: receção, histórico, Service Box, BSI, verificações, decisão e fecho.",
+            "Evidências, incidentes, documentos e notas continuam disponíveis como ações complementares, sem misturar tudo no fluxo principal.",
+            "A entrada documental do processo mostra o caminho sugerido de arquivo e permite guardar o link da pasta 365.",
         ],
     },
     {
-        "title": "Oficina",
+        "title": "Alertas automáticos",
         "items": [
-            "O processo de oficina passa a seguir a lógica de cockpit: entrada, diagnóstico, decisão, execução, validação e fecho.",
-            "Durante o processo podem ser registadas evidências, documentos e incidentes associados.",
-            "No diagnóstico devem ser registados os dados disponíveis, incluindo dados BSI quando aplicável.",
-            "O relatório do processo pode ser consultado e impresso em qualquer momento.",
+            "Cada processo de oficina passa a mostrar alertas automáticos no topo do detalhe.",
+            "Os alertas avisam sobre receção incompleta, histórico por verificar, Service Box em falta, BSI em falta, verificações pendentes, documentos em falta e incidentes abertos.",
+            "Os alertas não bloqueiam o trabalho. Servem para chamar a atenção antes de avançar ou fechar o processo.",
+            "Se o alerta não se aplicar, regista uma nota curta ou conclui o passo correspondente para deixar rasto.",
+        ],
+    },
+    {
+        "title": "Boas práticas para amanhã",
+        "items": [
+            "Abrir processo apenas quando existir motivo real ligado a uma viatura.",
+            "Na receção, confirmar sempre data, KM e motivo/serviço principal.",
+            "Antes de decidir, verificar histórico; em viaturas Stellantis, verificar também Service Box quando aplicável.",
+            "Registar evidência sempre que existir situação anormal: dano, ruído, fuga, luz no painel, desgaste ou dúvida relevante.",
+            "Associar documentos por link. Não carregar ficheiros binários para a base de dados.",
+            "Fechar tecnicamente apenas quando a intervenção estiver validada; fechar administrativamente apenas quando documentos e arquivo estiverem coerentes.",
         ],
     },
 ]

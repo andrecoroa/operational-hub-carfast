@@ -1518,7 +1518,7 @@ def dashboard(request: Request):
                     "kind": "Documento",
                     "title": item.title or item.original_name,
                     "detail": item.status,
-                    "created_at": item.received_at or item.created_at,
+                    "created_at": item.created_at,
                 }
                 for item in recent_documents
             ]

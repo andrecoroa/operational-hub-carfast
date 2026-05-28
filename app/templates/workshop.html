@@ -4,7 +4,7 @@
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
   <main class="content">
-    <header class="topbar">
+    <header class="topbar operational-topbar">
       <div>
         <p class="eyebrow">Processos temporários</p>
         <h2>Gestão de oficina</h2>
@@ -14,6 +14,7 @@
         <a class="button-link secondary-link" href="/workshop/new">Novo processo</a>
         {% set feedback_source_area = "workshop" %}
         {% set feedback_return_url = "/workshop/manage" %}
+        {% set pilot_support_compact = true %}
         {% include "_pilot_actions.html" %}
       </div>
     </header>
@@ -37,58 +38,69 @@
       <a href="/workshop/manage?scope=all" class="{% if scope == 'all' %}active{% endif %}"><span>Todos</span><strong>{{ process_counts.all }}</strong></a>
     </nav>
 
-    <section class="task-layout tasks-layout">
-      <section class="table-shell">
-        <div class="table-heading">
+    <section class="workshop-management-layout">
+      <section class="table-shell workshop-process-board">
+        <div class="table-heading workshop-board-heading">
           <div>
             <p class="eyebrow">{{ "Arquivo" if scope == "closed" else ("Geral" if scope == "all" else "Em curso") }}</p>
             <h3>{{ "Processos fechados" if scope == "closed" else ("Todos os processos" if scope == "all" else "Processos abertos") }}</h3>
           </div>
+          <span>{{ processes|length }} registos nesta vista</span>
         </div>
-        <table class="task-table responsive-card-table">
-          <thead>
-            <tr>
-              <th>Processo</th>
-              <th>Viatura</th>
-              <th>Estado</th>
-              <th>Decisão</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for process in processes %}
-              <tr>
-                <td data-label="Processo">
-                  <a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a>
-                  {% if process.note %}
-                    <p class="table-note table-note-clamp">{{ process.note }}</p>
-                  {% endif %}
-                  <p class="table-note">
-                    {{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}
-                    {% if process.priority %} &middot; Prioridade {{ process.priority }}{% endif %}
-                    {% if process.expected_exit_on %} &middot; Saída {{ process.expected_exit_on }}{% endif %}
-                  </p>
-                </td>
-                {% set vehicle = vehicle_by_id.get(process.vehicle_id) %}
-                <td data-label="Viatura"><a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a></td>
-                <td data-label="Estado"><span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
-                <td data-label="Decisão">{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</td>
-                <td data-label="Ação" class="row-action">
-                  <a class="button-link secondary small-button" href="/workshop/{{ process.id }}">Abrir</a>
-                  {% if not process.closed_at %}
-                    <form method="post" action="/workshop/{{ process.id }}/close">
-                      <button type="submit" class="secondary small-button">Fechar</button>
-                    </form>
-                  {% endif %}
-                </td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="5" class="muted">{{ "Sem processos de oficina fechados." if scope == "closed" else ("Sem processos de oficina registados." if scope == "all" else "Sem processos de oficina abertos.") }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="workshop-list-header" aria-hidden="true">
+          <span>Processo</span>
+          <span>Viatura</span>
+          <span>Estado</span>
+          <span>Decisão</span>
+          <span>Ações</span>
+        </div>
+        <div class="workshop-process-list">
+          {% for process in processes %}
+            {% set vehicle = vehicle_by_id.get(process.vehicle_id) %}
+            <article class="workshop-process-row">
+              <div class="workshop-process-main">
+                <a class="table-link workshop-process-title" href="/workshop/{{ process.id }}">{{ process.title }}</a>
+                {% if process.note %}
+                  <p class="table-note table-note-clamp">{{ process.note }}</p>
+                {% else %}
+                  <p class="table-note table-note-clamp">Sem observação registada.</p>
+                {% endif %}
+                <p class="table-note">
+                  {{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}
+                  {% if process.priority %} &middot; Prioridade {{ process.priority }}{% endif %}
+                  {% if process.expected_exit_on %} &middot; Saída {{ process.expected_exit_on }}{% endif %}
+                </p>
+              </div>
+              <div class="workshop-process-vehicle">
+                {% if process.vehicle_id %}
+                  <a class="table-link" href="/fleet/{{ process.vehicle_id }}">{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</a>
+                {% else %}
+                  <strong>Sem viatura</strong>
+                {% endif %}
+                <small>{{ (vehicle.brand ~ " " ~ vehicle.model) if vehicle and (vehicle.brand or vehicle.model) else "Sem dados adicionais" }}</small>
+              </div>
+              <div class="workshop-process-state">
+                <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
+              </div>
+              <div class="workshop-process-decision">
+                <strong>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</strong>
+              </div>
+              <div class="workshop-process-actions">
+                <a class="button-link secondary small-button" href="/workshop/{{ process.id }}">Abrir</a>
+                {% if not process.closed_at %}
+                  <form method="post" action="/workshop/{{ process.id }}/close">
+                    <button type="submit" class="secondary small-button">Fechar</button>
+                  </form>
+                {% endif %}
+              </div>
+            </article>
+          {% else %}
+            <div class="task-board-empty compact-empty">
+              <span>✓</span>
+              <p>{{ "Sem processos de oficina fechados." if scope == "closed" else ("Sem processos de oficina registados." if scope == "all" else "Sem processos de oficina abertos.") }}</p>
+            </div>
+          {% endfor %}
+        </div>
       </section>
     </section>
   </main>

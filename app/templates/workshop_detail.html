@@ -91,6 +91,27 @@
         </div>
         </article>
 
+        <article class="section workshop-feed workshop-alert-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Controlo</p>
+              <h3>Alertas automáticos</h3>
+            </div>
+            <span class="action-method-pill">{{ workshop_alerts|length }}</span>
+          </div>
+          <div class="workshop-alert-list">
+            {% for alert in workshop_alerts %}
+              <article class="workshop-alert-item alert-{{ alert.severity }}">
+                <div>
+                  <strong>{{ alert.title }}</strong>
+                  {% if alert.action %}<span>{{ alert.action }}</span>{% endif %}
+                </div>
+                <p>{{ alert.detail }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </article>
+
         <article class="section workshop-feed">
           <div class="table-heading flat-heading">
             <div>

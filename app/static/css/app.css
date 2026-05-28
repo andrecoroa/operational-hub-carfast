@@ -631,6 +631,14 @@ button:hover,
   min-width: min(650px, 52vw);
 }
 
+.operational-topbar {
+  align-items: flex-start;
+}
+
+.operational-topbar .topbar-tools {
+  align-items: flex-start;
+}
+
 .task-header-meta {
   display: flex;
   align-items: center;
@@ -1784,6 +1792,112 @@ a.metric:hover {
 .quick-filter-row a.active strong {
   background: #ffffff;
   color: var(--brand-dark);
+}
+
+.workshop-management-layout {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.workshop-process-board {
+  overflow-x: auto;
+}
+
+.workshop-board-heading > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.workshop-list-header,
+.workshop-process-row {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.2fr) 220px 230px 220px 170px;
+  gap: 18px;
+  align-items: center;
+  min-width: 1120px;
+}
+
+.workshop-list-header {
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #f8faf9;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.workshop-process-list {
+  display: grid;
+  max-height: 620px;
+  overflow-y: auto;
+}
+
+.workshop-process-row {
+  min-height: 108px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.workshop-process-row:hover {
+  background: #fbfcfc;
+}
+
+.workshop-process-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshop-process-main,
+.workshop-process-vehicle,
+.workshop-process-state,
+.workshop-process-decision,
+.workshop-process-actions {
+  min-width: 0;
+}
+
+.workshop-process-vehicle {
+  display: grid;
+  gap: 4px;
+}
+
+.workshop-process-vehicle a,
+.workshop-process-vehicle strong,
+.workshop-process-decision strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshop-process-vehicle small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshop-process-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.workshop-process-actions .small-button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
 }
 
 .task-command-row {
@@ -3967,6 +4081,95 @@ a.metric:hover {
   overflow: hidden;
 }
 
+.workshop-alert-panel {
+  border-color: rgba(166, 75, 55, 0.18);
+}
+
+.workshop-alert-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px 18px;
+}
+
+.workshop-alert-item {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
+}
+
+.workshop-alert-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workshop-alert-item strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workshop-alert-item span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #f6f8fb;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.workshop-alert-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.workshop-alert-item.alert-critical {
+  border-left-color: #b42318;
+  background: #fff8f7;
+}
+
+.workshop-alert-item.alert-critical span {
+  background: #fee4e2;
+  color: #912018;
+}
+
+.workshop-alert-item.alert-warning {
+  border-left-color: #e18a20;
+  background: #fffaf1;
+}
+
+.workshop-alert-item.alert-warning span {
+  background: #fff1d6;
+  color: #946200;
+}
+
+.workshop-alert-item.alert-info {
+  border-left-color: #3f63d8;
+  background: #f8fbff;
+}
+
+.workshop-alert-item.alert-info span {
+  background: #e8efff;
+  color: #2f4fc6;
+}
+
+.workshop-alert-item.alert-ok {
+  border-left-color: #2b8a3e;
+  background: #fbfffc;
+}
+
+.workshop-alert-item.alert-ok span {
+  background: #eaf7ed;
+  color: #2b8a3e;
+}
+
 .flat-heading {
   background: #ffffff;
 }
@@ -4723,7 +4926,8 @@ a.metric:hover {
   }
 
   .task-list-header,
-  .quick-record-header {
+  .quick-record-header,
+  .workshop-list-header {
     display: none;
   }
 
@@ -4741,6 +4945,21 @@ a.metric:hover {
   .task-card-row.task-row-fixed {
     grid-template-columns: 1fr;
     height: auto;
+  }
+
+  .workshop-process-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-width: 0;
+    height: auto;
+  }
+
+  .workshop-process-board {
+    overflow-x: visible;
+  }
+
+  .workshop-process-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .task-card-row.task-row-fixed .task-card-main,

@@ -599,6 +599,161 @@ def workshop_phase_records(
     return records
 
 
+def workshop_latest_activity_at(
+    process: WorkshopProcess,
+    notes: list[WorkshopProcessNote],
+    evidences: list[WorkshopProcessEvidence],
+    incidents: list[Incident],
+    documents: list[Document],
+    technical_readings: list[WorkshopTechnicalReading],
+) -> datetime | None:
+    activity_dates = [
+        process.updated_at,
+        process.created_at,
+        *(item.created_at for item in notes if item.created_at),
+        *(item.observed_at for item in evidences if item.observed_at),
+        *(item.created_at for item in incidents if item.created_at),
+        *(item.created_at for item in documents if item.created_at),
+        *(item.created_at for item in technical_readings if item.created_at),
+    ]
+    return max((item for item in activity_dates if item), default=None)
+
+
+def build_workshop_alerts(
+    *,
+    process: WorkshopProcess,
+    vehicle: Vehicle | None,
+    phase_records: dict[str, dict],
+    completed_flow_statuses: set[str],
+    current_flow_index: int,
+    workshop_flow_order: list[str],
+    documents: list[Document],
+    evidences: list[WorkshopProcessEvidence],
+    incidents: list[Incident],
+    technical_readings: list[WorkshopTechnicalReading],
+    notes: list[WorkshopProcessNote],
+) -> list[dict[str, str]]:
+    alerts: list[dict[str, str]] = []
+
+    def add(severity: str, title: str, detail: str, action: str = "") -> None:
+        alerts.append(
+            {
+                "severity": severity,
+                "title": title,
+                "detail": detail,
+                "action": action,
+            }
+        )
+
+    def passed(step_code: str) -> bool:
+        return step_code in workshop_flow_order and current_flow_index > workshop_flow_order.index(step_code)
+
+    if not process.closed_at:
+        if "reception" not in completed_flow_statuses or process.km_entry is None:
+            add(
+                "warning",
+                "Receção incompleta",
+                "Confirma a receção e o KM de entrada para fixar o início operacional do processo.",
+                "Confirmar receção",
+            )
+
+        if passed("history_check") and "history_check" not in completed_flow_statuses:
+            add(
+                "warning",
+                "Histórico por verificar",
+                "O processo já avançou, mas não existe registo claro de consulta ao histórico.",
+                "Verificar histórico",
+            )
+
+        if is_stellantis_vehicle(vehicle) and passed("stellantis_service_box") and "stellantis_service_box" not in completed_flow_statuses:
+            add(
+                "warning",
+                "Service Box em falta",
+                "Viatura Stellantis sem registo de plano, simulação ou campanhas técnicas.",
+                "Registar Service Box",
+            )
+
+        if passed("bsi_initial") and "bsi_initial" not in completed_flow_statuses:
+            add(
+                "warning",
+                "Leitura BSI inicial em falta",
+                "Antes da decisão técnica deve existir leitura inicial ou justificação clara.",
+                "Abrir leitura inicial",
+            )
+
+        if passed("systematic_checks") and "systematic_checks" not in completed_flow_statuses:
+            add(
+                "warning",
+                "Verificações sistemáticas pendentes",
+                "Segurança e mecânica rápida ainda não têm registo claro.",
+                "Registar verificações",
+            )
+
+        if process.status in {"technical_close", "administrative_close", "closed"} and not documents:
+            add(
+                "warning",
+                "Sem documentos associados",
+                "Antes do fecho, confirma se orçamento, fatura, folha de obra, BSI ou evidências relevantes estão ligados ao processo.",
+                "Adicionar documento",
+            )
+
+        if process.status in {"technical_close", "administrative_close", "closed"} and "bsi_final" not in completed_flow_statuses:
+            add(
+                "info",
+                "Leitura final por confirmar",
+                "Se houve intervenção técnica, regista a leitura final ou justifica que não se aplica.",
+                "Abrir leitura final",
+            )
+
+        latest_activity = workshop_latest_activity_at(process, notes, evidences, incidents, documents, technical_readings)
+        if latest_activity:
+            latest_activity_date = latest_activity.date() if isinstance(latest_activity, datetime) else latest_activity
+            idle_days = (date.today() - latest_activity_date).days
+            if idle_days >= 3:
+                add(
+                    "info",
+                    "Processo sem movimento",
+                    f"Sem novos registos há {idle_days} dias. Confirma se está parado, concluído ou a aguardar terceiros.",
+                    "Atualizar processo",
+                )
+
+    open_relevant_incidents = [
+        item
+        for item in incidents
+        if item.status not in {"closed", "resolved", "no_action_needed"}
+    ]
+    critical_incidents = [
+        item
+        for item in open_relevant_incidents
+        if item.severity in {"high", "critical"}
+    ]
+    if critical_incidents:
+        add(
+            "critical",
+            "Incidente crítico por tratar",
+            f"Existem {len(critical_incidents)} incidentes técnicos/comerciais de gravidade alta ou crítica.",
+            "Rever incidentes",
+        )
+    elif open_relevant_incidents:
+        add(
+            "info",
+            "Incidentes em aberto",
+            f"Existem {len(open_relevant_incidents)} incidentes ainda não fechados.",
+            "Rever incidentes",
+        )
+
+    if not alerts and not process.closed_at:
+        add(
+            "ok",
+            "Sem alertas automáticos",
+            "Os principais pontos de controlo estão coerentes com o estado atual do processo.",
+            "Continuar fluxo",
+        )
+
+    severity_order = {"critical": 0, "warning": 1, "info": 2, "ok": 3}
+    return sorted(alerts, key=lambda item: severity_order.get(item["severity"], 9))
+
+
 INCIDENT_TYPES = [
     ("technical", "Técnico"),
     ("damage", "Dano"),
@@ -3104,6 +3259,19 @@ def render_workshop_detail(
     else:
         current_flow_index = 0
     suggested_document_folder_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
+    workshop_alerts = build_workshop_alerts(
+        process=process,
+        vehicle=vehicle,
+        phase_records=phase_records,
+        completed_flow_statuses=completed_flow_statuses,
+        current_flow_index=current_flow_index,
+        workshop_flow_order=workshop_flow_order,
+        documents=documents,
+        evidences=evidences,
+        incidents=incidents,
+        technical_readings=technical_readings,
+        notes=notes,
+    )
     return templates.TemplateResponse(
         request,
         "workshop_detail.html",
@@ -3178,6 +3346,7 @@ def render_workshop_detail(
             "document_type_areas": DOCUMENT_TYPE_AREAS,
             "document_sources": DOCUMENT_SOURCES,
             "suggested_document_folder_path": suggested_document_folder_path,
+            "workshop_alerts": workshop_alerts,
         },
         status_code=status_code,
     )

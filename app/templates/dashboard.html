@@ -28,51 +28,68 @@
     </header>
 
     <section class="cockpit-alert-grid">
+      {% if dashboard_access.tasks %}
       <a class="alert-card critical" href="/task-board/manage?view=overdue">
         <span>Alerta crítico</span>
         <strong>{{ metrics.overdue_tasks }}</strong>
         <h3>SLA ultrapassado</h3>
         <p>Tarefas abertas fora do prazo.</p>
       </a>
+      {% endif %}
+      {% if dashboard_access.fleet %}
       <a class="alert-card critical" href="/fleet?scope=active">
         <span>Frota</span>
         <strong>{{ metrics.unavailable_vehicles }}</strong>
         <h3>Viaturas indisponíveis</h3>
         <p>Bloqueadas, em manutenção, preparação ou impro.</p>
       </a>
+      {% endif %}
+      {% if dashboard_access.tasks %}
       <a class="alert-card warning" href="/task-board/manage?view=unassigned">
         <span>Ownership</span>
         <strong>{{ metrics.unassigned_tasks }}</strong>
         <h3>Tarefas sem destino</h3>
         <p>Precisam de pessoa ou equipa responsável.</p>
       </a>
+      {% endif %}
+      {% if dashboard_access.documents %}
       <a class="alert-card warning" href="/documents">
         <span>Documentos</span>
         <strong>{{ metrics.document_inbox }}</strong>
         <h3>Por classificar</h3>
         <p>Entradas documentais ainda sem arquivo final.</p>
       </a>
+      {% endif %}
     </section>
 
     <section class="metric-grid cockpit-summary">
+      {% if dashboard_access.fleet %}
       <a class="metric" href="/fleet?scope=for_sale">
         <span class="metric-detail"><strong>{{ metrics.for_sale_vehicles }}</strong><span>Viaturas para venda</span><small>Preparação da lista de venda</small></span>
       </a>
+      {% endif %}
+      {% if dashboard_access.tasks %}
       <a class="metric" href="/task-board/manage">
         <span class="metric-icon green">✓</span>
-        <span class="metric-detail"><strong>{{ metrics.open_tasks }}</strong><span>Tarefas mãe abertas</span><small>{{ metrics.open_subtasks }} subtarefas · {{ metrics.due_today_tasks }} com limite hoje</small></span>
+        <span class="metric-detail"><strong>{{ metrics.open_tasks }}</strong><span>Tarefas abertas</span><small>{{ metrics.open_subtasks }} subtarefas · {{ metrics.due_today_tasks }} com limite hoje</small></span>
       </a>
+      {% endif %}
+      {% if dashboard_access.workshop %}
       <a class="metric" href="/workshop">
         <span class="metric-icon amber">⚙</span>
         <span class="metric-detail"><strong>{{ metrics.open_workshop }}</strong><span>Processos oficina</span><small>Em acompanhamento</small></span>
       </a>
+      {% endif %}
+      {% if dashboard_access.imports %}
       <a class="metric" href="/imports">
         <span class="metric-icon blue">⇣</span>
         <span class="metric-detail"><strong>{{ metrics.imports }}</strong><span>Importações</span><small>{{ metrics.import_errors }} erros registados</small></span>
       </a>
+      {% endif %}
     </section>
 
-    <section class="cockpit-grid" hidden>
+    <section class="cockpit-grid">
+      {% if dashboard_access.tasks %}
       <article class="cockpit-panel">
         <div class="table-heading">
           <div>
@@ -96,7 +113,9 @@
           {% endfor %}
         </div>
       </article>
+      {% endif %}
 
+      {% if dashboard_access.fleet %}
       <article class="cockpit-panel">
         <div class="table-heading">
           <div>
@@ -120,7 +139,9 @@
           {% endfor %}
         </div>
       </article>
+      {% endif %}
 
+      {% if recent_activity %}
       <article class="cockpit-panel">
         <div class="table-heading">
           <div>
@@ -139,6 +160,7 @@
           {% endfor %}
         </div>
       </article>
+      {% endif %}
     </section>
   </main>
 </div>

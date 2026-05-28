@@ -1346,7 +1346,14 @@ def dashboard(request: Request):
         if not user:
             return RedirectResponse("/login", status_code=303)
         today = date.today()
+        permission_codes = set(get_user_permission_codes(db, user))
+        can_view_tasks = False
+        can_view_fleet = bool({"vehicles.read", "vehicles.write"} & permission_codes)
+        can_view_workshop = bool({"workshop.read", "workshop.write"} & permission_codes)
+        can_view_documents = bool({"documents.read", "documents.write"} & permission_codes)
+        can_view_imports = bool({"imports.run", "imports.approve"} & permission_codes)
         accessible_task_types = user_accessible_task_type_codes(db, user)
+        can_view_tasks = bool(accessible_task_types)
         task_access_condition = (
             Task.task_type.in_(tuple(accessible_task_types))
             if accessible_task_types
@@ -1367,89 +1374,130 @@ def dashboard(request: Request):
         unavailable_vehicle_statuses = {"blocked", "in_maintenance", "in_preparation", "in_impro"}
         open_workshop_statuses = {code for code, _ in WORKSHOP_STATUSES if code != "closed"}
         metrics = {
-            "vehicles": db.scalar(select(Vehicle).count()) if False else count_rows(db, Vehicle),
+            "vehicles": count_rows(db, Vehicle) if can_view_fleet else 0,
             "for_sale_vehicles": db.scalar(
                 select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")
             )
-            or 0,
+            if can_view_fleet
+            else 0,
             "open_tasks": db.scalar(
-                select(func.count()).select_from(Task).where(*open_task_condition)
+                select(func.count()).select_from(Task).where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
             )
-            or 0,
+            if can_view_tasks
+            else 0,
             "open_subtasks": db.scalar(
                 select(func.count()).select_from(Task).where(*open_subtask_condition)
             )
-            or 0,
-            "imports": count_rows(db, ImportBatch),
-            "documents": count_rows(db, Document),
+            if can_view_tasks
+            else 0,
+            "imports": count_rows(db, ImportBatch) if can_view_imports else 0,
+            "documents": count_rows(db, Document) if can_view_documents else 0,
             "overdue_tasks": db.scalar(
                 select(func.count()).select_from(Task).where(
-                    *open_task_condition,
+                    task_access_condition,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.due_on.is_not(None),
                     Task.due_on < today,
                 )
             )
-            or 0,
+            if can_view_tasks
+            else 0,
             "unassigned_tasks": db.scalar(
                 select(func.count()).select_from(Task).where(
-                    *open_task_condition,
+                    task_access_condition,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                     Task.assigned_to_id.is_(None),
                     Task.team_id.is_(None),
                 )
             )
-            or 0,
+            if can_view_tasks
+            else 0,
             "due_today_tasks": db.scalar(
-                select(func.count()).select_from(Task).where(*open_task_condition, Task.due_on == today)
+                select(func.count()).select_from(Task).where(
+                    task_access_condition,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    Task.due_on == today,
+                )
             )
-            or 0,
+            if can_view_tasks
+            else 0,
             "unavailable_vehicles": db.scalar(
                 select(func.count()).select_from(Vehicle).where(
                     Vehicle.active.is_(True),
                     Vehicle.operational_status.in_(unavailable_vehicle_statuses),
                 )
             )
-            or 0,
+            if can_view_fleet
+            else 0,
             "open_workshop": db.scalar(
                 select(func.count()).select_from(WorkshopProcess).where(
                     WorkshopProcess.closed_at.is_(None),
                     WorkshopProcess.status.in_(open_workshop_statuses),
                 )
             )
-            or 0,
+            if can_view_workshop
+            else 0,
             "document_inbox": db.scalar(
                 select(func.count()).select_from(Document).where(
                     Document.archived.is_(False),
                     Document.status.in_({"received", "unclassified"}),
                 )
             )
-            or 0,
-            "import_errors": db.scalar(select(func.count()).select_from(ImportError)) or 0,
+            if can_view_documents
+            else 0,
+            "import_errors": db.scalar(select(func.count()).select_from(ImportError)) if can_view_imports else 0,
         }
-        priority_tasks = db.scalars(
-            select(Task)
-            .where(*open_task_condition)
-            .order_by(Task.due_on.is_(None), Task.due_on, Task.priority.desc(), Task.id.desc())
-            .limit(5)
-        ).all()
-        critical_vehicles = db.scalars(
-            select(Vehicle)
-            .where(
-                Vehicle.active.is_(True),
-                Vehicle.operational_status.in_(unavailable_vehicle_statuses),
-            )
-            .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
-            .limit(5)
-        ).all()
-        recent_tasks = db.scalars(
-            select(Task)
-            .where(task_access_condition, Task.parent_task_id.is_(None))
-            .order_by(Task.created_at.desc(), Task.id.desc())
-            .limit(3)
-        ).all()
-        recent_workshop = db.scalars(
-            select(WorkshopProcess).order_by(WorkshopProcess.created_at.desc(), WorkshopProcess.id.desc()).limit(3)
-        ).all()
-        recent_imports = db.scalars(select(ImportBatch).order_by(ImportBatch.id.desc()).limit(3)).all()
+        priority_tasks = (
+            db.scalars(
+                select(Task)
+                .where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+                .order_by(Task.due_on.is_(None), Task.due_on, Task.priority.desc(), Task.id.desc())
+                .limit(5)
+            ).all()
+            if can_view_tasks
+            else []
+        )
+        critical_vehicles = (
+            db.scalars(
+                select(Vehicle)
+                .where(
+                    Vehicle.active.is_(True),
+                    Vehicle.operational_status.in_(unavailable_vehicle_statuses),
+                )
+                .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+                .limit(5)
+            ).all()
+            if can_view_fleet
+            else []
+        )
+        recent_tasks = (
+            db.scalars(
+                select(Task)
+                .where(task_access_condition)
+                .order_by(Task.created_at.desc(), Task.id.desc())
+                .limit(3)
+            ).all()
+            if can_view_tasks
+            else []
+        )
+        recent_workshop = (
+            db.scalars(select(WorkshopProcess).order_by(WorkshopProcess.created_at.desc(), WorkshopProcess.id.desc()).limit(3)).all()
+            if can_view_workshop
+            else []
+        )
+        recent_imports = (
+            db.scalars(select(ImportBatch).order_by(ImportBatch.id.desc()).limit(3)).all()
+            if can_view_imports
+            else []
+        )
+        recent_documents = (
+            db.scalars(select(Document).order_by(Document.id.desc()).limit(3)).all()
+            if can_view_documents
+            else []
+        )
         recent_activity = (
             [{"kind": "Tarefa", "title": item.title, "detail": item.status, "created_at": item.created_at} for item in recent_tasks]
             + [
@@ -1465,6 +1513,15 @@ def dashboard(request: Request):
                 }
                 for item in recent_imports
             ]
+            + [
+                {
+                    "kind": "Documento",
+                    "title": item.title or item.original_name,
+                    "detail": item.status,
+                    "created_at": item.received_at or item.created_at,
+                }
+                for item in recent_documents
+            ]
         )
         recent_activity = sorted(
             recent_activity,
@@ -1476,8 +1533,15 @@ def dashboard(request: Request):
             "dashboard.html",
             {
                 "user": user,
-                "permissions": sorted(get_user_permission_codes(db, user)),
+                "permissions": sorted(permission_codes),
                 "authorized_units": sorted(get_user_authorized_unit_codes(db, user)),
+                "dashboard_access": {
+                    "tasks": can_view_tasks,
+                    "fleet": can_view_fleet,
+                    "workshop": can_view_workshop,
+                    "documents": can_view_documents,
+                    "imports": can_view_imports,
+                },
                 "metrics": metrics,
                 "priority_tasks": priority_tasks,
                 "critical_vehicles": critical_vehicles,

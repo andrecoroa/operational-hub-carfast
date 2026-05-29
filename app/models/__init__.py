@@ -8,7 +8,15 @@ from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMappi
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.settings import SettingsCatalog, SettingsValue
-from app.models.tasks import QuickRecord, Task, TaskComment, TaskDocument, TaskHistory
+from app.models.tasks import (
+    QuickRecord,
+    Task,
+    TaskComment,
+    TaskDocument,
+    TaskGuidedFlowRun,
+    TaskGuidedFlowStepRun,
+    TaskHistory,
+)
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
@@ -52,6 +60,8 @@ __all__ = [
     "Task",
     "TaskComment",
     "TaskDocument",
+    "TaskGuidedFlowRun",
+    "TaskGuidedFlowStepRun",
     "TaskHistory",
     "Team",
     "TeamMember",

@@ -4219,6 +4219,91 @@ a.metric:hover {
   border-left: 5px solid var(--line);
 }
 
+.guided-flow-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.guided-flow-stepper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.guided-flow-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.guided-flow-step span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #eef1f2;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.guided-flow-step strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guided-flow-step small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.guided-flow-step.step-done,
+.guided-flow-step.step-task {
+  border-color: rgba(43, 138, 62, 0.35);
+  background: #f7fcf8;
+}
+
+.guided-flow-step.step-done span,
+.guided-flow-step.step-task span {
+  background: #eaf7ed;
+  color: #2b8a3e;
+}
+
+.guided-flow-step.step-neutral {
+  border-color: rgba(225, 138, 32, 0.4);
+  background: #fffaf1;
+}
+
+.guided-flow-step.step-neutral span {
+  background: #fff1d6;
+  color: #946200;
+}
+
+.guided-flow-workspace {
+  display: grid;
+  gap: 10px;
+}
+
+.guided-flow-card {
+  border-left: 5px solid rgba(166, 75, 55, 0.35);
+}
+
+.guided-flow-card form {
+  margin-top: 12px;
+}
+
 .flow-step-complete {
   border-color: rgba(43, 138, 62, 0.42);
   background: #fbfffc;

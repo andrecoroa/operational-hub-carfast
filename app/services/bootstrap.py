@@ -26,6 +26,7 @@ INITIAL_PERMISSIONS = [
     ("tasks.management.write", "Gerir centro de tarefas gestão"),
     ("tasks.administration.read", "Ver centro de tarefas administração"),
     ("tasks.administration.write", "Gerir centro de tarefas administração"),
+    ("tasks.create_recurring", "Criar tarefas recorrentes"),
     ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
 ]
@@ -55,6 +56,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.management.write",
         "tasks.administration.read",
         "tasks.administration.write",
+        "tasks.create_recurring",
         "documents.read",
         "documents.write",
     },
@@ -114,6 +116,7 @@ INITIAL_CATALOGS = {
         "in_transfer",
     ],
     "task_status": [
+        "planned",
         "new",
         "in_execution",
         "delegated",

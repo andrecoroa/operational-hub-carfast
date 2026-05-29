@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -45,6 +45,13 @@ class Task(TimestampMixin, Base):
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    planned_for: Mapped[date | None] = mapped_column(Date, index=True)
+    guided_flow_code: Mapped[str | None] = mapped_column(String(120), index=True)
+    recurrence_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence_rule: Mapped[str | None] = mapped_column(String(80), index=True)
+    recurrence_interval: Mapped[int | None] = mapped_column(Integer)
+    recurrence_next_on: Mapped[date | None] = mapped_column(Date, index=True)
+    recurrence_created_from_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
 
 
 class TaskComment(Base):
@@ -76,6 +83,34 @@ class TaskHistory(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskGuidedFlowRun(TimestampMixin, Base):
+    __tablename__ = "task_guided_flow_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    flow_code: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(80), default="active", index=True)
+    started_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskGuidedFlowStepRun(TimestampMixin, Base):
+    __tablename__ = "task_guided_flow_step_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    flow_run_id: Mapped[int] = mapped_column(ForeignKey("task_guided_flow_runs.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    step_code: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(80), default="pending", index=True)
+    data_json: Mapped[dict | None] = mapped_column(JSON)
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    generated_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
 
 
 class QuickRecord(TimestampMixin, Base):

@@ -62,6 +62,10 @@
         <span class="metric-icon">%</span>
         <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
       </a>
+      <a class="metric" href="{{ manage_url }}?view=planned">
+        <span class="metric-icon blue">↷</span>
+        <span class="metric-detail"><strong>{{ metrics.planned }}</strong><span>Planeadas</span></span>
+      </a>
     </section>
 
     {% set current_view_label = "Em aberto" %}
@@ -81,6 +85,9 @@
     {% elif filters.view == "archived" %}
       {% set current_view_label = "Arquivo" %}
       {% set current_view_count = metrics.archived %}
+    {% elif filters.view == "planned" %}
+      {% set current_view_label = "Planeadas" %}
+      {% set current_view_count = metrics.planned %}
     {% endif %}
     {% set active_filter_count = (1 if filters.status else 0) + (1 if filters.source else 0) + (1 if filters.station else 0) %}
 
@@ -96,6 +103,7 @@
           <a href="{{ manage_url }}?content={{ filters.content }}&view=with_subtasks" class="{% if filters.view == 'with_subtasks' %}active{% endif %}"><span>Com subtarefas</span><strong>{{ metrics.with_subtasks }}</strong></a>
           <a href="{{ manage_url }}?content={{ filters.content }}&view=subtasks" class="{% if filters.view == 'subtasks' %}active{% endif %}"><span>Subtarefas</span><strong>{{ metrics.open_subtasks }}</strong></a>
           <a href="{{ manage_url }}?content={{ filters.content }}&view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=planned" class="{% if filters.view == 'planned' %}active{% endif %}"><span>Planeadas</span><strong>{{ metrics.planned }}</strong></a>
         </div>
       </details>
 
@@ -187,7 +195,7 @@
             <div class="table-heading task-type-heading">
               <div>
                 <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "mine" %}Minhas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "with_subtasks" %}Com subtarefas{% elif filters.view == "subtasks" %}Subtarefas{% else %}Em aberto{% endif %}</p>
-                <h3>{% if filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas{% endif %}</h3>
+                <h3>{% if filters.view == "planned" %}Tarefas planeadas{% elif filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas{% endif %}</h3>
               </div>
               <span>{{ task_result_count }}</span>
             </div>

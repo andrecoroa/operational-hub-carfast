@@ -25,7 +25,14 @@ from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRo
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
-from app.models.tasks import QuickRecord, Task, TaskComment, TaskHistory
+from app.models.tasks import (
+    QuickRecord,
+    Task,
+    TaskComment,
+    TaskGuidedFlowRun,
+    TaskGuidedFlowStepRun,
+    TaskHistory,
+)
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
 from app.models.workshop import (
     WorkshopProcess,
@@ -809,6 +816,7 @@ INCIDENT_EVIDENCE_TYPES = [
 INCIDENT_EVIDENCE_TYPE_LABELS = dict(INCIDENT_EVIDENCE_TYPES)
 
 TASK_STATUSES = [
+    ("planned", "Planeada"),
     ("new", "Nova"),
     ("in_execution", "Em execução"),
     ("delegated", "Execução delegada"),
@@ -843,6 +851,7 @@ PRIORITY_LABELS = dict(PRIORITIES)
 PRIORITY_DISPLAY_LABELS = {**PRIORITY_LABELS, "low": "Baixa"}
 
 TASK_ARCHIVE_STATUSES = {"closed", "cancelled", "no_action_needed"}
+TASK_PLANNED_STATUSES = {"planned"}
 TASK_RESPONSIBLE_ONLY_STATUSES = {"in_execution", "closed", "cancelled", "no_action_needed"}
 TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS = {"andrecoroa@daccordinvest.pt"}
 TASK_NEVER_ASSIGNMENT_NAMES = {"codex carfast"}
@@ -856,6 +865,82 @@ TASK_WAITING_REASONS = [
     ("other", "Outro motivo"),
 ]
 TASK_WAITING_REASON_LABELS = dict(TASK_WAITING_REASONS)
+
+GUIDED_FLOW_STEP_STATUSES = [
+    ("pending", "Pendente"),
+    ("done", "Concluído"),
+    ("not_applicable", "Não aplicável"),
+    ("task_created", "Tarefa criada"),
+]
+GUIDED_FLOW_STEP_STATUS_LABELS = dict(GUIDED_FLOW_STEP_STATUSES)
+GUIDED_FLOW_STEP_STATUS_CLASS = {
+    "pending": "pending",
+    "done": "done",
+    "not_applicable": "neutral",
+    "task_created": "task",
+}
+
+GUIDED_FLOW_TEMPLATES = {
+    "daily_checklist": {
+        "title": "Checklist diária operacional",
+        "workspaces": {"operational", "management", "administration"},
+        "description": "Rotina simples para controlo diário com vários pontos de confirmação.",
+        "steps": [
+            ("base_context", "Confirmar contexto", "Valida data, estação/equipa e objetivo da checklist."),
+            ("pending_items", "Pendentes críticos", "Regista pendentes que exigem seguimento no dia."),
+            ("communications", "Comunicações por tratar", "Confirma e regista comunicações relevantes."),
+            ("exceptions", "Ocorrências / exceções", "Regista anomalias ou confirma que não existem."),
+            ("close_checklist", "Fechar checklist", "Confirma conclusão e observações finais."),
+        ],
+    },
+    "workshop_technical_history_audit": {
+        "title": "Auditoria histórico técnico",
+        "workspaces": {"workshop"},
+        "description": "Verificação provisória de histórico de manutenção, conservação e relatórios técnicos da viatura.",
+        "steps": [
+            ("vehicle_base", "Dados base da viatura", "Confirmar matrícula, marca/modelo, chassi e datas principais."),
+            ("rentway_history", "Histórico Rentway", "Verificar histórico disponível e sinalizar falhas."),
+            ("work_orders", "Folhas de obra", "Validar folhas de obra de reparação/manutenção."),
+            ("supplier_invoices", "Faturas associadas", "Confirmar se as faturas correspondem às intervenções."),
+            ("bsi_reports", "BSI / diagnósticos", "Verificar existência dos relatórios técnicos relevantes."),
+            ("gaps", "Falhas encontradas", "Registar falhas e gerar tarefas se necessário."),
+            ("conclusion", "Conclusão da auditoria", "Fechar auditoria com resultado e recomendação."),
+        ],
+    },
+    "workshop_revision_light": {
+        "title": "Revisão oficina - fluxo leve",
+        "workspaces": {"workshop"},
+        "description": "Fluxo guiado leve para revisão/manutenção sem substituir o processo de oficina.",
+        "steps": [
+            ("reception", "Receção", "Confirmar entrada, KM e motivo da intervenção."),
+            ("admin_check", "Verificação administrativa", "Validar histórico, documentos e Service Box quando aplicável."),
+            ("technical_diagnosis", "Diagnóstico técnico", "Registar leitura inicial, verificações e conclusão técnica."),
+            ("decision", "Decisão", "Registar decisão e próxima ação."),
+            ("execution", "Intervenção técnica", "Registar serviço executado, material e evidências."),
+            ("validation", "Validação", "Confirmar leitura final ou validação aplicável."),
+            ("close", "Fecho", "Concluir com nota final e documentos associados."),
+        ],
+    },
+    "document_review": {
+        "title": "Tratamento documental",
+        "workspaces": {"operational", "workshop", "management", "administration"},
+        "description": "Receber, classificar, associar e preparar arquivo de documentação.",
+        "steps": [
+            ("identify", "Identificar documento", "Confirmar origem, remetente e assunto."),
+            ("classify", "Classificar", "Escolher área, tipologia e contexto."),
+            ("associate", "Associar contexto", "Ligar a viatura, tarefa, processo ou entidade."),
+            ("archive_decision", "Decidir arquivo", "Definir pasta sugerida ou rejeitar sem interesse."),
+            ("close", "Concluir tratamento", "Confirmar link final, observações e estado."),
+        ],
+    },
+}
+
+RECURRENCE_RULES = [
+    ("daily", "Diária"),
+    ("weekly", "Semanal"),
+    ("monthly", "Mensal"),
+]
+RECURRENCE_RULE_LABELS = dict(RECURRENCE_RULES)
 
 TASK_TYPES = [
     ("operational_task", "Tarefa operacional"),
@@ -1076,6 +1161,165 @@ def user_task_workspace_codes(db, user: User | None, *, write: bool = False) -> 
         for workspace_code in TASK_WORKSPACE_CONFIG
         if user_can_access_task_workspace(db, user, workspace_code, write=write)
     ]
+
+
+def user_can_create_recurring_tasks(db, user: User | None) -> bool:
+    if not user or not user.active:
+        return False
+    permissions = get_user_permission_codes(db, user)
+    return bool({"admin.manage", "tasks.create_recurring"} & permissions)
+
+
+def guided_flow_options_for_workspace(workspace: str) -> list[tuple[str, str]]:
+    clean_workspace = normalize_task_workspace(workspace)
+    return [
+        (code, template["title"])
+        for code, template in GUIDED_FLOW_TEMPLATES.items()
+        if clean_workspace in template["workspaces"]
+    ]
+
+
+def guided_flow_template(flow_code: str | None) -> dict | None:
+    if not flow_code:
+        return None
+    return GUIDED_FLOW_TEMPLATES.get(flow_code)
+
+
+def create_guided_flow_run_for_task(db, task: Task, flow_code: str | None, user_id: int | None) -> TaskGuidedFlowRun | None:
+    template = guided_flow_template(flow_code)
+    if not template:
+        return None
+    exists = db.scalar(select(TaskGuidedFlowRun).where(TaskGuidedFlowRun.task_id == task.id))
+    if exists:
+        return exists
+    run = TaskGuidedFlowRun(
+        task_id=task.id,
+        flow_code=flow_code or "",
+        title=template["title"],
+        status="active",
+        started_by_id=user_id,
+    )
+    db.add(run)
+    db.flush()
+    for index, (step_code, title, description) in enumerate(template["steps"], start=1):
+        db.add(
+            TaskGuidedFlowStepRun(
+                flow_run_id=run.id,
+                task_id=task.id,
+                step_code=step_code,
+                title=title,
+                sort_order=index,
+                status="pending",
+                data_json={"description": description},
+            )
+        )
+    task.guided_flow_code = flow_code
+    return run
+
+
+def task_guided_flow_context(db, task: Task) -> dict:
+    flow_run = db.scalar(
+        select(TaskGuidedFlowRun)
+        .where(TaskGuidedFlowRun.task_id == task.id)
+        .order_by(TaskGuidedFlowRun.id.desc())
+    )
+    if not flow_run:
+        return {"run": None, "steps": [], "progress": {"total": 0, "done": 0, "pending": 0}}
+    steps = db.scalars(
+        select(TaskGuidedFlowStepRun)
+        .where(TaskGuidedFlowStepRun.flow_run_id == flow_run.id)
+        .order_by(TaskGuidedFlowStepRun.sort_order, TaskGuidedFlowStepRun.id)
+    ).all()
+    done_count = sum(1 for step in steps if step.status in {"done", "not_applicable", "task_created"})
+    pending_count = sum(1 for step in steps if step.status == "pending")
+    return {
+        "run": flow_run,
+        "steps": steps,
+        "progress": {"total": len(steps), "done": done_count, "pending": pending_count},
+    }
+
+
+def next_recurrence_date(base: date | None, rule: str | None, interval: int | None) -> date | None:
+    if rule not in RECURRENCE_RULE_LABELS:
+        return None
+    clean_interval = max(interval or 1, 1)
+    start = base or date.today()
+    if rule == "daily":
+        return start + timedelta(days=clean_interval)
+    if rule == "weekly":
+        return start + timedelta(weeks=clean_interval)
+    if rule == "monthly":
+        month = start.month - 1 + clean_interval
+        year = start.year + month // 12
+        month = month % 12 + 1
+        days_in_month = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        return date(year, month, min(start.day, days_in_month[month - 1]))
+    return None
+
+
+def create_next_recurring_task(db, task: Task, user_id: int | None) -> Task | None:
+    if not task.recurrence_enabled or not task.recurrence_rule:
+        return None
+    next_on = task.recurrence_next_on or next_recurrence_date(task.due_on or date.today(), task.recurrence_rule, task.recurrence_interval)
+    if not next_on:
+        return None
+    existing = db.scalar(
+        select(Task).where(
+            Task.recurrence_created_from_task_id == task.id,
+            Task.planned_for == next_on,
+            Task.closed_at.is_(None),
+        )
+    )
+    if existing:
+        return existing
+    next_task = Task(
+        title=task.title,
+        description=task.description,
+        task_type=task.task_type,
+        source=task.source,
+        category=task.category,
+        subcategory=task.subcategory,
+        status="planned",
+        priority=task.priority,
+        customer_name=task.customer_name,
+        customer_contact=task.customer_contact,
+        customer_email=task.customer_email,
+        customer_phone=task.customer_phone,
+        plate=task.plate,
+        reservation_number=task.reservation_number,
+        contract_number=task.contract_number,
+        station=task.station,
+        department=task.department,
+        external_source_id=task.external_source_id,
+        entity_type=task.entity_type,
+        entity_id=task.entity_id,
+        team_id=task.team_id,
+        assigned_to_id=task.assigned_to_id,
+        delegated_to_user_id=task.delegated_to_user_id,
+        delegated_to_team_id=task.delegated_to_team_id,
+        created_by_id=user_id,
+        due_on=next_on,
+        planned_for=next_on,
+        guided_flow_code=task.guided_flow_code,
+        recurrence_enabled=True,
+        recurrence_rule=task.recurrence_rule,
+        recurrence_interval=task.recurrence_interval or 1,
+        recurrence_next_on=next_recurrence_date(next_on, task.recurrence_rule, task.recurrence_interval),
+        recurrence_created_from_task_id=task.id,
+    )
+    db.add(next_task)
+    db.flush()
+    create_guided_flow_run_for_task(db, next_task, next_task.guided_flow_code, user_id)
+    db.add(
+        TaskHistory(
+            task_id=next_task.id,
+            user_id=user_id,
+            field_name="status",
+            old_value=None,
+            new_value=TASK_STATUS_DISPLAY_LABELS.get("planned", "Planeada"),
+        )
+    )
+    return next_task
 
 
 def user_accessible_task_type_codes(db, user: User | None) -> list[str]:
@@ -1517,13 +1761,13 @@ def dashboard(request: Request):
         open_task_condition = (
             task_access_condition,
             Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
             Task.parent_task_id.is_(None),
         )
         open_subtask_condition = (
             task_access_condition,
             Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
             Task.parent_task_id.is_not(None),
         )
         unavailable_vehicle_statuses = {"blocked", "in_maintenance", "in_preparation", "in_impro"}
@@ -1536,7 +1780,7 @@ def dashboard(request: Request):
             if can_view_fleet
             else 0,
             "open_tasks": db.scalar(
-                select(func.count()).select_from(Task).where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+                select(func.count()).select_from(Task).where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
             )
             if can_view_tasks
             else 0,
@@ -1551,7 +1795,7 @@ def dashboard(request: Request):
                 select(func.count()).select_from(Task).where(
                     task_access_condition,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.due_on.is_not(None),
                     Task.due_on < today,
                 )
@@ -1562,7 +1806,7 @@ def dashboard(request: Request):
                 select(func.count()).select_from(Task).where(
                     task_access_condition,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.assigned_to_id.is_(None),
                     Task.team_id.is_(None),
                 )
@@ -1573,7 +1817,7 @@ def dashboard(request: Request):
                 select(func.count()).select_from(Task).where(
                     task_access_condition,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.due_on == today,
                 )
             )
@@ -1608,7 +1852,7 @@ def dashboard(request: Request):
         priority_tasks = (
             db.scalars(
                 select(Task)
-                .where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES))
+                .where(task_access_condition, Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
                 .order_by(Task.due_on.is_(None), Task.due_on, Task.priority.desc(), Task.id.desc())
                 .limit(5)
             ).all()
@@ -5373,7 +5617,7 @@ def task_center(request: Request):
                 .where(
                     Subtask.parent_task_id.is_not(None),
                     Subtask.closed_at.is_(None),
-                    ~Subtask.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Subtask.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )
                 .distinct()
             )
@@ -5382,7 +5626,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.parent_task_id.is_(None),
                 )
             ) or 0
@@ -5390,7 +5634,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.parent_task_id.is_(None),
                     ~Task.id.in_(subtask_parent_ids),
                 )
@@ -5399,7 +5643,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.parent_task_id.is_(None),
                     Task.id.in_(subtask_parent_ids),
                 )
@@ -5408,7 +5652,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.parent_task_id.is_not(None),
                 )
             ) or 0
@@ -5416,7 +5660,7 @@ def task_center(request: Request):
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.parent_task_id.is_(None),
                     Task.due_on == today,
                 )
@@ -5495,7 +5739,7 @@ def task_board_manage(
         subtask_filter = Task.parent_task_id.is_not(None)
         active_task_filter = (
             Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
         )
         Subtask = aliased(Task)
         open_subtask_parent_ids = (
@@ -5503,7 +5747,7 @@ def task_board_manage(
             .where(
                 Subtask.parent_task_id.is_not(None),
                 Subtask.closed_at.is_(None),
-                ~Subtask.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Subtask.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
             )
             .distinct()
         )
@@ -5525,7 +5769,7 @@ def task_board_manage(
                     workspace_task_filter,
                     subtask_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )
             )
             or 0,
@@ -5534,7 +5778,7 @@ def task_board_manage(
                     workspace_task_filter,
                     parent_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     ~Task.id.in_(subtask_parent_ids),
                 )
             )
@@ -5544,7 +5788,7 @@ def task_board_manage(
                     workspace_task_filter,
                     parent_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.id.in_(subtask_parent_ids),
                 )
             )
@@ -5554,7 +5798,7 @@ def task_board_manage(
                     workspace_task_filter,
                     parent_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.id.in_(open_subtask_parent_ids),
                 )
             )
@@ -5563,7 +5807,7 @@ def task_board_manage(
                 select(func.count()).select_from(Task).where(
                     workspace_task_filter,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     or_(
                         Task.assigned_to_id == user_id,
                         Task.delegated_to_user_id == user_id,
@@ -5631,6 +5875,15 @@ def task_board_manage(
                 )
             )
             or 0,
+            "planned": db.scalar(
+                select(func.count()).select_from(Task).where(
+                    workspace_task_filter,
+                    parent_task_filter,
+                    Task.status.in_(TASK_PLANNED_STATUSES),
+                    Task.closed_at.is_(None),
+                )
+            )
+            or 0,
             "all": db.scalar(
                 select(func.count()).select_from(Task).where(workspace_task_filter, parent_task_filter)
             )
@@ -5648,13 +5901,20 @@ def task_board_manage(
         stmt = open_stmt
         if view == "archived" or status in TASK_ARCHIVE_STATUSES:
             stmt = select(Task).where(workspace_task_filter, parent_task_filter, archived_condition)
+        elif view == "planned":
+            stmt = select(Task).where(
+                workspace_task_filter,
+                parent_task_filter,
+                Task.status.in_(TASK_PLANNED_STATUSES),
+                Task.closed_at.is_(None),
+            )
         elif view == "all":
             stmt = select(Task).where(workspace_task_filter, parent_task_filter)
         elif view == "mine":
             stmt = select(Task).where(
                 workspace_task_filter,
                 Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 or_(
                     Task.assigned_to_id == user_id,
                     Task.delegated_to_user_id == user_id,
@@ -5682,7 +5942,7 @@ def task_board_manage(
                 workspace_task_filter,
                 subtask_filter,
                 Task.closed_at.is_(None),
-                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
             )
 
         clean_q = q.strip()
@@ -5735,6 +5995,13 @@ def task_board_manage(
 
         if view == "archived":
             category_count_conditions = [workspace_task_filter, parent_task_filter, archived_condition]
+        elif view == "planned":
+            category_count_conditions = [
+                workspace_task_filter,
+                parent_task_filter,
+                Task.status.in_(TASK_PLANNED_STATUSES),
+                Task.closed_at.is_(None),
+            ]
         elif view == "all":
             category_count_conditions = [workspace_task_filter, parent_task_filter]
         else:
@@ -5755,7 +6022,7 @@ def task_board_manage(
             category_count_conditions.extend([parent_task_filter, Task.id.in_(open_subtask_parent_ids)])
         elif view == "subtasks":
             category_count_conditions.append(subtask_filter)
-        elif view not in {"all", "archived"}:
+        elif view not in {"all", "archived", "planned"}:
             if view == "urgent":
                 category_count_conditions.append(Task.priority == "urgent")
             elif view == "unassigned":
@@ -5832,7 +6099,7 @@ def task_board_manage(
                     .where(
                         Task.parent_task_id.in_(task_ids_for_subtask_counts),
                         Task.closed_at.is_(None),
-                        ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                        ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     )
                     .group_by(Task.parent_task_id)
                 ).all()
@@ -6087,6 +6354,9 @@ def task_new_form(
                 "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "delegation_value": "",
+                "guided_flow_options": guided_flow_options_for_workspace(current_workspace),
+                "can_create_recurring": user_can_create_recurring_tasks(db, current_user),
+                "recurrence_rules": RECURRENCE_RULES,
             },
         )
 
@@ -6593,6 +6863,9 @@ def task_create(
     department: str = Form(""),
     external_source_id: str = Form(""),
     parent_task_id: str = Form(""),
+    guided_flow_code: str = Form(""),
+    recurrence_rule: str = Form(""),
+    recurrence_interval: str = Form(""),
     description: str = Form(""),
     confirm_duplicate: str = Form(""),
 ):
@@ -6646,6 +6919,9 @@ def task_create(
                 "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                 "priorities": PRIORITIES,
                 "delegation_value": delegated_to,
+                "guided_flow_options": guided_flow_options_for_workspace(current_workspace),
+                "can_create_recurring": user_can_create_recurring_tasks(db, current_user),
+                "recurrence_rules": RECURRENCE_RULES,
             },
             status_code=400,
         )
@@ -6667,6 +6943,13 @@ def task_create(
         if category not in TASK_CATEGORY_LABELS:
             category = workspace_config["default_category"]
         subcategory = normalize_task_subcategory(category, subcategory)
+        clean_guided_flow_code = guided_flow_code if guided_flow_template(guided_flow_code) else None
+        if clean_guided_flow_code and current_workspace not in guided_flow_template(clean_guided_flow_code)["workspaces"]:
+            clean_guided_flow_code = None
+        can_create_recurring = user_can_create_recurring_tasks(db, current_user)
+        clean_recurrence_rule = recurrence_rule if recurrence_rule in RECURRENCE_RULE_LABELS and can_create_recurring else None
+        parsed_recurrence_interval = parse_optional_int(recurrence_interval) or 1
+        parsed_recurrence_interval = min(max(parsed_recurrence_interval, 1), 36)
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
@@ -6690,7 +6973,7 @@ def task_create(
                 .where(
                     Task.plate == clean_plate,
                     Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )
                 .order_by(Task.due_on.is_(None), Task.due_on, Task.id.desc())
                 .limit(8)
@@ -6736,6 +7019,9 @@ def task_create(
                         "department": department,
                         "external_source_id": external_source_id,
                         "parent_task_id": parent_task.id if parent_task else "",
+                        "guided_flow_code": clean_guided_flow_code or "",
+                        "recurrence_rule": clean_recurrence_rule or "",
+                        "recurrence_interval": parsed_recurrence_interval,
                     },
                     "parent_task": parent_task,
                     "task_status_labels": TASK_STATUS_DISPLAY_LABELS,
@@ -6747,6 +7033,9 @@ def task_create(
                     "task_subcategories_by_category": TASK_SUBCATEGORIES_BY_CATEGORY,
                     "task_subcategory_labels": TASK_SUBCATEGORY_DISPLAY_LABELS,
                     "priorities": PRIORITIES,
+                    "guided_flow_options": guided_flow_options_for_workspace(current_workspace),
+                    "can_create_recurring": can_create_recurring,
+                    "recurrence_rules": RECURRENCE_RULES,
                 },
                 status_code=409,
             )
@@ -6776,9 +7065,18 @@ def task_create(
             delegated_to_team_id=delegated_team_id,
             created_by_id=user_id,
             due_on=parse_optional_date(due_on),
+            planned_for=None,
+            guided_flow_code=clean_guided_flow_code,
+            recurrence_enabled=bool(clean_recurrence_rule),
+            recurrence_rule=clean_recurrence_rule,
+            recurrence_interval=parsed_recurrence_interval if clean_recurrence_rule else None,
+            recurrence_next_on=next_recurrence_date(parse_optional_date(due_on) or date.today(), clean_recurrence_rule, parsed_recurrence_interval)
+            if clean_recurrence_rule
+            else None,
         )
         db.add(task)
         db.flush()
+        create_guided_flow_run_for_task(db, task, clean_guided_flow_code, user_id)
         db.add(
             TaskHistory(
                 task_id=task.id,
@@ -6848,6 +7146,7 @@ def task_detail(
             .order_by(Document.id.desc())
             .limit(20)
         ).all()
+        guided_flow = task_guided_flow_context(db, task)
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
         user_by_id = {item.id: item for item in users}
         assignable_users = assignable_users_for_workspace(users, task_workspace)
@@ -6893,6 +7192,11 @@ def task_detail(
                 "parent_task": parent_task,
                 "subtasks": subtasks,
                 "documents": documents,
+                "guided_flow": guided_flow,
+                "guided_flow_step_statuses": GUIDED_FLOW_STEP_STATUSES,
+                "guided_flow_step_status_labels": GUIDED_FLOW_STEP_STATUS_LABELS,
+                "guided_flow_step_status_class": GUIDED_FLOW_STEP_STATUS_CLASS,
+                "recurrence_rule_labels": RECURRENCE_RULE_LABELS,
                 "users": users,
                 "assignable_users": assignable_users,
                 "current_user": current_user,
@@ -7125,6 +7429,11 @@ def task_update(
             task.closed_at = task.closed_at or datetime.now(UTC)
         else:
             task.closed_at = None
+        next_recurring_task = None
+        if status in {"closed", "cancelled", "no_action_needed"}:
+            next_recurring_task = create_next_recurring_task(db, task, user_id)
+            if next_recurring_task:
+                task.recurrence_next_on = next_recurring_task.planned_for
 
         for field_name, old_value, new_value in changes:
             db.add(
@@ -7134,6 +7443,16 @@ def task_update(
                     field_name=field_name,
                     old_value=old_value or None,
                     new_value=new_value or None,
+                )
+            )
+        if next_recurring_task:
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="Recorrência",
+                    old_value=None,
+                    new_value=f"Próxima ocorrência CF-TASK-{next_recurring_task.id:05d} planeada para {next_recurring_task.planned_for}",
                 )
             )
 
@@ -7150,6 +7469,138 @@ def task_update(
     if status in {"closed", "cancelled", "no_action_needed"}:
         return RedirectResponse(f"{task_workspace_manage_url(workspace_for_task_type(task_type))}?closed=1", status_code=303)
     return RedirectResponse(f"/task-board/{task_id}?commented=1", status_code=303)
+
+
+@web_router.post("/task-board/{task_id}/flow/{step_run_id}", response_class=HTMLResponse)
+def task_guided_flow_step_update(
+    request: Request,
+    task_id: int,
+    step_run_id: int,
+    step_status: str = Form("pending"),
+    step_note: str = Form(""),
+    action: str = Form("save"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        step = db.get(TaskGuidedFlowStepRun, step_run_id)
+        if not task or not step or step.task_id != task.id:
+            return RedirectResponse("/task-board/manage", status_code=303)
+        task_workspace = workspace_for_task_type(task.task_type)
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/task-board", status_code=303)
+
+        allowed_step_statuses = {code for code, _ in GUIDED_FLOW_STEP_STATUSES}
+        if step_status not in allowed_step_statuses:
+            step_status = step.status or "pending"
+        clean_note = step_note.strip()
+        old_status = step.status
+        step_data = dict(step.data_json or {})
+        if clean_note:
+            step_data["note"] = clean_note
+        step.data_json = step_data
+
+        if action == "generate_task":
+            subtask = Task(
+                title=f"{step.title} - {task.title}",
+                description=clean_note or f"Passo pendente gerado a partir da tarefa CF-TASK-{task.id:05d}.",
+                task_type=task.task_type,
+                source="system",
+                category=task.category,
+                subcategory=task.subcategory,
+                status="new",
+                priority=task.priority or "normal",
+                customer_name=task.customer_name,
+                customer_contact=task.customer_contact,
+                customer_email=task.customer_email,
+                customer_phone=task.customer_phone,
+                plate=task.plate,
+                reservation_number=task.reservation_number,
+                contract_number=task.contract_number,
+                station=task.station,
+                department=task.department,
+                entity_type=task.entity_type,
+                entity_id=task.entity_id,
+                parent_task_id=task.id,
+                team_id=task.team_id,
+                assigned_to_id=task.assigned_to_id,
+                created_by_id=user_id,
+                due_on=task.due_on,
+            )
+            db.add(subtask)
+            db.flush()
+            step.generated_task_id = subtask.id
+            step.status = "task_created"
+            db.add(
+                TaskHistory(
+                    task_id=subtask.id,
+                    user_id=user_id,
+                    field_name="status",
+                    old_value=None,
+                    new_value=TASK_STATUS_DISPLAY_LABELS.get("new", "Nova"),
+                )
+            )
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="Fluxo guiado",
+                    old_value=GUIDED_FLOW_STEP_STATUS_LABELS.get(old_status, old_status),
+                    new_value=f"{step.title}: tarefa CF-TASK-{subtask.id:05d} criada",
+                )
+            )
+        else:
+            step.status = step_status
+            if step_status in {"done", "not_applicable", "task_created"}:
+                step.completed_by_id = user_id
+                step.completed_at = step.completed_at or datetime.now(UTC)
+            else:
+                step.completed_by_id = None
+                step.completed_at = None
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="Fluxo guiado",
+                    old_value=f"{step.title}: {GUIDED_FLOW_STEP_STATUS_LABELS.get(old_status, old_status)}",
+                    new_value=f"{step.title}: {GUIDED_FLOW_STEP_STATUS_LABELS.get(step.status, step.status)}",
+                )
+            )
+
+        flow_run = db.get(TaskGuidedFlowRun, step.flow_run_id)
+        if flow_run:
+            remaining = db.scalar(
+                select(func.count())
+                .select_from(TaskGuidedFlowStepRun)
+                .where(
+                    TaskGuidedFlowStepRun.flow_run_id == flow_run.id,
+                    TaskGuidedFlowStepRun.status == "pending",
+                )
+            )
+            if remaining == 0:
+                flow_run.status = "completed"
+                flow_run.completed_at = flow_run.completed_at or datetime.now(UTC)
+            else:
+                flow_run.status = "active"
+                flow_run.completed_at = None
+
+        record_audit(
+            db,
+            action="task.guided_flow.step.updated",
+            entity_type="task_guided_flow_step_run",
+            entity_id=step.id,
+            detail=f"Passo do fluxo atualizado: {step.title}",
+            before_json={"status": old_status},
+            after_json={"status": step.status, "generated_task_id": step.generated_task_id},
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/task-board/{task_id}?commented=1#flow-step-{step_run_id}", status_code=303)
 
 
 @web_router.post("/task-board/{task_id}/comments", response_class=HTMLResponse)
@@ -7204,6 +7655,13 @@ def task_add_comment(
             delegated_team = db.get(Team, task.delegated_to_team_id) if task.delegated_to_team_id else None
             waiting_for_user = db.get(User, task.waiting_for_user_id) if task.waiting_for_user_id else None
             waiting_for_team = db.get(Team, task.waiting_for_team_id) if task.waiting_for_team_id else None
+            parent_task = db.get(Task, task.parent_task_id) if task.parent_task_id else None
+            subtasks = db.scalars(
+                select(Task)
+                .where(Task.parent_task_id == task.id)
+                .order_by(Task.created_at.desc(), Task.id.desc())
+            ).all()
+            guided_flow = task_guided_flow_context(db, task)
             return templates.TemplateResponse(
                 request,
                 "task_detail.html",
@@ -7230,6 +7688,13 @@ def task_add_comment(
                     "waiting_for_user": waiting_for_user,
                     "waiting_for_team": waiting_for_team,
                     "waiting_for_value": format_delegation_target(task.waiting_for_user_id, task.waiting_for_team_id),
+                    "parent_task": parent_task,
+                    "subtasks": subtasks,
+                    "guided_flow": guided_flow,
+                    "guided_flow_step_statuses": GUIDED_FLOW_STEP_STATUSES,
+                    "guided_flow_step_status_labels": GUIDED_FLOW_STEP_STATUS_LABELS,
+                    "guided_flow_step_status_class": GUIDED_FLOW_STEP_STATUS_CLASS,
+                    "recurrence_rule_labels": RECURRENCE_RULE_LABELS,
                     "commented": None,
                     "error": "Escreve um comentário antes de gravar.",
                     "task_statuses": TASK_STATUSES,
@@ -7370,6 +7835,18 @@ def task_close(request: Request, task_id: int):
                 detail=f"Tarefa fechada: {task.title}",
                 user_id=user_id,
             )
+            next_recurring_task = create_next_recurring_task(db, task, user_id)
+            if next_recurring_task:
+                task.recurrence_next_on = next_recurring_task.planned_for
+                db.add(
+                    TaskHistory(
+                        task_id=task.id,
+                        user_id=user_id,
+                        field_name="Recorrência",
+                        old_value=None,
+                        new_value=f"Próxima ocorrência CF-TASK-{next_recurring_task.id:05d} planeada para {next_recurring_task.planned_for}",
+                    )
+                )
             db.commit()
 
     return RedirectResponse(f"{task_workspace_manage_url(task_workspace)}?closed=1", status_code=303)

@@ -64,6 +64,11 @@
                 <div><dt>Estado</dt><dd>{{ task_status_labels.get(task.status, task.status) }}</dd></div>
                 <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
                 <div><dt>Data limite</dt><dd>{{ task.due_on or "Sem SLA" }}</dd></div>
+                {% if task.planned_for %}<div><dt>Planeada para</dt><dd>{{ task.planned_for }}</dd></div>{% endif %}
+                {% if task.recurrence_enabled %}
+                  <div><dt>Recorrência</dt><dd>{{ recurrence_rule_labels.get(task.recurrence_rule, task.recurrence_rule) }}{% if task.recurrence_interval and task.recurrence_interval > 1 %} · intervalo {{ task.recurrence_interval }}{% endif %}</dd></div>
+                  <div><dt>Próxima</dt><dd>{{ task.recurrence_next_on or "A calcular no fecho" }}</dd></div>
+                {% endif %}
               </dl>
             </section>
             <section>
@@ -100,6 +105,71 @@
             </section>
           </div>
         </article>
+
+        {% if guided_flow.run %}
+        <article class="section guided-flow-panel">
+          <div class="table-heading flat-heading compact-task-heading">
+            <div>
+              <p class="eyebrow">Fluxo guiado</p>
+              <h3>{{ guided_flow.run.title }}</h3>
+            </div>
+            <span class="pill muted-pill">{{ guided_flow.progress.done }}/{{ guided_flow.progress.total }} passos</span>
+          </div>
+          <div class="guided-flow-stepper">
+            {% for step in guided_flow.steps %}
+              <a href="#flow-step-{{ step.id }}" class="guided-flow-step step-{{ guided_flow_step_status_class.get(step.status, 'pending') }}">
+                <span>{{ loop.index }}</span>
+                <strong>{{ step.title }}</strong>
+                <small>{{ guided_flow_step_status_labels.get(step.status, step.status) }}</small>
+              </a>
+            {% endfor %}
+          </div>
+          <div class="guided-flow-workspace">
+            {% for step in guided_flow.steps %}
+              {% set step_data = step.data_json or {} %}
+              <details id="flow-step-{{ step.id }}" class="workshop-record-group guided-flow-card" {% if loop.first and step.status == 'pending' %}open{% endif %}>
+                <summary>{{ step.title }} <span>{{ guided_flow_step_status_labels.get(step.status, step.status) }}</span></summary>
+                <p class="muted">{{ step_data.description or "Passo do fluxo guiado." }}</p>
+                {% if step_data.note %}
+                  <div class="task-description-box">
+                    <span>Última nota</span>
+                    <p>{{ step_data.note }}</p>
+                  </div>
+                {% endif %}
+                {% if step.generated_task_id %}
+                  <p><a class="table-link" href="/task-board/{{ step.generated_task_id }}">Abrir tarefa gerada CF-TASK-{{ "%05d"|format(step.generated_task_id) }}</a></p>
+                {% endif %}
+                {% if can_write_workspace %}
+                  <form method="post" action="/task-board/{{ task.id }}/flow/{{ step.id }}" class="form-stack compact-form">
+                    <label>
+                      Estado do passo
+                      <select name="step_status">
+                        {% for code, label in guided_flow_step_statuses %}
+                          <option value="{{ code }}" {% if step.status == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>
+                      Observação / dados do passo
+                      <textarea name="step_note" rows="3" placeholder="Regista apenas o que foi verificado ou a razão de ficar pendente.">{{ step_data.note or "" }}</textarea>
+                    </label>
+                    <div class="button-row">
+                      <button type="submit" name="action" value="save">Guardar passo</button>
+                      <button type="submit" name="action" value="generate_task" class="secondary">Gerar tarefa</button>
+                    </div>
+                  </form>
+                {% endif %}
+              </details>
+            {% endfor %}
+          </div>
+        </article>
+        {% elif task.guided_flow_code %}
+        <article class="section guided-flow-panel">
+          <p class="eyebrow">Fluxo guiado</p>
+          <h3>Fluxo associado ainda sem execução</h3>
+          <p class="muted">Este registo foi criado antes da execução do fluxo. Regravar a tarefa ou recriar o fluxo irá preparar os passos.</p>
+        </article>
+        {% endif %}
 
         <article class="section workshop-summary-card task-relations-card">
           <div class="table-heading flat-heading compact-task-heading">

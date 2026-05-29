@@ -130,6 +130,40 @@
           </label>
         </div>
 
+        {% if form_mode != "quick" %}
+          <details class="advanced-panel">
+            <summary>Fluxo guiado e periodicidade</summary>
+            <div class="compact-form-grid">
+              <label>
+                Fluxo guiado
+                <select name="guided_flow_code">
+                  <option value="">Sem fluxo guiado</option>
+                  {% for code, label in guided_flow_options %}
+                    <option value="{{ code }}" {% if form_values.guided_flow_code == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% if can_create_recurring %}
+                <label>
+                  Periodicidade
+                  <select name="recurrence_rule">
+                    <option value="">Sem repetição</option>
+                    {% for code, label in recurrence_rules %}
+                      <option value="{{ code }}" {% if form_values.recurrence_rule == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Intervalo
+                  <input type="number" name="recurrence_interval" min="1" max="36" value="{{ form_values.recurrence_interval or 1 }}">
+                </label>
+              {% else %}
+                <p class="muted">A criação de tarefas recorrentes exige permissão própria.</p>
+              {% endif %}
+            </div>
+          </details>
+        {% endif %}
+
         <details class="advanced-panel">
           <summary>Dados adicionais</summary>
           <div class="compact-form-grid">

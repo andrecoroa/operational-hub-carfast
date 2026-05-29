@@ -604,17 +604,17 @@ button:hover,
 
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 28px;
-  padding-bottom: 18px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
 }
 
 .topbar h2 {
   max-width: 840px;
-  font-size: 30px;
+  font-size: 29px;
   letter-spacing: 0;
 }
 
@@ -625,18 +625,47 @@ button:hover,
 
 .topbar-tools {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
   gap: 14px;
   min-width: min(650px, 52vw);
 }
 
-.operational-topbar {
-  align-items: flex-start;
+.topbar > .pilot-support,
+.topbar-tools .pilot-support,
+.topbar .button-row .pilot-support {
+  width: auto;
+  min-width: 0;
+  justify-items: end;
 }
 
-.operational-topbar .topbar-tools {
-  align-items: flex-start;
+.topbar > .pilot-support > span,
+.topbar-tools .pilot-support > span,
+.topbar .button-row .pilot-support > span {
+  text-align: right;
+}
+
+.topbar > .pilot-support .pilot-actions,
+.topbar-tools .pilot-support .pilot-actions,
+.topbar .button-row .pilot-support .pilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  width: auto;
+}
+
+.topbar > .pilot-support .pilot-actions .button-link,
+.topbar-tools .pilot-support .pilot-actions .button-link,
+.topbar .button-row .pilot-support .pilot-actions .button-link {
+  min-height: 40px;
+  padding: 10px 13px;
+  font-size: 13px;
+}
+
+.topbar > .pilot-support .feedback-link,
+.topbar-tools .pilot-support .feedback-link,
+.topbar .button-row .pilot-support .feedback-link {
+  grid-column: auto;
 }
 
 .task-header-meta {
@@ -1484,7 +1513,7 @@ table {
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 14px 16px;
+  padding: 12px 14px;
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
@@ -1492,11 +1521,15 @@ td {
 
 th {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 900;
   background: #f8faf9;
   text-transform: uppercase;
   letter-spacing: 0;
+}
+
+.table-heading {
+  min-height: 72px;
 }
 
 tbody tr:hover {

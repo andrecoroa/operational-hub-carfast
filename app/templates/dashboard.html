@@ -19,11 +19,6 @@
         {% set feedback_source_area = "dashboard" %}
         {% set feedback_return_url = "/" %}
         {% include "_pilot_actions.html" %}
-        <span class="top-icon-button" aria-label="Notificações">{{ metrics.overdue_tasks + metrics.unassigned_tasks }}</span>
-        <span class="user-chip">
-          <span class="user-avatar">CF</span>
-          <span><strong>{{ user.name }}</strong><span>Gestor operacional</span></span>
-        </span>
       </div>
     </header>
 
@@ -63,11 +58,6 @@
     </section>
 
     <section class="metric-grid cockpit-summary">
-      {% if dashboard_access.fleet %}
-      <a class="metric" href="/fleet?scope=for_sale">
-        <span class="metric-detail"><strong>{{ metrics.for_sale_vehicles }}</strong><span>Viaturas para venda</span><small>Preparação da lista de venda</small></span>
-      </a>
-      {% endif %}
       {% if dashboard_access.tasks %}
       <a class="metric" href="/task-board/manage">
         <span class="metric-icon green">✓</span>
@@ -101,8 +91,11 @@
         <div class="operation-list">
           {% for task in priority_tasks %}
             <a class="operation-item" href="/task-board/{{ task.id }}">
-              <span class="operation-icon alert"></span>
-              <span>
+              <span class="operation-code">
+                <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong>
+                <small>{{ task_category_labels.get(task.category, task.category or "Tarefa") }}</small>
+              </span>
+              <span class="operation-main">
                 <strong>{{ task.title }}</strong>
                 <small>{{ task.plate or task.customer_name or task_category_labels.get(task.category, task.category or "Tarefa") }}</small>
               </span>
@@ -127,8 +120,11 @@
         <div class="operation-list">
           {% for vehicle in critical_vehicles %}
             <a class="operation-item" href="/fleet/{{ vehicle.id }}">
-              <span class="operation-icon vehicle"></span>
-              <span>
+              <span class="operation-code">
+                <strong>{{ vehicle.plate or vehicle.rentway_unit_nr or ("#" ~ vehicle.id) }}</strong>
+                <small>{{ vehicle.rentway_unit_nr or "Sem Unit Nr" }}</small>
+              </span>
+              <span class="operation-main">
                 <strong>{{ vehicle.plate or vehicle.rentway_unit_nr or ("Viatura #" ~ vehicle.id) }}</strong>
                 <small>{{ vehicle.brand or "" }} {{ vehicle.model or "" }}</small>
               </span>
@@ -152,8 +148,11 @@
         <div class="timeline compact-timeline">
           {% for item in recent_activity %}
             <article>
-              <strong>{{ item.kind }} · {{ item.title }}</strong>
-              <span>{{ item.detail }}{% if item.created_at %} · {{ item.created_at.strftime("%d/%m %H:%M") }}{% endif %}</span>
+              <span>
+                <strong>{{ item.kind }} · {{ item.title }}</strong>
+                <small>{{ item.detail }}</small>
+              </span>
+              <time>{% if item.created_at %}{{ item.created_at.strftime("%d/%m %H:%M") }}{% else %}-{% endif %}</time>
             </article>
           {% else %}
             <p class="muted empty-panel">Sem atividade recente.</p>

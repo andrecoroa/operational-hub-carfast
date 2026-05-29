@@ -862,7 +862,7 @@ button:hover,
 }
 
 .metric-grid.cockpit-summary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 18px;
 }
 
@@ -891,13 +891,13 @@ button:hover,
 }
 
 .cockpit-panel .table-heading {
-  min-height: 86px;
-  padding: 18px 20px;
+  min-height: 76px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
 }
 
 .cockpit-panel .table-heading h3 {
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .cockpit-panel .table-heading .table-link {
@@ -911,11 +911,11 @@ button:hover,
 
 .operation-item {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  gap: 16px;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
-  min-height: 74px;
-  padding: 16px 20px;
+  min-height: 68px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
 }
@@ -925,25 +925,37 @@ button:hover,
 }
 
 .operation-item strong,
-.operation-item small {
+.operation-item small,
+.operation-code,
+.operation-main {
   display: block;
   min-width: 0;
 }
 
-.operation-item strong {
+.operation-main strong {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.3;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
-.operation-item small {
+.operation-main small,
+.operation-code small {
   margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation-code strong {
+  overflow: hidden;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -964,15 +976,20 @@ button:hover,
 
 .timeline.compact-timeline {
   display: grid;
-  gap: 12px;
   margin: 0;
-  padding: 18px;
+  padding: 0;
 }
 
 .timeline.compact-timeline article {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: 12px;
+  align-items: center;
+  min-height: 68px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 18px;
   background: white;
 }
 
@@ -983,17 +1000,27 @@ button:hover,
 .timeline.compact-timeline strong {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 15px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.3;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
-.timeline.compact-timeline article span {
+.timeline.compact-timeline article small {
   display: block;
-  margin-top: 8px;
+  margin-top: 5px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline.compact-timeline time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
 }
 
 .empty-panel {

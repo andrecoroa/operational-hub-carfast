@@ -1027,6 +1027,143 @@ button:hover,
   padding: 18px 20px;
 }
 
+.admin-content .topbar {
+  align-items: start;
+}
+
+.admin-notices {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.admin-metrics .metric {
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+}
+
+.admin-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(300px, 1.25fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 18px;
+}
+
+.admin-summary-card {
+  margin-top: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-summary-card .table-heading {
+  min-height: 68px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-summary-card .detail-list,
+.admin-summary-card .pill-row {
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.admin-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-section > .muted {
+  margin: 0;
+  padding: 0 18px 16px;
+}
+
+.admin-section .table-heading {
+  min-height: 72px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-section .implementation-board,
+.admin-section > .compact-metrics,
+.admin-section > .event-list {
+  margin-top: 0;
+  padding: 16px 18px;
+}
+
+.admin-management-grid {
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.admin-create-user {
+  margin-top: 0;
+}
+
+.admin-users-panel {
+  margin-top: 0;
+}
+
+.admin-content .event-list {
+  gap: 0;
+}
+
+.admin-content .event-item {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 14px 0;
+  background: transparent;
+}
+
+.admin-content .event-item:first-child {
+  padding-top: 0;
+}
+
+.admin-content .event-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.admin-user-list .event-item > div:first-child,
+.admin-role-list .event-item > div:first-child,
+.admin-feedback-list .event-item > div:first-child {
+  align-items: center;
+}
+
+.admin-user-list .event-item > p:first-of-type,
+.admin-feedback-list .event-item .muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-content .workshop-record-group {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fbfcfd;
+}
+
+.admin-content .workshop-record-group[open] {
+  padding-bottom: 12px;
+}
+
+.admin-content .workshop-record-group summary {
+  min-height: 42px;
+}
+
+.admin-content .workshop-record-group .form-stack {
+  margin-top: 0;
+  gap: 14px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4823,6 +4960,8 @@ a.metric:hover {
 
   .task-layout,
   .detail-grid,
+  .admin-overview-grid,
+  .admin-management-grid,
   .document-workbench,
   .form-page-grid,
   .workshop-page-grid,
@@ -4951,6 +5090,17 @@ a.metric:hover {
 
   .metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-metrics,
+  .admin-overview-grid,
+  .admin-management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-content .event-item div {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .document-metric-strip,

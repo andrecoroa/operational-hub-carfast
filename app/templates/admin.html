@@ -3,17 +3,19 @@
 <div class="app-shell">
   {% set active_menu = "admin" %}
   {% include "_sidebar.html" %}
-  <main class="content">
+  <main class="content admin-content">
     <header class="topbar">
       <div>
         <p class="eyebrow">Configuração</p>
         <h2>Administração</h2>
+        <p class="breadcrumb">Utilizadores, acessos, perfis e feedback do piloto.</p>
       </div>
       {% set feedback_source_area = "admin" %}
       {% set feedback_return_url = "/admin" %}
       {% include "_pilot_actions.html" %}
     </header>
 
+    <div class="admin-notices">
     {% if user_created %}
       <div class="success">Utilizador criado.</div>
     {% endif %}
@@ -26,18 +28,43 @@
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
+    </div>
 
-    <section class="detail-grid">
-      <article class="section">
-        <h3>Utilizador</h3>
+    <section class="metric-grid admin-metrics">
+      <div class="metric">
+        <span class="metric-icon blue">#</span>
+        <span class="metric-detail"><strong>{{ users|length }}</strong><span>Utilizadores</span><small>Registos na plataforma</small></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon green">✓</span>
+        <span class="metric-detail"><strong>{{ roles|length }}</strong><span>Perfis</span><small>Permissões por função</small></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon amber">!</span>
+        <span class="metric-detail"><strong>{{ pilot_feedback_counts.open }}</strong><span>Feedback aberto</span><small>{{ pilot_feedback_counts.total }} registos no piloto</small></span>
+      </div>
+    </section>
+
+    <section class="admin-overview-grid">
+      <article class="section admin-summary-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Sessão atual</p>
+            <h3>{{ user.name }}</h3>
+          </div>
+        </div>
         <dl class="detail-list">
-          <div><dt>Nome</dt><dd>{{ user.name }}</dd></div>
           <div><dt>Email</dt><dd>{{ user.email }}</dd></div>
         </dl>
       </article>
 
-      <article class="section">
-        <h3>Áreas autorizadas</h3>
+      <article class="section admin-summary-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Contexto</p>
+            <h3>Áreas autorizadas</h3>
+          </div>
+        </div>
         <div class="pill-row">
           {% for unit in authorized_units %}
             <span class="pill">{{ unit }}</span>
@@ -48,7 +75,7 @@
       </article>
     </section>
 
-    <section class="section">
+    <section class="section admin-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Estado atual</p>
@@ -86,8 +113,8 @@
       </div>
     </section>
 
-    <section class="detail-grid">
-      <form method="post" action="/admin/users" class="form-panel form-stack task-form">
+    <section class="detail-grid admin-management-grid">
+      <form method="post" action="/admin/users" class="form-panel form-stack task-form admin-create-user">
         <div class="panel-heading">
           <p class="eyebrow">Piloto</p>
           <h3>Criar utilizador</h3>
@@ -115,9 +142,15 @@
         <button type="submit">Criar utilizador</button>
       </form>
 
-      <article class="section">
-        <h3>Utilizadores e acessos</h3>
-        <div class="event-list">
+      <article class="section admin-section admin-users-panel">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Acessos</p>
+            <h3>Utilizadores</h3>
+          </div>
+          <span class="pill muted-pill">{{ users|length }} registos</span>
+        </div>
+        <div class="event-list admin-user-list">
           {% for item in users %}
             <article class="event-item">
               <div>
@@ -165,7 +198,7 @@
       </article>
     </section>
 
-    <section class="section">
+    <section class="section admin-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Segurança</p>
@@ -173,7 +206,7 @@
         </div>
       </div>
       <p class="muted">As permissões são atribuídas por perfil. O perfil Admin mantém todas as permissões por segurança.</p>
-      <div class="event-list">
+      <div class="event-list admin-role-list">
         {% for role in roles %}
           <article class="event-item">
             <div>
@@ -206,7 +239,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section admin-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Roadmap interno</p>
@@ -230,8 +263,13 @@
       </div>
     </section>
 
-    <section class="section">
-      <h3>Feedback do piloto</h3>
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Piloto</p>
+          <h3>Feedback do piloto</h3>
+        </div>
+      </div>
       <div class="metric-grid compact-metrics">
         <div class="metric">
           <span>Total</span>
@@ -250,7 +288,7 @@
           <strong>{{ pilot_feedback_counts.workshop }}</strong>
         </div>
       </div>
-      <div class="event-list">
+      <div class="event-list admin-feedback-list">
         {% for item in pilot_feedback_items %}
           <article class="event-item">
             {% set feedback_user = pilot_feedback_user_by_id.get(item.user_id) if item.user_id else none %}

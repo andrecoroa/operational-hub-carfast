@@ -3736,9 +3736,9 @@ a.metric:hover {
 
 .phase-record-preview {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 8px 0 14px;
-  padding: 12px 14px;
+  padding: 14px;
   border: 1px solid rgba(35, 116, 72, 0.2);
   border-radius: 8px;
   background: #f7fbf8;
@@ -3753,6 +3753,8 @@ a.metric:hover {
 .phase-record-preview-header {
   align-items: flex-start;
   justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(35, 116, 72, 0.12);
 }
 
 .phase-record-preview-header > div {
@@ -3769,25 +3771,34 @@ a.metric:hover {
 
 .phase-record-lines {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .phase-record-lines p {
   margin: 0;
   color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
   white-space: pre-line;
 }
 
 .phase-record-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 2px;
+  justify-content: flex-start;
 }
 
 .phase-record-actions .small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: auto;
   min-height: 0;
   padding: 6px 10px;
   font-size: 11px;
+  line-height: 1.2;
 }
 
 .compact-details {

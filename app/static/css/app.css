@@ -3736,7 +3736,7 @@ a.metric:hover {
 
 .phase-record-preview {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin: 8px 0 14px;
   padding: 12px 14px;
   border: 1px solid rgba(35, 116, 72, 0.2);
@@ -3744,10 +3744,21 @@ a.metric:hover {
   background: #f7fbf8;
 }
 
-.phase-record-preview div {
+.phase-record-preview-header,
+.phase-record-preview-header > div {
   display: flex;
-  justify-content: space-between;
   gap: 12px;
+}
+
+.phase-record-preview-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.phase-record-preview-header > div {
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -3756,10 +3767,27 @@ a.metric:hover {
   color: #237448;
 }
 
-.phase-record-preview p {
+.phase-record-lines {
+  display: grid;
+  gap: 5px;
+}
+
+.phase-record-lines p {
   margin: 0;
   color: var(--ink);
   white-space: pre-line;
+}
+
+.phase-record-actions {
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.phase-record-actions .small-button {
+  width: auto;
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 11px;
 }
 
 .compact-details {

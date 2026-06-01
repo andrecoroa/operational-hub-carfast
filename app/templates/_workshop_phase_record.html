@@ -1,16 +1,33 @@
 {% if phase_record %}
   <div class="phase-record-preview">
-    <div>
-      <strong>Último registo</strong>
-      <span>
-        {% if phase_record.created_at %}
-          {{ phase_record.created_at.strftime("%Y-%m-%d %H:%M") }}
-        {% endif %}
-        {% if phase_record.user_id %}
-          · Utilizador #{{ phase_record.user_id }}
-        {% endif %}
-      </span>
+    <div class="phase-record-preview-header">
+      <div>
+        <strong>Registo atual</strong>
+        <span>
+          {% if phase_record.user_id %}
+            {{ phase_user_labels.get(phase_record.user_id, "Utilizador #" ~ phase_record.user_id) if phase_user_labels is defined else "Utilizador #" ~ phase_record.user_id }}
+          {% else %}
+            Sistema
+          {% endif %}
+          {% if phase_record.created_at %}
+            · {{ phase_record.created_at.strftime("%Y-%m-%d") }}
+          {% endif %}
+        </span>
+      </div>
+      {% if phase_record.source_url %}
+        <a class="small-button" href="{{ phase_record.source_url }}" target="_blank" rel="noreferrer">Abrir relatório</a>
+      {% endif %}
     </div>
-    <p>{{ phase_record.body }}</p>
+    <div class="phase-record-lines">
+      {% for line in phase_record.body_lines or [] %}
+        <p>{{ line }}</p>
+      {% else %}
+        <p>{{ phase_record.body }}</p>
+      {% endfor %}
+    </div>
+    <div class="button-row phase-record-actions">
+      <a class="button-link secondary-link small-button" href="#process-records">Ver histórico</a>
+      <a class="button-link secondary-link small-button" href="#workshop-note-action">Acrescentar nota</a>
+    </div>
   </div>
 {% endif %}

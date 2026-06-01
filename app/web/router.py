@@ -569,8 +569,12 @@ def workshop_phase_records(
         records[code] = {
             "title": WORKSHOP_FLOW_TITLES.get(code, WORKSHOP_STATUS_LABELS.get(code, code)),
             "body": "\n".join(body_lines),
+            "body_lines": body_lines,
             "created_at": reading.created_at,
             "user_id": reading.user_id,
+            "source_type": "technical_reading",
+            "source_url": reading.external_url,
+            "source_id": reading.id,
         }
 
     label_to_code = {label: code for code, label in WORKSHOP_STATUS_LABELS.items()}
@@ -588,19 +592,29 @@ def workshop_phase_records(
             code = raw_code if raw_code in WORKSHOP_STATUS_LABELS else label_to_code.get(raw_code, "")
             body_lines = [line for line in lines[1:] if not line.startswith("Fluxo atualizado:")]
         if code and code not in records:
+            clean_body_lines = body_lines or ["Registo sem detalhe."]
             records[code] = {
                 "title": WORKSHOP_FLOW_TITLES.get(code, WORKSHOP_STATUS_LABELS.get(code, code)),
-                "body": "\n".join(body_lines) or "Registo sem detalhe.",
+                "body": "\n".join(clean_body_lines),
+                "body_lines": clean_body_lines,
                 "created_at": note.created_at,
                 "user_id": note.user_id,
+                "source_type": "note",
+                "source_url": "",
+                "source_id": note.id,
             }
 
     if process.status and process.decision_note and process.status not in records:
+        body_lines = [line.strip() for line in process.decision_note.splitlines() if line.strip()]
         records[process.status] = {
             "title": WORKSHOP_FLOW_TITLES.get(process.status, WORKSHOP_STATUS_LABELS.get(process.status, process.status)),
             "body": process.decision_note,
+            "body_lines": body_lines or [process.decision_note],
             "created_at": process.updated_at,
             "user_id": process.decided_by_id,
+            "source_type": "process",
+            "source_url": "",
+            "source_id": process.id,
         }
 
     return records
@@ -3469,6 +3483,17 @@ def render_workshop_detail(
         .limit(5)
     ).all()
     phase_records = workshop_phase_records(notes, process, technical_readings)
+    phase_user_ids = {
+        record.get("user_id")
+        for record in phase_records.values()
+        if record.get("user_id")
+    }
+    phase_users = (
+        db.scalars(select(User).where(User.id.in_(phase_user_ids))).all()
+        if phase_user_ids
+        else []
+    )
+    phase_user_labels = {item.id: item.name or item.email for item in phase_users}
     vehicle_snapshot = db.scalar(
         select(VehicleExternalSnapshot)
         .where(VehicleExternalSnapshot.vehicle_id == process.vehicle_id)
@@ -3534,6 +3559,7 @@ def render_workshop_detail(
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
             "phase_records": phase_records,
+            "phase_user_labels": phase_user_labels,
             "workshop_flow_steps": workshop_flow_steps,
             "workshop_flow_order": workshop_flow_order,
             "workshop_flow_titles": workshop_flow_titles,

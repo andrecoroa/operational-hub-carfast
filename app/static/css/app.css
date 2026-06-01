@@ -3246,6 +3246,69 @@ a.metric:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.reception-service-picker {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fbfcfc;
+}
+
+.reception-service-picker legend {
+  padding: 0 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.reception-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reception-service-choice {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.reception-service-choice.is-selected {
+  border-color: rgba(169, 76, 56, .55);
+  background: #fff8f5;
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.reception-service-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.reception-service-check input {
+  width: 18px;
+  height: 18px;
+}
+
+.reception-service-fields {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reception-service-choice.is-selected .reception-service-fields {
+  display: grid;
+}
+
+.reception-service-note {
+  grid-column: 1 / -1;
+}
+
 .advanced-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -5243,6 +5306,10 @@ a.metric:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .reception-service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .task-layout,
   .detail-grid,
   .admin-overview-grid,
@@ -5410,6 +5477,11 @@ a.metric:hover {
 
   .task-entry-grid,
   .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reception-service-grid,
+  .reception-service-fields {
     grid-template-columns: 1fr;
   }
 

@@ -3566,6 +3566,9 @@ def render_workshop_detail(
         .order_by(WorkshopProcessService.id)
     ).all()
     reception_service = services[0] if services else None
+    reception_services_by_family: dict[str, WorkshopProcessService] = {}
+    for service in services:
+        reception_services_by_family.setdefault(service.service_family, service)
     reception_note_data = {
         "received_at": "",
         "service_note": "",
@@ -3689,6 +3692,7 @@ def render_workshop_detail(
             "documents": documents,
             "services": services,
             "reception_service": reception_service,
+            "reception_services_by_family": reception_services_by_family,
             "reception_note_data": reception_note_data,
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
@@ -3721,6 +3725,8 @@ def render_workshop_detail(
             "service_families": WORKSHOP_SERVICE_FAMILIES,
             "service_details": WORKSHOP_SERVICE_DETAILS,
             "service_axes": WORKSHOP_SERVICE_AXES,
+            "service_detail_families": WORKSHOP_SERVICE_DETAIL_FAMILIES,
+            "service_axis_families": WORKSHOP_SERVICE_AXIS_FAMILIES,
             "service_statuses": WORKSHOP_SERVICE_STATUSES,
             "service_family_labels": WORKSHOP_SERVICE_FAMILY_LABELS,
             "service_detail_labels": WORKSHOP_SERVICE_DETAIL_LABELS,
@@ -3922,6 +3928,10 @@ def workshop_confirm_reception(
     service_detail: str = Form(""),
     service_axis: str = Form("not_defined"),
     service_note: str = Form(""),
+    service_family_multi: list[str] = Form([]),
+    service_detail_multi: list[str] = Form([]),
+    service_axis_multi: list[str] = Form([]),
+    service_note_multi: list[str] = Form([]),
     reception_note: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -3935,6 +3945,17 @@ def workshop_confirm_reception(
         service_detail,
         service_axis,
     )
+    service_entries: list[tuple[str, str | None, str, str]] = []
+    if service_family_multi:
+        for index, family in enumerate(service_family_multi):
+            detail = service_detail_multi[index] if index < len(service_detail_multi) else ""
+            axis = service_axis_multi[index] if index < len(service_axis_multi) else "not_defined"
+            note = service_note_multi[index] if index < len(service_note_multi) else ""
+            clean_family, clean_detail, clean_axis = normalize_workshop_service_fields(family, detail, axis)
+            if clean_family:
+                service_entries.append((clean_family, clean_detail, clean_axis, note.strip()))
+    elif clean_service_family:
+        service_entries.append((clean_service_family, clean_service_detail, clean_service_axis, service_note.strip()))
 
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)
@@ -3948,42 +3969,55 @@ def workshop_confirm_reception(
         if parsed_km is not None:
             process.km_entry = parsed_km
 
-        if clean_service_family:
-            reception_service = db.scalar(
+        if service_entries:
+            existing_services = db.scalars(
                 select(WorkshopProcessService)
                 .where(WorkshopProcessService.process_id == process.id)
                 .order_by(WorkshopProcessService.id)
-            )
-            if reception_service:
-                reception_service.service_family = clean_service_family
-                reception_service.service_detail = clean_service_detail
-                reception_service.service_axis = clean_service_axis
-                reception_service.note = service_note.strip() or None
-            else:
-                db.add(
-                    WorkshopProcessService(
-                    process_id=process.id,
-                    vehicle_id=process.vehicle_id,
-                    service_family=clean_service_family,
-                    service_detail=clean_service_detail,
-                    service_axis=clean_service_axis,
-                    status="to_assess",
-                    note=service_note.strip() or None,
-                    created_by_id=user_id,
-                    )
+            ).all()
+            for clean_family, clean_detail, clean_axis, entry_note in service_entries:
+                reception_service = next(
+                    (
+                        service
+                        for service in existing_services
+                        if service.service_family == clean_family
+                    ),
+                    None,
                 )
+                if reception_service:
+                    reception_service.service_detail = clean_detail
+                    reception_service.service_axis = clean_axis
+                    reception_service.note = entry_note or reception_service.note
+                else:
+                    new_service = WorkshopProcessService(
+                        process_id=process.id,
+                        vehicle_id=process.vehicle_id,
+                        service_family=clean_family,
+                        service_detail=clean_detail,
+                        service_axis=clean_axis,
+                        status="to_assess",
+                        note=entry_note or None,
+                        created_by_id=user_id,
+                    )
+                    db.add(new_service)
+                    existing_services.append(new_service)
 
         note_lines = [
             "Receção confirmada.",
             f"Data/hora entrada: {received_at.strip() or '-'}",
             f"KM entrada: {parsed_km if parsed_km is not None else '-'}",
         ]
-        if clean_service_family:
-            note_lines.append(
-                "Serviço/motivo: "
-                f"{WORKSHOP_SERVICE_FAMILY_LABELS.get(clean_service_family, clean_service_family)}"
-                f"{' - ' + WORKSHOP_SERVICE_DETAIL_LABELS.get(clean_service_detail, clean_service_detail) if clean_service_detail else ''}"
-            )
+        if service_entries:
+            note_lines.append("Serviços/motivos:")
+            for clean_family, clean_detail, clean_axis, entry_note in service_entries:
+                service_line = f"- {WORKSHOP_SERVICE_FAMILY_LABELS.get(clean_family, clean_family)}"
+                if clean_detail:
+                    service_line += f" - {WORKSHOP_SERVICE_DETAIL_LABELS.get(clean_detail, clean_detail)}"
+                if clean_axis and clean_axis != "not_defined":
+                    service_line += f" - {WORKSHOP_SERVICE_AXIS_LABELS.get(clean_axis, clean_axis)}"
+                if entry_note:
+                    service_line += f" | {entry_note}"
+                note_lines.append(service_line)
         if service_note.strip():
             note_lines.append(f"Observação do serviço: {service_note.strip()}")
         if reception_note.strip():
@@ -4001,7 +4035,7 @@ def workshop_confirm_reception(
                 "status": process.status,
                 "opened_on": process.opened_on.isoformat() if process.opened_on else None,
                 "km_entry": process.km_entry,
-                "service_family": clean_service_family or None,
+                "service_families": [entry[0] for entry in service_entries],
             },
             user_id=user_id,
         )

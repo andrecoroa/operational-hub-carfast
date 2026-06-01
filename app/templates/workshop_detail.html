@@ -100,37 +100,57 @@
                 KM entrada
                 <input type="number" name="km_entry" min="0" step="1" value="{{ process.km_entry or "" }}">
               </label>
-              <label>
-                Serviço / motivo
-                <select name="service_family" data-service-family data-current-detail="{{ reception_service.service_detail if reception_service else '' }}">
-                  <option value="">Sem serviço definido</option>
-                  {% for code, label in service_families %}
-                    <option value="{{ code }}" {% if reception_service and reception_service.service_family == code %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label data-service-detail-wrap hidden>
-                Detalhe
-                <select name="service_detail" data-service-detail>
-                  <option value="">Sem detalhe</option>
-                  {% for code, label, family in service_details %}
-                    <option value="{{ code }}" data-family="{{ family }}" {% if reception_service and reception_service.service_detail == code %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label data-service-axis-wrap hidden>
-                Eixo / zona
-                <select name="service_axis">
-                  {% for code, label in service_axes %}
-                    <option value="{{ code }}" {% if reception_service and reception_service.service_axis == code %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>
-                Observação do serviço
-                <input type="text" name="service_note" maxlength="255" value="{{ reception_note_data.service_note }}" placeholder="Ex.: aviso de revisão no painel">
-              </label>
             </div>
+            <fieldset class="reception-service-picker">
+              <legend>Serviço / motivo</legend>
+              <div class="reception-service-grid">
+                {% for code, label in service_families %}
+                  {% set selected_service = reception_services_by_family.get(code) %}
+                  {% set is_selected = selected_service is not none %}
+                  {% set has_details = code in service_detail_families %}
+                  {% set has_axis = code in service_axis_families %}
+                  <div class="reception-service-choice {{ 'is-selected' if is_selected else '' }}" data-reception-service-choice>
+                    <label class="reception-service-check">
+                      <input type="checkbox" name="service_family_multi" value="{{ code }}" data-reception-service-check {% if is_selected %}checked{% endif %}>
+                      <span>{{ label }}</span>
+                    </label>
+                    <div class="reception-service-fields">
+                      {% if has_details %}
+                        <label>
+                          Detalhe
+                          <select name="service_detail_multi" {% if not is_selected %}disabled{% endif %}>
+                            <option value="">Sem detalhe</option>
+                            {% for detail_code, detail_label, family in service_details %}
+                              {% if family == code or family == "any" %}
+                                <option value="{{ detail_code }}" {% if selected_service and selected_service.service_detail == detail_code %}selected{% endif %}>{{ detail_label }}</option>
+                              {% endif %}
+                            {% endfor %}
+                          </select>
+                        </label>
+                      {% else %}
+                        <input type="hidden" name="service_detail_multi" value="" {% if not is_selected %}disabled{% endif %}>
+                      {% endif %}
+                      {% if has_axis %}
+                        <label>
+                          Eixo / zona
+                          <select name="service_axis_multi" {% if not is_selected %}disabled{% endif %}>
+                            {% for axis_code, axis_label in service_axes %}
+                              <option value="{{ axis_code }}" {% if selected_service and selected_service.service_axis == axis_code %}selected{% endif %}>{{ axis_label }}</option>
+                            {% endfor %}
+                          </select>
+                        </label>
+                      {% else %}
+                        <input type="hidden" name="service_axis_multi" value="not_defined" {% if not is_selected %}disabled{% endif %}>
+                      {% endif %}
+                      <label class="reception-service-note">
+                        Observação
+                        <input type="text" name="service_note_multi" maxlength="255" value="{{ selected_service.note if selected_service and selected_service.note else '' }}" placeholder="Nota curta">
+                      </label>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </fieldset>
             <label>
               Observação inicial
               <textarea name="reception_note" rows="3" placeholder="Condição da viatura, sintomas reportados, documentos entregues...">{{ reception_note_data.reception_note }}</textarea>
@@ -1074,6 +1094,22 @@
 
     familySelect.addEventListener("change", syncDetails);
     syncDetails();
+  });
+
+  document.querySelectorAll("[data-reception-service-choice]").forEach((choice) => {
+    const checkbox = choice.querySelector("[data-reception-service-check]");
+    const controls = [...choice.querySelectorAll("select, input[type='text'], input[type='hidden']")];
+
+    function syncReceptionServiceChoice() {
+      if (!checkbox) return;
+      choice.classList.toggle("is-selected", checkbox.checked);
+      for (const control of controls) {
+        control.disabled = !checkbox.checked;
+      }
+    }
+
+    checkbox?.addEventListener("change", syncReceptionServiceChoice);
+    syncReceptionServiceChoice();
   });
 
   document.querySelectorAll("[data-reading-type]").forEach((readingTypeSelect) => {

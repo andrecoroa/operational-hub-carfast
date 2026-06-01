@@ -3067,6 +3067,8 @@ def workshop_new_page(request: Request, error: str | None = None):
                 "service_families": WORKSHOP_SERVICE_FAMILIES,
                 "service_details": WORKSHOP_SERVICE_DETAILS,
                 "service_axes": WORKSHOP_SERVICE_AXES,
+                "service_detail_families": WORKSHOP_SERVICE_DETAIL_FAMILIES,
+                "service_axis_families": WORKSHOP_SERVICE_AXIS_FAMILIES,
             },
         )
 
@@ -3140,6 +3142,10 @@ def workshop_create(
     service_detail: str = Form(""),
     service_axis: str = Form("not_defined"),
     service_note: str = Form(""),
+    service_family_multi: list[str] = Form([]),
+    service_detail_multi: list[str] = Form([]),
+    service_axis_multi: list[str] = Form([]),
+    service_note_multi: list[str] = Form([]),
     note: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -3147,6 +3153,16 @@ def workshop_create(
         return RedirectResponse("/login", status_code=303)
 
     clean_title = title.strip()
+    service_entries = normalize_workshop_service_entries(
+        service_family_multi,
+        service_detail_multi,
+        service_axis_multi,
+        service_note_multi,
+        fallback_family=service_family,
+        fallback_detail=service_detail,
+        fallback_axis=service_axis,
+        fallback_note=service_note,
+    )
     parsed_vehicle_id = parse_optional_int(vehicle_id)
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
@@ -3170,13 +3186,16 @@ def workshop_create(
                     "service_families": WORKSHOP_SERVICE_FAMILIES,
                     "service_details": WORKSHOP_SERVICE_DETAILS,
                     "service_axes": WORKSHOP_SERVICE_AXES,
+                    "service_detail_families": WORKSHOP_SERVICE_DETAIL_FAMILIES,
+                    "service_axis_families": WORKSHOP_SERVICE_AXIS_FAMILIES,
                 },
                 status_code=400,
             )
 
         expected_date = parse_optional_date(expected_exit_on)
         fallback_title = note.strip().splitlines()[0][:120] if note.strip() else ""
-        clean_title = clean_title or fallback_title or f"Processo oficina - {vehicle.plate or vehicle.id}"
+        service_generated_title = workshop_service_title(service_entries, clean_title)
+        clean_title = service_generated_title or fallback_title or f"Processo oficina - {vehicle.plate or vehicle.id}"
         process = WorkshopProcess(
             vehicle_id=vehicle.id,
             title=clean_title,
@@ -3193,12 +3212,7 @@ def workshop_create(
         db.add(process)
         db.flush()
         process.document_folder_path = suggest_workshop_process_folder_path(process, vehicle)
-        clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
-            service_family,
-            service_detail,
-            service_axis,
-        )
-        if clean_service_family:
+        for clean_service_family, clean_service_detail, clean_service_axis, clean_service_note in service_entries:
             db.add(
                 WorkshopProcessService(
                     process_id=process.id,
@@ -3207,7 +3221,7 @@ def workshop_create(
                     service_detail=clean_service_detail,
                     service_axis=clean_service_axis,
                     status="to_assess",
-                    note=service_note.strip() or None,
+                    note=clean_service_note or None,
                     created_by_id=user_id,
                 )
             )
@@ -3503,6 +3517,44 @@ def normalize_workshop_service_fields(
         else "not_defined"
     )
     return service_family, clean_detail, clean_axis
+
+
+def normalize_workshop_service_entries(
+    service_families: list[str],
+    service_details: list[str],
+    service_axes: list[str],
+    service_notes: list[str],
+    fallback_family: str = "",
+    fallback_detail: str | None = "",
+    fallback_axis: str | None = "not_defined",
+    fallback_note: str = "",
+) -> list[tuple[str, str | None, str, str]]:
+    entries: list[tuple[str, str | None, str, str]] = []
+    if service_families:
+        for index, family in enumerate(service_families):
+            detail = service_details[index] if index < len(service_details) else ""
+            axis = service_axes[index] if index < len(service_axes) else "not_defined"
+            note = service_notes[index] if index < len(service_notes) else ""
+            clean_family, clean_detail, clean_axis = normalize_workshop_service_fields(family, detail, axis)
+            if clean_family:
+                entries.append((clean_family, clean_detail, clean_axis, note.strip()))
+        return entries
+
+    clean_family, clean_detail, clean_axis = normalize_workshop_service_fields(
+        fallback_family,
+        fallback_detail,
+        fallback_axis,
+    )
+    if clean_family:
+        entries.append((clean_family, clean_detail, clean_axis, fallback_note.strip()))
+    return entries
+
+
+def workshop_service_title(service_entries: list[tuple[str, str | None, str, str]], other_title: str = "") -> str:
+    if other_title.strip() and any(entry[0] == "other" for entry in service_entries):
+        return other_title.strip()[:200]
+    labels = [WORKSHOP_SERVICE_FAMILY_LABELS.get(family, family) for family, _, _, _ in service_entries]
+    return "_".join(label for label in labels if label)[:200]
 
 
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
@@ -3940,22 +3992,16 @@ def workshop_confirm_reception(
 
     parsed_km = parse_optional_int(km_entry)
     received_on = parse_optional_date(received_at.split("T", 1)[0] if received_at else "")
-    clean_service_family, clean_service_detail, clean_service_axis = normalize_workshop_service_fields(
-        service_family,
-        service_detail,
-        service_axis,
+    service_entries = normalize_workshop_service_entries(
+        service_family_multi,
+        service_detail_multi,
+        service_axis_multi,
+        service_note_multi,
+        fallback_family=service_family,
+        fallback_detail=service_detail,
+        fallback_axis=service_axis,
+        fallback_note=service_note,
     )
-    service_entries: list[tuple[str, str | None, str, str]] = []
-    if service_family_multi:
-        for index, family in enumerate(service_family_multi):
-            detail = service_detail_multi[index] if index < len(service_detail_multi) else ""
-            axis = service_axis_multi[index] if index < len(service_axis_multi) else "not_defined"
-            note = service_note_multi[index] if index < len(service_note_multi) else ""
-            clean_family, clean_detail, clean_axis = normalize_workshop_service_fields(family, detail, axis)
-            if clean_family:
-                service_entries.append((clean_family, clean_detail, clean_axis, note.strip()))
-    elif clean_service_family:
-        service_entries.append((clean_service_family, clean_service_detail, clean_service_axis, service_note.strip()))
 
     with SessionLocal() as db:
         process = db.get(WorkshopProcess, process_id)

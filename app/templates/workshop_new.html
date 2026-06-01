@@ -41,9 +41,10 @@
           <datalist id="workshop-vehicle-options"></datalist>
           <span class="field-hint">Começa a escrever a matrícula e escolhe a viatura sugerida.</span>
         </label>
-        <label>
-          Título
-          <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
+        <label data-other-title-wrap hidden>
+          Título para “Outro”
+          <input type="text" name="title" maxlength="200" placeholder="Descreve o motivo do processo" data-other-title-input>
+          <span class="field-hint">Nos restantes serviços o título é gerado automaticamente.</span>
         </label>
         <div class="form-grid">
           <label>
@@ -59,40 +60,55 @@
             <input type="number" name="km_entry" min="0">
           </label>
         </div>
-        <div class="form-grid">
-          <label>
-            Serviço / motivo de entrada
-            <select name="service_family" data-service-family>
-              <option value="">Sem serviço definido</option>
-              {% for code, label in service_families %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label data-service-detail-wrap hidden>
-            Detalhe
-            <select name="service_detail" data-service-detail>
-              <option value="">Sem detalhe</option>
-              {% for code, label, family in service_details %}
-                <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-        </div>
-        <div class="form-grid">
-          <label data-service-axis-wrap hidden>
-            Eixo / zona
-            <select name="service_axis">
-              {% for code, label in service_axes %}
-                <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Observação do serviço
-            <input type="text" name="service_note" maxlength="255" placeholder="Ex.: frente com ruído ao travar">
-          </label>
-        </div>
+        <fieldset class="reception-service-picker">
+          <legend>Serviço / motivo de entrada</legend>
+          <div class="reception-service-grid">
+            {% for code, label in service_families %}
+              {% set has_details = code in service_detail_families %}
+              {% set has_axis = code in service_axis_families %}
+              <div class="reception-service-choice" data-reception-service-choice>
+                <label class="reception-service-check">
+                  <input type="checkbox" name="service_family_multi" value="{{ code }}" data-reception-service-check>
+                  <span>{{ label }}</span>
+                </label>
+                <div class="reception-service-fields">
+                  {% if has_details %}
+                    <label>
+                      Detalhe
+                      <select name="service_detail_multi" disabled>
+                        <option value="">Sem detalhe</option>
+                        {% for detail_code, detail_label, family in service_details %}
+                          {% if family == code or family == "any" %}
+                            <option value="{{ detail_code }}">{{ detail_label }}</option>
+                          {% endif %}
+                        {% endfor %}
+                      </select>
+                    </label>
+                  {% else %}
+                    <input type="hidden" name="service_detail_multi" value="" disabled>
+                  {% endif %}
+                  {% if has_axis %}
+                    <label>
+                      Eixo / zona
+                      <select name="service_axis_multi" disabled>
+                        {% for axis_code, axis_label in service_axes %}
+                          <option value="{{ axis_code }}">{{ axis_label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  {% else %}
+                    <input type="hidden" name="service_axis_multi" value="not_defined" disabled>
+                  {% endif %}
+                  <label class="reception-service-note">
+                    Observação
+                    <input type="text" name="service_note_multi" maxlength="255" placeholder="Nota curta" disabled>
+                  </label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          <span class="field-hint">Seleciona um ou vários serviços. O título do processo será criado automaticamente.</span>
+        </fieldset>
         <div class="form-grid">
           <label>
             Prioridade
@@ -182,48 +198,41 @@
     });
   }
 
-  const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
-  const serviceFamily = document.querySelector("[data-service-family]");
-  const serviceDetail = document.querySelector("[data-service-detail]");
-  const serviceDetailWrap = document.querySelector("[data-service-detail-wrap]");
-  const serviceAxisWrap = document.querySelector("[data-service-axis-wrap]");
-  const serviceAxis = document.querySelector("select[name='service_axis']");
-  const allServiceDetailOptions = serviceDetail ? [...serviceDetail.options].map((option) => option.cloneNode(true)) : [];
+  const otherTitleWrap = document.querySelector("[data-other-title-wrap]");
+  const otherTitleInput = document.querySelector("[data-other-title-input]");
+  const serviceChoices = [...document.querySelectorAll("[data-reception-service-choice]")];
 
-  function syncServiceDetails() {
-    if (!serviceFamily || !serviceDetail) return;
-    const selectedFamily = serviceFamily.value;
-    const hasSpecificDetails = allServiceDetailOptions.some((option) => {
-      return option.value && option.dataset.family === selectedFamily;
+  function syncOtherTitle() {
+    const hasOther = serviceChoices.some((choice) => {
+      const checkbox = choice.querySelector("[data-reception-service-check]");
+      return checkbox?.checked && checkbox.value === "other";
     });
-
-    if (serviceDetailWrap) {
-      serviceDetailWrap.hidden = !hasSpecificDetails;
+    if (otherTitleWrap) {
+      otherTitleWrap.hidden = !hasOther;
     }
-
-    serviceDetail.innerHTML = "";
-    for (const option of allServiceDetailOptions) {
-      const family = option.dataset.family;
-      if (!option.value || family === selectedFamily || (family === "any" && hasSpecificDetails)) {
-        serviceDetail.appendChild(option.cloneNode(true));
+    if (otherTitleInput) {
+      otherTitleInput.required = hasOther;
+      if (!hasOther) {
+        otherTitleInput.value = "";
       }
     }
-    if (!hasSpecificDetails) {
-      serviceDetail.value = "";
-    }
-
-    const hasAxis = serviceFamiliesWithAxis.has(selectedFamily);
-    if (serviceAxisWrap) {
-      serviceAxisWrap.hidden = !hasAxis;
-    }
-    if (!hasAxis && serviceAxis) {
-      serviceAxis.value = "not_defined";
-    }
   }
 
-  if (serviceFamily && serviceDetail) {
-    serviceFamily.addEventListener("change", syncServiceDetails);
-    syncServiceDetails();
-  }
+  serviceChoices.forEach((choice) => {
+    const checkbox = choice.querySelector("[data-reception-service-check]");
+    const controls = [...choice.querySelectorAll("select, input[type='text'], input[type='hidden']")];
+
+    function syncServiceChoice() {
+      if (!checkbox) return;
+      choice.classList.toggle("is-selected", checkbox.checked);
+      for (const control of controls) {
+        control.disabled = !checkbox.checked;
+      }
+      syncOtherTitle();
+    }
+
+    checkbox?.addEventListener("change", syncServiceChoice);
+    syncServiceChoice();
+  });
 </script>
 {% endblock %}

@@ -4024,10 +4024,17 @@ a.metric:hover {
 
 .workshop-page-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   margin-top: 18px;
+}
+
+.workshop-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 16px;
+  align-items: start;
 }
 
 .task-detail-page-grid {
@@ -4059,12 +4066,12 @@ a.metric:hover {
 
 .workshop-main-column > *,
 .workshop-side-column > * {
-  grid-column: 1 !important;
+  grid-column: 1;
   order: initial;
 }
 
 .workshop-summary-card {
-  order: 1;
+  grid-column: 1;
 }
 
 .workshop-side-column > .flow-step-panel {
@@ -4105,6 +4112,12 @@ a.metric:hover {
 .workshop-vehicle-history-panel {
   grid-column: 2;
   order: 5;
+}
+
+.workshop-columns .workshop-main-column > *,
+.workshop-columns .workshop-side-column > * {
+  grid-column: 1;
+  order: initial;
 }
 
 .task-summary-chips {
@@ -5237,6 +5250,7 @@ a.metric:hover {
   .document-workbench,
   .form-page-grid,
   .workshop-page-grid,
+  .workshop-columns,
   .technical-history-hero {
     grid-template-columns: 1fr;
   }

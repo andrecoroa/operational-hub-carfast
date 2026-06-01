@@ -51,7 +51,6 @@
     {% endif %}
 
     <section class="workshop-page-grid">
-      <div class="workshop-main-column">
         <article class="section workshop-summary-card">
         <div class="panel-heading compact-heading">
           <p class="eyebrow">Resumo</p>
@@ -79,349 +78,8 @@
           <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
         </div>
         </article>
-
-        <article class="section workshop-feed workshop-alert-panel">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Controlo</p>
-              <h3>Alertas automáticos</h3>
-            </div>
-            <span class="action-method-pill">{{ workshop_alerts|length }}</span>
-          </div>
-          <div class="workshop-alert-list">
-            {% for alert in workshop_alerts %}
-              <article class="workshop-alert-item alert-{{ alert.severity }}">
-                <div>
-                  <strong>{{ alert.title }}</strong>
-                  {% if alert.action %}<span>{{ alert.action }}</span>{% endif %}
-                </div>
-                <p>{{ alert.detail }}</p>
-              </article>
-            {% endfor %}
-          </div>
-        </article>
-
-        <article class="section workshop-feed workshop-document-zone-panel">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Arquivo</p>
-              <h3>Entrada documental do processo</h3>
-            </div>
-            {% if process.document_folder_url %}
-              <a class="button-link secondary-link" href="{{ process.document_folder_url }}" target="_blank" rel="noopener">Abrir pasta 365</a>
-            {% endif %}
-          </div>
-          <details class="workshop-record-group">
-            <summary>Zona documental <span>{{ documents|length }}</span></summary>
-            <div class="task-description-box">
-              <span>Caminho sugerido</span>
-              <p>{{ suggested_document_folder_path }}</p>
-            </div>
-            <form method="post" action="/workshop/{{ process.id }}/document-zone" class="form-stack compact-form">
-              <label>
-                Caminho de arquivo
-                <input type="text" name="document_folder_path" value="{{ suggested_document_folder_path }}">
-              </label>
-              <label>
-                Link da pasta 365
-                <input type="url" name="document_folder_url" value="{{ process.document_folder_url or '' }}" placeholder="https://...">
-              </label>
-              <button type="submit">Guardar zona documental</button>
-            </form>
-          </details>
-        </article>
-
-        <article class="section workshop-feed workshop-vehicle-history-panel">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Diagnóstico</p>
-              <h3>Histórico técnico da viatura</h3>
-            </div>
-            {% if vehicle %}
-              <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-history">Consultar relatórios</a>
-            {% endif %}
-          </div>
-          <details class="workshop-record-group">
-            <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>
-            <div class="event-list">
-              {% for item in previous_technical_readings %}
-                <article class="event-item">
-                  <div>
-                    <strong>
-                      {% if item.process_id %}
-                        <a class="table-link" href="/workshop/{{ item.process_id }}">{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</a>
-                      {% else %}
-                        {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
-                      {% endif %}
-                    </strong>
-                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
-                  </div>
-                  <p>
-                    {% if item.process_id %}Processo #{{ item.process_id }}{% else %}Histórico importado{% endif %}
-                    {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
-                  </p>
-                  <p>{{ item.summary or "Sem resumo registado." }}</p>
-                  {% if item.differences_json %}
-                    <p class="table-note">Diferenças registadas: {{ item.differences_json|length }}</p>
-                  {% endif %}
-                </article>
-              {% else %}
-                <p class="muted">Sem leituras técnicas anteriores para esta viatura.</p>
-              {% endfor %}
-            </div>
-          </details>
-        </article>
-
-        <details id="bsi-workspace" class="section workshop-bsi-workspace workshop-secondary-details">
-          <summary class="secondary-section-summary">
-            <div>
-              <p class="eyebrow">Diagnóstico</p>
-              <h3>Registar leitura técnica / BSI</h3>
-              <p class="muted">Zona de preenchimento aberta a partir dos passos de leitura inicial ou final.</p>
-            </div>
-            <span class="action-method-pill">Abrir</span>
-          </summary>
-          <details id="bsi-reading-initial-details" class="bsi-reading-details">
-            <summary>
-              <div>
-                <p class="eyebrow">Diagnóstico</p>
-                <h3>Registo de leitura técnica / BSI inicial</h3>
-                <p class="muted">Leitura inicial do diagnóstico. Abre apenas o relatório que vais preencher.</p>
-              </div>
-              <span class="action-method-pill">Leitura inicial</span>
-            </summary>
-            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
-              {% set reading_submit_label = "Gravar leitura inicial" %}
-              {% set fixed_reading_phase = "initial" %}
-              {% set reading_allowed_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
-              {% include "_workshop_technical_reading_fields.html" %}
-            </form>
-          </details>
-
-          <details id="bsi-reading-final-details" class="bsi-reading-details">
-            <summary>
-              <div>
-                <p class="eyebrow">Diagnóstico</p>
-                <h3>Registo de leitura técnica / BSI final</h3>
-                <p class="muted">Leitura final antes do fecho técnico. Apenas manutenção e lubrificação motor.</p>
-              </div>
-              <span class="action-method-pill">Leitura final</span>
-            </summary>
-            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
-              {% set reading_submit_label = "Gravar leitura final" %}
-              {% set fixed_reading_phase = "final" %}
-              {% set reading_allowed_types = ["maintenance_info", "lubrication_info"] %}
-              {% include "_workshop_technical_reading_fields.html" %}
-            </form>
-          </details>
-        </details>
-
-      <details id="process-records" class="section workshop-feed workshop-history-panel workshop-secondary-details">
-        <summary class="secondary-section-summary">
-          <div>
-            <p class="eyebrow">Consulta</p>
-            <h3>Histórico completo do processo</h3>
-            <p class="muted">Consulta geral. O trabalho diário deve ser feito nos passos do serviço e nas ações complementares.</p>
-          </div>
-          <span class="action-method-pill">Abrir</span>
-        </summary>
-
-        <details class="workshop-record-group">
-          <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
-          <div class="event-list">
-            {% for service in services %}
-              <article class="event-item service-item">
-                <div>
-                  <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
-                  <span>{{ service_status_labels.get(service.status, service.status) }}</span>
-                </div>
-                <p>
-                  {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
-                  &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
-                </p>
-                {% if service.note %}
-                  <p>{{ service.note }}</p>
-                {% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem serviços associados a este processo.</p>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="workshop-record-group">
-          <summary>Evidências <span>{{ evidences|length }}</span></summary>
-          <div class="event-list">
-            {% for item in evidences %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
-                  <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
-                </div>
-                <p>
-                  {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
-                  &middot; {{ status_labels.get(item.phase, item.phase) }}
-                  &middot; {{ evidence_status_labels.get(item.status, item.status) }}
-                </p>
-                <p>{{ item.description }}</p>
-                {% if item.external_url %}
-                  <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
-                {% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem evidências registadas.</p>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="workshop-record-group">
-          <summary>Leituras técnicas / BSI <span>{{ technical_readings|length }}</span></summary>
-          <div class="event-list">
-            {% for item in technical_readings %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</strong>
-                  <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
-                </div>
-                <p>
-                  {% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}
-                  {% if item.external_url %} &middot; <a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir leitura externa</a>{% endif %}
-                </p>
-                <p>
-                  <span class="pill status-{{ item.status }}">{{ technical_reading_status_labels.get(item.status, item.status or "Ativa") }}</span>
-                  {% if item.replaced_by_id %}
-                    &middot; Substituída pela leitura #{{ item.replaced_by_id }}
-                  {% endif %}
-                  {% if item.void_reason %}
-                    &middot; Motivo: {{ item.void_reason }}
-                  {% endif %}
-                </p>
-                <p>{{ item.summary or "Sem resumo registado." }}</p>
-                {% if item.data_json %}
-                  <dl class="technical-reading-list">
-                    {% for key, value in item.data_json.items() %}
-                      <div>
-                        <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
-                        <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
-                      </div>
-                    {% endfor %}
-                  </dl>
-                {% endif %}
-                {% if item.differences_json %}
-                  <div class="technical-diff-box">
-                    <strong>Diferenças face à leitura anterior</strong>
-                    {% for diff in item.differences_json.values() %}
-                      <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-                {% if item.status == "active" and not process.closed_at %}
-                  <div class="button-row">
-                    <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/edit">Editar</a>
-                    <details class="workshop-record-group compact-record-group">
-                      <summary>Corrigir leitura <span>3 opções</span></summary>
-                      <div class="compact-form-grid two-col">
-                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/replace" class="form-stack">
-                          <label>
-                            Motivo da substituição
-                            <input name="reason" maxlength="255" placeholder="Ex.: relatório errado ou correção necessária">
-                          </label>
-                          <button type="submit" class="secondary-link">Substituir e corrigir</button>
-                        </form>
-                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/void" class="form-stack">
-                          <label>
-                            Motivo da anulação
-                            <input name="reason" maxlength="255" required placeholder="Obrigatório">
-                          </label>
-                          <button type="submit" class="secondary-link">Anular leitura</button>
-                        </form>
-                      </div>
-                    </details>
-                  </div>
-                {% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem leituras técnicas neste processo.</p>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="workshop-record-group">
-          <summary>Incidentes do processo <span>{{ incidents|length }}</span></summary>
-          <div class="event-list">
-            {% for item in incidents %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ item.title }}</strong>
-                  <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
-                </div>
-                <p>
-                  {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
-                  &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
-                  &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
-                  &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
-                </p>
-                {% if item.description %}
-                  <p>{{ item.description }}</p>
-                {% endif %}
-                {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
-                  <p class="table-note">
-                    Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
-                    {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
-                    {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
-                  </p>
-                {% endfor %}
-              </article>
-            {% else %}
-              <p class="muted">Sem incidentes registados.</p>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="workshop-record-group">
-          <summary>Entrada documental <span>{{ documents|length }}</span></summary>
-          <div class="event-list">
-            {% for document in documents %}
-              <article class="event-item">
-                <div>
-                  <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
-                  <span>{{ document_status_labels.get(document.status, document.status) }}</span>
-                </div>
-                <p>
-                  {{ document_area_labels.get(document.classification, document.classification or "-") }}
-                  &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
-                </p>
-                <p>{{ document.folder_path or "-" }}</p>
-                {% if can_manage_document_links and document.external_url %}
-                  <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
-                {% endif %}
-              </article>
-            {% else %}
-                <p class="muted">Sem documentos associados a este processo.</p>
-            {% endfor %}
-          </div>
-        </details>
-
-        <details class="workshop-record-group">
-          <summary>Notas <span>{{ notes|length }}</span></summary>
-          <div class="event-list">
-            {% for item in notes %}
-              <article class="event-item">
-                <div>
-                  <strong>Utilizador #{{ item.user_id or "-" }}</strong>
-                  <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
-                </div>
-                <p>{{ item.note }}</p>
-              </article>
-            {% else %}
-              <p class="muted">Sem notas adicionais.</p>
-            {% endfor %}
-          </div>
-        </details>
-      </details>
-      </div>
-
-      <aside class="workshop-side-column">
+      <div class="workshop-columns">
+        <div class="workshop-main-column">
         {% set reception_state = "current" if process.status in ["opening", "reception"] else ("complete" if "reception" in completed_flow_statuses else ("skipped" if current_flow_index > 1 else "pending")) %}
         <details class="workshop-action-card flow-step-panel flow-step-{{ reception_state }}">
           <summary>
@@ -747,6 +405,256 @@
           </div>
         </article>
 
+        <details id="bsi-workspace" class="section workshop-bsi-workspace workshop-secondary-details">
+          <summary class="secondary-section-summary">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Registar leitura técnica / BSI</h3>
+              <p class="muted">Zona de preenchimento aberta a partir dos passos de leitura inicial ou final.</p>
+            </div>
+            <span class="action-method-pill">Abrir</span>
+          </summary>
+          <details id="bsi-reading-initial-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI inicial</h3>
+                <p class="muted">Leitura inicial do diagnóstico. Abre apenas o relatório que vais preencher.</p>
+              </div>
+              <span class="action-method-pill">Leitura inicial</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura inicial" %}
+              {% set fixed_reading_phase = "initial" %}
+              {% set reading_allowed_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
+
+          <details id="bsi-reading-final-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI final</h3>
+                <p class="muted">Leitura final antes do fecho técnico. Apenas manutenção e lubrificação motor.</p>
+              </div>
+              <span class="action-method-pill">Leitura final</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura final" %}
+              {% set fixed_reading_phase = "final" %}
+              {% set reading_allowed_types = ["maintenance_info", "lubrication_info"] %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
+        </details>
+
+      <details id="process-records" class="section workshop-feed workshop-history-panel workshop-secondary-details">
+        <summary class="secondary-section-summary">
+          <div>
+            <p class="eyebrow">Consulta</p>
+            <h3>Histórico completo do processo</h3>
+            <p class="muted">Consulta geral. O trabalho diário deve ser feito nos passos do serviço e nas ações complementares.</p>
+          </div>
+          <span class="action-method-pill">Abrir</span>
+        </summary>
+
+        <details class="workshop-record-group">
+          <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
+          <div class="event-list">
+            {% for service in services %}
+              <article class="event-item service-item">
+                <div>
+                  <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
+                  <span>{{ service_status_labels.get(service.status, service.status) }}</span>
+                </div>
+                <p>
+                  {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
+                  &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
+                </p>
+                {% if service.note %}
+                  <p>{{ service.note }}</p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem serviços associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Evidências <span>{{ evidences|length }}</span></summary>
+          <div class="event-list">
+            {% for item in evidences %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
+                  <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
+                </div>
+                <p>
+                  {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
+                  &middot; {{ status_labels.get(item.phase, item.phase) }}
+                  &middot; {{ evidence_status_labels.get(item.status, item.status) }}
+                </p>
+                <p>{{ item.description }}</p>
+                {% if item.external_url %}
+                  <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem evidências registadas.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Leituras técnicas / BSI <span>{{ technical_readings|length }}</span></summary>
+          <div class="event-list">
+            {% for item in technical_readings %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</strong>
+                  <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                </div>
+                <p>
+                  {% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}
+                  {% if item.external_url %} &middot; <a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir leitura externa</a>{% endif %}
+                </p>
+                <p>
+                  <span class="pill status-{{ item.status }}">{{ technical_reading_status_labels.get(item.status, item.status or "Ativa") }}</span>
+                  {% if item.replaced_by_id %}
+                    &middot; Substituída pela leitura #{{ item.replaced_by_id }}
+                  {% endif %}
+                  {% if item.void_reason %}
+                    &middot; Motivo: {{ item.void_reason }}
+                  {% endif %}
+                </p>
+                <p>{{ item.summary or "Sem resumo registado." }}</p>
+                {% if item.data_json %}
+                  <dl class="technical-reading-list">
+                    {% for key, value in item.data_json.items() %}
+                      <div>
+                        <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
+                        <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                      </div>
+                    {% endfor %}
+                  </dl>
+                {% endif %}
+                {% if item.differences_json %}
+                  <div class="technical-diff-box">
+                    <strong>Diferenças face à leitura anterior</strong>
+                    {% for diff in item.differences_json.values() %}
+                      <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if item.status == "active" and not process.closed_at %}
+                  <div class="button-row">
+                    <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/edit">Editar</a>
+                    <details class="workshop-record-group compact-record-group">
+                      <summary>Corrigir leitura <span>3 opções</span></summary>
+                      <div class="compact-form-grid two-col">
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/replace" class="form-stack">
+                          <label>
+                            Motivo da substituição
+                            <input name="reason" maxlength="255" placeholder="Ex.: relatório errado ou correção necessária">
+                          </label>
+                          <button type="submit" class="secondary-link">Substituir e corrigir</button>
+                        </form>
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/void" class="form-stack">
+                          <label>
+                            Motivo da anulação
+                            <input name="reason" maxlength="255" required placeholder="Obrigatório">
+                          </label>
+                          <button type="submit" class="secondary-link">Anular leitura</button>
+                        </form>
+                      </div>
+                    </details>
+                  </div>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem leituras técnicas neste processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Incidentes do processo <span>{{ incidents|length }}</span></summary>
+          <div class="event-list">
+            {% for item in incidents %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
+                </div>
+                <p>
+                  {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
+                  &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
+                  &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
+                  &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
+                </p>
+                {% if item.description %}
+                  <p>{{ item.description }}</p>
+                {% endif %}
+                {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
+                  <p class="table-note">
+                    Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
+                    {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
+                    {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
+                  </p>
+                {% endfor %}
+              </article>
+            {% else %}
+              <p class="muted">Sem incidentes registados.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Entrada documental <span>{{ documents|length }}</span></summary>
+          <div class="event-list">
+            {% for document in documents %}
+              <article class="event-item">
+                <div>
+                  <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                  <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                </div>
+                <p>
+                  {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                  &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                </p>
+                <p>{{ document.folder_path or "-" }}</p>
+                {% if can_manage_document_links and document.external_url %}
+                  <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+                <p class="muted">Sem documentos associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Notas <span>{{ notes|length }}</span></summary>
+          <div class="event-list">
+            {% for item in notes %}
+              <article class="event-item">
+                <div>
+                  <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                  <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+                </div>
+                <p>{{ item.note }}</p>
+              </article>
+            {% else %}
+              <p class="muted">Sem notas adicionais.</p>
+            {% endfor %}
+          </div>
+        </details>
+      </details>
+        </div>
+
+        <aside class="workshop-side-column">
         <article class="section workshop-feed workshop-complementary-panel">
           <div class="table-heading flat-heading">
             <div>
@@ -1008,7 +916,100 @@
         </details>
         </div>
         </article>
-      </aside>
+
+        <article class="section workshop-feed workshop-alert-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Controlo</p>
+              <h3>Alertas automáticos</h3>
+            </div>
+            <span class="action-method-pill">{{ workshop_alerts|length }}</span>
+          </div>
+          <div class="workshop-alert-list">
+            {% for alert in workshop_alerts %}
+              <article class="workshop-alert-item alert-{{ alert.severity }}">
+                <div>
+                  <strong>{{ alert.title }}</strong>
+                  {% if alert.action %}<span>{{ alert.action }}</span>{% endif %}
+                </div>
+                <p>{{ alert.detail }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </article>
+
+        <article class="section workshop-feed workshop-document-zone-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Arquivo</p>
+              <h3>Entrada documental do processo</h3>
+            </div>
+            {% if process.document_folder_url %}
+              <a class="button-link secondary-link" href="{{ process.document_folder_url }}" target="_blank" rel="noopener">Abrir pasta 365</a>
+            {% endif %}
+          </div>
+          <details class="workshop-record-group">
+            <summary>Zona documental <span>{{ documents|length }}</span></summary>
+            <div class="task-description-box">
+              <span>Caminho sugerido</span>
+              <p>{{ suggested_document_folder_path }}</p>
+            </div>
+            <form method="post" action="/workshop/{{ process.id }}/document-zone" class="form-stack compact-form">
+              <label>
+                Caminho de arquivo
+                <input type="text" name="document_folder_path" value="{{ suggested_document_folder_path }}">
+              </label>
+              <label>
+                Link da pasta 365
+                <input type="url" name="document_folder_url" value="{{ process.document_folder_url or '' }}" placeholder="https://...">
+              </label>
+              <button type="submit">Guardar zona documental</button>
+            </form>
+          </details>
+        </article>
+
+        <article class="section workshop-feed workshop-vehicle-history-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Histórico técnico da viatura</h3>
+            </div>
+            {% if vehicle %}
+              <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-history">Consultar relatórios</a>
+            {% endif %}
+          </div>
+          <details class="workshop-record-group">
+            <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>
+            <div class="event-list">
+              {% for item in previous_technical_readings %}
+                <article class="event-item">
+                  <div>
+                    <strong>
+                      {% if item.process_id %}
+                        <a class="table-link" href="/workshop/{{ item.process_id }}">{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</a>
+                      {% else %}
+                        {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
+                      {% endif %}
+                    </strong>
+                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                  </div>
+                  <p>
+                    {% if item.process_id %}Processo #{{ item.process_id }}{% else %}Histórico importado{% endif %}
+                    {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
+                  </p>
+                  <p>{{ item.summary or "Sem resumo registado." }}</p>
+                  {% if item.differences_json %}
+                    <p class="table-note">Diferenças registadas: {{ item.differences_json|length }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem leituras técnicas anteriores para esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+        </aside>
+      </div>
     </section>
   </main>
 </div>

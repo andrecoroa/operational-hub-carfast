@@ -430,6 +430,8 @@
           </summary>
           {% set phase_record = phase_records.get("reception") %}
           {% include "_workshop_phase_record.html" %}
+          {% set phase_items = phase_activity.get("reception", []) %}
+          {% include "_workshop_phase_activity.html" %}
           <form method="post" action="/workshop/{{ process.id }}/reception" class="form-stack">
             <div class="compact-form-grid two-col">
               <label>
@@ -496,6 +498,8 @@
                 </summary>
                 {% set phase_record = phase_records.get(step.code) %}
                 {% include "_workshop_phase_record.html" %}
+                {% set phase_items = phase_activity.get(step.code, []) %}
+                {% include "_workshop_phase_activity.html" %}
                 {% if step.code in ["bsi_initial", "bsi_final"] %}
                   <div class="form-stack">
                     <p>{{ step.description }}</p>

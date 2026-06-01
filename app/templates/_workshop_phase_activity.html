@@ -1,0 +1,30 @@
+{% if phase_items %}
+  <div class="phase-activity-preview">
+    <div class="phase-activity-heading">
+      <strong>Consulta desta fase</strong>
+      <span>{{ phase_items|length }}</span>
+    </div>
+    <div class="phase-activity-list">
+      {% for item in phase_items[:4] %}
+        <article class="phase-activity-item">
+          <div>
+            <span>{{ item.kind }}</span>
+            {% if item.created_at %}
+              <time>{{ item.created_at.strftime("%Y-%m-%d") }}</time>
+            {% endif %}
+          </div>
+          <strong>{{ item.title }}</strong>
+          {% if item.detail %}
+            <p>{{ item.detail }}</p>
+          {% endif %}
+          {% if item.url %}
+            <a class="table-link" href="{{ item.url }}" target="_blank" rel="noreferrer">Abrir ficheiro</a>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+    {% if phase_items|length > 4 %}
+      <p class="phase-activity-more">+ {{ phase_items|length - 4 }} registos adicionais no histórico completo.</p>
+    {% endif %}
+  </div>
+{% endif %}

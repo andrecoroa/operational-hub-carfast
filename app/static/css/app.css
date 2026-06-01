@@ -3782,6 +3782,76 @@ a.metric:hover {
   white-space: pre-line;
 }
 
+.phase-activity-preview {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 14px;
+  border: 1px solid rgba(102, 112, 133, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfc;
+}
+
+.phase-activity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.phase-activity-heading strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.phase-activity-heading span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eef1f2;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.phase-activity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.phase-activity-item {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.phase-activity-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.phase-activity-item strong {
+  color: var(--brand-dark);
+  font-size: 13px;
+}
+
+.phase-activity-item p,
+.phase-activity-more {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.phase-activity-item .table-link {
+  font-size: 12px;
+}
+
 .compact-details {
   border-top: 1px solid var(--line);
   padding-top: 12px;

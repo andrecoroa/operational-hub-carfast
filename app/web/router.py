@@ -620,6 +620,134 @@ def workshop_phase_records(
     return records
 
 
+def workshop_reading_flow_code(reading: WorkshopTechnicalReading) -> str:
+    flow_phase = (reading.data_json or {}).get("flow_phase")
+    if flow_phase in WORKSHOP_READING_PHASES:
+        return WORKSHOP_READING_PHASES[flow_phase]["flow_status"]
+    if flow_phase in {"bsi_initial", "bsi_final"}:
+        return flow_phase
+    return ""
+
+
+def workshop_note_flow_record(note: WorkshopProcessNote) -> tuple[str, list[str]]:
+    lines = [line.strip() for line in (note.note or "").splitlines() if line.strip()]
+    if not lines:
+        return "", []
+    label_to_code = {label: code for code, label in WORKSHOP_STATUS_LABELS.items()}
+    if lines[0] == "Receção confirmada.":
+        return "reception", lines[1:]
+    if lines[0].startswith("Fase registada: "):
+        raw_code = lines[0].replace("Fase registada: ", "", 1).strip()
+        code = raw_code if raw_code in WORKSHOP_STATUS_LABELS else label_to_code.get(raw_code, "")
+        body_lines = [line for line in lines[1:] if not line.startswith("Fluxo atualizado:")]
+        return code, body_lines
+    return "", []
+
+
+def workshop_phase_activity(
+    *,
+    notes: list[WorkshopProcessNote],
+    services: list[WorkshopProcessService],
+    evidences: list[WorkshopProcessEvidence],
+    technical_readings: list[WorkshopTechnicalReading],
+) -> dict[str, list[dict]]:
+    activity: dict[str, list[dict]] = {}
+
+    def add(
+        code: str,
+        *,
+        kind: str,
+        title: str,
+        detail: str = "",
+        created_at: datetime | None = None,
+        url: str = "",
+    ) -> None:
+        if not code:
+            return
+        activity.setdefault(code, []).append(
+            {
+                "kind": kind,
+                "title": title,
+                "detail": detail,
+                "created_at": created_at,
+                "url": url,
+            }
+        )
+
+    for service in services:
+        detail = " · ".join(
+            item
+            for item in [
+                WORKSHOP_SERVICE_DETAIL_LABELS.get(service.service_detail, service.service_detail or ""),
+                WORKSHOP_SERVICE_AXIS_LABELS.get(service.service_axis, service.service_axis or ""),
+                WORKSHOP_SERVICE_STATUS_LABELS.get(service.status, service.status or ""),
+            ]
+            if item
+        )
+        if service.note:
+            detail = f"{detail}. {service.note}" if detail else service.note
+        add(
+            "reception",
+            kind="Serviço",
+            title=WORKSHOP_SERVICE_FAMILY_LABELS.get(service.service_family, service.service_family),
+            detail=detail,
+            created_at=service.created_at,
+        )
+
+    for note in notes:
+        code, lines = workshop_note_flow_record(note)
+        if not code:
+            continue
+        add(
+            code,
+            kind="Nota",
+            title=WORKSHOP_FLOW_TITLES.get(code, WORKSHOP_STATUS_LABELS.get(code, code)),
+            detail=" · ".join(lines) or "Registo sem detalhe.",
+            created_at=note.created_at,
+        )
+
+    for evidence in evidences:
+        detail = " · ".join(
+            item
+            for item in [
+                WORKSHOP_EVIDENCE_TYPE_LABELS.get(evidence.evidence_type, evidence.evidence_type),
+                WORKSHOP_EVIDENCE_STATUS_LABELS.get(evidence.status, evidence.status),
+                evidence.description,
+            ]
+            if item
+        )
+        add(
+            evidence.phase,
+            kind="Evidência",
+            title=WORKSHOP_EVIDENCE_CATEGORY_LABELS.get(evidence.anomaly_category, evidence.anomaly_category),
+            detail=detail,
+            created_at=evidence.observed_at,
+            url=evidence.external_url or "",
+        )
+
+    for reading in technical_readings:
+        code = workshop_reading_flow_code(reading)
+        detail_parts = []
+        if reading.reading_date:
+            detail_parts.append(str(reading.reading_date))
+        if reading.odometer_km is not None:
+            detail_parts.append(f"{reading.odometer_km} km")
+        if reading.summary:
+            detail_parts.append(reading.summary)
+        add(
+            code,
+            kind="Leitura",
+            title=WORKSHOP_READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type),
+            detail=" · ".join(detail_parts) or "Leitura técnica registada.",
+            created_at=reading.created_at,
+            url=reading.external_url or "",
+        )
+
+    for items in activity.values():
+        items.sort(key=lambda item: item["created_at"].isoformat() if item.get("created_at") else "", reverse=True)
+    return activity
+
+
 def workshop_latest_activity_at(
     process: WorkshopProcess,
     notes: list[WorkshopProcessNote],
@@ -3483,6 +3611,12 @@ def render_workshop_detail(
         .limit(5)
     ).all()
     phase_records = workshop_phase_records(notes, process, technical_readings)
+    phase_activity = workshop_phase_activity(
+        notes=notes,
+        services=services,
+        evidences=evidences,
+        technical_readings=technical_readings,
+    )
     phase_user_ids = {
         record.get("user_id")
         for record in phase_records.values()
@@ -3559,6 +3693,7 @@ def render_workshop_detail(
             "technical_readings": technical_readings,
             "previous_technical_readings": previous_technical_readings,
             "phase_records": phase_records,
+            "phase_activity": phase_activity,
             "phase_user_labels": phase_user_labels,
             "workshop_flow_steps": workshop_flow_steps,
             "workshop_flow_order": workshop_flow_order,

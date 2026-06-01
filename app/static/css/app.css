@@ -3934,7 +3934,7 @@ a.metric:hover {
 
 .workshop-page-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(500px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 520px);
   gap: 16px;
   align-items: start;
   margin-top: 18px;
@@ -4150,6 +4150,13 @@ a.metric:hover {
   padding: 18px;
 }
 
+.workshop-side-column > .flow-step-panel {
+  padding: 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.045);
+}
+
 .workshop-flow-card .form-stack,
 .workshop-flow-card label {
   gap: 8px;
@@ -4171,6 +4178,10 @@ a.metric:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.phase-action-stack > .flow-step-panel {
+  margin: 0;
 }
 
 .phase-action-card:not([open]) {
@@ -4523,6 +4534,25 @@ a.metric:hover {
 .workshop-actions {
   display: grid;
   gap: 12px;
+}
+
+.workshop-complementary-panel .workshop-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.workshop-complementary-panel .workshop-action-card {
+  padding: 13px 14px;
+  box-shadow: none;
+}
+
+.workshop-complementary-panel .workshop-action-card[open] {
+  grid-column: 1 / -1;
+}
+
+.workshop-complementary-panel .workshop-close-card {
+  grid-column: 1 / -1;
 }
 
 .workshop-action-strip {

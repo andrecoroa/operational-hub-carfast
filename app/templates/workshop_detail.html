@@ -50,17 +50,6 @@
       <div class="alert">{{ error }}</div>
     {% endif %}
 
-    <section class="section workshop-action-strip" aria-label="Ações complementares do processo">
-      <div class="table-heading flat-heading">
-        <div>
-          <p class="eyebrow">Ações complementares</p>
-          <h3>Registos do processo</h3>
-        </div>
-        <span class="action-method-pill">Adicionar</span>
-      </div>
-      <div class="process-action-grid" data-process-actions-target></div>
-    </section>
-
     <section class="workshop-page-grid">
       <div class="workshop-main-column">
         <article class="section workshop-summary-card">
@@ -442,7 +431,7 @@
         {% set reception_state = "current" if process.status in ["opening", "reception"] else ("complete" if "reception" in completed_flow_statuses else ("skipped" if current_flow_index > 1 else "pending")) %}
         <details class="workshop-action-card flow-step-panel flow-step-{{ reception_state }}">
           <summary>
-            <strong>Confirmar receção</strong>
+            <strong>Receção administrativa</strong>
             <span>{{ "Atual" if reception_state == "current" else ("Concluído" if reception_state == "complete" else ("Por rever" if reception_state == "skipped" else "Pendente")) }}</span>
           </summary>
           {% set phase_record = phase_records.get("reception") %}
@@ -498,10 +487,10 @@
 
         <article class="section workshop-flow-card">
           <div class="panel-heading compact-heading">
-            <p class="eyebrow">Fluxo</p>
-            <h3>Fluxo do serviço</h3>
+            <p class="eyebrow">Linha do processo</p>
+            <h3>Passos do serviço</h3>
           </div>
-          <p class="muted">Estado atual: <strong>{{ status_labels.get(process.status, process.status) }}</strong>. Verde indica passo registado; laranja indica etapa ultrapassada sem registo claro.</p>
+          <p class="muted">Abre apenas o passo a preencher. Verde indica passo registado; laranja indica etapa ultrapassada sem registo claro.</p>
           <div class="phase-action-stack">
             {% for step in workshop_flow_steps %}
               {% set step_index = step.index %}
@@ -760,6 +749,13 @@
           </div>
         </article>
 
+        <article class="section workshop-feed workshop-complementary-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Ações complementares</p>
+              <h3>Adicionar registo</h3>
+            </div>
+          </div>
         <div class="workshop-actions">
         <details class="workshop-action-card">
           <summary>Serviço</summary>
@@ -1013,20 +1009,13 @@
           {% endif %}
         </details>
         </div>
+        </article>
       </aside>
     </section>
   </main>
 </div>
 <script>
   const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
-
-  const processActionsTarget = document.querySelector("[data-process-actions-target]");
-  const sideActions = document.querySelector(".workshop-actions");
-  if (processActionsTarget && sideActions) {
-    sideActions.querySelectorAll(".workshop-action-card:not(.workshop-close-card):not(.workshop-flow-action)").forEach((card) => {
-      processActionsTarget.appendChild(card);
-    });
-  }
 
   document.querySelectorAll("[data-open-details]").forEach((trigger) => {
     trigger.addEventListener("click", () => {

@@ -101,7 +101,7 @@
           </div>
         </article>
 
-        <article class="section workshop-feed">
+        <article class="section workshop-feed workshop-document-zone-panel">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Arquivo</p>
@@ -131,7 +131,7 @@
           </details>
         </article>
 
-        <article class="section workshop-feed">
+        <article class="section workshop-feed workshop-vehicle-history-panel">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Diagnóstico</p>
@@ -216,14 +216,15 @@
           </details>
         </details>
 
-      <article id="process-records" class="section workshop-feed workshop-history-panel">
-        <div class="table-heading flat-heading">
+      <details id="process-records" class="section workshop-feed workshop-history-panel workshop-secondary-details">
+        <summary class="secondary-section-summary">
           <div>
             <p class="eyebrow">Consulta</p>
             <h3>Histórico completo do processo</h3>
             <p class="muted">Consulta geral. O trabalho diário deve ser feito nos passos do serviço e nas ações complementares.</p>
           </div>
-        </div>
+          <span class="action-method-pill">Abrir</span>
+        </summary>
 
         <details class="workshop-record-group">
           <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
@@ -417,7 +418,7 @@
             {% endfor %}
           </div>
         </details>
-      </article>
+      </details>
       </div>
 
       <aside class="workshop-side-column">

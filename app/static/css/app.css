@@ -3954,7 +3954,7 @@ a.metric:hover {
 
 .workshop-page-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 520px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
   gap: 16px;
   align-items: start;
   margin-top: 18px;
@@ -3967,20 +3967,58 @@ a.metric:hover {
 
 .workshop-main-column,
 .workshop-side-column {
-  display: grid;
-  gap: 18px;
+  display: contents;
   min-width: 0;
-  align-content: start;
 }
 
-.workshop-main-column .section,
-.workshop-side-column .section {
+.workshop-page-grid .section,
+.workshop-page-grid .flow-step-panel {
   margin-top: 0;
 }
 
-.workshop-summary-card,
+.workshop-summary-card {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+.workshop-side-column > .flow-step-panel {
+  grid-column: 1;
+  order: 2;
+}
+
 .workshop-flow-card {
-  margin-top: 0;
+  grid-column: 1;
+  order: 3;
+}
+
+.workshop-bsi-workspace {
+  grid-column: 1;
+  order: 4;
+}
+
+.workshop-history-panel {
+  grid-column: 1;
+  order: 5;
+}
+
+.workshop-complementary-panel {
+  grid-column: 2;
+  order: 2;
+}
+
+.workshop-alert-panel {
+  grid-column: 2;
+  order: 3;
+}
+
+.workshop-document-zone-panel {
+  grid-column: 2;
+  order: 4;
+}
+
+.workshop-vehicle-history-panel {
+  grid-column: 2;
+  order: 5;
 }
 
 .task-summary-chips {
@@ -5115,6 +5153,18 @@ a.metric:hover {
   .workshop-page-grid,
   .technical-history-hero {
     grid-template-columns: 1fr;
+  }
+
+  .workshop-summary-card,
+  .workshop-side-column > .flow-step-panel,
+  .workshop-flow-card,
+  .workshop-bsi-workspace,
+  .workshop-history-panel,
+  .workshop-complementary-panel,
+  .workshop-alert-panel,
+  .workshop-document-zone-panel,
+  .workshop-vehicle-history-panel {
+    grid-column: 1;
   }
 
   .form-panel {

@@ -3782,25 +3782,6 @@ a.metric:hover {
   white-space: pre-line;
 }
 
-.phase-record-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 2px;
-  justify-content: flex-start;
-}
-
-.phase-record-actions .small-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  min-height: 0;
-  padding: 6px 10px;
-  font-size: 11px;
-  line-height: 1.2;
-}
-
 .compact-details {
   border-top: 1px solid var(--line);
   padding-top: 12px;
@@ -4435,6 +4416,19 @@ a.metric:hover {
 
 .workshop-alert-panel {
   border-color: rgba(166, 75, 55, 0.18);
+}
+
+.workshop-history-panel {
+  border-color: rgba(102, 112, 133, 0.18);
+}
+
+.workshop-history-panel .table-heading {
+  align-items: flex-start;
+}
+
+.workshop-history-panel .table-heading .muted {
+  margin-top: 4px;
+  font-size: 13px;
 }
 
 .workshop-alert-list {

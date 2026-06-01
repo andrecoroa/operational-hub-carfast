@@ -134,37 +134,6 @@
         <article class="section workshop-feed">
           <div class="table-heading flat-heading">
             <div>
-              <p class="eyebrow">Receção</p>
-              <h3>Serviços do processo</h3>
-            </div>
-          </div>
-          <details class="workshop-record-group">
-            <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
-            <div class="event-list">
-              {% for service in services %}
-                <article class="event-item service-item">
-                  <div>
-                    <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
-                    <span>{{ service_status_labels.get(service.status, service.status) }}</span>
-                  </div>
-                  <p>
-                    {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
-                    &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
-                  </p>
-                  {% if service.note %}
-                    <p>{{ service.note }}</p>
-                  {% endif %}
-                </article>
-              {% else %}
-                <p class="muted">Sem serviços associados a este processo.</p>
-              {% endfor %}
-            </div>
-          </details>
-        </article>
-
-        <article class="section workshop-feed">
-          <div class="table-heading flat-heading">
-            <div>
               <p class="eyebrow">Diagnóstico</p>
               <h3>Histórico técnico da viatura</h3>
             </div>
@@ -207,8 +176,8 @@
           <summary class="secondary-section-summary">
             <div>
               <p class="eyebrow">Diagnóstico</p>
-              <h3>Leituras técnicas / BSI</h3>
-              <p class="muted">Abrir apenas quando for necessário registar ou consultar leituras do processo.</p>
+              <h3>Registar leitura técnica / BSI</h3>
+              <p class="muted">Zona de preenchimento aberta a partir dos passos de leitura inicial ou final.</p>
             </div>
             <span class="action-method-pill">Abrir</span>
           </summary>
@@ -247,13 +216,37 @@
           </details>
         </details>
 
-      <article id="process-records" class="section workshop-feed">
+      <article id="process-records" class="section workshop-feed workshop-history-panel">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Acompanhamento</p>
-            <h3>Registos do processo</h3>
+            <p class="eyebrow">Consulta</p>
+            <h3>Histórico completo do processo</h3>
+            <p class="muted">Consulta geral. O trabalho diário deve ser feito nos passos do serviço e nas ações complementares.</p>
           </div>
         </div>
+
+        <details class="workshop-record-group">
+          <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
+          <div class="event-list">
+            {% for service in services %}
+              <article class="event-item service-item">
+                <div>
+                  <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
+                  <span>{{ service_status_labels.get(service.status, service.status) }}</span>
+                </div>
+                <p>
+                  {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
+                  &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
+                </p>
+                {% if service.note %}
+                  <p>{{ service.note }}</p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem serviços associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
 
         <details class="workshop-record-group">
           <summary>Evidências <span>{{ evidences|length }}</span></summary>

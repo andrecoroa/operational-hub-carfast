@@ -4037,8 +4037,11 @@ a.metric:hover {
 
 .workshop-main-column,
 .workshop-side-column {
-  display: contents;
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-content: start;
 }
 
 .workshop-page-grid .section,
@@ -4046,8 +4049,21 @@ a.metric:hover {
   margin-top: 0;
 }
 
+.workshop-main-column {
+  grid-column: 1;
+}
+
+.workshop-side-column {
+  grid-column: 2;
+}
+
+.workshop-main-column > *,
+.workshop-side-column > * {
+  grid-column: 1 !important;
+  order: initial;
+}
+
 .workshop-summary-card {
-  grid-column: 1 / -1;
   order: 1;
 }
 

@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+carfast_v2_tmp.db
+*.sqlite
+*.db
+

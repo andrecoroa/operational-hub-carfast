@@ -5258,17 +5258,77 @@ def technical_history_import_submit(request: Request, file: UploadFile):
 
 
 @web_router.get("/imports", response_class=HTMLResponse)
-def imports_page(request: Request):
+def imports_page(request: Request, type: str | None = None):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
 
     with SessionLocal() as db:
-        batches = db.scalars(select(ImportBatch).order_by(ImportBatch.id.desc()).limit(100)).all()
+        import_types = [
+            {
+                "code": "rentway_fleet",
+                "source_system": "rentway",
+                "title": "Frota Rentway",
+                "description": "Atualização da frota importada do Rentway.",
+                "import_url": "/imports/fleet",
+                "history_url": "/imports?type=rentway_fleet",
+            },
+            {
+                "code": "technical_history",
+                "source_system": "workshop_history",
+                "title": "Histórico técnico / Oficina",
+                "description": "Histórico técnico importado para a ficha da viatura.",
+                "import_url": "/imports/technical-history",
+                "history_url": "/imports?type=technical_history",
+            },
+        ]
+        type_codes = {item["code"] for item in import_types}
+        selected_type = type if type in type_codes else None
+        batch_query = select(ImportBatch).order_by(ImportBatch.id.desc()).limit(100)
+        if selected_type:
+            batch_query = (
+                select(ImportBatch)
+                .where(ImportBatch.import_type == selected_type)
+                .order_by(ImportBatch.id.desc())
+                .limit(100)
+            )
+        batches = db.scalars(batch_query).all()
+        import_cards = []
+        for item in import_types:
+            latest_batch = db.scalars(
+                select(ImportBatch)
+                .where(ImportBatch.import_type == item["code"])
+                .order_by(ImportBatch.id.desc())
+                .limit(1)
+            ).first()
+            totals = db.execute(
+                select(
+                    func.count(ImportBatch.id),
+                    func.coalesce(func.sum(ImportBatch.total_rows), 0),
+                    func.coalesce(func.sum(ImportBatch.created_rows), 0),
+                    func.coalesce(func.sum(ImportBatch.updated_rows), 0),
+                    func.coalesce(func.sum(ImportBatch.error_rows), 0),
+                ).where(ImportBatch.import_type == item["code"])
+            ).one()
+            import_cards.append(
+                {
+                    **item,
+                    "count": totals[0] or 0,
+                    "total_rows": totals[1] or 0,
+                    "created_rows": totals[2] or 0,
+                    "updated_rows": totals[3] or 0,
+                    "error_rows": totals[4] or 0,
+                    "latest_batch": latest_batch,
+                    "active": selected_type == item["code"],
+                }
+            )
         return templates.TemplateResponse(
             request,
             "imports.html",
             {
                 "batches": batches,
+                "import_cards": import_cards,
+                "selected_type": selected_type,
+                "selected_card": next((item for item in import_cards if item["active"]), None),
             },
         )
 

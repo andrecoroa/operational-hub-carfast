@@ -3,54 +3,131 @@
 <div class="app-shell">
   {% set active_menu = "imports" %}
   {% include "_sidebar.html" %}
-  <main class="content">
+  <main class="content imports-content">
     <header class="topbar">
       <div>
         <p class="eyebrow">Rentway e outros sistemas</p>
-        <h2>Histórico de importações</h2>
+        <h2>Importações</h2>
+        <p class="breadcrumb">Escolhe o tipo de dados, importa novos ficheiros ou consulta o histórico.</p>
       </div>
       <div class="button-row">
-        <a class="button-link" href="/imports/fleet">Importar frota</a>
-        <a class="button-link secondary-link" href="/imports/technical-history">Importar histórico técnico</a>
         {% set feedback_source_area = "imports" %}
         {% set feedback_return_url = "/imports" %}
         {% include "_pilot_actions.html" %}
       </div>
     </header>
 
-    <section class="table-shell">
-      <table>
-        <thead>
-          <tr>
-            <th>Lote</th>
-            <th>Origem</th>
-            <th>Tipo</th>
-            <th>Estado</th>
-            <th>Linhas</th>
-            <th>Criadas</th>
-            <th>Atualizadas</th>
-            <th>Erros</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for batch in batches %}
+    <section class="import-type-grid">
+      {% for card in import_cards %}
+        <article class="import-type-card {% if card.active %}active{% endif %}">
+          <div class="import-card-header">
+            <div>
+              <p class="eyebrow">{{ card.source_system }}</p>
+              <h3>{{ card.title }}</h3>
+            </div>
+            <span class="import-count">{{ card.count }}</span>
+          </div>
+          <p>{{ card.description }}</p>
+          <div class="import-card-stats">
+            <span><strong>{{ card.updated_rows }}</strong><small>Atualizadas</small></span>
+            <span><strong>{{ card.created_rows }}</strong><small>Criadas</small></span>
+            <span class="{% if card.error_rows %}has-errors{% endif %}"><strong>{{ card.error_rows }}</strong><small>Erros</small></span>
+          </div>
+          <div class="import-latest">
+            <span>Último lote</span>
+            {% if card.latest_batch %}
+              <a href="/imports/{{ card.latest_batch.id }}">#{{ card.latest_batch.id }}</a>
+              <small>{{ card.latest_batch.status }}{% if card.latest_batch.finished_at %} · {{ card.latest_batch.finished_at.strftime("%d/%m %H:%M") }}{% endif %}</small>
+            {% else %}
+              <strong>Sem importações</strong>
+            {% endif %}
+          </div>
+          <div class="import-card-actions">
+            <a class="button-link" href="{{ card.import_url }}">Importar</a>
+            <a class="button-link secondary-link" href="{{ card.history_url }}">Ver histórico</a>
+          </div>
+        </article>
+      {% endfor %}
+      <article class="import-type-card planned">
+        <div class="import-card-header">
+          <div>
+            <p class="eyebrow">Futuro</p>
+            <h3>Outras importações</h3>
+          </div>
+          <span class="import-count">0</span>
+        </div>
+        <p>Área reservada para documentos, financeiro, brokers ou outras integrações.</p>
+        <div class="import-card-stats">
+          <span><strong>0</strong><small>Ativas</small></span>
+          <span><strong>0</strong><small>Erros</small></span>
+        </div>
+        <span class="implementation-status">Preparar depois</span>
+      </article>
+    </section>
+
+    <section class="section import-history-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Histórico</p>
+          <h3>{% if selected_card %}{{ selected_card.title }}{% else %}Histórico recente{% endif %}</h3>
+          <p class="breadcrumb">
+            {% if selected_card %}
+              Histórico filtrado por tipo de importação.
+            {% else %}
+              Últimos lotes de todos os tipos.
+            {% endif %}
+          </p>
+        </div>
+        <div class="import-history-actions">
+          {% if selected_type %}
+            <a class="button-link secondary-link" href="/imports">Ver todos</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="table-shell import-table-shell">
+        <table>
+          <thead>
             <tr>
-              <td><a class="table-link" href="/imports/{{ batch.id }}">#{{ batch.id }}</a></td>
-              <td>{{ batch.source_system }}</td>
-              <td>{{ batch.import_type }}</td>
-              <td><span class="pill">{{ batch.status }}</span></td>
-              <td>{{ batch.total_rows }}</td>
-              <td>{{ batch.created_rows }}</td>
-              <td>{{ batch.updated_rows }}</td>
-              <td>{{ batch.error_rows }}</td>
+              <th>Lote</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Linhas</th>
+              <th>Criadas</th>
+              <th>Atualizadas</th>
+              <th>Erros</th>
+              <th>Data</th>
             </tr>
-          {% else %}
-            <tr>
-              <td colspan="8" class="muted">Ainda nao existem importacoes.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for batch in batches %}
+              <tr class="{% if batch.error_rows %}import-row-warning{% endif %}">
+                <td><a class="table-link" href="/imports/{{ batch.id }}">#{{ batch.id }}</a></td>
+                <td>
+                  <strong>{{ batch.import_type }}</strong>
+                  <small>{{ batch.source_system }}</small>
+                </td>
+                <td><span class="pill status-{{ batch.status }}">{{ batch.status }}</span></td>
+                <td>{{ batch.total_rows }}</td>
+                <td>{{ batch.created_rows }}</td>
+                <td>{{ batch.updated_rows }}</td>
+                <td>
+                  {% if batch.error_rows %}
+                    <a class="table-link" href="/imports/{{ batch.id }}">{{ batch.error_rows }}</a>
+                  {% else %}
+                    0
+                  {% endif %}
+                </td>
+                <td>{{ batch.finished_at.strftime("%Y-%m-%d %H:%M") if batch.finished_at else "-" }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="8" class="muted">Ainda não existem importações neste histórico.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 </div>

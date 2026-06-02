@@ -20,6 +20,8 @@
         Oficina
         {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
       </a>
+      <a class="sidebar-sub-link" href="/workshop/processes-ui">Processos por fases</a>
+      <a class="sidebar-sub-link" href="/workshop/new-process">Novo por fases</a>
     {% endif %}
     {% if "vehicles.read" in nav_perms %}
       <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>

@@ -1508,6 +1508,12 @@ def normalize_task_subcategory(category: str | None, subcategory: str | None) ->
     allowed = {code for code, _ in TASK_SUBCATEGORIES_BY_CATEGORY.get(clean_category, [])}
     return clean_subcategory if clean_subcategory in allowed else default_task_subcategory(clean_category)
 
+
+def task_subcategory_allows_manual_text(subcategory: str | None) -> bool:
+    clean_subcategory = (subcategory or "").strip().lower()
+    display_label = TASK_SUBCATEGORY_DISPLAY_LABELS.get(clean_subcategory, clean_subcategory).lower()
+    return clean_subcategory == "other" or clean_subcategory.endswith("_other") or "outro" in display_label
+
 TASK_SOURCES = [
     ("manual", "Manual"),
     ("system", "Sistema"),
@@ -7147,6 +7153,7 @@ def task_create(
     task_type: str = Form("operational_task"),
     category: str = Form(""),
     subcategory: str = Form(""),
+    manual_subcategory: str = Form(""),
     source: str = Form("manual"),
     priority: str = Form("normal"),
     assigned_to_id: str = Form(""),
@@ -7243,7 +7250,11 @@ def task_create(
             task_type = workspace_config["default_task_type"]
         if category not in TASK_CATEGORY_LABELS:
             category = workspace_config["default_category"]
+        requested_subcategory = subcategory
         subcategory = normalize_task_subcategory(category, subcategory)
+        clean_manual_subcategory = manual_subcategory.strip()[:120]
+        if clean_manual_subcategory and task_subcategory_allows_manual_text(requested_subcategory):
+            subcategory = clean_manual_subcategory
         clean_guided_flow_code = guided_flow_code if guided_flow_template(guided_flow_code) else None
         if clean_guided_flow_code and current_workspace not in guided_flow_template(clean_guided_flow_code)["workspaces"]:
             clean_guided_flow_code = None
@@ -7305,7 +7316,8 @@ def task_create(
                         "priority": priority,
                         "source": source,
                         "category": category,
-                        "subcategory": subcategory,
+                        "subcategory": requested_subcategory if clean_manual_subcategory and task_subcategory_allows_manual_text(requested_subcategory) else subcategory,
+                        "manual_subcategory": clean_manual_subcategory,
                         "plate": clean_plate,
                         "station": station,
                         "due_on": due_on,

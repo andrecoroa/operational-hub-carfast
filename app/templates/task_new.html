@@ -76,26 +76,29 @@
                 {% endfor %}
               </select>
             {% else %}
-              Origem
               <input type="hidden" name="task_type" value="{{ form_values.task_type or workspace_config.default_task_type }}">
-              <select name="source">
-                {% for code, label in task_sources %}
-                  <option value="{{ code }}" {% if (form_values.source or "manual") == code %}selected{% endif %}>{{ label }}</option>
+              <input type="hidden" name="source" value="manual">
+              Prioridade
+              <select name="priority">
+                {% for code, label in priorities %}
+                  <option value="{{ code }}" {% if (form_values.priority or "normal") == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
             {% endif %}
           </label>
-          <label>
-            Prioridade
-            <select name="priority">
-              {% for code, label in priorities %}
-                <option value="{{ code }}" {% if (form_values.priority or "normal") == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
+          {% if form_mode == "quick" %}
+            <label>
+              Prioridade
+              <select name="priority">
+                {% for code, label in priorities %}
+                  <option value="{{ code }}" {% if (form_values.priority or "normal") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          {% endif %}
           {% if form_mode != "quick" %}
             <label>
-              Responsável
+              Responsável / equipa
               <select name="assigned_to_id">
                 <option value="">Por atribuir</option>
                 {% for user in assignable_users %}
@@ -118,69 +121,39 @@
             </label>
           {% endif %}
         </div>
-        <div class="compact-form-grid">
-          <label>
-            Matrícula
-            <input type="text" name="plate" maxlength="40" list="task-vehicle-plates" data-vehicle-search value="{{ form_values.plate or '' }}" autocomplete="off">
-            <datalist id="task-vehicle-plates"></datalist>
-          </label>
-          <label>
-            Estação
-            <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa" value="{{ form_values.station or '' }}">
-          </label>
-        </div>
-
         {% if form_mode != "quick" %}
-          <details class="advanced-panel">
-            <summary>Fluxo guiado e periodicidade</summary>
-            <div class="compact-form-grid">
-              <label>
-                Fluxo guiado
-                <select name="guided_flow_code">
-                  <option value="">Sem fluxo guiado</option>
-                  {% for code, label in guided_flow_options %}
-                    <option value="{{ code }}" {% if form_values.guided_flow_code == code %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              {% if can_create_recurring %}
-                <label>
-                  Periodicidade
-                  <select name="recurrence_rule">
-                    <option value="">Sem repetição</option>
-                    {% for code, label in recurrence_rules %}
-                      <option value="{{ code }}" {% if form_values.recurrence_rule == code %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>
-                  Intervalo
-                  <input type="number" name="recurrence_interval" min="1" max="36" value="{{ form_values.recurrence_interval or 1 }}">
-                </label>
-              {% else %}
-                <p class="muted">A criação de tarefas recorrentes exige permissão própria.</p>
-              {% endif %}
-            </div>
-          </details>
+          <div class="compact-form-grid">
+            <label>
+              Classificação
+              <select name="category" data-task-category>
+                {% for code, label in task_categories %}
+                  <option value="{{ code }}" {% if (form_values.category or workspace_config.default_category) == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Subclassificação
+              <select name="subcategory" data-task-subcategory data-current-subcategory="{{ form_values.subcategory or '' }}" required></select>
+            </label>
+            <label data-manual-subcategory-wrap hidden>
+              Outra subclassificação
+              <input type="text" name="manual_subcategory" maxlength="120" data-manual-subcategory placeholder="Descreva a subclassificação" value="{{ form_values.manual_subcategory or '' }}">
+            </label>
+          </div>
         {% endif %}
 
         <details class="advanced-panel">
-          <summary>Dados adicionais</summary>
+          <summary>Contexto opcional</summary>
           <div class="compact-form-grid">
-            {% if form_mode != "quick" %}
-              <label>
-                Classificação
-                <select name="category" data-task-category>
-                  {% for code, label in task_categories %}
-                    <option value="{{ code }}" {% if (form_values.category or workspace_config.default_category) == code %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>
-                Subclassificação
-                <select name="subcategory" data-task-subcategory data-current-subcategory="{{ form_values.subcategory or '' }}" required></select>
-              </label>
-            {% endif %}
+            <label>
+              Matrícula
+              <input type="text" name="plate" maxlength="40" list="task-vehicle-plates" data-vehicle-search value="{{ form_values.plate or '' }}" autocomplete="off">
+              <datalist id="task-vehicle-plates"></datalist>
+            </label>
+            <label>
+              Estação
+              <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa" value="{{ form_values.station or '' }}">
+            </label>
             <label>
               Cliente
               <input type="text" name="customer_name" maxlength="200" value="{{ form_values.customer_name or '' }}">
@@ -223,6 +196,39 @@
             {% endif %}
           </div>
         </details>
+        {% if form_mode != "quick" %}
+          <details class="advanced-panel">
+            <summary>Fluxo guiado e periodicidade</summary>
+            <div class="compact-form-grid">
+              <label>
+                Fluxo guiado
+                <select name="guided_flow_code">
+                  <option value="">Sem fluxo guiado</option>
+                  {% for code, label in guided_flow_options %}
+                    <option value="{{ code }}" {% if form_values.guided_flow_code == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% if can_create_recurring %}
+                <label>
+                  Periodicidade
+                  <select name="recurrence_rule">
+                    <option value="">Sem repetição</option>
+                    {% for code, label in recurrence_rules %}
+                      <option value="{{ code }}" {% if form_values.recurrence_rule == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Intervalo
+                  <input type="number" name="recurrence_interval" min="1" max="36" value="{{ form_values.recurrence_interval or 1 }}">
+                </label>
+              {% else %}
+                <p class="muted">A criação de tarefas recorrentes exige permissão própria.</p>
+              {% endif %}
+            </div>
+          </details>
+        {% endif %}
         <div class="button-row">
           <a class="button-link secondary-link" href="{{ manage_url }}">Cancelar</a>
           <button type="submit">
@@ -243,6 +249,24 @@
   const subcategoriesByCategory = {{ task_subcategories_by_category|tojson }};
   const categorySelect = document.querySelector("[data-task-category]");
   const subcategorySelect = document.querySelector("[data-task-subcategory]");
+  const manualSubcategoryWrap = document.querySelector("[data-manual-subcategory-wrap]");
+  const manualSubcategoryInput = document.querySelector("[data-manual-subcategory]");
+
+  function selectedSubcategoryNeedsManualText() {
+    if (!subcategorySelect) return false;
+    const selectedOption = subcategorySelect.selectedOptions && subcategorySelect.selectedOptions[0];
+    const value = (subcategorySelect.value || "").toLowerCase();
+    const label = (selectedOption ? selectedOption.textContent : "").toLowerCase();
+    return value.endsWith("_other") || value === "other" || label.includes("outro");
+  }
+
+  function syncManualSubcategory() {
+    if (!manualSubcategoryWrap || !manualSubcategoryInput) return;
+    const shouldShow = selectedSubcategoryNeedsManualText();
+    manualSubcategoryWrap.hidden = !shouldShow;
+    manualSubcategoryInput.required = shouldShow;
+    if (!shouldShow) manualSubcategoryInput.value = "";
+  }
 
   function refreshSubcategories() {
     if (!categorySelect || !subcategorySelect) return;
@@ -260,6 +284,7 @@
       subcategorySelect.options[0].selected = true;
     }
     subcategorySelect.dataset.currentSubcategory = "";
+    syncManualSubcategory();
   }
 
   if (categorySelect && subcategorySelect) {
@@ -268,6 +293,7 @@
       subcategorySelect.dataset.currentSubcategory = "";
       refreshSubcategories();
     });
+    subcategorySelect.addEventListener("change", syncManualSubcategory);
   }
 
   const plateInput = document.querySelector("[data-vehicle-search]");

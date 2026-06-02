@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -13,16 +13,45 @@ class Task(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
+    task_type: Mapped[str] = mapped_column(String(80), default="task", index=True)
+    source: Mapped[str | None] = mapped_column(String(80), index=True)
     category: Mapped[str | None] = mapped_column(String(80), index=True)
+    subcategory: Mapped[str | None] = mapped_column(String(120), index=True)
     status: Mapped[str] = mapped_column(String(80), index=True)
     priority: Mapped[str | None] = mapped_column(String(80), index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200), index=True)
+    customer_contact: Mapped[str | None] = mapped_column(String(200))
+    customer_email: Mapped[str | None] = mapped_column(String(255), index=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(80), index=True)
+    plate: Mapped[str | None] = mapped_column(String(40), index=True)
+    reservation_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    contract_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    station: Mapped[str | None] = mapped_column(String(120), index=True)
+    department: Mapped[str | None] = mapped_column(String(120), index=True)
+    external_source_id: Mapped[str | None] = mapped_column(String(255), index=True)
     entity_type: Mapped[str | None] = mapped_column(String(120), index=True)
     entity_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    delegated_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    delegated_to_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+    waiting_for_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    waiting_for_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+    waiting_reason: Mapped[str | None] = mapped_column(String(80), index=True)
+    waiting_reason_detail: Mapped[str | None] = mapped_column(Text)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     due_on: Mapped[date | None] = mapped_column(Date)
+    first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    planned_for: Mapped[date | None] = mapped_column(Date, index=True)
+    guided_flow_code: Mapped[str | None] = mapped_column(String(120), index=True)
+    recurrence_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence_rule: Mapped[str | None] = mapped_column(String(80), index=True)
+    recurrence_interval: Mapped[int | None] = mapped_column(Integer)
+    recurrence_next_on: Mapped[date | None] = mapped_column(Date, index=True)
+    recurrence_created_from_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
 
 
 class TaskComment(Base):
@@ -55,3 +84,56 @@ class TaskHistory(Base):
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+
+class TaskGuidedFlowRun(TimestampMixin, Base):
+    __tablename__ = "task_guided_flow_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    flow_code: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(80), default="active", index=True)
+    started_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskGuidedFlowStepRun(TimestampMixin, Base):
+    __tablename__ = "task_guided_flow_step_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    flow_run_id: Mapped[int] = mapped_column(ForeignKey("task_guided_flow_runs.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    step_code: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(80), default="pending", index=True)
+    data_json: Mapped[dict | None] = mapped_column(JSON)
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    generated_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+
+
+class QuickRecord(TimestampMixin, Base):
+    __tablename__ = "quick_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace: Mapped[str] = mapped_column(String(80), default="operational", index=True)
+    record_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(80), default="new", index=True)
+    priority: Mapped[str | None] = mapped_column(String(80), index=True)
+    source: Mapped[str | None] = mapped_column(String(80), index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200), index=True)
+    customer_contact: Mapped[str | None] = mapped_column(String(200))
+    customer_email: Mapped[str | None] = mapped_column(String(255), index=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(80), index=True)
+    plate: Mapped[str | None] = mapped_column(String(40), index=True)
+    station: Mapped[str | None] = mapped_column(String(120), index=True)
+    entity_type: Mapped[str | None] = mapped_column(String(120), index=True)
+    entity_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+    assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    converted_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

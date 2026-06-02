@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ batch.source_system }}</p>
+        <h2>Lote #{{ batch.id }}</h2>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_entity_type = "import_batch" %}
+        {% set feedback_entity_id = batch.id %}
+        {% set feedback_return_url = "/imports/" ~ batch.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Voltar</a>
+      </div>
+    </header>
+
+    <section class="metric-grid">
+      <article class="metric">
+        <span>Total</span>
+        <strong>{{ batch.total_rows }}</strong>
+      </article>
+      <article class="metric">
+        <span>Raw rows</span>
+        <strong>{{ raw_rows }}</strong>
+      </article>
+      <article class="metric">
+        <span>Erros</span>
+        <strong>{{ batch.error_rows }}</strong>
+      </article>
+    </section>
+
+    <section class="detail-grid">
+      <article class="section">
+        <h3>Resumo</h3>
+        <dl class="detail-list">
+          <div><dt>Tipo</dt><dd>{{ batch.import_type }}</dd></div>
+          <div><dt>Estado</dt><dd>{{ batch.status }}</dd></div>
+          <div><dt>Criadas</dt><dd>{{ batch.created_rows }}</dd></div>
+          <div><dt>Atualizadas</dt><dd>{{ batch.updated_rows }}</dd></div>
+          <div><dt>Ignoradas</dt><dd>{{ batch.skipped_rows }}</dd></div>
+          <div><dt>Detalhe</dt><dd>{{ batch.detail or "-" }}</dd></div>
+        </dl>
+      </article>
+
+      <article class="section">
+        <h3>Ficheiros</h3>
+        <div class="event-list">
+          {% for file in files %}
+            <article class="event-item">
+              <div>
+                <strong>{{ file.original_name }}</strong>
+                <span>{{ file.sheet_name or "-" }}</span>
+              </div>
+              <p>{{ file.storage_path }}</p>
+            </article>
+          {% else %}
+            <p class="muted">Sem ficheiros registados.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h3>Erros</h3>
+      <div class="event-list">
+        {% for error in errors %}
+          <article class="event-item">
+            <div>
+              <strong>Linha {{ error.row_number or "-" }}</strong>
+              <span>{{ error.entity_type or "-" }}</span>
+            </div>
+            <p>{{ error.error_message }}</p>
+          </article>
+        {% else %}
+          <p class="muted">Sem erros registados.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

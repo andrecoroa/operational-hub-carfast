@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = technical_history_active_menu if technical_history_active_menu is defined else "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ technical_history_eyebrow if technical_history_eyebrow is defined else "Viatura permanente" }}</p>
+        <h2>{{ vehicle.plate or "Sem matrícula" }}</h2>
+        <p class="topbar-subtitle">{{ technical_history_subtitle if technical_history_subtitle is defined else "Histórico técnico / Diagnósticos" }}</p>
+      </div>
+      <div class="button-row">
+        {% if technical_history_back_url is defined and technical_history_back_url %}
+          <a class="button-link secondary-link" href="{{ technical_history_back_url }}">{{ technical_history_back_label if technical_history_back_label is defined else "Voltar" }}</a>
+        {% endif %}
+        <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Ver ficha da viatura</a>
+        <a class="button-link secondary-link" href="/fleet">Voltar à frota</a>
+      </div>
+    </header>
+
+    <section class="section technical-history-hero">
+      <div>
+        <p class="eyebrow">Resumo da viatura</p>
+        <h3>{{ vehicle.brand or "-" }} {{ vehicle.model or "" }}{% if vehicle.version %} · {{ vehicle.version }}{% endif %}</h3>
+      </div>
+      <div class="technical-history-meta">
+        <div><span>Chassi</span><strong>{{ vehicle.vin or "-" }}</strong></div>
+        <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+        <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+        <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+        <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
+        <div><span>Leituras</span><strong>{{ total_readings }}</strong></div>
+      </div>
+    </section>
+
+    <section class="section technical-history-page">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Relatórios</p>
+          <h3>{{ selected_label or "Histórico técnico" }}</h3>
+        </div>
+      </div>
+
+      {% if tabs %}
+        <nav class="technical-history-tabs" aria-label="Tipos de relatório">
+          {% for tab in tabs %}
+            <a class="{% if tab.code == selected_type %}active{% endif %}" href="{{ technical_history_url }}?report_type={{ tab.code }}">
+              <span>{{ tab.label }}</span>
+              <strong>{{ tab.count }}</strong>
+            </a>
+          {% endfor %}
+        </nav>
+
+        {% if matrix.readings %}
+          <div class="technical-history-table-wrap">
+            <table class="technical-history-table">
+              <thead>
+                <tr>
+                  <th>Campo</th>
+                  {% for reading in matrix.readings %}
+                    <th>
+                      <span>{{ compact_reading_label(reading) }}</span>
+                      <small>
+                        {% if reading.process_id %}Processo #{{ reading.process_id }}{% else %}Histórico importado{% endif %}
+                        {% if reading.odometer_km %} · {{ reading.odometer_km }} km{% endif %}
+                      </small>
+                      {% if reading.external_url %}
+                        <a href="{{ reading.external_url }}" target="_blank" rel="noreferrer">Abrir PDF</a>
+                      {% endif %}
+                    </th>
+                  {% endfor %}
+                  <th>Variação</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Resumo</td>
+                  {% for reading in matrix.readings %}
+                    <td>{{ reading.summary or "-" }}</td>
+                  {% endfor %}
+                  <td><span class="history-change-pill neutral">Contexto</span></td>
+                </tr>
+                {% if matrix.rows %}
+                  {% for row in matrix.rows %}
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      {% for value in row["values"] %}
+                        <td>{{ value.value }}</td>
+                      {% endfor %}
+                      <td>
+                        {% if row.changed %}
+                          <span class="history-change-pill changed">Alterou</span>
+                        {% else %}
+                          <span class="history-change-pill stable">Sem alteração</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td>Dados técnicos</td>
+                    <td colspan="{{ matrix.readings|length + 1 }}">
+                      <div class="history-inline-empty">
+                        <strong>Sem dados técnicos estruturados neste relatório.</strong>
+                        <span>O PDF está indexado e pode ser aberto, mas a importação ainda não trouxe campos técnicos preenchidos para comparar.</span>
+                      </div>
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <strong>Sem leituras neste relatório.</strong>
+            <p>Escolhe outro tipo de relatório para consultar o histórico disponível.</p>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="empty-state">
+          <strong>Sem histórico técnico registado.</strong>
+          <p>Quando existirem leituras BSI/diagnóstico, a evolução aparece nesta página.</p>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -1,0 +1,347 @@
+{% set active_phase = fixed_reading_phase if fixed_reading_phase is defined and fixed_reading_phase else "initial" %}
+{% set phase_label = "Leitura final" if active_phase == "final" else "Leitura inicial" %}
+{% set legacy_phase = "bsi_final" if active_phase == "final" else "bsi_initial" %}
+{% set report_cards = [
+  ("maintenance_info", "Informações manutenção", "KM, dias, limites e número de manutenções."),
+  ("maintenance_program", "Programação manutenção", "Limiar, duração, circulação e primeira manutenção."),
+  ("lubrication_info", "Lubrificação motor", "Óleo, carbono, proteção e intervalo calculado."),
+  ("fault_reading", "Leitura defeitos", "Defeitos, códigos, estado e ação recomendada."),
+  ("software_identification", "Telecarregamento", "Software, calibração, data e número de telecarregamentos."),
+  ("other", "Outra leitura", "Relatório ainda sem categoria própria.")
+] %}
+{% set default_allowed_report_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
+{% set allowed_report_types = reading_allowed_types if reading_allowed_types is defined and reading_allowed_types else default_allowed_report_types %}
+<div class="reading-form-shell">
+  <input type="hidden" name="flow_phase" value="{{ active_phase }}">
+  <select name="reading_type" data-reading-type hidden>
+    {% for code, label in technical_reading_types %}
+      {% if code in allowed_report_types %}
+        <option value="{{ code }}">{{ label }}</option>
+      {% endif %}
+    {% endfor %}
+  </select>
+
+  <div class="reading-phase-banner">
+    <span>Fase definida pelo fluxo</span>
+    <strong>{{ phase_label }}</strong>
+  </div>
+
+  <div class="reading-report-selector">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatórios BSI</p>
+        <h4>Selecionar relatório a preencher</h4>
+      </div>
+    </div>
+    <div class="reading-card-grid">
+      {% for code, label, description in report_cards if code in allowed_report_types %}
+        {% set marker = namespace(registered=false) %}
+        {% for reading in technical_readings %}
+          {% if reading.reading_type == code and (reading.data_json or {}).get("flow_phase") in [active_phase, legacy_phase] %}
+            {% set marker.registered = true %}
+          {% endif %}
+        {% endfor %}
+        <button
+          class="reading-card {% if loop.first %}is-active{% endif %} {% if marker.registered %}is-registered{% endif %}"
+          type="button"
+          data-reading-card="{{ code }}"
+          data-reading-label="{{ label }}"
+          data-registered="{{ 1 if marker.registered else 0 }}"
+        >
+          <span>
+            <strong>{{ label }}</strong>
+            <small>{{ description }}</small>
+          </span>
+          <em data-reading-card-status>{{ "Atual" if loop.first else ("Registado" if marker.registered else "Pendente") }}</em>
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="reading-block">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Dados base</p>
+        <h4>Identificação da leitura</h4>
+      </div>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        Máquina / origem
+        <select name="machine_source">
+          <option value="">Por preencher</option>
+          <option value="PSA-DIAG/Stellantis">PSA-DIAG/Stellantis</option>
+          <option value="Autel">Autel</option>
+          <option value="Service Box">Service Box</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </label>
+      <label>
+        Data da leitura
+        <input type="date" name="reading_date">
+      </label>
+      <label>
+        KM
+        <input type="number" name="odometer_km" min="0" step="1" value="{{ process.km_entry or "" }}">
+      </label>
+      <label>
+        Tensão bateria
+        <input type="text" name="battery_voltage" maxlength="80" placeholder="Ex.: 12.4V">
+      </label>
+    </div>
+  </div>
+
+  <section class="reading-report-panel" data-reading-panel="maintenance_info">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Informações de manutenção</h4>
+      </div>
+      <span class="action-method-pill">A preencher</span>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        KM última reposição manutenção
+        <input type="text" name="maintenance_last_reset_km" maxlength="80" placeholder="Ex.: 9233,5">
+      </label>
+      <label>
+        KM até próxima manutenção
+        <input type="text" name="maintenance_km_until_next" maxlength="80" placeholder="Ex.: 3280">
+      </label>
+      <label>
+        Dias até próxima manutenção
+        <input type="number" name="maintenance_days_until_next" min="0" step="1" placeholder="Ex.: 476">
+      </label>
+      <label>
+        Dias desde última reposição a zero
+        <input type="number" name="maintenance_days_since_last_reset" min="0" step="1" placeholder="Ex.: 188">
+      </label>
+      <label>
+        Nº manutenções efetuadas
+        <input type="number" name="maintenance_count" min="0" step="1">
+      </label>
+      <label>
+        Limite temporal ultrapassado
+        <select name="maintenance_temporal_limit_exceeded">
+          <option value="">Por preencher</option>
+          <option value="Não">Não</option>
+          <option value="Sim">Sim</option>
+        </select>
+      </label>
+      <label>
+        Limite quilométrico ultrapassado
+        <select name="maintenance_distance_limit_exceeded">
+          <option value="">Por preencher</option>
+          <option value="Não">Não</option>
+          <option value="Sim">Sim</option>
+        </select>
+      </label>
+    </div>
+    <div class="reading-calculated-grid">
+      <div class="readonly-result">
+        <span>Data prevista próxima manutenção</span>
+        <strong>Calculado ao gravar</strong>
+      </div>
+      <div class="readonly-result">
+        <span>Data estimada última reposição</span>
+        <strong>Calculado ao gravar</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="reading-report-panel" data-reading-panel="maintenance_program">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Programação manutenção</h4>
+      </div>
+      <span class="action-method-pill">A preencher</span>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        Dias desde início de circulação
+        <input type="number" name="maintenance_days_since_first_circulation" min="0" step="1" placeholder="Ex.: 1034">
+      </label>
+      <label>
+        Limiar manutenção
+        <input type="number" name="maintenance_threshold_km" min="0" step="1" placeholder="Ex.: 40000">
+      </label>
+      <label>
+        Duração manutenção
+        <input type="number" name="maintenance_duration_months" min="0" step="1" placeholder="Meses">
+      </label>
+      <label>
+        Início primeira manutenção
+        <input type="number" name="maintenance_first_start_km" min="0" step="1" placeholder="Km">
+      </label>
+      <label>
+        Duração antes primeira manutenção
+        <input type="number" name="maintenance_first_duration_months" min="0" step="1" placeholder="Meses">
+      </label>
+      <label>
+        Gestão manutenção
+        <select name="maintenance_management_mode">
+          <option value="">Por preencher</option>
+          <option value="Dinâmica">Dinâmica</option>
+          <option value="Estática">Estática</option>
+        </select>
+      </label>
+    </div>
+    <div class="reading-calculated-grid">
+      <div class="readonly-result">
+        <span>Data estimada início de circulação</span>
+        <strong>Calculado ao gravar</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="reading-report-panel" data-reading-panel="lubrication_info">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Informações lubrificação motor</h4>
+      </div>
+      <span class="action-method-pill">A preencher</span>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        Taxa de diluição do óleo
+        <input type="text" name="oil_dilution_rate" maxlength="80" placeholder="Ex.: 18,813%">
+      </label>
+      <label>
+        Taxa de carbono no óleo
+        <input type="text" name="oil_carbon_rate" maxlength="80" placeholder="Ex.: 2,125%">
+      </label>
+      <label>
+        Proteção anti-diluição
+        <input type="text" name="oil_anti_dilution_status" maxlength="120" placeholder="Ex.: Proteção inativa">
+      </label>
+      <label>
+        Intervalo calculado pelo calculador
+        <input type="number" name="engine_calculated_interval_km" min="0" step="1" placeholder="Km">
+      </label>
+    </div>
+  </section>
+
+  <section class="reading-report-panel" data-reading-panel="fault_reading">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Leitura de defeitos</h4>
+      </div>
+      <span class="action-method-pill">A preencher</span>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        Existem defeitos?
+        <select name="faults_present">
+          <option value="">Por preencher</option>
+          <option value="Não">Não</option>
+          <option value="Sim">Sim</option>
+        </select>
+      </label>
+      <label>
+        Defeito crítico?
+        <select name="critical_fault">
+          <option value="">Por preencher</option>
+          <option value="Não">Não</option>
+          <option value="Sim">Sim</option>
+        </select>
+      </label>
+      <label>
+        Estado principal
+        <select name="fault_main_status">
+          <option value="">Por preencher</option>
+          <option value="Fugitivo">Fugitivo</option>
+          <option value="Permanente">Permanente</option>
+        </select>
+      </label>
+      <label>
+        KM associado ao defeito
+        <input type="number" name="fault_odometer_km" min="0" step="1">
+      </label>
+    </div>
+    <label>
+      Caracterização
+      <input type="text" name="fault_characterization" maxlength="255" placeholder="Descrição curta do defeito principal">
+    </label>
+    <label>
+      Códigos de erro
+      <textarea name="fault_codes" rows="2" placeholder="Códigos, sistemas ou mensagens relevantes"></textarea>
+    </label>
+    <label>
+      Ação recomendada
+      <textarea name="recommended_action" rows="2"></textarea>
+    </label>
+  </section>
+
+  <section class="reading-report-panel" data-reading-panel="software_identification">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Identificação / telecarregamento</h4>
+      </div>
+      <span class="action-method-pill">A preencher</span>
+    </div>
+    <div class="compact-form-grid two-col">
+      <label>
+        Referência software
+        <input type="text" name="software_reference" maxlength="120">
+      </label>
+      <label>
+        Edição calibração
+        <input type="text" name="calibration_edition" maxlength="80">
+      </label>
+      <label>
+        Data telecarregamento
+        <input type="date" name="download_date">
+      </label>
+      <label>
+        Nº telecarregamentos
+        <input type="number" name="download_count" min="0" step="1">
+      </label>
+    </div>
+  </section>
+
+  <section class="reading-report-panel" data-reading-panel="other">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Relatório</p>
+        <h4>Outra leitura</h4>
+      </div>
+      <span class="action-method-pill">Flexível</span>
+    </div>
+    <p class="muted">Usa este tipo apenas quando o relatório ainda não encaixa numa categoria definida.</p>
+  </section>
+
+  <div class="reading-block">
+    <div class="table-heading flat-heading">
+      <div>
+        <p class="eyebrow">Comum</p>
+        <h4>Notas complementares</h4>
+      </div>
+    </div>
+    <label>
+      Resumo
+      <textarea name="summary" rows="3" placeholder="Síntese da leitura ou diagnóstico"></textarea>
+    </label>
+    <label>
+      Notas BSI
+      <textarea name="bsi_notes" rows="2" placeholder="Campo flexível para evoluir sem fechar já a grelha BSI"></textarea>
+    </label>
+    <label>
+      Sistemas verificados
+      <textarea name="systems_checked" rows="2"></textarea>
+    </label>
+    <label>
+      Recomendação
+      <textarea name="recommendation" rows="2"></textarea>
+    </label>
+    <label>
+      Link externo da leitura
+      <input name="external_url" type="url" placeholder="SharePoint, OneDrive ou relatório externo">
+    </label>
+  </div>
+</div>
+<input name="storage_provider" type="hidden" value="external">
+<button type="submit" data-reading-submit>{{ reading_submit_label if reading_submit_label is defined and reading_submit_label else "Gravar leitura técnica" }}</button>

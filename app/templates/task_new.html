@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ workspace_config.eyebrow }}</p>
+        <h2>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</h2>
+        <p class="breadcrumb">{{ workspace_config.breadcrumb }} &gt; <strong>{% if form_mode == "quick" %}Registo rápido{% else %}Nova tarefa{% endif %}</strong></p>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="{{ manage_url }}">Gestão</a>
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_return_url = "/task-board/new?mode=" ~ form_mode ~ "&workspace=" ~ workspace %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    {% if duplicate_tasks %}
+      <div class="alert duplicate-warning">
+        <strong>Já existem tarefas abertas para a matrícula {{ form_values.plate }}.</strong>
+        <p>Confirma se queres criar uma nova tarefa para a mesma viatura.</p>
+        <ul>
+          {% for item in duplicate_tasks %}
+            <li>
+              <a class="table-link" href="/task-board/{{ item.id }}">CF-TASK-{{ "%05d"|format(item.id) }} · {{ item.title }}</a>
+              <span>{{ task_status_labels.get(item.status, item.status) if task_status_labels is defined else item.status }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <section class="compact-create-layout">
+      <form method="post" action="{% if form_mode == 'quick' %}/task-board/quick/new{% else %}/task-board/new{% endif %}" class="form-panel form-stack task-form compact-create-page">
+        {% if duplicate_tasks %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
+        <input type="hidden" name="workspace" value="{{ workspace }}">
+        {% if form_values.parent_task_id %}<input type="hidden" name="parent_task_id" value="{{ form_values.parent_task_id }}">{% endif %}
+        <div class="panel-heading">
+          <p class="eyebrow">{% if form_mode == "quick" %}Captura rápida{% else %}Execução direta{% endif %}</p>
+          <h3>{% if form_mode == "quick" %}Registo rápido - {{ workspace_label }}{% else %}Nova tarefa - {{ workspace_label }}{% endif %}</h3>
+          <p class="muted">
+            {% if form_mode == "quick" %}
+              Use quando ainda não sabe se isto será uma tarefa, uma comunicação, uma anomalia ou uma reclamação.
+            {% else %}
+              Use quando já existe trabalho concreto a executar por uma pessoa ou equipa.
+            {% endif %}
+          </p>
+        </div>
+        {% if parent_task %}
+          <div class="subtask-parent-banner">
+            <span>Subtarefa de</span>
+            <a class="table-link" href="/task-board/{{ parent_task.id }}">CF-TASK-{{ "%05d"|format(parent_task.id) }} · {{ parent_task.title }}</a>
+          </div>
+        {% endif %}
+        <label>
+          Assunto
+          <input type="text" name="title" maxlength="200" required placeholder="{% if form_mode == 'quick' %}Ex.: Cliente informou ruído na viatura{% else %}Ex.: Ligar ao cliente sobre caução pendente{% endif %}" value="{{ form_values.title or '' }}">
+        </label>
+        <label>
+          {% if form_mode == "quick" %}Descrição curta{% else %}Descrição{% endif %}
+          <textarea name="description" rows="3" placeholder="Registe apenas a informação disponível.">{{ form_values.description or '' }}</textarea>
+        </label>
+        <div class="compact-form-grid">
+          <label>
+            {% if form_mode == "quick" %}
+              Tipo de entrada
+              <select name="record_type">
+                {% for code, label in quick_record_types %}
+                  <option value="{{ code }}" {% if (form_values.record_type or "request") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              Origem
+              <input type="hidden" name="task_type" value="{{ form_values.task_type or workspace_config.default_task_type }}">
+              <select name="source">
+                {% for code, label in task_sources %}
+                  <option value="{{ code }}" {% if (form_values.source or "manual") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
+          </label>
+          <label>
+            Prioridade
+            <select name="priority">
+              {% for code, label in priorities %}
+                <option value="{{ code }}" {% if (form_values.priority or "normal") == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% if form_mode != "quick" %}
+            <label>
+              Responsável
+              <select name="assigned_to_id">
+                <option value="">Por atribuir</option>
+                {% for user in assignable_users %}
+                  <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Data limite
+              <input type="date" name="due_on" value="{{ form_values.due_on or '' }}">
+            </label>
+          {% else %}
+            <label>
+              Origem
+              <select name="source">
+                {% for code, label in task_sources %}
+                  <option value="{{ code }}" {% if (form_values.source or "manual") == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          {% endif %}
+        </div>
+        <div class="compact-form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40" list="task-vehicle-plates" data-vehicle-search value="{{ form_values.plate or '' }}" autocomplete="off">
+            <datalist id="task-vehicle-plates"></datalist>
+          </label>
+          <label>
+            Estação
+            <input type="text" name="station" maxlength="120" placeholder="Ex.: Lisboa" value="{{ form_values.station or '' }}">
+          </label>
+        </div>
+
+        {% if form_mode != "quick" %}
+          <details class="advanced-panel">
+            <summary>Fluxo guiado e periodicidade</summary>
+            <div class="compact-form-grid">
+              <label>
+                Fluxo guiado
+                <select name="guided_flow_code">
+                  <option value="">Sem fluxo guiado</option>
+                  {% for code, label in guided_flow_options %}
+                    <option value="{{ code }}" {% if form_values.guided_flow_code == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% if can_create_recurring %}
+                <label>
+                  Periodicidade
+                  <select name="recurrence_rule">
+                    <option value="">Sem repetição</option>
+                    {% for code, label in recurrence_rules %}
+                      <option value="{{ code }}" {% if form_values.recurrence_rule == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Intervalo
+                  <input type="number" name="recurrence_interval" min="1" max="36" value="{{ form_values.recurrence_interval or 1 }}">
+                </label>
+              {% else %}
+                <p class="muted">A criação de tarefas recorrentes exige permissão própria.</p>
+              {% endif %}
+            </div>
+          </details>
+        {% endif %}
+
+        <details class="advanced-panel">
+          <summary>Dados adicionais</summary>
+          <div class="compact-form-grid">
+            {% if form_mode != "quick" %}
+              <label>
+                Classificação
+                <select name="category" data-task-category>
+                  {% for code, label in task_categories %}
+                    <option value="{{ code }}" {% if (form_values.category or workspace_config.default_category) == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Subclassificação
+                <select name="subcategory" data-task-subcategory data-current-subcategory="{{ form_values.subcategory or '' }}" required></select>
+              </label>
+            {% endif %}
+            <label>
+              Cliente
+              <input type="text" name="customer_name" maxlength="200" value="{{ form_values.customer_name or '' }}">
+            </label>
+            <label>
+              E-mail
+              <input type="email" name="customer_email" maxlength="255" value="{{ form_values.customer_email or '' }}">
+            </label>
+            <label>
+              Telefone
+              <input type="text" name="customer_phone" maxlength="80" value="{{ form_values.customer_phone or '' }}">
+            </label>
+            {% if form_mode != "quick" %}
+              <label>
+                Reserva
+                <input type="text" name="reservation_number" maxlength="120" value="{{ form_values.reservation_number or '' }}">
+              </label>
+              <label>
+                Contrato
+                <input type="text" name="contract_number" maxlength="120" value="{{ form_values.contract_number or '' }}">
+              </label>
+              <label>
+                Execução delegada a
+                <select name="delegated_to">
+                  <option value="">Sem execução delegada</option>
+                  <optgroup label="Pessoas">
+                    {% for user in assignable_users %}
+                      {% set option_value = "user:" ~ user.id %}
+                      <option value="{{ option_value }}" {% if (form_values.delegated_to or delegation_value or '') == option_value %}selected{% endif %}>{{ user.name }}</option>
+                    {% endfor %}
+                  </optgroup>
+                  <optgroup label="Equipas / filas">
+                    {% for team in teams %}
+                      {% set option_value = "team:" ~ team.id %}
+                      <option value="{{ option_value }}" {% if (form_values.delegated_to or delegation_value or '') == option_value %}selected{% endif %}>{{ team.name }}</option>
+                    {% endfor %}
+                  </optgroup>
+                </select>
+              </label>
+            {% endif %}
+          </div>
+        </details>
+        <div class="button-row">
+          <a class="button-link secondary-link" href="{{ manage_url }}">Cancelar</a>
+          <button type="submit">
+            {% if duplicate_tasks %}
+              Criar mesmo assim
+            {% elif form_mode == "quick" %}
+              Criar registo
+            {% else %}
+              Criar tarefa
+            {% endif %}
+          </button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+  const subcategoriesByCategory = {{ task_subcategories_by_category|tojson }};
+  const categorySelect = document.querySelector("[data-task-category]");
+  const subcategorySelect = document.querySelector("[data-task-subcategory]");
+
+  function refreshSubcategories() {
+    if (!categorySelect || !subcategorySelect) return;
+    const currentValue = subcategorySelect.dataset.currentSubcategory || subcategorySelect.value;
+    const options = subcategoriesByCategory[categorySelect.value] || subcategoriesByCategory.other || [];
+    subcategorySelect.innerHTML = "";
+    for (const [value, label] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === currentValue) option.selected = true;
+      subcategorySelect.appendChild(option);
+    }
+    if (!subcategorySelect.value && subcategorySelect.options.length) {
+      subcategorySelect.options[0].selected = true;
+    }
+    subcategorySelect.dataset.currentSubcategory = "";
+  }
+
+  if (categorySelect && subcategorySelect) {
+    refreshSubcategories();
+    categorySelect.addEventListener("change", () => {
+      subcategorySelect.dataset.currentSubcategory = "";
+      refreshSubcategories();
+    });
+  }
+
+  const plateInput = document.querySelector("[data-vehicle-search]");
+  const plateList = document.getElementById("task-vehicle-plates");
+  let plateSearchTimer;
+  if (plateInput && plateList) {
+    plateInput.addEventListener("input", () => {
+      clearTimeout(plateSearchTimer);
+      plateSearchTimer = setTimeout(async () => {
+        const query = plateInput.value.trim();
+        if (!query) {
+          plateList.innerHTML = "";
+          return;
+        }
+        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        plateList.innerHTML = "";
+        for (const item of data.items || []) {
+          const option = document.createElement("option");
+          option.value = item.plate;
+          option.label = item.label;
+          plateList.appendChild(option);
+        }
+      }, 160);
+    });
+  }
+</script>
+{% endblock %}

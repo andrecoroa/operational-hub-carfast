@@ -1,11 +1,22 @@
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.documents import Document, DocumentLink
+from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
+from app.models.pilot import PilotFeedback
 from app.models.settings import SettingsCatalog, SettingsValue
-from app.models.tasks import Task, TaskComment, TaskDocument, TaskHistory
+from app.models.tasks import (
+    QuickRecord,
+    Task,
+    TaskComment,
+    TaskDocument,
+    TaskGuidedFlowRun,
+    TaskGuidedFlowStepRun,
+    TaskHistory,
+)
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
@@ -15,21 +26,34 @@ from app.models.vehicles import (
     VehicleOperationalStatusEvent,
 )
 from app.models.workshop import (
-    WorkshopClosureCheck,
     WorkshopProcess,
-    WorkshopProcessAlert,
-    WorkshopProcessPhase,
+    WorkshopProcessEvidence,
+    WorkshopProcessNote,
     WorkshopProcessService,
-    WorkshopTechnicalCheck,
-    WorkshopTechnicalIncident,
-    WorkshopTechnicalReport,
+    WorkshopTechnicalReading,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedClosureCheck,
+    WorkshopPhasedProcess,
+    WorkshopPhasedProcessAlert,
+    WorkshopPhasedProcessPhase,
+    WorkshopPhasedProcessService,
+    WorkshopPhasedTechnicalCheck,
+    WorkshopPhasedTechnicalIncident,
+    WorkshopPhasedTechnicalReport,
 )
 
 __all__ = [
     "AuditLog",
     "Base",
     "Document",
+    "DocumentEvent",
     "DocumentLink",
+    "EmailIntake",
+    "EmailIntakeAttachment",
+    "Incident",
+    "IncidentEvent",
+    "IncidentEvidence",
     "ImportBatch",
     "ImportError",
     "ImportFile",
@@ -37,6 +61,8 @@ __all__ = [
     "ImportRawRow",
     "OrganizationalUnit",
     "Permission",
+    "PilotFeedback",
+    "QuickRecord",
     "Role",
     "RolePermission",
     "SettingsCatalog",
@@ -44,6 +70,8 @@ __all__ = [
     "Task",
     "TaskComment",
     "TaskDocument",
+    "TaskGuidedFlowRun",
+    "TaskGuidedFlowStepRun",
     "TaskHistory",
     "Team",
     "TeamMember",
@@ -56,12 +84,17 @@ __all__ = [
     "VehicleLifecycleEvent",
     "VehicleManualField",
     "VehicleOperationalStatusEvent",
-    "WorkshopClosureCheck",
     "WorkshopProcess",
-    "WorkshopProcessAlert",
-    "WorkshopProcessPhase",
+    "WorkshopProcessEvidence",
+    "WorkshopProcessNote",
     "WorkshopProcessService",
-    "WorkshopTechnicalCheck",
-    "WorkshopTechnicalIncident",
-    "WorkshopTechnicalReport",
+    "WorkshopTechnicalReading",
+    "WorkshopPhasedClosureCheck",
+    "WorkshopPhasedProcess",
+    "WorkshopPhasedProcessAlert",
+    "WorkshopPhasedProcessPhase",
+    "WorkshopPhasedProcessService",
+    "WorkshopPhasedTechnicalCheck",
+    "WorkshopPhasedTechnicalIncident",
+    "WorkshopPhasedTechnicalReport",
 ]

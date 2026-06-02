@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Processos temporários</p>
+        <h2>Oficina</h2>
+        <p class="breadcrumb">Abertura e acompanhamento de processos técnicos.</p>
+      </div>
+      {% set feedback_source_area = "workshop" %}
+      {% set feedback_return_url = "/workshop" %}
+      {% include "_pilot_actions.html" %}
+    </header>
+
+    {% if created %}
+      <div class="success">Processo de oficina criado.</div>
+    {% endif %}
+    {% if closed %}
+      <div class="success">Processo de oficina fechado.</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+
+    <section class="page-intro">
+      <h3>Oficina</h3>
+      <p>Escolha se pretende abrir um novo processo ou acompanhar processos em curso.</p>
+    </section>
+
+    <section class="task-center-grid workshop-center-grid">
+      <a class="task-center-card create-card" href="/workshop/new">
+        <span class="task-card-main">
+          <span class="task-card-icon">+</span>
+          <span>
+            <strong>Novo processo</strong>
+            <p>Registar entrada, marcação, diagnóstico inicial ou intervenção técnica.</p>
+          </span>
+        </span>
+        <span class="button-link">Criar processo</span>
+      </a>
+      <a class="task-center-card manage-card" href="/workshop/manage">
+        <span class="task-card-main">
+          <span class="task-card-icon">≡</span>
+          <span>
+            <strong>Gestão de processos</strong>
+            <p>Acompanhar estados, decisões, evidências, incidentes e fechos.</p>
+          </span>
+        </span>
+        <span class="button-link blue-link">Abrir gestão de oficina</span>
+      </a>
+      {% if can_access_workshop_tasks %}
+      <a class="task-center-card tasks-card" href="{{ workshop_tasks_url }}">
+        <span class="task-card-main">
+          <span class="task-card-icon">✓</span>
+          <span>
+            <strong>Tarefas de oficina</strong>
+            <p>Acompanhar tarefas, registos rápidos e auditoria técnica da oficina.</p>
+          </span>
+        </span>
+        <span class="button-link success-link">Abrir tarefas de oficina</span>
+      </a>
+      {% endif %}
+      <article class="info-card">
+        <h3>Estado da oficina</h3>
+        <p>{{ open_count }} processos abertos.</p>
+        <p>{{ waiting_parts_count }} a aguardar material. {{ waiting_analysis_count }} a aguardar análise.</p>
+        {% for vehicle in vehicles_preview %}
+          <p>Unit {{ vehicle.rentway_unit_nr or "-" }} · {{ vehicle.plate or "Sem matrícula" }}</p>
+        {% endfor %}
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

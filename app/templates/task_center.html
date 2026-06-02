@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Centro de tarefas</p>
+        <h2>Operação, gestão e acompanhamento</h2>
+        <p class="breadcrumb">Escolha o espaço de trabalho ou a entrada operacional.</p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_return_url = "/task-board" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    <section class="task-entry-grid">
+      {% if "operational" in authorized_workspaces and nav_has_permission(request, "tasks.operational.write", "admin.manage") %}
+      <article class="task-entry-card quick-entry-card">
+        <div>
+          <p class="eyebrow">Entrada operacional</p>
+          <h3>Registo rápido</h3>
+          <p>Capturar pedido, comunicação, anomalia ou reclamação com poucos campos.</p>
+        </div>
+        <div class="entry-chip-row">
+          <span>Pedido</span>
+          <span>Informação / Comunicação</span>
+          <span>Anomalia / Incidente</span>
+          <span>Reclamação</span>
+          <span>Outro</span>
+        </div>
+        <a class="button-link" href="/task-board/new?mode=quick&workspace=operational">Criar registo rápido</a>
+      </article>
+
+      <article class="task-entry-card direct-task-card">
+        <div>
+          <p class="eyebrow">Execução direta</p>
+          <h3>Nova tarefa</h3>
+          <p>Criar trabalho operacional com responsável, equipa/fila, prazo e acompanhamento.</p>
+        </div>
+        <div class="entry-chip-row muted-entry-row">
+          <span>Responsável</span>
+          <span>Equipa/Fila</span>
+          <span>Prazo</span>
+          <span>Prioridade</span>
+        </div>
+        <a class="button-link blue-link" href="/task-board/new?mode=task&workspace=operational">Criar nova tarefa</a>
+      </article>
+      {% endif %}
+    </section>
+
+    <section class="workspace-grid">
+      {% if "operational" in authorized_workspaces %}
+      <a class="workspace-card active-workspace" href="/task-board/manage">
+        <div>
+          <p class="eyebrow">Centro de Tarefas</p>
+          <h3>Operacional</h3>
+          <p>Execução diária, pedidos, comunicações, anomalias e reclamações.</p>
+        </div>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.operational.open_simple }}</strong><small>Tarefas simples abertas</small></span>
+          <span><strong>{{ workspace_metrics.operational.open_parent }}</strong><small>Tarefas mãe abertas</small></span>
+          <span><strong>{{ workspace_metrics.operational.open_subtasks }}</strong><small>Subtarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.operational.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.operational.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
+      </a>
+      {% endif %}
+      {% if "workshop" in authorized_workspaces %}
+      <a class="workspace-card workshop-workspace" href="/task-board/workshop/manage">
+        <div>
+          <p class="eyebrow">Módulo próprio</p>
+          <h3>Oficina</h3>
+          <p>Processos, tarefas da oficina, registos rápidos e auditoria técnica.</p>
+        </div>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.workshop.open_simple }}</strong><small>Tarefas simples abertas</small></span>
+          <span><strong>{{ workspace_metrics.workshop.open_parent }}</strong><small>Tarefas mãe abertas</small></span>
+          <span><strong>{{ workspace_metrics.workshop.open_subtasks }}</strong><small>Subtarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.workshop.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.workshop.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
+      </a>
+      {% endif %}
+      {% if "management" in authorized_workspaces %}
+      <a class="workspace-card planned-workspace" href="/task-board/management/manage">
+        <div>
+          <p class="eyebrow">A preparar</p>
+          <h3>Gestão</h3>
+          <p>Implementações, supervisão, melhoria contínua, reporte e decisões de gestão.</p>
+        </div>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.management.open_simple }}</strong><small>Tarefas simples abertas</small></span>
+          <span><strong>{{ workspace_metrics.management.open_parent }}</strong><small>Tarefas mãe abertas</small></span>
+          <span><strong>{{ workspace_metrics.management.open_subtasks }}</strong><small>Subtarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.management.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.management.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
+      </a>
+      {% endif %}
+      {% if "administration" in authorized_workspaces %}
+      <a class="workspace-card planned-workspace" href="/task-board/administration/manage">
+        <div>
+          <p class="eyebrow">Restrito</p>
+          <h3>Administração</h3>
+          <p>Assuntos reservados da direção/administração, fora do backlog operacional.</p>
+        </div>
+        <div class="workspace-summary">
+          <span><strong>{{ workspace_metrics.administration.open_simple }}</strong><small>Tarefas simples abertas</small></span>
+          <span><strong>{{ workspace_metrics.administration.open_parent }}</strong><small>Tarefas mãe abertas</small></span>
+          <span><strong>{{ workspace_metrics.administration.open_subtasks }}</strong><small>Subtarefas abertas</small></span>
+          <span><strong>{{ workspace_metrics.administration.due_today }}</strong><small>Com limite hoje</small></span>
+          <span><strong>{{ workspace_metrics.administration.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
+        </div>
+        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
+      </a>
+      {% endif %}
+    </section>
+
+    <section class="section task-principles">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Modelo a implementar</p>
+          <h3>Regras de trabalho guardadas</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        <article class="implementation-card">
+          <span class="implementation-status">Responsabilidade</span>
+          <h4>Execução separada da intervenção</h4>
+          <p>A tarefa mantém equipa/fila ou pessoa responsável. Decisores e supervisores não assumem o SLA por defeito.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Pirâmide</span>
+          <h4>Atribuição por nível</h4>
+          <p>Perfis superiores recebem pedidos de decisão, ajuda ou validação, não responsabilidade operacional direta.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Módulos</span>
+          <h4>Tarefa mãe e subtarefas</h4>
+          <p>Uma tarefa pode pedir intervenção a outro módulo através de tarefa filha, mantendo contexto e resposta.</p>
+        </article>
+        <article class="implementation-card">
+          <span class="implementation-status">Recorrência</span>
+          <h4>Modelos que geram tarefas</h4>
+          <p>Tarefas periódicas serão criadas por modelos/agendamentos e protegidas por permissões próprias.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="public-page">
+  <section class="public-card">
+    <div class="public-brand">
+      <span class="public-logo">CARFAST</span>
+      <div>
+        <p class="eyebrow">Portal externo</p>
+        <h1>Registar pedido</h1>
+      </div>
+    </div>
+
+    {% if sent %}
+      <div class="success">
+        Pedido registado com sucesso{% if reference %}: <strong>{{ reference }}</strong>{% endif %}.
+      </div>
+      <p class="muted">A equipa CarFast irá analisar o pedido e contactar através dos dados indicados.</p>
+      <div class="button-row public-actions">
+        <a class="button-link" href="/portal/pedido">Registar novo pedido</a>
+        <a class="button-link secondary-link" href="/login">Entrada interna</a>
+      </div>
+    {% else %}
+      {% if error %}
+        <div class="alert">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/portal/pedido" class="form-stack public-form">
+        <label class="hidden-field" aria-hidden="true">
+          Empresa
+          <input type="text" name="company" tabindex="-1" autocomplete="off">
+        </label>
+
+        <div class="form-grid">
+          <label>
+            Nome
+            <input type="text" name="name" maxlength="200" autocomplete="name">
+          </label>
+          <label>
+            Tipo de pedido
+            <select name="category">
+              {% for code, label in categories %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            E-mail
+            <input type="email" name="email" maxlength="255" autocomplete="email">
+          </label>
+          <label>
+            Telefone
+            <input type="tel" name="phone" maxlength="80" autocomplete="tel">
+          </label>
+        </div>
+
+        <label>
+          Assunto
+          <input type="text" name="subject" maxlength="200" required placeholder="Ex.: Pedido de esclarecimento sobre reserva">
+        </label>
+
+        <label>
+          Mensagem
+          <textarea name="message" rows="5" required placeholder="Descreva o pedido com a informação disponível."></textarea>
+        </label>
+
+        <div class="form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40" placeholder="Opcional">
+          </label>
+          <label>
+            Estação
+            <input type="text" name="station" maxlength="120" placeholder="Opcional">
+          </label>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            Nº reserva
+            <input type="text" name="reservation_number" maxlength="120" placeholder="Opcional">
+          </label>
+          <label>
+            Nº contrato
+            <input type="text" name="contract_number" maxlength="120" placeholder="Opcional">
+          </label>
+        </div>
+
+        <label class="checkbox-label">
+          <input type="checkbox" name="consent" value="1" required>
+          <span>Autorizo a CarFast a usar estes dados para analisar e responder ao pedido.</span>
+        </label>
+
+        <div class="button-row public-actions">
+          <a class="button-link secondary-link" href="/login">Entrada interna</a>
+          <button type="submit">Enviar pedido</button>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

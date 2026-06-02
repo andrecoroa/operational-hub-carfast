@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "dashboard" %}
+  {% set nav_task_count = metrics.open_tasks %}
+  {% set nav_workshop_count = metrics.open_workshop %}
+  {% include "_sidebar.html" %}
+  <main class="content cockpit-content">
+    <header class="topbar cockpit-topbar">
+      <div>
+        <p class="eyebrow">Centro de controlo operacional</p>
+        <h2>Bom dia, {{ user.name }}</h2>
+        <p class="breadcrumb">Visão viva da operação, prioridades e alertas.</p>
+      </div>
+      <div class="topbar-tools">
+        <label class="global-search" aria-label="Pesquisa global">
+          <input type="search" placeholder="Pesquisar tarefas, viaturas, pessoas...">
+        </label>
+        {% set feedback_source_area = "dashboard" %}
+        {% set feedback_return_url = "/" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    <section class="cockpit-alert-grid">
+      {% if dashboard_access.tasks %}
+      <a class="alert-card critical" href="/task-board/manage?view=overdue">
+        <span>Alerta crítico</span>
+        <strong>{{ metrics.overdue_tasks }}</strong>
+        <h3>SLA ultrapassado</h3>
+        <p>Tarefas abertas fora do prazo.</p>
+      </a>
+      {% endif %}
+      {% if dashboard_access.fleet %}
+      <a class="alert-card critical" href="/fleet?scope=active">
+        <span>Frota</span>
+        <strong>{{ metrics.unavailable_vehicles }}</strong>
+        <h3>Viaturas indisponíveis</h3>
+        <p>Bloqueadas, em manutenção, preparação ou impro.</p>
+      </a>
+      {% endif %}
+      {% if dashboard_access.tasks %}
+      <a class="alert-card warning" href="/task-board/manage?view=unassigned">
+        <span>Ownership</span>
+        <strong>{{ metrics.unassigned_tasks }}</strong>
+        <h3>Tarefas sem destino</h3>
+        <p>Precisam de pessoa ou equipa responsável.</p>
+      </a>
+      {% endif %}
+      {% if dashboard_access.documents %}
+      <a class="alert-card warning" href="/documents">
+        <span>Documentos</span>
+        <strong>{{ metrics.document_inbox }}</strong>
+        <h3>Por classificar</h3>
+        <p>Entradas documentais ainda sem arquivo final.</p>
+      </a>
+      {% endif %}
+    </section>
+
+    <section class="metric-grid cockpit-summary">
+      {% if dashboard_access.tasks %}
+      <a class="metric" href="/task-board/manage">
+        <span class="metric-icon green">✓</span>
+        <span class="metric-detail"><strong>{{ metrics.open_tasks }}</strong><span>Tarefas abertas</span><small>{{ metrics.open_subtasks }} subtarefas · {{ metrics.due_today_tasks }} com limite hoje</small></span>
+      </a>
+      {% endif %}
+      {% if dashboard_access.workshop %}
+      <a class="metric" href="/workshop">
+        <span class="metric-icon amber">⚙</span>
+        <span class="metric-detail"><strong>{{ metrics.open_workshop }}</strong><span>Processos oficina</span><small>Em acompanhamento</small></span>
+      </a>
+      {% endif %}
+      {% if dashboard_access.imports %}
+      <a class="metric" href="/imports">
+        <span class="metric-icon blue">⇣</span>
+        <span class="metric-detail"><strong>{{ metrics.imports }}</strong><span>Importações</span><small>{{ metrics.import_errors }} erros registados</small></span>
+      </a>
+      {% endif %}
+    </section>
+
+    <section class="cockpit-grid">
+      {% if dashboard_access.tasks %}
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Follow-up</p>
+            <h3>Tarefas prioritárias</h3>
+          </div>
+          <a class="table-link" href="/task-board/manage">Ver todas</a>
+        </div>
+        <div class="operation-list">
+          {% for task in priority_tasks %}
+            <a class="operation-item" href="/task-board/{{ task.id }}">
+              <span class="operation-code">
+                <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong>
+                <small>{{ task_category_labels.get(task.category, task.category or "Tarefa") }}</small>
+              </span>
+              <span class="operation-main">
+                <strong>{{ task.title }}</strong>
+                <small>{{ task.plate or task.customer_name or task_category_labels.get(task.category, task.category or "Tarefa") }}</small>
+              </span>
+              <span class="pill priority-{{ task.priority }}">{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+            </a>
+          {% else %}
+            <p class="muted empty-panel">Sem tarefas prioritárias.</p>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
+
+      {% if dashboard_access.fleet %}
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Frota</p>
+            <h3>Viaturas críticas</h3>
+          </div>
+          <a class="table-link" href="/fleet">Ver frota</a>
+        </div>
+        <div class="operation-list">
+          {% for vehicle in critical_vehicles %}
+            <a class="operation-item" href="/fleet/{{ vehicle.id }}">
+              <span class="operation-code">
+                <strong>{{ vehicle.plate or vehicle.rentway_unit_nr or ("#" ~ vehicle.id) }}</strong>
+                <small>{{ vehicle.rentway_unit_nr or "Sem Unit Nr" }}</small>
+              </span>
+              <span class="operation-main">
+                <strong>{{ vehicle.plate or vehicle.rentway_unit_nr or ("Viatura #" ~ vehicle.id) }}</strong>
+                <small>{{ vehicle.brand or "" }} {{ vehicle.model or "" }}</small>
+              </span>
+              <span class="pill status-{{ vehicle.operational_status }}">{{ vehicle_status_labels.get(vehicle.operational_status, vehicle.operational_status or "Indefinido") }}</span>
+            </a>
+          {% else %}
+            <p class="muted empty-panel">Sem viaturas críticas.</p>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
+
+      {% if recent_activity %}
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Timeline</p>
+            <h3>Atividade recente</h3>
+          </div>
+        </div>
+        <div class="timeline compact-timeline">
+          {% for item in recent_activity %}
+            <article>
+              <span>
+                <strong>{{ item.kind }} · {{ item.title }}</strong>
+                <small>{{ item.detail }}</small>
+              </span>
+              <time>{% if item.created_at %}{{ item.created_at.strftime("%d/%m %H:%M") }}{% else %}-{% endif %}</time>
+            </article>
+          {% else %}
+            <p class="muted empty-panel">Sem atividade recente.</p>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

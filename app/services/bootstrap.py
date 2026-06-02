@@ -2,23 +2,33 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.admin import Permission, Role, RolePermission
-from app.models.organization import OrganizationalUnit
+from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 
 INITIAL_PERMISSIONS = [
+    ("dashboard.read", "Ver dashboard"),
     ("admin.manage", "Gerir administracao"),
     ("settings.manage", "Gerir parametrizacao"),
     ("users.manage", "Gerir utilizadores"),
     ("vehicles.read", "Ver viaturas"),
     ("vehicles.write", "Editar viaturas"),
+    ("workshop.read", "Ver oficina"),
+    ("workshop.write", "Gerir oficina"),
     ("imports.run", "Executar importacoes"),
     ("imports.approve", "Aprovar importacoes"),
     ("tasks.read", "Ver tarefas"),
     ("tasks.write", "Editar tarefas"),
+    ("tasks.operational.read", "Ver centro de tarefas operacional"),
+    ("tasks.operational.write", "Gerir centro de tarefas operacional"),
+    ("tasks.workshop.read", "Ver centro de tarefas oficina"),
+    ("tasks.workshop.write", "Gerir centro de tarefas oficina"),
+    ("tasks.management.read", "Ver centro de tarefas gestão"),
+    ("tasks.management.write", "Gerir centro de tarefas gestão"),
+    ("tasks.administration.read", "Ver centro de tarefas administração"),
+    ("tasks.administration.write", "Gerir centro de tarefas administração"),
+    ("tasks.create_recurring", "Criar tarefas recorrentes"),
+    ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
-    ("workshop.read", "Ver oficina"),
-    ("workshop.write", "Editar oficina"),
-    ("workshop.validate", "Validar oficina"),
 ]
 
 INITIAL_ROLES = [
@@ -27,6 +37,53 @@ INITIAL_ROLES = [
     ("operator", "Operador"),
     ("viewer", "Consulta"),
 ]
+
+DEFAULT_ROLE_PERMISSIONS = {
+    "manager": {
+        "dashboard.read",
+        "vehicles.read",
+        "vehicles.write",
+        "workshop.read",
+        "workshop.write",
+        "imports.run",
+        "tasks.read",
+        "tasks.write",
+        "tasks.operational.read",
+        "tasks.operational.write",
+        "tasks.workshop.read",
+        "tasks.workshop.write",
+        "tasks.management.read",
+        "tasks.management.write",
+        "tasks.administration.read",
+        "tasks.administration.write",
+        "tasks.create_recurring",
+        "documents.read",
+        "documents.write",
+    },
+    "operator": {
+        "dashboard.read",
+        "vehicles.read",
+        "workshop.read",
+        "workshop.write",
+        "tasks.read",
+        "tasks.write",
+        "tasks.operational.read",
+        "tasks.operational.write",
+        "tasks.workshop.read",
+        "tasks.workshop.write",
+        "documents.read",
+        "documents.write",
+    },
+    "viewer": {
+        "dashboard.read",
+        "vehicles.read",
+        "workshop.read",
+        "tasks.read",
+        "tasks.operational.read",
+        "tasks.workshop.read",
+        "documents.read",
+    },
+}
 
 INITIAL_UNITS = [
     ("carfast", "CarFast", "business_area", None),
@@ -37,6 +94,13 @@ INITIAL_UNITS = [
     ("management", "Gestao", "workspace_area", "carfast"),
     ("administration", "Administracao", "workspace_area", "carfast"),
     ("locations", "Localizacoes", "business_area", "carfast"),
+]
+
+INITIAL_TEAMS = [
+    ("support", "Suporte", "administration"),
+    ("operations", "Operacoes", "operations"),
+    ("workshop", "Oficina", "workshop"),
+    ("finance", "Financeira", "administration"),
 ]
 
 INITIAL_CATALOGS = {
@@ -51,32 +115,21 @@ INITIAL_CATALOGS = {
         "reserved",
         "in_transfer",
     ],
-    "task_status": ["new", "in_progress", "waiting", "done", "cancelled"],
-    "task_priority": ["low", "normal", "high", "urgent"],
+    "task_status": [
+        "planned",
+        "new",
+        "in_execution",
+        "delegated",
+        "waiting",
+        "execution_done",
+        "ready_validation",
+        "closed",
+        "cancelled",
+        "no_action_needed",
+    ],
+    "task_priority": ["normal", "high", "urgent"],
     "document_type": ["general", "invoice", "report", "photo", "contract"],
     "import_type": ["rentway_fleet", "rentway_contracts", "rentway_impros"],
-    "workshop_process_type": ["workshop_phased"],
-    "workshop_process_status": [
-        "scheduled",
-        "reception_pending",
-        "in_progress",
-        "pending_review",
-        "completed",
-        "completed_with_pending_items",
-        "cancelled",
-    ],
-    "workshop_creation_mode": ["immediate_entry", "appointment"],
-    "workshop_report_origin": ["stellantis_machine", "autel", "other"],
-    "workshop_report_status": [
-        "pending",
-        "added",
-        "read_automatically",
-        "pending_validation",
-        "validated",
-        "corrected_manually",
-        "unable_to_read",
-        "not_applicable",
-    ],
 }
 
 
@@ -84,6 +137,7 @@ def seed_initial_data(db: Session) -> None:
     seed_permissions(db)
     seed_roles(db)
     seed_organizational_units(db)
+    seed_teams(db)
     seed_catalogs(db)
     db.commit()
 
@@ -107,6 +161,7 @@ def seed_roles(db: Session) -> None:
         return
 
     permissions = db.scalars(select(Permission)).all()
+    permissions_by_code = {permission.code: permission for permission in permissions}
     for permission in permissions:
         exists = db.scalar(
             select(RolePermission).where(
@@ -116,6 +171,24 @@ def seed_roles(db: Session) -> None:
         )
         if not exists:
             db.add(RolePermission(role_id=admin.id, permission_id=permission.id))
+
+    roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
+    for role_code, permission_codes in DEFAULT_ROLE_PERMISSIONS.items():
+        role = roles_by_code.get(role_code)
+        if not role:
+            continue
+        for permission_code in permission_codes:
+            permission = permissions_by_code.get(permission_code)
+            if not permission:
+                continue
+            exists = db.scalar(
+                select(RolePermission).where(
+                    RolePermission.role_id == role.id,
+                    RolePermission.permission_id == permission.id,
+                )
+            )
+            if not exists:
+                db.add(RolePermission(role_id=role.id, permission_id=permission.id))
 
 
 def seed_organizational_units(db: Session) -> None:
@@ -137,14 +210,27 @@ def seed_organizational_units(db: Session) -> None:
         by_code[code] = unit
 
 
+def seed_teams(db: Session) -> None:
+    units = {unit.code: unit for unit in db.scalars(select(OrganizationalUnit)).all()}
+    teams = {team.code: team for team in db.scalars(select(Team)).all()}
+    for code, name, unit_code in INITIAL_TEAMS:
+        if code in teams:
+            continue
+        unit = units.get(unit_code)
+        db.add(
+            Team(
+                code=code,
+                name=name,
+                organizational_unit_id=unit.id if unit else None,
+            )
+        )
+
+
 def seed_catalogs(db: Session) -> None:
     for catalog_code, values in INITIAL_CATALOGS.items():
         catalog = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == catalog_code))
         if not catalog:
-            catalog = SettingsCatalog(
-                code=catalog_code,
-                name=catalog_code.replace("_", " ").title(),
-            )
+            catalog = SettingsCatalog(code=catalog_code, name=catalog_code.replace("_", " ").title())
             db.add(catalog)
             db.flush()
         for index, value_code in enumerate(values, start=1):

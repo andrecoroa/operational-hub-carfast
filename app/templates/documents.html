@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>Gestão documental</h2>
+        <p class="breadcrumb">Documentos &gt; <strong>Gestão documental</strong></p>
+        <span>Pesquisa, classificação e acompanhamento do arquivo 365.</span>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="/documents">Voltar</a>
+        <a class="button-link secondary-link" href="/documents/new">Novo documento</a>
+        {% set feedback_source_area = "documents" %}
+        {% set feedback_return_url = "/documents/manage" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if created %}
+      <div class="success">Documento registado.</div>
+    {% endif %}
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="metric-grid task-metrics">
+      <article class="metric">
+        <span>Total</span>
+        <strong>{{ metrics.total }}</strong>
+      </article>
+      <article class="metric">
+        <span>Por classificar</span>
+        <strong>{{ metrics.unclassified }}</strong>
+      </article>
+      <article class="metric">
+        <span>Classificados</span>
+        <strong>{{ metrics.classified }}</strong>
+      </article>
+      <article class="metric">
+        <span>Arquivados</span>
+        <strong>{{ metrics.archived }}</strong>
+      </article>
+    </section>
+
+    <section class="table-shell filter-panel">
+      <form method="get" action="/documents/manage" class="filter-grid">
+        <label>
+          Pesquisa
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="Título, matrícula, fornecedor, remetente">
+        </label>
+        <label>
+          Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in statuses %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Área
+          <select name="area">
+            <option value="">Todas</option>
+            {% for code, label in areas %}
+              <option value="{{ code }}" {% if filters.area == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Tipologia
+          <select name="document_type">
+            <option value="">Todas</option>
+            {% for code, label in document_types %}
+              <option value="{{ code }}" {% if filters.document_type == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="filter-actions">
+          <button type="submit">Filtrar</button>
+          <a class="button-link secondary-link" href="/documents/manage">Limpar</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="task-layout tasks-layout">
+      <section class="table-shell">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Fila documental</p>
+            <h3>Documentos registados</h3>
+          </div>
+        </div>
+        <table class="task-table responsive-card-table">
+          <thead>
+            <tr>
+              <th>Documento</th>
+              <th>Área</th>
+              <th>Estado</th>
+              <th>Caminho</th>
+              <th>Origem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for document in documents %}
+              <tr>
+                <td data-label="Documento">
+                  <a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a>
+                  <p class="table-note">
+                    {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                    {% if document.plate %} · {{ document.plate }}{% endif %}
+                    {% if document.supplier_name %} · {{ document.supplier_name }}{% endif %}
+                  </p>
+                </td>
+                <td data-label="Área">{{ area_labels.get(document.classification, document.classification or "-") }}</td>
+                <td data-label="Estado"><span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span></td>
+                <td data-label="Caminho">{{ document.folder_path or "-" }}</td>
+                <td data-label="Origem">
+                  {{ document.entry_channel or document.source or "-" }}
+                  {% if document.source_sender %}<p class="table-note">{{ document.source_sender }}</p>{% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="5" class="muted">Ainda não existem documentos registados.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</div>
+{% endblock %}

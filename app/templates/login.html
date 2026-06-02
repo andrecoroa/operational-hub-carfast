@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="login-page">
+  <section class="login-panel">
+    <div>
+      <p class="eyebrow">Operational Hub Carfast</p>
+      <h1>Entrar</h1>
+    </div>
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="form-stack">
+      <label>
+        Email
+        <input type="email" name="email" autocomplete="email" required>
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+    <p class="login-secondary-action">
+      <a href="/portal/pedido">Registar pedido externo</a>
+    </p>
+  </section>
+</main>
+{% endblock %}

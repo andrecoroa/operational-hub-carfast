@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>Novo documento</h2>
+        <p class="breadcrumb">Documentos &gt; <strong>Novo documento</strong></p>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="/documents">Voltar</a>
+        <a class="button-link secondary-link" href="/documents/manage">Gestão</a>
+        {% set feedback_source_area = "documents" %}
+        {% set feedback_return_url = "/documents/new" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="compact-create-layout">
+      <form method="post" action="/documents/new" class="form-panel form-stack task-form compact-create-page">
+        <div class="panel-heading">
+          <p class="eyebrow">Entrada documental</p>
+          <h3>Registo rápido</h3>
+        </div>
+        <label>
+          Título
+          <input type="text" name="title" maxlength="200" required>
+        </label>
+        <div class="compact-form-grid">
+          <label>
+            Área
+            <select name="classification" data-document-area>
+              {% for code, label in areas %}
+                <option value="{{ code }}" {% if code == "workshop" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Tipologia
+            <select name="document_type" data-document-type>
+              {% for code, label in document_types %}
+                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if code == "workshop_other" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in statuses %}
+                <option value="{{ code }}" {% if code == "received" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="compact-form-grid two-col">
+          <label>
+            Link original / entrada 365
+            <input type="url" name="url_original" placeholder="https://...">
+          </label>
+          <label>
+            Link arquivado
+            <input type="url" name="url_archive" placeholder="https://...">
+          </label>
+        </div>
+        <div class="compact-form-grid">
+          <label>
+            Matrícula
+            <input type="text" name="plate" maxlength="40">
+          </label>
+          <label>
+            Fornecedor
+            <input type="text" name="supplier_name" maxlength="200">
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date">
+          </label>
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in sources %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <details class="advanced-panel">
+          <summary>Dados adicionais</summary>
+          <div class="compact-form-grid">
+            <label>
+              Canal de entrada
+              <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+            </label>
+            <label>
+              Remetente
+              <input type="text" name="source_sender" maxlength="255">
+            </label>
+            <label>
+              Assunto original
+              <input type="text" name="source_subject" maxlength="255">
+            </label>
+            <label>
+              Cliente
+              <input type="text" name="customer_name" maxlength="200">
+            </label>
+            <label>
+              Tarefa associada
+              <input type="number" name="task_id" min="1">
+            </label>
+            <label>
+              Processo oficina
+              <input type="number" name="workshop_process_id" min="1">
+            </label>
+            <label>
+              Lote importação
+              <input type="number" name="import_batch_id" min="1">
+            </label>
+          </div>
+          <label>
+            Notas
+            <textarea name="notes" rows="3"></textarea>
+          </label>
+        </details>
+        <button type="submit">Registar documento</button>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+  const documentArea = document.querySelector("[data-document-area]");
+  const documentType = document.querySelector("[data-document-type]");
+  function filterDocumentTypes() {
+    if (!documentArea || !documentType) return;
+    const area = documentArea.value;
+    let firstVisible = "";
+    documentType.querySelectorAll("option").forEach((option) => {
+      const optionArea = option.dataset.area;
+      const visible = !optionArea || optionArea === area;
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option.value;
+    });
+    const selected = documentType.selectedOptions[0];
+    if (selected && selected.hidden && firstVisible) {
+      documentType.value = firstVisible;
+    }
+  }
+  documentArea?.addEventListener("change", filterDocumentTypes);
+  filterDocumentTypes();
+</script>
+{% endblock %}

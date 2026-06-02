@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Manual da app</p>
+        <h2>Manual da App CarFast</h2>
+        <p class="breadcrumb">Apoio à utilização da plataforma durante o piloto</p>
+      </div>
+      {% if return_url %}
+        <a class="button-link secondary-link" href="{{ return_url }}">Voltar</a>
+      {% else %}
+        <a class="button-link secondary-link" href="/">Voltar</a>
+      {% endif %}
+    </header>
+
+    <section class="task-board-groups manual-grid">
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Geral</p>
+            <h3>Usar o piloto</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <p>Usa a app para testar fluxos reais, sem forçar campos que ainda não tens.</p>
+          <ol>
+            <li>Entra com o utilizador atribuído.</li>
+            <li>Escolhe o módulo no menu lateral.</li>
+            <li>Regista apenas informação disponível.</li>
+            <li>Usa “Pedir ajuda” para dúvidas sobre a app.</li>
+            <li>Usa “Relatar experiência” para dificuldades, sugestões ou erros de utilização.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Tarefas</p>
+            <h3>Criar e acompanhar tarefa</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <ol>
+            <li>Abre Centro de Tarefas.</li>
+            <li>Cria uma nova tarefa com assunto claro.</li>
+            <li>Escolhe a natureza correta.</li>
+            <li>Associa matrícula, estação ou responsável se souberes.</li>
+            <li>Acompanha a tarefa pela gestão e atualiza estado quando necessário.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Tutorial de boas práticas</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <p>O processo deve ser leve para o operador, mas suficientemente completo para auditoria, decisão e histórico da viatura.</p>
+          <ol>
+            <li>Abre processo só quando existe motivo operacional real ligado a uma viatura.</li>
+            <li>Na abertura, identifica viatura, motivo principal e prioridade. Não cries texto longo se ainda não houver detalhe.</li>
+            <li>Na receção, confirma sempre data, KM e motivo/serviço. Este é o ponto que fixa o início do processo.</li>
+            <li>Antes de decidir, verifica histórico e, se aplicável, Service Box. Se não existir histórico, assinala isso claramente.</li>
+            <li>Regista evidência sempre que exista algo anormal: foto, vídeo, ruído, dano, fuga, desgaste ou luz no painel.</li>
+            <li>Associa documentos por link ao processo. A app guarda metadados e caminho sugerido; os ficheiros ficam no 365/storage externo.</li>
+            <li>Usa notas apenas quando acrescentam contexto novo. Evita notas repetidas ou sem ação.</li>
+            <li>Fecha tecnicamente só quando a intervenção estiver validada; fecha administrativamente quando documentos e arquivo estiverem coerentes.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Abrir e receber processo</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <ol>
+            <li>Abre Oficina e escolhe novo processo.</li>
+            <li>Pesquisa a matrícula e seleciona a viatura sugerida.</li>
+            <li>Indica abertura, prioridade e nota inicial se houver.</li>
+            <li>No processo, confirma a receção com data, KM, serviço/motivo e observação inicial.</li>
+            <li>Escolhe um ou vários serviços: revisão, pneus, calços, discos, luz/avaria no painel, ruído anormal, acidente/dano, bateria, verificação periódica ou outro.</li>
+            <li>Nos travões, distingue frente ou trás quando essa informação for relevante.</li>
+            <li>Consulta no resumo os dados da viatura: chassi, data de matrícula, data de compra, último serviço e próximo serviço.</li>
+            <li>Regista evidências sempre que exista algo anormal.</li>
+            <li>Fecha o processo apenas quando o acompanhamento estiver concluído.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Alertas automáticos</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <p>Os alertas ajudam a manter qualidade sem bloquear o processo. Servem como chamadas de atenção para pontos de controlo.</p>
+          <ol>
+            <li>Receção incompleta: confirma KM e dados de entrada.</li>
+            <li>Histórico por verificar: consulta ou assinala inexistência de histórico antes da decisão.</li>
+            <li>Service Box em falta: em viaturas Stellantis, confirma plano, simulação e campanhas.</li>
+            <li>BSI inicial/final em falta: regista leitura ou justifica quando não se aplica.</li>
+            <li>Verificações sistemáticas pendentes: confirma segurança e mecânica rápida.</li>
+            <li>Documentação em falta: antes do fecho, valida links de orçamento, fatura, BSI, folha de obra ou evidências relevantes.</li>
+            <li>Incidentes em aberto: fecha, resolve ou justifica antes de concluir o processo.</li>
+            <li>Processo sem movimento: atualiza estado, nota ou fecho se estiver parado.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Registo de leitura técnica</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <p>O PDF fica como link externo. A app não faz OCR nesta fase.</p>
+          <ol>
+            <li>Abre o processo de oficina.</li>
+            <li>Escolhe “Registo de leitura técnica / BSI”.</li>
+            <li>Seleciona a fase: leitura inicial ou leitura final.</li>
+            <li>Seleciona o tipo de relatório: informações de manutenção, programação manutenção, lubrificação do motor, leitura de defeitos ou identificação/telecarregamento.</li>
+            <li>Preenche apenas os campos visíveis desse relatório, sem misturar dados de PDFs diferentes.</li>
+            <li>Quando aplicável, a app calcula datas estimadas a partir dos dias registados.</li>
+            <li>Guarda o link do relatório externo no campo próprio.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Revisão Stellantis / Service Box</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <ol>
+            <li>Confirma se a viatura é Stellantis.</li>
+            <li>Depois de verificar histórico, abre o passo “Revisão Stellantis / Service Box”.</li>
+            <li>Retira o plano de manutenção e associa o documento por link.</li>
+            <li>Simula a manutenção com KM e idade da viatura e associa o comprovativo.</li>
+            <li>Verifica campanhas técnicas e associa o documento quando existir campanha.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Oficina</p>
+            <h3>Ver relatório do processo</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <ol>
+            <li>Abre o processo de oficina.</li>
+            <li>Clica em “Ver relatório”.</li>
+            <li>Confirma o resumo, dados da viatura, serviços, leituras técnicas, evidências, incidentes, documentos e notas.</li>
+            <li>Usa “Imprimir” se precisares de guardar ou partilhar uma versão em PDF.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Documentos</p>
+            <h3>Registar documentos por link</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <p>Nesta fase não se carregam ficheiros binários para a base de dados.</p>
+          <ol>
+            <li>Guarda ou recebe o documento no local definido.</li>
+            <li>Copia o link OneDrive, SharePoint ou equivalente.</li>
+            <li>Regista o documento na app com título e link.</li>
+            <li>Classifica apenas o que for claro nesta fase.</li>
+            <li>Em oficina, usa a zona documental do processo: Oficina / Matrículas / matrícula / Processos / processo.</li>
+            <li>Quando o documento chega por e-mail, usa o link do anexo recebido e decide depois se fica arquivado, rejeitado ou por tratar.</li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="task-type-board manual-card">
+        <div class="task-type-heading">
+          <div>
+            <p class="eyebrow">Feedback</p>
+            <h3>Pedir ajuda ou relatar experiência</h3>
+          </div>
+        </div>
+        <div class="manual-steps">
+          <ol>
+            <li>Pedir ajuda serve para dúvidas sobre a utilização da app.</li>
+            <li>Relatar experiência serve para dificuldades, sugestões ou erros encontrados.</li>
+            <li>Quando necessário, adiciona um link de anexo ou evidência.</li>
+            <li>Não uses estes botões para substituir tarefas operacionais reais.</li>
+          </ol>
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

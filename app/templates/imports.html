@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Rentway e outros sistemas</p>
+        <h2>Histórico de importações</h2>
+      </div>
+      <div class="button-row">
+        <a class="button-link" href="/imports/fleet">Importar frota</a>
+        <a class="button-link secondary-link" href="/imports/technical-history">Importar histórico técnico</a>
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    <section class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Lote</th>
+            <th>Origem</th>
+            <th>Tipo</th>
+            <th>Estado</th>
+            <th>Linhas</th>
+            <th>Criadas</th>
+            <th>Atualizadas</th>
+            <th>Erros</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for batch in batches %}
+            <tr>
+              <td><a class="table-link" href="/imports/{{ batch.id }}">#{{ batch.id }}</a></td>
+              <td>{{ batch.source_system }}</td>
+              <td>{{ batch.import_type }}</td>
+              <td><span class="pill">{{ batch.status }}</span></td>
+              <td>{{ batch.total_rows }}</td>
+              <td>{{ batch.created_rows }}</td>
+              <td>{{ batch.updated_rows }}</td>
+              <td>{{ batch.error_rows }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="muted">Ainda nao existem importacoes.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+{% endblock %}

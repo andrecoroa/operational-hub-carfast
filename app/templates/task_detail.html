@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Gestão de tarefa</p>
+        <h2>{{ task.title }}</h2>
+        <div class="task-header-meta">
+          <strong>CF-TASK-{{ "%05d"|format(task.id) }}</strong>
+          <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+          <span class="pill">{{ task_type_labels.get(task.task_type, task.task_type or "Tarefa") }}</span>
+          <span class="pill priority-{{ task.priority }}">{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+          <span class="pill muted-pill">{{ task_source_labels.get(task.source, task.source or "Manual") }}</span>
+        </div>
+        <p class="breadcrumb">Centro de Tarefas &gt; {{ task_workspace_label }}</p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_entity_type = "task" %}
+        {% set feedback_entity_id = task.id %}
+        {% set feedback_return_url = "/task-board/" ~ task.id %}
+        {% include "_pilot_actions.html" %}
+        {% if can_write_workspace %}
+          <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+        {% endif %}
+        <a class="button-link secondary-link" href="{{ task_manage_url }}">Voltar</a>
+      </div>
+    </header>
+
+    {% if commented %}
+      <div class="success">Atualização gravada.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+
+    <section class="workshop-page-grid task-detail-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Resumo</p>
+            <h3>Dados da tarefa</h3>
+          </div>
+          <div class="task-summary-chips">
+            <span>{{ task_category_labels.get(task.category, task.category or "Sem classificação") }}</span>
+            <span>{{ task_subcategory_labels.get(task.subcategory, task.subcategory or "A definir") }}</span>
+            <span>{{ task_source_labels.get(task.source, task.source or "Manual") }}</span>
+          </div>
+          <div class="task-description-box">
+            <span>Descrição</span>
+            <p>{{ task.description or "Sem descrição registada." }}</p>
+          </div>
+          <div class="task-summary-sections">
+            <section>
+              <h4>Operação</h4>
+              <dl>
+                <div><dt>Estado</dt><dd>{{ task_status_labels.get(task.status, task.status) }}</dd></div>
+                <div><dt>Prioridade</dt><dd>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</dd></div>
+                <div><dt>Data limite</dt><dd>{{ task.due_on or "Sem SLA" }}</dd></div>
+                {% if task.planned_for %}<div><dt>Planeada para</dt><dd>{{ task.planned_for }}</dd></div>{% endif %}
+                {% if task.recurrence_enabled %}
+                  <div><dt>Recorrência</dt><dd>{{ recurrence_rule_labels.get(task.recurrence_rule, task.recurrence_rule) }}{% if task.recurrence_interval and task.recurrence_interval > 1 %} · intervalo {{ task.recurrence_interval }}{% endif %}</dd></div>
+                  <div><dt>Próxima</dt><dd>{{ task.recurrence_next_on or "A calcular no fecho" }}</dd></div>
+                {% endif %}
+              </dl>
+            </section>
+            <section>
+              {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else None %}
+              <h4>Intervenientes</h4>
+              <dl>
+                <div><dt>Criada por</dt><dd>{{ created_user.name if created_user else "Sistema" }}</dd></div>
+                <div><dt>Responsável</dt><dd>{{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Por atribuir") }}</dd></div>
+                {% if delegated_user or delegated_team %}
+                  <div><dt>Delegada a</dt><dd>{{ delegated_user.name if delegated_user else delegated_team.name }}</dd></div>
+                {% endif %}
+                {% if waiting_for_user or waiting_for_team %}
+                  <div><dt>A aguardar por</dt><dd>{{ waiting_for_user.name if waiting_for_user else waiting_for_team.name }}</dd></div>
+                {% endif %}
+              </dl>
+            </section>
+            <section>
+              <h4>Dados adicionais</h4>
+              {% if task.station or task.customer_name or task.customer_contact or task.customer_email or task.customer_phone or task.plate or linked_vehicle or task.reservation_number or task.contract_number or task.waiting_reason or task.waiting_reason_detail %}
+                <dl>
+                  {% if task.station %}<div><dt>Estação</dt><dd>{{ task.station }}</dd></div>{% endif %}
+                  {% if task.customer_name %}<div><dt>Cliente</dt><dd>{{ task.customer_name }}</dd></div>{% endif %}
+                  {% if task.customer_contact or task.customer_email or task.customer_phone %}<div><dt>Contacto</dt><dd>{{ task.customer_contact or task.customer_email or task.customer_phone }}</dd></div>{% endif %}
+                  {% if task.plate %}<div><dt>Matrícula</dt><dd>{{ task.plate }}</dd></div>{% endif %}
+                  {% if linked_vehicle %}<div><dt>Ligação</dt><dd><a class="table-link" href="/fleet/{{ linked_vehicle.id }}">{{ linked_vehicle.plate or ("Viatura #" ~ linked_vehicle.id) }}</a></dd></div>{% endif %}
+                  {% if task.reservation_number %}<div><dt>Reserva</dt><dd>{{ task.reservation_number }}</dd></div>{% endif %}
+                  {% if task.contract_number %}<div><dt>Contrato</dt><dd>{{ task.contract_number }}</dd></div>{% endif %}
+                  {% if task.status == "waiting" and task.waiting_reason %}<div><dt>Motivo de espera</dt><dd>{{ waiting_reason_labels.get(task.waiting_reason, task.waiting_reason) }}</dd></div>{% endif %}
+                  {% if task.status == "waiting" and task.waiting_reason_detail %}<div><dt>Detalhe</dt><dd>{{ task.waiting_reason_detail }}</dd></div>{% endif %}
+                </dl>
+              {% else %}
+                <p class="muted">Sem dados adicionais.</p>
+              {% endif %}
+            </section>
+          </div>
+        </article>
+
+        {% if guided_flow.run %}
+        <article class="section guided-flow-panel">
+          <div class="table-heading flat-heading compact-task-heading">
+            <div>
+              <p class="eyebrow">Fluxo guiado</p>
+              <h3>{{ guided_flow.run.title }}</h3>
+            </div>
+            <span class="pill muted-pill">{{ guided_flow.progress.done }}/{{ guided_flow.progress.total }} passos</span>
+          </div>
+          <div class="guided-flow-stepper">
+            {% for step in guided_flow.steps %}
+              <a href="#flow-step-{{ step.id }}" class="guided-flow-step step-{{ guided_flow_step_status_class.get(step.status, 'pending') }}">
+                <span>{{ loop.index }}</span>
+                <strong>{{ step.title }}</strong>
+                <small>{{ guided_flow_step_status_labels.get(step.status, step.status) }}</small>
+              </a>
+            {% endfor %}
+          </div>
+          <div class="guided-flow-workspace">
+            {% for step in guided_flow.steps %}
+              {% set step_data = step.data_json or {} %}
+              <details id="flow-step-{{ step.id }}" class="workshop-record-group guided-flow-card" {% if loop.first and step.status == 'pending' %}open{% endif %}>
+                <summary>{{ step.title }} <span>{{ guided_flow_step_status_labels.get(step.status, step.status) }}</span></summary>
+                <p class="muted">{{ step_data.description or "Passo do fluxo guiado." }}</p>
+                {% if step_data.note %}
+                  <div class="task-description-box">
+                    <span>Última nota</span>
+                    <p>{{ step_data.note }}</p>
+                  </div>
+                {% endif %}
+                {% if step.generated_task_id %}
+                  <p><a class="table-link" href="/task-board/{{ step.generated_task_id }}">Abrir tarefa gerada CF-TASK-{{ "%05d"|format(step.generated_task_id) }}</a></p>
+                {% endif %}
+                {% if can_write_workspace %}
+                  <form method="post" action="/task-board/{{ task.id }}/flow/{{ step.id }}" class="form-stack compact-form">
+                    <label>
+                      Estado do passo
+                      <select name="step_status">
+                        {% for code, label in guided_flow_step_statuses %}
+                          <option value="{{ code }}" {% if step.status == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>
+                      Observação / dados do passo
+                      <textarea name="step_note" rows="3" placeholder="Regista apenas o que foi verificado ou a razão de ficar pendente.">{{ step_data.note or "" }}</textarea>
+                    </label>
+                    <div class="button-row">
+                      <button type="submit" name="action" value="save">Guardar passo</button>
+                      <button type="submit" name="action" value="generate_task" class="secondary">Gerar tarefa</button>
+                    </div>
+                  </form>
+                {% endif %}
+              </details>
+            {% endfor %}
+          </div>
+        </article>
+        {% elif task.guided_flow_code %}
+        <article class="section guided-flow-panel">
+          <p class="eyebrow">Fluxo guiado</p>
+          <h3>Fluxo associado ainda sem execução</h3>
+          <p class="muted">Este registo foi criado antes da execução do fluxo. Regravar a tarefa ou recriar o fluxo irá preparar os passos.</p>
+        </article>
+        {% endif %}
+
+        <article class="section workshop-summary-card task-relations-card">
+          <div class="table-heading flat-heading compact-task-heading">
+            <div>
+              <p class="eyebrow">Relações</p>
+              <h3>Tarefa mãe e subtarefas</h3>
+            </div>
+            {% if can_write_workspace %}
+              <a class="button-link secondary-link" href="/task-board/new?workspace={{ task_workspace }}&parent_task_id={{ task.id }}">Criar subtarefa</a>
+            {% endif %}
+          </div>
+          {% if parent_task %}
+            <div class="subtask-parent-banner">
+              <span>Esta tarefa é subtarefa de</span>
+              <a class="table-link" href="/task-board/{{ parent_task.id }}">CF-TASK-{{ "%05d"|format(parent_task.id) }} · {{ parent_task.title }}</a>
+            </div>
+          {% endif %}
+          <div class="subtask-list">
+            {% for subtask in subtasks %}
+              {% set subtask_assigned_user = user_by_id.get(subtask.assigned_to_id) if subtask.assigned_to_id else None %}
+              {% set subtask_delegated_user = user_by_id.get(subtask.delegated_to_user_id) if subtask.delegated_to_user_id else None %}
+              {% set subtask_delegated_team = team_by_id.get(subtask.delegated_to_team_id) if subtask.delegated_to_team_id else None %}
+              <article class="subtask-row">
+                <a class="table-link" href="/task-board/{{ subtask.id }}">CF-TASK-{{ "%05d"|format(subtask.id) }}</a>
+                <div>
+                  <strong>{{ subtask.title }}</strong>
+                  <span>
+                    {{ subtask_assigned_user.name if subtask_assigned_user else "Por atribuir" }}
+                    {% if subtask_delegated_user %} · Delegado: {{ subtask_delegated_user.name }}{% endif %}
+                    {% if subtask_delegated_team %} · Delegado: {{ subtask_delegated_team.name }}{% endif %}
+                  </span>
+                </div>
+                <span class="pill status-{{ subtask.status }}">{{ task_status_labels.get(subtask.status, subtask.status) }}</span>
+                <span>{{ subtask.due_on or "Sem SLA" }}</span>
+              </article>
+            {% else %}
+              <div class="task-board-empty compact-empty">
+                <p>Sem subtarefas.</p>
+              </div>
+            {% endfor %}
+          </div>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading compact-task-heading">
+            <div>
+              <p class="eyebrow">Acompanhamento</p>
+              <h3>Registos da tarefa</h3>
+            </div>
+          </div>
+
+          <details class="workshop-record-group">
+            <summary>Comentários <span>{{ comments|length }}</span></summary>
+            <div class="event-list">
+              {% for item in comments %}
+                {% set comment_user = user_by_id.get(item.user_id) if item.user_id else None %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ comment_user.name if comment_user else "Sistema" }}</strong>
+                    <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+                  </div>
+                  <p>{{ item.comment }}</p>
+                </article>
+              {% else %}
+                <p class="muted">Sem comentários.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group">
+            <summary>Documentos <span>{{ documents|length }}</span></summary>
+            <div class="event-list">
+              {% for document in documents %}
+                <article class="event-item">
+                  <div>
+                    <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                    <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                  </div>
+                  <p>
+                    {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                    &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                  </p>
+                  <p>{{ document.folder_path or "-" }}</p>
+                  {% if can_manage_document_links and document.external_url %}
+                    <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem documentos associados a esta tarefa.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group">
+            <summary>Histórico <span>{{ history|length }}</span></summary>
+            <div class="event-list">
+              {% for item in history %}
+                {% set history_user = user_by_id.get(item.user_id) if item.user_id else None %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ task_history_field_labels.get(item.field_name, item.field_name) }}{% if history_user %} · {{ history_user.name }}{% endif %}</strong>
+                    <span>{{ item.changed_at.strftime("%Y-%m-%d %H:%M") if item.changed_at else "" }}</span>
+                  </div>
+                  <p>{{ item.old_value or "-" }} -&gt; {{ item.new_value or "-" }}</p>
+                </article>
+              {% else %}
+                <p class="muted">Sem histórico.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+      </div>
+
+      <aside class="workshop-side-column">
+        {% if can_write_workspace %}
+        <form method="post" action="/task-board/{{ task.id }}/update" class="form-panel form-stack workshop-flow-card task-update-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Gestão</p>
+            <h3>Atualizar tarefa</h3>
+          </div>
+          <section class="task-update-section">
+            <h4>Estado e prioridade</h4>
+          <div class="compact-form-grid two-col">
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in task_statuses %}
+                  <option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Prioridade
+              <select name="priority">
+                {% for code, label in priorities %}
+                  <option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Data limite
+              <input type="date" name="due_on" value="{{ task.due_on or '' }}">
+            </label>
+          </div>
+          </section>
+
+          <section class="task-update-section">
+            <h4>Classificação</h4>
+            <div class="compact-form-grid two-col">
+              <label>
+                Classificação
+                <select name="category" data-task-category>
+                  {% for code, label in task_categories %}
+                    <option value="{{ code }}" {% if task.category == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Subclassificação
+                <select name="subcategory" data-task-subcategory data-current-subcategory="{{ task.subcategory or '' }}" required></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="task-update-section">
+            <h4>Responsabilidade</h4>
+            <div class="compact-form-grid two-col">
+            <label>
+              Responsável
+              <small>Quem valida e fecha a tarefa.</small>
+              <select name="responsible_to">
+                <option value="">Por atribuir</option>
+                <optgroup label="Pessoas">
+                  {% for user in assignable_users %}
+                    {% set option_value = "user:" ~ user.id %}
+                    <option value="{{ option_value }}" {% if responsible_value == option_value %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Equipas / filas">
+                  {% for team in teams %}
+                    {% set option_value = "team:" ~ team.id %}
+                    <option value="{{ option_value }}" {% if responsible_value == option_value %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+            </label>
+            <label>
+              Execução delegada a
+              <small>Quem executa, mas não fecha.</small>
+              <select name="delegated_to">
+                <option value="">Sem execução delegada</option>
+                <optgroup label="Pessoas">
+                  {% for user in assignable_users %}
+                    {% set option_value = "user:" ~ user.id %}
+                    <option value="{{ option_value }}" {% if delegation_value == option_value %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Equipas / filas">
+                  {% for team in teams %}
+                    {% set option_value = "team:" ~ team.id %}
+                    <option value="{{ option_value }}" {% if delegation_value == option_value %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+            </label>
+            <label>
+              Motivo de espera
+              <select name="waiting_reason">
+                <option value="">Selecionar motivo</option>
+                {% for code, label in waiting_reasons %}
+                  <option value="{{ code }}" {% if task.waiting_reason == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              A aguardar por
+              <select name="waiting_for">
+                <option value="">Sem destinatário</option>
+                <optgroup label="Pessoas">
+                  {% for user in users %}
+                    {% set option_value = "user:" ~ user.id %}
+                    <option value="{{ option_value }}" {% if waiting_for_value == option_value %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Equipas / filas">
+                  {% for team in teams %}
+                    {% set option_value = "team:" ~ team.id %}
+                    <option value="{{ option_value }}" {% if waiting_for_value == option_value %}selected{% endif %}>{{ team.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+            </label>
+            <label>
+              Detalhe do motivo
+              <input type="text" name="waiting_reason_detail" maxlength="500" value="{{ task.waiting_reason_detail or '' }}" placeholder="Obrigatório se o motivo for outro">
+            </label>
+          </div>
+          </section>
+
+          <input type="hidden" name="task_type" value="{{ task.task_type }}">
+          <section class="task-update-section">
+            <h4>Dados adicionais</h4>
+            <label>
+              Estação
+              <input type="text" name="station" maxlength="120" value="{{ task.station or '' }}">
+            </label>
+          </section>
+          <button type="submit">Guardar alterações</button>
+        </form>
+
+        <div class="workshop-actions">
+          <details class="workshop-action-card">
+            <summary>Adicionar comentário</summary>
+            <form method="post" action="/task-board/{{ task.id }}/comments" class="form-stack">
+              <label>
+                Comentário
+                <textarea name="comment" rows="4" required></textarea>
+              </label>
+              <button type="submit">Gravar comentário</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card">
+            <summary>Adicionar documento</summary>
+            <form method="post" action="/task-board/{{ task.id }}/documents" class="form-stack">
+              <label>
+                Título
+                <input type="text" name="title" maxlength="200" required>
+              </label>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Área
+                  <select name="classification">
+                    <option value="general_archive">Arquivo Geral</option>
+                    <option value="fleet" {% if task.plate %}selected{% endif %}>Frota</option>
+                    <option value="finance">Financeiro</option>
+                    <option value="rentway_imports">Rentway Importações</option>
+                  </select>
+                </label>
+                <label>
+                  Tipologia
+                  <select name="document_type">
+                    <option value="general_archive">Geral Arquivo</option>
+                    <option value="general_fleet" {% if task.plate %}selected{% endif %}>Geral Frota</option>
+                    <option value="general_finance">Geral Financeiro</option>
+                    <option value="general_rentway">Geral Rentway</option>
+                  </select>
+                </label>
+                <label>
+                  Estado
+                  <select name="status">
+                    {% for code, label in document_statuses %}
+                      <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Data do documento
+                  <input type="date" name="document_date">
+                </label>
+              </div>
+              <label>
+                Link original / entrada 365
+                <input type="url" name="url_original" placeholder="https://...">
+              </label>
+              <label>
+                Link arquivado
+                <input type="url" name="url_archive" placeholder="https://...">
+              </label>
+              <details class="advanced-panel">
+                <summary>Dados adicionais</summary>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Origem
+                    <select name="source">
+                      {% for code, label in document_sources %}
+                        <option value="{{ code }}">{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Canal de entrada
+                    <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+                  </label>
+                </div>
+                <label>
+                  Notas
+                  <textarea name="notes" rows="2"></textarea>
+                </label>
+              </details>
+              <button type="submit">Adicionar documento</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card workshop-close-card">
+            <summary>Fecho</summary>
+            {% if task.closed_at %}
+              <p class="muted">Tarefa fechada em {{ task.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+            {% else %}
+              <form method="post" action="/task-board/{{ task.id }}/close" class="form-stack">
+                <button type="submit">Fechar tarefa</button>
+              </form>
+            {% endif %}
+          </details>
+        </div>
+        {% else %}
+          <article class="section workshop-summary-card">
+            <p class="eyebrow">Consulta</p>
+            <h3>Acesso só de leitura</h3>
+            <p class="muted">Este perfil pode consultar este centro de tarefas, mas não pode alterar, fechar ou anexar informação.</p>
+          </article>
+        {% endif %}
+      </aside>
+    </section>
+  </main>
+</div>
+<script>
+  const subcategoriesByCategory = {{ task_subcategories_by_category|tojson }};
+  const categorySelect = document.querySelector("[data-task-category]");
+  const subcategorySelect = document.querySelector("[data-task-subcategory]");
+
+  function refreshSubcategories() {
+    if (!categorySelect || !subcategorySelect) return;
+    const currentValue = subcategorySelect.dataset.currentSubcategory || subcategorySelect.value;
+    const options = subcategoriesByCategory[categorySelect.value] || subcategoriesByCategory.other || [];
+    subcategorySelect.innerHTML = "";
+    for (const [value, label] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === currentValue) option.selected = true;
+      subcategorySelect.appendChild(option);
+    }
+    if (!subcategorySelect.value && subcategorySelect.options.length) {
+      subcategorySelect.options[0].selected = true;
+    }
+    subcategorySelect.dataset.currentSubcategory = "";
+  }
+
+  if (categorySelect && subcategorySelect) {
+    refreshSubcategories();
+    categorySelect.addEventListener("change", () => {
+      subcategorySelect.dataset.currentSubcategory = "";
+      refreshSubcategories();
+    });
+  }
+</script>
+{% endblock %}

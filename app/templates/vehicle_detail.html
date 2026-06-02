@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Viatura permanente</p>
+        <h2>{{ vehicle.plate or "Sem matrícula" }}</h2>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "fleet" %}
+        {% set feedback_entity_type = "vehicle" %}
+        {% set feedback_entity_id = vehicle.id %}
+        {% set feedback_return_url = "/fleet/" ~ vehicle.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/fleet">Voltar</a>
+      </div>
+    </header>
+
+    {% if saved %}
+      <div class="success">Nota interna gravada.</div>
+    {% endif %}
+    {% if task_created %}
+      <div class="success">Tarefa criada para esta viatura.</div>
+    {% endif %}
+    {% if document_created %}
+      <div class="success">Documento associado a esta viatura.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="workshop-page-grid vehicle-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card vehicle-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Resumo</p>
+            <h3>{{ vehicle.plate or "Sem matrícula" }}</h3>
+          </div>
+          <div class="pill-row">
+            <span class="pill status-{{ vehicle.lifecycle_status }}">{{ vehicle.lifecycle_status or "Sem ciclo" }}</span>
+            <span class="pill status-{{ vehicle.operational_status }}">{{ vehicle.operational_status or "Sem estado operacional" }}</span>
+            {% if vehicle.rentway_unit_nr %}<span class="pill">Unit {{ vehicle.rentway_unit_nr }}</span>{% endif %}
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Matrícula</span><strong>{{ vehicle.plate or "-" }}</strong></div>
+            <div><span>Rentway</span><strong>{{ vehicle.rentway_unit_nr or "-" }}</strong></div>
+            <div><span>Marca</span><strong>{{ vehicle.brand or "-" }}</strong></div>
+            <div><span>Modelo</span><strong>{{ vehicle.model or "-" }}</strong></div>
+            <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
+            <div><span>Versão</span><strong>{{ vehicle.version or "-" }}</strong></div>
+            <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+            <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+            <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+            <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
+            <div><span>Ciclo</span><strong>{{ vehicle.lifecycle_status or "-" }}</strong></div>
+            <div><span>Operacional</span><strong>{{ vehicle.operational_status or "-" }}</strong></div>
+          </div>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Acompanhamento</p>
+              <h3>Registos da viatura</h3>
+            </div>
+          </div>
+
+          <details class="workshop-record-group" {% if documents %}open{% endif %}>
+            <summary>Documentos <span>{{ documents|length }}</span></summary>
+            <div class="event-list">
+              {% for document in documents %}
+                <article class="event-item">
+                  <div>
+                    <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                    <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                  </div>
+                  <p>
+                    {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                    &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                  </p>
+                  <p>{{ document.folder_path or "-" }}</p>
+                  {% if can_manage_document_links and document.external_url %}
+                    <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem documentos associados a esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" {% if vehicle_tasks %}open{% endif %}>
+            <summary>Tarefas abertas <span>{{ vehicle_tasks|length }}</span></summary>
+            <div class="event-list">
+              {% for task in vehicle_tasks %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ task.title }}</strong>
+                    <span>{{ task.priority or "normal" }}</span>
+                  </div>
+                  {% if task.description %}
+                    <p>{{ task.description }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem tarefas abertas para esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" {% if workshop_processes %}open{% endif %}>
+            <summary>Oficina <span>{{ workshop_processes|length }}</span></summary>
+            <div class="event-list">
+              {% for process in workshop_processes %}
+                <article class="event-item">
+                  <div>
+                    <strong><a class="table-link" href="/workshop/{{ process.id }}">{{ process.title }}</a></strong>
+                    <span>{{ workshop_status_labels.get(process.status, process.status) }}</span>
+                  </div>
+                  {% if process.note %}
+                    <p>{{ process.note }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem processos de oficina abertos.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" {% if technical_readings_count %}open{% endif %}>
+            <summary>Histórico técnico / Diagnósticos <span>{{ technical_readings_count }}</span></summary>
+            <div class="technical-history-summary">
+              {% if technical_readings_count %}
+                <div>
+                  <strong>{{ technical_readings_count }} leituras técnicas associadas</strong>
+                  <p>Consulta a evolução por tipo de relatório, com cada leitura organizada em coluna.</p>
+                </div>
+                <a class="button-link" href="/fleet/{{ vehicle.id }}/technical-history">Ver histórico técnico</a>
+              {% else %}
+                <p class="muted">Sem leituras técnicas associadas a esta viatura.</p>
+              {% endif %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" {% if events %}open{% endif %}>
+            <summary>Eventos internos <span>{{ events|length }}</span></summary>
+            <div class="event-list">
+              {% for event in events %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ event.status }}</strong>
+                    <span>{{ event.created_at.strftime("%Y-%m-%d %H:%M") if event.created_at else "" }}</span>
+                  </div>
+                  <p>{{ event.note or "-" }}</p>
+                </article>
+              {% else %}
+                <p class="muted">Sem eventos internos.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group">
+            <summary>Último snapshot Rentway <span>{{ 1 if snapshot else 0 }}</span></summary>
+            {% if snapshot %}
+              <dl class="detail-list vehicle-snapshot-list">
+                {% for key, value in snapshot.data_json.items() %}
+                  <div><dt>{{ key }}</dt><dd>{{ value if value is not none else "-" }}</dd></div>
+                {% endfor %}
+              </dl>
+            {% else %}
+              <p class="muted">Sem snapshot importado.</p>
+            {% endif %}
+          </details>
+        </article>
+      </div>
+
+      <aside class="workshop-side-column">
+        <div class="workshop-actions">
+          <details class="workshop-action-card">
+            <summary>Adicionar nota</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/events" class="form-stack">
+              <label>
+                Nota
+                <textarea name="note" rows="4" placeholder="Registar informação interna relevante" required></textarea>
+              </label>
+              <button type="submit">Gravar nota</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card">
+            <summary>Criar tarefa</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/tasks" class="form-stack">
+              <label>
+                Título
+                <input type="text" name="title" maxlength="200" required>
+              </label>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Prioridade
+                  <select name="priority">
+                    <option value="normal">Normal</option>
+                    <option value="high">Alta</option>
+                    <option value="low">Baixa</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Descrição
+                <textarea name="description" rows="3"></textarea>
+              </label>
+              <button type="submit">Criar tarefa</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card">
+            <summary>Adicionar documento</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/documents" class="form-stack">
+              <label>
+                Título
+                <input type="text" name="title" maxlength="200" required>
+              </label>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Estado
+                  <select name="status">
+                    <option value="unclassified">Por classificar</option>
+                    <option value="classified">Classificado</option>
+                    <option value="archived">Arquivado</option>
+                    <option value="rejected">Rejeitado / Sem interesse</option>
+                  </select>
+                </label>
+                <label>
+                  Data do documento
+                  <input type="date" name="document_date">
+                </label>
+              </div>
+              <label>
+                Link original / entrada 365
+                <input type="url" name="url_original" placeholder="https://...">
+              </label>
+              <label>
+                Link arquivado
+                <input type="url" name="url_archive" placeholder="https://...">
+              </label>
+              <details class="advanced-panel">
+                <summary>Dados adicionais</summary>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Canal de entrada
+                    <input type="text" name="entry_channel" maxlength="120" placeholder="documentos@carfast.pt">
+                  </label>
+                  <label>
+                    Fornecedor
+                    <input type="text" name="supplier_name" maxlength="200">
+                  </label>
+                </div>
+                <label>
+                  Notas
+                  <textarea name="notes" rows="2"></textarea>
+                </label>
+              </details>
+              <button type="submit">Adicionar documento</button>
+            </form>
+          </details>
+
+          <article class="workshop-action-card vehicle-quick-actions">
+            <p class="eyebrow">Ação rápida</p>
+            <a class="button-link" href="/workshop">Abrir oficina</a>
+          </article>
+        </div>
+      </aside>
+    </section>
+  </main>
+</div>
+{% endblock %}

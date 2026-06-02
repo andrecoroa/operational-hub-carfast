@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Processos temporários</p>
+        <h2>Novo processo de oficina</h2>
+        <p class="breadcrumb">Oficina &gt; <strong>Novo processo</strong></p>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="/workshop/manage">Gestão</a>
+        {% set feedback_source_area = "workshop" %}
+        {% set feedback_return_url = "/workshop/new" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="form-page-grid">
+      <form method="post" action="/workshop/new" class="form-panel form-stack task-form task-create-page">
+        <div class="step-row">
+          <span class="step-item active"><span class="step-number">1</span>Entrada</span>
+          <span class="step-item"><span class="step-number">2</span>Viatura</span>
+          <span class="step-item"><span class="step-number">3</span>Contexto</span>
+          <span class="step-item"><span class="step-number">4</span>Seguimento</span>
+        </div>
+        <div class="panel-heading">
+          <p class="eyebrow">Novo processo</p>
+          <h3>Registo inicial</h3>
+        </div>
+        <label>
+          Viatura
+          <input type="search" name="vehicle_search" list="workshop-vehicle-options" placeholder="Escreve a matrícula, ex.: B" autocomplete="off" required data-workshop-vehicle-search>
+          <input type="hidden" name="vehicle_id" data-workshop-vehicle-id>
+          <datalist id="workshop-vehicle-options"></datalist>
+          <span class="field-hint">Começa a escrever a matrícula e escolhe a viatura sugerida.</span>
+        </label>
+        <label data-other-title-wrap hidden>
+          Título para “Outro”
+          <input type="text" name="title" maxlength="200" placeholder="Descreve o motivo do processo" data-other-title-input>
+          <span class="field-hint">Nos restantes serviços o título é gerado automaticamente.</span>
+        </label>
+        <div class="form-grid">
+          <label>
+            Abertura
+            <select name="opening_type">
+              {% for code, label in opening_types %}
+                <option value="{{ code }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            KM entrada
+            <input type="number" name="km_entry" min="0">
+          </label>
+        </div>
+        <fieldset class="reception-service-picker">
+          <legend>Serviço / motivo de entrada</legend>
+          <div class="reception-service-grid">
+            {% for code, label in service_families %}
+              {% set has_details = code in service_detail_families %}
+              {% set has_axis = code in service_axis_families %}
+              <div class="reception-service-choice" data-reception-service-choice>
+                <label class="reception-service-check">
+                  <input type="checkbox" name="service_family_multi" value="{{ code }}" data-reception-service-check>
+                  <span>{{ label }}</span>
+                </label>
+                <div class="reception-service-fields">
+                  {% if has_details %}
+                    <label>
+                      Detalhe
+                      <select name="service_detail_multi" disabled>
+                        <option value="">Sem detalhe</option>
+                        {% for detail_code, detail_label, family in service_details %}
+                          {% if family == code or family == "any" %}
+                            <option value="{{ detail_code }}">{{ detail_label }}</option>
+                          {% endif %}
+                        {% endfor %}
+                      </select>
+                    </label>
+                  {% else %}
+                    <input type="hidden" name="service_detail_multi" value="" disabled>
+                  {% endif %}
+                  {% if has_axis %}
+                    <label>
+                      Eixo / zona
+                      <select name="service_axis_multi" disabled>
+                        {% for axis_code, axis_label in service_axes %}
+                          <option value="{{ axis_code }}">{{ axis_label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  {% else %}
+                    <input type="hidden" name="service_axis_multi" value="not_defined" disabled>
+                  {% endif %}
+                  <label class="reception-service-note">
+                    Observação
+                    <input type="text" name="service_note_multi" maxlength="255" placeholder="Nota curta" disabled>
+                  </label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          <span class="field-hint">Seleciona um ou vários serviços. O título do processo será criado automaticamente.</span>
+        </fieldset>
+        <div class="form-grid">
+          <label>
+            Prioridade
+            <select name="priority">
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+              <option value="low">Baixa</option>
+            </select>
+          </label>
+          <label>
+            Saída prevista
+            <input type="date" name="expected_exit_on">
+          </label>
+        </div>
+        <label>
+          Nota inicial
+          <textarea name="note" rows="4"></textarea>
+        </label>
+        <button type="submit">Criar processo</button>
+      </form>
+
+      <aside class="side-panel">
+        <article class="summary-card">
+          <h3>Resumo</h3>
+          <ul class="summary-list">
+            <li><strong>Estado</strong> Receção</li>
+            <li><strong>Origem</strong> Interna</li>
+            <li><strong>Decisão</strong> Por definir</li>
+          </ul>
+        </article>
+        <article class="best-practices-card">
+          <h3>Boas práticas</h3>
+          <ul class="best-practices-list">
+            <li>Registe apenas a informação disponível.</li>
+            <li>Use evidências para tudo o que seja anormal.</li>
+            <li>Complete o processo ao longo da execução.</li>
+          </ul>
+        </article>
+      </aside>
+    </section>
+  </main>
+</div>
+<script>
+  const workshopVehicleInput = document.querySelector("[data-workshop-vehicle-search]");
+  const workshopVehicleId = document.querySelector("[data-workshop-vehicle-id]");
+  const workshopVehicleOptions = document.getElementById("workshop-vehicle-options");
+  let workshopVehicleTimer;
+
+  function syncWorkshopVehicleId() {
+    if (!workshopVehicleInput || !workshopVehicleId || !workshopVehicleOptions) return;
+    const selected = [...workshopVehicleOptions.options].find((option) => option.value === workshopVehicleInput.value);
+    workshopVehicleId.value = selected ? selected.dataset.id : "";
+  }
+
+  if (workshopVehicleInput && workshopVehicleId && workshopVehicleOptions) {
+    workshopVehicleInput.addEventListener("input", () => {
+      workshopVehicleId.value = "";
+      clearTimeout(workshopVehicleTimer);
+      workshopVehicleTimer = setTimeout(async () => {
+        const query = workshopVehicleInput.value.trim();
+        if (!query) {
+          workshopVehicleOptions.innerHTML = "";
+          return;
+        }
+        const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}&context=workshop`);
+        if (!response.ok) return;
+        const data = await response.json();
+        workshopVehicleOptions.innerHTML = "";
+        for (const item of data.items || []) {
+          const option = document.createElement("option");
+          option.value = item.plate;
+          option.label = item.label;
+          option.dataset.id = item.id;
+          workshopVehicleOptions.appendChild(option);
+        }
+        syncWorkshopVehicleId();
+      }, 140);
+    });
+
+    workshopVehicleInput.addEventListener("change", syncWorkshopVehicleId);
+    workshopVehicleInput.form?.addEventListener("submit", (event) => {
+      syncWorkshopVehicleId();
+      if (!workshopVehicleId.value) {
+        event.preventDefault();
+        workshopVehicleInput.focus();
+      }
+    });
+  }
+
+  const otherTitleWrap = document.querySelector("[data-other-title-wrap]");
+  const otherTitleInput = document.querySelector("[data-other-title-input]");
+  const serviceChoices = [...document.querySelectorAll("[data-reception-service-choice]")];
+
+  function syncOtherTitle() {
+    const hasOther = serviceChoices.some((choice) => {
+      const checkbox = choice.querySelector("[data-reception-service-check]");
+      return checkbox?.checked && checkbox.value === "other";
+    });
+    if (otherTitleWrap) {
+      otherTitleWrap.hidden = !hasOther;
+    }
+    if (otherTitleInput) {
+      otherTitleInput.required = hasOther;
+      if (!hasOther) {
+        otherTitleInput.value = "";
+      }
+    }
+  }
+
+  serviceChoices.forEach((choice) => {
+    const checkbox = choice.querySelector("[data-reception-service-check]");
+    const controls = [...choice.querySelectorAll("select, input[type='text'], input[type='hidden']")];
+
+    function syncServiceChoice() {
+      if (!checkbox) return;
+      choice.classList.toggle("is-selected", checkbox.checked);
+      for (const control of controls) {
+        control.disabled = !checkbox.checked;
+      }
+      syncOtherTitle();
+    }
+
+    checkbox?.addEventListener("change", syncServiceChoice);
+    syncServiceChoice();
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>Documentos</h2>
+        <p class="breadcrumb">Registo, classificação e arquivo documental no 365.</p>
+      </div>
+      {% set feedback_source_area = "documents" %}
+      {% set feedback_return_url = "/documents" %}
+      {% set pilot_support_compact = true %}
+      {% include "_pilot_actions.html" %}
+    </header>
+
+    {% if created %}
+      <div class="success">Documento registado.</div>
+    {% endif %}
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+
+    <section class="document-metric-strip" aria-label="Resumo documental">
+      <article><span>Total</span><strong>{{ metrics.total }}</strong></article>
+      <article><span>Por classificar</span><strong>{{ metrics.unclassified }}</strong></article>
+      <article><span>Classificados</span><strong>{{ metrics.classified }}</strong></article>
+      <article><span>Arquivados</span><strong>{{ metrics.archived }}</strong></article>
+    </section>
+
+    <section class="document-cockpit-grid">
+      <a class="document-action-card document-action-create" href="/documents/new">
+        <span class="document-action-icon">+</span>
+        <span>
+          <strong>Nova entrada documental</strong>
+          <p>Registar uma entrada, associar origem e preparar classificação ou arquivo.</p>
+        </span>
+        <em>Registar documento</em>
+      </a>
+      <a class="document-action-card document-action-manage" href="/documents/manage">
+        <span class="document-action-icon">≡</span>
+        <span>
+          <strong>Gestão documental</strong>
+          <p>Pesquisar, classificar, tratar e acompanhar documentos recebidos.</p>
+        </span>
+        <em>Abrir gestão</em>
+      </a>
+      <article class="document-note-card">
+        <p class="eyebrow">Fase atual</p>
+        <h3>Arquivo por links 365</h3>
+        <p>Guardamos caminhos e referências para o Microsoft 365. Os ficheiros binários continuam fora da base de dados.</p>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

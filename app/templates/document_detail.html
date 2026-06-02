@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Arquivo operacional</p>
+        <h2>{{ document.title or document.original_name }}</h2>
+        <span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "documents" %}
+        {% set feedback_entity_type = "document" %}
+        {% set feedback_entity_id = document.id %}
+        {% set feedback_return_url = "/documents/" ~ document.id %}
+        {% set pilot_support_compact = true %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/documents/manage">Voltar</a>
+        {% if linked_email_intake %}
+          <a class="button-link secondary-link" href="/documents/{{ document.id }}/email-original">Ver e-mail original</a>
+        {% endif %}
+        {% if can_manage_document_links and document.external_url %}
+          <a class="button-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if updated %}
+      <div class="success">Documento atualizado.</div>
+    {% endif %}
+
+    <section class="document-workbench document-workbench-single">
+      <section class="document-summary-card">
+        <div class="document-panel-heading">
+          <div>
+            <p class="eyebrow">Resumo</p>
+            <h3>Resumo do documento</h3>
+          </div>
+          <span class="pill status-{{ document.status }}">{{ status_labels.get(document.status, document.status) }}</span>
+        </div>
+        <div class="document-fact-grid">
+          <div><span>Área</span><strong>{{ area_labels.get(document.classification, document.classification or "-") }}</strong></div>
+          <div><span>Tipologia</span><strong>{{ document_type_labels.get(document.document_type, document.document_type or "-") }}</strong></div>
+          <div class="wide"><span>Caminho sugerido</span><strong>{{ document.folder_path or "-" }}</strong></div>
+          <div><span>Origem</span><strong>{{ document.source or "-" }}</strong></div>
+          <div><span>Canal</span><strong>{{ document.entry_channel or "-" }}</strong></div>
+          {% if document.document_date %}<div><span>Data</span><strong>{{ document.document_date }}</strong></div>{% endif %}
+          {% if document.source_subject %}<div class="wide"><span>Assunto original</span><strong>{{ document.source_subject }}</strong></div>{% endif %}
+        </div>
+        <div class="document-source-row">
+          {% if linked_email_intake %}
+            <a class="button-link secondary-link compact-action-link" href="/documents/{{ document.id }}/email-original">Ver e-mail original</a>
+          {% endif %}
+          {% if document.storage_key %}
+            <a class="button-link secondary-link compact-action-link" href="{{ document.storage_key }}" target="_blank" rel="noopener">Abrir original recebido</a>
+          {% endif %}
+          {% if can_manage_document_links and document.external_url %}
+            <a class="button-link secondary-link compact-action-link" href="{{ document.external_url }}" target="_blank" rel="noopener">Abrir arquivo 365</a>
+          {% elif document.external_url %}
+            <span>Arquivado no 365</span>
+          {% endif %}
+        </div>
+        {% if document.source_sender or document.plate or document.supplier_name or document.customer_name %}
+          <details class="compact-details document-extra-details">
+            <summary>Dados adicionais</summary>
+            <div class="document-fact-grid">
+              {% if document.source_sender %}<div><span>Remetente</span><strong>{{ document.source_sender }}</strong></div>{% endif %}
+              {% if document.plate %}<div><span>Matrícula</span><strong>{{ document.plate }}</strong></div>{% endif %}
+              {% if document.supplier_name %}<div><span>Fornecedor</span><strong>{{ document.supplier_name }}</strong></div>{% endif %}
+              {% if document.customer_name %}<div><span>Cliente</span><strong>{{ document.customer_name }}</strong></div>{% endif %}
+            </div>
+          </details>
+        {% endif %}
+      </section>
+
+      <section class="document-treatment-card">
+        <div class="document-panel-heading">
+          <div>
+          <p class="eyebrow">Tratamento documental</p>
+          <h3>Classificar e arquivar</h3>
+          <span>Define a área, tipologia, estado e destino final num único passo.</span>
+          </div>
+        </div>
+        <form method="post" action="/documents/{{ document.id }}/update" class="form-stack">
+          <div class="form-grid two-columns">
+            <label>
+              Área
+              <select name="classification" data-document-area>
+                {% for code, label in areas %}
+                  <option value="{{ code }}" {% if document.classification == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Tipologia
+              <select name="document_type" data-document-type>
+                {% for code, label in document_types %}
+                  <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if document.document_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in statuses %}
+                  <option value="{{ code }}" {% if document.status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            {% if can_manage_document_links %}
+              <label>
+                Link arquivado 365
+                <input type="url" name="url_archive" value="{{ document.external_url or '' }}" placeholder="https://...">
+              </label>
+            {% else %}
+              <input type="hidden" name="url_archive" value="{{ document.external_url or '' }}">
+              <label>
+                Arquivo 365
+                <input type="text" value="{% if document.external_url %}Arquivado{% else %}Por arquivar{% endif %}" disabled>
+              </label>
+            {% endif %}
+          </div>
+          {% if attachments %}
+            <div class="document-treatment-links">
+              <span>Links recebidos para análise</span>
+              <div>
+                {% for attachment in attachments %}
+                  <a href="{{ attachment.url }}" target="_blank" rel="noopener">{{ loop.index }}. {{ attachment.name }}</a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+          <label>
+            Nota de tratamento
+            <textarea name="notes" rows="4"></textarea>
+          </label>
+          <button type="submit">Guardar atualização</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="document-attachments-section document-links-section">
+      <div class="table-heading">
+        <div>
+          <p class="eyebrow">Entrada documental</p>
+          <h3>Links recebidos</h3>
+        </div>
+        <span>{{ attachments|length }} anexos</span>
+      </div>
+      <div class="document-attachment-list">
+        {% for attachment in attachments %}
+          <article class="document-attachment-row">
+            <div class="document-attachment-summary">
+              <div>
+                <p class="eyebrow">{{ attachment.content_type or "Anexo" }}</p>
+                <h4>{{ attachment.name }}</h4>
+                <p class="table-note">{{ attachment.archive_folder_path or document.folder_path or "Destino por confirmar" }}</p>
+              </div>
+              <span class="pill status-{{ attachment.status }}">{{ attachment_status_labels.get(attachment.status, attachment.status) }}</span>
+              <div class="button-row document-attachment-actions">
+                <a class="button-link secondary-link compact-action-link" href="{{ attachment.url }}" target="_blank" rel="noopener">Ver anexo</a>
+                {% if can_manage_document_links and attachment.archive_url %}
+                <a class="button-link secondary-link compact-action-link" href="{{ attachment.archive_url }}" target="_blank" rel="noopener">Ver arquivo</a>
+                {% endif %}
+              </div>
+            </div>
+            {% if attachment.archive_folder_path or attachment.decision_note %}
+              <p class="table-note">
+                {% if attachment.archive_folder_path %}<strong>Destino:</strong> {{ attachment.archive_folder_path }}{% endif %}
+                {% if attachment.decision_note %}<br><strong>Nota:</strong> {{ attachment.decision_note }}{% endif %}
+              </p>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Sem anexos individuais recebidos. Usa o link original/lista enquanto a automação não enviar a lista de anexos.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <h3>Histórico</h3>
+      <div class="timeline">
+        {% for event in events %}
+          <article>
+            <strong>{{ event.action }}</strong>
+            <span>{{ event.created_at }}</span>
+            {% if event.new_value %}
+              <p>{{ event.new_value }}</p>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Sem histórico registado.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  const documentArea = document.querySelector("[data-document-area]");
+  const documentType = document.querySelector("[data-document-type]");
+  function filterDocumentTypes() {
+    if (!documentArea || !documentType) return;
+    const area = documentArea.value;
+    let firstVisible = "";
+    documentType.querySelectorAll("option").forEach((option) => {
+      const optionArea = option.dataset.area;
+      const visible = !optionArea || optionArea === area || option.value === "{{ document.document_type or '' }}";
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option.value;
+    });
+    const selected = documentType.selectedOptions[0];
+    if (selected && selected.hidden && firstVisible) {
+      documentType.value = firstVisible;
+    }
+  }
+  documentArea?.addEventListener("change", filterDocumentTypes);
+  filterDocumentTypes();
+</script>
+{% endblock %}

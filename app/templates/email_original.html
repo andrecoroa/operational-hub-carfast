@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = active_menu or "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">E-mail original</p>
+        <h2>{{ intake.subject or (record.title if record else document.title) }}</h2>
+        {% if record %}
+          <p class="breadcrumb">Centro de Tarefas &gt; Registo rápido &gt; <strong>CF-REG-{{ "%05d"|format(record.id) }}</strong></p>
+        {% else %}
+          <p class="breadcrumb">Documentos &gt; Entrada documental &gt; <strong>{{ breadcrumb_label }}</strong></p>
+        {% endif %}
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="{{ return_url or ('/task-board/quick/' ~ record.id) }}">Voltar</a>
+      </div>
+    </header>
+
+    <section class="section email-original-page">
+      <div class="panel-heading compact-heading">
+        <p class="eyebrow">Origem</p>
+        <h3>Mensagem recebida</h3>
+      </div>
+      <div class="task-info-grid workshop-info-grid">
+        <div><span>Remetente</span><strong>{{ intake.sender or "-" }}</strong></div>
+        <div><span>Caixa de entrada</span><strong>{{ intake.source_mailbox or "-" }}</strong></div>
+        <div><span>Recebido em</span><strong>{{ intake.received_at.strftime("%Y-%m-%d %H:%M") if intake.received_at else "-" }}</strong></div>
+        <div>
+          <span>Link original</span>
+          <strong>
+            {% if intake.email_url %}
+              <a class="table-link" href="{{ intake.email_url }}" target="_blank" rel="noopener noreferrer">Abrir</a>
+            {% else %}
+              -
+            {% endif %}
+          </strong>
+        </div>
+        <div>
+          <span>Origem da entrada</span>
+          <strong>
+            {% if intake.list_item_url %}
+              {% if can_manage_document_links is defined and can_manage_document_links %}
+                <a class="table-link" href="{{ intake.list_item_url }}" target="_blank" rel="noopener noreferrer">Abrir item da lista</a>
+              {% else %}
+                Item da lista associado
+              {% endif %}
+            {% elif intake.attachments_url %}
+              {% if can_manage_document_links is defined and can_manage_document_links %}
+                <a class="table-link" href="{{ intake.attachments_url }}" target="_blank" rel="noopener noreferrer">Abrir origem</a>
+              {% else %}
+                Origem associada
+              {% endif %}
+            {% else %}
+              -
+            {% endif %}
+          </strong>
+        </div>
+      </div>
+
+      <div class="email-original-viewer">
+        <iframe
+          title="Pré-visualização do e-mail original"
+          sandbox=""
+          referrerpolicy="no-referrer"
+          srcdoc="{{ original_body }}"
+        ></iframe>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

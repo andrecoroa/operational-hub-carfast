@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = source_area if source_area in ["dashboard", "tasks", "workshop", "fleet", "imports", "documents", "admin"] else "" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Apoio ao piloto</p>
+        <h2>{{ kind_label }}</h2>
+      </div>
+      {% if return_url %}
+        <a class="button-link secondary-link" href="{{ return_url }}">Voltar</a>
+      {% else %}
+        <a class="button-link secondary-link" href="{{ return_url if return_url else '/workshop' }}">Voltar</a>
+      {% endif %}
+    </header>
+
+    {% if saved %}
+      <div class="success">Registo guardado.</div>
+    {% endif %}
+
+    <section class="detail-grid">
+      <form method="post" action="/pilot-feedback" class="form-panel form-stack task-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Registo</p>
+          <h3>{{ kind_label }}</h3>
+        </div>
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <input type="hidden" name="source_area" value="{{ source_area }}">
+        <input type="hidden" name="entity_type" value="{{ entity_type }}">
+        <input type="hidden" name="entity_id" value="{{ entity_id }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="current_url" value="{{ return_url }}">
+        <label>
+          Assunto
+          <input type="text" name="subject" maxlength="200" placeholder="Pode ficar vazio">
+        </label>
+        <label>
+          Descrição
+          {% if kind == "question" %}
+            <textarea name="body" rows="8" placeholder="Escreve a dúvida ou o ponto onde ficaste bloqueado"></textarea>
+          {% else %}
+            <textarea name="body" rows="8" placeholder="Conta o que correu bem, o que atrapalhou ou o que faltou"></textarea>
+          {% endif %}
+        </label>
+        <label>
+          Link de anexo ou evidência
+          <input type="url" name="attachment_url" placeholder="SharePoint, OneDrive, imagem ou vídeo">
+        </label>
+        <button type="submit">Guardar</button>
+      </form>
+
+      <article class="section">
+        <h3>Contexto</h3>
+        <dl class="detail-list">
+          <div><dt>Tipo</dt><dd>{{ kind_label }}</dd></div>
+          <div><dt>Área</dt><dd>{{ source_area or "-" }}</dd></div>
+          <div><dt>Ligação</dt><dd>{{ entity_type or "-" }} {{ entity_id or "" }}</dd></div>
+        </dl>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

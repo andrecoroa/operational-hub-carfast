@@ -9,15 +9,29 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle
-from app.models.workshop import (
-    WorkshopClosureCheck,
-    WorkshopProcess,
-    WorkshopProcessAlert,
-    WorkshopProcessPhase,
-    WorkshopProcessService,
-    WorkshopTechnicalCheck,
-    WorkshopTechnicalIncident,
-    WorkshopTechnicalReport,
+from app.models.workshop_phased import (
+    WorkshopPhasedClosureCheck as WorkshopClosureCheck,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedProcess as WorkshopProcess,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedProcessAlert as WorkshopProcessAlert,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedProcessPhase as WorkshopProcessPhase,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedProcessService as WorkshopProcessService,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedTechnicalCheck as WorkshopTechnicalCheck,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedTechnicalIncident as WorkshopTechnicalIncident,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
 from app.services.workshop_templates import (
     STELLANTIS_REPORTS,

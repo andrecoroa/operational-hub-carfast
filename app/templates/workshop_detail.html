@@ -1,0 +1,1157 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Processo de oficina</p>
+        <h2>{{ process.title }}</h2>
+        <p class="breadcrumb">Oficina &gt; Gestão de processos &gt; <strong>Processo #{{ process.id }}</strong></p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "workshop" %}
+        {% set feedback_entity_type = "workshop_process" %}
+        {% set feedback_entity_id = process.id %}
+        {% set feedback_return_url = "/workshop/" ~ process.id %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link" href="/workshop/{{ process.id }}/report">Ver relatório</a>
+        <a class="button-link secondary-link" href="/workshop/manage">Voltar</a>
+      </div>
+    </header>
+
+    {% if noted %}
+      <div class="success">Nota gravada.</div>
+    {% endif %}
+    {% if evidence_created %}
+      <div class="success">Evidência registada.</div>
+    {% endif %}
+    {% if technical_reading_created %}
+      <div class="success">Leitura técnica registada.</div>
+    {% endif %}
+    {% if reception_saved %}
+      <div class="success">Receção confirmada.</div>
+    {% endif %}
+    {% if incident_created %}
+      <div class="success">Incidente criado.</div>
+    {% endif %}
+    {% if document_created %}
+      <div class="success">Documento associado ao processo.</div>
+    {% endif %}
+    {% if document_zone_saved %}
+      <div class="success">Zona documental atualizada.</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="workshop-page-grid">
+        <article class="section workshop-summary-card">
+        <div class="panel-heading compact-heading">
+          <p class="eyebrow">Resumo</p>
+          <h3>{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</h3>
+        </div>
+        <div class="pill-row">
+          <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
+          <span class="pill">{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</span>
+          {% if process.priority %}<span class="pill priority-{{ process.priority }}">{{ process.priority }}</span>{% endif %}
+        </div>
+        <div class="task-info-grid workshop-info-grid">
+          <div><span>Entrada</span><strong>{{ process.opened_on or "-" }}</strong></div>
+          <div><span>KM entrada</span><strong>{{ process.km_entry or "-" }}</strong></div>
+          <div><span>Saída prevista</span><strong>{{ process.expected_exit_on or "-" }}</strong></div>
+          <div><span>Decisão</span><strong>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</strong></div>
+          <div><span>Marca / modelo</span><strong>{{ ((vehicle.brand or "") ~ " " ~ (vehicle.model or "") ~ " " ~ (vehicle.version or ""))|trim if vehicle else "-" }}</strong></div>
+          <div><span>Chassi</span><strong>{{ vehicle.vin if vehicle and vehicle.vin else "-" }}</strong></div>
+          <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+          <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+          <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+          <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
+        </div>
+        <div class="task-description-box">
+          <span>Nota inicial / decisão</span>
+          <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
+        </div>
+        </article>
+      <div class="workshop-columns">
+        <div class="workshop-main-column">
+        {% set reception_state = "current" if process.status in ["opening", "reception"] else ("complete" if "reception" in completed_flow_statuses else ("skipped" if current_flow_index > 1 else "pending")) %}
+        <details class="workshop-action-card flow-step-panel flow-step-{{ reception_state }}">
+          <summary>
+            <strong>Receção administrativa</strong>
+            <span>{{ "Atual" if reception_state == "current" else ("Concluído" if reception_state == "complete" else ("Por rever" if reception_state == "skipped" else "Pendente")) }}</span>
+          </summary>
+          {% set phase_record = phase_records.get("reception") %}
+          {% include "_workshop_phase_record.html" %}
+          {% set phase_items = phase_activity.get("reception", []) %}
+          {% include "_workshop_phase_activity.html" %}
+          <form method="post" action="/workshop/{{ process.id }}/reception" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Data/hora de entrada
+                <input type="datetime-local" name="received_at" value="{{ reception_note_data.received_at }}">
+              </label>
+              <label>
+                KM entrada
+                <input type="number" name="km_entry" min="0" step="1" value="{{ process.km_entry or "" }}">
+              </label>
+            </div>
+            <fieldset class="reception-service-picker">
+              <legend>Serviço / motivo</legend>
+              <div class="reception-service-grid">
+                {% for code, label in service_families %}
+                  {% set selected_service = reception_services_by_family.get(code) %}
+                  {% set is_selected = selected_service is not none %}
+                  {% set has_details = code in service_detail_families %}
+                  {% set has_axis = code in service_axis_families %}
+                  <div class="reception-service-choice {{ 'is-selected' if is_selected else '' }}" data-reception-service-choice>
+                    <label class="reception-service-check">
+                      <input type="checkbox" name="service_family_multi" value="{{ code }}" data-reception-service-check {% if is_selected %}checked{% endif %}>
+                      <span>{{ label }}</span>
+                    </label>
+                    <div class="reception-service-fields">
+                      {% if has_details %}
+                        <label>
+                          Detalhe
+                          <select name="service_detail_multi" {% if not is_selected %}disabled{% endif %}>
+                            <option value="">Sem detalhe</option>
+                            {% for detail_code, detail_label, family in service_details %}
+                              {% if family == code or family == "any" %}
+                                <option value="{{ detail_code }}" {% if selected_service and selected_service.service_detail == detail_code %}selected{% endif %}>{{ detail_label }}</option>
+                              {% endif %}
+                            {% endfor %}
+                          </select>
+                        </label>
+                      {% else %}
+                        <input type="hidden" name="service_detail_multi" value="" {% if not is_selected %}disabled{% endif %}>
+                      {% endif %}
+                      {% if has_axis %}
+                        <label>
+                          Eixo / zona
+                          <select name="service_axis_multi" {% if not is_selected %}disabled{% endif %}>
+                            {% for axis_code, axis_label in service_axes %}
+                              <option value="{{ axis_code }}" {% if selected_service and selected_service.service_axis == axis_code %}selected{% endif %}>{{ axis_label }}</option>
+                            {% endfor %}
+                          </select>
+                        </label>
+                      {% else %}
+                        <input type="hidden" name="service_axis_multi" value="not_defined" {% if not is_selected %}disabled{% endif %}>
+                      {% endif %}
+                      <label class="reception-service-note">
+                        Observação
+                        <input type="text" name="service_note_multi" maxlength="255" value="{{ selected_service.note if selected_service and selected_service.note else '' }}" placeholder="Nota curta">
+                      </label>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <label>
+              Observação inicial
+              <textarea name="reception_note" rows="3" placeholder="Condição da viatura, sintomas reportados, documentos entregues...">{{ reception_note_data.reception_note }}</textarea>
+            </label>
+            <button type="submit">Confirmar receção</button>
+          </form>
+        </details>
+
+        <article class="section workshop-flow-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Linha do processo</p>
+            <h3>Passos do serviço</h3>
+          </div>
+          <p class="muted">Abre apenas o passo a preencher. Verde indica passo registado; laranja indica etapa ultrapassada sem registo claro.</p>
+          <div class="phase-action-stack">
+            {% for step in workshop_flow_steps %}
+              {% set step_index = step.index %}
+              {% set step_state = "current" if process.status == step.code else ("complete" if step.code in completed_flow_statuses else ("skipped" if current_flow_index > step_index else "pending")) %}
+              <details class="phase-action-card flow-step-panel flow-step-{{ step_state }}">
+                <summary>
+                  <strong>{{ step.title }}</strong>
+                  <span>{{ "Atual" if step_state == "current" else ("Concluído" if step_state == "complete" else ("Por rever" if step_state == "skipped" else "Pendente")) }}</span>
+                </summary>
+                {% set phase_record = phase_records.get(step.code) %}
+                {% include "_workshop_phase_record.html" %}
+                {% set phase_items = phase_activity.get(step.code, []) %}
+                {% include "_workshop_phase_activity.html" %}
+                {% if step.code in ["bsi_initial", "bsi_final"] %}
+                  <div class="form-stack">
+                    <p>{{ step.description }}</p>
+                    <a class="button-link" href="#bsi-workspace" data-open-details="{{ '#bsi-reading-final-details' if step.code == 'bsi_final' else '#bsi-reading-initial-details' }}">{{ step.button }}</a>
+                  </div>
+                {% else %}
+                  <form method="post" action="/workshop/{{ process.id }}/flow" class="form-stack">
+                    <input type="hidden" name="status" value="{{ step.code }}">
+                    {% if step.mode == "history_check" %}
+                    <input type="hidden" name="decision" value="{{ process.decision or '' }}">
+                    <p>{{ step.description }}</p>
+                    <label>
+                      Resultado da consulta
+                      <select name="history_result" required>
+                        <option value="">Selecionar</option>
+                        <option value="consulted">Histórico consultado</option>
+                        <option value="no_history">Sem histórico disponível</option>
+                      </select>
+                    </label>
+                    <div class="compact-form-grid two-col">
+                      <label>
+                        Folhas de obra de reparação com fatura?
+                        <select name="history_repair_orders_with_invoice" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_repair_orders_with_invoice_detail" rows="2" placeholder="Indica folhas de obra, faturas ou exceções."></textarea>
+                      </label>
+                      <label>
+                        Fatura sem folha de obra?
+                        <select name="history_invoice_without_work_order" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_invoice_without_work_order_detail" rows="2" placeholder="Indica faturas sem suporte ou dúvidas."></textarea>
+                      </label>
+                      <label>
+                        Serviços da folha de obra e faturados correspondem?
+                        <select name="history_services_match_invoice" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="history_services_match_invoice_detail" rows="2" placeholder="Indica diferenças, serviços em dúvida ou validações."></textarea>
+                      </label>
+                    </div>
+                    <label>
+                      Observação geral
+                      <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
+                    </label>
+                    <button type="submit">Guardar verificação de histórico</button>
+                  {% elif step.code == "stellantis_service_box" %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                    <p>{{ step.description }}</p>
+                    <div class="compact-form-grid two-col">
+                      <label>
+                        Plano de manutenção obtido no Service Box?
+                        <select name="servicebox_plan_obtained" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_plan_detail" rows="2" placeholder="Indica plano consultado, data, KM ou referência."></textarea>
+                      </label>
+                      <label>
+                        Simulação por KM e idade efetuada?
+                        <select name="servicebox_simulation_done" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_simulation_detail" rows="2" placeholder="Indica KM, idade, resultado da simulação ou dúvida."></textarea>
+                      </label>
+                      <label>
+                        Campanhas técnicas verificadas?
+                        <select name="servicebox_campaigns_checked" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_campaigns_detail" rows="2" placeholder="Indica se existem campanhas, referência ou documento exportado."></textarea>
+                      </label>
+                      <label>
+                        Documentos de suporte anexados ao processo?
+                        <select name="servicebox_documents_attached" required>
+                          <option value="">Selecionar</option>
+                          <option value="yes">Sim</option>
+                          <option value="no">Não</option>
+                          <option value="na">Não aplicável</option>
+                        </select>
+                      </label>
+                      <label>
+                        Quais / observações
+                        <textarea name="servicebox_documents_detail" rows="2" placeholder="Indica plano, simulação, campanhas ou documentos em falta."></textarea>
+                      </label>
+                    </div>
+                    <label>
+                      Observação geral
+                      <textarea name="decision_note" rows="2" placeholder="Nota curta, se for necessário contexto adicional."></textarea>
+                    </label>
+                    <button type="submit">Guardar verificação Service Box</button>
+                  {% elif step.code == "systematic_checks" %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                    <p>{{ step.description }}</p>
+                    <div class="systematic-checks-grid">
+                      <section class="checklist-panel">
+                        <h4>Segurança</h4>
+                        <label>
+                          Travões verificados sem anomalia?
+                          <select name="check_brakes" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Pneus verificados sem anomalia?
+                          <select name="check_tyres" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Luzes exteriores verificadas sem anomalia?
+                          <select name="check_lights" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Escovas / limpa-vidros verificados sem anomalia?
+                          <select name="check_wipers" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                      </section>
+                      <section class="checklist-panel">
+                        <h4>Mecânica rápida</h4>
+                        <label>
+                          Níveis verificados sem anomalia?
+                          <select name="check_levels" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Sem fugas visíveis?
+                          <select name="check_leaks" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Sem ruídos anormais?
+                          <select name="check_noises" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                        <label>
+                          Bateria / arranque verificados sem anomalia?
+                          <select name="check_battery" required>
+                            <option value="">Selecionar</option>
+                            <option value="yes">Sim</option>
+                            <option value="no">Não</option>
+                            <option value="na">Não aplicável</option>
+                          </select>
+                        </label>
+                      </section>
+                    </div>
+                    <label>
+                      Anomalias / observações
+                      <textarea name="decision_note" rows="3" placeholder="{{ step.placeholder }}"></textarea>
+                    </label>
+                    <button type="submit">{{ step.button }}</button>
+                  {% elif step.code == "decision" %}
+                    <label>
+                      Decisão
+                      <select name="decision" required>
+                        <option value="">Selecionar decisão</option>
+                        {% for code, label in decisions %}
+                          <option value="{{ code }}" {% if process.decision == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <p>{{ step.description }}</p>
+                    <label>
+                      {{ step.field_label }}
+                      <textarea name="decision_note" rows="3" required placeholder="{{ step.placeholder }}"></textarea>
+                    </label>
+                    <button type="submit">{{ step.button }}</button>
+                  {% else %}
+                    <input type="hidden" name="decision" value="{{ step.decision or process.decision or "" }}">
+                    <p>{{ step.description }}</p>
+                    <label>
+                      {{ step.field_label }}
+                      <textarea name="decision_note" rows="3" required placeholder="{{ step.placeholder }}"></textarea>
+                    </label>
+                    <button type="submit">{{ step.button }}</button>
+                    {% endif %}
+                  </form>
+                {% endif %}
+              </details>
+            {% endfor %}
+          </div>
+        </article>
+
+        <details id="bsi-workspace" class="section workshop-bsi-workspace workshop-secondary-details">
+          <summary class="secondary-section-summary">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Registar leitura técnica / BSI</h3>
+              <p class="muted">Zona de preenchimento aberta a partir dos passos de leitura inicial ou final.</p>
+            </div>
+            <span class="action-method-pill">Abrir</span>
+          </summary>
+          <details id="bsi-reading-initial-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI inicial</h3>
+                <p class="muted">Leitura inicial do diagnóstico. Abre apenas o relatório que vais preencher.</p>
+              </div>
+              <span class="action-method-pill">Leitura inicial</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura inicial" %}
+              {% set fixed_reading_phase = "initial" %}
+              {% set reading_allowed_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
+
+          <details id="bsi-reading-final-details" class="bsi-reading-details">
+            <summary>
+              <div>
+                <p class="eyebrow">Diagnóstico</p>
+                <h3>Registo de leitura técnica / BSI final</h3>
+                <p class="muted">Leitura final antes do fecho técnico. Apenas manutenção e lubrificação motor.</p>
+              </div>
+              <span class="action-method-pill">Leitura final</span>
+            </summary>
+            <form method="post" action="/workshop/{{ process.id }}/technical-readings" class="form-stack">
+              {% set reading_submit_label = "Gravar leitura final" %}
+              {% set fixed_reading_phase = "final" %}
+              {% set reading_allowed_types = ["maintenance_info", "lubrication_info"] %}
+              {% include "_workshop_technical_reading_fields.html" %}
+            </form>
+          </details>
+        </details>
+
+      <details id="process-records" class="section workshop-feed workshop-history-panel workshop-secondary-details">
+        <summary class="secondary-section-summary">
+          <div>
+            <p class="eyebrow">Consulta</p>
+            <h3>Histórico completo do processo</h3>
+            <p class="muted">Consulta geral. O trabalho diário deve ser feito nos passos do serviço e nas ações complementares.</p>
+          </div>
+          <span class="action-method-pill">Abrir</span>
+        </summary>
+
+        <details class="workshop-record-group">
+          <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
+          <div class="event-list">
+            {% for service in services %}
+              <article class="event-item service-item">
+                <div>
+                  <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
+                  <span>{{ service_status_labels.get(service.status, service.status) }}</span>
+                </div>
+                <p>
+                  {{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }}
+                  &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}
+                </p>
+                {% if service.note %}
+                  <p>{{ service.note }}</p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem serviços associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Evidências <span>{{ evidences|length }}</span></summary>
+          <div class="event-list">
+            {% for item in evidences %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
+                  <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
+                </div>
+                <p>
+                  {{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }}
+                  &middot; {{ status_labels.get(item.phase, item.phase) }}
+                  &middot; {{ evidence_status_labels.get(item.status, item.status) }}
+                </p>
+                <p>{{ item.description }}</p>
+                {% if item.external_url %}
+                  <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir ficheiro externo</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem evidências registadas.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Leituras técnicas / BSI <span>{{ technical_readings|length }}</span></summary>
+          <div class="event-list">
+            {% for item in technical_readings %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</strong>
+                  <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                </div>
+                <p>
+                  {% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}
+                  {% if item.external_url %} &middot; <a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir leitura externa</a>{% endif %}
+                </p>
+                <p>
+                  <span class="pill status-{{ item.status }}">{{ technical_reading_status_labels.get(item.status, item.status or "Ativa") }}</span>
+                  {% if item.replaced_by_id %}
+                    &middot; Substituída pela leitura #{{ item.replaced_by_id }}
+                  {% endif %}
+                  {% if item.void_reason %}
+                    &middot; Motivo: {{ item.void_reason }}
+                  {% endif %}
+                </p>
+                <p>{{ item.summary or "Sem resumo registado." }}</p>
+                {% if item.data_json %}
+                  <dl class="technical-reading-list">
+                    {% for key, value in item.data_json.items() %}
+                      <div>
+                        <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
+                        <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                      </div>
+                    {% endfor %}
+                  </dl>
+                {% endif %}
+                {% if item.differences_json %}
+                  <div class="technical-diff-box">
+                    <strong>Diferenças face à leitura anterior</strong>
+                    {% for diff in item.differences_json.values() %}
+                      <p>{{ diff.label }}: {{ diff.previous or "-" }} -&gt; {{ diff.current or "-" }}</p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if item.status == "active" and not process.closed_at %}
+                  <div class="button-row">
+                    <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/edit">Editar</a>
+                    <details class="workshop-record-group compact-record-group">
+                      <summary>Corrigir leitura <span>3 opções</span></summary>
+                      <div class="compact-form-grid two-col">
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/replace" class="form-stack">
+                          <label>
+                            Motivo da substituição
+                            <input name="reason" maxlength="255" placeholder="Ex.: relatório errado ou correção necessária">
+                          </label>
+                          <button type="submit" class="secondary-link">Substituir e corrigir</button>
+                        </form>
+                        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ item.id }}/void" class="form-stack">
+                          <label>
+                            Motivo da anulação
+                            <input name="reason" maxlength="255" required placeholder="Obrigatório">
+                          </label>
+                          <button type="submit" class="secondary-link">Anular leitura</button>
+                        </form>
+                      </div>
+                    </details>
+                  </div>
+                {% endif %}
+              </article>
+            {% else %}
+              <p class="muted">Sem leituras técnicas neste processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Incidentes do processo <span>{{ incidents|length }}</span></summary>
+          <div class="event-list">
+            {% for item in incidents %}
+              <article class="event-item">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
+                </div>
+                <p>
+                  {{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }}
+                  &middot; {{ incident_category_labels.get(item.category, item.category or "-") }}
+                  &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}
+                  &middot; {{ incident_status_labels.get(item.status, item.status or "-") }}
+                </p>
+                {% if item.description %}
+                  <p>{{ item.description }}</p>
+                {% endif %}
+                {% for evidence in incident_evidences_by_incident.get(item.id, []) %}
+                  <p class="table-note">
+                    Evidência: {{ incident_evidence_type_labels.get(evidence.evidence_type, evidence.evidence_type) }}
+                    {% if evidence.description %} &middot; {{ evidence.description }}{% endif %}
+                    {% if evidence.external_url %} &middot; <a class="table-link" href="{{ evidence.external_url }}" target="_blank" rel="noreferrer">abrir</a>{% endif %}
+                  </p>
+                {% endfor %}
+              </article>
+            {% else %}
+              <p class="muted">Sem incidentes registados.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Entrada documental <span>{{ documents|length }}</span></summary>
+          <div class="event-list">
+            {% for document in documents %}
+              <article class="event-item">
+                <div>
+                  <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                  <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                </div>
+                <p>
+                  {{ document_area_labels.get(document.classification, document.classification or "-") }}
+                  &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}
+                </p>
+                <p>{{ document.folder_path or "-" }}</p>
+                {% if can_manage_document_links and document.external_url %}
+                  <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>
+                {% endif %}
+              </article>
+            {% else %}
+                <p class="muted">Sem documentos associados a este processo.</p>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="workshop-record-group">
+          <summary>Notas <span>{{ notes|length }}</span></summary>
+          <div class="event-list">
+            {% for item in notes %}
+              <article class="event-item">
+                <div>
+                  <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                  <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+                </div>
+                <p>{{ item.note }}</p>
+              </article>
+            {% else %}
+              <p class="muted">Sem notas adicionais.</p>
+            {% endfor %}
+          </div>
+        </details>
+      </details>
+        </div>
+
+        <aside class="workshop-side-column">
+        <article class="section workshop-feed workshop-complementary-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Ações complementares</p>
+              <h3>Adicionar registo</h3>
+            </div>
+          </div>
+        <div class="workshop-actions">
+        <details class="workshop-action-card">
+          <summary>Serviço</summary>
+          <form method="post" action="/workshop/{{ process.id }}/services" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Serviço / motivo
+                <select name="service_family" data-service-family>
+                  {% for code, label in service_families %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label data-service-detail-wrap hidden>
+                Detalhe
+                <select name="service_detail" data-service-detail>
+                  <option value="">Sem detalhe</option>
+                  {% for code, label, family in service_details %}
+                    <option value="{{ code }}" data-family="{{ family }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label data-service-axis-wrap hidden>
+                Eixo / zona
+                <select name="service_axis">
+                  {% for code, label in service_axes %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in service_statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Observação
+              <textarea name="note" rows="2" placeholder="Nota curta sobre este serviço"></textarea>
+            </label>
+            <button type="submit">Adicionar serviço</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Evidência</summary>
+          <form method="post" action="/workshop/{{ process.id }}/evidences" class="form-stack">
+            <div class="compact-form-grid two-col">
+              <label>
+                Fase
+                <select name="phase">
+                  {% for code, label in statuses %}
+                    <option value="{{ code }}" {% if process.status == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Tipo
+                <select name="evidence_type">
+                  {% for code, label in evidence_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Categoria
+                <select name="anomaly_category">
+                  {% for code, label in evidence_categories %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in evidence_statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Link externo
+              <input name="external_url" type="url" placeholder="https://...">
+            </label>
+            <label>
+              Descrição
+              <textarea name="description" rows="3" placeholder="Pode ficar vazio se ainda não houver detalhe"></textarea>
+            </label>
+            <input name="storage_provider" type="hidden" value="external">
+            <button type="submit">Gravar evidência</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Incidente técnico</summary>
+          <form method="post" action="/workshop/{{ process.id }}/incidents" class="form-stack">
+            <label>
+              Título
+              <input type="text" name="title" maxlength="200" placeholder="Pode ficar vazio">
+            </label>
+            <div class="compact-form-grid two-col">
+              <label>
+                Tipo
+                <select name="incident_type">
+                  {% for code, label in incident_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Categoria
+                <select name="category">
+                  {% for code, label in incident_categories %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Gravidade
+                <select name="severity">
+                  {% for code, label in incident_severities %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Tipo de evidência
+                <select name="evidence_type">
+                  {% for code, label in incident_evidence_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>
+              Descrição
+              <textarea name="description" rows="3" placeholder="Regista o que aconteceu, sem obrigar a preencher campos que ainda não sabes"></textarea>
+            </label>
+            <label>
+              Link da evidência
+              <input name="evidence_url" type="url" placeholder="SharePoint, OneDrive ou outro link">
+            </label>
+            <label>
+              Explicação da evidência
+              <textarea name="evidence_description" rows="2" placeholder="Nota sobre foto, vídeo ou áudio"></textarea>
+            </label>
+            <input name="storage_provider" type="hidden" value="external">
+            <button type="submit">Registar incidente técnico</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card">
+          <summary>Documento</summary>
+          <form method="post" action="/workshop/{{ process.id }}/documents" class="form-stack">
+            <label>
+              Título
+              <input type="text" name="title" maxlength="200" required placeholder="Ex.: BSI inicial, orçamento, fatura, evidência">
+            </label>
+            <div class="compact-form-grid two-col">
+              <label>
+                Tipologia
+                <select name="document_type">
+                  {% for code, label in document_types %}
+                    {% if document_type_areas.get(code) == "workshop" %}
+                      <option value="{{ code }}">{{ label }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  {% for code, label in document_statuses %}
+                    <option value="{{ code }}" {% if code == "received" %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Data do documento
+                <input type="date" name="document_date">
+              </label>
+              <label>
+                Origem
+                <select name="source">
+                  {% for code, label in document_sources %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Fornecedor
+                <input type="text" name="supplier_name" maxlength="200">
+              </label>
+            </div>
+            <label>
+              Link do documento / anexo recebido
+              <input type="url" name="url_original" placeholder="https://...">
+            </label>
+            <label>
+              Link arquivado final
+              <input type="url" name="url_archive" placeholder="https://...">
+            </label>
+            <details class="advanced-panel">
+              <summary>Dados adicionais</summary>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Canal de entrada
+                  <input type="text" name="entry_channel" maxlength="120" placeholder="oficina@carfast.pt">
+                </label>
+                <label>
+                  Remetente
+                  <input type="text" name="source_sender" maxlength="255">
+                </label>
+              </div>
+              <label>
+                Assunto original
+                <input type="text" name="source_subject" maxlength="255">
+              </label>
+              <label>
+                Notas
+                <textarea name="notes" rows="2"></textarea>
+              </label>
+            </details>
+            <button type="submit">Adicionar documento</button>
+          </form>
+        </details>
+
+        <details id="workshop-note-action" class="workshop-action-card">
+          <summary>Nota</summary>
+          <form method="post" action="/workshop/{{ process.id }}/notes" class="form-stack">
+            <label>
+              Nota
+              <textarea name="note" rows="4" placeholder="Registar apenas quando houver informação nova"></textarea>
+            </label>
+            <button type="submit">Gravar nota</button>
+          </form>
+        </details>
+
+        <details class="workshop-action-card workshop-close-card">
+          <summary>Fecho</summary>
+          {% if process.closed_at %}
+            <p class="muted">Processo fechado em {{ process.closed_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+          {% else %}
+            <form method="post" action="/workshop/{{ process.id }}/close" class="form-stack">
+              <button type="submit">Fechar processo</button>
+            </form>
+          {% endif %}
+        </details>
+        </div>
+        </article>
+
+        <article class="section workshop-feed workshop-alert-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Controlo</p>
+              <h3>Alertas automáticos</h3>
+            </div>
+            <span class="action-method-pill">{{ workshop_alerts|length }}</span>
+          </div>
+          <div class="workshop-alert-list">
+            {% for alert in workshop_alerts %}
+              <article class="workshop-alert-item alert-{{ alert.severity }}">
+                <div>
+                  <strong>{{ alert.title }}</strong>
+                  {% if alert.action %}<span>{{ alert.action }}</span>{% endif %}
+                </div>
+                <p>{{ alert.detail }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </article>
+
+        <article class="section workshop-feed workshop-document-zone-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Arquivo</p>
+              <h3>Entrada documental do processo</h3>
+            </div>
+            {% if process.document_folder_url %}
+              <a class="button-link secondary-link" href="{{ process.document_folder_url }}" target="_blank" rel="noopener">Abrir pasta 365</a>
+            {% endif %}
+          </div>
+          <details class="workshop-record-group">
+            <summary>Zona documental <span>{{ documents|length }}</span></summary>
+            <div class="task-description-box">
+              <span>Caminho sugerido</span>
+              <p>{{ suggested_document_folder_path }}</p>
+            </div>
+            <form method="post" action="/workshop/{{ process.id }}/document-zone" class="form-stack compact-form">
+              <label>
+                Caminho de arquivo
+                <input type="text" name="document_folder_path" value="{{ suggested_document_folder_path }}">
+              </label>
+              <label>
+                Link da pasta 365
+                <input type="url" name="document_folder_url" value="{{ process.document_folder_url or '' }}" placeholder="https://...">
+              </label>
+              <button type="submit">Guardar zona documental</button>
+            </form>
+          </details>
+        </article>
+
+        <article class="section workshop-feed workshop-vehicle-history-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Diagnóstico</p>
+              <h3>Histórico técnico da viatura</h3>
+            </div>
+            {% if vehicle %}
+              <a class="button-link secondary-link" href="/workshop/{{ process.id }}/technical-history">Consultar relatórios</a>
+            {% endif %}
+          </div>
+          <details class="workshop-record-group">
+            <summary>Leituras anteriores <span>{{ previous_technical_readings|length }}</span></summary>
+            <div class="event-list">
+              {% for item in previous_technical_readings %}
+                <article class="event-item">
+                  <div>
+                    <strong>
+                      {% if item.process_id %}
+                        <a class="table-link" href="/workshop/{{ item.process_id }}">{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</a>
+                      {% else %}
+                        {{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}
+                      {% endif %}
+                    </strong>
+                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                  </div>
+                  <p>
+                    {% if item.process_id %}Processo #{{ item.process_id }}{% else %}Histórico importado{% endif %}
+                    {% if item.odometer_km %} &middot; {{ item.odometer_km }} km{% endif %}
+                  </p>
+                  <p>{{ item.summary or "Sem resumo registado." }}</p>
+                  {% if item.differences_json %}
+                    <p class="table-note">Diferenças registadas: {{ item.differences_json|length }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem leituras técnicas anteriores para esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  const serviceFamiliesWithAxis = new Set(["brakes", "tyres"]);
+
+  document.querySelectorAll("[data-open-details]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const target = document.querySelector(trigger.dataset.openDetails);
+      if (target) {
+        const bsiWorkspace = document.getElementById("bsi-workspace");
+        if (bsiWorkspace && target.closest("#bsi-workspace")) {
+          bsiWorkspace.open = true;
+        }
+        target.open = true;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-service-family]").forEach((familySelect) => {
+    const form = familySelect.closest("form");
+    const detailSelect = form?.querySelector("[data-service-detail]");
+    const detailWrap = form?.querySelector("[data-service-detail-wrap]");
+    const axisWrap = form?.querySelector("[data-service-axis-wrap]");
+    const axisSelect = form?.querySelector("select[name='service_axis']");
+    const allOptions = detailSelect ? [...detailSelect.options].map((option) => option.cloneNode(true)) : [];
+    const currentDetail = familySelect.dataset.currentDetail || "";
+
+    function syncDetails() {
+      if (!detailSelect) return;
+      const selectedFamily = familySelect.value;
+      const hasSpecificDetails = allOptions.some((option) => {
+        return option.value && option.dataset.family === selectedFamily;
+      });
+
+      if (detailWrap) {
+        detailWrap.hidden = !hasSpecificDetails;
+      }
+
+      detailSelect.innerHTML = "";
+      for (const option of allOptions) {
+        const family = option.dataset.family;
+        if (!option.value || family === selectedFamily || (family === "any" && hasSpecificDetails)) {
+          detailSelect.appendChild(option.cloneNode(true));
+        }
+      }
+      if (!hasSpecificDetails) {
+        detailSelect.value = "";
+      } else if (currentDetail && [...detailSelect.options].some((option) => option.value === currentDetail)) {
+        detailSelect.value = currentDetail;
+      }
+
+      const hasAxis = serviceFamiliesWithAxis.has(selectedFamily);
+      if (axisWrap) {
+        axisWrap.hidden = !hasAxis;
+      }
+      if (!hasAxis && axisSelect) {
+        axisSelect.value = "not_defined";
+      }
+    }
+
+    familySelect.addEventListener("change", syncDetails);
+    syncDetails();
+  });
+
+  document.querySelectorAll("[data-reception-service-choice]").forEach((choice) => {
+    const checkbox = choice.querySelector("[data-reception-service-check]");
+    const controls = [...choice.querySelectorAll("select, input[type='text'], input[type='hidden']")];
+
+    function syncReceptionServiceChoice() {
+      if (!checkbox) return;
+      choice.classList.toggle("is-selected", checkbox.checked);
+      for (const control of controls) {
+        control.disabled = !checkbox.checked;
+      }
+    }
+
+    checkbox?.addEventListener("change", syncReceptionServiceChoice);
+    syncReceptionServiceChoice();
+  });
+
+  document.querySelectorAll("[data-reading-type]").forEach((readingTypeSelect) => {
+    const form = readingTypeSelect.closest("form");
+    const panels = form ? [...form.querySelectorAll("[data-reading-panel]")] : [];
+    const cards = form ? [...form.querySelectorAll("[data-reading-card]")] : [];
+    const submitButton = form ? form.querySelector("[data-reading-submit]") : null;
+
+    function syncReadingPanels() {
+      const selectedType = readingTypeSelect.value;
+      for (const panel of panels) {
+        const allowedTypes = (panel.dataset.readingPanel || "").split(/\s+/).filter(Boolean);
+        const isRelevant = allowedTypes.includes(selectedType);
+        panel.hidden = !isRelevant;
+        if ("open" in panel) {
+          panel.open = isRelevant;
+        }
+      }
+      for (const card of cards) {
+        const isActive = card.dataset.readingCard === selectedType;
+        const isRegistered = card.dataset.registered === "1";
+        const status = card.querySelector("[data-reading-card-status]");
+        card.classList.toggle("is-active", isActive);
+        card.classList.toggle("is-registered", isRegistered && !isActive);
+        if (status) {
+          status.textContent = isActive ? "Atual" : (isRegistered ? "Registado" : "Pendente");
+        }
+      }
+      const activeCard = cards.find((card) => card.dataset.readingCard === selectedType);
+      if (submitButton && activeCard) {
+        submitButton.textContent = `Gravar ${activeCard.dataset.readingLabel.toLowerCase()}`;
+      }
+    }
+
+    for (const card of cards) {
+      card.addEventListener("click", () => {
+        readingTypeSelect.value = card.dataset.readingCard;
+        readingTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    readingTypeSelect.addEventListener("change", syncReadingPanels);
+    syncReadingPanels();
+  });
+</script>
+{% endblock %}

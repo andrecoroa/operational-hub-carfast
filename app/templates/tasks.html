@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ workspace_config.eyebrow }}</p>
+        <h2>{{ workspace_config.title }}</h2>
+        <p class="breadcrumb">{{ workspace_config.breadcrumb }} &gt; <strong>Gestão</strong></p>
+      </div>
+      <div class="topbar-tools">
+        {% if can_write_workspace %}
+          <a class="button-link secondary-link" href="{{ new_quick_url }}">Registo rápido</a>
+          <a class="button-link secondary-link" href="{{ new_task_url }}">Nova tarefa</a>
+        {% endif %}
+        {% set feedback_source_area = "tasks" %}
+        {% set feedback_return_url = manage_url %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if created %}
+      <div class="success">Tarefa criada.</div>
+    {% endif %}
+    {% if closed %}
+      <div class="success">Registo fechado.</div>
+    {% endif %}
+    {% if quick_created %}
+      <div class="success">Registo rápido criado.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    {% if feedback_saved %}
+      <div class="success">Registo de piloto guardado.</div>
+    {% endif %}
+
+    <section class="metric-grid task-metrics">
+      <a class="metric" href="{{ manage_url }}">
+        <span class="metric-icon green">✓</span>
+        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Em aberto</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=unassigned">
+        <span class="metric-icon">?</span>
+        <span class="metric-detail"><strong>{{ metrics.unassigned }}</strong><span>Sem responsável</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=urgent">
+        <span class="metric-icon warn">!</span>
+        <span class="metric-detail"><strong>{{ metrics.urgent }}</strong><span>Urgentes</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=overdue">
+        <span class="metric-icon amber">!</span>
+        <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Vencidas</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=due_today">
+        <span class="metric-icon blue">✓</span>
+        <span class="metric-detail"><strong>{{ metrics.due_today }}</strong><span>Limite hoje</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=archived">
+        <span class="metric-icon">%</span>
+        <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
+      </a>
+      <a class="metric" href="{{ manage_url }}?view=planned">
+        <span class="metric-icon blue">↷</span>
+        <span class="metric-detail"><strong>{{ metrics.planned }}</strong><span>Planeadas</span></span>
+      </a>
+    </section>
+
+    {% set current_view_label = "Em aberto" %}
+    {% set current_view_count = metrics.open %}
+    {% if filters.view == "mine" %}
+      {% set current_view_label = "Minhas" %}
+      {% set current_view_count = metrics.mine %}
+    {% elif filters.view == "with_subtasks" %}
+      {% set current_view_label = "Com subtarefas" %}
+      {% set current_view_count = metrics.with_subtasks %}
+    {% elif filters.view == "subtasks" %}
+      {% set current_view_label = "Subtarefas" %}
+      {% set current_view_count = metrics.open_subtasks %}
+    {% elif filters.view == "all" %}
+      {% set current_view_label = "Todas" %}
+      {% set current_view_count = metrics.all %}
+    {% elif filters.view == "archived" %}
+      {% set current_view_label = "Arquivo" %}
+      {% set current_view_count = metrics.archived %}
+    {% elif filters.view == "planned" %}
+      {% set current_view_label = "Planeadas" %}
+      {% set current_view_count = metrics.planned %}
+    {% endif %}
+    {% set active_filter_count = (1 if filters.status else 0) + (1 if filters.source else 0) + (1 if filters.station else 0) %}
+
+    <form method="get" action="{{ manage_url }}" class="task-command-row" aria-label="Pesquisa e filtros">
+      {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
+      {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
+      <input type="hidden" name="content" value="{{ filters.content }}">
+      <details class="task-view-menu">
+        <summary>Vista: <strong>{{ current_view_label }} {{ current_view_count }}</strong></summary>
+        <div class="task-view-options">
+          <a href="{{ manage_url }}?content={{ filters.content }}" class="{% if not filters.view %}active{% endif %}"><span>Em aberto</span><strong>{{ metrics.open }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=with_subtasks" class="{% if filters.view == 'with_subtasks' %}active{% endif %}"><span>Com subtarefas</span><strong>{{ metrics.with_subtasks }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=subtasks" class="{% if filters.view == 'subtasks' %}active{% endif %}"><span>Subtarefas</span><strong>{{ metrics.open_subtasks }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
+          <a href="{{ manage_url }}?content={{ filters.content }}&view=planned" class="{% if filters.view == 'planned' %}active{% endif %}"><span>Planeadas</span><strong>{{ metrics.planned }}</strong></a>
+        </div>
+      </details>
+
+      <label class="task-search-box">
+        <span>Pesquisa</span>
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar...">
+        <button type="submit" aria-label="Pesquisar">⌕</button>
+      </label>
+
+      <div class="task-category-tabs" aria-label="Classificação">
+        <span>Classificação</span>
+        <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}" class="{% if not filters.category %}active{% endif %}">
+          Todas <strong>{{ category_counts.get("all", 0) }}</strong>
+        </a>
+        {% for code, label in task_categories %}
+          <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}&category={{ code }}" class="{% if filters.category == code %}active{% endif %}">
+            {{ label }} <strong>{{ category_counts.get(code, 0) }}</strong>
+          </a>
+        {% endfor %}
+      </div>
+
+      <div class="task-content-tabs" aria-label="Conteúdo">
+        <span>Conteúdo</span>
+        <button type="submit" name="content" value="tasks" class="{% if filters.content == 'tasks' %}active{% endif %}">
+          Tarefas <strong>{{ task_result_count }}</strong>
+        </button>
+        <button type="submit" name="content" value="quick" class="{% if filters.content == 'quick' %}active{% endif %}">
+          Registos rápidos <strong>{{ quick_records|length }}</strong>
+        </button>
+        <button type="submit" name="content" value="all" class="{% if filters.content == 'all' %}active{% endif %}">
+          Tudo <strong>{{ task_result_count + quick_records|length }}</strong>
+        </button>
+      </div>
+
+      <details class="task-filter-drawer">
+        <summary>Filtros <strong>{{ active_filter_count }}</strong></summary>
+        <div class="task-filter-popover">
+          <label>
+            Estado
+            <select name="status">
+              <option value="">Todos</option>
+              {% for code, label in task_statuses %}
+                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% for code, label in quick_record_statuses %}
+                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Origem
+            <select name="source">
+              <option value="">Todas</option>
+              {% for code, label in task_sources %}
+                <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estação
+            <input list="stations" name="station" value="{{ filters.station }}">
+            <datalist id="stations">
+              {% for item in stations %}
+                <option value="{{ item }}"></option>
+              {% endfor %}
+            </datalist>
+          </label>
+          <div class="filter-actions">
+            <button type="submit">Aplicar</button>
+            <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
+          </div>
+        </div>
+      </details>
+    </form>
+
+    <section class="task-management-stack">
+      {% if filters.content in ["tasks", "all"] %}
+      <div class="task-management-column">
+        <div class="task-board-section-heading">
+          <div>
+            <p class="eyebrow">Execução</p>
+            <h3>{% if filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas abertas{% endif %}</h3>
+          </div>
+          <span>{{ task_result_count }} tarefas nesta vista · {{ metrics.open_subtasks }} subtarefas abertas</span>
+        </div>
+
+        <section class="task-board-groups task-management-groups">
+          <article class="table-shell task-type-board">
+            <div class="table-heading task-type-heading">
+              <div>
+                <p class="eyebrow">{% if filters.view == "archived" %}Arquivo{% elif filters.view == "all" %}Todas{% elif filters.view == "mine" %}Minhas{% elif filters.view == "unassigned" %}Sem responsável{% elif filters.view == "with_subtasks" %}Com subtarefas{% elif filters.view == "subtasks" %}Subtarefas{% else %}Em aberto{% endif %}</p>
+                <h3>{% if filters.view == "planned" %}Tarefas planeadas{% elif filters.view == "subtasks" %}Subtarefas{% elif filters.view == "with_subtasks" %}Tarefas com subtarefas{% else %}Tarefas{% endif %}</h3>
+              </div>
+              <span>{{ task_result_count }}</span>
+            </div>
+            <div class="task-list-header task-list-header-main" aria-hidden="true">
+              <span>ID / Relação / Classificação</span>
+              <span>Assunto / Descrição</span>
+              <span>Intervenientes</span>
+              <span>Datas</span>
+              <span>Situação</span>
+              <span>⚙</span>
+            </div>
+            <div class="task-board-list">
+              {% for task in tasks %}
+                {% set created_user = user_by_id.get(task.created_by_id) if task.created_by_id else none %}
+                {% set open_subtask_count = subtask_counts_by_parent.get(task.id, 0) %}
+                {% set parent_task = parent_tasks_by_id.get(task.parent_task_id) if task.parent_task_id else none %}
+                <article class="task-card-row task-row-fixed {% if open_subtask_count %}has-open-subtasks{% endif %}">
+                  <div class="task-card-main">
+                    <div class="task-identity-block">
+                      <a class="table-link task-code-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a>
+                      {% if open_subtask_count %}
+                        <span class="task-subtask-alert">{{ open_subtask_count }} subtarefa{{ "" if open_subtask_count == 1 else "s" }} aberta{{ "" if open_subtask_count == 1 else "s" }}</span>
+                      {% elif task.parent_task_id %}
+                        <span>Subtarefa</span>
+                      {% else %}
+                        <span>Sem subtarefas</span>
+                      {% endif %}
+                      <span class="task-category-pill category-{{ task.category or 'other' }}">{{ task_category_labels.get(task.category, task.category or "Outro") }}</span>
+                    </div>
+                    <div class="task-card-content">
+                      <p class="task-row-title">{{ task.title }}</p>
+                      {% if task.description %}
+                        <p class="table-note table-note-clamp">{{ task.description }}</p>
+                      {% else %}
+                        <p class="table-note table-note-clamp">Sem descrição registada.</p>
+                      {% endif %}
+                      <p class="table-note">
+                        {% if task.customer_name %}{{ task.customer_name }}{% endif %}
+                        {% if task.plate %}{% if task.customer_name %} &middot; {% endif %}{{ task.plate }}{% endif %}
+                        {% if task.station %}{% if task.customer_name or task.plate %} &middot; {% endif %}{{ task.station }}{% endif %}
+                        {% if task.reservation_number %}{% if task.customer_name or task.plate or task.station %} &middot; {% endif %}Reserva {{ task.reservation_number }}{% endif %}
+                        {% if task.contract_number %}{% if task.customer_name or task.plate or task.station or task.reservation_number %} &middot; {% endif %}Contrato {{ task.contract_number }}{% endif %}
+                        {% if not task.customer_name and not task.plate and not task.station and not task.reservation_number and not task.contract_number %}Sem contexto associado{% endif %}
+                      </p>
+                      {% if parent_task %}
+                        <p class="table-note task-context-line">
+                          <a class="task-parent-link" href="/task-board/{{ parent_task.id }}">Mãe: CF-TASK-{{ "%05d"|format(parent_task.id) }}</a>
+                        </p>
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% set assigned_user = user_by_id.get(task.assigned_to_id) if task.assigned_to_id else none %}
+                  {% set assigned_team = team_by_id.get(task.team_id) if task.team_id else none %}
+                  {% set delegated_user = user_by_id.get(task.delegated_to_user_id) if task.delegated_to_user_id else none %}
+                  {% set delegated_team = team_by_id.get(task.delegated_to_team_id) if task.delegated_to_team_id else none %}
+                  {% set waiting_user = user_by_id.get(task.waiting_for_user_id) if task.waiting_for_user_id else none %}
+                  {% set waiting_team = team_by_id.get(task.waiting_for_team_id) if task.waiting_for_team_id else none %}
+                  <div class="task-card-side">
+                    <span class="task-board-owner">
+                      {% if filters.view == "mine" and current_user %}
+                        {% if task.assigned_to_id == current_user.id %}
+                          <em class="task-my-role">Responsável</em>
+                        {% elif task.delegated_to_user_id == current_user.id %}
+                          <em class="task-my-role">Delegada a mim</em>
+                        {% elif task.waiting_for_user_id == current_user.id %}
+                          <em class="task-my-role">A aguardar por mim</em>
+                        {% endif %}
+                      {% endif %}
+                      <small>Criada por: {{ created_user.name if created_user else "Sistema" }}</small>
+                      <strong>Resp.: {{ assigned_user.name if assigned_user else (assigned_team.name if assigned_team else "Por atribuir") }}</strong>
+                      {% if delegated_user %}
+                        <small>Delegada a: {{ delegated_user.name }}</small>
+                      {% elif delegated_team %}
+                        <small>Delegada a: {{ delegated_team.name }}</small>
+                      {% endif %}
+                      {% if task.status == "waiting" and waiting_user %}
+                        <small>A aguardar por: {{ waiting_user.name }}</small>
+                      {% elif task.status == "waiting" and waiting_team %}
+                        <small>A aguardar por: {{ waiting_team.name }}</small>
+                      {% endif %}
+                    </span>
+                    <span class="task-board-dates">
+                      <small>Criada: {{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "-" }}</small>
+                      <strong>Limite: {{ task.due_on or "Sem SLA" }}</strong>
+                    </span>
+                    <span class="task-board-state">
+                      <span class="task-board-priority"><i class="task-board-dot {{ task.priority }}"></i>{{ priority_labels.get(task.priority, task.priority or "Normal") }}</span>
+                      <span class="pill status-{{ task.status }}">{{ task_status_labels.get(task.status, task.status) }}</span>
+                    </span>
+                    <a class="task-board-open" href="/task-board/{{ task.id }}" aria-label="Abrir tarefa">›</a>
+                  </div>
+                </article>
+              {% else %}
+                <div class="task-board-empty">
+                  <span>✓</span>
+                  <p>Sem tarefas.</p>
+                  <small>Tudo em dia nesta vista.</small>
+                </div>
+              {% endfor %}
+            </div>
+          </article>
+        </section>
+      </div>
+      {% endif %}
+
+      {% if filters.content in ["quick", "all"] %}
+      <section class="task-management-column quick-record-column" id="registos-rapidos">
+        <div class="task-board-section-heading">
+          <div>
+            <p class="eyebrow">Entrada leve</p>
+            <h3>Registos rápidos</h3>
+          </div>
+          <span>{{ quick_records|length }} registos</span>
+        </div>
+
+        <section class="task-board-groups task-management-groups">
+          <article class="table-shell task-type-board quick-record-board">
+            <div class="table-heading task-type-heading">
+              <div>
+                <p class="eyebrow">Triagem</p>
+                <h3>Registos rápidos</h3>
+              </div>
+              <a href="#registos-rapidos">Ver todos</a>
+            </div>
+            <div class="quick-record-header" aria-hidden="true">
+              <span>ID</span>
+              <span>Assunto</span>
+              <span>Tipo</span>
+              <span>Prioridade</span>
+              <span>Estado</span>
+              <span>Data</span>
+              <span></span>
+            </div>
+            <div class="task-board-list">
+              {% for record in quick_records %}
+                <article class="quick-record-row">
+                  <a class="table-link task-code-link quick-record-code" href="/task-board/quick/{{ record.id }}">CF-REG-{{ "%05d"|format(record.id) }}</a>
+                  <span class="quick-record-title">{{ record.title }}</span>
+                  <span class="quick-record-type">{{ quick_record_type_labels.get(record.record_type, record.record_type or "Outro") }}</span>
+                  <span class="task-board-priority"><i class="task-board-dot {{ record.priority }}"></i>{{ priority_labels.get(record.priority, record.priority or "Normal") }}</span>
+                  <span class="pill status-{{ record.status }}">{{ quick_record_status_labels.get(record.status, record.status) }}</span>
+                  <span class="task-board-sla">{{ record.created_at.strftime("%Y-%m-%d") if record.created_at else "-" }}</span>
+                  <a class="task-board-open" href="/task-board/quick/{{ record.id }}" aria-label="Abrir registo rápido">›</a>
+                </article>
+              {% else %}
+                <div class="task-board-empty">
+                  <span>✓</span>
+                  <p>Sem registos rápidos.</p>
+                  <small>Tudo em dia nesta vista.</small>
+                </div>
+              {% endfor %}
+            </div>
+          </article>
+        </section>
+      </section>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

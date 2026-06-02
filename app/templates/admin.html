@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "admin" %}
+  {% include "_sidebar.html" %}
+  <main class="content admin-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Configuração</p>
+        <h2>Administração</h2>
+        <p class="breadcrumb">Utilizadores, acessos, perfis e feedback do piloto.</p>
+      </div>
+      {% set feedback_source_area = "admin" %}
+      {% set feedback_return_url = "/admin" %}
+      {% include "_pilot_actions.html" %}
+    </header>
+
+    <div class="admin-notices">
+    {% if user_created %}
+      <div class="success">Utilizador criado.</div>
+    {% endif %}
+    {% if access_updated %}
+      <div class="success">Acessos do utilizador atualizados.</div>
+    {% endif %}
+    {% if permissions_updated %}
+      <div class="success">Permissões do perfil atualizadas.</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+    </div>
+
+    <section class="metric-grid admin-metrics">
+      <div class="metric">
+        <span class="metric-icon blue">#</span>
+        <span class="metric-detail"><strong>{{ users|length }}</strong><span>Utilizadores</span><small>Registos na plataforma</small></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon green">✓</span>
+        <span class="metric-detail"><strong>{{ roles|length }}</strong><span>Perfis</span><small>Permissões por função</small></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon amber">!</span>
+        <span class="metric-detail"><strong>{{ pilot_feedback_counts.open }}</strong><span>Feedback aberto</span><small>{{ pilot_feedback_counts.total }} registos no piloto</small></span>
+      </div>
+    </section>
+
+    <section class="admin-overview-grid">
+      <article class="section admin-summary-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Sessão atual</p>
+            <h3>{{ user.name }}</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          <div><dt>Email</dt><dd>{{ user.email }}</dd></div>
+        </dl>
+      </article>
+
+      <article class="section admin-summary-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Contexto</p>
+            <h3>Áreas autorizadas</h3>
+          </div>
+        </div>
+        <div class="pill-row">
+          {% for unit in authorized_units %}
+            <span class="pill">{{ unit }}</span>
+          {% else %}
+            <span class="muted">Sem áreas configuradas.</span>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Estado atual</p>
+          <h3>Permissões e acessos</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-high">Ativo</span>
+            <span class="pill muted-pill">Por perfil</span>
+          </div>
+          <h4>Permissões principais</h4>
+          <p>O acesso aos módulos principais já é controlado por permissões do perfil: Dashboard, Tarefas, Oficina, Frota, Documentos, Importações e Administração.</p>
+          <span class="implementation-status">Servidor + menu lateral</span>
+        </article>
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-high">Ativo</span>
+            <span class="pill muted-pill">Por utilizador</span>
+          </div>
+          <h4>Áreas autorizadas</h4>
+          <p>Cada utilizador já pode ter áreas autorizadas próprias. Esta camada está pronta para limitar o contexto onde atua.</p>
+          <span class="implementation-status">Gestão disponível</span>
+        </article>
+        <article class="implementation-card">
+          <div>
+            <span class="pill priority-normal">Próximo</span>
+            <span class="pill muted-pill">Camada fina</span>
+          </div>
+          <h4>Filtros por área e ação</h4>
+          <p>Falta aplicar restrições finas por centro de tarefas, oficina, estação, equipa, ação sensível e dados visíveis.</p>
+          <span class="implementation-status">A implementar por módulo</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="detail-grid admin-management-grid">
+      <form method="post" action="/admin/users" class="form-panel form-stack task-form admin-create-user">
+        <div class="panel-heading">
+          <p class="eyebrow">Piloto</p>
+          <h3>Criar utilizador</h3>
+        </div>
+        <label>
+          Nome
+          <input type="text" name="name" maxlength="160" placeholder="Ex.: Paulo Azevedo" required>
+        </label>
+        <label>
+          Email
+          <input type="email" name="email" autocomplete="email" required>
+        </label>
+        <label>
+          Password temporária
+          <input type="text" name="password" minlength="8" required>
+        </label>
+        <label>
+          Perfil
+          <select name="role_code">
+            {% for code, label in admin_user_roles %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Criar utilizador</button>
+      </form>
+
+      <article class="section admin-section admin-users-panel">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Acessos</p>
+            <h3>Utilizadores</h3>
+          </div>
+          <span class="pill muted-pill">{{ users|length }} registos</span>
+        </div>
+        <div class="event-list admin-user-list">
+          {% for item in users %}
+            <article class="event-item">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span>{{ "Ativo" if item.active else "Inativo" }}</span>
+              </div>
+              <p>{{ item.email }}</p>
+              <details class="workshop-record-group">
+                <summary>Gerir acessos <span>{{ user_roles_by_id.get(item.id, [])|length }} perfis</span></summary>
+                <form method="post" action="/admin/users/{{ item.id }}/access" class="form-stack">
+                  <label class="checkbox-row">
+                    <input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}>
+                    Utilizador ativo
+                  </label>
+                  <div>
+                    <p class="eyebrow">Perfis</p>
+                    <div class="pill-row">
+                      {% for role in roles %}
+                        <label class="pill muted-pill">
+                          <input type="checkbox" name="role_codes" value="{{ role.code }}" {% if role.code in user_roles_by_id.get(item.id, []) %}checked{% endif %}>
+                          {{ role.name }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div>
+                    <p class="eyebrow">Áreas autorizadas</p>
+                    <div class="pill-row">
+                      {% for unit in organizational_units %}
+                        <label class="pill muted-pill">
+                          <input type="checkbox" name="unit_codes" value="{{ unit.code }}" {% if unit.code in user_units_by_id.get(item.id, []) %}checked{% endif %}>
+                          {{ unit.name }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <button type="submit">Guardar acessos</button>
+                </form>
+              </details>
+            </article>
+          {% else %}
+            <p class="muted">Sem utilizadores.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Segurança</p>
+          <h3>Perfis e permissões</h3>
+        </div>
+      </div>
+      <p class="muted">As permissões são atribuídas por perfil. O perfil Admin mantém todas as permissões por segurança.</p>
+      <div class="event-list admin-role-list">
+        {% for role in roles %}
+          <article class="event-item">
+            <div>
+              <strong>{{ role.name }}</strong>
+              <span>{{ role.code }}</span>
+            </div>
+            <form method="post" action="/admin/roles/{{ role.id }}/permissions" class="form-stack">
+              <div class="pill-row">
+                {% for permission in permissions_catalog %}
+                  <label class="pill muted-pill">
+                    <input
+                      type="checkbox"
+                      name="permission_codes"
+                      value="{{ permission.code }}"
+                      {% if role.code == "admin" or permission.code in role_permissions_by_id.get(role.id, []) %}checked{% endif %}
+                      {% if role.code == "admin" %}disabled{% endif %}
+                    >
+                    {{ permission.code }}
+                  </label>
+                {% endfor %}
+              </div>
+              {% if role.code != "admin" %}
+                <button type="submit">Guardar permissões</button>
+              {% else %}
+                <p class="muted">Admin protegido contra alterações acidentais.</p>
+              {% endif %}
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Roadmap interno</p>
+          <h3>Implementações previstas</h3>
+        </div>
+      </div>
+      <div class="implementation-board">
+        {% for item in implementation_roadmap %}
+          <article class="implementation-card">
+            <div>
+              <span class="pill muted-pill">{{ item.area }}</span>
+              <span class="pill priority-{{ "high" if item.priority == "Alta" else "normal" }}">{{ item.priority }}</span>
+            </div>
+            <h4>{{ item.title }}</h4>
+            <p>{{ item.summary }}</p>
+            <span class="implementation-status">{{ item.status }}</span>
+          </article>
+        {% else %}
+          <p class="muted">Sem implementações previstas.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Piloto</p>
+          <h3>Feedback do piloto</h3>
+        </div>
+      </div>
+      <div class="metric-grid compact-metrics">
+        <div class="metric">
+          <span>Total</span>
+          <strong>{{ pilot_feedback_counts.total }}</strong>
+        </div>
+        <div class="metric">
+          <span>Em aberto</span>
+          <strong>{{ pilot_feedback_counts.open }}</strong>
+        </div>
+        <div class="metric">
+          <span>Gestão de Tarefas</span>
+          <strong>{{ pilot_feedback_counts.tasks }}</strong>
+        </div>
+        <div class="metric">
+          <span>Oficina</span>
+          <strong>{{ pilot_feedback_counts.workshop }}</strong>
+        </div>
+      </div>
+      <div class="event-list admin-feedback-list">
+        {% for item in pilot_feedback_items %}
+          <article class="event-item">
+            {% set feedback_user = pilot_feedback_user_by_id.get(item.user_id) if item.user_id else none %}
+            <div>
+              <strong>{{ pilot_feedback_kind_labels.get(item.kind, item.kind) }}</strong>
+              <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+            </div>
+            <p class="muted">Criado por: {{ feedback_user.name if feedback_user else "Utilizador não identificado" }}{% if feedback_user and feedback_user.email %} · {{ feedback_user.email }}{% endif %}</p>
+            <p>{{ item.subject or "-" }}</p>
+            <p>{{ item.body }}</p>
+            {% if item.entity_type or item.entity_id %}
+              <p class="muted">{{ pilot_feedback_source_labels.get(item.source_area, item.source_area or "-") }} &middot; {{ item.entity_type or "-" }} {{ item.entity_id or "" }}</p>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Sem feedback registado.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

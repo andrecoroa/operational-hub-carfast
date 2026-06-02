@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Rentway</p>
+        <h2>Importar frota</h2>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports/fleet" %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Histórico</a>
+      </div>
+    </header>
+
+    <section class="form-panel">
+      {% if error %}
+        <div class="alert">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/imports/fleet" enctype="multipart/form-data" class="form-stack">
+        <label>
+          Ficheiro XLSX
+          <input type="file" name="file" accept=".xlsx" required>
+        </label>
+        <button type="submit">Importar</button>
+      </form>
+    </section>
+  </main>
+</div>
+{% endblock %}

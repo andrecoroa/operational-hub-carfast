@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Correção de leitura técnica</p>
+        <h2>{{ technical_reading_type_labels.get(reading.reading_type, reading.reading_type) }}</h2>
+        <p class="breadcrumb">
+          Oficina &gt; <a class="table-link" href="/workshop/{{ process.id }}">Processo #{{ process.id }}</a> &gt; Leitura #{{ reading.id }}
+        </p>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/workshop/{{ process.id }}">Voltar ao processo</a>
+      </div>
+    </header>
+
+    <section class="workshop-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Leitura atual</p>
+            <h3>{{ vehicle.plate if vehicle else "Viatura" }}</h3>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Estado</span><strong>{{ technical_reading_status_labels.get(reading.status, reading.status) }}</strong></div>
+            <div><span>Data</span><strong>{{ reading.reading_date or "-" }}</strong></div>
+            <div><span>KM</span><strong>{{ reading.odometer_km or "-" }}</strong></div>
+            <div><span>Fase</span><strong>{{ "Leitura final" if fixed_reading_phase == "final" else "Leitura inicial" }}</strong></div>
+          </div>
+          {% if reading.status != "active" %}
+            <p class="muted">Esta leitura já não está ativa. A edição fica bloqueada para preservar o histórico.</p>
+          {% else %}
+            <p class="muted">Corrige apenas os dados necessários. A alteração fica registada em auditoria e nos registos do processo.</p>
+          {% endif %}
+        </article>
+
+        <form method="post" action="/workshop/{{ process.id }}/technical-readings/{{ reading.id }}/update" class="form-panel form-stack workshop-flow-card" data-reading-edit-form>
+          {% include "_workshop_technical_reading_fields.html" %}
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const readingValues = {{ reading_form_values|tojson }};
+  const editForm = document.querySelector("[data-reading-edit-form]");
+  if (editForm) {
+    for (const [name, value] of Object.entries(readingValues)) {
+      for (const control of editForm.querySelectorAll(`[name="${name}"]`)) {
+        control.value = value ?? "";
+      }
+    }
+
+    editForm.querySelectorAll("[data-reading-type]").forEach((readingTypeSelect) => {
+      const panels = [...editForm.querySelectorAll("[data-reading-panel]")];
+      const cards = [...editForm.querySelectorAll("[data-reading-card]")];
+      const submitButton = editForm.querySelector("[data-reading-submit]");
+
+      function syncReadingPanels() {
+        const selectedType = readingTypeSelect.value;
+        for (const panel of panels) {
+          panel.hidden = panel.dataset.readingPanel !== selectedType;
+        }
+        for (const card of cards) {
+          const isActive = card.dataset.readingCard === selectedType;
+          const isRegistered = card.dataset.registered === "1";
+          const status = card.querySelector("[data-reading-card-status]");
+          card.classList.toggle("is-active", isActive);
+          card.classList.toggle("is-registered", isRegistered && !isActive);
+          if (status) {
+            status.textContent = isActive ? "Atual" : (isRegistered ? "Registado" : "Pendente");
+          }
+        }
+        const activeCard = cards.find((card) => card.dataset.readingCard === selectedType);
+        if (submitButton && activeCard) {
+          submitButton.textContent = `Guardar ${activeCard.dataset.readingLabel.toLowerCase()}`;
+        }
+      }
+
+      for (const card of cards) {
+        card.addEventListener("click", () => {
+          readingTypeSelect.value = card.dataset.readingCard;
+          readingTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+      }
+      readingTypeSelect.addEventListener("change", syncReadingPanels);
+      syncReadingPanels();
+    });
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Viaturas permanentes</p>
+        <h2>Frota</h2>
+        <span>Ordenação: Unit Nr Rentway decrescente</span>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link" href="/imports/fleet">Importar XLSX</a>
+        {% set feedback_source_area = "fleet" %}
+        {% set feedback_return_url = "/fleet" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if imported %}
+      <div class="success">Importação concluída: {{ imported }}</div>
+    {% endif %}
+
+    <form method="get" action="/fleet" class="toolbar fleet-toolbar">
+      <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar matrícula, Unit Nr, VIN, marca ou modelo">
+      <select name="scope" aria-label="Âmbito da frota">
+        <option value="active" {% if scope == "active" %}selected{% endif %}>Ativos</option>
+        <option value="for_sale" {% if scope == "for_sale" %}selected{% endif %}>Para venda</option>
+        <option value="sold" {% if scope == "sold" %}selected{% endif %}>Vendidos</option>
+        <option value="all" {% if scope == "all" %}selected{% endif %}>Todos</option>
+      </select>
+      <button type="submit">Pesquisar</button>
+    </form>
+
+    <section class="fleet-freshness">
+      <strong>Última atualização da frota Rentway:</strong>
+      {% if last_fleet_import %}
+        {{ (last_fleet_import.finished_at or last_fleet_import.started_at).strftime("%d/%m/%Y %H:%M") }}
+      {% else %}
+        sem importação registada
+      {% endif %}
+      <span>{{ for_sale_count }} viaturas marcadas para venda.</span>
+    </section>
+
+    <section class="table-shell">
+      <table class="compact-table">
+        <thead>
+          <tr>
+            <th>Matrícula</th>
+            <th>Unit Nr</th>
+            <th>Marca</th>
+            <th>Modelo</th>
+            <th>Lifecycle</th>
+            <th>Operacional</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vehicle in vehicles %}
+            <tr>
+              <td><a class="table-link" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a></td>
+              <td>{{ vehicle.rentway_unit_nr or "-" }}</td>
+              <td>{{ vehicle.brand or "-" }}</td>
+              <td>{{ vehicle.model or "-" }}</td>
+              <td>{{ vehicle.lifecycle_status or "-" }}</td>
+              <td>{{ vehicle.operational_status or "-" }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="muted">Sem viaturas para mostrar.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+{% endblock %}

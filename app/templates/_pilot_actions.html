@@ -1,0 +1,12 @@
+{% set _source = feedback_source_area if feedback_source_area is defined and feedback_source_area else (active_menu if active_menu is defined else "general") %}
+{% set _return = feedback_return_url if feedback_return_url is defined and feedback_return_url else request.url.path %}
+{% set _entity_type = feedback_entity_type if feedback_entity_type is defined else "" %}
+{% set _entity_id = feedback_entity_id if feedback_entity_id is defined else "" %}
+<div class="pilot-support{% if pilot_support_compact is defined and pilot_support_compact %} pilot-support-compact{% endif %}">
+  <span>Apoio à utilização da app</span>
+  <div class="button-row pilot-actions">
+    <a class="button-link manual-link" href="/manual?return_url={{ _return }}">Manual da App</a>
+    <a class="button-link support-link" href="/pilot-feedback/new?kind=question&source_area={{ _source }}{% if _entity_type %}&entity_type={{ _entity_type }}{% endif %}{% if _entity_id %}&entity_id={{ _entity_id }}{% endif %}&return_url={{ _return }}">Pedir ajuda</a>
+    <a class="button-link feedback-link" href="/pilot-feedback/new?kind=experience&source_area={{ _source }}{% if _entity_type %}&entity_type={{ _entity_type }}{% endif %}{% if _entity_id %}&entity_id={{ _entity_id }}{% endif %}&return_url={{ _return }}">Relatar experiência</a>
+  </div>
+</div>

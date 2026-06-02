@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    {% set can_manage_document_links = "admin.manage" in nav_permissions(request) %}
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Relatório de oficina</p>
+        <h2>{{ process.title }}</h2>
+        <p class="breadcrumb">Oficina &gt; Processo #{{ process.id }} &gt; <strong>Relatório</strong></p>
+      </div>
+      <div class="button-row">
+        <button class="button-link" type="button" onclick="window.print()">Imprimir</button>
+        <a class="button-link secondary-link" href="/workshop/{{ process.id }}">Voltar ao processo</a>
+      </div>
+    </header>
+
+    <section class="workshop-page-grid">
+      <div class="workshop-main-column">
+        <article class="section workshop-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Resumo</p>
+            <h3>{{ vehicle.plate if vehicle else ("Viatura #" ~ process.vehicle_id) }}</h3>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Estado</span><strong>{{ status_labels.get(process.status, process.status) }}</strong></div>
+            <div><span>Decisão</span><strong>{{ decision_labels.get(process.decision, "-") if process.decision else "-" }}</strong></div>
+            <div><span>Origem</span><strong>{{ opening_type_labels.get(process.opening_type, "-") if process.opening_type else "-" }}</strong></div>
+            <div><span>Prioridade</span><strong>{{ process.priority or "-" }}</strong></div>
+            <div><span>Entrada</span><strong>{{ process.opened_on or "-" }}</strong></div>
+            <div><span>KM entrada</span><strong>{{ process.km_entry or "-" }}</strong></div>
+            <div><span>Saída prevista</span><strong>{{ process.expected_exit_on or "-" }}</strong></div>
+            <div><span>Fecho</span><strong>{{ process.closed_at.strftime("%Y-%m-%d %H:%M") if process.closed_at else "-" }}</strong></div>
+          </div>
+          <div class="task-description-box">
+            <span>Conclusão / nota</span>
+            <p>{{ process.decision_note or process.note or "Sem nota registada." }}</p>
+          </div>
+        </article>
+
+        <article class="section workshop-summary-card">
+          <div class="panel-heading compact-heading">
+            <p class="eyebrow">Viatura</p>
+            <h3>{{ ((vehicle.brand or "") ~ " " ~ (vehicle.model or "") ~ " " ~ (vehicle.version or ""))|trim if vehicle else "-" }}</h3>
+          </div>
+          <div class="task-info-grid workshop-info-grid">
+            <div><span>Matrícula</span><strong>{{ vehicle.plate if vehicle else "-" }}</strong></div>
+            <div><span>Unit Rentway</span><strong>{{ vehicle.rentway_unit_nr if vehicle else "-" }}</strong></div>
+            <div><span>Chassi</span><strong>{{ vehicle.vin if vehicle else "-" }}</strong></div>
+            <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
+            <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
+            <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
+            <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
+            <div><span>Estado operacional</span><strong>{{ vehicle.operational_status if vehicle else "-" }}</strong></div>
+          </div>
+        </article>
+
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Execução</p>
+              <h3>Registos do processo</h3>
+            </div>
+          </div>
+
+          <details class="workshop-record-group" open>
+            <summary>Serviços / motivos <span>{{ services|length }}</span></summary>
+            <div class="event-list">
+              {% for service in services %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ service_family_labels.get(service.service_family, service.service_family) }}</strong>
+                    <span>{{ service_status_labels.get(service.status, service.status) }}</span>
+                  </div>
+                  <p>{{ service_detail_labels.get(service.service_detail, service.service_detail or "Sem detalhe") }} &middot; {{ service_axis_labels.get(service.service_axis, service.service_axis or "Não definido") }}</p>
+                  {% if service.note %}<p>{{ service.note }}</p>{% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem serviços registados.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" open>
+            <summary>Leituras técnicas <span>{{ technical_readings|length }}</span></summary>
+            <div class="event-list">
+              {% for item in technical_readings %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ technical_reading_type_labels.get(item.reading_type, item.reading_type) }}</strong>
+                    <span>{{ item.reading_date or (item.created_at.strftime("%Y-%m-%d") if item.created_at else "") }}</span>
+                  </div>
+                  <p>{% if item.odometer_km %}{{ item.odometer_km }} km{% else %}KM não registados{% endif %}</p>
+                  <p>{{ item.summary or "Sem resumo registado." }}</p>
+                  {% if item.data_json %}
+                    <dl class="technical-reading-list">
+                      {% for key, value in item.data_json.items() %}
+                        <div>
+                          <dt>{{ technical_reading_field_labels.get(key, key|replace("_", " ")|capitalize) }}</dt>
+                          <dd>{{ technical_reading_phase_labels.get(value, value) if key == "flow_phase" else value }}</dd>
+                        </div>
+                      {% endfor %}
+                    </dl>
+                  {% endif %}
+                  {% if item.external_url %}
+                    <p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir relatório externo</a></p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem leituras técnicas registadas.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" open>
+            <summary>Evidências <span>{{ evidences|length }}</span></summary>
+            <div class="event-list">
+              {% for item in evidences %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ evidence_category_labels.get(item.anomaly_category, item.anomaly_category) }}</strong>
+                    <span>{{ item.observed_at.strftime("%Y-%m-%d %H:%M") if item.observed_at else "" }}</span>
+                  </div>
+                  <p>{{ evidence_type_labels.get(item.evidence_type, item.evidence_type) }} &middot; {{ evidence_status_labels.get(item.status, item.status) }}</p>
+                  <p>{{ item.description }}</p>
+                  {% if item.external_url %}<p><a class="table-link" href="{{ item.external_url }}" target="_blank" rel="noreferrer">Abrir evidência</a></p>{% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem evidências registadas.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" open>
+            <summary>Incidentes <span>{{ incidents|length }}</span></summary>
+            <div class="event-list">
+              {% for item in incidents %}
+                <article class="event-item">
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.occurred_at.strftime("%Y-%m-%d %H:%M") if item.occurred_at else "" }}</span>
+                  </div>
+                  <p>{{ incident_type_labels.get(item.incident_type, item.incident_type or "-") }} &middot; {{ incident_category_labels.get(item.category, item.category or "-") }} &middot; {{ incident_severity_labels.get(item.severity, item.severity or "-") }}</p>
+                  <p>{{ item.description or "-" }}</p>
+                </article>
+              {% else %}
+                <p class="muted">Sem incidentes registados.</p>
+              {% endfor %}
+            </div>
+          </details>
+
+          <details class="workshop-record-group" open>
+            <summary>Documentos <span>{{ documents|length }}</span></summary>
+            <div class="event-list">
+              {% for document in documents %}
+                <article class="event-item">
+                  <div>
+                    <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                    <span>{{ document_status_labels.get(document.status, document.status) }}</span>
+                  </div>
+                  <p>{{ document_area_labels.get(document.classification, document.classification or "-") }} &middot; {{ document_type_labels.get(document.document_type, document.document_type or "-") }}</p>
+                  <p>{{ document.folder_path or "-" }}</p>
+                  {% if can_manage_document_links and document.external_url %}<p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir arquivo</a></p>{% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem documentos associados.</p>
+              {% endfor %}
+            </div>
+          </details>
+        </article>
+      </div>
+
+      <aside class="workshop-side-column">
+        <article class="section workshop-feed">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Histórico</p>
+              <h3>Notas</h3>
+            </div>
+          </div>
+          <div class="event-list">
+            {% for item in notes %}
+              <article class="event-item">
+                <div>
+                  <strong>Utilizador #{{ item.user_id or "-" }}</strong>
+                  <span>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "" }}</span>
+                </div>
+                <p>{{ item.note }}</p>
+              </article>
+            {% else %}
+              <p class="muted">Sem notas registadas.</p>
+            {% endfor %}
+          </div>
+        </article>
+      </aside>
+    </section>
+  </main>
+</div>
+{% endblock %}

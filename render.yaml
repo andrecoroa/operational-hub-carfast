@@ -1,15 +1,29 @@
 services:
   - type: web
-    name: carfast-v2
+    name: operational-hub-carfast
     runtime: python
+    plan: free
+    region: frankfurt
     buildCommand: pip install -r requirements.txt
-    startCommand: python scripts/start.py
+    startCommand: python scripts/render_start.py
+    healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
+      - key: APP_NAME
+        value: Operational Hub Carfast
       - key: APP_ENV
         value: production
-      - key: APP_NAME
-        value: CarFast v2
       - key: APP_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: operational-hub-carfast-db
+          property: connectionString
+
+databases:
+  - name: operational-hub-carfast-db
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "17"
+    databaseName: carfast_v2
+    user: carfast_app

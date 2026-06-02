@@ -71,6 +71,34 @@ REPORT_STATUSES = {
 }
 
 
+def _vehicle_summary(vehicle: Vehicle | None, fallback_plate: str | None = None) -> dict[str, Any]:
+    if not vehicle:
+        return {
+            "id": None,
+            "plate": fallback_plate,
+            "rentway_unit_nr": None,
+            "brand": None,
+            "model": None,
+            "version": None,
+            "vin": None,
+            "lifecycle_status": None,
+            "operational_status": None,
+            "active": None,
+        }
+    return {
+        "id": vehicle.id,
+        "plate": vehicle.plate or fallback_plate,
+        "rentway_unit_nr": vehicle.rentway_unit_nr,
+        "brand": vehicle.brand,
+        "model": vehicle.model,
+        "version": vehicle.version,
+        "vin": vehicle.vin,
+        "lifecycle_status": vehicle.lifecycle_status,
+        "operational_status": vehicle.operational_status,
+        "active": vehicle.active,
+    }
+
+
 class WorkshopServiceInput(BaseModel):
     service_code: str
     detail: str | None = None
@@ -380,6 +408,27 @@ def _add_alert_once(
     return alert
 
 
+def _resolve_alerts(
+    db: Session,
+    process_id: int,
+    codes: set[str],
+    resolved_by_id: int | None = None,
+) -> None:
+    if not codes:
+        return
+    alerts = db.scalars(
+        select(WorkshopProcessAlert).where(
+            WorkshopProcessAlert.process_id == process_id,
+            WorkshopProcessAlert.code.in_(codes),
+            WorkshopProcessAlert.status == "open",
+        )
+    ).all()
+    for alert in alerts:
+        alert.status = "resolved"
+        alert.resolved_at = datetime.utcnow()
+        alert.resolved_by_id = resolved_by_id
+
+
 def _mark_phase(
     phase: WorkshopProcessPhase,
     status_value: str,
@@ -567,6 +616,9 @@ def confirm_reception(
     process.current_phase_code = "history_check"
 
     missing_required = []
+    resolved_codes: set[str] = set()
+    if reception.km_entry is not None:
+        resolved_codes.update({"km_current_missing", "km_entry_missing"})
     if reception.km_entry is None:
         missing_required.append("KM entrada")
         _add_alert_once(
@@ -576,6 +628,10 @@ def confirm_reception(
             "KM entrada em falta",
             source="administrative_reception",
             phase_id=phase.id,
+        )
+    if reception.initial_observation:
+        resolved_codes.update(
+            {"initial_observation_missing", "reception_observation_missing"}
         )
     if not reception.initial_observation:
         missing_required.append("Observação inicial")
@@ -587,6 +643,8 @@ def confirm_reception(
             source="administrative_reception",
             phase_id=phase.id,
         )
+    if reception.quadrant_photo_link:
+        resolved_codes.add("quadrant_photo_missing")
     if not reception.quadrant_photo_link:
         missing_required.append("Foto do quadrante")
         _add_alert_once(
@@ -597,6 +655,7 @@ def confirm_reception(
             source="administrative_reception",
             phase_id=phase.id,
         )
+    _resolve_alerts(db, process.id, resolved_codes, reception.confirmed_by_id)
 
     status_value = "completed" if not missing_required else "pending_review"
     _mark_phase(
@@ -1196,23 +1255,35 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
     processes = db.scalars(
         select(WorkshopProcess).order_by(WorkshopProcess.created_at.desc())
     ).all()
-    return [
-        {
-            "id": process.id,
-            "title": process.title,
-            "process_type": process.process_type,
-            "creation_mode": process.creation_mode,
-            "status": process.status,
-            "current_phase_code": process.current_phase_code,
-            "vehicle_id": process.vehicle_id,
-            "plate": process.plate_snapshot,
-            "priority": process.priority,
-            "origin": process.origin,
-            "created_at": process.created_at,
-            "closed_at": process.closed_at,
-        }
-        for process in processes
-    ]
+    rows = []
+    for process in processes:
+        vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+        services = db.scalars(
+            select(WorkshopProcessService)
+            .where(WorkshopProcessService.process_id == process.id)
+            .order_by(WorkshopProcessService.sort_order)
+        ).all()
+        rows.append(
+            {
+                "id": process.id,
+                "title": process.title,
+                "process_type": process.process_type,
+                "creation_mode": process.creation_mode,
+                "status": process.status,
+                "current_phase_code": process.current_phase_code,
+                "vehicle_id": process.vehicle_id,
+                "plate": process.plate_snapshot,
+                "priority": process.priority,
+                "origin": process.origin,
+                "created_at": process.created_at,
+                "closed_at": process.closed_at,
+                "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+                "services_label": " + ".join(
+                    service.service_label for service in services if service.service_label
+                ),
+            }
+        )
+    return rows
 
 
 @router.get("/processes/{process_id}")
@@ -1254,6 +1325,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         .where(WorkshopClosureCheck.process_id == process.id)
         .order_by(WorkshopClosureCheck.created_at)
     ).all()
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
 
     return {
         "id": process.id,
@@ -1270,6 +1342,12 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         "initial_km": process.initial_km,
         "initial_observation": process.initial_observation,
         "scheduled_at": process.scheduled_at,
+        "created_at": process.created_at,
+        "closed_at": process.closed_at,
+        "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+        "services_label": " + ".join(
+            service.service_label for service in services if service.service_label
+        ),
         "services": [
             {
                 "service_code": service.service_code,

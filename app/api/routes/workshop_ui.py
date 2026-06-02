@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -106,6 +106,26 @@ def new_workshop_process_page() -> str:
       align-items: start;
       gap: 18px;
       margin-bottom: 18px;
+    }
+
+    .top-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .top-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      font-weight: 800;
+      text-decoration: none;
     }
 
     h1 {
@@ -388,16 +408,16 @@ def new_workshop_process_page() -> str:
     <aside>
       <div class="brand">CarFast v2</div>
       <nav class="nav-group">
-        <a class="nav-item" href="#">Inicio</a>
-        <a class="nav-item" href="#">Frota</a>
-        <a class="nav-item active" href="#">Oficina</a>
-        <a class="nav-sub" href="#">Processos atuais</a>
-        <a class="nav-sub" href="#">Processos por Fases</a>
+        <a class="nav-item" href="/">Inicio</a>
+        <a class="nav-item" href="/fleet">Frota</a>
+        <a class="nav-item active" href="/workshop">Oficina</a>
+        <a class="nav-sub" href="/workshop/manage">Processos atuais</a>
+        <a class="nav-sub" href="/workshop/processes-ui">Processos por Fases</a>
         <a class="nav-sub active" href="/workshop/new-process">Novo Processo</a>
-        <a class="nav-item" href="#">Tarefas</a>
-        <a class="nav-item" href="#">Documentos</a>
-        <a class="nav-item" href="#">Gestao</a>
-        <a class="nav-item" href="#">Administracao</a>
+        <a class="nav-item" href="/task-board">Tarefas</a>
+        <a class="nav-item" href="/documents">Documentos</a>
+        <a class="nav-item" href="/task-board/manage?workspace=management">Gestao</a>
+        <a class="nav-item" href="/admin">Administracao</a>
       </nav>
     </aside>
     <main>
@@ -406,7 +426,12 @@ def new_workshop_process_page() -> str:
           <h1>Novo Processo Oficina por Fases</h1>
           <p class="subtitle">Criação leve, serviços múltiplos e fases automáticas.</p>
         </div>
-        <span class="chip">Piloto</span>
+        <div class="top-actions">
+          <a class="top-link" href="/workshop">Oficina</a>
+          <a class="top-link" href="/workshop/manage">Processos atuais</a>
+          <a class="top-link" href="/workshop/processes-ui">Por fases</a>
+          <a class="top-link" href="/fleet">Frota</a>
+        </div>
       </div>
 
       <div class="layout">
@@ -719,7 +744,7 @@ def new_workshop_process_page() -> str:
     }
 
     els.form.addEventListener("submit", submitProcess);
-    els.cancelButton.addEventListener("click", () => window.history.back());
+    els.cancelButton.addEventListener("click", () => { window.location.href = "/workshop"; });
 
     fetch("/api/workshop/process-config")
       .then((response) => response.json())
@@ -772,6 +797,9 @@ def workshop_process_detail_page(process_id: int) -> str:
     .nav-sub.active {{ background: #f4ebe7; color: #7d2f1f; }}
     main {{ padding: 22px 28px 42px; }}
     .topbar {{ display: flex; justify-content: space-between; align-items: start; gap: 18px; margin-bottom: 18px; }}
+    .top-actions {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }}
+    .button {{ display: inline-flex; align-items: center; min-height: 38px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 12px; background: #fff; color: var(--text); font-weight: 800; text-decoration: none; }}
+    .button.primary {{ background: var(--brand); border-color: var(--brand); color: #fff; }}
     h1 {{ margin: 0 0 4px; font-size: 25px; line-height: 1.2; }}
     h2 {{ margin: 0; font-size: 17px; line-height: 1.25; }}
     .subtitle {{ color: var(--muted); margin: 0; }}
@@ -808,16 +836,16 @@ def workshop_process_detail_page(process_id: int) -> str:
     <aside>
       <div class="brand">CarFast v2</div>
       <nav class="nav-group">
-        <a class="nav-item" href="#">Inicio</a>
-        <a class="nav-item" href="#">Frota</a>
-        <a class="nav-item active" href="#">Oficina</a>
-        <a class="nav-sub" href="#">Processos atuais</a>
-        <a class="nav-sub active" href="#">Processos por Fases</a>
+        <a class="nav-item" href="/">Inicio</a>
+        <a class="nav-item" href="/fleet">Frota</a>
+        <a class="nav-item active" href="/workshop">Oficina</a>
+        <a class="nav-sub" href="/workshop/manage">Processos atuais</a>
+        <a class="nav-sub active" href="/workshop/processes-ui">Processos por Fases</a>
         <a class="nav-sub" href="/workshop/new-process">Novo Processo</a>
-        <a class="nav-item" href="#">Tarefas</a>
-        <a class="nav-item" href="#">Documentos</a>
-        <a class="nav-item" href="#">Gestao</a>
-        <a class="nav-item" href="#">Administracao</a>
+        <a class="nav-item" href="/task-board">Tarefas</a>
+        <a class="nav-item" href="/documents">Documentos</a>
+        <a class="nav-item" href="/task-board/manage?workspace=management">Gestao</a>
+        <a class="nav-item" href="/admin">Administracao</a>
       </nav>
     </aside>
     <main>
@@ -844,7 +872,12 @@ def workshop_process_detail_page(process_id: int) -> str:
             <h1>${{process.title}}</h1>
             <p class="subtitle">Matrícula ${{process.plate || "-"}}, estado ${{process.status}}</p>
           </div>
-          <span class="chip ok">Oficina por Fases</span>
+          <div class="top-actions">
+            <a class="button" href="/workshop">Oficina</a>
+            <a class="button" href="/workshop/manage">Processos atuais</a>
+            <a class="button" href="/fleet">Frota</a>
+            <a class="button primary" href="/workshop/processes-ui/${{process.id}}/manage">Operar</a>
+          </div>
         </div>
         <div class="grid-3" style="margin-bottom: 14px;">
           <div class="metric"><span>Prioridade</span><strong>${{process.priority || "-"}}</strong></div>
@@ -921,14 +954,14 @@ def workshop_process_list_page() -> str:
   <title>Oficina - Processos por Fases</title>
   <style>
     :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; font-family:Inter,"Segoe UI",Arial,sans-serif; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{background:#10202c;color:#d9e7ef;padding:20px 14px}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:22px 28px}h1{margin:0 0 4px;font-size:25px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.button{display:inline-flex;align-items:center;min-height:40px;border-radius:8px;padding:9px 14px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}table{width:100%;border-collapse:collapse}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left}th{font-size:12px;color:var(--muted);text-transform:uppercase}tr:hover{background:#fbfcfd}.chip{display:inline-flex;border-radius:999px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}.link{color:#7d2f1f;font-weight:800;text-decoration:none}@media(max-width:900px){.app{grid-template-columns:1fr}aside{display:none}main{padding:18px 16px}.panel{overflow:auto}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{background:#10202c;color:#d9e7ef;padding:20px 14px}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:22px 28px}h1{margin:0 0 4px;font-size:25px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;min-height:40px;border-radius:8px;padding:9px 14px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800}.button.secondary{background:#fff;color:var(--text);border:1px solid var(--line)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}table{width:100%;border-collapse:collapse}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left}th{font-size:12px;color:var(--muted);text-transform:uppercase}tr:hover{background:#fbfcfd}.chip{display:inline-flex;border-radius:999px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}.link{color:#7d2f1f;font-weight:800;text-decoration:none}@media(max-width:900px){.app{grid-template-columns:1fr}aside{display:none}main{padding:18px 16px}.panel{overflow:auto}}
   </style>
 </head>
 <body>
   <div class="app">
-    <aside><div class="brand">CarFast v2</div><nav class="nav"><a>Inicio</a><a>Frota</a><a>Oficina</a><a class="sub active" href="/workshop/processes-ui">Processos por Fases</a><a class="sub" href="/workshop/new-process">Novo Processo</a><a>Tarefas</a><a>Documentos</a></nav></aside>
+    <aside><div class="brand">CarFast v2</div><nav class="nav"><a href="/">Inicio</a><a href="/fleet">Frota</a><a href="/workshop">Oficina</a><a class="sub" href="/workshop/manage">Processos atuais</a><a class="sub active" href="/workshop/processes-ui">Processos por Fases</a><a class="sub" href="/workshop/new-process">Novo Processo</a><a href="/task-board">Tarefas</a><a href="/documents">Documentos</a></nav></aside>
     <main>
-      <div class="topbar"><div><h1>Oficina - Processos por Fases</h1><p class="subtitle">Acompanhar processos criados no novo modelo por blocos.</p></div><a class="button" href="/workshop/new-process">+ Novo processo</a></div>
+      <div class="topbar"><div><h1>Oficina - Processos por Fases</h1><p class="subtitle">Acompanhar processos criados no novo modelo por blocos.</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/new-process">+ Novo processo</a></div></div>
       <div class="panel"><table><thead><tr><th>ID</th><th>Matrícula</th><th>Título</th><th>Estado</th><th>Fase atual</th><th>Prioridade</th><th></th></tr></thead><tbody id="rows"><tr><td colspan="7">A carregar...</td></tr></tbody></table></div>
     </main>
   </div>
@@ -952,14 +985,14 @@ def workshop_process_manage_page(process_id: int) -> str:
   <title>Operar Processo Oficina #{process_id}</title>
   <style>
     :root{{--bg:#f5f7f8;--panel:#fff;--line:#d9e0e5;--line2:#b9c5cc;--text:#07152d;--muted:#5c6c7b;--brand:#b24a34;--soft:#fbf1ee;--green:#2f7d50;--green-soft:#edf7ef;--amber:#9a6711;--amber-soft:#fff6df;--red:#b42318;--red-soft:#fff4f2;font-family:Inter,"Segoe UI",Arial,sans-serif}}
-    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}}aside{{background:#10202c;color:#d9e7ef;padding:20px 14px}}.brand{{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}}.nav{{display:grid;gap:4px}}.nav a{{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}}.nav .sub{{margin-left:18px;color:#b6cad5}}.nav .active{{background:#f4ebe7;color:#7d2f1f}}main{{padding:22px 28px 44px}}h1{{margin:0 0 4px;font-size:25px}}h2{{margin:0;font-size:17px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}}.stack{{display:grid;gap:14px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.chip{{display:inline-flex;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok{{color:var(--green);background:var(--green-soft)}}.chip.warn{{color:var(--amber);background:var(--amber-soft)}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:980px){{.app{{grid-template-columns:1fr}}aside{{display:none}}main{{padding:18px 16px}}.layout,.grid2,.grid3{{grid-template-columns:1fr}}}}
+    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}}aside{{background:#10202c;color:#d9e7ef;padding:20px 14px}}.brand{{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}}.nav{{display:grid;gap:4px}}.nav a{{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}}.nav .sub{{margin-left:18px;color:#b6cad5}}.nav .active{{background:#f4ebe7;color:#7d2f1f}}main{{padding:22px 28px 44px}}h1{{margin:0 0 4px;font-size:25px}}h2{{margin:0;font-size:17px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}}.stack{{display:grid;gap:14px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok{{color:var(--green);background:var(--green-soft)}}.chip.warn{{color:var(--amber);background:var(--amber-soft)}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:980px){{.app{{grid-template-columns:1fr}}aside{{display:none}}main{{padding:18px 16px}}.layout,.grid2,.grid3{{grid-template-columns:1fr}}}}
   </style>
 </head>
 <body>
   <div class="app">
-    <aside><div class="brand">CarFast v2</div><nav class="nav"><a>Inicio</a><a>Frota</a><a>Oficina</a><a class="sub active" href="/workshop/processes-ui">Processos por Fases</a><a class="sub" href="/workshop/new-process">Novo Processo</a><a>Tarefas</a><a>Documentos</a></nav></aside>
+    <aside><div class="brand">CarFast v2</div><nav class="nav"><a href="/">Inicio</a><a href="/fleet">Frota</a><a href="/workshop">Oficina</a><a class="sub" href="/workshop/manage">Processos atuais</a><a class="sub active" href="/workshop/processes-ui">Processos por Fases</a><a class="sub" href="/workshop/new-process">Novo Processo</a><a href="/task-board">Tarefas</a><a href="/documents">Documentos</a></nav></aside>
     <main>
-      <div id="header" class="topbar"><div><h1>Processo Oficina</h1><p class="subtitle">A carregar...</p></div><a class="button" href="/workshop/processes-ui">Lista</a></div>
+      <div id="header" class="topbar"><div><h1>Processo Oficina</h1><p class="subtitle">A carregar...</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Lista por fases</a></div></div>
       <div class="layout">
         <div class="stack">
           <section>
@@ -1050,7 +1083,7 @@ def workshop_process_manage_page(process_id: int) -> str:
     async function post(url, body) {{ const r = await fetch(url, {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
     document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {{ document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active")); t.classList.add("active"); document.querySelector(`#${{t.dataset.tab}}`).classList.add("active"); }}));
     async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); document.querySelector("#header").innerHTML = `<div><h1>${{processData.title}}</h1><p class="subtitle">Matrícula ${{processData.plate || "-"}} · ${{processData.status}}</p></div><a class="button" href="/workshop/processes-ui">Lista</a>`; document.querySelector("#statusChip").textContent = processData.status; document.querySelector("#summary").innerHTML = `<ul class="phase-list">${{processData.phases.map(p => `<li class="${{p.phase_code === processData.current_phase_code ? "active" : ""}}"><span>${{p.sort_order}}. ${{p.name}}</span><span class="chip">${{p.status}}</span></li>`).join("")}}</ul><h3 style="margin-top:16px">Alertas</h3><ul class="plain-list">${{processData.alerts.map(a => `<li><span>${{a.message}}</span><span class="chip warn">${{a.status}}</span></li>`).join("") || "<li>Sem alertas</li>"}}</ul><h3 style="margin-top:16px">Relatórios</h3><ul class="plain-list">${{processData.technical_reports.map(r => `<li><span>#${{r.id}} ${{r.report_name}}</span><span class="chip">${{r.status}}</span></li>`).join("") || "<li>Sem relatórios</li>"}}</ul>`; }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); document.querySelector("#header").innerHTML = `<div><h1>${{processData.title}}</h1><p class="subtitle">Matrícula ${{processData.plate || "-"}} · ${{processData.status}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Lista por fases</a></div>`; document.querySelector("#statusChip").textContent = processData.status; document.querySelector("#summary").innerHTML = `<ul class="phase-list">${{processData.phases.map(p => `<li class="${{p.phase_code === processData.current_phase_code ? "active" : ""}}"><span>${{p.sort_order}}. ${{p.name}}</span><span class="chip">${{p.status}}</span></li>`).join("")}}</ul><h3 style="margin-top:16px">Alertas</h3><ul class="plain-list">${{processData.alerts.map(a => `<li><span>${{a.message}}</span><span class="chip warn">${{a.status}}</span></li>`).join("") || "<li>Sem alertas</li>"}}</ul><h3 style="margin-top:16px">Relatórios</h3><ul class="plain-list">${{processData.technical_reports.map(r => `<li><span>#${{r.id}} ${{r.report_name}}</span><span class="chip">${{r.status}}</span></li>`).join("") || "<li>Sem relatórios</li>"}}</ul>`; }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addReport() {{ try {{ const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:jsonValue("#reportValues")}}); document.querySelector("#validateReportId").value = data.id; showResult(true, `Relatório adicionado #${{data.id}}.`); }} catch(e) {{ showResult(false, e.message); }} }}

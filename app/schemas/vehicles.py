@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from pydantic import Field, model_validator
 
@@ -47,4 +47,3 @@ class VehicleRead(VehicleBase):
     id: int
     created_at: datetime
     updated_at: datetime
-

@@ -1,4 +1,4 @@
-# Email para utilizadores - Piloto Oficina CarFast v2
+﻿# Email para utilizadores - Piloto Oficina CarFast v2
 
 ## Assunto
 
@@ -129,4 +129,3 @@ Entre 20 e 30 minutos.
 Obrigado pela ajuda.
 
 Este teste e importante para a aplicacao ser construida com base no uso real, e nao apenas em teoria.
-

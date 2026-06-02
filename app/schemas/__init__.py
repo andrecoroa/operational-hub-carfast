@@ -1,2 +1,1 @@
-"""Pydantic schemas used by the API."""
-
+﻿"""Pydantic schemas used by the API."""

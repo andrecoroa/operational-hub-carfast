@@ -2,9 +2,9 @@ from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.documents import Document, DocumentEvent, DocumentLink
-from app.models.integrations import EmailIntake, EmailIntakeAttachment
-from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.settings import SettingsCatalog, SettingsValue
@@ -31,6 +31,16 @@ from app.models.workshop import (
     WorkshopProcessNote,
     WorkshopProcessService,
     WorkshopTechnicalReading,
+)
+from app.models.workshop_phased import (
+    WorkshopPhasedClosureCheck,
+    WorkshopPhasedProcess,
+    WorkshopPhasedProcessAlert,
+    WorkshopPhasedProcessPhase,
+    WorkshopPhasedProcessService,
+    WorkshopPhasedTechnicalCheck,
+    WorkshopPhasedTechnicalIncident,
+    WorkshopPhasedTechnicalReport,
 )
 
 __all__ = [
@@ -79,4 +89,12 @@ __all__ = [
     "WorkshopProcessNote",
     "WorkshopProcessService",
     "WorkshopTechnicalReading",
+    "WorkshopPhasedClosureCheck",
+    "WorkshopPhasedProcess",
+    "WorkshopPhasedProcessAlert",
+    "WorkshopPhasedProcessPhase",
+    "WorkshopPhasedProcessService",
+    "WorkshopPhasedTechnicalCheck",
+    "WorkshopPhasedTechnicalIncident",
+    "WorkshopPhasedTechnicalReport",
 ]

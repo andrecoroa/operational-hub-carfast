@@ -1,4 +1,4 @@
-# Anexo 2 - Roteiro dos testes piloto Gestão de Tarefas
+﻿# Anexo 2 - Roteiro dos testes piloto Gestão de Tarefas
 
 ## Teste 1 - Criar uma tarefa operacional
 
@@ -125,4 +125,3 @@ No final dos três testes, queremos perceber:
 - se o detalhe da tarefa parece um caso operacional;
 - se a equipa consegue usar sem explicação prévia;
 - que melhorias devem ser feitas antes de integrar e-mail, WhatsApp, Webex ou Rentway.
-

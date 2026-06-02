@@ -1,2 +1,1 @@
-web: python scripts/render_start.py
-
+﻿web: python scripts/render_start.py

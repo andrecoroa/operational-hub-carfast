@@ -1,4 +1,4 @@
-from sqlalchemy import select
+﻿from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
@@ -36,4 +36,3 @@ def get_user_authorized_unit_codes(db: Session, user: User) -> set[str]:
 
 def user_has_authorized_unit(db: Session, user: User, unit_code: str) -> bool:
     return unit_code in get_user_authorized_unit_codes(db, user)
-

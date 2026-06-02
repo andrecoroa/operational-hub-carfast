@@ -1,4 +1,4 @@
-from sqlalchemy import select
+﻿from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -36,4 +36,3 @@ def create_user(
             db.add(UserOrganizationalUnit(user_id=user.id, organizational_unit_id=unit.id))
 
     return user
-

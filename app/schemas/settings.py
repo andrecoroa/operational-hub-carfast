@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Any
 
 from pydantic import Field
@@ -58,4 +58,3 @@ class SettingsValueRead(SettingsValueBase):
     catalog_id: int
     created_at: datetime
     updated_at: datetime
-

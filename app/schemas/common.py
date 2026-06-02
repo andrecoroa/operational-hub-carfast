@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+﻿from pydantic import BaseModel, ConfigDict
 
 
 class ApiModel(BaseModel):
@@ -7,4 +7,3 @@ class ApiModel(BaseModel):
 
 class MessageResponse(ApiModel):
     message: str
-

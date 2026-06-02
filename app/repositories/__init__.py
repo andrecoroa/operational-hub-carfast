@@ -1,2 +1,1 @@
-"""Database query helpers."""
-
+﻿"""Database query helpers."""

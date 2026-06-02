@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from app.schemas.common import ApiModel
 
@@ -21,4 +21,3 @@ class RoleRead(ApiModel):
     is_system: bool
     created_at: datetime
     updated_at: datetime
-

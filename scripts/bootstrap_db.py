@@ -1,4 +1,4 @@
-from app.core.database import SessionLocal, engine
+﻿from app.core.database import SessionLocal, engine
 from app.models import Base
 from app.services.bootstrap import seed_initial_data
 
@@ -12,4 +12,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,4 +1,4 @@
-from app.schemas.common import ApiModel
+﻿from app.schemas.common import ApiModel
 
 
 class LoginRequest(ApiModel):
@@ -17,4 +17,3 @@ class CurrentUserRead(ApiModel):
     email: str
     permissions: list[str]
     authorized_units: list[str]
-

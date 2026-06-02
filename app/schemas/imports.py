@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Any
 
 from pydantic import Field
@@ -67,4 +67,3 @@ class ImportErrorRead(ImportErrorCreate):
     batch_id: int
     created_at: datetime
     updated_at: datetime
-

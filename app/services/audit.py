@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+﻿from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
 
@@ -24,4 +24,3 @@ def record_audit(
     )
     db.add(entry)
     return entry
-

@@ -242,6 +242,29 @@
     <section class="section admin-section">
       <div class="table-heading flat-heading">
         <div>
+          <p class="eyebrow">Tarefas restritas</p>
+          <h3>Classificações com controlo de acesso</h3>
+        </div>
+      </div>
+      <p class="muted">O centro Gestão está oculto. Temas reservados passam para Administração; a camada fina por classificação fica preparada para evolução.</p>
+      <div class="implementation-board">
+        {% for rule in task_classification_access_rules %}
+          <article class="implementation-card">
+            <div>
+              <span class="pill muted-pill">{{ rule.scope }}</span>
+              <span class="pill priority-{{ "high" if rule.status == "Ativo" else "normal" }}">{{ rule.status }}</span>
+            </div>
+            <h4>{{ rule.name }}</h4>
+            <p>{{ rule.summary }}</p>
+            <span class="implementation-status">{{ rule.permission }}</span>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section admin-section">
+      <div class="table-heading flat-heading">
+        <div>
           <p class="eyebrow">Roadmap interno</p>
           <h3>Implementações previstas</h3>
         </div>

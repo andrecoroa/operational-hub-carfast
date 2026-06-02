@@ -1025,7 +1025,7 @@ GUIDED_FLOW_STEP_STATUS_CLASS = {
 GUIDED_FLOW_TEMPLATES = {
     "daily_checklist": {
         "title": "Checklist diária operacional",
-        "workspaces": {"operational", "management", "administration"},
+        "workspaces": {"operational", "administration"},
         "description": "Rotina simples para controlo diário com vários pontos de confirmação.",
         "steps": [
             ("base_context", "Confirmar contexto", "Valida data, estação/equipa e objetivo da checklist."),
@@ -1065,7 +1065,7 @@ GUIDED_FLOW_TEMPLATES = {
     },
     "document_review": {
         "title": "Tratamento documental",
-        "workspaces": {"operational", "workshop", "management", "administration"},
+        "workspaces": {"operational", "workshop", "administration"},
         "description": "Receber, classificar, associar e preparar arquivo de documentação.",
         "steps": [
             ("identify", "Identificar documento", "Confirmar origem, remetente e assunto."),
@@ -1106,6 +1106,7 @@ TASK_TYPE_CANONICAL_GROUP = {
     "task": "operational_task",
     "request": "request_info",
     "incident": "operational_incident",
+    "management_task": "administration_task",
 }
 TASK_TYPE_LEGACY_BY_CANONICAL = {
     "operational_task": ["task"],
@@ -1127,10 +1128,12 @@ TASK_BOARD_TYPE_LABELS = {
 TASK_WORKSPACES = [
     ("operational", "Operacional"),
     ("workshop", "Oficina"),
-    ("management", "Gestão"),
     ("administration", "Administração"),
 ]
 TASK_WORKSPACE_LABELS = dict(TASK_WORKSPACES)
+TASK_WORKSPACE_ALIASES = {
+    "management": "administration",
+}
 TASK_WORKSPACE_CONFIG = {
     "operational": {
         "label": "Operacional",
@@ -1164,18 +1167,6 @@ TASK_WORKSPACE_CONFIG = {
         "secondary_task_types": ["workshop_audit"],
         "default_category": "workshop",
         "default_team_code": "workshop",
-    },
-    "management": {
-        "label": "Gestão",
-        "eyebrow": "Centro de gestão",
-        "title": "Tarefas de gestão",
-        "breadcrumb": "Centro de Tarefas > Gestão",
-        "description": "Implementações, supervisão, reporte, melhoria contínua e decisões de gestão.",
-        "default_task_type": "management_task",
-        "primary_task_types": ["management_task"],
-        "secondary_task_types": [],
-        "default_category": "operations",
-        "default_team_code": "support",
     },
     "administration": {
         "label": "Administração",
@@ -1211,18 +1202,14 @@ QUICK_RECORD_TYPES_BY_WORKSPACE = {
         ("evidence", "Evidência"),
         ("other", "Outro"),
     ],
-    "management": [
-        ("implementation", "Implementação"),
-        ("supervision", "Supervisão"),
-        ("decision", "Decisão"),
-        ("improvement", "Melhoria"),
-        ("other", "Outro"),
-    ],
     "administration": [
         ("decision", "Decisão"),
         ("sensitive_document", "Documento sensível"),
         ("finance_topic", "Tema financeiro"),
         ("reserved_followup", "Follow-up reservado"),
+        ("implementation", "Implementação"),
+        ("supervision", "Supervisão"),
+        ("improvement", "Melhoria"),
         ("other", "Outro"),
     ],
 }
@@ -1276,7 +1263,8 @@ def workshop_flow_steps_for_vehicle(vehicle: Vehicle | None) -> list[dict]:
 
 
 def normalize_task_workspace(workspace: str | None) -> str:
-    return workspace if workspace in TASK_WORKSPACE_CONFIG else "operational"
+    aliased_workspace = TASK_WORKSPACE_ALIASES.get(workspace or "", workspace)
+    return aliased_workspace if aliased_workspace in TASK_WORKSPACE_CONFIG else "operational"
 
 
 def task_workspace_read_permissions(workspace: str | None) -> set[str]:
@@ -1618,6 +1606,30 @@ ADMIN_USER_ROLES = [
     ("manager", "Gestor"),
     ("admin", "Admin"),
     ("viewer", "Consulta"),
+]
+
+TASK_CLASSIFICATION_ACCESS_RULES = [
+    {
+        "scope": "Centro de tarefas",
+        "name": "Administração",
+        "status": "Ativo",
+        "permission": "tasks.administration.read / write",
+        "summary": "Assuntos reservados ficam no centro Administração e só aparecem a perfis com permissão própria.",
+    },
+    {
+        "scope": "Classificação",
+        "name": "Documento sensível",
+        "status": "Preparado",
+        "permission": "A definir por classificação",
+        "summary": "Base prevista para restringir categorias/subcategorias sensíveis sem criar outro centro de tarefas.",
+    },
+    {
+        "scope": "Subclassificação",
+        "name": "Financeiro / Direção / Supervisão",
+        "status": "Futuro",
+        "permission": "A definir por perfil",
+        "summary": "Permite esconder ou limitar apenas certos tipos de assunto dentro do mesmo centro.",
+    },
 ]
 
 IMPLEMENTATION_ROADMAP = [
@@ -2150,7 +2162,11 @@ def admin_page(
         }
         users = db.scalars(select(User).order_by(User.name, User.email).limit(100)).all()
         roles = db.scalars(select(Role).order_by(Role.name, Role.code)).all()
-        permissions = db.scalars(select(Permission).order_by(Permission.code)).all()
+        permissions = [
+            permission
+            for permission in db.scalars(select(Permission).order_by(Permission.code)).all()
+            if not permission.code.startswith("tasks.management.")
+        ]
         organizational_units = db.scalars(
             select(OrganizationalUnit)
             .where(OrganizationalUnit.active.is_(True))
@@ -2199,6 +2215,7 @@ def admin_page(
                 "pilot_feedback_kind_labels": PILOT_FEEDBACK_KIND_LABELS,
                 "pilot_feedback_source_labels": PILOT_FEEDBACK_SOURCE_LABELS,
                 "implementation_roadmap": IMPLEMENTATION_ROADMAP,
+                "task_classification_access_rules": TASK_CLASSIFICATION_ACCESS_RULES,
                 "admin_user_roles": ADMIN_USER_ROLES,
                 "user_created": user_created,
                 "access_updated": access_updated,
@@ -6733,7 +6750,7 @@ def quick_record_create(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    clean_workspace = workspace if workspace in TASK_WORKSPACE_LABELS else "operational"
+    clean_workspace = normalize_task_workspace(workspace)
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
         if not user_can_access_task_workspace(db, current_user, clean_workspace, write=True):

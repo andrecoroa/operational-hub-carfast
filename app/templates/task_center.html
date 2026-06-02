@@ -87,23 +87,6 @@
         <span class="button-link secondary-link">Abrir gestão de tarefas</span>
       </a>
       {% endif %}
-      {% if "management" in authorized_workspaces %}
-      <a class="workspace-card planned-workspace" href="/task-board/management/manage">
-        <div>
-          <p class="eyebrow">A preparar</p>
-          <h3>Gestão</h3>
-          <p>Implementações, supervisão, melhoria contínua, reporte e decisões de gestão.</p>
-        </div>
-        <div class="workspace-summary">
-          <span><strong>{{ workspace_metrics.management.open_simple }}</strong><small>Tarefas simples abertas</small></span>
-          <span><strong>{{ workspace_metrics.management.open_parent }}</strong><small>Tarefas mãe abertas</small></span>
-          <span><strong>{{ workspace_metrics.management.open_subtasks }}</strong><small>Subtarefas abertas</small></span>
-          <span><strong>{{ workspace_metrics.management.due_today }}</strong><small>Com limite hoje</small></span>
-          <span><strong>{{ workspace_metrics.management.quick_open }}</strong><small>Registos rápidos por tratar</small></span>
-        </div>
-        <span class="button-link secondary-link">Abrir gestão de tarefas</span>
-      </a>
-      {% endif %}
       {% if "administration" in authorized_workspaces %}
       <a class="workspace-card planned-workspace" href="/task-board/administration/manage">
         <div>

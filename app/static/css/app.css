@@ -536,6 +536,19 @@ button:hover,
   color: white;
 }
 
+.sidebar a.sidebar-sub-link {
+  margin-left: 18px;
+  padding: 9px 12px;
+  border-left-color: transparent;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sidebar a.sidebar-sub-link:hover {
+  color: white;
+}
+
 .nav-badge {
   display: inline-grid;
   place-items: center;
@@ -1391,6 +1404,16 @@ button:hover,
 .task-center-card.tasks-card {
   border-color: #cfe7d8;
   background: linear-gradient(135deg, #f5fff8 0%, #ffffff 70%);
+}
+
+.task-center-card.phased-card {
+  border-color: #ead3b1;
+  background: linear-gradient(135deg, #fff8eb 0%, #ffffff 70%);
+}
+
+.task-center-card.phased-manage-card {
+  border-color: #bfd3dc;
+  background: linear-gradient(135deg, #f2fafb 0%, #ffffff 70%);
 }
 
 .task-entry-grid {

@@ -408,6 +408,27 @@ def _add_alert_once(
     return alert
 
 
+def _resolve_alerts(
+    db: Session,
+    process_id: int,
+    codes: set[str],
+    resolved_by_id: int | None = None,
+) -> None:
+    if not codes:
+        return
+    alerts = db.scalars(
+        select(WorkshopProcessAlert).where(
+            WorkshopProcessAlert.process_id == process_id,
+            WorkshopProcessAlert.code.in_(codes),
+            WorkshopProcessAlert.status == "open",
+        )
+    ).all()
+    for alert in alerts:
+        alert.status = "resolved"
+        alert.resolved_at = datetime.utcnow()
+        alert.resolved_by_id = resolved_by_id
+
+
 def _mark_phase(
     phase: WorkshopProcessPhase,
     status_value: str,
@@ -595,6 +616,9 @@ def confirm_reception(
     process.current_phase_code = "history_check"
 
     missing_required = []
+    resolved_codes: set[str] = set()
+    if reception.km_entry is not None:
+        resolved_codes.update({"km_current_missing", "km_entry_missing"})
     if reception.km_entry is None:
         missing_required.append("KM entrada")
         _add_alert_once(
@@ -604,6 +628,10 @@ def confirm_reception(
             "KM entrada em falta",
             source="administrative_reception",
             phase_id=phase.id,
+        )
+    if reception.initial_observation:
+        resolved_codes.update(
+            {"initial_observation_missing", "reception_observation_missing"}
         )
     if not reception.initial_observation:
         missing_required.append("Observação inicial")
@@ -615,6 +643,8 @@ def confirm_reception(
             source="administrative_reception",
             phase_id=phase.id,
         )
+    if reception.quadrant_photo_link:
+        resolved_codes.add("quadrant_photo_missing")
     if not reception.quadrant_photo_link:
         missing_required.append("Foto do quadrante")
         _add_alert_once(
@@ -625,6 +655,7 @@ def confirm_reception(
             source="administrative_reception",
             phase_id=phase.id,
         )
+    _resolve_alerts(db, process.id, resolved_codes, reception.confirmed_by_id)
 
     status_value = "completed" if not missing_required else "pending_review"
     _mark_phase(

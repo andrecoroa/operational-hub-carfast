@@ -1,0 +1,77 @@
+
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Layout BSI cartões</title>
+<style>
+:root{--bg:#f3f6fa;--card:#fff;--line:#dfe5ec;--text:#101827;--muted:#6b7586;--brand:#a94e3c;--brand-dark:#7f2f21;--soft:#f8ece9;--ok:#1f8f5f;--ok-soft:#e8f7ef;--warn:#8a6400;--warn-soft:#fff5d8;--calc:#f7f9fc;--blue:#365edc;--blue-soft:#eef4ff}*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text);padding:28px}.shell{max-width:1280px;margin:0 auto}.top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px}.eyebrow{text-transform:uppercase;font-size:12px;font-weight:900;color:var(--brand);letter-spacing:.02em;margin:0 0 6px}h1{margin:0;font-size:32px;line-height:1.1}h2{font-size:24px;margin:0}h3{font-size:18px;margin:0}.muted{color:var(--muted);font-size:13px;line-height:1.45;margin:7px 0 0}.btn{border:1px solid var(--line);background:#fff;color:var(--brand);font-weight:800;padding:12px 18px;border-radius:7px}.grid{display:grid;grid-template-columns:1fr 360px;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 26px rgba(16,24,39,.06);overflow:hidden}.card-pad{padding:22px}.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{display:flex;flex-direction:column;gap:7px}.field label{font-size:13px;color:#5d6879}.box{height:44px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:11px 12px;color:#9aa3b1}.section{border-top:1px solid var(--line);padding:22px}.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.report-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.report-card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:16px;min-height:132px;display:flex;flex-direction:column;gap:11px;justify-content:space-between}.report-card.active{border-color:#d8a397;background:#fffaf8;box-shadow:inset 4px 0 0 var(--brand)}.report-card.done{border-color:#c8ead4;background:#fbfffc}.report-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.report-title{font-size:17px;font-weight:900;line-height:1.2}.badge{border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900;background:#eef1f5;color:#6b7280;white-space:nowrap}.badge.active{background:var(--soft);color:var(--brand-dark)}.badge.done{background:var(--ok-soft);color:var(--ok)}.badge.warn{background:var(--warn-soft);color:var(--warn)}.report-desc{color:var(--muted);font-size:13px;line-height:1.35}.report-action{font-weight:900;color:var(--brand);font-size:13px}.selected{background:#fff;border-top:1px solid var(--line)}.calc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px}.calc{background:var(--calc);border:1px dashed #cbd5e1;border-radius:7px;padding:13px 14px;min-height:56px}.calc span{display:block;font-size:12px;color:#697386;margin-bottom:6px;text-transform:uppercase;font-weight:800}.calc strong{font-size:15px;color:#111827}.notes textarea{height:72px;border:1px solid var(--line);border-radius:7px;width:100%;padding:12px;color:#9aa3b1;font:inherit}.primary{width:100%;border:0;background:var(--brand);color:white;font-weight:900;padding:15px;border-radius:7px;font-size:16px;margin-top:18px}.side-step{border-bottom:1px solid var(--line);padding:16px 18px;display:flex;justify-content:space-between;gap:14px}.side-step strong{font-size:14px}.side-step small{display:block;color:var(--muted);margin-top:3px}.progress{height:8px;background:#eef1f5;border-radius:999px;overflow:hidden;margin-top:12px}.progress div{height:100%;width:20%;background:var(--brand)}@media(max-width:1100px){.report-grid{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:720px){body{padding:14px}.form-grid,.two,.report-grid,.calc-grid{grid-template-columns:1fr}.top{display:block}.btn{margin-top:12px;width:100%}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div><p class="eyebrow">Processo de oficina</p><h1>Registo de leitura técnica / BSI inicial</h1><p class="muted">Cada relatório é um cartão. Ao clicar, abre só o conjunto de campos desse relatório.</p></div>
+    <button class="btn">Voltar ao processo</button>
+  </div>
+  <div class="grid">
+    <main class="card">
+      <div class="card-pad">
+        <div class="section-title"><div><p class="eyebrow">Dados base</p><h2>Identificação da leitura</h2></div></div>
+        <div class="form-grid">
+          <div class="field"><label>Máquina / origem</label><div class="box">PSA-DIAG/Stellantis</div></div>
+          <div class="field"><label>Data leitura</label><div class="box">20/05/2026</div></div>
+          <div class="field"><label>KM</label><div class="box">31.420</div></div>
+          <div class="field"><label>Tensão bateria</label><div class="box">12.4V</div></div>
+        </div>
+      </div>
+      <section class="section">
+        <div class="section-title"><div><p class="eyebrow">Relatórios BSI</p><h2>Selecionar relatório a preencher</h2></div><span class="badge active">1 de 5 aberto</span></div>
+        <div class="report-grid">
+          <div class="report-card active"><div><div class="report-head"><div class="report-title">Informações manutenção</div><span class="badge active">Atual</span></div><p class="report-desc">KM, dias, limites e número de manutenções.</p></div><div class="report-action">Abrir preenchimento</div></div>
+          <div class="report-card"><div><div class="report-head"><div class="report-title">Programação manutenção</div><span class="badge">Pendente</span></div><p class="report-desc">Limiar, duração, circulação e primeira manutenção.</p></div><div class="report-action">Abrir preenchimento</div></div>
+          <div class="report-card"><div><div class="report-head"><div class="report-title">Lubrificação motor</div><span class="badge">Pendente</span></div><p class="report-desc">Óleo, carbono, proteção e intervalo calculado.</p></div><div class="report-action">Abrir preenchimento</div></div>
+          <div class="report-card done"><div><div class="report-head"><div class="report-title">Leitura defeitos</div><span class="badge done">Registado</span></div><p class="report-desc">Defeitos, códigos, estado e ação recomendada.</p></div><div class="report-action">Ver / editar</div></div>
+          <div class="report-card"><div><div class="report-head"><div class="report-title">Telecarregamento</div><span class="badge">Pendente</span></div><p class="report-desc">Software, calibração, data e número de telecarregamentos.</p></div><div class="report-action">Abrir preenchimento</div></div>
+        </div>
+      </section>
+      <section class="section selected">
+        <div class="section-title"><div><p class="eyebrow">Relatório selecionado</p><h2>Informações manutenção</h2></div><span class="badge active">Pendente</span></div>
+        <div class="two">
+          <div class="field"><label>KM última reposição manutenção</label><div class="box">9.587</div></div>
+          <div class="field"><label>KM até próxima manutenção</label><div class="box">8.580</div></div>
+          <div class="field"><label>Dias até próxima manutenção</label><div class="box">476</div></div>
+          <div class="field"><label>Dias desde última reposição a zero</label><div class="box">188</div></div>
+          <div class="field"><label>Nº manutenções efetuadas</label><div class="box">2</div></div>
+          <div class="field"><label>Limite temporal ultrapassado</label><div class="box">Não</div></div>
+          <div class="field"><label>Limite quilométrico ultrapassado</label><div class="box">Não</div></div>
+        </div>
+        <div class="calc-grid">
+          <div class="calc"><span>Data prevista próxima manutenção</span><strong>Calculado ao gravar</strong></div>
+          <div class="calc"><span>Data estimada última reposição</span><strong>Calculado ao gravar</strong></div>
+        </div>
+      </section>
+      <section class="section notes">
+        <div class="section-title"><div><p class="eyebrow">Comum</p><h2>Notas complementares</h2></div></div>
+        <div class="two">
+          <div class="field"><label>Resumo</label><textarea>Síntese da leitura ou diagnóstico</textarea></div>
+          <div class="field"><label>Notas BSI</label><textarea>Campo flexível para evoluir sem fechar já a grelha BSI</textarea></div>
+          <div class="field"><label>Sistemas verificados</label><textarea></textarea></div>
+          <div class="field"><label>Recomendação</label><textarea></textarea></div>
+        </div>
+        <div class="field" style="margin-top:14px"><label>Link externo do relatório</label><div class="box">https://sharepoint/.../relatorio.pdf</div></div>
+        <button class="primary">Gravar informações manutenção</button>
+      </section>
+    </main>
+    <aside class="card">
+      <div class="card-pad"><p class="eyebrow">Progresso BSI</p><h3>Relatórios da leitura inicial</h3><div class="progress"><div></div></div><p class="muted">1 relatório registado, 1 em edição e 3 pendentes.</p></div>
+      <div class="side-step"><div><strong>Informações manutenção</strong><small>Em preenchimento</small></div><span class="badge active">Atual</span></div>
+      <div class="side-step"><div><strong>Programação manutenção</strong><small>Sem dados</small></div><span class="badge">Pendente</span></div>
+      <div class="side-step"><div><strong>Lubrificação motor</strong><small>Sem dados</small></div><span class="badge">Pendente</span></div>
+      <div class="side-step"><div><strong>Leitura defeitos</strong><small>Registado</small></div><span class="badge done">OK</span></div>
+      <div class="side-step"><div><strong>Telecarregamento</strong><small>Sem dados</small></div><span class="badge warn">Por rever</span></div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

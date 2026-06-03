@@ -1,0 +1,44 @@
+
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--line:#dfe5ec;--ink:#071225;--muted:#667085;--brand:#a94c38;--soft:#fff3ef;--cream:#fff4d6;}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--ink);padding:34px} .page{max-width:1280px;margin:auto}.eyebrow{text-transform:uppercase;color:var(--brand);font-weight:900;font-size:13px;margin:0 0 8px}.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}h1{font-size:34px;margin:0}.actions{display:flex;gap:10px}.btn{border:1px solid var(--line);background:#fff;padding:12px 18px;border-radius:6px;font-weight:800;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px}.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 26px rgba(7,18,37,.05)}.panel-head{padding:22px 24px;border-bottom:1px solid var(--line)}.panel-head h2{font-size:26px;margin:0}.panel-body{padding:24px;display:grid;gap:18px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}label{display:grid;gap:8px;color:var(--muted);font-size:15px}input,select,textarea{border:1px solid var(--line);border-radius:7px;background:#fff;padding:14px 15px;font-size:16px;color:var(--ink)}textarea{min-height:128px;resize:vertical}.full{grid-column:1/-1}.submit{width:100%;background:var(--brand);color:white;border:0;border-radius:7px;padding:17px;font-weight:900;font-size:18px}.context-toggle{border:1px solid var(--line);border-radius:8px;padding:14px 16px;background:#fbfcfd;font-weight:900;color:var(--brand);display:flex;justify-content:space-between}.side{display:grid;gap:16px;align-content:start}.side .panel{padding:20px}.side h3{margin:0 0 12px;font-size:20px}.meta{display:grid;gap:10px}.meta div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:9px;color:var(--muted)}.meta strong{color:var(--ink)}.hint{background:var(--soft);border:1px solid #f0d2c9;border-radius:8px;padding:14px;color:#7b2d1d;font-weight:700;line-height:1.45}.pill-row{display:flex;gap:8px;flex-wrap:wrap}.pill{background:#eef3ff;color:#3258d3;border-radius:999px;padding:7px 11px;font-weight:800;font-size:13px}@media(max-width:900px){.layout{grid-template-columns:1fr}.grid,.grid.three{grid-template-columns:1fr}.top{flex-direction:column;gap:16px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div><p class="eyebrow">Execução direta</p><h1>Nova tarefa - Operacional</h1><p style="color:var(--muted);font-size:18px;margin:10px 0 0">Criar trabalho concreto para uma pessoa ou equipa, com o mínimo de ruído.</p></div>
+    <div class="actions"><button class="btn">Cancelar</button><button class="btn primary">Criar tarefa</button></div>
+  </header>
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-head"><p class="eyebrow">Dados principais</p><h2>Registo da tarefa</h2></div>
+      <div class="panel-body">
+        <label class="full">Assunto<input placeholder="Ex.: Ligar ao cliente sobre caução pendente"></label>
+        <label class="full">Descrição<textarea placeholder="Regista apenas a informação disponível e o resultado esperado."></textarea></label>
+        <div class="grid three">
+          <label>Prioridade<select><option>Normal</option><option>Alta</option><option>Baixa</option></select></label>
+          <label>Responsável / equipa<select><option>Por atribuir</option><option>Equipa Operações</option><option>Pedro Pereira</option></select></label>
+          <label>Data limite<input type="date"></label>
+        </div>
+        <div class="grid">
+          <label>Classificação<select><option>Operações</option><option>Frota</option><option>Financeiro</option><option>Cliente</option></select></label>
+          <label>Subclassificação<select><option>A definir</option><option>Follow-up cliente</option><option>Validação interna</option><option>Documentação</option></select></label>
+        </div>
+        <div class="context-toggle">Contexto opcional <span>+</span></div>
+        <button class="submit">Criar tarefa</button>
+      </div>
+    </section>
+    <aside class="side">
+      <article class="panel"><h3>Automático</h3><div class="meta"><div><span>Origem</span><strong>Manual</strong></div><div><span>Centro</span><strong>Operacional</strong></div><div><span>Estado</span><strong>Nova</strong></div><div><span>Criado por</span><strong>Utilizador atual</strong></div></div></article>
+      <article class="panel"><h3>Contexto opcional</h3><div class="pill-row"><span class="pill">Matrícula</span><span class="pill">Estação</span><span class="pill">Cliente</span><span class="pill">Reserva</span><span class="pill">Contrato</span><span class="pill">Contacto</span></div></article>
+      <div class="hint">A criação fica rápida. A origem e auditoria entram automaticamente; contexto adicional pode ser aberto só quando necessário.</div>
+    </aside>
+  </main>
+</div>
+</body>
+</html>

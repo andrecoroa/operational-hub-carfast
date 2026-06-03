@@ -1219,7 +1219,7 @@ def workshop_process_manage_page(process_id: int) -> str:
   <title>Operar Processo Oficina #{process_id}</title>
   <style>
     :root{{--bg:#f5f7f8;--panel:#fff;--line:#d9e0e5;--line2:#b9c5cc;--text:#07152d;--muted:#5c6c7b;--brand:#b24a34;--soft:#fbf1ee;--green:#2f7d50;--green-soft:#edf7ef;--amber:#9a6711;--amber-soft:#fff6df;--red:#b42318;--red-soft:#fff4f2;font-family:Inter,"Segoe UI",Arial,sans-serif}}
-    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}}aside{{background:#10202c;color:#d9e7ef;padding:20px 14px}}.brand{{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}}.nav{{display:grid;gap:4px}}.nav a{{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}}.nav .sub{{margin-left:18px;color:#b6cad5}}.nav .active{{background:#f4ebe7;color:#7d2f1f}}main{{padding:22px 28px 44px}}h1{{margin:0 0 4px;font-size:25px}}h2{{margin:0;font-size:17px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.vehicle-strip{{display:grid;grid-template-columns:190px minmax(0,1fr) 170px;gap:14px;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:-4px 0 18px}}.vehicle-thumb{{display:grid;place-items:center;min-height:112px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:13px;font-weight:900;text-align:center}}.vehicle-main{{display:grid;align-content:center;gap:10px}}.vehicle-main strong{{font-size:22px}}.vehicle-facts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.vehicle-facts div,.vehicle-state{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.vehicle-state{{align-content:center}}.vehicle-facts span,.vehicle-state span,.memory span{{color:var(--muted);font-size:12px;font-weight:750}}.vehicle-facts strong,.vehicle-state strong,.memory strong{{font-size:14px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}}.stack{{display:grid;gap:14px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}}.panel.sticky{{position:sticky;top:18px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.summary-block{{display:grid;gap:8px;margin-top:16px}}.summary-block:first-child{{margin-top:0}}.summary-title{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.summary-title h3{{margin:0}}.summary-kpis{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}}.summary-kpis div{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.summary-kpis span{{color:var(--muted);font-size:11px;font-weight:850}}.summary-kpis strong{{font-size:20px;line-height:1}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.report-layout{{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:14px;align-items:start}}.report-preview{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview-frame{{width:100%;height:520px;border:1px solid var(--line);border-radius:8px;background:#fff}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.value-table{{width:100%;border-collapse:collapse;margin:10px 0 8px}}.value-table th,.value-table td{{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:middle}}.value-table th{{background:#fbfcfd;color:var(--muted);font-size:12px;font-weight:850}}.value-table input{{min-height:34px;border-color:transparent;background:#fff;padding:7px}}.value-table input:focus{{border-color:var(--line2)}}.value-table button{{min-height:32px;padding:6px 9px}}.table-action-row{{display:flex;justify-content:flex-start;margin:0 0 14px}}.chip{{display:inline-flex;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:12px 0;padding:12px;border:1px solid #dce6dd;background:#f7fbf7;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:980px){{.app{{grid-template-columns:1fr}}aside{{display:none}}main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.layout,.vehicle-facts,.grid2,.grid3,.memory-grid,.summary-kpis,.report-layout{{grid-template-columns:1fr}}.panel.sticky{{position:static}}}}
+    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:block;min-height:100vh}}aside{{display:none}}main{{padding:18px 22px 44px}}h1{{margin:0 0 4px;font-size:24px}}h2{{margin:0;font-size:20px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.vehicle-strip{{display:grid;grid-template-columns:170px minmax(0,1fr) 170px;gap:14px;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:0 0 14px}}.vehicle-thumb{{display:grid;place-items:center;min-height:104px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:13px;font-weight:900;text-align:center}}.vehicle-main{{display:grid;align-content:center;gap:10px}}.vehicle-main strong{{font-size:22px}}.vehicle-facts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.vehicle-facts div,.vehicle-state{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.vehicle-state{{align-content:center}}.vehicle-facts span,.vehicle-state span,.memory span{{color:var(--muted);font-size:12px;font-weight:750}}.vehicle-facts strong,.vehicle-state strong,.memory strong{{font-size:14px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}}.stack{{display:grid;gap:12px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}}.panel.sticky{{position:sticky;top:14px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.summary-block{{display:grid;gap:8px;margin-top:14px}}.summary-block:first-child{{margin-top:0}}.summary-title{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.summary-title h3{{margin:0}}.summary-kpis{{display:grid;grid-template-columns:1fr;gap:8px}}.summary-kpis div{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.summary-kpis span{{color:var(--muted);font-size:11px;font-weight:850}}.summary-kpis strong{{font-size:20px;line-height:1}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.report-type-grid{{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin:12px 0 14px}}.report-type-card{{display:grid;gap:5px;min-height:78px;text-align:left;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px;cursor:pointer}}.report-type-card.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.report-type-card strong{{font-size:14px}}.report-type-card span{{color:var(--muted);font-size:12px;font-weight:800}}.report-layout{{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(420px,1fr);gap:14px;align-items:start}}.report-workspace{{display:grid;gap:12px}}.report-controls{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview-frame{{width:100%;height:620px;border:1px solid var(--line);border-radius:8px;background:#fff}}.report-field-table{{display:grid;grid-template-columns:1fr;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}}.report-field-table label{{display:grid;grid-template-columns:minmax(180px,.9fr) minmax(180px,1fr) 38px;gap:10px;align-items:center;min-height:58px;padding:9px 10px;border-top:1px solid var(--line);color:var(--text)}}.report-field-table label:first-child{{border-top:0}}.report-field-table input{{min-height:36px}}.report-field-table .field-info{{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer}}.report-json{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.report-json summary{{cursor:pointer;font-weight:850;color:var(--muted)}}.validation-panel{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;align-items:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px 14px;font-size:16px;font-weight:900;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:12px 0;padding:12px;border:1px solid #dce6dd;background:#f7fbf7;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:1280px){{.layout{{grid-template-columns:1fr}}.panel.sticky{{position:static}}.report-type-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:980px){{main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.vehicle-facts,.grid2,.grid3,.memory-grid,.report-layout,.report-field-table label{{grid-template-columns:1fr}}.report-type-grid{{grid-template-columns:1fr 1fr}}}}
   </style>
 </head>
 <body>
@@ -1260,47 +1260,31 @@ def workshop_process_manage_page(process_id: int) -> str:
               <button id="historyButton" class="primary" onclick="confirmHistory()">Confirmar histórico</button>
             </div>
             <div id="reports" class="form-section">
-              <h2>Relatórios Técnicos</h2>
-              <div class="summary-block" style="margin:12px 0">
-                <div class="summary-title"><h3>Relatórios anexados</h3><span id="attachedReportsCount" class="chip">0</span></div>
-                <ul id="attachedReportsList" class="plain-list"><li>Sem relatórios anexados</li></ul>
-                <div id="selectedReportDetail" class="memory"></div>
-              </div>
+              <div class="section-title"><h2>Relatórios Técnicos</h2><span id="reportTabCount" class="chip">0</span></div>
+              <div id="reportTypeCards" class="report-type-grid"></div>
+              <div id="selectedReportDetail" class="memory"></div>
               <div class="report-layout">
-                <div>
-                  <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
-                  <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
-                  <p id="reportHint" class="muted"></p>
-                  <h3 style="margin-top:16px">Valores extraídos</h3>
-                  <table class="value-table" id="reportValuesTable">
-                    <thead><tr><th>Campo</th><th>Valor</th><th></th></tr></thead>
-                    <tbody>
-                      <tr><td><input placeholder="Ex: KM atual"></td><td><input placeholder="Ex: 143210"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                      <tr><td><input placeholder="Ex: Código defeito"></td><td><input placeholder="Ex: P0000"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                      <tr><td><input placeholder="Ex: Observação"></td><td><input placeholder="Ex: Sem defeitos ativos"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                    </tbody>
-                  </table>
-                  <div class="table-action-row"><button type="button" onclick="addValueRow('reportValuesTable')">Adicionar linha</button></div>
-                  <button type="button" onclick="prepareReportValues()">Preparar valores para validação</button>
-                  <button class="primary" onclick="addReport()">Adicionar relatório</button>
-                  <h3 style="margin-top:16px">Validar relatório</h3>
-                  <label>ID relatório<input id="validateReportId" type="number"></label>
-                  <table class="value-table" id="validateValuesTable">
-                    <thead><tr><th>Campo</th><th>Valor validado</th><th></th></tr></thead>
-                    <tbody>
-                      <tr><td><input placeholder="Ex: KM atual"></td><td><input placeholder="Ex: 143210"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                      <tr><td><input placeholder="Ex: Código defeito"></td><td><input placeholder="Ex: Confirmado / corrigido"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                      <tr><td><input placeholder="Ex: Decisão"></td><td><input placeholder="Ex: Validado com PDF"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-                    </tbody>
-                  </table>
-                  <div class="table-action-row"><button type="button" onclick="addValueRow('validateValuesTable')">Adicionar linha</button></div>
-                  <button onclick="validateReport()">Validar</button>
-                </div>
-                <aside class="report-preview">
+                <div class="report-preview">
                   <div class="section-title"><h3>Pré-visualização</h3><a id="reportPreviewOpen" class="button secondary" href="#" target="_blank" rel="noopener">Abrir</a></div>
                   <p id="reportPreviewHint" class="muted">Cola o link do relatório original para pré-visualizar aqui.</p>
                   <iframe id="reportPreviewFrame" class="report-preview-frame" title="Pré-visualização do relatório original"></iframe>
-                </aside>
+                </div>
+                <div class="report-workspace">
+                  <div class="report-controls">
+                    <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
+                    <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="prepareReportValues()">Copiar extraídos para validação</button></div>
+                    <p id="reportHint" class="muted" style="margin:10px 0 0"></p>
+                    <div id="reportExtractionGuide" style="display:none"></div>
+                  </div>
+                  <div class="section-title" style="margin:0"><div><h3>Valores extraídos</h3><p class="muted" style="margin:4px 0 0">Rever e ajustar conforme o relatório original.</p></div></div>
+                  <div id="reportFieldGrid" class="report-field-table"></div>
+                  <details class="report-json"><summary>JSON extraído</summary><label style="margin-top:10px">Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label></details>
+                  <div class="validation-panel">
+                    <div class="section-title" style="margin:0"><div><h3>Validar relatório</h3><p class="muted" style="margin:4px 0 0">A validação só deve ser preenchida quando os extraídos estiverem revistos.</p></div><button class="primary" onclick="validateReport()">Validar</button></div>
+                    <div class="grid2"><label>ID relatório<input id="validateReportId" type="number"></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div id="checks" class="form-section">
@@ -1322,8 +1306,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <label>Causa provável<input id="decisionCause"></label><label>Observação diagnóstico<textarea id="decisionObs"></textarea></label>
               <div class="grid3"><label><input id="decisionNeedsRepair" type="checkbox"> Necessita reparação</label><label><input id="decisionNeedsBudget" type="checkbox"> Necessita orçamento</label><label><input id="decisionNeedsApproval" type="checkbox"> Necessita aprovação</label></div>
               <div class="grid2"><label><input id="decisionCharge" type="checkbox"> Potencial cobrança cliente</label><label><input id="decisionWarranty" type="checkbox"> Garantia</label></div>
-              <div class="grid3"><label>Motivo cobrança<input id="decisionChargeReason"></label><label>Contrato / cliente<input id="decisionContract"></label><label>Valor em dívida<input id="decisionChargeValue" type="number" step="0.01" min="0"></label></div>
-              <label>Evidência cobrança<input id="decisionChargeEvidence" placeholder="https://..."></label>
+              <div class="grid3"><label>Motivo cobrança<input id="decisionChargeReason"></label><label>Contrato / cliente<input id="decisionContract"></label><label>Evidência cobrança<input id="decisionChargeEvidence" placeholder="https://..."></label></div>
               <div class="grid2"><label><input id="decisionCreateTask" type="checkbox"> Criar tarefa próxima ação</label><label>Responsável próxima ação<input id="decisionResponsible" type="number"></label></div>
               <button id="decisionButton" class="primary" onclick="saveDecision()">Confirmar decisão</button>
             </div>
@@ -1361,7 +1344,7 @@ def workshop_process_manage_page(process_id: int) -> str:
     </main>
   </div>
   <script>
-    const processId = {process_id}; let processData = null; let config = null; const result = document.querySelector("#result");
+    const processId = {process_id}; let processData = null; let config = null; let selectedReportType = null; const result = document.querySelector("#result");
     function payloadValue(id) {{ return document.querySelector(id).value || null; }}
     function jsonValue(id) {{ const v = payloadValue(id); if (!v) return null; try {{ return JSON.parse(v); }} catch {{ throw new Error(`JSON inválido em ${{id}}`); }} }}
     function previewableReportUrl(value) {{
@@ -1387,8 +1370,14 @@ def workshop_process_manage_page(process_id: int) -> str:
     }}
     function activateTab(tabId) {{
       document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active"));
-      document.querySelector(`[data-tab="${{tabId}}"]`)?.classList.add("active");
-      document.querySelector(`#${{tabId}}`)?.classList.add("active");
+      const tab = document.querySelector(`.tab[data-tab="${{tabId}}"]`);
+      const section = document.querySelector(`#${{tabId}}`);
+      if (tab) tab.classList.add("active");
+      if (section) section.classList.add("active");
+    }}
+    function reportTypeLabel(code) {{
+      const report = (config?.stellantis_reports || []).find(item => item.code === code);
+      return report?.label || code || "Relatorio";
     }}
     function formatReportValues(values) {{
       if (!values || (typeof values === "object" && Object.keys(values).length === 0)) return "Sem valores registados";
@@ -1406,7 +1395,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       return url ? `<a class="button secondary" href="${{safe(url)}}" target="_blank" rel="noopener">Abrir original</a>` : `<span class="chip neutral">Sem link original</span>`;
     }}
     function showFieldInfo(message) {{
-      showResult(true, message || "Sem referência configurada para este campo.");
+      showResult(true, message || "Sem referencia configurada para este campo.");
     }}
     function objectValues(values) {{
       return values && !Array.isArray(values) && typeof values === "object" ? values : {{}};
@@ -1441,14 +1430,17 @@ def workshop_process_manage_page(process_id: int) -> str:
       const report = (processData?.technical_reports || []).find(item => String(item.id) === String(reportId));
       if (!report) return;
       activateTab("reports");
+      selectedReportType = report.report_code;
+      renderReportTypeCards();
       setValue("#reportCode", report.report_code);
       setValue("#reportMoment", report.report_moment);
       setValue("#reportOrigin", report.reading_origin);
       renderReportFields();
-      document.querySelector("#reportLink").value = report.original_link || "";
+      setValue("#reportLink", report.original_link);
       setValue("#validateReportId", report.id);
       setReportFieldValues(report.extracted_values || {{}});
-      setTableValues("validateValuesTable", hasReportValues(report.validated_values) ? report.validated_values : {{}});
+      document.querySelector("#reportValues").value = serializeReportValues(report.extracted_values || {{}});
+      document.querySelector("#validateValues").value = hasReportValues(report.validated_values) ? serializeReportValues(report.validated_values) : "";
       updateReportPreview();
       const detail = document.querySelector("#selectedReportDetail");
       detail.className = "memory active";
@@ -1463,46 +1455,29 @@ def workshop_process_manage_page(process_id: int) -> str:
           <div><span>Estado</span><strong>${{safe(statusMeta(report.status)[0])}}</strong></div>
           <div><span>Validado em</span><strong>${{safe(dateLabel(report.validated_at))}}</strong></div>
         </div>
-        <div class="grid2" style="margin-top:12px">
-          <label>Valores extraídos<textarea readonly>${{safe(formatReportValues(report.extracted_values))}}</textarea></label>
-          <label>Valores validados<textarea readonly>${{safe(formatReportValues(report.validated_values))}}</textarea></label>
-        </div>
       `;
       detail.scrollIntoView({{behavior:"smooth", block:"nearest"}});
     }}
-    function showResult(ok, message) {{ result.className = `result active ${{ok ? "ok" : "err"}}`; result.textContent = typeof message === "string" ? message : JSON.stringify(message); }}
-    async function post(url, body) {{ const r = await fetch(url, {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
-    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => activateTab(t.dataset.tab)));
-    const STATUS = {{
-      completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"],
-      ok:["OK","done"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], reception_pending:["Receção pendente","review"],
-      pending_definition:["Por definir","review"], pending:["Pendente","review"], open:["Aberto","review"], added:["Adicionado","progress"],
-      pending_validation:["Por validar","review"], corrected_manually:["Corrigido manualmente","review"], unable_to_read:["Falha na leitura","danger"],
-      not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], cancelled:["Cancelado","danger"], high:["Alta","danger"], critical:["Crítica","danger"]
-    }};
-    const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
-      technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
-      internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
-    }};
-    const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
-    function safe(value) {{
-      return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+    function selectReportType(code) {{
+      selectedReportType = code;
+      renderReportTypeCards();
+      const reports = processData?.technical_reports || [];
+      const candidate = reports
+        .filter(report => report.report_code === code)
+        .sort((a, b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0];
+      if (candidate) {{
+        selectReport(candidate.id);
+      }} else {{
+        setValue("#reportCode", code);
+        renderReportFields();
+        document.querySelector("#selectedReportDetail").className = "memory";
+        document.querySelector("#selectedReportDetail").innerHTML = "";
+        setValue("#validateReportId", "");
+        document.querySelector("#reportValues").value = "";
+        document.querySelector("#validateValues").value = "";
+        showResult(true, `Preparar novo relatório: ${{reportTypeLabel(code)}}.`);
+      }}
     }}
-    function label(value) {{ return VALUES[value] || value || "-"; }}
-    function statusMeta(code) {{ return STATUS[code] || [code || "-", "neutral"]; }}
-    function chip(code) {{ const meta = statusMeta(code); return `<span class="chip ${{meta[1]}}">${{safe(meta[0])}}</span>`; }}
-    function phaseData(code) {{ return (processData.phases.find(p => p.phase_code === code) || {{}}).data || {{}}; }}
-    function hasData(data) {{ return data && Object.keys(data).some(k => data[k] !== null && data[k] !== "" && data[k] !== undefined); }}
-    function dateLabel(value) {{
-      if (!value) return "-";
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return value;
-      return `${{date.toLocaleDateString("pt-PT")}}, ${{date.toLocaleTimeString("pt-PT", {{hour:"2-digit", minute:"2-digit"}})}}`;
-    }}
-    function setValue(id, value) {{ const el = document.querySelector(id); if (el && value !== null && value !== undefined) el.value = value; }}
-    function setChecked(id, value) {{ const el = document.querySelector(id); if (el) el.checked = Boolean(value); }}
-    function setButton(id, fresh, update) {{ const el = document.querySelector(id); if (el) el.textContent = update ? `Atualizar ${{fresh}}` : `Confirmar ${{fresh}}`; }}
     function selectedReportConfig() {{
       const code = payloadValue("#reportCode");
       return (config?.stellantis_reports || []).find(report => report.code === code) || null;
@@ -1548,77 +1523,88 @@ def workshop_process_manage_page(process_id: int) -> str:
       const origin = payloadValue("#reportOrigin") || "stellantis_machine";
       const meta = extractionMeta(report);
       const unit = field.unit ? ` (${{field.unit}})` : "";
-      return `${{label(origin)}} · ${{meta.source || "Relatório técnico"}}. Procurar no original: ${{field.label}}${{unit}}. Preencher o campo CarFast com o valor correspondente. Exemplo/referência: ${{meta.example || report?.label || "relatório técnico"}}. ${{meta.note || ""}}`;
+      return `${{label(origin)}} · ${{meta.source || "Relatorio tecnico"}}. Procurar no original: ${{field.label}}${{unit}}. Preencher este campo CarFast com o valor correspondente. Exemplo de referencia: ${{meta.example || report?.label || "relatorio tecnico"}}. ${{meta.note || ""}}`;
     }}
-    function setReportFieldRows(tableId, report, fields) {{
-      const body = document.querySelector(`#${{tableId}} tbody`);
-      if (!body) return;
-      body.innerHTML = fields.length ? fields.map(field => {{
-        const carfastField = field.unit ? `${{field.label}} (${{field.unit}})` : field.label;
-        const info = reportFieldInfo(report, field);
-        return `
-          <tr>
-            <td><input value="${{safe(carfastField)}}"></td>
-            <td><input data-report-field="${{safe(field.code)}}" placeholder="${{safe(field.repeatable ? "Lista ou resumo" : field.label)}}"></td>
-            <td style="display:flex;gap:6px;align-items:center">
-              <button type="button" title="${{safe(info)}}" data-info="${{safe(info)}}" onclick="showFieldInfo(this.dataset.info)" style="display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer;padding:0">i</button>
-              <button type="button" onclick="removeValueRow(this)">Limpar</button>
-            </td>
-          </tr>
-        `;
-      }}).join("") : `<tr><td><input placeholder="Campo"></td><td><input placeholder="Valor"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>`;
-    }}
-    function setTableValues(tableId, values) {{
-      const entries = Object.entries(values || {{}});
-      const body = document.querySelector(`#${{tableId}} tbody`);
-      body.innerHTML = entries.length ? entries.map(([key, value]) => `
-        <tr><td><input value="${{safe(key)}}"></td><td><input value="${{safe(value)}}"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
-      `).join("") : `<tr><td><input placeholder="Campo"></td><td><input placeholder="Valor"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>`;
+    function renderExtractionGuide(report, fields) {{
+      const guide = document.querySelector("#reportExtractionGuide");
+      if (!guide) return;
+      guide.style.display = "none";
+      guide.innerHTML = "";
     }}
     function renderReportFields() {{
       const report = selectedReportConfig();
       const fields = report?.fields || [];
-      document.querySelector("#reportHint").textContent = report
-        ? `${{report.description}} O link fica guardado como evidência; preenche os valores esperados na tabela.`
-        : "O link fica guardado como evidência; preenche os valores esperados na tabela.";
-      setReportFieldRows("reportValuesTable", report, fields);
-      const values = Object.fromEntries(fields.map(field => [
-        field.unit ? `${{field.label}} (${{field.unit}})` : field.label,
-        "",
-      ]));
-      setTableValues("validateValuesTable", values);
+      document.querySelector("#reportHint").textContent = report ? `${{report.description}} O link fica guardado como evidência; os valores devem ser preenchidos nos campos abaixo ou no JSON.` : "";
+      renderExtractionGuide(report, fields);
+      document.querySelector("#reportFieldGrid").innerHTML = fields.map(field => {{
+        const info = reportFieldInfo(report, field);
+        return `
+        <label>
+          <span>${{safe(field.label)}}${{field.unit ? ` (${{field.unit}})` : ""}}</span>
+          <input data-report-field="${{field.code}}" placeholder="${{field.repeatable ? "Lista ou resumo" : field.label}}">
+          <button class="field-info" type="button" title="${{safe(info)}}" data-info="${{safe(info)}}" onclick="showFieldInfo(this.dataset.info)">i</button>
+        </label>
+      `}}).join("");
+      document.querySelector("#reportValues").value = "";
+      document.querySelector("#validateValues").value = "";
     }}
-    function tableValues(tableId) {{
+    function collectReportValues() {{
       const values = {{}};
-      document.querySelectorAll(`#${{tableId}} tbody tr`).forEach((row) => {{
-        const inputs = row.querySelectorAll("input");
-        const key = (inputs[0]?.value || "").trim();
-        const value = (inputs[1]?.value || "").trim();
-        if (key && value) values[key] = value;
+      document.querySelectorAll("[data-report-field]").forEach(input => {{
+        const value = input.value.trim();
+        if (value) values[input.dataset.reportField] = value;
       }});
-      return values;
-    }}
-    function addValueRow(tableId) {{
-      document.querySelector(`#${{tableId}} tbody`).insertAdjacentHTML(
-        "beforeend",
-        `<tr><td><input placeholder="Campo"></td><td><input placeholder="Valor"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>`
-      );
-    }}
-    function removeValueRow(button) {{
-      const row = button.closest("tr");
-      const rows = row.parentElement.querySelectorAll("tr");
-      if (rows.length === 1) {{
-        row.querySelectorAll("input").forEach((input) => input.value = "");
-        return;
-      }}
-      row.remove();
+      const manual = jsonValue("#reportValues");
+      return Array.isArray(manual) ? manual : {{...values, ...(manual || {{}})}};
     }}
     function prepareReportValues() {{
-      const values = tableValues("reportValuesTable");
-      setTableValues("validateValuesTable", values);
+      const values = collectReportValues();
+      const serialized = JSON.stringify(values, null, 2);
+      document.querySelector("#reportValues").value = serialized;
+      document.querySelector("#validateValues").value = serialized;
       showResult(true, "Valores extraídos copiados para validação.");
       return values;
     }}
+    function showResult(ok, message) {{ result.className = `result active ${{ok ? "ok" : "err"}}`; result.textContent = typeof message === "string" ? message : JSON.stringify(message); }}
+    async function post(url, body) {{ const r = await fetch(url, {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
+    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {{
+      activateTab(t.dataset.tab);
+      if (t.dataset.tab === "reports" && processData?.technical_reports?.length) {{
+        const reports = selectedReportType ? processData.technical_reports.filter(report => report.report_code === selectedReportType) : processData.technical_reports;
+        const first = [...reports].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0];
+        if (first) selectReport(first.id);
+      }}
+    }}));
+    const STATUS = {{
+      completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"],
+      ok:["OK","done"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], reception_pending:["Receção pendente","review"],
+      pending_definition:["Por definir","review"], pending:["Pendente","review"], open:["Aberto","review"], added:["Adicionado","progress"],
+      pending_validation:["Por validar","review"], corrected_manually:["Corrigido manualmente","review"], unable_to_read:["Falha na leitura","danger"],
+      not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], cancelled:["Cancelado","danger"], high:["Alta","danger"], critical:["Crítica","danger"]
+    }};
+    const PHASES = {{
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
+      technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
+      internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
+    }};
+    const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
+    function safe(value) {{
+      return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+    }}
+    function label(value) {{ return VALUES[value] || value || "-"; }}
+    function statusMeta(code) {{ return STATUS[code] || [code || "-", "neutral"]; }}
+    function chip(code) {{ const meta = statusMeta(code); return `<span class="chip ${{meta[1]}}">${{safe(meta[0])}}</span>`; }}
+    function phaseData(code) {{ return (processData.phases.find(p => p.phase_code === code) || {{}}).data || {{}}; }}
+    function hasData(data) {{ return data && Object.keys(data).some(k => data[k] !== null && data[k] !== "" && data[k] !== undefined); }}
+    function dateLabel(value) {{
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return `${{date.toLocaleDateString("pt-PT")}}, ${{date.toLocaleTimeString("pt-PT", {{hour:"2-digit", minute:"2-digit"}})}}`;
+    }}
+    function setValue(id, value) {{ const el = document.querySelector(id); if (el && value !== null && value !== undefined) el.value = value; }}
+    function setChecked(id, value) {{ const el = document.querySelector(id); if (el) el.checked = Boolean(value); }}
+    function setButton(id, fresh, update) {{ const el = document.querySelector(id); if (el) el.textContent = update ? `Atualizar ${{fresh}}` : `Confirmar ${{fresh}}`; }}
     function memory(id, rows) {{
       const cleanRows = rows.filter(r => r[1] !== null && r[1] !== undefined && r[1] !== "");
       const el = document.querySelector(id);
@@ -1637,21 +1623,26 @@ def workshop_process_manage_page(process_id: int) -> str:
         </li>
       `).join("") || "<li>Sem serviços registados</li>";
     }}
-    function renderAttachedReports() {{
-      const list = document.querySelector("#attachedReportsList");
-      const count = document.querySelector("#attachedReportsCount");
-      if (!list || !count) return;
-      const reports = processData.technical_reports || [];
-      count.textContent = reports.length;
-      list.innerHTML = reports.map(report => `
-        <li>
-          <button type="button" onclick="selectReport(${{report.id}})" style="border:0;background:transparent;padding:0;text-align:left;color:var(--text);font:inherit;font-weight:850;cursor:pointer">
-            #${{report.id}} ${{safe(report.report_name)}}<br>
-            <small class="muted">${{safe(label(report.report_moment))}} · ${{safe(label(report.reading_origin))}} · ${{report.original_link ? "com original" : "sem original"}}</small>
-          </button>
-          ${{chip(report.status)}}
-        </li>
-      `).join("") || "<li>Sem relatórios anexados</li>";
+    function reportStatusSummary(reports) {{
+      if (!reports.length) return "0 relatórios";
+      const validated = reports.filter(report => ["validated","corrected_manually"].includes(report.status)).length;
+      const pending = reports.filter(report => ["pending_validation","added","pending"].includes(report.status)).length;
+      return `${{validated}} validados${{pending ? ` · ${{pending}} por validar` : ""}}`;
+    }}
+    function renderReportTypeCards() {{
+      const holder = document.querySelector("#reportTypeCards");
+      if (!holder || !config) return;
+      const reports = processData?.technical_reports || [];
+      document.querySelector("#reportTabCount").textContent = reports.length;
+      holder.innerHTML = (config.stellantis_reports || []).map(type => {{
+        const typeReports = reports.filter(report => report.report_code === type.code);
+        const active = selectedReportType === type.code;
+        return `<button type="button" class="report-type-card ${{active ? "active" : ""}}" onclick="selectReportType('${{safe(type.code)}}')">
+          <strong>${{safe(type.label)}}</strong>
+          <span>${{typeReports.length}} relatório${{typeReports.length === 1 ? "" : "s"}}</span>
+          <span>${{safe(reportStatusSummary(typeReports))}}</span>
+        </button>`;
+      }}).join("");
     }}
     function renderVehicle() {{
       const v = processData.vehicle || {{}};
@@ -1684,11 +1675,14 @@ def workshop_process_manage_page(process_id: int) -> str:
       statusChip.className = `chip ${{status[1]}}`;
       const alerts = Array.from(new Map(processData.alerts.map(a => [`${{a.code}}:${{a.message}}`, a])).values());
       const completedPhases = processData.phases.filter(p => ["completed","validated","completed_with_pending_items"].includes(p.status)).length;
+      const reports = processData.technical_reports || [];
+      const pendingReports = reports.filter(report => ["pending_validation","added","pending"].includes(report.status)).length;
       document.querySelector("#summary").innerHTML = `
         <div class="summary-kpis">
           <div><span>Fases concluídas</span><strong>${{completedPhases}}/${{processData.phases.length}}</strong></div>
           <div><span>Alertas abertos</span><strong>${{alerts.length}}</strong></div>
-          <div><span>Relatórios</span><strong>${{processData.technical_reports.length}}</strong></div>
+          <div><span>Relatórios</span><strong>${{reports.length}}</strong></div>
+          <div><span>Por validar</span><strong>${{pendingReports}}</strong></div>
         </div>
         <div class="summary-block">
           <div class="summary-title"><h3>Fases</h3><span class="chip">${{safe(PHASES[processData.current_phase_code] || processData.current_phase_code)}}</span></div>
@@ -1697,10 +1691,6 @@ def workshop_process_manage_page(process_id: int) -> str:
         <div class="summary-block">
           <div class="summary-title"><h3>Alertas</h3><span class="chip warn">${{alerts.length}}</span></div>
           <ul class="plain-list">${{alerts.map(a => `<li><span>${{safe(a.message)}}</span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas abertos</li>"}}</ul>
-        </div>
-        <div class="summary-block">
-          <div class="summary-title"><h3>Relatórios</h3><span class="chip">${{processData.technical_reports.length}}</span></div>
-          <ul class="plain-list">${{processData.technical_reports.map(r => `<li><button type="button" onclick="selectReport(${{r.id}})" style="border:0;background:transparent;padding:0;text-align:left;color:var(--text);font:inherit;font-weight:850;cursor:pointer">#${{r.id}} ${{safe(r.report_name)}}<br><small class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</small></button>${{chip(r.status)}}</li>`).join("") || "<li>Sem relatórios</li>"}}</ul>
         </div>
       `;
     }}
@@ -1712,8 +1702,8 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#historyMemory", [["Histórico interno", history.internal_history_checked], ["Accident reports", history.open_accident_reports], ["Detalhe", history.accident_reports_detail], ["Processos anteriores", history.previous_processes_reviewed], ["Incidência repetida", history.repeated_incidence], ["Observação", history.history_observation]]);
       setValue("#histInternal", history.internal_history_checked); setValue("#histAccidents", history.open_accident_reports); setValue("#histAccidentsDetail", history.accident_reports_detail); setValue("#histPrev", history.previous_processes_reviewed); setValue("#histRepeat", history.repeated_incidence); setValue("#histObs", history.history_observation); setButton("#historyButton", "histórico", hasData(history));
       const decision = phaseData("diagnosis_decision");
-      memory("#decisionMemory", [["Diagnóstico", decision.main_diagnosis], ["Tipo intervenção", decision.intervention_type], ["Sistema", decision.affected_system], ["Gravidade", decision.severity], ["Pode circular", decision.vehicle_can_circulate], ["Próxima ação", decision.next_action], ["Cobrança cliente", decision.potential_customer_charge ? "Sim" : null], ["Valor em dívida", decision.estimated_charge_value]]);
-      setValue("#decisionDiagnosis", decision.main_diagnosis); setValue("#decisionType", decision.intervention_type); setValue("#decisionSystem", decision.affected_system); setValue("#decisionSeverity", decision.severity); setValue("#decisionCause", decision.probable_cause); setValue("#decisionObs", decision.diagnosis_observation || decision.decision_observation); setValue("#decisionCirculate", decision.vehicle_can_circulate); setValue("#decisionNext", decision.next_action); setValue("#decisionChargeValue", decision.estimated_charge_value); setChecked("#decisionNeedsRepair", decision.needs_repair); setChecked("#decisionNeedsBudget", decision.needs_budget); setChecked("#decisionNeedsApproval", decision.needs_approval); setChecked("#decisionCharge", decision.potential_customer_charge); setChecked("#decisionWarranty", decision.warranty); setButton("#decisionButton", "decisão", hasData(decision));
+      memory("#decisionMemory", [["Diagnóstico", decision.main_diagnosis], ["Tipo intervenção", decision.intervention_type], ["Sistema", decision.affected_system], ["Gravidade", decision.severity], ["Pode circular", decision.vehicle_can_circulate], ["Próxima ação", decision.next_action], ["Cobrança cliente", decision.potential_customer_charge ? "Sim" : null]]);
+      setValue("#decisionDiagnosis", decision.main_diagnosis); setValue("#decisionType", decision.intervention_type); setValue("#decisionSystem", decision.affected_system); setValue("#decisionSeverity", decision.severity); setValue("#decisionCause", decision.probable_cause); setValue("#decisionObs", decision.diagnosis_observation || decision.decision_observation); setValue("#decisionCirculate", decision.vehicle_can_circulate); setValue("#decisionNext", decision.next_action); setChecked("#decisionNeedsRepair", decision.needs_repair); setChecked("#decisionNeedsBudget", decision.needs_budget); setChecked("#decisionNeedsApproval", decision.needs_approval); setChecked("#decisionCharge", decision.potential_customer_charge); setChecked("#decisionWarranty", decision.warranty); setButton("#decisionButton", "decisão", hasData(decision));
       const budget = phaseData("budget_approval");
       memory("#budgetMemory", [["Fornecedor", budget.supplier], ["Valor", budget.estimated_value], ["Aprovação", budget.approval_status], ["Resultado", budget.final_result], ["Observação", budget.observation]]);
       setValue("#budgetSupplier", budget.supplier); setValue("#budgetValue", budget.estimated_value); setValue("#budgetApproval", budget.approval_status); setValue("#budgetDescription", budget.request_description); setValue("#budgetLink", budget.budget_link); setValue("#budgetResult", budget.final_result); setValue("#budgetObs", budget.observation); setChecked("#budgetReceived", budget.budget_received); setChecked("#budgetNeedsApproval", budget.needs_approval); if (hasData(budget)) document.querySelector("#budgetButton").textContent = "Atualizar orçamento";
@@ -1724,16 +1714,26 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#closeMemory", [["Resultado", closure.final_result], ["Viatura pronta", closure.vehicle_ready], ["Novo estado", closure.new_vehicle_operational_status], ["KM final", closure.final_km], ["Observação", closure.final_observation]]);
       setValue("#closeResult", closure.final_result); setValue("#closeReady", closure.vehicle_ready); setValue("#closeStatus", closure.new_vehicle_operational_status); setValue("#closeObs", closure.final_observation); setChecked("#closePending", closure.close_with_pending_items); if (hasData(closure)) document.querySelector("#closeButton").textContent = "Atualizar fecho";
     }}
-    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); document.querySelector("#reportCode").addEventListener("change", renderReportFields); document.querySelector("#reportOrigin").addEventListener("change", renderReportFields); document.querySelector("#reportLink").addEventListener("input", updateReportPreview); renderReportFields(); updateReportPreview(); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderAttachedReports(); renderSummary(); renderPhaseMemory(); }}
+    async function loadConfig() {{
+      config = await (await fetch("/api/workshop/process-config")).json();
+      document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join("");
+      document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join("");
+      document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join("");
+      document.querySelector("#reportCode").addEventListener("change", () => {{ selectedReportType = payloadValue("#reportCode"); renderReportTypeCards(); renderReportFields(); }});
+      document.querySelector("#reportOrigin").addEventListener("change", renderReportFields);
+      document.querySelector("#reportLink").addEventListener("input", updateReportPreview);
+      renderReportFields();
+      updateReportPreview();
+    }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseMemory(); renderReportTypeCards(); if (!selectedReportType && processData.technical_reports?.length) {{ const first = [...processData.technical_reports].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0]; selectedReportType = first.report_code; if (document.querySelector("#reports").classList.contains("active")) selectReport(first.id); else renderReportTypeCards(); }} }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function addReport() {{ try {{ const extractedValues = tableValues("reportValuesTable"); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; setTableValues("validateValuesTable", {{}}); showResult(true, `Relatório adicionado #${{data.id}}. Valores guardados como extraídos.`); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function validateReport() {{ try {{ let validatedValues = tableValues("validateValuesTable"); if (!hasReportValues(validatedValues)) validatedValues = prepareReportValues(); await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:validatedValues}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function addReport() {{ try {{ const extractedValues = collectReportValues(); document.querySelector("#reportValues").value = JSON.stringify(extractedValues, null, 2); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; document.querySelector("#validateValues").value = ""; showResult(true, `Relatório adicionado #${{data.id}}. Valores guardados como extraídos.`); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function validateReport() {{ try {{ if (!payloadValue("#validateValues")) prepareReportValues(); await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:jsonValue("#validateValues") || {{}}}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveCheck() {{ try {{ await post(`/api/workshop/processes/${{processId}}/technical-checks`, {{check_code:payloadValue("#checkCode"), status:payloadValue("#checkStatus"), observation:payloadValue("#checkObs"), evidence_link:payloadValue("#checkEvidence"), creates_task:document.querySelector("#checkTask").checked, potential_customer_charge:document.querySelector("#checkCharge").checked, task_title:payloadValue("#checkTaskTitle")}}); showResult(true, "Verificação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function createIncident() {{ try {{ await post(`/api/workshop/processes/${{processId}}/incidents`, {{incident_type:payloadValue("#incidentType"), severity:payloadValue("#incidentSeverity"), vehicle_can_circulate:payloadValue("#incidentCirculate"), description:payloadValue("#incidentDescription")}}); showResult(true, "Incidente criado."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function saveDecision() {{ try {{ await post(`/api/workshop/processes/${{processId}}/diagnosis-decision`, {{main_diagnosis:payloadValue("#decisionDiagnosis"), intervention_type:payloadValue("#decisionType"), affected_system:payloadValue("#decisionSystem"), severity:payloadValue("#decisionSeverity"), probable_cause:payloadValue("#decisionCause"), diagnosis_observation:payloadValue("#decisionObs"), vehicle_can_circulate:payloadValue("#decisionCirculate"), needs_repair:document.querySelector("#decisionNeedsRepair").checked, needs_budget:document.querySelector("#decisionNeedsBudget").checked, needs_approval:document.querySelector("#decisionNeedsApproval").checked, potential_customer_charge:document.querySelector("#decisionCharge").checked, warranty:document.querySelector("#decisionWarranty").checked, charge_reason:payloadValue("#decisionChargeReason"), customer_contract:payloadValue("#decisionContract"), estimated_charge_value:Number(payloadValue("#decisionChargeValue")) || null, charge_evidence_link:payloadValue("#decisionChargeEvidence"), next_action:payloadValue("#decisionNext"), create_task:document.querySelector("#decisionCreateTask").checked, next_action_responsible_user_id:Number(payloadValue("#decisionResponsible")) || null, decision_observation:payloadValue("#decisionObs")}}); showResult(true, "Decisão confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function saveDecision() {{ try {{ await post(`/api/workshop/processes/${{processId}}/diagnosis-decision`, {{main_diagnosis:payloadValue("#decisionDiagnosis"), intervention_type:payloadValue("#decisionType"), affected_system:payloadValue("#decisionSystem"), severity:payloadValue("#decisionSeverity"), probable_cause:payloadValue("#decisionCause"), diagnosis_observation:payloadValue("#decisionObs"), vehicle_can_circulate:payloadValue("#decisionCirculate"), needs_repair:document.querySelector("#decisionNeedsRepair").checked, needs_budget:document.querySelector("#decisionNeedsBudget").checked, needs_approval:document.querySelector("#decisionNeedsApproval").checked, potential_customer_charge:document.querySelector("#decisionCharge").checked, warranty:document.querySelector("#decisionWarranty").checked, charge_reason:payloadValue("#decisionChargeReason"), customer_contract:payloadValue("#decisionContract"), charge_evidence_link:payloadValue("#decisionChargeEvidence"), next_action:payloadValue("#decisionNext"), create_task:document.querySelector("#decisionCreateTask").checked, next_action_responsible_user_id:Number(payloadValue("#decisionResponsible")) || null, decision_observation:payloadValue("#decisionObs")}}); showResult(true, "Decisão confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveBudget() {{ try {{ await post(`/api/workshop/processes/${{processId}}/budget-approval`, {{supplier:payloadValue("#budgetSupplier"), request_description:payloadValue("#budgetDescription"), budget_received:document.querySelector("#budgetReceived").checked, estimated_value:Number(payloadValue("#budgetValue")) || null, budget_link:payloadValue("#budgetLink"), needs_approval:document.querySelector("#budgetNeedsApproval").checked, approval_status:payloadValue("#budgetApproval"), final_result:payloadValue("#budgetResult"), observation:payloadValue("#budgetObs")}}); showResult(true, "Orçamento guardado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveRepair() {{ try {{ await post(`/api/workshop/processes/${{processId}}/internal-repair`, {{execution_type:payloadValue("#repairType"), result:payloadValue("#repairResult"), intervention_description:payloadValue("#repairDescription"), final_quadrant_photo_link:payloadValue("#repairFinalPhoto"), final_km_visible:Number(payloadValue("#repairFinalKm")) || null}}); showResult(true, "Reparação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function closeProcess() {{ try {{ await post(`/api/workshop/processes/${{processId}}/close`, {{final_result:payloadValue("#closeResult"), vehicle_ready:payloadValue("#closeReady"), new_vehicle_operational_status:payloadValue("#closeStatus"), final_observation:payloadValue("#closeObs") || "Fecho validado", close_with_pending_items:document.querySelector("#closePending").checked, pending_justification:payloadValue("#closePendingJustification")}}); showResult(true, "Processo fechado."); }} catch(e) {{ showResult(false, e.message); }} }}

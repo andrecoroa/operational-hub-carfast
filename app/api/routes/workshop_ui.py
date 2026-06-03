@@ -1193,8 +1193,9 @@ def workshop_process_list_page() -> str:
       document.querySelector("#updated").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-PT", {hour:"2-digit", minute:"2-digit"})}`;
     }
     function fillFilters(items) {
-      const statuses = [...new Set(items.map(displayStatusCode).filter(Boolean))];
+      const statuses = ["open", ...new Set(items.map(displayStatusCode).filter(Boolean).filter(code => code !== "open"))];
       document.querySelector("#statusFilter").innerHTML = `<option value="">Estado: Todos</option>` + statuses.map(code => `<option value="${code}">${safe(meta(STATUS, code)[0])}</option>`).join("");
+      document.querySelector("#statusFilter").value = "open";
       document.querySelector("#phaseFilter").innerHTML = `<option value="">Fase: Todas</option>` + Object.entries(PHASES).map(([code,label]) => `<option value="${code}">${label}</option>`).join("");
       ["search","statusFilter","phaseFilter","priorityFilter"].forEach(id => document.querySelector(`#${id}`).addEventListener("input", render));
     }

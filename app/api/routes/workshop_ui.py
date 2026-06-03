@@ -198,6 +198,40 @@ def new_workshop_process_page() -> str:
       font-weight: 650;
     }
 
+    .vehicle-card {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .vehicle-card div {
+      display: grid;
+      gap: 3px;
+    }
+
+    .vehicle-card span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .vehicle-card strong {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .vehicle-card.empty {
+      grid-template-columns: 1fr;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
     input,
     textarea,
     select {
@@ -398,7 +432,8 @@ def new_workshop_process_page() -> str:
       .layout { grid-template-columns: 1fr; }
       .preview { position: static; }
       .grid-2,
-      .grid-3 { grid-template-columns: 1fr; }
+      .grid-3,
+      .vehicle-card { grid-template-columns: 1fr; }
       .actions { left: 0; padding: 12px 16px; }
     }
   </style>
@@ -408,28 +443,28 @@ def new_workshop_process_page() -> str:
     <aside>
       <div class="brand">CarFast v2</div>
       <nav class="nav-group">
-        <a class="nav-item" href="/">Inicio</a>
+        <a class="nav-item" href="/">Início</a>
         <a class="nav-item" href="/fleet">Frota</a>
         <a class="nav-item active" href="/workshop">Oficina</a>
         <a class="nav-sub" href="/workshop/manage">Processos atuais</a>
-        <a class="nav-sub" href="/workshop/processes-ui">Processos por Fases</a>
-        <a class="nav-sub active" href="/workshop/new-process">Novo Processo</a>
+        <a class="nav-sub" href="/workshop/processes-ui">Processos por fases</a>
+        <a class="nav-sub active" href="/workshop/new-process">Novo processo por fases</a>
         <a class="nav-item" href="/task-board">Tarefas</a>
         <a class="nav-item" href="/documents">Documentos</a>
-        <a class="nav-item" href="/task-board/manage?workspace=management">Gestao</a>
-        <a class="nav-item" href="/admin">Administracao</a>
+        <a class="nav-item" href="/task-board/manage?workspace=management">Gestão</a>
+        <a class="nav-item" href="/admin">Administração</a>
       </nav>
     </aside>
     <main>
       <div class="topbar">
         <div>
-          <h1>Novo Processo Oficina por Fases</h1>
-          <p class="subtitle">Criação leve, serviços múltiplos e fases automáticas.</p>
+          <h1>Novo processo por fases</h1>
+          <p class="subtitle">Selecionar viatura da frota, serviços de entrada e fase inicial.</p>
         </div>
         <div class="top-actions">
           <a class="top-link" href="/workshop">Oficina</a>
           <a class="top-link" href="/workshop/manage">Processos atuais</a>
-          <a class="top-link" href="/workshop/processes-ui">Por fases</a>
+          <a class="top-link" href="/workshop/processes-ui">Processos por fases</a>
           <a class="top-link" href="/fleet">Frota</a>
         </div>
       </div>
@@ -451,12 +486,15 @@ def new_workshop_process_page() -> str:
             </div>
             <div class="grid-2">
               <label>Matrícula / Viatura
-                <input id="plate" name="plate" placeholder="AA-00-AA" required>
+                <input id="plate" name="plate" list="vehicleOptions" placeholder="Pesquisar matrícula, Unit, VIN, marca ou modelo" autocomplete="off" required>
+                <input id="vehicleId" name="vehicle_id" type="hidden">
+                <datalist id="vehicleOptions"></datalist>
               </label>
               <label>Km atual
                 <input id="kmCurrent" name="km_current" type="number" min="0" placeholder="Opcional">
               </label>
             </div>
+            <div id="vehiclePreview" class="vehicle-card empty">Pesquisar e selecionar uma viatura da frota.</div>
           </section>
 
           <section>
@@ -547,10 +585,17 @@ def new_workshop_process_page() -> str:
       config: null,
       selectedMode: "immediate_entry",
       selectedPriority: "normal",
+      vehicleResults: [],
+      selectedVehicle: null,
+      vehicleTimer: null,
     };
 
     const els = {
       form: document.querySelector("#processForm"),
+      plate: document.querySelector("#plate"),
+      vehicleId: document.querySelector("#vehicleId"),
+      vehicleOptions: document.querySelector("#vehicleOptions"),
+      vehiclePreview: document.querySelector("#vehiclePreview"),
       creationModes: document.querySelector("#creationModes"),
       serviceCards: document.querySelector("#serviceCards"),
       serviceDetails: document.querySelector("#serviceDetails"),
@@ -571,6 +616,60 @@ def new_workshop_process_page() -> str:
 
     function radioCard(name, value, label, checked) {
       return `<label class="choice"><input type="radio" name="${name}" value="${value}" ${checked ? "checked" : ""}>${label}</label>`;
+    }
+
+    function vehicleLabel(vehicle) {
+      return [vehicle.plate, vehicle.rentway_unit_nr ? `Unit ${vehicle.rentway_unit_nr}` : "", [vehicle.brand, vehicle.model, vehicle.version].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+    }
+
+    function renderVehiclePreview(vehicle) {
+      if (!vehicle) {
+        els.vehiclePreview.className = "vehicle-card empty";
+        els.vehiclePreview.textContent = els.plate.value.trim() ? "Seleciona uma viatura da lista para importar dados da frota." : "Pesquisar e selecionar uma viatura da frota.";
+        return;
+      }
+      els.vehiclePreview.className = "vehicle-card";
+      els.vehiclePreview.innerHTML = [
+        ["Matrícula", vehicle.plate],
+        ["Marca / modelo", [vehicle.brand, vehicle.model, vehicle.version].filter(Boolean).join(" ")],
+        ["Unit Rentway", vehicle.rentway_unit_nr],
+        ["VIN", vehicle.vin],
+        ["Estado operacional", vehicle.operational_status],
+        ["Estado frota", vehicle.lifecycle_status],
+      ].map(([label, value]) => `<div><span>${label}</span><strong>${value || "-"}</strong></div>`).join("");
+    }
+
+    function selectVehicle(vehicle) {
+      state.selectedVehicle = vehicle || null;
+      els.vehicleId.value = vehicle?.id || "";
+      if (vehicle?.plate) els.plate.value = vehicle.plate;
+      renderVehiclePreview(vehicle);
+      updateUiState();
+    }
+
+    function syncSelectedVehicleFromInput() {
+      const value = els.plate.value.trim().toUpperCase();
+      const vehicle = state.vehicleResults.find((item) => item.plate === value || vehicleLabel(item).toUpperCase() === value);
+      selectVehicle(vehicle || null);
+    }
+
+    async function searchVehicles() {
+      const query = els.plate.value.trim();
+      els.vehicleId.value = "";
+      state.selectedVehicle = null;
+      renderVehiclePreview(null);
+      if (query.length < 2) {
+        state.vehicleResults = [];
+        els.vehicleOptions.innerHTML = "";
+        updateUiState();
+        return;
+      }
+      const response = await fetch(`/task-board/vehicle-search?q=${encodeURIComponent(query)}&context=workshop`);
+      if (!response.ok) return;
+      const data = await response.json();
+      state.vehicleResults = data.items || [];
+      els.vehicleOptions.innerHTML = state.vehicleResults.map((vehicle) => `<option value="${vehicle.plate}" label="${vehicleLabel(vehicle)}"></option>`).join("");
+      syncSelectedVehicleFromInput();
     }
 
     function renderConfig(config) {
@@ -640,8 +739,14 @@ def new_workshop_process_page() -> str:
       document.querySelectorAll("input[name='service']").forEach((input) => {
         input.addEventListener("change", updateUiState);
       });
+      els.plate.addEventListener("input", () => {
+        clearTimeout(state.vehicleTimer);
+        state.vehicleTimer = setTimeout(searchVehicles, 160);
+        updateUiState();
+      });
+      els.plate.addEventListener("change", syncSelectedVehicleFromInput);
       els.origin.addEventListener("change", updateUiState);
-      ["plate", "manualTitle", "otherDetail", "originDetail", "scheduledAt"].forEach((id) => {
+      ["manualTitle", "otherDetail", "originDetail", "scheduledAt"].forEach((id) => {
         document.querySelector(`#${id}`).addEventListener("input", updateUiState);
       });
     }
@@ -675,7 +780,7 @@ def new_workshop_process_page() -> str:
     function renderChecks() {
       const services = selectedServices();
       const checks = [
-        ["Matrícula / Viatura", Boolean(document.querySelector("#plate").value.trim()), true],
+        ["Viatura selecionada da frota", Boolean(els.vehicleId.value), true],
         ["Serviços selecionados", services.length > 0, true],
         ["Título manual obrigatório", !services.includes("other") || Boolean(els.manualTitle.value.trim()), services.includes("other")],
         ["Descrição do Outro", !services.includes("other") || Boolean(document.querySelector("#otherDetail").value.trim()), services.includes("other")],
@@ -704,12 +809,19 @@ def new_workshop_process_page() -> str:
 
     async function submitProcess(event) {
       event.preventDefault();
+      if (!els.vehicleId.value) {
+        els.result.className = "result error active";
+        els.result.textContent = "Seleciona uma viatura da frota antes de criar o processo.";
+        els.plate.focus();
+        return;
+      }
       els.submitButton.disabled = true;
       els.result.className = "result";
       els.result.textContent = "";
 
       const services = selectedServices().map(servicePayload);
       const payload = {
+        vehicle_id: els.vehicleId.value ? Number(els.vehicleId.value) : null,
         plate: document.querySelector("#plate").value.trim(),
         creation_mode: state.selectedMode,
         services,
@@ -734,7 +846,7 @@ def new_workshop_process_page() -> str:
           throw new Error(data.detail ? JSON.stringify(data.detail) : "Erro ao criar processo.");
         }
         els.result.className = "result success active";
-        els.result.innerHTML = `<strong>Processo criado:</strong><br>${data.title}<br><span class="hint">Estado: ${data.status}. Fase atual: ${data.current_phase_code}.</span><br><br><a href="/workshop/processes-ui/${data.id}">Abrir processo</a>`;
+        els.result.innerHTML = `<strong>Processo criado:</strong><br>${data.title}<br><span class="hint">Estado: ${data.status}. Fase atual: ${data.current_phase_code}.</span><br><br><a href="/workshop/processes-ui/${data.id}/manage">Abrir processo</a>`;
       } catch (error) {
         els.result.className = "result error active";
         els.result.textContent = error.message;

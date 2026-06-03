@@ -106,6 +106,22 @@ class WorkshopServiceInput(BaseModel):
     short_observation: str | None = None
 
 
+class WorkshopServiceAdd(BaseModel):
+    service_code: str
+    detail: str | None = None
+    zone: str | None = None
+    short_observation: str | None = None
+    added_by_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_service(self) -> "WorkshopServiceAdd":
+        if self.service_code not in SERVICE_CODES:
+            raise ValueError(f"Serviço inválido: {self.service_code}.")
+        if self.service_code == "other" and not self.detail:
+            raise ValueError("Descrição do serviço Outro é obrigatória.")
+        return self
+
+
 class WorkshopProcessCreate(BaseModel):
     vehicle_id: int | None = None
     plate: str | None = None
@@ -607,6 +623,50 @@ def create_phased_workshop_process(
             for alert in alerts
         ],
     )
+
+
+@router.post("/processes/{process_id}/services", status_code=status.HTTP_201_CREATED)
+def add_workshop_process_service(
+    process_id: int,
+    service_input: WorkshopServiceAdd,
+    db: DbSession,
+) -> dict[str, Any]:
+    process = _get_process_or_404(db, process_id)
+    if process.closed_at:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não é possível adicionar serviços a um processo fechado.",
+        )
+
+    last_sort_order = db.scalar(
+        select(WorkshopProcessService.sort_order)
+        .where(WorkshopProcessService.process_id == process.id)
+        .order_by(WorkshopProcessService.sort_order.desc())
+        .limit(1)
+    )
+    service = WorkshopProcessService(
+        process_id=process.id,
+        service_code=service_input.service_code,
+        service_label=service_label_by_code(service_input.service_code),
+        detail=service_input.detail,
+        zone=service_input.zone,
+        short_observation=service_input.short_observation,
+        sort_order=(last_sort_order or 0) + 1,
+    )
+    db.add(service)
+    process.status = "open"
+    db.commit()
+    db.refresh(service)
+    return {
+        "id": service.id,
+        "process_id": service.process_id,
+        "service_code": service.service_code,
+        "service_label": service.service_label,
+        "detail": service.detail,
+        "zone": service.zone,
+        "short_observation": service.short_observation,
+        "sort_order": service.sort_order,
+    }
 
 
 @router.post("/processes/{process_id}/reception")
@@ -1383,11 +1443,13 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         ),
         "services": [
             {
+                "id": service.id,
                 "service_code": service.service_code,
                 "service_label": service.service_label,
                 "detail": service.detail,
                 "zone": service.zone,
                 "short_observation": service.short_observation,
+                "sort_order": service.sort_order,
             }
             for service in services
         ],

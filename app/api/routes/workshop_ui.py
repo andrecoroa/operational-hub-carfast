@@ -1231,7 +1231,7 @@ def workshop_process_manage_page(process_id: int) -> str:
           <div id="vehicleStrip" class="vehicle-strip"></div>
           <section>
             <div class="tabs">
-              <button class="tab active" data-tab="reception">Receção</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="reports">Relatórios</button><button class="tab" data-tab="checks">Verificações</button><button class="tab" data-tab="decision">Decisão</button><button class="tab" data-tab="budget">Orçamento</button><button class="tab" data-tab="repair">Reparação</button><button class="tab" data-tab="close">Fecho</button>
+              <button class="tab active" data-tab="reception">Receção</button><button class="tab" data-tab="services">Serviços</button><button class="tab" data-tab="history">Histórico</button><button class="tab" data-tab="reports">Relatórios</button><button class="tab" data-tab="checks">Verificações</button><button class="tab" data-tab="decision">Decisão</button><button class="tab" data-tab="budget">Orçamento</button><button class="tab" data-tab="repair">Reparação</button><button class="tab" data-tab="close">Fecho</button>
             </div>
             <div id="reception" class="form-section active">
               <h2>Receção Administrativa</h2>
@@ -1240,6 +1240,14 @@ def workshop_process_manage_page(process_id: int) -> str:
               <label>Observação inicial<textarea id="recObs"></textarea></label>
               <div class="grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage"></label></div>
               <button id="receptionButton" class="primary" onclick="confirmReception()">Confirmar receção</button>
+            </div>
+            <div id="services" class="form-section">
+              <h2>Serviços a executar</h2>
+              <p class="muted">Adicionar trabalhos que surjam depois da criação do processo.</p>
+              <ul id="serviceList" class="plain-list" style="margin:12px 0 16px"></ul>
+              <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
+              <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
+              <button class="primary" onclick="addService()">Adicionar serviço</button>
             </div>
             <div id="history" class="form-section">
               <h2>Verificação de Histórico</h2>
@@ -1404,6 +1412,16 @@ def workshop_process_manage_page(process_id: int) -> str:
       el.className = "memory active";
       el.innerHTML = `<div class="memory-grid">${{cleanRows.map(r => `<div><span>${{safe(r[0])}}</span><strong>${{safe(label(r[1]))}}</strong></div>`).join("")}}</div>`;
     }}
+    function renderServices() {{
+      const list = document.querySelector("#serviceList");
+      if (!list) return;
+      list.innerHTML = processData.services.map(service => `
+        <li>
+          <span>${{safe(service.service_label)}}<br><small class="muted">${{safe([service.zone, service.detail, service.short_observation].filter(Boolean).join(" · "))}}</small></span>
+          <span class="chip">#${{service.sort_order || service.id}}</span>
+        </li>
+      `).join("") || "<li>Sem serviços registados</li>";
+    }}
     function renderVehicle() {{
       const v = processData.vehicle || {{}};
       const model = [v.brand, v.model, v.version].filter(Boolean).join(" ") || "-";
@@ -1475,10 +1493,11 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#closeMemory", [["Resultado", closure.final_result], ["Viatura pronta", closure.vehicle_ready], ["Novo estado", closure.new_vehicle_operational_status], ["KM final", closure.final_km], ["Observação", closure.final_observation]]);
       setValue("#closeResult", closure.final_result); setValue("#closeReady", closure.vehicle_ready); setValue("#closeStatus", closure.new_vehicle_operational_status); setValue("#closeObs", closure.final_observation); setChecked("#closePending", closure.close_with_pending_items); if (hasData(closure)) document.querySelector("#closeButton").textContent = "Atualizar fecho";
     }}
-    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderSummary(); renderPhaseMemory(); }}
+    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseMemory(); }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addReport() {{ try {{ const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:tableValues("reportValuesTable")}}); document.querySelector("#validateReportId").value = data.id; showResult(true, `Relatório adicionado #${{data.id}}.`); }} catch(e) {{ showResult(false, e.message); }} }}
     async function validateReport() {{ try {{ await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:tableValues("validateValuesTable")}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveCheck() {{ try {{ await post(`/api/workshop/processes/${{processId}}/technical-checks`, {{check_code:payloadValue("#checkCode"), status:payloadValue("#checkStatus"), observation:payloadValue("#checkObs"), evidence_link:payloadValue("#checkEvidence"), creates_task:document.querySelector("#checkTask").checked, potential_customer_charge:document.querySelector("#checkCharge").checked, task_title:payloadValue("#checkTaskTitle")}}); showResult(true, "Verificação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}

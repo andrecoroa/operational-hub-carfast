@@ -1397,6 +1397,9 @@ def workshop_process_manage_page(process_id: int) -> str:
       if (!values || Array.isArray(values) || typeof values !== "object") return JSON.stringify(values || {{}}, null, 2);
       return JSON.stringify(values, null, 2);
     }}
+    function hasReportValues(values) {{
+      return Boolean(values && typeof values === "object" && Object.keys(values).length);
+    }}
     function reportLinkButton(report) {{
       const url = previewableReportUrl(report?.original_link);
       return url ? `<a class="button secondary" href="${{safe(url)}}" target="_blank" rel="noopener">Abrir original</a>` : `<span class="chip neutral">Sem link original</span>`;
@@ -1444,7 +1447,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportLink").value = report.original_link || "";
       setValue("#validateReportId", report.id);
       setReportFieldValues(report.extracted_values || {{}});
-      setTableValues("validateValuesTable", report.validated_values || report.extracted_values || {{}});
+      setTableValues("validateValuesTable", hasReportValues(report.validated_values) ? report.validated_values : {{}});
       updateReportPreview();
       const detail = document.querySelector("#selectedReportDetail");
       detail.className = "memory active";
@@ -1612,7 +1615,7 @@ def workshop_process_manage_page(process_id: int) -> str:
     function prepareReportValues() {{
       const values = tableValues("reportValuesTable");
       setTableValues("validateValuesTable", values);
-      showResult(true, "Valores preparados para validação.");
+      showResult(true, "Valores extraídos copiados para validação.");
       return values;
     }}
     function memory(id, rows) {{
@@ -1725,8 +1728,8 @@ def workshop_process_manage_page(process_id: int) -> str:
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function addReport() {{ try {{ const extractedValues = prepareReportValues(); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; setTableValues("validateValuesTable", data.extracted_values || extractedValues); showResult(true, `Relatório adicionado #${{data.id}}. Valores prontos para validar.`); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function validateReport() {{ try {{ await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:tableValues("validateValuesTable")}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function addReport() {{ try {{ const extractedValues = tableValues("reportValuesTable"); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; setTableValues("validateValuesTable", {{}}); showResult(true, `Relatório adicionado #${{data.id}}. Valores guardados como extraídos.`); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function validateReport() {{ try {{ let validatedValues = tableValues("validateValuesTable"); if (!hasReportValues(validatedValues)) validatedValues = prepareReportValues(); await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:validatedValues}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveCheck() {{ try {{ await post(`/api/workshop/processes/${{processId}}/technical-checks`, {{check_code:payloadValue("#checkCode"), status:payloadValue("#checkStatus"), observation:payloadValue("#checkObs"), evidence_link:payloadValue("#checkEvidence"), creates_task:document.querySelector("#checkTask").checked, potential_customer_charge:document.querySelector("#checkCharge").checked, task_title:payloadValue("#checkTaskTitle")}}); showResult(true, "Verificação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function createIncident() {{ try {{ await post(`/api/workshop/processes/${{processId}}/incidents`, {{incident_type:payloadValue("#incidentType"), severity:payloadValue("#incidentSeverity"), vehicle_can_circulate:payloadValue("#incidentCirculate"), description:payloadValue("#incidentDescription")}}); showResult(true, "Incidente criado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveDecision() {{ try {{ await post(`/api/workshop/processes/${{processId}}/diagnosis-decision`, {{main_diagnosis:payloadValue("#decisionDiagnosis"), intervention_type:payloadValue("#decisionType"), affected_system:payloadValue("#decisionSystem"), severity:payloadValue("#decisionSeverity"), probable_cause:payloadValue("#decisionCause"), diagnosis_observation:payloadValue("#decisionObs"), vehicle_can_circulate:payloadValue("#decisionCirculate"), needs_repair:document.querySelector("#decisionNeedsRepair").checked, needs_budget:document.querySelector("#decisionNeedsBudget").checked, needs_approval:document.querySelector("#decisionNeedsApproval").checked, potential_customer_charge:document.querySelector("#decisionCharge").checked, warranty:document.querySelector("#decisionWarranty").checked, charge_reason:payloadValue("#decisionChargeReason"), customer_contract:payloadValue("#decisionContract"), charge_evidence_link:payloadValue("#decisionChargeEvidence"), next_action:payloadValue("#decisionNext"), create_task:document.querySelector("#decisionCreateTask").checked, next_action_responsible_user_id:Number(payloadValue("#decisionResponsible")) || null, decision_observation:payloadValue("#decisionObs")}}); showResult(true, "Decisão confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}

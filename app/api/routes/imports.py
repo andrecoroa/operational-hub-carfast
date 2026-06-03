@@ -42,7 +42,7 @@ def list_import_batches(
 
 
 @router.post("/batches", response_model=ImportBatchRead, status_code=status.HTTP_201_CREATED)
-def create_import_batch(payload: ImportBatchCreate, db: DbSession, _: ImportRunner = None):
+def create_import_batch(payload: ImportBatchCreate, db: DbSession, _: ImportRunner):
     batch = ImportBatch(**payload.model_dump())
     db.add(batch)
     db.flush()
@@ -71,7 +71,7 @@ def update_import_batch(
     batch_id: int,
     payload: ImportBatchUpdate,
     db: DbSession,
-    _: ImportApprover = None,
+    _: ImportApprover,
 ):
     batch = db.get(ImportBatch, batch_id)
     if not batch:
@@ -120,7 +120,7 @@ def create_import_raw_row(
     batch_id: int,
     payload: ImportRawRowCreate,
     db: DbSession,
-    _: ImportRunner = None,
+    _: ImportRunner,
 ):
     if not db.get(ImportBatch, batch_id):
         raise HTTPException(status_code=404, detail="Import batch not found.")
@@ -156,7 +156,7 @@ def create_import_error(
     batch_id: int,
     payload: ImportErrorCreate,
     db: DbSession,
-    _: ImportRunner = None,
+    _: ImportRunner,
 ):
     if not db.get(ImportBatch, batch_id):
         raise HTTPException(status_code=404, detail="Import batch not found.")

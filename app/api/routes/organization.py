@@ -39,7 +39,7 @@ def list_organizational_units(db: DbSession, include_inactive: bool = False):
 def create_organizational_unit(
     payload: OrganizationalUnitCreate,
     db: DbSession,
-    _: SettingsManager = None,
+    _: SettingsManager,
 ):
     existing = db.scalar(select(OrganizationalUnit).where(OrganizationalUnit.code == payload.code))
     if existing:
@@ -68,7 +68,7 @@ def update_organizational_unit(
     unit_id: int,
     payload: OrganizationalUnitUpdate,
     db: DbSession,
-    _: SettingsManager = None,
+    _: SettingsManager,
 ):
     unit = db.get(OrganizationalUnit, unit_id)
     if not unit:
@@ -110,7 +110,7 @@ def list_teams(db: DbSession, include_inactive: bool = False):
 
 
 @router.post("/teams", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
-def create_team(payload: TeamCreate, db: DbSession, _: SettingsManager = None):
+def create_team(payload: TeamCreate, db: DbSession, _: SettingsManager):
     existing = db.scalar(select(Team).where(Team.code == payload.code))
     if existing:
         raise HTTPException(status_code=409, detail="Team code already exists.")
@@ -137,7 +137,7 @@ def create_team(payload: TeamCreate, db: DbSession, _: SettingsManager = None):
 
 
 @router.patch("/teams/{team_id}", response_model=TeamRead)
-def update_team(team_id: int, payload: TeamUpdate, db: DbSession, _: SettingsManager = None):
+def update_team(team_id: int, payload: TeamUpdate, db: DbSession, _: SettingsManager):
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")

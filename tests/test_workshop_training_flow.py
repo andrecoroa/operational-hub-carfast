@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+import app.main as app_main
 from app.models import Base
 from app.models.audit import AuditLog
 from app.models.admin import User
@@ -19,7 +20,7 @@ from app.services.users import create_user
 import app.web.router as web_router
 
 
-def test_complete_workshop_training_flow():
+def test_complete_workshop_training_flow(monkeypatch):
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -27,7 +28,8 @@ def test_complete_workshop_training_flow():
     )
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    web_router.SessionLocal = SessionLocal
+    monkeypatch.setattr(web_router, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(app_main, "SessionLocal", SessionLocal)
 
     with SessionLocal() as db:
         seed_initial_data(db)
@@ -90,6 +92,8 @@ def test_complete_workshop_training_flow():
         follow_redirects=False,
     )
     assert login.status_code == 303
+    notice = client.post("/change-notice", data={"next_url": "/"}, follow_redirects=False)
+    assert notice.status_code == 303
     assert client.get("/task-board/new").status_code == 200
 
     created = client.post(
@@ -274,7 +278,8 @@ def test_complete_workshop_training_flow():
             "task_type": "task",
             "source": "manual",
             "category": "workshop",
-            "subcategory": "Oficina externa",
+            "subcategory": "workshop_other",
+            "manual_subcategory": "Oficina externa",
             "priority": "high",
             "assigned_to_id": str(paulo_id),
             "team_id": str(workshop_team_id),
@@ -287,6 +292,7 @@ def test_complete_workshop_training_flow():
             "station": "Aeroporto Porto",
             "department": "Oficina",
             "description": "Confirmar disponibilidade para avaliacao.",
+            "confirm_duplicate": "1",
         },
         follow_redirects=False,
     )
@@ -300,11 +306,12 @@ def test_complete_workshop_training_flow():
     task_update = client.post(
         f"/task-board/{managed_task_id}/update",
         data={
-            "status": "in_treatment",
+            "status": "in_execution",
             "priority": "high",
             "task_type": "task",
             "category": "workshop",
-            "subcategory": "Oficina externa",
+            "subcategory": "workshop_other",
+            "manual_subcategory": "Oficina externa",
             "assigned_to_id": str(paulo_id),
             "team_id": str(workshop_team_id),
             "due_on": "2026-05-15",
@@ -439,11 +446,11 @@ def test_complete_workshop_training_flow():
             )
         ) == 1
         managed_task = db.get(Task, managed_task_id)
-        assert managed_task.status == "in_treatment"
+        assert managed_task.status == "in_execution"
         assert managed_task.task_type == "task"
         assert managed_task.source == "manual"
         assert managed_task.category == "workshop"
-        assert managed_task.subcategory == "Oficina externa"
+        assert managed_task.subcategory == "workshop_other"
         assert managed_task.customer_name == "Cliente Teste"
         assert managed_task.customer_email == "cliente@example.com"
         assert managed_task.plate == "BZ81SC"
@@ -525,7 +532,7 @@ def test_complete_workshop_training_flow():
         assert document.classification == "fleet"
         assert document.document_type == "general_fleet"
         assert document.status == "classified"
-        assert document.folder_path == "Frota/BZ81SC"
+        assert document.folder_path == "Oficina/Matrículas/BZ81SC/Geral Frota"
         assert document.entry_channel == "documentos@carfast.pt"
         assert document.task_id == managed_task_id
         assert document.workshop_process_id == process_id

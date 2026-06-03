@@ -32,6 +32,7 @@ TASK_WAITING_REASONS = {
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
     db: DbSession,
+    _: TaskReader,
     status_filter: str | None = None,
     task_type: str | None = None,
     team_id: int | None = None,
@@ -40,7 +41,6 @@ def list_tasks(
     entity_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    _: TaskReader = None,
 ):
     stmt = select(Task).order_by(Task.id.desc()).limit(limit).offset(offset)
     if status_filter:
@@ -63,7 +63,7 @@ def create_task(
     payload: TaskCreate,
     db: DbSession,
     current_user: CurrentUser,
-    _: TaskWriter = None,
+    _: TaskWriter,
 ):
     validate_task_links(
         db,
@@ -93,7 +93,7 @@ def create_task(
 
 
 @router.get("/{task_id}", response_model=TaskRead)
-def get_task(task_id: int, db: DbSession, _: TaskReader = None):
+def get_task(task_id: int, db: DbSession, _: TaskReader):
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -106,7 +106,7 @@ def update_task(
     payload: TaskUpdate,
     db: DbSession,
     current_user: CurrentUser,
-    _: TaskWriter = None,
+    _: TaskWriter,
 ):
     task = db.get(Task, task_id)
     if not task:
@@ -172,7 +172,7 @@ def update_task(
 
 
 @router.get("/{task_id}/comments", response_model=list[TaskCommentRead])
-def list_task_comments(task_id: int, db: DbSession, _: TaskReader = None):
+def list_task_comments(task_id: int, db: DbSession, _: TaskReader):
     if not db.get(Task, task_id):
         raise HTTPException(status_code=404, detail="Task not found.")
     return db.scalars(
@@ -190,7 +190,7 @@ def create_task_comment(
     payload: TaskCommentCreate,
     db: DbSession,
     current_user: CurrentUser,
-    _: TaskWriter = None,
+    _: TaskWriter,
 ):
     if not db.get(Task, task_id):
         raise HTTPException(status_code=404, detail="Task not found.")

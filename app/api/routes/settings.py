@@ -29,7 +29,7 @@ def list_catalogs(db: DbSession, include_inactive: bool = False):
 
 
 @router.post("/catalogs", response_model=SettingsCatalogRead, status_code=status.HTTP_201_CREATED)
-def create_catalog(payload: SettingsCatalogCreate, db: DbSession, _: SettingsManager = None):
+def create_catalog(payload: SettingsCatalogCreate, db: DbSession, _: SettingsManager):
     existing = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == payload.code))
     if existing:
         raise HTTPException(status_code=409, detail="Catalog code already exists.")
@@ -54,7 +54,7 @@ def update_catalog(
     catalog_id: int,
     payload: SettingsCatalogUpdate,
     db: DbSession,
-    _: SettingsManager = None,
+    _: SettingsManager,
 ):
     catalog = db.get(SettingsCatalog, catalog_id)
     if not catalog:
@@ -106,7 +106,7 @@ def create_catalog_value(
     catalog_code: str,
     payload: SettingsValueCreate,
     db: DbSession,
-    _: SettingsManager = None,
+    _: SettingsManager,
 ):
     catalog = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == catalog_code))
     if not catalog:
@@ -141,7 +141,7 @@ def update_catalog_value(
     value_id: int,
     payload: SettingsValueUpdate,
     db: DbSession,
-    _: SettingsManager = None,
+    _: SettingsManager,
 ):
     value = db.get(SettingsValue, value_id)
     if not value:

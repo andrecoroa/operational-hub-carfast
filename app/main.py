@@ -27,6 +27,11 @@ CHANGE_NOTICE_ALLOWED_PREFIXES = (
     "/change-notice",
 )
 
+CHANGE_NOTICE_ALLOWED_PATHS = {
+    "/admin/roles",
+    "/admin/permissions",
+}
+
 PERMISSION_ALLOWED_PREFIXES = (
     "/api",
     "/docs",
@@ -39,6 +44,11 @@ PERMISSION_ALLOWED_PREFIXES = (
     "/logout",
     "/change-notice",
 )
+
+PERMISSION_ALLOWED_PATHS = {
+    "/admin/roles",
+    "/admin/permissions",
+}
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
@@ -76,6 +86,8 @@ WEB_PERMISSION_RULES = (
 def must_confirm_change_notice(request: Request) -> bool:
     path = request.url.path
     if request.method == "HEAD":
+        return False
+    if path in CHANGE_NOTICE_ALLOWED_PATHS:
         return False
     if any(path == prefix or path.startswith(f"{prefix}/") for prefix in CHANGE_NOTICE_ALLOWED_PREFIXES):
         return False
@@ -131,7 +143,11 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def permission_gate(request: Request, call_next):
         path = request.url.path
-        if request.method == "HEAD" or any(path == prefix or path.startswith(f"{prefix}/") for prefix in PERMISSION_ALLOWED_PREFIXES):
+        if (
+            request.method == "HEAD"
+            or path in PERMISSION_ALLOWED_PATHS
+            or any(path == prefix or path.startswith(f"{prefix}/") for prefix in PERMISSION_ALLOWED_PREFIXES)
+        ):
             return await call_next(request)
         required_permissions = route_required_permissions(path, request.method)
         if required_permissions and not has_required_permission(request, required_permissions):

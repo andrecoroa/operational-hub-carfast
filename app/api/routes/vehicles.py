@@ -24,13 +24,13 @@ VehicleWriter = Annotated[object, Depends(require_permission("vehicles.write"))]
 @router.get("", response_model=list[VehicleRead])
 def list_vehicles(
     db: DbSession,
+    _: VehicleReader,
     q: str | None = None,
     lifecycle_status: str | None = None,
     operational_status: str | None = None,
     include_inactive: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    _: VehicleReader = None,
 ):
     stmt = select(Vehicle).order_by(Vehicle.plate, Vehicle.id).limit(limit).offset(offset)
     if not include_inactive:
@@ -52,7 +52,7 @@ def list_vehicles(
 
 
 @router.post("", response_model=VehicleRead, status_code=status.HTTP_201_CREATED)
-def create_vehicle(payload: VehicleCreate, db: DbSession, _: VehicleWriter = None):
+def create_vehicle(payload: VehicleCreate, db: DbSession, _: VehicleWriter):
     plate = normalize_identifier(payload.plate)
     vin = normalize_identifier(payload.vin)
     rentway_unit_nr = normalize_identifier(payload.rentway_unit_nr)
@@ -94,10 +94,10 @@ def create_vehicle(payload: VehicleCreate, db: DbSession, _: VehicleWriter = Non
 @router.get("/lookup", response_model=VehicleRead)
 def lookup_vehicle(
     db: DbSession,
+    _: VehicleReader,
     plate: str | None = None,
     vin: str | None = None,
     rentway_unit_nr: str | None = None,
-    _: VehicleReader = None,
 ):
     vehicle = find_vehicle_by_any_identifier(
         db,
@@ -111,7 +111,7 @@ def lookup_vehicle(
 
 
 @router.get("/{vehicle_id}", response_model=VehicleRead)
-def get_vehicle(vehicle_id: int, db: DbSession, _: VehicleReader = None):
+def get_vehicle(vehicle_id: int, db: DbSession, _: VehicleReader):
     vehicle = db.get(Vehicle, vehicle_id)
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found.")
@@ -119,7 +119,7 @@ def get_vehicle(vehicle_id: int, db: DbSession, _: VehicleReader = None):
 
 
 @router.patch("/{vehicle_id}", response_model=VehicleRead)
-def update_vehicle(vehicle_id: int, payload: VehicleUpdate, db: DbSession, _: VehicleWriter = None):
+def update_vehicle(vehicle_id: int, payload: VehicleUpdate, db: DbSession, _: VehicleWriter):
     vehicle = db.get(Vehicle, vehicle_id)
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found.")

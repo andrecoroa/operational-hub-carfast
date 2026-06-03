@@ -9,8 +9,8 @@
     <header class="topbar cockpit-topbar">
       <div>
         <p class="eyebrow">Centro de controlo operacional</p>
-        <h2>Bom dia, {{ user.name }}</h2>
-        <p class="breadcrumb">Visão viva da operação, prioridades e alertas.</p>
+        <h2>Dashboard operacional</h2>
+        <p class="breadcrumb">Bom dia, {{ user.name }}. Prioridades, alertas e acompanhamento da operação.</p>
       </div>
       <div class="topbar-tools">
         <label class="global-search" aria-label="Pesquisa global">
@@ -21,6 +21,33 @@
         {% include "_pilot_actions.html" %}
       </div>
     </header>
+
+    <section class="cockpit-command-strip">
+      <article class="cockpit-command-main">
+        <p class="eyebrow">Agora</p>
+        <h3>Operação em acompanhamento</h3>
+        <p>{{ metrics.open_tasks }} tarefas abertas · {{ metrics.open_workshop }} processos de oficina · {{ metrics.document_inbox }} documentos por classificar</p>
+      </article>
+      {% if dashboard_access.tasks %}
+      <a class="cockpit-command-tile" href="/task-board/manage?view=overdue">
+        <span>SLA</span>
+        <strong>{{ metrics.overdue_tasks }}</strong>
+        <small>tarefas vencidas</small>
+      </a>
+      <a class="cockpit-command-tile" href="/task-board/manage?view=unassigned">
+        <span>Destino</span>
+        <strong>{{ metrics.unassigned_tasks }}</strong>
+        <small>sem responsável</small>
+      </a>
+      {% endif %}
+      {% if dashboard_access.documents %}
+      <a class="cockpit-command-tile" href="/documents">
+        <span>Arquivo</span>
+        <strong>{{ metrics.document_inbox }}</strong>
+        <small>por classificar</small>
+      </a>
+      {% endif %}
+    </section>
 
     <section class="cockpit-alert-grid">
       {% if dashboard_access.tasks %}
@@ -57,6 +84,10 @@
       {% endif %}
     </section>
 
+    <div class="dashboard-section-label">
+      <p class="eyebrow">Resumo operacional</p>
+      <span>Indicadores base da operação</span>
+    </div>
     <section class="metric-grid cockpit-summary">
       {% if dashboard_access.tasks %}
       <a class="metric" href="/task-board/manage">
@@ -78,6 +109,10 @@
       {% endif %}
     </section>
 
+    <div class="dashboard-section-label">
+      <p class="eyebrow">Acompanhamento</p>
+      <span>Listas de trabalho para decisão rápida</span>
+    </div>
     <section class="cockpit-grid">
       {% if dashboard_access.tasks %}
       <article class="cockpit-panel">

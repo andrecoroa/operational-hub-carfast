@@ -1271,7 +1271,6 @@ def workshop_process_manage_page(process_id: int) -> str:
                   <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
                   <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
                   <p id="reportHint" class="muted"></p>
-                  <div id="reportExtractionGuide" style="display:grid;gap:8px;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd"></div>
                   <h3 style="margin-top:16px">Valores extraídos</h3>
                   <table class="value-table" id="reportValuesTable">
                     <thead><tr><th>Campo</th><th>Valor</th><th></th></tr></thead>
@@ -1398,6 +1397,9 @@ def workshop_process_manage_page(process_id: int) -> str:
       const url = previewableReportUrl(report?.original_link);
       return url ? `<a class="button secondary" href="${{safe(url)}}" target="_blank" rel="noopener">Abrir original</a>` : `<span class="chip neutral">Sem link original</span>`;
     }}
+    function showFieldInfo(message) {{
+      showResult(true, message || "Sem referência configurada para este campo.");
+    }}
     function selectReport(reportId) {{
       const report = (processData?.technical_reports || []).find(item => String(item.id) === String(reportId));
       if (!report) return;
@@ -1495,34 +1497,34 @@ def workshop_process_manage_page(process_id: int) -> str:
         other: {{source:"Outro relatorio", example:"Leitura tecnica sem categoria", note:"Criar titulo claro e preencher parametros observados."}}
       }}
     }};
-    function renderExtractionGuide(report, fields) {{
-      const guide = document.querySelector("#reportExtractionGuide");
-      if (!guide) return;
-      if (!report) {{
-        guide.style.display = "none";
-        guide.innerHTML = "";
-        return;
-      }}
+    function extractionMeta(report) {{
+      if (!report) return {{}};
       const origin = payloadValue("#reportOrigin") || "stellantis_machine";
-      const meta = (REPORT_EXTRACTION_GUIDES[report.code] || {{}})[origin] || (REPORT_EXTRACTION_GUIDES[report.code] || {{}}).other || {{}};
-      const fieldRows = (fields || []).map(field => {{
+      return (REPORT_EXTRACTION_GUIDES[report.code] || {{}})[origin] || (REPORT_EXTRACTION_GUIDES[report.code] || {{}}).other || {{}};
+    }}
+    function reportFieldInfo(report, field) {{
+      const origin = payloadValue("#reportOrigin") || "stellantis_machine";
+      const meta = extractionMeta(report);
+      const unit = field.unit ? ` (${{field.unit}})` : "";
+      return `${{label(origin)}} · ${{meta.source || "Relatório técnico"}}. Procurar no original: ${{field.label}}${{unit}}. Preencher o campo CarFast com o valor correspondente. Exemplo/referência: ${{meta.example || report?.label || "relatório técnico"}}. ${{meta.note || ""}}`;
+    }}
+    function setReportFieldRows(tableId, report, fields) {{
+      const body = document.querySelector(`#${{tableId}} tbody`);
+      if (!body) return;
+      body.innerHTML = fields.length ? fields.map(field => {{
         const carfastField = field.unit ? `${{field.label}} (${{field.unit}})` : field.label;
+        const info = reportFieldInfo(report, field);
         return `
-          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px solid var(--line)">
-            <div><span class="muted">No relatório procurar</span><br><u>${{safe(carfastField)}}</u></div>
-            <div><span class="muted">Preencher em CarFast</span><br><u>${{safe(carfastField)}}</u></div>
-          </div>
+          <tr>
+            <td><input value="${{safe(carfastField)}}"></td>
+            <td><input placeholder="${{safe(field.repeatable ? "Lista ou resumo" : field.label)}}"></td>
+            <td style="display:flex;gap:6px;align-items:center">
+              <button type="button" title="${{safe(info)}}" data-info="${{safe(info)}}" onclick="showFieldInfo(this.dataset.info)" style="display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer;padding:0">i</button>
+              <button type="button" onclick="removeValueRow(this)">Limpar</button>
+            </td>
+          </tr>
         `;
-      }}).join("");
-      guide.style.display = "grid";
-      guide.innerHTML = `
-        <div>
-          <strong>Modelo de extração</strong>
-          <p class="muted" style="margin:4px 0 0">${{safe(label(origin))}} · ${{safe(meta.source || "Relatório técnico")}} · exemplo: <u>${{safe(meta.example || report.label)}}</u></p>
-          <p class="muted" style="margin:4px 0 0">${{safe(meta.note || "Copiar os valores do relatório original para os campos CarFast antes de adicionar/validar.")}}</p>
-        </div>
-        ${{fieldRows || `<p class="muted">Este tipo de relatório ainda não tem campos configurados.</p>`}}
-      `;
+      }}).join("") : `<tr><td><input placeholder="Campo"></td><td><input placeholder="Valor"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>`;
     }}
     function setTableValues(tableId, values) {{
       const entries = Object.entries(values || {{}});
@@ -1537,12 +1539,11 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportHint").textContent = report
         ? `${{report.description}} O link fica guardado como evidência; preenche os valores esperados na tabela.`
         : "O link fica guardado como evidência; preenche os valores esperados na tabela.";
-      renderExtractionGuide(report, fields);
+      setReportFieldRows("reportValuesTable", report, fields);
       const values = Object.fromEntries(fields.map(field => [
         field.unit ? `${{field.label}} (${{field.unit}})` : field.label,
         "",
       ]));
-      setTableValues("reportValuesTable", values);
       setTableValues("validateValuesTable", values);
     }}
     function tableValues(tableId) {{

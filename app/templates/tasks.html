@@ -37,37 +37,6 @@
       <div class="success">Registo de piloto guardado.</div>
     {% endif %}
 
-    <section class="metric-grid task-metrics">
-      <a class="metric" href="{{ manage_url }}">
-        <span class="metric-icon green">✓</span>
-        <span class="metric-detail"><strong>{{ metrics.open }}</strong><span>Em aberto</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=unassigned">
-        <span class="metric-icon">?</span>
-        <span class="metric-detail"><strong>{{ metrics.unassigned }}</strong><span>Sem responsável</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=urgent">
-        <span class="metric-icon warn">!</span>
-        <span class="metric-detail"><strong>{{ metrics.urgent }}</strong><span>Urgentes</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=overdue">
-        <span class="metric-icon amber">!</span>
-        <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Vencidas</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=due_today">
-        <span class="metric-icon blue">✓</span>
-        <span class="metric-detail"><strong>{{ metrics.due_today }}</strong><span>Limite hoje</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=archived">
-        <span class="metric-icon">%</span>
-        <span class="metric-detail"><strong>{{ metrics.archived }}</strong><span>Arquivo</span></span>
-      </a>
-      <a class="metric" href="{{ manage_url }}?view=planned">
-        <span class="metric-icon blue">↷</span>
-        <span class="metric-detail"><strong>{{ metrics.planned }}</strong><span>Planeadas</span></span>
-      </a>
-    </section>
-
     {% set current_view_label = "Em aberto" %}
     {% set current_view_count = metrics.open %}
     {% if filters.view == "mine" %}
@@ -91,93 +60,128 @@
     {% endif %}
     {% set active_filter_count = (1 if filters.status else 0) + (1 if filters.source else 0) + (1 if filters.station else 0) %}
 
-    <form method="get" action="{{ manage_url }}" class="task-command-row" aria-label="Pesquisa e filtros">
-      {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
-      {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
-      <input type="hidden" name="content" value="{{ filters.content }}">
-      <details class="task-view-menu">
-        <summary>Vista: <strong>{{ current_view_label }} {{ current_view_count }}</strong></summary>
-        <div class="task-view-options">
-          <a href="{{ manage_url }}?content={{ filters.content }}" class="{% if not filters.view %}active{% endif %}"><span>Em aberto</span><strong>{{ metrics.open }}</strong></a>
-          <a href="{{ manage_url }}?content={{ filters.content }}&view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
-          <a href="{{ manage_url }}?content={{ filters.content }}&view=with_subtasks" class="{% if filters.view == 'with_subtasks' %}active{% endif %}"><span>Com subtarefas</span><strong>{{ metrics.with_subtasks }}</strong></a>
-          <a href="{{ manage_url }}?content={{ filters.content }}&view=subtasks" class="{% if filters.view == 'subtasks' %}active{% endif %}"><span>Subtarefas</span><strong>{{ metrics.open_subtasks }}</strong></a>
-          <a href="{{ manage_url }}?content={{ filters.content }}&view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
-          <a href="{{ manage_url }}?content={{ filters.content }}&view=planned" class="{% if filters.view == 'planned' %}active{% endif %}"><span>Planeadas</span><strong>{{ metrics.planned }}</strong></a>
-        </div>
-      </details>
-
-      <label class="task-search-box">
-        <span>Pesquisa</span>
-        <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar...">
-        <button type="submit" aria-label="Pesquisar">⌕</button>
-      </label>
-
-      <div class="task-category-tabs" aria-label="Classificação">
-        <span>Classificação</span>
-        <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}" class="{% if not filters.category %}active{% endif %}">
-          Todas <strong>{{ category_counts.get("all", 0) }}</strong>
+    <section class="task-workbench">
+      <div class="task-workbench-summary">
+        <a class="task-stat-card is-active" href="{{ manage_url }}">
+          <span>Em aberto</span>
+          <strong>{{ metrics.open }}</strong>
         </a>
-        {% for code, label in task_categories %}
-          <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}&category={{ code }}" class="{% if filters.category == code %}active{% endif %}">
-            {{ label }} <strong>{{ category_counts.get(code, 0) }}</strong>
-          </a>
-        {% endfor %}
+        <a class="task-stat-card" href="{{ manage_url }}?view=urgent">
+          <span>Urgentes</span>
+          <strong>{{ metrics.urgent }}</strong>
+        </a>
+        <a class="task-stat-card" href="{{ manage_url }}?view=overdue">
+          <span>Vencidas</span>
+          <strong>{{ metrics.overdue }}</strong>
+        </a>
+        <a class="task-stat-card" href="{{ manage_url }}?view=due_today">
+          <span>Limite hoje</span>
+          <strong>{{ metrics.due_today }}</strong>
+        </a>
+        <a class="task-stat-card" href="{{ manage_url }}?view=unassigned">
+          <span>Sem responsável</span>
+          <strong>{{ metrics.unassigned }}</strong>
+        </a>
+        <a class="task-stat-card" href="{{ manage_url }}?view=planned">
+          <span>Planeadas</span>
+          <strong>{{ metrics.planned }}</strong>
+        </a>
+        <a class="task-stat-card" href="{{ manage_url }}?view=archived">
+          <span>Arquivo</span>
+          <strong>{{ metrics.archived }}</strong>
+        </a>
       </div>
 
-      <div class="task-content-tabs" aria-label="Conteúdo">
-        <span>Conteúdo</span>
-        <button type="submit" name="content" value="tasks" class="{% if filters.content == 'tasks' %}active{% endif %}">
-          Tarefas <strong>{{ task_result_count }}</strong>
-        </button>
-        <button type="submit" name="content" value="quick" class="{% if filters.content == 'quick' %}active{% endif %}">
-          Registos rápidos <strong>{{ quick_records|length }}</strong>
-        </button>
-        <button type="submit" name="content" value="all" class="{% if filters.content == 'all' %}active{% endif %}">
-          Tudo <strong>{{ task_result_count + quick_records|length }}</strong>
-        </button>
-      </div>
+      <form method="get" action="{{ manage_url }}" class="task-command-row" aria-label="Pesquisa e filtros">
+        {% if filters.category %}<input type="hidden" name="category" value="{{ filters.category }}">{% endif %}
+        {% if filters.view %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
+        <input type="hidden" name="content" value="{{ filters.content }}">
+        <div class="task-command-main">
+          <details class="task-view-menu">
+            <summary>Vista: <strong>{{ current_view_label }} {{ current_view_count }}</strong></summary>
+            <div class="task-view-options">
+              <a href="{{ manage_url }}?content={{ filters.content }}" class="{% if not filters.view %}active{% endif %}"><span>Em aberto</span><strong>{{ metrics.open }}</strong></a>
+              <a href="{{ manage_url }}?content={{ filters.content }}&view=mine" class="{% if filters.view == 'mine' %}active{% endif %}"><span>Minhas</span><strong>{{ metrics.mine }}</strong></a>
+              <a href="{{ manage_url }}?content={{ filters.content }}&view=with_subtasks" class="{% if filters.view == 'with_subtasks' %}active{% endif %}"><span>Com subtarefas</span><strong>{{ metrics.with_subtasks }}</strong></a>
+              <a href="{{ manage_url }}?content={{ filters.content }}&view=subtasks" class="{% if filters.view == 'subtasks' %}active{% endif %}"><span>Subtarefas</span><strong>{{ metrics.open_subtasks }}</strong></a>
+              <a href="{{ manage_url }}?content={{ filters.content }}&view=all" class="{% if filters.view == 'all' %}active{% endif %}"><span>Todas</span><strong>{{ metrics.all }}</strong></a>
+              <a href="{{ manage_url }}?content={{ filters.content }}&view=planned" class="{% if filters.view == 'planned' %}active{% endif %}"><span>Planeadas</span><strong>{{ metrics.planned }}</strong></a>
+            </div>
+          </details>
 
-      <details class="task-filter-drawer">
-        <summary>Filtros <strong>{{ active_filter_count }}</strong></summary>
-        <div class="task-filter-popover">
-          <label>
-            Estado
-            <select name="status">
-              <option value="">Todos</option>
-              {% for code, label in task_statuses %}
-                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-              {% for code, label in quick_record_statuses %}
-                <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
-              {% endfor %}
-            </select>
+          <label class="task-search-box">
+            <span>Pesquisa</span>
+            <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar por assunto, matrícula, cliente ou estação">
+            <button type="submit" aria-label="Pesquisar">⌕</button>
           </label>
-          <label>
-            Origem
-            <select name="source">
-              <option value="">Todas</option>
-              {% for code, label in task_sources %}
-                <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Estação
-            <input list="stations" name="station" value="{{ filters.station }}">
-            <datalist id="stations">
-              {% for item in stations %}
-                <option value="{{ item }}"></option>
-              {% endfor %}
-            </datalist>
-          </label>
-          <div class="filter-actions">
-            <button type="submit">Aplicar</button>
-            <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
-          </div>
+
+          <details class="task-filter-drawer">
+            <summary>Filtros <strong>{{ active_filter_count }}</strong></summary>
+            <div class="task-filter-popover">
+              <label>
+                Estado
+                <select name="status">
+                  <option value="">Todos</option>
+                  {% for code, label in task_statuses %}
+                    <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                  {% for code, label in quick_record_statuses %}
+                    <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>Registo: {{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Origem
+                <select name="source">
+                  <option value="">Todas</option>
+                  {% for code, label in task_sources %}
+                    <option value="{{ code }}" {% if filters.source == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Estação
+                <input list="stations" name="station" value="{{ filters.station }}">
+                <datalist id="stations">
+                  {% for item in stations %}
+                    <option value="{{ item }}"></option>
+                  {% endfor %}
+                </datalist>
+              </label>
+              <div class="filter-actions">
+                <button type="submit">Aplicar</button>
+                <a class="button-link secondary-link" href="{{ manage_url }}">Limpar</a>
+              </div>
+            </div>
+          </details>
         </div>
-      </details>
-    </form>
+
+        <div class="task-content-tabs" aria-label="Conteúdo">
+          <span>Conteúdo</span>
+          <button type="submit" name="content" value="tasks" class="{% if filters.content == 'tasks' %}active{% endif %}">
+            Tarefas <strong>{{ task_result_count }}</strong>
+          </button>
+          <button type="submit" name="content" value="quick" class="{% if filters.content == 'quick' %}active{% endif %}">
+            Registos rápidos <strong>{{ quick_records|length }}</strong>
+          </button>
+          <button type="submit" name="content" value="all" class="{% if filters.content == 'all' %}active{% endif %}">
+            Tudo <strong>{{ task_result_count + quick_records|length }}</strong>
+          </button>
+        </div>
+
+        <div class="task-category-tabs" aria-label="Classificação">
+          <span>Classificação</span>
+          <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}" class="{% if not filters.category %}active{% endif %}">
+            Todas <strong>{{ category_counts.get("all", 0) }}</strong>
+          </a>
+          {% for code, label in task_categories %}
+            <a href="{{ manage_url }}?content={{ filters.content }}{% if filters.view %}&view={{ filters.view }}{% endif %}&category={{ code }}" class="{% if filters.category == code %}active{% endif %}">
+              {{ label }} <strong>{{ category_counts.get(code, 0) }}</strong>
+            </a>
+          {% endfor %}
+        </div>
+      </form>
+    </section>
 
     <section class="task-management-stack">
       {% if filters.content in ["tasks", "all"] %}

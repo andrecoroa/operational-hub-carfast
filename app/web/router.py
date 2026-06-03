@@ -6673,7 +6673,8 @@ def task_vehicle_search(request: Request):
     if not get_web_user_id(request):
         return JSONResponse({"items": []}, status_code=401)
 
-    query = (request.query_params.get("q") or "").strip().upper().replace(" ", "")
+    raw_query = (request.query_params.get("q") or "").strip()
+    query = raw_query.upper().replace(" ", "")
     context = (request.query_params.get("context") or "").strip().lower()
     with SessionLocal() as db:
         statement = select(Vehicle).where(Vehicle.plate.is_not(None), Vehicle.plate != "")
@@ -6689,17 +6690,33 @@ def task_vehicle_search(request: Request):
                 ),
             )
         if query:
-            statement = statement.where(Vehicle.plate.ilike(f"{query}%"))
+            statement = statement.where(
+                or_(
+                    Vehicle.plate.ilike(f"{query}%"),
+                    Vehicle.vin.ilike(f"{query}%"),
+                    Vehicle.rentway_unit_nr.ilike(f"{query}%"),
+                    Vehicle.brand.ilike(f"%{raw_query}%"),
+                    Vehicle.model.ilike(f"%{raw_query}%"),
+                )
+            )
         vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
         return {
             "items": [
                 {
                     "id": vehicle.id,
                     "plate": vehicle.plate,
+                    "brand": vehicle.brand,
+                    "model": vehicle.model,
+                    "version": vehicle.version,
+                    "vin": vehicle.vin,
+                    "rentway_unit_nr": vehicle.rentway_unit_nr,
+                    "lifecycle_status": vehicle.lifecycle_status,
+                    "operational_status": vehicle.operational_status,
                     "label": " · ".join(
                         item
                         for item in [
                             vehicle.plate or "",
+                            f"Unit {vehicle.rentway_unit_nr}" if vehicle.rentway_unit_nr else "",
                             " ".join(
                                 part for part in [vehicle.brand, vehicle.model] if part
                             ).strip(),

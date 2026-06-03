@@ -1261,11 +1261,17 @@ def workshop_process_manage_page(process_id: int) -> str:
             </div>
             <div id="reports" class="form-section">
               <h2>Relatórios Técnicos</h2>
+              <div class="summary-block" style="margin:12px 0">
+                <div class="summary-title"><h3>Relatórios anexados</h3><span id="attachedReportsCount" class="chip">0</span></div>
+                <ul id="attachedReportsList" class="plain-list"><li>Sem relatórios anexados</li></ul>
+                <div id="selectedReportDetail" class="memory"></div>
+              </div>
               <div class="report-layout">
                 <div>
                   <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
                   <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
                   <p id="reportHint" class="muted"></p>
+                  <div id="reportExtractionGuide" style="display:grid;gap:8px;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd"></div>
                   <h3 style="margin-top:16px">Valores extraídos</h3>
                   <table class="value-table" id="reportValuesTable">
                     <thead><tr><th>Campo</th><th>Valor</th><th></th></tr></thead>
@@ -1379,9 +1385,50 @@ def workshop_process_manage_page(process_id: int) -> str:
       open.href = url;
       hint.textContent = "Se a pré-visualização não carregar, abre o relatório numa nova aba.";
     }}
+    function activateTab(tabId) {{
+      document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active"));
+      document.querySelector(`[data-tab="${{tabId}}"]`)?.classList.add("active");
+      document.querySelector(`#${{tabId}}`)?.classList.add("active");
+    }}
+    function formatReportValues(values) {{
+      if (!values || (typeof values === "object" && Object.keys(values).length === 0)) return "Sem valores registados";
+      return JSON.stringify(values, null, 2);
+    }}
+    function reportLinkButton(report) {{
+      const url = previewableReportUrl(report?.original_link);
+      return url ? `<a class="button secondary" href="${{safe(url)}}" target="_blank" rel="noopener">Abrir original</a>` : `<span class="chip neutral">Sem link original</span>`;
+    }}
+    function selectReport(reportId) {{
+      const report = (processData?.technical_reports || []).find(item => String(item.id) === String(reportId));
+      if (!report) return;
+      activateTab("reports");
+      document.querySelector("#reportLink").value = report.original_link || "";
+      setValue("#validateReportId", report.id);
+      setTableValues("validateValuesTable", report.validated_values || report.extracted_values || {{}});
+      updateReportPreview();
+      const detail = document.querySelector("#selectedReportDetail");
+      detail.className = "memory active";
+      detail.innerHTML = `
+        <div class="section-title">
+          <h3>#${{report.id}} ${{safe(report.report_name)}}</h3>
+          ${{reportLinkButton(report)}}
+        </div>
+        <div class="memory-grid">
+          <div><span>Origem</span><strong>${{safe(label(report.reading_origin))}}</strong></div>
+          <div><span>Momento</span><strong>${{safe(label(report.report_moment))}}</strong></div>
+          <div><span>Estado</span><strong>${{safe(statusMeta(report.status)[0])}}</strong></div>
+          <div><span>Validado em</span><strong>${{safe(dateLabel(report.validated_at))}}</strong></div>
+        </div>
+        <div class="grid2" style="margin-top:12px">
+          <label>Valores extraídos<textarea readonly>${{safe(formatReportValues(report.extracted_values))}}</textarea></label>
+          <label>Valores validados<textarea readonly>${{safe(formatReportValues(report.validated_values))}}</textarea></label>
+        </div>
+      `;
+      detail.scrollIntoView({{behavior:"smooth", block:"nearest"}});
+    }}
     function showResult(ok, message) {{ result.className = `result active ${{ok ? "ok" : "err"}}`; result.textContent = typeof message === "string" ? message : JSON.stringify(message); }}
     async function post(url, body) {{ const r = await fetch(url, {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
-    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {{ document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active")); t.classList.add("active"); document.querySelector(`#${{t.dataset.tab}}`).classList.add("active"); }}));
+    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => activateTab(t.dataset.tab)));
     const STATUS = {{
       completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"],
       ok:["OK","done"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], reception_pending:["Receção pendente","review"],
@@ -1416,6 +1463,67 @@ def workshop_process_manage_page(process_id: int) -> str:
       const code = payloadValue("#reportCode");
       return (config?.stellantis_reports || []).find(report => report.code === code) || null;
     }}
+    const REPORT_EXTRACTION_GUIDES = {{
+      engine_lubrication: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"lubrificacao_motor_informacoes-lubrificacao-motor", note:"Confirmar valores de oleo, pressao, carbono, protecao e intervalo calculado."}},
+        autel: {{source:"Autel", example:"lubrificacao_motor_informacoes-lubrificacao-motor", note:"A nomenclatura pode variar; validar unidades antes de gravar."}},
+        other: {{source:"Outro relatorio tecnico", example:"Relatorio de lubrificacao motor", note:"Usar apenas se o documento identificar claramente parametros de lubrificacao."}}
+      }},
+      maintenance_information: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"manutencao_informacoes-de-manutencao", note:"Copiar contadores, limites de manutencao e indicadores de chave."}},
+        autel: {{source:"Autel", example:"manutencao_informacoes-manutencao", note:"Comparar designacao Autel com o campo CarFast antes de preparar valores."}},
+        other: {{source:"Outro relatorio tecnico", example:"Informacoes de manutencao", note:"Aceitar se tiver KM, dias e contadores de manutencao."}}
+      }},
+      maintenance_programming: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"parametrizacao_manutencao_parametros-de-manutencao-recuperados-do-veiculo", note:"Referencia principal encontrada para parametrizacao/programacao de manutencao."}},
+        autel: {{source:"Autel", example:"Sem exemplo Autel confirmado", note:"Preencher manualmente apenas se o relatorio mostrar limiar, duracao e inicio da primeira manutencao."}},
+        other: {{source:"Outro relatorio tecnico", example:"Parametros de manutencao", note:"Exigir valores de parametrizacao, nao apenas informacao de manutencao."}}
+      }},
+      fault_reading: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"leitura_defeitos_relatorio-de-diagnostico-do-veiculo", note:"Copiar existencia de defeitos e lista/codigos relevantes."}},
+        autel: {{source:"Autel", example:"leitura_defeitos_global", note:"Quando existir tabela, copiar codigo, sistema, estado e descricao no campo lista."}},
+        other: {{source:"Outro relatorio tecnico", example:"Relatorio de diagnostico", note:"Guardar resumo de defeitos mesmo quando o formato nao for normalizado."}}
+      }},
+      remote_download: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"identificacao_telecarregamento_informacao-ecu", note:"Focar referencia de software, data e numero de telecarregamentos."}},
+        autel: {{source:"Autel", example:"identificacao_telecarregamento_referencia-do-material", note:"Validar se a referencia e da ECU/software antes de fechar."}},
+        other: {{source:"Outro relatorio tecnico", example:"Identificacao / telecarregamento", note:"Usar quando houver dados de software ou telecarregamento."}}
+      }},
+      other_reading: {{
+        stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"outro_versao-programa", note:"Descrever area/sistema e parametros principais."}},
+        autel: {{source:"Autel", example:"outro_2-sistemas-analisados", note:"Resumir sistemas analisados e anexar o link como evidencia."}},
+        other: {{source:"Outro relatorio", example:"Leitura tecnica sem categoria", note:"Criar titulo claro e preencher parametros observados."}}
+      }}
+    }};
+    function renderExtractionGuide(report, fields) {{
+      const guide = document.querySelector("#reportExtractionGuide");
+      if (!guide) return;
+      if (!report) {{
+        guide.style.display = "none";
+        guide.innerHTML = "";
+        return;
+      }}
+      const origin = payloadValue("#reportOrigin") || "stellantis_machine";
+      const meta = (REPORT_EXTRACTION_GUIDES[report.code] || {{}})[origin] || (REPORT_EXTRACTION_GUIDES[report.code] || {{}}).other || {{}};
+      const fieldRows = (fields || []).map(field => {{
+        const carfastField = field.unit ? `${{field.label}} (${{field.unit}})` : field.label;
+        return `
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px solid var(--line)">
+            <div><span class="muted">No relatório procurar</span><br><u>${{safe(carfastField)}}</u></div>
+            <div><span class="muted">Preencher em CarFast</span><br><u>${{safe(carfastField)}}</u></div>
+          </div>
+        `;
+      }}).join("");
+      guide.style.display = "grid";
+      guide.innerHTML = `
+        <div>
+          <strong>Modelo de extração</strong>
+          <p class="muted" style="margin:4px 0 0">${{safe(label(origin))}} · ${{safe(meta.source || "Relatório técnico")}} · exemplo: <u>${{safe(meta.example || report.label)}}</u></p>
+          <p class="muted" style="margin:4px 0 0">${{safe(meta.note || "Copiar os valores do relatório original para os campos CarFast antes de adicionar/validar.")}}</p>
+        </div>
+        ${{fieldRows || `<p class="muted">Este tipo de relatório ainda não tem campos configurados.</p>`}}
+      `;
+    }}
     function setTableValues(tableId, values) {{
       const entries = Object.entries(values || {{}});
       const body = document.querySelector(`#${{tableId}} tbody`);
@@ -1429,6 +1537,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportHint").textContent = report
         ? `${{report.description}} O link fica guardado como evidência; preenche os valores esperados na tabela.`
         : "O link fica guardado como evidência; preenche os valores esperados na tabela.";
+      renderExtractionGuide(report, fields);
       const values = Object.fromEntries(fields.map(field => [
         field.unit ? `${{field.label}} (${{field.unit}})` : field.label,
         "",
@@ -1485,6 +1594,22 @@ def workshop_process_manage_page(process_id: int) -> str:
         </li>
       `).join("") || "<li>Sem serviços registados</li>";
     }}
+    function renderAttachedReports() {{
+      const list = document.querySelector("#attachedReportsList");
+      const count = document.querySelector("#attachedReportsCount");
+      if (!list || !count) return;
+      const reports = processData.technical_reports || [];
+      count.textContent = reports.length;
+      list.innerHTML = reports.map(report => `
+        <li>
+          <button type="button" onclick="selectReport(${{report.id}})" style="border:0;background:transparent;padding:0;text-align:left;color:var(--text);font:inherit;font-weight:850;cursor:pointer">
+            #${{report.id}} ${{safe(report.report_name)}}<br>
+            <small class="muted">${{safe(label(report.report_moment))}} · ${{safe(label(report.reading_origin))}} · ${{report.original_link ? "com original" : "sem original"}}</small>
+          </button>
+          ${{chip(report.status)}}
+        </li>
+      `).join("") || "<li>Sem relatórios anexados</li>";
+    }}
     function renderVehicle() {{
       const v = processData.vehicle || {{}};
       const model = [v.brand, v.model, v.version].filter(Boolean).join(" ") || "-";
@@ -1532,7 +1657,7 @@ def workshop_process_manage_page(process_id: int) -> str:
         </div>
         <div class="summary-block">
           <div class="summary-title"><h3>Relatórios</h3><span class="chip">${{processData.technical_reports.length}}</span></div>
-          <ul class="plain-list">${{processData.technical_reports.map(r => `<li><span>#${{r.id}} ${{safe(r.report_name)}}<br><small class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</small></span>${{chip(r.status)}}</li>`).join("") || "<li>Sem relatórios</li>"}}</ul>
+          <ul class="plain-list">${{processData.technical_reports.map(r => `<li><button type="button" onclick="selectReport(${{r.id}})" style="border:0;background:transparent;padding:0;text-align:left;color:var(--text);font:inherit;font-weight:850;cursor:pointer">#${{r.id}} ${{safe(r.report_name)}}<br><small class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</small></button>${{chip(r.status)}}</li>`).join("") || "<li>Sem relatórios</li>"}}</ul>
         </div>
       `;
     }}
@@ -1556,8 +1681,8 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#closeMemory", [["Resultado", closure.final_result], ["Viatura pronta", closure.vehicle_ready], ["Novo estado", closure.new_vehicle_operational_status], ["KM final", closure.final_km], ["Observação", closure.final_observation]]);
       setValue("#closeResult", closure.final_result); setValue("#closeReady", closure.vehicle_ready); setValue("#closeStatus", closure.new_vehicle_operational_status); setValue("#closeObs", closure.final_observation); setChecked("#closePending", closure.close_with_pending_items); if (hasData(closure)) document.querySelector("#closeButton").textContent = "Atualizar fecho";
     }}
-    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); document.querySelector("#reportCode").addEventListener("change", renderReportFields); document.querySelector("#reportLink").addEventListener("input", updateReportPreview); renderReportFields(); updateReportPreview(); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseMemory(); }}
+    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); document.querySelector("#reportCode").addEventListener("change", renderReportFields); document.querySelector("#reportOrigin").addEventListener("change", renderReportFields); document.querySelector("#reportLink").addEventListener("input", updateReportPreview); renderReportFields(); updateReportPreview(); }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderAttachedReports(); renderSummary(); renderPhaseMemory(); }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}

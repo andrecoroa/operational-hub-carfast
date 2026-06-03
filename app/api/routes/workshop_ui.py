@@ -983,7 +983,9 @@ def workshop_process_detail_page(process_id: int) -> str:
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
     const VALUES = {{normal:"Normal", high:"Alta", urgent:"Urgente", reception:"Receção", appointment:"Marcação", station:"Estação", customer_driver:"Cliente / condutor", rentway_alert:"Alerta Rentway", internal_preparation:"Preparação interna", other:"Outro"}};
-    function safe(value) {{ return String(value ?? "-").replace(/[&<>"']/g, c => ({{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}}[c])); }}
+    function safe(value) {{
+      return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+    }}
     function label(value) {{ return VALUES[value] || value || "-"; }}
     function statusMeta(status) {{ return STATUS[status] || [status || "-", "neutral"]; }}
     function chip(status) {{ const meta = statusMeta(status); return `<span class="chip ${{meta[1]}}">${{safe(meta[0])}}</span>`; }}
@@ -993,7 +995,7 @@ def workshop_process_detail_page(process_id: int) -> str:
       const v = process.vehicle || {{}};
       const status = statusMeta(process.status);
       const model = [v.brand, v.model, v.version].filter(Boolean).join(" ");
-      const alerts = Array.from(new Map(process.alerts.filter(a => a.status !== "resolved").map(a => [a.message, a])).values());
+      const alerts = Array.from(new Map(process.alerts.map(a => [`${{a.code}}:${{a.message}}`, a])).values());
       root.className = "";
       root.innerHTML = `
         <div class="topbar">
@@ -1085,8 +1087,8 @@ def workshop_process_list_page() -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Oficina - Processos por Fases</title>
   <style>
-    :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --blue:#1d5f94; --blue-soft:#eaf3fb; --amber:#9a6711; --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; font-family:Inter,"Segoe UI",Arial,sans-serif; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{background:#10202c;color:#d9e7ef;padding:20px 14px}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:22px 28px}h1{margin:0 0 4px;font-size:25px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;border-radius:8px;padding:9px 14px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800}.button.secondary{background:#fff;color:var(--text);border:1px solid var(--line)}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.kpi{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:800}.kpi strong{display:block;margin-top:4px;font-size:22px}.list{display:grid;gap:10px}.process-card{position:relative;display:grid;grid-template-columns:190px minmax(0,1fr) 340px auto;gap:18px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 16px 16px 20px;box-shadow:0 1px 2px rgba(16,32,44,.04)}.process-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--brand);border-radius:8px 0 0 8px}.plate{font-size:24px;font-weight:900;letter-spacing:0}.small{font-size:12px;color:var(--muted);line-height:1.45}.title{font-size:17px;font-weight:900;margin-bottom:5px}.meta{display:flex;flex-wrap:wrap;gap:8px}.chip{display:inline-flex;align-items:center;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.phase-progress{display:grid;gap:7px}.phase-name{font-weight:850}.steps{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}.step{height:7px;border-radius:999px;background:#e7ecef}.step.done{background:var(--green)}.step.active{background:var(--brand)}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1100px){.process-card{grid-template-columns:170px minmax(0,1fr) auto}.phase-progress{grid-column:1/-1}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.app{grid-template-columns:1fr}aside{display:none}main{padding:18px 16px}.topbar{display:grid}.summary-grid,.process-card{grid-template-columns:1fr}.process-card .button{width:100%}}
+    :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --line2:#b9c5cc; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --blue:#1d5f94; --blue-soft:#eaf3fb; --amber:#9a6711; --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; font-family:Inter,"Segoe UI",Arial,sans-serif; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{background:#10202c;color:#d9e7ef;padding:20px 14px}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:22px 28px 42px}h1{margin:0 0 4px;font-size:25px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;border-radius:8px;padding:9px 14px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:25px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:10px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:40px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 140px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:12px 10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:76px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){.app{grid-template-columns:1fr}aside{display:none}main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
   </style>
 </head>
 <body>
@@ -1094,16 +1096,32 @@ def workshop_process_list_page() -> str:
     <aside><div class="brand">CarFast v2</div><nav class="nav"><a href="/">Início</a><a href="/fleet">Frota</a><a href="/workshop">Oficina</a><a class="sub" href="/workshop/manage">Processos atuais</a><a class="sub active" href="/workshop/processes-ui">Processos por fases</a><a class="sub" href="/workshop/new-process">Novo processo por fases</a><a href="/task-board">Tarefas</a><a href="/documents">Documentos</a></nav></aside>
     <main>
       <div class="topbar"><div><h1>Oficina - Processos por fases</h1><p class="subtitle">Acompanhar processos criados no novo modelo por blocos.</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/new-process">+ Novo processo por fases</a></div></div>
-      <div id="summaryCards" class="summary-grid"></div>
-      <div id="rows" class="list"><div class="empty">A carregar processos...</div></div>
+      <section class="board">
+        <div class="kpis">
+          <div class="kpi"><span>Total processos</span><strong id="kpiTotal">0</strong></div>
+          <div class="kpi"><span>Por rever / pendentes</span><strong id="kpiReview">0</strong></div>
+          <div class="kpi"><span>Em curso</span><strong id="kpiProgress">0</strong></div>
+          <div class="kpi"><span>Fechados</span><strong id="kpiClosed">0</strong></div>
+        </div>
+        <div class="filters">
+          <input id="search" placeholder="Pesquisar por matrícula, título, Unit ou VIN...">
+          <select id="statusFilter"><option value="">Estado: Todos</option></select>
+          <select id="phaseFilter"><option value="">Fase: Todas</option></select>
+          <select id="priorityFilter"><option value="">Prioridade: Todas</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select>
+          <span id="updated" class="updated">A carregar...</span>
+        </div>
+        <div class="table-head"><span>ID</span><span>Viatura</span><span>Serviços</span><span>Fase atual</span><span>Estado</span><span>Prioridade</span><span>Atualizado</span><span>Ação</span></div>
+        <div id="rows" class="rows"><div class="empty">A carregar processos...</div></div>
+      </section>
     </main>
   </div>
   <script>
     const rows = document.querySelector("#rows");
+    const state = { items: [] };
     const STATUS = {
       completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"],
       in_progress:["Em curso","progress"], pending_review:["Por rever","review"], reception_pending:["Receção pendente","review"],
-      pending_definition:["Por definir","review"], not_started:["Não iniciado","neutral"], open:["Aberto","review"], cancelled:["Cancelado","danger"]
+      scheduled:["Marcado","progress"], pending:["Pendente","review"], pending_definition:["Por definir","review"], not_started:["Não iniciado","neutral"], open:["Aberto","review"], cancelled:["Cancelado","danger"]
     };
     const PHASES = {
       process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
@@ -1111,37 +1129,73 @@ def workshop_process_list_page() -> str:
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     };
     const PRIORITY = {low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente"};
-    const ORDER = ["process_creation","administrative_reception","history_check","technical_phase","diagnosis_decision","budget_approval","internal_repair_execution","final_closure"];
     function meta(map, code) { return map[code] || [code || "-", "neutral"]; }
+    function safe(value) {
+      return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+    }
     function vehicleName(v) { return [v?.brand, v?.model, v?.version].filter(Boolean).join(" ") || "Dados da viatura por completar"; }
     function unitLine(v) { return [v?.rentway_unit_nr ? `Unit ${v.rentway_unit_nr}` : null, v?.vin ? `VIN ${v.vin}` : null].filter(Boolean).join(" · ") || "Sem Unit/VIN registado"; }
+    function dateLabel(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      const today = new Date();
+      const sameDay = date.toDateString() === today.toDateString();
+      const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+      const prefix = sameDay ? "Hoje" : (date.toDateString() === yesterday.toDateString() ? "Ontem" : date.toLocaleDateString("pt-PT"));
+      return `${prefix}, ${date.toLocaleTimeString("pt-PT", {hour:"2-digit", minute:"2-digit"})}`;
+    }
+    function phaseProgress(p) {
+      const phases = p.phases || [];
+      return `<div class="progress">${phases.map((phase) => {
+        const cls = phase.phase_code === p.current_phase_code ? "current" : (["completed","validated","completed_with_pending_items"].includes(phase.status) ? "done" : "");
+        return `<span class="step ${cls}" title="${safe(PHASES[phase.phase_code] || phase.name)}"></span>`;
+      }).join("")}</div>`;
+    }
     function card(p) {
       const v = p.vehicle || {};
       const status = meta(STATUS, p.status);
       const phase = PHASES[p.current_phase_code] || p.current_phase_code || "-";
       const service = p.services_label || p.title || "Processo oficina";
-      const activeIndex = Math.max(0, ORDER.indexOf(p.current_phase_code));
-      return `<article class="process-card">
-        <div><div class="plate">${v.plate || p.plate || "-"}</div><div class="small">${unitLine(v)}</div></div>
-        <div><div class="title">${service}</div><div class="small">${vehicleName(v)}</div><div class="meta"><span class="chip ${status[1]}">${status[0]}</span><span class="chip">Prioridade ${PRIORITY[p.priority] || p.priority || "-"}</span></div></div>
-        <div class="phase-progress"><div class="phase-name">${phase}</div><div class="steps">${ORDER.map((_, i) => `<span class="step ${i < activeIndex ? "done" : i === activeIndex ? "active" : ""}"></span>`).join("")}</div></div>
-        <a class="button" href="/workshop/processes-ui/${p.id}/manage">Abrir processo</a>
+      return `<article class="process-row">
+        <strong>#${p.id}</strong>
+        <div class="vehicle-cell"><div class="vehicle-thumb">Frota</div><div><div class="plate">${safe(v.plate || p.plate)}</div><div class="small">${safe(vehicleName(v))}</div><div class="small">${safe(unitLine(v))}</div></div></div>
+        <div class="service">${safe(service)}</div>
+        <div class="phase-cell"><span class="phase-name">${safe(phase)}</span>${phaseProgress(p)}</div>
+        <span class="chip ${status[1]}">${safe(status[0])}</span>
+        <span class="priority-dot">${safe(PRIORITY[p.priority] || p.priority || "-")}</span>
+        <span class="small">${safe(dateLabel(p.updated_at || p.created_at))}</span>
+        <a class="button secondary" href="/workshop/processes-ui/${p.id}/manage">Abrir processo</a>
       </article>`;
     }
-    function renderSummary(items) {
-      const review = items.filter(p => ["pending_review","reception_pending","pending_definition"].includes(p.status)).length;
-      const progress = items.filter(p => p.status === "in_progress").length;
-      const closed = items.filter(p => ["completed","completed_with_pending_items"].includes(p.status)).length;
-      document.querySelector("#summaryCards").innerHTML = [
-        ["Total processos", items.length],
-        ["Por rever / pendentes", review],
-        ["Em curso", progress],
-        ["Fechados", closed],
-      ].map(k => `<div class="kpi"><span>${k[0]}</span><strong>${k[1]}</strong></div>`).join("");
+    function matches(p) {
+      const query = document.querySelector("#search").value.trim().toLowerCase();
+      const status = document.querySelector("#statusFilter").value;
+      const phase = document.querySelector("#phaseFilter").value;
+      const priority = document.querySelector("#priorityFilter").value;
+      const v = p.vehicle || {};
+      const haystack = [p.id, p.title, p.services_label, p.plate, v.plate, v.rentway_unit_nr, v.vin, v.brand, v.model, v.version].join(" ").toLowerCase();
+      return (!query || haystack.includes(query)) && (!status || p.status === status) && (!phase || p.current_phase_code === phase) && (!priority || p.priority === priority);
+    }
+    function render() {
+      const items = state.items;
+      document.querySelector("#kpiTotal").textContent = items.length;
+      document.querySelector("#kpiReview").textContent = items.filter(p => ["pending_review","pending","pending_definition","reception_pending","scheduled"].includes(p.status) || p.open_alerts_count > 0).length;
+      document.querySelector("#kpiProgress").textContent = items.filter(p => ["in_progress","scheduled"].includes(p.status) || (p.current_phase_code && !p.closed_at)).length;
+      document.querySelector("#kpiClosed").textContent = items.filter(p => p.closed_at || ["completed","completed_with_pending_items"].includes(p.status)).length;
+      const filtered = items.filter(matches);
+      rows.innerHTML = filtered.map(card).join("") || `<div class="empty">Sem processos para os filtros atuais.</div>`;
+      document.querySelector("#updated").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-PT", {hour:"2-digit", minute:"2-digit"})}`;
+    }
+    function fillFilters(items) {
+      const statuses = [...new Set(items.map(p => p.status).filter(Boolean))];
+      document.querySelector("#statusFilter").innerHTML = `<option value="">Estado: Todos</option>` + statuses.map(code => `<option value="${code}">${safe(meta(STATUS, code)[0])}</option>`).join("");
+      document.querySelector("#phaseFilter").innerHTML = `<option value="">Fase: Todas</option>` + Object.entries(PHASES).map(([code,label]) => `<option value="${code}">${label}</option>`).join("");
+      ["search","statusFilter","phaseFilter","priorityFilter"].forEach(id => document.querySelector(`#${id}`).addEventListener("input", render));
     }
     fetch("/api/workshop/processes").then(r => r.json()).then((items) => {
-      renderSummary(items);
-      rows.innerHTML = items.map(card).join("") || `<div class="empty">Ainda não existem processos por fases.</div>`;
+      state.items = items;
+      fillFilters(items);
+      render();
     }).catch((e) => { rows.innerHTML = `<div class="empty">${e.message}</div>`; });
   </script>
 </body>
@@ -1158,14 +1212,14 @@ def workshop_process_manage_page(process_id: int) -> str:
   <title>Operar Processo Oficina #{process_id}</title>
   <style>
     :root{{--bg:#f5f7f8;--panel:#fff;--line:#d9e0e5;--line2:#b9c5cc;--text:#07152d;--muted:#5c6c7b;--brand:#b24a34;--soft:#fbf1ee;--green:#2f7d50;--green-soft:#edf7ef;--amber:#9a6711;--amber-soft:#fff6df;--red:#b42318;--red-soft:#fff4f2;font-family:Inter,"Segoe UI",Arial,sans-serif}}
-    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}}aside{{background:#10202c;color:#d9e7ef;padding:20px 14px}}.brand{{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}}.nav{{display:grid;gap:4px}}.nav a{{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}}.nav .sub{{margin-left:18px;color:#b6cad5}}.nav .active{{background:#f4ebe7;color:#7d2f1f}}main{{padding:22px 28px 44px}}h1{{margin:0 0 4px;font-size:25px}}h2{{margin:0 0 14px;font-size:17px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.process-hero{{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(16,32,44,.04)}}.vehicle-strip{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0 0 18px}}.vehicle-strip div{{display:grid;gap:3px}}.vehicle-strip span,.memory span{{display:block;color:var(--muted);font-size:12px;font-weight:750}}.vehicle-strip strong,.memory strong{{display:block;font-size:14px;line-height:1.25}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}}.stack{{display:grid;gap:14px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}}.panel{{position:sticky;top:18px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:0 0 14px;padding:12px;border:1px solid #cfe2d2;background:#f8fbf8;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.memory-grid div{{display:grid;gap:3px;padding:8px;border:1px solid #e2ebe3;border-radius:8px;background:#fff}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:980px){{.app{{grid-template-columns:1fr}}aside{{display:none}}main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.layout,.grid2,.grid3,.memory-grid{{grid-template-columns:1fr}}.panel{{position:static}}}}
+    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}}aside{{background:#10202c;color:#d9e7ef;padding:20px 14px}}.brand{{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}}.nav{{display:grid;gap:4px}}.nav a{{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}}.nav .sub{{margin-left:18px;color:#b6cad5}}.nav .active{{background:#f4ebe7;color:#7d2f1f}}main{{padding:22px 28px 44px}}h1{{margin:0 0 4px;font-size:25px}}h2{{margin:0;font-size:17px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.vehicle-strip{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:-4px 0 18px}}.vehicle-strip div{{display:grid;gap:3px}}.vehicle-strip span,.memory span{{color:var(--muted);font-size:12px;font-weight:750}}.vehicle-strip strong,.memory strong{{font-size:14px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}}.stack{{display:grid;gap:14px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px;font-weight:800;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:12px 0;padding:12px;border:1px solid #dce6dd;background:#f7fbf7;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:980px){{.app{{grid-template-columns:1fr}}aside{{display:none}}main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.layout,.grid2,.grid3,.memory-grid{{grid-template-columns:1fr}}}}
   </style>
 </head>
 <body>
   <div class="app">
     <aside><div class="brand">CarFast v2</div><nav class="nav"><a href="/">Início</a><a href="/fleet">Frota</a><a href="/workshop">Oficina</a><a class="sub" href="/workshop/manage">Processos atuais</a><a class="sub active" href="/workshop/processes-ui">Processos por fases</a><a class="sub" href="/workshop/new-process">Novo processo por fases</a><a href="/task-board">Tarefas</a><a href="/documents">Documentos</a></nav></aside>
     <main>
-      <div id="header" class="process-hero"><div class="topbar"><div><h1>Processo Oficina</h1><p class="subtitle">A carregar...</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Lista por fases</a></div></div></div>
+      <div id="header" class="topbar"><div><h1>Processo Oficina</h1><p class="subtitle">A carregar...</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Lista por fases</a></div></div>
       <div class="layout">
         <div class="stack">
           <div id="vehicleStrip" class="vehicle-strip"></div>
@@ -1275,7 +1329,9 @@ def workshop_process_manage_page(process_id: int) -> str:
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
     const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
-    function safe(value) {{ return String(value ?? "-").replace(/[&<>"']/g, c => ({{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}}[c])); }}
+    function safe(value) {{
+      return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
+    }}
     function label(value) {{ return VALUES[value] || value || "-"; }}
     function statusMeta(code) {{ return STATUS[code] || [code || "-", "neutral"]; }}
     function chip(code) {{ const meta = statusMeta(code); return `<span class="chip ${{meta[1]}}">${{safe(meta[0])}}</span>`; }}
@@ -1309,7 +1365,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       const statusChip = document.querySelector("#statusChip");
       statusChip.textContent = status[0];
       statusChip.className = `chip ${{status[1]}}`;
-      const alerts = Array.from(new Map(processData.alerts.filter(a => a.status !== "resolved").map(a => [a.message, a])).values());
+      const alerts = Array.from(new Map(processData.alerts.map(a => [`${{a.code}}:${{a.message}}`, a])).values());
       document.querySelector("#summary").innerHTML = `<ul class="phase-list">${{processData.phases.map(p => `<li class="${{p.phase_code === processData.current_phase_code ? "active" : ""}}"><span>${{p.sort_order}}. ${{safe(PHASES[p.phase_code] || p.name)}}</span>${{chip(p.status)}}</li>`).join("")}}</ul><h3 style="margin-top:16px">Alertas</h3><ul class="plain-list">${{alerts.map(a => `<li><span>${{safe(a.message)}}</span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas</li>"}}</ul><h3 style="margin-top:16px">Relatórios</h3><ul class="plain-list">${{processData.technical_reports.map(r => `<li><span>#${{r.id}} ${{safe(r.report_name)}}<br><small class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</small></span>${{chip(r.status)}}</li>`).join("") || "<li>Sem relatórios</li>"}}</ul>`;
     }}
     function renderPhaseMemory() {{
@@ -1333,7 +1389,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       setValue("#closeResult", closure.final_result); setValue("#closeReady", closure.vehicle_ready); setValue("#closeStatus", closure.new_vehicle_operational_status); setValue("#closeObs", closure.final_observation); setChecked("#closePending", closure.close_with_pending_items); if (hasData(closure)) document.querySelector("#closeButton").textContent = "Atualizar fecho";
     }}
     async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div class="topbar"><div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div></div>`; renderVehicle(); renderSummary(); renderPhaseMemory(); }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderSummary(); renderPhaseMemory(); }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addReport() {{ try {{ const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:jsonValue("#reportValues")}}); document.querySelector("#validateReportId").value = data.id; showResult(true, `Relatório adicionado #${{data.id}}.`); }} catch(e) {{ showResult(false, e.message); }} }}

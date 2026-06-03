@@ -123,8 +123,8 @@ class WorkshopProcessCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_process(self) -> "WorkshopProcessCreate":
-        if not self.vehicle_id and not self.plate:
-            raise ValueError("Matrícula / Viatura é obrigatória.")
+        if not self.vehicle_id:
+            raise ValueError("Seleciona uma viatura real da frota antes de criar o processo.")
         if self.creation_mode not in CREATION_MODE_CODES:
             raise ValueError("Tipo de criação inválido.")
         if self.priority not in PRIORITY_CODES:
@@ -515,6 +515,11 @@ def create_phased_workshop_process(
     db: DbSession,
 ) -> WorkshopProcessSummary:
     vehicle = _find_vehicle(db, creation.vehicle_id, creation.plate)
+    if not vehicle:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Viatura da frota não encontrada.",
+        )
     service_codes = [service.service_code for service in creation.services]
     title = build_process_title(service_codes, creation.title_manual)
     process_status = "scheduled" if creation.creation_mode == "appointment" else "reception_pending"
@@ -1263,6 +1268,17 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
             .where(WorkshopProcessService.process_id == process.id)
             .order_by(WorkshopProcessService.sort_order)
         ).all()
+        phases = db.scalars(
+            select(WorkshopProcessPhase)
+            .where(WorkshopProcessPhase.process_id == process.id)
+            .order_by(WorkshopProcessPhase.sort_order)
+        ).all()
+        open_alerts = db.scalars(
+            select(WorkshopProcessAlert).where(
+                WorkshopProcessAlert.process_id == process.id,
+                WorkshopProcessAlert.status == "open",
+            )
+        ).all()
         rows.append(
             {
                 "id": process.id,
@@ -1276,11 +1292,22 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
                 "priority": process.priority,
                 "origin": process.origin,
                 "created_at": process.created_at,
+                "updated_at": process.updated_at,
                 "closed_at": process.closed_at,
                 "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
                 "services_label": " + ".join(
                     service.service_label for service in services if service.service_label
                 ),
+                "phases": [
+                    {
+                        "phase_code": phase.phase_code,
+                        "name": phase.name,
+                        "status": phase.status,
+                        "sort_order": phase.sort_order,
+                    }
+                    for phase in phases
+                ],
+                "open_alerts_count": len(open_alerts),
             }
         )
     return rows
@@ -1303,6 +1330,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
     alerts = db.scalars(
         select(WorkshopProcessAlert)
         .where(WorkshopProcessAlert.process_id == process.id)
+        .where(WorkshopProcessAlert.status == "open")
         .order_by(WorkshopProcessAlert.created_at)
     ).all()
     reports = db.scalars(

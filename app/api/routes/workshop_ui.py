@@ -1266,8 +1266,8 @@ def workshop_process_manage_page(process_id: int) -> str:
               <div id="selectedReportDetail" class="memory"></div>
               <div class="report-layout">
                 <div class="report-preview">
-                  <div class="section-title"><h3>Pré-visualização</h3><a id="reportPreviewOpen" class="button secondary" href="#" target="_blank" rel="noopener">Abrir</a></div>
-                  <p id="reportPreviewHint" class="muted">Cola o link do relatório original para pré-visualizar aqui.</p>
+                  <div class="section-title"><h3>Original do relatório</h3><a id="reportPreviewOpen" class="button primary" href="#" target="_blank" rel="noopener">Abrir original</a></div>
+                  <p id="reportPreviewHint" class="muted">Cola o link do relatório original. A pré-visualização depende das permissões do fornecedor.</p>
                   <iframe id="reportPreviewFrame" class="report-preview-frame" title="Pré-visualização do relatório original"></iframe>
                 </div>
                 <div class="report-workspace">
@@ -1354,6 +1354,17 @@ def workshop_process_manage_page(process_id: int) -> str:
       if (url.startsWith("/") || url.startsWith("http://") || url.startsWith("https://")) return url;
       return null;
     }}
+    function likelyFrameBlockedUrl(value) {{
+      try {{
+        const host = new URL(value, window.location.origin).hostname.toLowerCase();
+        return ["sharepoint.com", "onedrive.live.com", "office.com", "microsoft.com"].some(domain => host.includes(domain));
+      }} catch {{
+        return false;
+      }}
+    }}
+    function reportPreviewMessage(title, body) {{
+      return `<!doctype html><html><body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100%;"><div style="max-width:520px;padding:28px;text-align:center;"><h2 style="margin:0 0 8px;font-size:20px;">${{title}}</h2><p style="margin:0;color:#64748b;line-height:1.5;">${{body}}</p></div></body></html>`;
+    }}
     function updateReportPreview() {{
       const url = previewableReportUrl(payloadValue("#reportLink"));
       const frame = document.querySelector("#reportPreviewFrame");
@@ -1361,13 +1372,21 @@ def workshop_process_manage_page(process_id: int) -> str:
       const hint = document.querySelector("#reportPreviewHint");
       if (!url) {{
         frame.removeAttribute("src");
+        frame.srcdoc = reportPreviewMessage("Sem original selecionado", "Cola um link http/https ou interno da app para associar o relatório original.");
         open.removeAttribute("href");
-        hint.textContent = "Cola um link http/https ou interno da app para pré-visualizar aqui.";
+        hint.textContent = "Cola um link http/https ou interno da app. Depois abre o original para conferir os valores extraídos.";
         return;
       }}
-      frame.src = url;
       open.href = url;
-      hint.textContent = "Se a pré-visualização não carregar, abre o relatório numa nova aba.";
+      if (likelyFrameBlockedUrl(url)) {{
+        frame.removeAttribute("src");
+        frame.srcdoc = reportPreviewMessage("Pré-visualização bloqueada pelo fornecedor", "SharePoint, OneDrive e Office podem impedir a abertura dentro da página. Usa Abrir original para consultar o documento e valida os valores à direita.");
+        hint.textContent = "Este link pode bloquear iframe. O original fica guardado como evidência; usa Abrir original para consultar.";
+        return;
+      }}
+      frame.removeAttribute("srcdoc");
+      frame.src = url;
+      hint.textContent = "Se a pré-visualização não carregar, abre o relatório numa nova aba. O link continua guardado como evidência.";
     }}
     function activateTab(tabId) {{
       document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active"));

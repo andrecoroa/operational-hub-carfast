@@ -66,6 +66,10 @@ class WorkshopPhasedProcessPhase(TimestampMixin, Base):
 class WorkshopPhasedProcessAlert(TimestampMixin, Base):
     __tablename__ = "workshop_phased_process_alerts"
 
+    def __init__(self, **kwargs):
+        kwargs.setdefault("status", "open")
+        super().__init__(**kwargs)
+
     id: Mapped[int] = mapped_column(primary_key=True)
     process_id: Mapped[int] = mapped_column(
         ForeignKey("workshop_phased_processes.id", ondelete="CASCADE")
@@ -76,7 +80,7 @@ class WorkshopPhasedProcessAlert(TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(120), index=True)
     message: Mapped[str] = mapped_column(String(240))
     severity: Mapped[str] = mapped_column(String(40), default="warning", index=True)
-    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", server_default="open", index=True)
     source: Mapped[str | None] = mapped_column(String(120), index=True)
     detail_json: Mapped[dict | None] = mapped_column(JSON)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

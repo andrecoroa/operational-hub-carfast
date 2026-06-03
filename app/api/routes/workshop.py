@@ -401,6 +401,7 @@ def _add_alert_once(
         code=code,
         message=message,
         severity=severity,
+        status="open",
         source=source,
         detail_json=detail,
     )
@@ -455,6 +456,7 @@ def _build_creation_alerts(
                 code="km_current_missing",
                 message="KM atual em falta",
                 severity="warning",
+                status="open",
                 source="process_creation",
             )
         )
@@ -465,6 +467,7 @@ def _build_creation_alerts(
                 code="initial_observation_missing",
                 message="Observação inicial em falta",
                 severity="warning",
+                status="open",
                 source="process_creation",
             )
         )
@@ -475,6 +478,7 @@ def _build_creation_alerts(
                 code="responsible_missing",
                 message="Responsável em falta",
                 severity="info",
+                status="open",
                 source="process_creation",
             )
         )
@@ -485,6 +489,7 @@ def _build_creation_alerts(
                 code="entry_origin_missing",
                 message="Origem da entrada em falta",
                 severity="info",
+                status="open",
                 source="process_creation",
             )
         )
@@ -522,7 +527,7 @@ def create_phased_workshop_process(
         )
     service_codes = [service.service_code for service in creation.services]
     title = build_process_title(service_codes, creation.title_manual)
-    process_status = "scheduled" if creation.creation_mode == "appointment" else "reception_pending"
+    process_status = "scheduled" if creation.creation_mode == "appointment" else "open"
     current_phase = "administrative_reception"
 
     process = WorkshopProcess(

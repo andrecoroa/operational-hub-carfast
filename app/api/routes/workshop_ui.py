@@ -1088,7 +1088,7 @@ def workshop_process_list_page() -> str:
   <title>Oficina - Processos por Fases</title>
   <style>
     :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --line2:#b9c5cc; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --blue:#1d5f94; --blue-soft:#eaf3fb; --amber:#9a6711; --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; font-family:Inter,"Segoe UI",Arial,sans-serif; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{background:#10202c;color:#d9e7ef;padding:20px 14px}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:22px 28px 42px}h1{margin:0 0 4px;font-size:25px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;border-radius:8px;padding:9px 14px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:25px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:10px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:40px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 140px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:12px 10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:76px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){.app{grid-template-columns:1fr}aside{display:none}main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:block;min-height:100vh}aside{display:none}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:14px 16px 34px}h1{margin:0 0 4px;font-size:24px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:8px;padding:8px 13px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:24px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:8px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 160px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:72px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.status-cell{display:grid;justify-items:start;gap:5px}.open-count{color:var(--amber);font-size:11px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
   </style>
 </head>
 <body>
@@ -1099,7 +1099,7 @@ def workshop_process_list_page() -> str:
       <section class="board">
         <div class="kpis">
           <div class="kpi"><span>Total processos</span><strong id="kpiTotal">0</strong></div>
-          <div class="kpi"><span>Por rever / pendentes</span><strong id="kpiReview">0</strong></div>
+          <div class="kpi"><span>Em falta / abertos</span><strong id="kpiOpen">0</strong></div>
           <div class="kpi"><span>Em curso</span><strong id="kpiProgress">0</strong></div>
           <div class="kpi"><span>Fechados</span><strong id="kpiClosed">0</strong></div>
         </div>
@@ -1130,6 +1130,11 @@ def workshop_process_list_page() -> str:
     };
     const PRIORITY = {low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente"};
     function meta(map, code) { return map[code] || [code || "-", "neutral"]; }
+    function displayStatusCode(p) {
+      if (p.closed_at || ["completed","completed_with_pending_items","cancelled"].includes(p.status)) return p.status;
+      if ((p.open_alerts_count || 0) > 0) return "open";
+      return p.status || "open";
+    }
     function safe(value) {
       return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
     }
@@ -1153,7 +1158,8 @@ def workshop_process_list_page() -> str:
     }
     function card(p) {
       const v = p.vehicle || {};
-      const status = meta(STATUS, p.status);
+      const statusCode = displayStatusCode(p);
+      const status = meta(STATUS, statusCode);
       const phase = PHASES[p.current_phase_code] || p.current_phase_code || "-";
       const service = p.services_label || p.title || "Processo oficina";
       return `<article class="process-row">
@@ -1161,7 +1167,7 @@ def workshop_process_list_page() -> str:
         <div class="vehicle-cell"><div class="vehicle-thumb">Frota</div><div><div class="plate">${safe(v.plate || p.plate)}</div><div class="small">${safe(vehicleName(v))}</div><div class="small">${safe(unitLine(v))}</div></div></div>
         <div class="service">${safe(service)}</div>
         <div class="phase-cell"><span class="phase-name">${safe(phase)}</span>${phaseProgress(p)}</div>
-        <span class="chip ${status[1]}">${safe(status[0])}</span>
+        <div class="status-cell"><span class="chip ${status[1]}">${safe(status[0])}</span>${(p.open_alerts_count || 0) > 0 ? `<span class="open-count">${p.open_alerts_count} em falta</span>` : ""}</div>
         <span class="priority-dot">${safe(PRIORITY[p.priority] || p.priority || "-")}</span>
         <span class="small">${safe(dateLabel(p.updated_at || p.created_at))}</span>
         <a class="button secondary" href="/workshop/processes-ui/${p.id}/manage">Abrir processo</a>
@@ -1174,12 +1180,12 @@ def workshop_process_list_page() -> str:
       const priority = document.querySelector("#priorityFilter").value;
       const v = p.vehicle || {};
       const haystack = [p.id, p.title, p.services_label, p.plate, v.plate, v.rentway_unit_nr, v.vin, v.brand, v.model, v.version].join(" ").toLowerCase();
-      return (!query || haystack.includes(query)) && (!status || p.status === status) && (!phase || p.current_phase_code === phase) && (!priority || p.priority === priority);
+      return (!query || haystack.includes(query)) && (!status || displayStatusCode(p) === status) && (!phase || p.current_phase_code === phase) && (!priority || p.priority === priority);
     }
     function render() {
       const items = state.items;
       document.querySelector("#kpiTotal").textContent = items.length;
-      document.querySelector("#kpiReview").textContent = items.filter(p => ["pending_review","pending","pending_definition","reception_pending","scheduled"].includes(p.status) || p.open_alerts_count > 0).length;
+      document.querySelector("#kpiOpen").textContent = items.filter(p => displayStatusCode(p) === "open").length;
       document.querySelector("#kpiProgress").textContent = items.filter(p => ["in_progress","scheduled"].includes(p.status) || (p.current_phase_code && !p.closed_at)).length;
       document.querySelector("#kpiClosed").textContent = items.filter(p => p.closed_at || ["completed","completed_with_pending_items"].includes(p.status)).length;
       const filtered = items.filter(matches);
@@ -1187,7 +1193,7 @@ def workshop_process_list_page() -> str:
       document.querySelector("#updated").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-PT", {hour:"2-digit", minute:"2-digit"})}`;
     }
     function fillFilters(items) {
-      const statuses = [...new Set(items.map(p => p.status).filter(Boolean))];
+      const statuses = [...new Set(items.map(displayStatusCode).filter(Boolean))];
       document.querySelector("#statusFilter").innerHTML = `<option value="">Estado: Todos</option>` + statuses.map(code => `<option value="${code}">${safe(meta(STATUS, code)[0])}</option>`).join("");
       document.querySelector("#phaseFilter").innerHTML = `<option value="">Fase: Todas</option>` + Object.entries(PHASES).map(([code,label]) => `<option value="${code}">${label}</option>`).join("");
       ["search","statusFilter","phaseFilter","priorityFilter"].forEach(id => document.querySelector(`#${id}`).addEventListener("input", render));

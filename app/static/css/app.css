@@ -3817,6 +3817,11 @@ a.metric:hover {
   margin-top: 6px;
 }
 
+.reading-card-source {
+  color: var(--brand-dark) !important;
+  font-weight: 800;
+}
+
 .reading-card em {
   flex: 0 0 auto;
   border-radius: 999px;
@@ -3856,6 +3861,24 @@ a.metric:hover {
 .reading-report-panel > label,
 .reading-block > label {
   margin-top: 12px;
+}
+
+.reading-fill-support {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dde7f0;
+  border-radius: 8px;
+  background: #f7fbfd;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 12px 0 14px;
+  padding: 12px;
+}
+
+.reading-fill-support strong {
+  color: var(--ink);
+  font-size: 13px;
 }
 
 .reading-calculated-grid {

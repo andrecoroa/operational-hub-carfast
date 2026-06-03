@@ -11,6 +11,39 @@
 ] %}
 {% set default_allowed_report_types = ["maintenance_info", "maintenance_program", "lubrication_info", "fault_reading", "software_identification", "other"] %}
 {% set allowed_report_types = reading_allowed_types if reading_allowed_types is defined and reading_allowed_types else default_allowed_report_types %}
+{% set report_fill_support = {
+  "maintenance_info": {
+    "source": "Autel e PSA-DIAG/Stellantis",
+    "examples": "manutencao_informacoes-de-manutencao; manutencao_informacoes-manutencao",
+    "fields": "KM ultima reposicao, KM/dias ate proxima manutencao, limites ultrapassados e numero de manutencoes."
+  },
+  "maintenance_program": {
+    "source": "PSA-DIAG/Stellantis",
+    "examples": "parametrizacao_manutencao_parametros-de-manutencao-recuperados-do-veiculo",
+    "fields": "Limiar e duracao da manutencao, inicio da primeira manutencao e modo de gestao.",
+    "note": "Nao foi encontrado exemplo Autel para este tipo."
+  },
+  "lubrication_info": {
+    "source": "Autel e PSA-DIAG/Stellantis",
+    "examples": "lubrificacao_motor_informacoes-lubrificacao-motor",
+    "fields": "Taxa de diluicao, taxa de carbono, protecao anti-diluicao e intervalo calculado."
+  },
+  "fault_reading": {
+    "source": "Autel e PSA-DIAG/Stellantis",
+    "examples": "leitura_defeitos_relatorio-de-diagnostico-do-veiculo; leitura_defeitos_global",
+    "fields": "Existencia de defeitos, codigos principais, estado, criticidade, KM associado e acao recomendada."
+  },
+  "software_identification": {
+    "source": "Autel e PSA-DIAG/Stellantis",
+    "examples": "identificacao_telecarregamento_informacao-ecu; identificacao_telecarregamento_referencia-do-material",
+    "fields": "Referencia software, edicao/calibracao, data e numero de telecarregamentos."
+  },
+  "other": {
+    "source": "Autel ou outra origem",
+    "examples": "outro_2-sistemas-analisados; outro_versao-programa",
+    "fields": "Usar resumo, notas BSI, sistemas verificados, recomendacao e link externo."
+  }
+} %}
 <div class="reading-form-shell">
   <input type="hidden" name="flow_phase" value="{{ active_phase }}">
   <select name="reading_type" data-reading-type hidden>
@@ -36,6 +69,7 @@
     <div class="reading-card-grid">
       {% for code, label, description in report_cards if code in allowed_report_types %}
         {% set marker = namespace(registered=false) %}
+        {% set support = report_fill_support.get(code) %}
         {% for reading in technical_readings %}
           {% if reading.reading_type == code and (reading.data_json or {}).get("flow_phase") in [active_phase, legacy_phase] %}
             {% set marker.registered = true %}
@@ -51,6 +85,9 @@
           <span>
             <strong>{{ label }}</strong>
             <small>{{ description }}</small>
+            {% if support %}
+              <small class="reading-card-source">{{ support.source }}</small>
+            {% endif %}
           </span>
           <em data-reading-card-status>{{ "Atual" if loop.first else ("Registado" if marker.registered else "Pendente") }}</em>
         </button>
@@ -98,6 +135,13 @@
         <h4>Informações de manutenção</h4>
       </div>
       <span class="action-method-pill">A preencher</span>
+    </div>
+    {% set support = report_fill_support.get("maintenance_info") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
     </div>
     <div class="compact-form-grid two-col">
       <label>
@@ -157,6 +201,14 @@
       </div>
       <span class="action-method-pill">A preencher</span>
     </div>
+    {% set support = report_fill_support.get("maintenance_program") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
+      <span>{{ support.note }}</span>
+    </div>
     <div class="compact-form-grid two-col">
       <label>
         Dias desde início de circulação
@@ -203,6 +255,13 @@
       </div>
       <span class="action-method-pill">A preencher</span>
     </div>
+    {% set support = report_fill_support.get("lubrication_info") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
+    </div>
     <div class="compact-form-grid two-col">
       <label>
         Taxa de diluição do óleo
@@ -230,6 +289,13 @@
         <h4>Leitura de defeitos</h4>
       </div>
       <span class="action-method-pill">A preencher</span>
+    </div>
+    {% set support = report_fill_support.get("fault_reading") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
     </div>
     <div class="compact-form-grid two-col">
       <label>
@@ -283,6 +349,13 @@
       </div>
       <span class="action-method-pill">A preencher</span>
     </div>
+    {% set support = report_fill_support.get("software_identification") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
+    </div>
     <div class="compact-form-grid two-col">
       <label>
         Referência software
@@ -310,6 +383,13 @@
         <h4>Outra leitura</h4>
       </div>
       <span class="action-method-pill">Flexível</span>
+    </div>
+    {% set support = report_fill_support.get("other") %}
+    <div class="reading-fill-support">
+      <strong>Suporte de preenchimento</strong>
+      <span>Origem encontrada: {{ support.source }}.</span>
+      <span>PDFs típicos: {{ support.examples }}.</span>
+      <span>Copiar: {{ support.fields }}</span>
     </div>
     <p class="muted">Usa este tipo apenas quando o relatório ainda não encaixa numa categoria definida.</p>
   </section>

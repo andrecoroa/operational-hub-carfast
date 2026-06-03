@@ -1262,6 +1262,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <h2>Relatórios Técnicos</h2>
               <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
               <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
+              <p id="reportHint" class="muted"></p>
               <h3 style="margin-top:16px">Valores extraídos</h3>
               <table class="value-table" id="reportValuesTable">
                 <thead><tr><th>Campo</th><th>Valor</th><th></th></tr></thead>
@@ -1272,6 +1273,7 @@ def workshop_process_manage_page(process_id: int) -> str:
                 </tbody>
               </table>
               <div class="table-action-row"><button type="button" onclick="addValueRow('reportValuesTable')">Adicionar linha</button></div>
+              <button type="button" onclick="prepareReportValues()">Preparar valores para validação</button>
               <button class="primary" onclick="addReport()">Adicionar relatório</button>
               <h3 style="margin-top:16px">Validar relatório</h3>
               <label>ID relatório<input id="validateReportId" type="number"></label>
@@ -1379,6 +1381,30 @@ def workshop_process_manage_page(process_id: int) -> str:
     function setValue(id, value) {{ const el = document.querySelector(id); if (el && value !== null && value !== undefined) el.value = value; }}
     function setChecked(id, value) {{ const el = document.querySelector(id); if (el) el.checked = Boolean(value); }}
     function setButton(id, fresh, update) {{ const el = document.querySelector(id); if (el) el.textContent = update ? `Atualizar ${{fresh}}` : `Confirmar ${{fresh}}`; }}
+    function selectedReportConfig() {{
+      const code = payloadValue("#reportCode");
+      return (config?.stellantis_reports || []).find(report => report.code === code) || null;
+    }}
+    function setTableValues(tableId, values) {{
+      const entries = Object.entries(values || {{}});
+      const body = document.querySelector(`#${{tableId}} tbody`);
+      body.innerHTML = entries.length ? entries.map(([key, value]) => `
+        <tr><td><input value="${{safe(key)}}"></td><td><input value="${{safe(value)}}"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>
+      `).join("") : `<tr><td><input placeholder="Campo"></td><td><input placeholder="Valor"></td><td><button type="button" onclick="removeValueRow(this)">Limpar</button></td></tr>`;
+    }}
+    function renderReportFields() {{
+      const report = selectedReportConfig();
+      const fields = report?.fields || [];
+      document.querySelector("#reportHint").textContent = report
+        ? `${{report.description}} O link fica guardado como evidência; preenche os valores esperados na tabela.`
+        : "O link fica guardado como evidência; preenche os valores esperados na tabela.";
+      const values = Object.fromEntries(fields.map(field => [
+        field.unit ? `${{field.label}} (${{field.unit}})` : field.label,
+        "",
+      ]));
+      setTableValues("reportValuesTable", values);
+      setTableValues("validateValuesTable", values);
+    }}
     function tableValues(tableId) {{
       const values = {{}};
       document.querySelectorAll(`#${{tableId}} tbody tr`).forEach((row) => {{
@@ -1403,6 +1429,12 @@ def workshop_process_manage_page(process_id: int) -> str:
         return;
       }}
       row.remove();
+    }}
+    function prepareReportValues() {{
+      const values = tableValues("reportValuesTable");
+      setTableValues("validateValuesTable", values);
+      showResult(true, "Valores preparados para validação.");
+      return values;
     }}
     function memory(id, rows) {{
       const cleanRows = rows.filter(r => r[1] !== null && r[1] !== undefined && r[1] !== "");
@@ -1493,12 +1525,12 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#closeMemory", [["Resultado", closure.final_result], ["Viatura pronta", closure.vehicle_ready], ["Novo estado", closure.new_vehicle_operational_status], ["KM final", closure.final_km], ["Observação", closure.final_observation]]);
       setValue("#closeResult", closure.final_result); setValue("#closeReady", closure.vehicle_ready); setValue("#closeStatus", closure.new_vehicle_operational_status); setValue("#closeObs", closure.final_observation); setChecked("#closePending", closure.close_with_pending_items); if (hasData(closure)) document.querySelector("#closeButton").textContent = "Atualizar fecho";
     }}
-    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); }}
+    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join(""); document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join(""); document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join(""); document.querySelector("#reportCode").addEventListener("change", renderReportFields); renderReportFields(); }}
     async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); document.querySelector("#header").innerHTML = `<div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseMemory(); }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function addReport() {{ try {{ const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:tableValues("reportValuesTable")}}); document.querySelector("#validateReportId").value = data.id; showResult(true, `Relatório adicionado #${{data.id}}.`); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function addReport() {{ try {{ const extractedValues = prepareReportValues(); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; setTableValues("validateValuesTable", data.extracted_values || extractedValues); showResult(true, `Relatório adicionado #${{data.id}}. Valores prontos para validar.`); }} catch(e) {{ showResult(false, e.message); }} }}
     async function validateReport() {{ try {{ await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:tableValues("validateValuesTable")}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveCheck() {{ try {{ await post(`/api/workshop/processes/${{processId}}/technical-checks`, {{check_code:payloadValue("#checkCode"), status:payloadValue("#checkStatus"), observation:payloadValue("#checkObs"), evidence_link:payloadValue("#checkEvidence"), creates_task:document.querySelector("#checkTask").checked, potential_customer_charge:document.querySelector("#checkCharge").checked, task_title:payloadValue("#checkTaskTitle")}}); showResult(true, "Verificação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function createIncident() {{ try {{ await post(`/api/workshop/processes/${{processId}}/incidents`, {{incident_type:payloadValue("#incidentType"), severity:payloadValue("#incidentSeverity"), vehicle_can_circulate:payloadValue("#incidentCirculate"), description:payloadValue("#incidentDescription")}}); showResult(true, "Incidente criado."); }} catch(e) {{ showResult(false, e.message); }} }}

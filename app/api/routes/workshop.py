@@ -852,7 +852,12 @@ def add_technical_report(
         process.current_phase_code = "technical_phase"
     db.commit()
     db.refresh(report)
-    return {"id": report.id, "status": report.status, "report_name": report.report_name}
+    return {
+        "id": report.id,
+        "status": report.status,
+        "report_name": report.report_name,
+        "extracted_values": report.extracted_values_json,
+    }
 
 
 @router.post("/technical-reports/{report_id}/validate")
@@ -1482,6 +1487,8 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
                 "report_moment": report.report_moment,
                 "status": report.status,
                 "original_link": report.original_link,
+                "extracted_values": report.extracted_values_json,
+                "validated_values": report.validated_values_json,
                 "validated_at": report.validated_at,
             }
             for report in reports

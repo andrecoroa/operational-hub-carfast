@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content imports-content task-bulk-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Importações &gt; Tarefas</p>
+        <h2>Importar tarefas em massa</h2>
+        <p class="breadcrumb">Crie uma tarefa mãe e várias subtarefas a partir de um ficheiro Excel ou CSV.</p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports/tasks" %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Histórico</a>
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <nav class="wizard-steps" aria-label="Passos da importação">
+      {% for step in ["Objetivo", "Ficheiro", "Modo / chave", "Mapeamento", "Pré-visualização", "Confirmação", "Resultado"] %}
+        <span class="{% if result and loop.index == 7 %}active{% elif preview and loop.index in [5, 6] %}active{% elif not preview and not result and loop.index <= 2 %}active{% endif %}">{{ loop.index }}. {{ step }}</span>
+      {% endfor %}
+    </nav>
+
+    {% if result %}
+      <section class="section task-bulk-result">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Resultado</p>
+            <h3>Lote #{{ result.batch_id }} criado</h3>
+            <p class="breadcrumb">{{ result.created_rows }} subtarefas criadas · {{ result.skipped_rows }} linhas ignoradas · {{ result.error_rows }} erros</p>
+          </div>
+          <div class="button-row">
+            <a class="button-link" href="/task-board/{{ result.parent_task_id }}">Abrir tarefa mãe</a>
+            <a class="button-link secondary-link" href="/imports/{{ result.batch_id }}">Ver lote de importação</a>
+            <a class="button-link secondary-link" href="/imports/{{ result.batch_id }}/errors.csv">Exportar erros</a>
+          </div>
+        </div>
+      </section>
+    {% else %}
+      <section class="task-bulk-grid">
+        <article class="section task-bulk-form-panel">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Objetivo e ficheiro</p>
+              <h3>Preparar importação</h3>
+            </div>
+            {% if pending %}
+              <a class="button-link secondary-link" href="/imports/tasks?reset=1">Limpar</a>
+            {% endif %}
+          </div>
+
+          <form method="post" action="/imports/tasks/preview" enctype="multipart/form-data" class="form-stack task-bulk-form">
+            <fieldset class="task-bulk-mode">
+              <legend>Modo</legend>
+              <label class="radio-card">
+                <input type="radio" name="mode" value="create" {% if form_values.mode != "append" %}checked{% endif %}>
+                <span>Criar nova tarefa mãe + subtarefas</span>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="mode" value="append" {% if form_values.mode == "append" %}checked{% endif %}>
+                <span>Acrescentar subtarefas a tarefa mãe existente</span>
+              </label>
+            </fieldset>
+
+            <div class="compact-form-grid two-col">
+              <label class="mode-create-field">
+                Título da tarefa mãe
+                <input type="text" name="parent_title" value="{{ form_values.parent_title }}" placeholder="Ex.: Regularização documental junho">
+              </label>
+              <label class="mode-append-field">
+                Tarefa mãe existente
+                <select name="parent_task_id">
+                  <option value="">Selecionar tarefa</option>
+                  {% for task in parent_tasks %}
+                    <option value="{{ task.id }}" {% if form_values.parent_task_id|string == task.id|string %}selected{% endif %}>CF-TASK-{{ "%05d"|format(task.id) }} · {{ task.title }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Classificação por defeito
+                <select name="default_category">
+                  {% for code, label in task_categories %}
+                    <option value="{{ code }}" {% if form_values.default_category == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Prioridade por defeito
+                <select name="default_priority">
+                  {% for code, label in priorities %}
+                    <option value="{{ code }}" {% if form_values.default_priority == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Responsável por defeito
+                <select name="assigned_to_id">
+                  <option value="">Por atribuir</option>
+                  {% for user in assignable_users %}
+                    <option value="{{ user.id }}" {% if form_values.assigned_to_id|string == user.id|string %}selected{% endif %}>{{ user.name }} · {{ user.email }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Execução delegada a
+                <select name="delegated_to">
+                  <option value="">Sem delegação</option>
+                  {% for user in assignable_users %}
+                    <option value="user:{{ user.id }}" {% if form_values.delegated_to == "user:" ~ user.id %}selected{% endif %}>{{ user.name }}</option>
+                  {% endfor %}
+                  {% for team in teams %}
+                    <option value="team:{{ team.id }}" {% if form_values.delegated_to == "team:" ~ team.id %}selected{% endif %}>Equipa: {{ team.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Data limite por defeito
+                <input type="date" name="due_on" value="{{ form_values.due_on }}">
+              </label>
+              <label>
+                Ficheiro Excel/CSV
+                <input type="file" name="file" accept=".xlsx,.csv">
+              </label>
+            </div>
+            <button type="submit">Pré-visualizar</button>
+          </form>
+        </article>
+
+        <aside class="section task-bulk-side-panel">
+          <p class="eyebrow">Mapeamento esperado</p>
+          <h3>Campos suportados</h3>
+          <div class="task-bulk-field-list">
+            {% for code, label in task_bulk_fields %}
+              <span>{{ label }}</span>
+            {% endfor %}
+          </div>
+        </aside>
+      </section>
+
+      {% if preview %}
+        <section class="section task-bulk-preview">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Pré-visualização</p>
+              <h3>Linhas analisadas antes da criação</h3>
+              <p class="breadcrumb">{{ preview.summary.total }} linhas · {{ preview.summary.valid }} válidas · {{ preview.summary.errors }} erros · {{ preview.summary.duplicates }} possíveis duplicados</p>
+            </div>
+          </div>
+
+          <div class="metric-grid task-bulk-summary">
+            <article class="metric"><span>Total de linhas</span><strong>{{ preview.summary.total }}</strong></article>
+            <article class="metric"><span>Subtarefas previstas</span><strong>{{ preview.summary.subtasks }}</strong></article>
+            <article class="metric"><span>Erros</span><strong>{{ preview.summary.errors }}</strong></article>
+            <article class="metric"><span>Possíveis duplicados</span><strong>{{ preview.summary.duplicates }}</strong></article>
+          </div>
+
+          <div class="task-bulk-mapping">
+            <article>
+              <strong>Mapeamento automático</strong>
+              <div class="task-bulk-map-list">
+                {% for code, label in task_bulk_fields %}
+                  {% if preview.mapping.get(code) %}
+                    <span>{{ label }} <b>{{ preview.mapping.get(code) }}</b></span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </article>
+            <article>
+              <strong>Agrupamentos</strong>
+              <div class="task-bulk-group-list">
+                {% for label, items in [("Classificação", preview.groups.category), ("Responsável", preview.groups.responsible), ("Prioridade", preview.groups.priority)] %}
+                  <span>{{ label }}</span>
+                  <small>
+                    {% for key, total in items %}
+                      {{ task_category_labels.get(key, priority_labels.get(key, key)) }}: {{ total }}{% if not loop.last %} · {% endif %}
+                    {% else %}
+                      Sem linhas válidas
+                    {% endfor %}
+                  </small>
+                {% endfor %}
+              </div>
+            </article>
+          </div>
+
+          <div class="table-shell import-table-shell task-bulk-table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Linha</th>
+                  <th>Assunto</th>
+                  <th>Classificação</th>
+                  <th>Matrícula</th>
+                  <th>Contrato/Reserva</th>
+                  <th>Responsável</th>
+                  <th>Prioridade</th>
+                  <th>Estado</th>
+                  <th>Erro/aviso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in preview.rows[:80] %}
+                  <tr>
+                    <td>{{ row.row_number }}</td>
+                    <td><strong>{{ row.payload.title or "-" }}</strong></td>
+                    <td>{{ task_category_labels.get(row.payload.category, row.payload.category) }}</td>
+                    <td>{{ row.payload.plate or "-" }}</td>
+                    <td>{{ row.payload.contract_number or row.payload.reservation_number or "-" }}</td>
+                    <td>{{ row.payload.responsible_label or "Por atribuir" }}</td>
+                    <td>{{ priority_labels.get(row.payload.priority, row.payload.priority) }}</td>
+                    <td>
+                      {% if row.state == "valid" %}
+                        <span class="pill status-in_execution">Válida</span>
+                      {% elif row.state == "duplicate" %}
+                        <span class="pill status-waiting">Possível duplicado</span>
+                      {% else %}
+                        <span class="pill status-cancelled">Erro</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ row.message or "-" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <section class="task-bulk-confirm-box">
+            <p>
+              Vou criar
+              {% if form_values.mode != "append" %}<strong>1 tarefa mãe</strong> e{% endif %}
+              <strong>{{ preview.summary.valid }} subtarefas</strong>.
+              {{ preview.summary.errors }} linhas com erro e {{ preview.summary.duplicates }} possíveis duplicados serão ignorados.
+            </p>
+            <form method="post" action="/imports/tasks/confirm" class="button-row">
+              <a class="button-link secondary-link" href="/imports/tasks">Voltar</a>
+              <button type="submit" {% if preview.summary.valid == 0 %}disabled{% endif %}>Confirmar criação</button>
+            </form>
+          </section>
+        </section>
+      {% endif %}
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

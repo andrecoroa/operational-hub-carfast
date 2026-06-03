@@ -66,7 +66,37 @@
     </section>
 
     <section class="section">
-      <h3>Erros</h3>
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Tarefas</p>
+          <h3>Tarefas criadas pelo lote</h3>
+        </div>
+      </div>
+      <div class="event-list">
+        {% for task in created_tasks %}
+          <article class="event-item">
+            <div>
+              <strong><a class="table-link" href="/task-board/{{ task.id }}">CF-TASK-{{ "%05d"|format(task.id) }}</a></strong>
+              <span>{% if task.parent_task_id %}Subtarefa{% else %}Tarefa mãe{% endif %}</span>
+            </div>
+            <p>{{ task.title }}</p>
+          </article>
+        {% else %}
+          <p class="muted">Sem tarefas associadas a este lote.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Validação</p>
+          <h3>Erros</h3>
+        </div>
+        {% if batch.error_rows %}
+          <a class="button-link secondary-link" href="/imports/{{ batch.id }}/errors.csv">Exportar erros</a>
+        {% endif %}
+      </div>
       <div class="event-list">
         {% for error in errors %}
           <article class="event-item">

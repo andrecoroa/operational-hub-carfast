@@ -1,4 +1,6 @@
+import csv
 from datetime import UTC, date, datetime, timedelta
+import io
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
@@ -42,6 +44,13 @@ from app.models.workshop import (
     WorkshopTechnicalReading,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
+from app.services.task_bulk_importer import (
+    TASK_BULK_FIELDS,
+    TASK_BULK_IMPORT_TYPE,
+    create_tasks_from_bulk_import,
+    preview_task_bulk_import,
+    store_task_bulk_upload,
+)
 from app.services.workshop_history_importer import (
     TECHNICAL_HISTORY_IMPORT_COLUMNS,
     import_workshop_technical_history_file,
@@ -5280,6 +5289,319 @@ def technical_history_import_submit(request: Request, file: UploadFile):
     return RedirectResponse(f"/imports/{stats['batch_id']}", status_code=303)
 
 
+TASK_BULK_SESSION_KEY = "task_bulk_import_pending"
+
+
+def task_bulk_form_context(
+    db,
+    request: Request,
+    *,
+    error: str | None = None,
+    preview: dict | None = None,
+    result: dict | None = None,
+    form_values: dict | None = None,
+) -> dict:
+    user_id = get_web_user_id(request)
+    current_user = db.get(User, user_id) if user_id else None
+    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name, User.email)).all()
+    assignable_users = assignable_users_for_workspace(users, "operational")
+    teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+    parent_task_types = user_accessible_task_type_codes(db, current_user)
+    parent_tasks = []
+    if parent_task_types:
+        parent_tasks = db.scalars(
+            select(Task)
+            .where(
+                Task.parent_task_id.is_(None),
+                Task.closed_at.is_(None),
+                Task.task_type.in_(tuple(parent_task_types)),
+            )
+            .order_by(Task.id.desc())
+            .limit(120)
+        ).all()
+    default_values = {
+        "mode": "create",
+        "parent_title": "",
+        "parent_task_id": "",
+        "default_category": "operations",
+        "default_priority": "normal",
+        "assigned_to_id": "",
+        "delegated_to": "",
+        "due_on": "",
+    }
+    default_values.update(form_values or {})
+    pending = request.session.get(TASK_BULK_SESSION_KEY) if hasattr(request, "session") else None
+    return {
+        "error": error,
+        "preview": preview,
+        "result": result,
+        "pending": pending,
+        "form_values": default_values,
+        "task_bulk_fields": TASK_BULK_FIELDS,
+        "parent_tasks": parent_tasks,
+        "users": users,
+        "assignable_users": assignable_users,
+        "teams": teams,
+        "task_categories": TASK_CATEGORIES,
+        "task_category_labels": TASK_CATEGORY_DISPLAY_LABELS,
+        "priorities": PRIORITIES,
+        "priority_labels": PRIORITY_DISPLAY_LABELS,
+    }
+
+
+def task_bulk_defaults_from_form(
+    db,
+    *,
+    default_category: str,
+    default_priority: str,
+    assigned_to_id: str,
+    delegated_to: str,
+    due_on: str,
+) -> dict:
+    category = default_category if default_category in TASK_CATEGORY_LABELS else "operations"
+    priority = default_priority if default_priority in PRIORITY_DISPLAY_LABELS else "normal"
+    assigned_user_id = parse_optional_int(assigned_to_id)
+    if assigned_user_id and not db.get(User, assigned_user_id):
+        assigned_user_id = None
+    delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
+    if delegated_user_id and not db.get(User, delegated_user_id):
+        delegated_user_id = None
+    if delegated_team_id and not db.get(Team, delegated_team_id):
+        delegated_team_id = None
+    assigned_user = db.get(User, assigned_user_id) if assigned_user_id else None
+    task_type = "workshop_task" if category == "workshop" else "operational_task"
+    return {
+        "category": category,
+        "subcategory": default_task_subcategory(category),
+        "priority": priority,
+        "assigned_to_id": assigned_user_id,
+        "delegated_to_user_id": delegated_user_id,
+        "delegated_to_team_id": delegated_team_id,
+        "due_on": parse_optional_date(due_on),
+        "responsible_label": assigned_user.name if assigned_user else "",
+        "task_type": task_type,
+    }
+
+
+def task_bulk_workspace_for_defaults(defaults: dict, parent_task: Task | None) -> str:
+    if parent_task:
+        return workspace_for_task_type(parent_task.task_type)
+    return "workshop" if defaults.get("task_type") == "workshop_task" else "operational"
+
+
+@web_router.get("/imports/tasks", response_class=HTMLResponse)
+def task_bulk_import_form(request: Request, reset: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    if reset and hasattr(request, "session"):
+        request.session.pop(TASK_BULK_SESSION_KEY, None)
+    with SessionLocal() as db:
+        return templates.TemplateResponse(request, "task_bulk_import.html", task_bulk_form_context(db, request))
+
+
+@web_router.post("/imports/tasks/preview", response_class=HTMLResponse)
+def task_bulk_import_preview(
+    request: Request,
+    file: UploadFile,
+    mode: str = Form("create"),
+    parent_title: str = Form(""),
+    parent_task_id: str = Form(""),
+    default_category: str = Form("operations"),
+    default_priority: str = Form("normal"),
+    assigned_to_id: str = Form(""),
+    delegated_to: str = Form(""),
+    due_on: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    form_values = {
+        "mode": mode,
+        "parent_title": parent_title,
+        "parent_task_id": parent_task_id,
+        "default_category": default_category,
+        "default_priority": default_priority,
+        "assigned_to_id": assigned_to_id,
+        "delegated_to": delegated_to,
+        "due_on": due_on,
+    }
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
+        with SessionLocal() as db:
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(db, request, error="Carrega um ficheiro XLSX ou CSV.", form_values=form_values),
+                status_code=400,
+            )
+
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        stored_path = store_task_bulk_upload(tmp_path, file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    with SessionLocal() as db:
+        defaults = task_bulk_defaults_from_form(
+            db,
+            default_category=default_category,
+            default_priority=default_priority,
+            assigned_to_id=assigned_to_id,
+            delegated_to=delegated_to,
+            due_on=due_on,
+        )
+        parent_task = db.get(Task, parse_optional_int(parent_task_id)) if mode == "append" else None
+        if mode == "create" and not parent_title.strip():
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(
+                    db,
+                    request,
+                    error="Indica o título da tarefa mãe.",
+                    form_values=form_values,
+                ),
+                status_code=400,
+            )
+        if mode == "append" and not parent_task:
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(
+                    db,
+                    request,
+                    error="Seleciona uma tarefa mãe existente.",
+                    form_values=form_values,
+                ),
+                status_code=400,
+            )
+        current_user = db.get(User, user_id)
+        workspace = task_bulk_workspace_for_defaults(defaults, parent_task)
+        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(
+                    db,
+                    request,
+                    error="Sem permissão para criar tarefas nesta área.",
+                    form_values=form_values,
+                ),
+                status_code=403,
+            )
+        preview = preview_task_bulk_import(
+            db,
+            stored_path,
+            defaults,
+            parent_task_id=parent_task.id if parent_task else None,
+            valid_categories=set(TASK_CATEGORY_LABELS),
+        )
+        request.session[TASK_BULK_SESSION_KEY] = {
+            "path": str(stored_path),
+            "original_name": file.filename,
+            "mode": "append" if mode == "append" else "create",
+            "parent_title": parent_title.strip(),
+            "parent_task_id": str(parent_task.id) if parent_task else "",
+            "default_category": default_category,
+            "default_priority": default_priority,
+            "assigned_to_id": assigned_to_id,
+            "delegated_to": delegated_to,
+            "due_on": due_on,
+        }
+        return templates.TemplateResponse(
+            request,
+            "task_bulk_import.html",
+            task_bulk_form_context(db, request, preview=preview, form_values=form_values),
+        )
+
+
+@web_router.post("/imports/tasks/confirm", response_class=HTMLResponse)
+def task_bulk_import_confirm(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    pending = request.session.get(TASK_BULK_SESSION_KEY) if hasattr(request, "session") else None
+    if not pending:
+        return RedirectResponse("/imports/tasks", status_code=303)
+    path = Path(pending["path"])
+    if not path.exists():
+        with SessionLocal() as db:
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(db, request, error="O ficheiro pendente já não está disponível."),
+                status_code=400,
+            )
+    with SessionLocal() as db:
+        defaults = task_bulk_defaults_from_form(
+            db,
+            default_category=pending["default_category"],
+            default_priority=pending["default_priority"],
+            assigned_to_id=pending["assigned_to_id"],
+            delegated_to=pending["delegated_to"],
+            due_on=pending["due_on"],
+        )
+        parent_task = db.get(Task, parse_optional_int(pending.get("parent_task_id"))) if pending["mode"] == "append" else None
+        current_user = db.get(User, user_id)
+        workspace = task_bulk_workspace_for_defaults(defaults, parent_task)
+        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+            return templates.TemplateResponse(
+                request,
+                "task_bulk_import.html",
+                task_bulk_form_context(db, request, error="Sem permissão para criar tarefas nesta área."),
+                status_code=403,
+            )
+        result = create_tasks_from_bulk_import(
+            db,
+            path,
+            pending["original_name"],
+            defaults,
+            mode=pending["mode"],
+            parent_task_id=parent_task.id if parent_task else None,
+            parent_title=pending["parent_title"],
+            valid_categories=set(TASK_CATEGORY_LABELS),
+            user_id=user_id,
+        )
+        request.session.pop(TASK_BULK_SESSION_KEY, None)
+        return templates.TemplateResponse(
+            request,
+            "task_bulk_import.html",
+            task_bulk_form_context(db, request, result=result),
+        )
+
+
+@web_router.get("/imports/{batch_id}/errors.csv")
+def import_errors_csv(request: Request, batch_id: int):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        batch = db.get(ImportBatch, batch_id)
+        if not batch:
+            return RedirectResponse("/imports", status_code=303)
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(["lote", "linha", "entidade", "erro"])
+        for error in db.scalars(select(ImportError).where(ImportError.batch_id == batch.id).order_by(ImportError.id)):
+            writer.writerow([batch.id, error.row_number or "", error.entity_type or "", error.error_message])
+    return Response(
+        output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="import_errors_{batch_id}.csv"'},
+    )
+
+
 @web_router.get("/imports", response_class=HTMLResponse)
 def imports_page(request: Request, type: str | None = None):
     if not get_web_user_id(request):
@@ -5302,6 +5624,16 @@ def imports_page(request: Request, type: str | None = None):
                 "description": "Histórico técnico importado para a ficha da viatura.",
                 "import_url": "/imports/technical-history",
                 "history_url": "/imports?type=technical_history",
+            },
+            {
+                "code": TASK_BULK_IMPORT_TYPE,
+                "source_system": "carfast",
+                "title": "Tarefas em massa",
+                "description": "Criar tarefa mãe e subtarefas a partir de Excel/CSV.",
+                "import_url": "/imports/tasks",
+                "history_url": "/imports?type=task_bulk",
+                "created_label": "Subtarefas",
+                "updated_label": "Linhas",
             },
         ]
         type_codes = {item["code"] for item in import_types}
@@ -5374,6 +5706,11 @@ def import_detail(request: Request, batch_id: int):
         raw_rows = db.scalar(
             select(func.count()).select_from(ImportRawRow).where(ImportRawRow.batch_id == batch.id)
         ) or 0
+        created_tasks = db.scalars(
+            select(Task)
+            .where(Task.entity_type == "import_batch", Task.entity_id == str(batch.id))
+            .order_by(Task.parent_task_id.is_(None), Task.id)
+        ).all()
         return templates.TemplateResponse(
             request,
             "import_detail.html",
@@ -5382,6 +5719,7 @@ def import_detail(request: Request, batch_id: int):
                 "files": files,
                 "errors": errors,
                 "raw_rows": raw_rows,
+                "created_tasks": created_tasks,
             },
         )
 

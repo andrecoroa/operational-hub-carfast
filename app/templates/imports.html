@@ -29,8 +29,8 @@
           </div>
           <p>{{ card.description }}</p>
           <div class="import-card-stats">
-            <span><strong>{{ card.updated_rows }}</strong><small>Atualizadas</small></span>
-            <span><strong>{{ card.created_rows }}</strong><small>Criadas</small></span>
+            <span><strong>{{ card.updated_rows if card.updated_label != "Linhas" else card.total_rows }}</strong><small>{{ card.updated_label or "Atualizadas" }}</small></span>
+            <span><strong>{{ card.created_rows }}</strong><small>{{ card.created_label or "Criadas" }}</small></span>
             <span class="{% if card.error_rows %}has-errors{% endif %}"><strong>{{ card.error_rows }}</strong><small>Erros</small></span>
           </div>
           <div class="import-latest">

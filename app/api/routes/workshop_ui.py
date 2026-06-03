@@ -1393,6 +1393,10 @@ def workshop_process_manage_page(process_id: int) -> str:
       if (!values || (typeof values === "object" && Object.keys(values).length === 0)) return "Sem valores registados";
       return JSON.stringify(values, null, 2);
     }}
+    function serializeReportValues(values) {{
+      if (!values || Array.isArray(values) || typeof values !== "object") return JSON.stringify(values || {{}}, null, 2);
+      return JSON.stringify(values, null, 2);
+    }}
     function reportLinkButton(report) {{
       const url = previewableReportUrl(report?.original_link);
       return url ? `<a class="button secondary" href="${{safe(url)}}" target="_blank" rel="noopener">Abrir original</a>` : `<span class="chip neutral">Sem link original</span>`;
@@ -1400,12 +1404,46 @@ def workshop_process_manage_page(process_id: int) -> str:
     function showFieldInfo(message) {{
       showResult(true, message || "Sem referência configurada para este campo.");
     }}
+    function objectValues(values) {{
+      return values && !Array.isArray(values) && typeof values === "object" ? values : {{}};
+    }}
+    function normalizedKey(value) {{
+      return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
+    }}
+    function valueForField(values, field) {{
+      const source = objectValues(values);
+      const labels = [
+        field.code,
+        field.label,
+        field.unit ? `${{field.label}} (${{field.unit}})` : null,
+      ].filter(Boolean);
+      for (const key of labels) {{
+        if (source[key] !== undefined && source[key] !== null) return source[key];
+      }}
+      const wanted = labels.map(normalizedKey);
+      const foundKey = Object.keys(source).find(key => wanted.includes(normalizedKey(key)));
+      return foundKey ? source[foundKey] : "";
+    }}
+    function setReportFieldValues(values) {{
+      const report = selectedReportConfig();
+      const fields = report?.fields || [];
+      document.querySelectorAll("[data-report-field]").forEach(input => {{
+        const field = fields.find(item => item.code === input.dataset.reportField);
+        const value = field ? valueForField(values, field) : "";
+        input.value = Array.isArray(value) || (value && typeof value === "object") ? JSON.stringify(value) : (value ?? "");
+      }});
+    }}
     function selectReport(reportId) {{
       const report = (processData?.technical_reports || []).find(item => String(item.id) === String(reportId));
       if (!report) return;
       activateTab("reports");
+      setValue("#reportCode", report.report_code);
+      setValue("#reportMoment", report.report_moment);
+      setValue("#reportOrigin", report.reading_origin);
+      renderReportFields();
       document.querySelector("#reportLink").value = report.original_link || "";
       setValue("#validateReportId", report.id);
+      setReportFieldValues(report.extracted_values || {{}});
       setTableValues("validateValuesTable", report.validated_values || report.extracted_values || {{}});
       updateReportPreview();
       const detail = document.querySelector("#selectedReportDetail");
@@ -1517,7 +1555,7 @@ def workshop_process_manage_page(process_id: int) -> str:
         return `
           <tr>
             <td><input value="${{safe(carfastField)}}"></td>
-            <td><input placeholder="${{safe(field.repeatable ? "Lista ou resumo" : field.label)}}"></td>
+            <td><input data-report-field="${{safe(field.code)}}" placeholder="${{safe(field.repeatable ? "Lista ou resumo" : field.label)}}"></td>
             <td style="display:flex;gap:6px;align-items:center">
               <button type="button" title="${{safe(info)}}" data-info="${{safe(info)}}" onclick="showFieldInfo(this.dataset.info)" style="display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer;padding:0">i</button>
               <button type="button" onclick="removeValueRow(this)">Limpar</button>

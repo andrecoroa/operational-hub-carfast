@@ -1219,7 +1219,7 @@ def workshop_process_manage_page(process_id: int) -> str:
   <title>Operar Processo Oficina #{process_id}</title>
   <style>
     :root{{--bg:#f5f7f8;--panel:#fff;--line:#d9e0e5;--line2:#b9c5cc;--text:#07152d;--muted:#5c6c7b;--brand:#b24a34;--soft:#fbf1ee;--green:#2f7d50;--green-soft:#edf7ef;--amber:#9a6711;--amber-soft:#fff6df;--red:#b42318;--red-soft:#fff4f2;font-family:Inter,"Segoe UI",Arial,sans-serif}}
-    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:block;min-height:100vh}}aside{{display:none}}main{{padding:18px 22px 44px}}h1{{margin:0 0 4px;font-size:24px}}h2{{margin:0;font-size:20px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.vehicle-strip{{display:grid;grid-template-columns:170px minmax(0,1fr) 170px;gap:14px;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:0 0 14px}}.vehicle-thumb{{display:grid;place-items:center;min-height:104px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:13px;font-weight:900;text-align:center}}.vehicle-main{{display:grid;align-content:center;gap:10px}}.vehicle-main strong{{font-size:22px}}.vehicle-facts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.vehicle-facts div,.vehicle-state{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.vehicle-state{{align-content:center}}.vehicle-facts span,.vehicle-state span,.memory span{{color:var(--muted);font-size:12px;font-weight:750}}.vehicle-facts strong,.vehicle-state strong,.memory strong{{font-size:14px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}}.stack{{display:grid;gap:12px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}}.panel.sticky{{position:sticky;top:14px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.summary-block{{display:grid;gap:8px;margin-top:14px}}.summary-block:first-child{{margin-top:0}}.summary-title{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.summary-title h3{{margin:0}}.summary-kpis{{display:grid;grid-template-columns:1fr;gap:8px}}.summary-kpis div{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.summary-kpis span{{color:var(--muted);font-size:11px;font-weight:850}}.summary-kpis strong{{font-size:20px;line-height:1}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.report-type-grid{{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin:12px 0 14px}}.report-type-card{{display:grid;gap:5px;min-height:78px;text-align:left;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px;cursor:pointer}}.report-type-card.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.report-type-card strong{{font-size:14px}}.report-type-card span{{color:var(--muted);font-size:12px;font-weight:800}}.report-layout{{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(420px,1fr);gap:14px;align-items:start}}.report-workspace{{display:grid;gap:12px}}.report-controls{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview-frame{{width:100%;height:620px;border:1px solid var(--line);border-radius:8px;background:#fff}}.report-field-table{{display:grid;grid-template-columns:1fr;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}}.report-field-table label{{display:grid;grid-template-columns:minmax(180px,.9fr) minmax(180px,1fr) 38px;gap:10px;align-items:center;min-height:58px;padding:9px 10px;border-top:1px solid var(--line);color:var(--text)}}.report-field-table label:first-child{{border-top:0}}.report-field-table input{{min-height:36px}}.report-field-table .field-info{{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer}}.report-json{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.report-json summary{{cursor:pointer;font-weight:850;color:var(--muted)}}.validation-panel{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;align-items:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px 14px;font-size:16px;font-weight:900;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:12px 0;padding:12px;border:1px solid #dce6dd;background:#f7fbf7;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:1280px){{.layout{{grid-template-columns:1fr}}.panel.sticky{{position:static}}.report-type-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:980px){{main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.vehicle-facts,.grid2,.grid3,.memory-grid,.report-layout,.report-field-table label{{grid-template-columns:1fr}}.report-type-grid{{grid-template-columns:1fr 1fr}}}}
+    *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}}.app{{display:block;min-height:100vh}}aside{{display:none}}main{{padding:18px 22px 44px}}h1{{margin:0 0 4px;font-size:24px}}h2{{margin:0;font-size:20px}}h3{{margin:0 0 10px;font-size:15px}}.subtitle,.muted{{color:var(--muted)}}.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}}.top-actions{{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}}.vehicle-strip{{display:grid;grid-template-columns:170px minmax(0,1fr) 170px;gap:14px;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:0 0 14px}}.vehicle-thumb{{display:grid;place-items:center;min-height:104px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:13px;font-weight:900;text-align:center}}.vehicle-main{{display:grid;align-content:center;gap:10px}}.vehicle-main strong{{font-size:22px}}.vehicle-facts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.vehicle-facts div,.vehicle-state{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.vehicle-state{{align-content:center}}.vehicle-facts span,.vehicle-state span,.memory span{{color:var(--muted);font-size:12px;font-weight:750}}.vehicle-facts strong,.vehicle-state strong,.memory strong{{font-size:14px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}}.stack{{display:grid;gap:12px}}section,.panel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}}.panel.sticky{{position:sticky;top:14px}}.section-title{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}}.summary-block{{display:grid;gap:8px;margin-top:14px}}.summary-block:first-child{{margin-top:0}}.summary-title{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.summary-title h3{{margin:0}}.summary-kpis{{display:grid;grid-template-columns:1fr;gap:8px}}.summary-kpis div{{display:grid;gap:4px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.summary-kpis span{{color:var(--muted);font-size:11px;font-weight:850}}.summary-kpis strong{{font-size:20px;line-height:1}}.grid2{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.grid3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.report-type-grid{{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin:12px 0 10px}}.report-type-card{{display:grid;gap:5px;min-height:78px;text-align:left;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px;cursor:pointer}}.report-type-card.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.report-type-card strong{{font-size:14px}}.report-type-card span{{color:var(--muted);font-size:12px;font-weight:800}}.report-instance-list{{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}}.report-instance-list button{{display:inline-flex;align-items:center;gap:8px;min-height:34px;border-radius:999px;padding:6px 10px;font-size:12px}}.report-instance-list button.active{{border-color:var(--brand);background:var(--soft);color:#7d2f1f}}.report-layout{{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(420px,1fr);gap:14px;align-items:start}}.report-workspace{{display:grid;gap:12px}}.report-controls{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:12px}}.report-preview-frame{{width:100%;height:620px;border:1px solid var(--line);border-radius:8px;background:#fff}}.report-field-table{{display:grid;grid-template-columns:1fr;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}}.report-field-table label{{display:grid;grid-template-columns:minmax(180px,.9fr) minmax(180px,1fr) 38px;gap:10px;align-items:center;min-height:58px;padding:9px 10px;border-top:1px solid var(--line);color:var(--text)}}.report-field-table label:first-child{{border-top:0}}.report-field-table input{{min-height:36px}}.report-field-table .field-info{{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:12px;font-weight:900;line-height:1;cursor:pointer}}.report-json{{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}}.report-json summary{{cursor:pointer;font-weight:850;color:var(--muted)}}.validation-panel{{display:grid;gap:10px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px}}label{{display:grid;gap:6px;color:var(--muted);font-weight:650}}input,textarea,select{{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:9px 10px;color:var(--text);background:#fff;font:inherit}}textarea{{min-height:76px;resize:vertical}}button,.button{{min-height:38px;border:1px solid var(--line2);border-radius:8px;padding:8px 12px;background:#fff;color:var(--text);font:inherit;font-weight:800;cursor:pointer;text-decoration:none}}button.primary,.button.primary{{background:var(--brand);border-color:var(--brand);color:#fff}}.button.secondary{{background:#fff;color:var(--text);border-color:var(--line2)}}.chip{{display:inline-flex;align-items:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:800}}.chip.ok,.chip.done{{color:var(--green);background:var(--green-soft)}}.chip.progress{{color:#1d5f94;background:#eaf3fb}}.chip.warn,.chip.review{{color:var(--amber);background:var(--amber-soft)}}.chip.neutral{{color:var(--muted);background:#eef1f3}}.chip.danger{{color:var(--red);background:var(--red-soft)}}.phase-list,.plain-list{{display:grid;gap:8px;margin:0;padding:0;list-style:none}}.phase-list li,.plain-list li{{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;font-weight:700}}.phase-list li.active{{border-color:var(--brand);background:var(--soft);box-shadow:inset 4px 0 0 var(--brand)}}.tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}}.tab{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px 14px;font-size:16px;font-weight:900;cursor:pointer}}.tab.active{{background:var(--soft);border-color:var(--brand);color:#7d2f1f}}.form-section{{display:none}}.form-section.active{{display:block}}.memory{{display:none;margin:12px 0;padding:12px;border:1px solid #dce6dd;background:#f7fbf7;border-radius:8px}}.memory.active{{display:block}}.memory-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.result{{display:none;margin-top:10px;border-radius:8px;padding:10px;border:1px solid var(--line)}}.result.active{{display:block}}.result.ok{{background:var(--green-soft);border-color:#b7d7be}}.result.err{{background:var(--red-soft);border-color:#e2b7b3}}@media(max-width:1280px){{.layout{{grid-template-columns:1fr}}.panel.sticky{{position:static}}.report-type-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:980px){{main{{padding:18px 16px}}.topbar{{display:grid}}.vehicle-strip,.vehicle-facts,.grid2,.grid3,.memory-grid,.report-layout,.report-field-table label{{grid-template-columns:1fr}}.report-type-grid{{grid-template-columns:1fr 1fr}}}}
   </style>
 </head>
 <body>
@@ -1262,6 +1262,7 @@ def workshop_process_manage_page(process_id: int) -> str:
             <div id="reports" class="form-section">
               <div class="section-title"><h2>Relatórios Técnicos</h2><span id="reportTabCount" class="chip">0</span></div>
               <div id="reportTypeCards" class="report-type-grid"></div>
+              <div id="reportInstanceList" class="report-instance-list"></div>
               <div id="selectedReportDetail" class="memory"></div>
               <div class="report-layout">
                 <div class="report-preview">
@@ -1273,7 +1274,7 @@ def workshop_process_manage_page(process_id: int) -> str:
                   <div class="report-controls">
                     <div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
                     <label>Link relatório original<input id="reportLink" placeholder="https://..."></label>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="prepareReportValues()">Copiar extraídos para validação</button></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="reportSaveButton" class="primary" onclick="saveReportDraft()">Adicionar relatório</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button onclick="prepareReportValues()">Copiar extraídos para validação</button></div>
                     <p id="reportHint" class="muted" style="margin:10px 0 0"></p>
                     <div id="reportExtractionGuide" style="display:none"></div>
                   </div>
@@ -1344,7 +1345,7 @@ def workshop_process_manage_page(process_id: int) -> str:
     </main>
   </div>
   <script>
-    const processId = {process_id}; let processData = null; let config = null; let selectedReportType = null; const result = document.querySelector("#result");
+    const processId = {process_id}; let processData = null; let config = null; let selectedReportType = null; let selectedReportId = null; const result = document.querySelector("#result");
     function payloadValue(id) {{ return document.querySelector(id).value || null; }}
     function jsonValue(id) {{ const v = payloadValue(id); if (!v) return null; try {{ return JSON.parse(v); }} catch {{ throw new Error(`JSON inválido em ${{id}}`); }} }}
     function previewableReportUrl(value) {{
@@ -1426,10 +1427,15 @@ def workshop_process_manage_page(process_id: int) -> str:
         input.value = Array.isArray(value) || (value && typeof value === "object") ? JSON.stringify(value) : (value ?? "");
       }});
     }}
+    function updateReportActions() {{
+      const button = document.querySelector("#reportSaveButton");
+      if (button) button.textContent = selectedReportId ? "Guardar alterações" : "Adicionar relatório";
+    }}
     function selectReport(reportId) {{
       const report = (processData?.technical_reports || []).find(item => String(item.id) === String(reportId));
       if (!report) return;
       activateTab("reports");
+      selectedReportId = report.id;
       selectedReportType = report.report_code;
       renderReportTypeCards();
       setValue("#reportCode", report.report_code);
@@ -1442,6 +1448,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportValues").value = serializeReportValues(report.extracted_values || {{}});
       document.querySelector("#validateValues").value = hasReportValues(report.validated_values) ? serializeReportValues(report.validated_values) : "";
       updateReportPreview();
+      updateReportActions();
       const detail = document.querySelector("#selectedReportDetail");
       detail.className = "memory active";
       detail.innerHTML = `
@@ -1458,6 +1465,22 @@ def workshop_process_manage_page(process_id: int) -> str:
       `;
       detail.scrollIntoView({{behavior:"smooth", block:"nearest"}});
     }}
+    function newReportDraft() {{
+      selectedReportId = null;
+      const code = selectedReportType || payloadValue("#reportCode");
+      if (code) setValue("#reportCode", code);
+      renderReportFields();
+      setValue("#reportLink", "");
+      setValue("#validateReportId", "");
+      document.querySelector("#reportValues").value = "";
+      document.querySelector("#validateValues").value = "";
+      document.querySelector("#selectedReportDetail").className = "memory";
+      document.querySelector("#selectedReportDetail").innerHTML = "";
+      updateReportPreview();
+      updateReportActions();
+      renderReportTypeCards();
+      showResult(true, `Novo relatório: ${{reportTypeLabel(code)}}.`);
+    }}
     function selectReportType(code) {{
       selectedReportType = code;
       renderReportTypeCards();
@@ -1468,6 +1491,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       if (candidate) {{
         selectReport(candidate.id);
       }} else {{
+        selectedReportId = null;
         setValue("#reportCode", code);
         renderReportFields();
         document.querySelector("#selectedReportDetail").className = "memory";
@@ -1475,6 +1499,7 @@ def workshop_process_manage_page(process_id: int) -> str:
         setValue("#validateReportId", "");
         document.querySelector("#reportValues").value = "";
         document.querySelector("#validateValues").value = "";
+        updateReportActions();
         showResult(true, `Preparar novo relatório: ${{reportTypeLabel(code)}}.`);
       }}
     }}
@@ -1566,7 +1591,9 @@ def workshop_process_manage_page(process_id: int) -> str:
       return values;
     }}
     function showResult(ok, message) {{ result.className = `result active ${{ok ? "ok" : "err"}}`; result.textContent = typeof message === "string" ? message : JSON.stringify(message); }}
-    async function post(url, body) {{ const r = await fetch(url, {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
+    async function requestJson(url, method, body) {{ const r = await fetch(url, {{method, headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await r.json(); if(!r.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
+    async function post(url, body) {{ return requestJson(url, "POST", body); }}
+    async function patch(url, body) {{ return requestJson(url, "PATCH", body); }}
     document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {{
       activateTab(t.dataset.tab);
       if (t.dataset.tab === "reports" && processData?.technical_reports?.length) {{
@@ -1629,6 +1656,22 @@ def workshop_process_manage_page(process_id: int) -> str:
       const pending = reports.filter(report => ["pending_validation","added","pending"].includes(report.status)).length;
       return `${{validated}} validados${{pending ? ` · ${{pending}} por validar` : ""}}`;
     }}
+    function renderReportInstanceList() {{
+      const holder = document.querySelector("#reportInstanceList");
+      if (!holder) return;
+      const reports = (processData?.technical_reports || []).filter(report => report.report_code === selectedReportType);
+      if (!selectedReportType) {{
+        holder.innerHTML = "";
+        return;
+      }}
+      holder.innerHTML = reports.map(report => `
+        <button type="button" class="${{String(report.id) === String(selectedReportId) ? "active" : ""}}" onclick="selectReport(${{report.id}})">
+          <span>#${{report.id}} ${{safe(report.report_name)}}</span>
+          <small>${{safe(label(report.reading_origin))}}</small>
+          ${{chip(report.status)}}
+        </button>
+      `).join("") || `<button type="button" onclick="newReportDraft()">Novo ${{safe(reportTypeLabel(selectedReportType))}}</button>`;
+    }}
     function renderReportTypeCards() {{
       const holder = document.querySelector("#reportTypeCards");
       if (!holder || !config) return;
@@ -1643,6 +1686,7 @@ def workshop_process_manage_page(process_id: int) -> str:
           <span>${{safe(reportStatusSummary(typeReports))}}</span>
         </button>`;
       }}).join("");
+      renderReportInstanceList();
     }}
     function renderVehicle() {{
       const v = processData.vehicle || {{}};
@@ -1719,7 +1763,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportCode").innerHTML = config.stellantis_reports.map(r => `<option value="${{r.code}}">${{r.label}}</option>`).join("");
       document.querySelector("#checkCode").innerHTML = config.technical_checks.map(c => `<option value="${{c.code}}">${{c.label}}</option>`).join("");
       document.querySelector("#serviceCode").innerHTML = config.services.map(s => `<option value="${{s.code}}">${{s.label}}</option>`).join("");
-      document.querySelector("#reportCode").addEventListener("change", () => {{ selectedReportType = payloadValue("#reportCode"); renderReportTypeCards(); renderReportFields(); }});
+      document.querySelector("#reportCode").addEventListener("change", () => {{ selectedReportId = null; selectedReportType = payloadValue("#reportCode"); renderReportTypeCards(); renderReportFields(); updateReportActions(); }});
       document.querySelector("#reportOrigin").addEventListener("change", renderReportFields);
       document.querySelector("#reportLink").addEventListener("input", updateReportPreview);
       renderReportFields();
@@ -1729,8 +1773,8 @@ def workshop_process_manage_page(process_id: int) -> str:
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function addReport() {{ try {{ const extractedValues = collectReportValues(); document.querySelector("#reportValues").value = JSON.stringify(extractedValues, null, 2); const data = await post(`/api/workshop/processes/${{processId}}/technical-reports`, {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}); document.querySelector("#validateReportId").value = data.id; document.querySelector("#validateValues").value = ""; showResult(true, `Relatório adicionado #${{data.id}}. Valores guardados como extraídos.`); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function validateReport() {{ try {{ if (!payloadValue("#validateValues")) prepareReportValues(); await post(`/api/workshop/technical-reports/${{payloadValue("#validateReportId")}}/validate`, {{validated_values:jsonValue("#validateValues") || {{}}}}); showResult(true, "Relatório validado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function saveReportDraft() {{ try {{ const extractedValues = collectReportValues(); document.querySelector("#reportValues").value = JSON.stringify(extractedValues, null, 2); const body = {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}; const updating = Boolean(selectedReportId); const data = updating ? await patch(`/api/workshop/technical-reports/${{selectedReportId}}`, body) : await post(`/api/workshop/processes/${{processId}}/technical-reports`, body); selectedReportId = data.id; document.querySelector("#validateReportId").value = data.id; document.querySelector("#validateValues").value = ""; updateReportActions(); renderReportTypeCards(); showResult(true, updating ? `Relatório #${{data.id}} atualizado. Valores guardados como extraídos.` : `Relatório adicionado #${{data.id}}. Valores guardados como extraídos.`); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function validateReport() {{ try {{ const reportId = payloadValue("#validateReportId") || selectedReportId; if (!reportId) throw new Error("Seleciona ou adiciona um relatório antes de validar."); if (!payloadValue("#validateValues")) prepareReportValues(); await post(`/api/workshop/technical-reports/${{reportId}}/validate`, {{validated_values:jsonValue("#validateValues") || {{}}}}); selectedReportId = Number(reportId); showResult(true, `Relatório #${{reportId}} validado.`); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveCheck() {{ try {{ await post(`/api/workshop/processes/${{processId}}/technical-checks`, {{check_code:payloadValue("#checkCode"), status:payloadValue("#checkStatus"), observation:payloadValue("#checkObs"), evidence_link:payloadValue("#checkEvidence"), creates_task:document.querySelector("#checkTask").checked, potential_customer_charge:document.querySelector("#checkCharge").checked, task_title:payloadValue("#checkTaskTitle")}}); showResult(true, "Verificação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function createIncident() {{ try {{ await post(`/api/workshop/processes/${{processId}}/incidents`, {{incident_type:payloadValue("#incidentType"), severity:payloadValue("#incidentSeverity"), vehicle_can_circulate:payloadValue("#incidentCirculate"), description:payloadValue("#incidentDescription")}}); showResult(true, "Incidente criado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveDecision() {{ try {{ await post(`/api/workshop/processes/${{processId}}/diagnosis-decision`, {{main_diagnosis:payloadValue("#decisionDiagnosis"), intervention_type:payloadValue("#decisionType"), affected_system:payloadValue("#decisionSystem"), severity:payloadValue("#decisionSeverity"), probable_cause:payloadValue("#decisionCause"), diagnosis_observation:payloadValue("#decisionObs"), vehicle_can_circulate:payloadValue("#decisionCirculate"), needs_repair:document.querySelector("#decisionNeedsRepair").checked, needs_budget:document.querySelector("#decisionNeedsBudget").checked, needs_approval:document.querySelector("#decisionNeedsApproval").checked, potential_customer_charge:document.querySelector("#decisionCharge").checked, warranty:document.querySelector("#decisionWarranty").checked, charge_reason:payloadValue("#decisionChargeReason"), customer_contract:payloadValue("#decisionContract"), charge_evidence_link:payloadValue("#decisionChargeEvidence"), next_action:payloadValue("#decisionNext"), create_task:document.querySelector("#decisionCreateTask").checked, next_action_responsible_user_id:Number(payloadValue("#decisionResponsible")) || null, decision_observation:payloadValue("#decisionObs")}}); showResult(true, "Decisão confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}

@@ -232,6 +232,29 @@ class WorkshopTechnicalReportValidate(BaseModel):
     observations: str | None = None
 
 
+class WorkshopTechnicalReportUpdate(BaseModel):
+    report_code: str | None = None
+    reading_origin: str | None = None
+    reading_origin_detail: str | None = None
+    report_moment: str | None = None
+    original_link: str | None = None
+    raw_values: dict[str, Any] | list[Any] | None = None
+    extracted_values: dict[str, Any] | list[Any] | None = None
+    observations: str | None = None
+
+    @model_validator(mode="after")
+    def validate_report_update(self) -> "WorkshopTechnicalReportUpdate":
+        if self.report_code is not None and self.report_code not in REPORT_CODES:
+            raise ValueError("Relatório técnico inválido.")
+        if self.reading_origin is not None and self.reading_origin not in READING_ORIGINS:
+            raise ValueError("Origem da leitura inválida.")
+        if self.report_moment is not None and self.report_moment not in REPORT_MOMENTS:
+            raise ValueError("Momento do relatório inválido.")
+        if self.reading_origin == "other" and not self.reading_origin_detail:
+            raise ValueError("Descrição da origem é obrigatória quando a origem é Outro.")
+        return self
+
+
 class WorkshopTechnicalCheckUpsert(BaseModel):
     check_code: str
     status: str
@@ -880,6 +903,46 @@ def validate_technical_report(
     report.status = "corrected_manually" if validation.correction else "validated"
     db.commit()
     return {"id": report.id, "status": report.status}
+
+
+@router.patch("/technical-reports/{report_id}")
+def update_technical_report(
+    report_id: int,
+    report_input: WorkshopTechnicalReportUpdate,
+    db: DbSession,
+) -> dict[str, Any]:
+    report = db.get(WorkshopTechnicalReport, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Relatório técnico não encontrado.",
+        )
+    if report_input.report_code is not None:
+        report.report_code = report_input.report_code
+        report.report_name = REPORT_LABELS[report_input.report_code]
+    if report_input.reading_origin is not None:
+        report.reading_origin = report_input.reading_origin
+    if report_input.reading_origin_detail is not None:
+        report.reading_origin_detail = report_input.reading_origin_detail
+    if report_input.report_moment is not None:
+        report.report_moment = report_input.report_moment
+    if report_input.original_link is not None:
+        report.original_link = report_input.original_link
+    if report_input.raw_values is not None:
+        report.raw_values_json = report_input.raw_values
+    if report_input.extracted_values is not None:
+        report.extracted_values_json = report_input.extracted_values
+        if report.status in {"added", "pending", "pending_validation"}:
+            report.status = "pending_validation"
+    if report_input.observations is not None:
+        report.observations = report_input.observations
+    db.commit()
+    return {
+        "id": report.id,
+        "status": report.status,
+        "report_name": report.report_name,
+        "extracted_values": report.extracted_values_json,
+    }
 
 
 @router.post("/processes/{process_id}/technical-checks")

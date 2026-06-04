@@ -492,6 +492,31 @@ def _resolve_alerts(
         alert.resolved_by_id = resolved_by_id
 
 
+def _report_value(values: dict[str, Any] | list[Any] | None, key: str) -> Any:
+    if not isinstance(values, dict):
+        return None
+    if key in values:
+        return values[key]
+    normalized_key = key.replace("_", "").lower()
+    for item_key, item_value in values.items():
+        normalized_item_key = str(item_key).replace("_", "").replace(" ", "").lower()
+        if normalized_item_key == normalized_key:
+            return item_value
+    return None
+
+
+def _truthy_validation(value: Any) -> bool:
+    return str(value or "").strip().lower() in {
+        "yes",
+        "sim",
+        "ok",
+        "correto",
+        "correct",
+        "true",
+        "1",
+    }
+
+
 def _mark_phase(
     phase: WorkshopProcessPhase,
     status_value: str,
@@ -823,11 +848,21 @@ def confirm_history_check(
         pending_fields.append("accident_reports_detail")
     if history.repeated_incidence == "yes" and not history.repeated_incidence_description:
         pending_fields.append("repeated_incidence_description")
+    validated_plan_report = None
     if _is_stellantis_vehicle(vehicle):
+        validated_plan_report = db.scalar(
+            select(WorkshopTechnicalReport).where(
+                WorkshopTechnicalReport.process_id == process.id,
+                WorkshopTechnicalReport.report_code == "maintenance_plan_validation",
+                WorkshopTechnicalReport.status.in_(["validated", "corrected_manually"]),
+            )
+        )
         stellantis_checks = {
             "service_box_checked": history.service_box_checked,
             "campaigns_checked": history.campaigns_checked,
-            "maintenance_plan_checked": history.maintenance_plan_checked,
+            "maintenance_plan_checked": (
+                "yes" if validated_plan_report else history.maintenance_plan_checked
+            ),
         }
         for field_name, value in stellantis_checks.items():
             if value != "yes":
@@ -865,7 +900,12 @@ def confirm_history_check(
             "history_observation": history.history_observation,
             "service_box_checked": history.service_box_checked,
             "campaigns_checked": history.campaigns_checked,
-            "maintenance_plan_checked": history.maintenance_plan_checked,
+            "maintenance_plan_checked": (
+                "yes" if validated_plan_report else history.maintenance_plan_checked
+            ),
+            "maintenance_plan_report_id": validated_plan_report.id
+            if validated_plan_report
+            else None,
             "requires_stellantis_checks": _is_stellantis_vehicle(vehicle),
             "pending_fields": pending_fields,
         },
@@ -942,6 +982,51 @@ def validate_technical_report(
     report.validated_at = datetime.utcnow()
     report.observations = validation.observations or report.observations
     report.status = "corrected_manually" if validation.correction else "validated"
+    if report.report_code == "maintenance_plan_validation":
+        history_phase = db.scalar(
+            select(WorkshopProcessPhase).where(
+                WorkshopProcessPhase.process_id == report.process_id,
+                WorkshopProcessPhase.phase_code == "history_check",
+            )
+        )
+        if history_phase:
+            history_phase.data_json = {
+                **(history_phase.data_json or {}),
+                "maintenance_plan_checked": "yes",
+                "maintenance_plan_report_id": report.id,
+            }
+        _resolve_alerts(
+            db,
+            report.process_id,
+            {"maintenance_plan_checked_pending"},
+            validation.validated_by_id,
+        )
+        if not _truthy_validation(
+            _report_value(validation.validated_values, "request_matches_servicebox_plan")
+        ):
+            _add_alert_once(
+                db,
+                report.process_id,
+                "maintenance_request_plan_mismatch",
+                "Solicitação não bate certo com o plano Service Box",
+                severity="high",
+                source="technical_report",
+                phase_id=report.phase_id,
+                detail={"report_id": report.id},
+            )
+        if not _truthy_validation(
+            _report_value(validation.validated_values, "rentway_matches_servicebox_plan")
+        ):
+            _add_alert_once(
+                db,
+                report.process_id,
+                "rentway_maintenance_plan_mismatch",
+                "Parametrização Rentway não bate certo com o plano Service Box",
+                severity="high",
+                source="technical_report",
+                phase_id=report.phase_id,
+                detail={"report_id": report.id},
+            )
     db.commit()
     return {"id": report.id, "status": report.status}
 

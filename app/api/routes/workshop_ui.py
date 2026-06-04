@@ -1526,6 +1526,11 @@ def workshop_process_manage_page(process_id: int) -> str:
         autel: {{source:"Autel", example:"Sem exemplo Autel confirmado", note:"Preencher manualmente apenas se o relatorio mostrar limiar, duracao e inicio da primeira manutencao."}},
         other: {{source:"Outro relatorio tecnico", example:"Parametros de manutencao", note:"Exigir valores de parametrizacao, nao apenas informacao de manutencao."}}
       }},
+      maintenance_plan_validation: {{
+        stellantis_machine: {{source:"Service Box + Rentway", example:"plano-manutencao-servicebox-rentway", note:"Comparar solicitacao do processo com plano Service Box e confirmar se a parametrizacao Rentway tem os mesmos intervalos."}},
+        autel: {{source:"Autel + Service Box + Rentway", example:"plano-manutencao-validacao", note:"Usar Autel apenas como apoio; a referencia do plano deve ser Service Box e a parametrizacao deve ser comparada com Rentway."}},
+        other: {{source:"Plano externo + Rentway", example:"plano-manutencao", note:"Guardar evidencia e preencher explicitamente se pedido e Rentway batem certo com o plano."}}
+      }},
       fault_reading: {{
         stellantis_machine: {{source:"PSA-DIAG / Stellantis", example:"leitura_defeitos_relatorio-de-diagnostico-do-veiculo", note:"Copiar existencia de defeitos e lista/codigos relevantes."}},
         autel: {{source:"Autel", example:"leitura_defeitos_global", note:"Quando existir tabela, copiar codigo, sistema, estado e descricao no campo lista."}},
@@ -1573,6 +1578,10 @@ def workshop_process_manage_page(process_id: int) -> str:
           <button class="field-info" type="button" title="${{safe(info)}}" data-info="${{safe(info)}}" onclick="showFieldInfo(this.dataset.info)">i</button>
         </label>
       `}}).join("");
+      if (!selectedReportId && report?.code === "maintenance_plan_validation") {{
+        const requested = document.querySelector('[data-report-field="requested_service"]');
+        if (requested) requested.value = processData?.services_label || processData?.title || "";
+      }}
       document.querySelector("#reportValues").value = "";
       document.querySelector("#validateValues").value = "";
     }}

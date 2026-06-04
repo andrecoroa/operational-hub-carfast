@@ -178,6 +178,73 @@ STELLANTIS_REPORTS = [
         ],
     },
     {
+        "code": "maintenance_plan_validation",
+        "label": "Validacao plano manutencao",
+        "description": "Comparar solicitacao, plano Service Box e parametrizacao Rentway.",
+        "fields": [
+            {
+                "code": "requested_service",
+                "label": "Solicitacao do processo",
+                "unit": None,
+            },
+            {
+                "code": "servicebox_plan",
+                "label": "Plano Service Box aplicavel",
+                "unit": None,
+            },
+            {
+                "code": "servicebox_interval_km",
+                "label": "Intervalo Service Box",
+                "unit": "km",
+            },
+            {
+                "code": "servicebox_interval_months",
+                "label": "Intervalo Service Box",
+                "unit": "meses",
+            },
+            {
+                "code": "servicebox_due_km",
+                "label": "Proxima manutencao Service Box",
+                "unit": "km",
+            },
+            {
+                "code": "servicebox_due_date",
+                "label": "Data prevista Service Box",
+                "unit": None,
+            },
+            {
+                "code": "rentway_plan",
+                "label": "Plano parametrizado Rentway",
+                "unit": None,
+            },
+            {
+                "code": "rentway_interval_km",
+                "label": "Intervalo Rentway",
+                "unit": "km",
+            },
+            {
+                "code": "rentway_interval_months",
+                "label": "Intervalo Rentway",
+                "unit": "meses",
+            },
+            {
+                "code": "request_matches_servicebox_plan",
+                "label": "Solicitacao bate certo com plano?",
+                "unit": None,
+            },
+            {
+                "code": "rentway_matches_servicebox_plan",
+                "label": "Parametrizacao Rentway correta?",
+                "unit": None,
+            },
+            {
+                "code": "validation_notes",
+                "label": "Notas / decisao",
+                "unit": None,
+            },
+        ],
+    },
+    {
         "code": "fault_reading",
         "label": "Leitura defeitos",
         "description": "Defeitos, codigos, estado e acao recomendada.",

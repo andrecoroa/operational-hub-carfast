@@ -2033,10 +2033,11 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     .meta {{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; color:var(--muted); font-weight:750; }}
     .meta strong {{ color:var(--text); }}
     .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
-    .button, button {{ min-height:42px; border:1px solid var(--line2); border-radius:8px; background:#fff; color:var(--text); padding:9px 14px; font-weight:850; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; }}
+    .button, button {{ min-height:42px; border:1px solid var(--line2); border-radius:8px; background:#fff; color:var(--text); padding:9px 14px; font-weight:850; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; }}
+    .button[aria-disabled="true"] {{ opacity:.48; pointer-events:none; }}
     .primary {{ background:var(--brand); border-color:var(--brand); color:#fff; }}
     .ghost {{ border-color:transparent; background:#fff; font-size:22px; width:44px; padding:0; }}
-    .content {{ display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:20px; padding:22px 28px 42px; }}
+    .content {{ display:grid; grid-template-columns:minmax(0,1fr) 370px; gap:20px; padding:22px 28px 42px; }}
     .main {{ display:grid; gap:18px; }}
     .tabs {{ display:grid; grid-template-columns:repeat(8,minmax(88px,1fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }}
     .tab {{ min-height:58px; border:0; border-left:1px solid var(--line); border-radius:0; background:#fff; font-size:18px; color:var(--text); position:relative; }}
@@ -2050,12 +2051,16 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     .section-head {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }}
     .muted {{ color:var(--muted); line-height:1.45; }}
     .cards {{ display:grid; grid-template-columns:repeat(2,minmax(260px,1fr)); gap:16px; }}
-    .doc-card {{ display:grid; gap:16px; align-content:start; min-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; }}
+    .doc-card {{ display:grid; gap:14px; align-content:start; min-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; transition:border-color .15s, box-shadow .15s, background .15s; }}
+    .doc-card.done-card {{ border-color:#cce4d2; background:#fbfffc; }}
+    .doc-card.review-card {{ border-color:#efd69d; background:#fffdf8; }}
+    .doc-card.danger-card {{ border-color:#e4b8b1; background:#fffafa; box-shadow:inset 4px 0 0 var(--red); }}
     .doc-top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }}
     .doc-title {{ display:flex; align-items:center; gap:12px; font-size:20px; font-weight:950; }}
-    .icon {{ display:grid; place-items:center; width:28px; height:28px; color:#1b2a3c; font-size:22px; }}
+    .icon {{ display:grid; place-items:center; width:30px; height:30px; border:1px solid var(--line2); border-radius:7px; color:#1b2a3c; font-size:13px; font-weight:950; line-height:1; }}
     .note {{ border-radius:8px; background:#f7f8f9; padding:11px 12px; color:var(--muted); font-weight:750; }}
     .warn-note {{ background:var(--amber-soft); color:var(--amber); }}
+    .mini-meta {{ display:flex; flex-wrap:wrap; gap:8px 12px; color:var(--muted); font-size:12px; font-weight:850; }}
     .compare {{ display:grid; gap:7px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:10px 12px; }}
     .compare div {{ display:flex; justify-content:space-between; gap:12px; }}
     .compare strong {{ color:#c94f3d; text-align:right; }}
@@ -2078,7 +2083,10 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     .neutral {{ color:var(--muted); background:#eef1f3; }}
     .list {{ display:grid; gap:10px; margin:0; padding:0; list-style:none; }}
     .list li {{ display:flex; justify-content:space-between; align-items:center; gap:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px; font-weight:800; }}
-    .folder-path {{ border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px; overflow-wrap:anywhere; color:var(--text); font-weight:800; }}
+    .alert-item {{ display:grid !important; grid-template-columns:10px minmax(0,1fr) auto; align-items:center; }}
+    .alert-dot {{ width:8px; height:8px; border-radius:50%; background:var(--amber); }}
+    .alert-item.danger-alert .alert-dot {{ background:var(--red); }}
+    .folder-path {{ border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px; overflow-wrap:anywhere; color:var(--text); font-weight:800; font-size:13px; line-height:1.35; }}
     .grid2 {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
     .grid3 {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
     .service-row, .report-row {{ display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfd; }}
@@ -2095,7 +2103,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
   <div class="shell">
     <header class="topbar">
       <div id="header" class="heading"><a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #{process_id}</h1><div class="meta">A carregar...</div></div></div>
-      <div class="actions"><button type="button" onclick="copyFolder()">Abrir pasta do processo</button><button class="ghost" type="button">⋮</button></div>
+      <div class="actions"><button type="button" onclick="copyFolder()"><span class="icon">PA</span>Abrir pasta do processo</button><button class="ghost" type="button">...</button></div>
     </header>
     <main class="content">
       <div class="main">
@@ -2103,31 +2111,35 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
         <section id="history" class="panel phase active">
           <div class="section-head"><div><h2>Documentos esperados</h2><p class="muted">Anexe e valide os documentos necessários para esta fase.</p></div><button class="primary" type="button" onclick="saveHistory()">Guardar verificações</button></div>
           <div class="cards">
-            <article class="doc-card">
-              <div class="doc-top"><div class="doc-title"><span class="icon">▣</span>Service Box</div><span id="serviceBoxChip" class="chip review">Em falta</span></div>
+            <article id="serviceBoxCard" class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">SB</span>Service Box</div><span id="serviceBoxChip" class="chip review">Em falta</span></div>
               <p class="muted">Comprovativo da consulta do Service Box da viatura.</p>
+              <div id="serviceBoxMeta" class="mini-meta">Sem documento anexado</div>
               <div class="note">Obrigatório para viaturas Stellantis.</div>
               <div id="serviceBoxControls" class="doc-controls"><label>Estado<select id="serviceBox"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="serviceBoxLink" placeholder="https://..."></label></div>
               <div class="doc-actions"><button class="primary" type="button" onclick="markLink('serviceBox')">Anexar print</button><a id="serviceBoxOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
             </article>
-            <article class="doc-card">
-              <div class="doc-top"><div class="doc-title"><span class="icon">◁</span>Campanhas</div><span id="campaignsChip" class="chip review">Por validar</span></div>
+            <article id="campaignsCard" class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">CP</span>Campanhas</div><span id="campaignsChip" class="chip review">Por validar</span></div>
               <p class="muted">Comprovativo da verificação de campanhas em aberto.</p>
+              <div id="campaignsMeta" class="mini-meta">Sem documento anexado</div>
               <div class="note">Registar print ou indicar que não existem campanhas aplicáveis.</div>
               <div id="campaignsControls" class="doc-controls"><label>Estado<select id="campaigns"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="campaignsLink" placeholder="https://..."></label></div>
               <div class="doc-actions"><button class="primary" type="button" onclick="saveHistory()">Validar</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
             </article>
-            <article class="doc-card">
-              <div class="doc-top"><div class="doc-title"><span class="icon">⌕</span>Plano manutenção</div><span id="planChip" class="chip review">Por rever</span></div>
+            <article id="planCard" class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">PM</span>Plano manutenção</div><span id="planChip" class="chip review">Por rever</span></div>
               <p class="muted">Plano de manutenção da marca vs. plano parametrizado no Rentway.</p>
+              <div id="planMeta" class="mini-meta">Sem documento anexado</div>
               <div id="planCompare" class="compare"><div><span>Service Box</span><strong>Por validar</strong></div><div><span>Rentway</span><strong>Por validar</strong></div></div>
               <div id="planNote" class="note warn-note">Valide o relatório de plano para confirmar se existe divergência.</div>
               <div id="planControls" class="doc-controls"><label>Estado<select id="plan"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="planLink" placeholder="https://..."></label></div>
               <div class="doc-actions"><button class="primary" type="button" onclick="markLink('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
             </article>
-            <article class="doc-card">
-              <div class="doc-top"><div class="doc-title"><span class="icon">◷</span>Histórico interno</div><span id="internalChip" class="chip review">Por rever</span></div>
+            <article id="internalCard" class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">HI</span>Histórico interno</div><span id="internalChip" class="chip review">Por rever</span></div>
               <p class="muted">Relatório do histórico interno da viatura e intervenções relevantes.</p>
+              <div id="internalMeta" class="mini-meta">A validar pela equipa</div>
               <div class="doc-controls"><label>Consulta<select id="internal"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option></select></label></div>
               <div class="doc-actions"><button class="primary" type="button" onclick="saveHistory()">Validar</button></div>
             </article>
@@ -2144,10 +2156,9 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
         <div id="result" class="result"></div>
       </div>
       <aside class="side">
-        <section class="panel"><div class="side-title"><span class="icon">▣</span><h2>Pasta documental</h2></div><div id="folderPath" class="folder-path">A carregar...</div><div class="grid2" style="margin-top:12px"><button onclick="copyFolder()">Abrir pasta</button><button onclick="copyFolder()">Copiar caminho</button></div></section>
-        <section class="panel"><div class="side-title"><span class="icon">▴</span><h2>Alertas</h2><span id="alertCount" class="chip review">0</span></div><ul id="alerts" class="list"></ul></section>
+        <section class="panel"><div class="side-title"><span class="icon">PA</span><h2>Pasta documental</h2></div><div id="folderPath" class="folder-path">A carregar...</div><div class="grid2" style="margin-top:12px"><button onclick="copyFolder()">Abrir pasta</button><button onclick="copyFolder()">Copiar caminho</button></div></section>
+        <section class="panel"><div class="side-title"><span class="icon">AL</span><h2>Alertas</h2><span id="alertCount" class="chip review">0</span></div><ul id="alerts" class="list"></ul></section>
         <section class="panel"><button style="width:100%" onclick="showTab('reports')">Ver todos os documentos <span id="documentCount" class="chip neutral">0</span></button></section>
-        <a class="button" href="/workshop/processes-ui/{process_id}/manage">Abrir vista atual</a>
       </aside>
     </main>
   </div>
@@ -2179,25 +2190,49 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     function showTab(id) {{ document.querySelectorAll(".phase,.tab").forEach(el => el.classList.remove("active")); $(`#${{id}}`)?.classList.add("active"); renderTabs(id); }}
     function docStatus(value, link, emptyLabel="Em falta") {{ if (value === "not_applicable") return ["Não aplicável","neutral"]; if (value === "no" || value === "yes") return ["Validado","done"]; if (value === "evidence_link" && link) return ["Por validar","review"]; if (value === "evidence_link") return [emptyLabel,"danger"]; return [emptyLabel,"review"]; }}
     function setChip(id, data) {{ const el = $(id); if (!el) return; el.textContent = data[0]; el.className = `chip ${{data[1]}}`; }}
-    function updateOpen(id, link) {{ const a = $(id); if (!a) return; if (link) a.href = link; else a.removeAttribute("href"); }}
+    function setCardState(id, tone) {{
+      const el = $(id);
+      if (!el) return;
+      el.classList.remove("done-card", "review-card", "danger-card");
+      el.classList.add(tone === "done" ? "done-card" : tone === "danger" ? "danger-card" : "review-card");
+    }}
+    function setMeta(id, text) {{ const el = $(id); if (el) el.textContent = text; }}
+    function updateOpen(id, link) {{
+      const a = $(id);
+      if (!a) return;
+      if (link) {{ a.href = link; a.removeAttribute("aria-disabled"); }}
+      else {{ a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); }}
+    }}
     function renderVerificationCards() {{
       [["#serviceBox","#serviceBoxControls"],["#campaigns","#campaignsControls"],["#plan","#planControls"]].forEach(([select,controls]) => $(controls)?.classList.toggle("need-link", value(select) === "evidence_link"));
-      setChip("#serviceBoxChip", docStatus(value("#serviceBox"), value("#serviceBoxLink")));
-      setChip("#campaignsChip", docStatus(value("#campaigns"), value("#campaignsLink")));
-      setChip("#internalChip", docStatus(value("#internal"), "", "Por rever"));
+      const serviceBoxStatus = docStatus(value("#serviceBox"), value("#serviceBoxLink"));
+      const campaignsStatus = docStatus(value("#campaigns"), value("#campaignsLink"));
+      const internalStatus = docStatus(value("#internal"), "", "Por rever");
+      setChip("#serviceBoxChip", serviceBoxStatus);
+      setChip("#campaignsChip", campaignsStatus);
+      setChip("#internalChip", internalStatus);
+      setCardState("#serviceBoxCard", serviceBoxStatus[1]);
+      setCardState("#campaignsCard", campaignsStatus[1]);
+      setCardState("#internalCard", internalStatus[1]);
+      setMeta("#serviceBoxMeta", value("#serviceBoxLink") ? "Documento anexado para validação" : "Sem documento anexado");
+      setMeta("#campaignsMeta", value("#campaignsLink") ? "Documento anexado para validação" : "Sem documento anexado");
+      setMeta("#internalMeta", value("#internal") === "yes" ? "Verificação interna confirmada" : value("#internal") === "no" ? "Não validado" : "A validar pela equipa");
       const report = [...(processData?.technical_reports || [])].filter(r => r.report_code === "maintenance_plan_validation").sort((a,b) => b.id - a.id)[0];
       const vals = objectValues(report?.validated_values || report?.extracted_values);
       const serviceBox = [vals.servicebox_plan, vals.servicebox_interval_km ? `${{vals.servicebox_interval_km}} km` : "", vals.servicebox_interval_months ? `${{vals.servicebox_interval_months}} meses` : ""].filter(Boolean).join(" / ") || "Por validar";
       const rentway = [vals.rentway_plan, vals.rentway_interval_km ? `${{vals.rentway_interval_km}} km` : "", vals.rentway_interval_months ? `${{vals.rentway_interval_months}} meses` : ""].filter(Boolean).join(" / ") || "Por validar";
       $("#planCompare").innerHTML = `<div><span>Service Box</span><strong>${{safe(serviceBox)}}</strong></div><div><span>Rentway</span><strong>${{safe(rentway)}}</strong></div>`;
       const mismatch = (processData?.alerts || []).some(a => ["rentway_maintenance_plan_mismatch","maintenance_request_plan_mismatch"].includes(a.code));
-      setChip("#planChip", mismatch ? ["Divergente","danger"] : docStatus(value("#plan"), value("#planLink")));
+      const planStatus = mismatch ? ["Divergente","danger"] : docStatus(value("#plan"), value("#planLink"));
+      setChip("#planChip", planStatus);
+      setCardState("#planCard", planStatus[1]);
+      setMeta("#planMeta", value("#planLink") ? "Documento anexado para validação" : (report ? "Relatório de plano registado" : "Sem documento anexado"));
       $("#planNote").textContent = mismatch ? "Existe divergência entre os planos." : (report ? "Plano registado. Confirme se bate certo com Rentway." : "Valide o relatório de plano para confirmar se existe divergência.");
       updateOpen("#serviceBoxOpen", value("#serviceBoxLink")); updateOpen("#campaignsOpen", value("#campaignsLink")); updateOpen("#planOpen", value("#planLink")); updateOpen("#reportOpen", value("#reportLink"));
     }}
     function markLink(prefix) {{ $(`#${{prefix}}`).value = "evidence_link"; renderVerificationCards(); }}
     function renderHeader() {{ const v = processData.vehicle || {{}}; const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const status = meta(processData.status); const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-"; $("#header").innerHTML = `<a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #${{processData.id}}</h1><div class="meta"><span>▱ <strong>${{safe(v.plate || processData.plate)}}</strong></span><span>|</span><span>${{safe(model || "Dados da viatura por completar")}}</span><span>|</span><span>Unidade ${{safe(v.rentway_unit_nr || "-")}}</span><span>|</span><span>${{safe(processData.initial_km || "-")}} km</span><span class="chip ${{status[1]}}">${{safe(status[0])}}</span><span>Fase atual: <strong>${{safe(current)}}</strong></span></div></div>`; }}
-    function renderSidebar() {{ const folder = processData.document_folder || {{}}; $("#folderPath").textContent = folder.path || "Pasta por definir"; const alerts = Array.from(new Map((processData.alerts || []).map(a => [`${{a.code}}:${{a.message}}`, a])).values()); $("#alertCount").textContent = alerts.length; $("#alerts").innerHTML = alerts.map(a => `<li><span>${{safe(a.message)}}</span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas abertos</li>"; $("#documentCount").textContent = processData.technical_reports?.length || 0; }}
+    function renderSidebar() {{ const folder = processData.document_folder || {{}}; $("#folderPath").textContent = folder.path || "Pasta por definir"; const alerts = Array.from(new Map((processData.alerts || []).map(a => [`${{a.code}}:${{a.message}}`, a])).values()); $("#alertCount").textContent = alerts.length; $("#alerts").innerHTML = alerts.map(a => `<li class="alert-item ${{["high","critical"].includes(a.severity) ? "danger-alert" : ""}}"><span class="alert-dot"></span><span>${{safe(a.message)}}<br><small class="muted">${{safe(a.source || "processo")}}</small></span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas abertos</li>"; $("#documentCount").textContent = processData.technical_reports?.length || 0; }}
     function renderServices() {{ $("#serviceList").innerHTML = (processData.services || []).map(s => `<div class="service-row"><div><strong>${{safe(s.service_label)}}</strong><p class="muted">${{safe([s.zone,s.detail,s.short_observation].filter(Boolean).join(" · "))}}</p></div><span class="chip neutral">#${{s.sort_order || s.id}}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`; }}
     function reportName(code) {{ return (config?.stellantis_reports || []).find(r => r.code === code)?.label || code || "Relatório"; }}
     function renderReports() {{ const reports = processData.technical_reports || []; $("#reportList").innerHTML = reports.map(r => `<button class="report-row" onclick="selectReport(${{r.id}})"><span><strong>#${{r.id}} ${{safe(r.report_name || reportName(r.report_code))}}</strong><p class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</p></span>${{chip(r.status)}}</button>`).join("") || `<div class="placeholder">Sem relatórios registados.</div>`; }}

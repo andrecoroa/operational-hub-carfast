@@ -1211,7 +1211,7 @@ def workshop_process_list_page() -> str:
 
 @router.get("/processes-ui/{process_id}/manage", response_class=HTMLResponse)
 def workshop_process_manage_page(process_id: int) -> str:
-    return workshop_process_manage_v2_page(process_id)
+    return workshop_process_manage_v3_page(process_id)
     return f"""<!doctype html>
 <html lang="pt">
 <head>
@@ -2330,3 +2330,592 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
   </script>
 </body>
 </html>"""
+
+
+@router.get("/processes-ui/{process_id}/manage-v3", response_class=HTMLResponse)
+def workshop_process_manage_v3_page(process_id: int) -> str:
+    html = """<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oficina - Processo #__PROCESS_ID__</title>
+  <style>
+    :root {
+      --bg:#f5f7f8; --surface:#fff; --surface-soft:#f9fafb; --line:#dce2e7; --line-strong:#b8c3cc;
+      --text:#07152d; --muted:#607083; --brand:#b24a34; --brand-soft:#fbf1ee;
+      --green:#2f7d50; --green-soft:#edf7ef; --amber:#9a6711; --amber-soft:#fff6df;
+      --red:#b42318; --red-soft:#fff4f2; --blue:#2f5d8c; --blue-soft:#eef5fb;
+      font-family:Inter, "Segoe UI", Arial, sans-serif;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-size:14px; letter-spacing:0; }
+    button, input, select, textarea, a { font:inherit; }
+    button, .button {
+      min-height:38px; border:1px solid var(--line-strong); border-radius:8px; background:#fff; color:var(--text);
+      padding:8px 14px; font-weight:800; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    button.primary, .button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+    button.ghost { border-color:transparent; background:transparent; }
+    button:disabled, .button[aria-disabled="true"] { opacity:.45; pointer-events:none; }
+    h1, h2, h3, p { margin:0; }
+    h1 { font-size:30px; line-height:1.12; }
+    h2 { font-size:21px; }
+    h3 { font-size:16px; }
+    label { display:grid; gap:7px; color:var(--text); font-weight:850; }
+    label .required { color:#d63f32; }
+    input, select, textarea {
+      width:100%; min-height:44px; border:1px solid var(--line-strong); border-radius:8px; background:#fff;
+      color:var(--text); padding:10px 12px; font-weight:700;
+    }
+    textarea { min-height:92px; resize:vertical; }
+    details { border:1px solid var(--line); border-radius:8px; background:#fff; padding:0; overflow:hidden; }
+    summary { cursor:pointer; font-weight:900; list-style:none; min-height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; }
+    summary::-webkit-details-marker { display:none; }
+    summary::after { content:"⌄"; font-size:22px; color:var(--text); line-height:1; }
+    summary span { display:inline-flex; align-items:center; gap:12px; }
+    .shell { min-height:100vh; }
+    .brandbar {
+      height:58px; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:18px; align-items:center;
+      padding:0 22px; background:#fff; border-bottom:1px solid var(--line); box-shadow:0 1px 4px rgba(15,23,42,.04);
+    }
+    .hamburger { width:28px; min-height:28px; border:0; padding:0; background:transparent; font-size:26px; font-weight:900; }
+    .brand { color:#d83228; font-size:28px; font-weight:950; letter-spacing:.02em; line-height:1; }
+    .brand-actions { display:flex; gap:10px; align-items:center; justify-content:flex-end; }
+    .brand-actions button { min-width:172px; min-height:46px; background:#fff; border-color:var(--line); box-shadow:0 1px 3px rgba(15,23,42,.05); }
+    .brand-actions .ghost { min-width:36px; width:36px; border-color:transparent; box-shadow:none; font-size:24px; padding:0; }
+    .topbar {
+      display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start;
+      padding:28px 30px 26px; background:#fff; border-bottom:1px solid var(--line);
+    }
+    .titlebar { display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; align-items:start; min-width:0; }
+    .back {
+      width:34px; min-height:42px; padding:0; border-color:transparent; background:#fff; color:var(--text);
+      border-radius:8px; font-size:34px; font-weight:400; line-height:1;
+    }
+    .back:hover { background:var(--brand-soft); color:#7d2f1f; }
+    .meta {
+      display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center; margin-top:6px;
+      color:var(--muted); font-weight:760; line-height:1.45;
+    }
+    .meta strong { color:var(--text); }
+    .actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+    .content { padding:0 0 38px; }
+    .workspace { display:grid; gap:22px; max-width:none; margin:0; }
+    .stepper {
+      display:grid; grid-template-columns:repeat(8,minmax(108px,1fr)); overflow:hidden;
+      border:0; border-bottom:1px solid var(--line); border-radius:0; background:#fff; padding:22px 30px 0;
+    }
+    .step {
+      position:relative; min-height:138px; border:0; border-radius:0; background:#fff;
+      color:var(--text); padding:0 8px 30px; font-size:14px; font-weight:800; white-space:nowrap;
+      display:grid; justify-items:center; align-content:start; gap:12px;
+    }
+    .step::before { content:""; position:absolute; top:30px; left:-50%; right:50%; height:2px; background:#e2e7ec; z-index:0; }
+    .step:first-child::before { display:none; }
+    .step.active { color:var(--brand); }
+    .step.active::after { content:""; position:absolute; left:0; right:0; bottom:0; height:4px; background:#dc3328; }
+    .step.done { color:var(--green); }
+    .step.warn { background:#fffdf8; }
+    .step-icon {
+      position:relative; z-index:1; display:grid; place-items:center; width:62px; height:62px; border-radius:50%;
+      border:2px solid #dfe5ea; background:#fff; color:#172033; font-size:22px; font-weight:800;
+      box-shadow:0 1px 3px rgba(15,23,42,.04);
+    }
+    .step.active .step-icon { border-color:#dc3328; color:#dc3328; box-shadow:0 0 0 4px #fff; }
+    .step-label { font-weight:850; font-size:15px; }
+    .step .count {
+      position:absolute; top:26px; right:18%; min-width:24px; height:21px; border-radius:999px;
+      display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:0 6px;
+      background:transparent; color:var(--amber); font-size:14px; font-weight:950; z-index:2;
+    }
+    .tri { width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:9px solid var(--amber); }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:8px; padding:24px 26px; margin:0 28px; }
+    .phase { display:none; }
+    .phase.active { display:grid; gap:16px; }
+    .phase-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+    .phase-title { display:grid; grid-template-columns:56px minmax(0,1fr); gap:14px; align-items:center; }
+    .phase-title-icon { display:grid; place-items:center; width:44px; height:44px; border-radius:50%; background:#dc3328; color:#fff; font-size:22px; }
+    .muted { color:var(--muted); line-height:1.45; }
+    .chip {
+      display:inline-flex; align-items:center; justify-content:center; width:max-content; max-width:100%;
+      min-height:26px; border-radius:999px; padding:4px 10px; background:#eef1f3; color:var(--muted);
+      font-size:12px; font-weight:900;
+    }
+    .chip.done { color:var(--green); background:var(--green-soft); }
+    .chip.review { color:var(--amber); background:var(--amber-soft); }
+    .chip.danger { color:var(--red); background:var(--red-soft); }
+    .chip.progress { color:var(--blue); background:var(--blue-soft); }
+    .alert-line {
+      display:none; align-items:flex-start; gap:10px; border:1px solid #efd69d; border-radius:8px;
+      background:#fffaf1; color:var(--amber); padding:10px 12px; font-weight:850;
+    }
+    .alert-line.active { display:flex; }
+    .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; }
+    .main-card { display:grid; gap:18px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:20px 24px; }
+    .accordion-body { display:grid; gap:12px; padding:14px 16px; border-top:1px solid var(--line); }
+    .field-control {
+      display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:10px;
+      min-height:46px; border:1px solid var(--line-strong); border-radius:8px; background:#fff; padding:0 12px;
+    }
+    .field-control input, .field-control select {
+      min-height:44px; border:0; border-radius:0; background:transparent; padding:0; outline:0;
+    }
+    .field-control:focus-within { border-color:#9eaab5; box-shadow:0 0 0 2px rgba(96,112,131,.12); }
+    .field-icon { color:#2a3648; font-size:20px; line-height:1; text-align:center; }
+    .field-extra { color:var(--muted); font-weight:800; padding-left:8px; }
+    .textarea-wrap { position:relative; display:grid; }
+    .textarea-wrap textarea { padding-bottom:32px; }
+    .char-count { position:absolute; right:14px; bottom:10px; color:var(--muted); font-size:12px; font-weight:900; }
+    .accordion-icon { width:22px; color:#172033; font-size:20px; text-align:center; }
+    .field-missing { border-color:#d99b1f !important; box-shadow:0 0 0 2px rgba(217,155,31,.16); }
+    .field-note { display:none; color:var(--amber); font-size:12px; font-weight:850; }
+    .field-note.active { display:block; }
+    .list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+    .row {
+      display:flex; justify-content:space-between; gap:12px; align-items:center;
+      border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); padding:12px;
+    }
+    .doc-grid { display:grid; grid-template-columns:repeat(4,minmax(190px,1fr)); gap:12px; }
+    .doc {
+      display:grid; gap:10px; align-content:start; border:1px solid var(--line); border-radius:8px; background:#fff; padding:14px;
+    }
+    .doc.review { border-color:#efd69d; background:#fffdf8; }
+    .doc.done { border-color:#cce4d2; background:#fbfffc; }
+    .doc.danger { border-color:#e4b8b1; background:#fffafa; box-shadow:inset 4px 0 0 var(--red); }
+    .doc-title { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .doc-title strong { font-size:16px; }
+    .doc-code { display:grid; place-items:center; width:30px; height:30px; border:1px solid var(--line-strong); border-radius:7px; font-size:12px; font-weight:950; }
+    .doc-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
+    .doc-actions > * { flex:1 1 120px; }
+    .link-input { display:none; }
+    .link-input.needs-link { display:grid; }
+    .result { display:none; border:1px solid var(--line); border-radius:8px; padding:11px 12px; }
+    .result.active { display:block; }
+    .result.ok { background:var(--green-soft); border-color:#b7d7be; }
+    .result.err { background:var(--red-soft); border-color:#e2b7b3; }
+    .placeholder { border:1px dashed var(--line-strong); border-radius:8px; background:var(--surface-soft); padding:18px; color:var(--muted); font-weight:800; }
+    @media (max-width:1120px) { .stepper { grid-template-columns:repeat(4,1fr); } .doc-grid { grid-template-columns:repeat(2,1fr); } .brand-actions button { min-width:auto; } }
+    @media (max-width:760px) {
+      .brandbar { grid-template-columns:auto 1fr; height:auto; padding:12px 14px; }
+      .brand-actions { grid-column:1 / -1; justify-content:stretch; }
+      .brand-actions button { flex:1; }
+      .topbar, .phase-head { grid-template-columns:1fr; display:grid; padding:18px 14px; }
+      .content { padding:0 0 24px; }
+      .grid2, .grid3, .doc-grid { grid-template-columns:1fr; }
+      .stepper { grid-template-columns:1fr 1fr; padding:12px 14px 0; }
+      .step { min-height:112px; }
+      .panel { margin:0 14px; padding:18px; }
+      .actions { justify-content:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" data-view="manage-v3">
+    <header class="brandbar">
+      <button class="hamburger" type="button" title="Menu">☰</button>
+      <div class="brand">CARFAST</div>
+      <div class="brand-actions">
+        <button type="button" onclick="openFolder()">▭ Abrir pasta</button>
+        <button type="button" onclick="copyFolder()">▣ Copiar caminho</button>
+        <button class="ghost" type="button" title="Mais opções">⋮</button>
+      </div>
+    </header>
+    <header class="topbar">
+      <div class="titlebar">
+        <button class="back" type="button" onclick="location.href='/workshop/processes-ui'" title="Voltar">‹</button>
+        <div>
+          <h1 id="title">Oficina - Processo #__PROCESS_ID__</h1>
+          <div id="meta" class="meta">A carregar dados do processo...</div>
+        </div>
+      </div>
+    </header>
+    <main class="content">
+      <div class="workspace">
+        <nav id="stepper" class="stepper" aria-label="Fases do processo"></nav>
+
+        <section id="reception" class="panel phase active">
+          <div class="phase-head">
+            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Receção</h2><p class="muted">Registe as informações iniciais da entrada da viatura.</p></div></div>
+            <div class="actions"><button type="button" onclick="saveReception()">Guardar</button><button class="primary" type="button" onclick="advanceReception()">Avançar</button></div>
+          </div>
+          <div id="receptionAlerts" class="alert-line"></div>
+          <div class="main-card">
+            <h3>Dados principais</h3>
+            <div class="grid3">
+              <label>Responsável <span class="required">*</span><span class="field-control"><span class="field-icon">♙</span><input id="recResponsible" placeholder="Selecione o responsável"><span class="field-extra">⌄</span></span><span id="recResponsibleNote" class="field-note">Responsável em falta.</span></label>
+              <label>Data entrada <span class="required">*</span><span class="field-control"><span class="field-icon">▣</span><input id="recDate" readonly><span class="field-extra">▣</span></span></label>
+              <label>Quilómetros <span class="required">*</span><span class="field-control"><span class="field-icon">◴</span><input id="recKm" type="number" min="0"><span class="field-extra">km</span></span><span id="recKmNote" class="field-note">Quilómetros em falta.</span></label>
+            </div>
+            <label>Observação inicial <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Descreva a situação reportada pelo cliente, sintomas ou informações relevantes."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label>
+          </div>
+          <details><summary><span><span class="accordion-icon">♙</span>Dados do cliente</span></summary><div class="accordion-body grid2"><label>Origem<input id="recOrigin" readonly></label><label>Unidade Rentway<input id="recUnit" readonly></label></div></details>
+          <details><summary><span><span class="accordion-icon">▱</span>Estado da viatura</span></summary><div class="accordion-body grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Danos visíveis"></label></div></details>
+          <details><summary><span><span class="accordion-icon">▣</span>Fotografias</span></summary><div class="accordion-body"><label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label></div></details>
+          <details><summary><span><span class="accordion-icon">＋</span>Outros dados relevantes</span></summary><div class="accordion-body"><div class="placeholder">Campos administrativos extra ficam aqui para não pesar a entrada principal.</div></div></details>
+        </section>
+
+        <section id="services" class="panel phase">
+          <div class="phase-head"><div><h2>Serviços</h2><p class="muted">Trabalhos atuais e novos serviços a adicionar ao processo.</p></div><button class="primary" type="button" onclick="addService()">Adicionar serviço</button></div>
+          <div id="servicesAlerts" class="alert-line"></div>
+          <div id="serviceList" class="list"></div>
+          <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
+          <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
+        </section>
+
+        <section id="checks" class="panel phase">
+          <div class="phase-head"><div><h2>Verificações</h2><p class="muted">Documentos e validações esperadas nesta fase.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar verificações</button></div>
+          <div id="checksAlerts" class="alert-line"></div>
+          <div class="doc-grid">
+            <article id="serviceBoxCard" class="doc">
+              <div class="doc-title"><div><span class="doc-code">SB</span><strong>Service Box</strong></div><span id="serviceBoxChip" class="chip review">Por rever</span></div>
+              <p class="muted">Consulta Service Box ou print anexado.</p>
+              <label>Estado<select id="serviceBox"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label>
+              <label id="serviceBoxLinkWrap" class="link-input">Link<input id="serviceBoxLink" placeholder="https://..."></label>
+              <div class="doc-actions"><button type="button" onclick="markEvidence('serviceBox')">Anexar print</button><a id="serviceBoxOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
+            </article>
+            <article id="campaignsCard" class="doc">
+              <div class="doc-title"><div><span class="doc-code">CP</span><strong>Campanhas</strong></div><span id="campaignsChip" class="chip review">Por rever</span></div>
+              <p class="muted">Campanhas em aberto, ou confirmação de inexistência.</p>
+              <label>Estado<select id="campaigns"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label>
+              <label id="campaignsLinkWrap" class="link-input">Link<input id="campaignsLink" placeholder="https://..."></label>
+              <div class="doc-actions"><button type="button" onclick="markEvidence('campaigns')">Anexar print</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
+            </article>
+            <article id="planCard" class="doc">
+              <div class="doc-title"><div><span class="doc-code">PM</span><strong>Plano manutenção</strong></div><span id="planChip" class="chip review">Por rever</span></div>
+              <p class="muted">Plano da marca comparado com Rentway.</p>
+              <label>Estado<select id="plan"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label>
+              <label id="planLinkWrap" class="link-input">Link<input id="planLink" placeholder="https://..."></label>
+              <div id="planCompare" class="muted"></div>
+              <div class="doc-actions"><button type="button" onclick="markEvidence('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
+            </article>
+            <article id="internalCard" class="doc">
+              <div class="doc-title"><div><span class="doc-code">HI</span><strong>Histórico interno</strong></div><span id="internalChip" class="chip review">Por rever</span></div>
+              <p class="muted">Consulta interna e intervenções relevantes.</p>
+              <label>Consulta<select id="internal"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option></select></label>
+              <div class="doc-actions"><button type="button" onclick="saveChecks()">Validar</button></div>
+            </article>
+          </div>
+          <details><summary>Outras verificações</summary><div class="accordion-body grid2"><label>Accident reports<select id="accidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label><label>Processos anteriores<select id="previous"><option value="yes">Sim</option><option value="none">Não existem</option><option value="pending_review">Por rever</option></select></label><label>Detalhe accident reports<input id="accidentsDetail"></label><label>Incidência repetida<select id="repeat"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por avaliar</option></select></label><label>Observação<textarea id="historyObs"></textarea></label></div></details>
+        </section>
+
+        <section id="reports" class="panel phase">
+          <div class="phase-head"><div><h2>Relatórios</h2><p class="muted">Relatórios anexados, extração e validação dos valores.</p></div><button class="primary" type="button" onclick="saveReport()">Adicionar relatório</button></div>
+          <div id="reportsAlerts" class="alert-line"></div>
+          <div id="reportList" class="list"></div>
+          <div class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
+          <label>Link original<input id="reportLink" placeholder="https://..."></label>
+          <div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div>
+          <div class="actions" style="justify-content:flex-start"><button type="button" onclick="validateReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+        </section>
+
+        <section id="decision" class="panel phase"><h2>Decisão</h2><div id="decisionAlerts" class="alert-line"></div><div class="placeholder">A decisão fica disponível aqui na próxima passagem visual, sem misturar com receção/verificações.</div></section>
+        <section id="budget" class="panel phase"><h2>Orçamento</h2><div id="budgetAlerts" class="alert-line"></div><div class="placeholder">Orçamento e aprovações em layout leve.</div></section>
+        <section id="repair" class="panel phase"><h2>Reparação</h2><div id="repairAlerts" class="alert-line"></div><div class="placeholder">Execução, evidências e reparação.</div></section>
+        <section id="close" class="panel phase"><h2>Fecho</h2><div id="closeAlerts" class="alert-line"></div><div class="placeholder">Validação final e fecho do processo.</div></section>
+        <div id="result" class="result"></div>
+      </div>
+    </main>
+  </div>
+  <script>
+    const processId = __PROCESS_ID__;
+    const previewMode = new URLSearchParams(window.location.search).get("preview") === "1";
+    let processData = null;
+    let config = null;
+    let selectedReportId = null;
+    const tabs = [
+      ["reception", "Receção", "administrative_reception"],
+      ["services", "Serviços", null],
+      ["checks", "Verificações", "history_check"],
+      ["reports", "Relatórios", "technical_phase"],
+      ["decision", "Decisão", "diagnosis_decision"],
+      ["budget", "Orçamento", "budget_approval"],
+      ["repair", "Reparação", "internal_repair_execution"],
+      ["close", "Fecho", "final_closure"]
+    ];
+    const phaseIcons = {reception:"□", services:"⌕", checks:"○", reports:"▤", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
+    const phaseLabels = {administrative_reception:"Receção", history_check:"Verificações", technical_phase:"Relatórios", diagnosis_decision:"Decisão", budget_approval:"Orçamento", internal_repair_execution:"Reparação", final_closure:"Fecho"};
+    const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
+    const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
+    const demoConfig = {
+      services: [
+        {code:"revision_maintenance", label:"Revisão / manutenção"},
+        {code:"tyres", label:"Pneus"},
+        {code:"brakes", label:"Travões"},
+        {code:"other", label:"Outro"}
+      ],
+      stellantis_reports: [
+        {code:"maintenance_information", label:"Informações manutenção"},
+        {code:"maintenance_plan_validation", label:"Validação plano manutenção"},
+        {code:"fault_reading", label:"Leitura defeitos"}
+      ]
+    };
+    const demoProcess = {
+      id: processId,
+      title: "Revisão e verificações de entrada",
+      status: "open",
+      current_phase_code: "administrative_reception",
+      plate: "BC-98-FA",
+      origin: "Rentway",
+      initial_km: 119657,
+      initial_observation: "Entrada para revisão e validação de plano.",
+      created_at: "2026-06-04",
+      document_folder: {path:"C:\\\\Users\\\\andre\\\\OneDrive - D'accord Invest - Serviços Partilhados SA\\\\CARFAST - OFICINA - OFICINA\\\\CarFast v2 - Oficina\\\\Documentos Processos"},
+      vehicle: {plate:"BC-98-FA", vin:"VF7XXXXXXXXXXXXXX", brand:"CITROEN", model:"BERLINGO XL", version:"1.5 BH 100 S&S CVM6", rentway_unit_nr:"251"},
+      services: [{id:1, sort_order:1, service_label:"Revisão / manutenção", zone:"Motor", detail:"Plano de manutenção", short_observation:"Confirmar Service Box"}],
+      phases: [
+        {id:11, phase_code:"administrative_reception", status:"pending_review", data:{km_entry:119657, initial_observation:"Entrada para revisão e validação de plano."}},
+        {id:12, phase_code:"history_check", status:"not_started", data:{}},
+        {id:13, phase_code:"technical_phase", status:"not_started", data:{}},
+        {id:14, phase_code:"diagnosis_decision", status:"not_started", data:{}},
+        {id:15, phase_code:"budget_approval", status:"not_started", data:{}},
+        {id:16, phase_code:"internal_repair_execution", status:"not_started", data:{}},
+        {id:17, phase_code:"final_closure", status:"not_started", data:{}}
+      ],
+      alerts: [
+        {code:"quadrant_photo_missing", message:"Foto do quadrante em falta", severity:"medium", source:"administrative_reception", phase_id:11},
+        {code:"service_box_checked_pending", message:"Consulta Service Box por confirmar", severity:"high", source:"history_check", phase_id:12}
+      ],
+      technical_reports: [{id:34, report_code:"maintenance_plan_validation", report_name:"Validação plano manutenção", reading_origin:"stellantis_machine", report_moment:"initial", status:"pending_validation", original_link:"https://example.com/relatorio.pdf", extracted_values:{servicebox_interval_km:"30000", rentway_interval_km:"20000"}, validated_values:null}]
+    };
+    const $ = (selector) => document.querySelector(selector);
+    function safe(value) { return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"); }
+    function val(id) { return $(id)?.value || ""; }
+    function setVal(id, value) { const el = $(id); if (el && value !== undefined && value !== null) el.value = value; }
+    function meta(code) { return statusLabels[code] || [code || "-", "neutral"]; }
+    function chip(code) { const m = meta(code); return `<span class="chip ${m[1]}">${safe(m[0])}</span>`; }
+    function label(value) { return valueLabels[value] || value || "-"; }
+    function phase(code) { return (processData?.phases || []).find(item => item.phase_code === code) || null; }
+    function alertsFor(code) { const p = phase(code); return (processData?.alerts || []).filter(alert => alert.phase_id === p?.id || alert.source === code); }
+    function tabForPhase(code) { return tabs.find(([, , phaseCode]) => phaseCode === code)?.[0] || "reception"; }
+    function showResult(ok, message) { const el = $("#result"); el.className = `result active ${ok ? "ok" : "err"}`; el.textContent = message; }
+    function objectValues(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
+    function jsonFrom(id) { const raw = val(id).trim(); return raw ? JSON.parse(raw) : {}; }
+    async function requestJson(url, method, body) {
+      const response = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(JSON.stringify(data.detail || data));
+      await loadProcess();
+      return data;
+    }
+    async function fetchJson(url, timeoutMs=10000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, {signal:controller.signal});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    function renderHeader() {
+      const v = processData.vehicle || {};
+      const model = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+      const status = meta(processData.status);
+      const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-";
+      $("#title").textContent = `Oficina - Processo #${processData.id}`;
+      $("#meta").innerHTML = [
+        `<strong>▱ ${safe(v.plate || processData.plate || "-")}</strong>`,
+        `VIN ${safe(v.vin || "-")}`,
+        safe(model || "Dados da viatura por completar"),
+        `Unidade ${safe(v.rentway_unit_nr || "-")}`,
+        `${safe(processData.initial_km || "-")} km`,
+        `Estado: <strong>${safe(status[0])}</strong>`,
+        `Fase atual: <strong>${safe(current)}</strong>`
+      ].map(item => `<span>${item}</span>`).join("<span>|</span>");
+    }
+    function renderStepper(active) {
+      $("#stepper").innerHTML = tabs.map(([id, text, phaseCode]) => {
+        const alerts = phaseCode ? alertsFor(phaseCode) : [];
+        const done = phaseCode && ["completed", "validated", "completed_with_pending_items"].includes(phase(phaseCode)?.status);
+        return `<button type="button" class="step ${id === active ? "active" : ""} ${done ? "done" : ""} ${alerts.length ? "warn" : ""}" onclick="showPhase('${id}')"><span class="step-icon">${done ? "✓" : safe(phaseIcons[id] || "·")}</span>${alerts.length ? `<span class="count"><span class="tri"></span>${alerts.length}</span>` : ""}<span class="step-label">${safe(text)}</span></button>`;
+      }).join("");
+    }
+    function renderAlerts(id) {
+      const phaseCode = tabs.find(item => item[0] === id)?.[2];
+      const holder = $(`#${id}Alerts`);
+      if (!holder) return;
+      const alerts = phaseCode ? alertsFor(phaseCode) : [];
+      holder.classList.toggle("active", Boolean(alerts.length));
+      holder.innerHTML = alerts.length ? `<span class="tri"></span><span>${alerts.map(alert => safe(alert.message)).join(" · ")}</span>` : "";
+    }
+    function markMissing(field, note, active) {
+      const control = $(field);
+      const target = control?.closest(".field-control") || control;
+      target?.classList.toggle("field-missing", Boolean(active));
+      $(note)?.classList.toggle("active", Boolean(active));
+    }
+    function updateObservationCounter() {
+      const field = $("#recObs");
+      const counter = $("#recObsCounter");
+      if (field && counter) counter.textContent = `${field.value.length} / 500`;
+    }
+    function highlightReception() {
+      const text = alertsFor("administrative_reception").map(a => `${a.code || ""} ${a.message || ""}`).join(" ").toLowerCase();
+      markMissing("#recKm", "#recKmNote", text.includes("km") || text.includes("quil"));
+      markMissing("#recObs", "#recObsNote", text.includes("observ"));
+      markMissing("#recPhoto", "#recPhotoNote", text.includes("foto") || text.includes("quadrante"));
+      markMissing("#recResponsible", "#recResponsibleNote", text.includes("respons"));
+    }
+    function showPhase(id) {
+      document.querySelectorAll(".phase").forEach(el => el.classList.remove("active"));
+      $(`#${id}`)?.classList.add("active");
+      renderStepper(id);
+      tabs.forEach(([tabId]) => renderAlerts(tabId));
+      highlightReception();
+    }
+    function renderServices() {
+      const services = processData.services || [];
+      $("#serviceList").innerHTML = services.map(service => `<div class="row"><div><strong>${safe(service.service_label)}</strong><p class="muted">${safe([service.zone, service.detail, service.short_observation].filter(Boolean).join(" · ") || "Sem detalhe")}</p></div><span class="chip">${safe(service.sort_order || service.id)}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`;
+    }
+    function reportName(code) { return (config?.stellantis_reports || []).find(report => report.code === code)?.label || code || "Relatório"; }
+    function renderReports() {
+      const reports = processData.technical_reports || [];
+      $("#reportList").innerHTML = reports.map(report => `<button type="button" class="row" onclick="selectReport(${report.id})"><span><strong>#${report.id} ${safe(report.report_name || reportName(report.report_code))}</strong><p class="muted">${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))}</p></span>${chip(report.status)}</button>`).join("") || `<div class="placeholder">Sem relatórios registados.</div>`;
+    }
+    function docStatus(value, link, empty="Por rever") {
+      if (value === "not_applicable") return ["Não aplicável", "done"];
+      if (value === "yes" || value === "no") return ["Validado", "done"];
+      if (value === "evidence_link" && link) return ["Com evidência", "review"];
+      if (value === "evidence_link") return ["Falta link", "danger"];
+      return [empty, "review"];
+    }
+    function setDoc(prefix, status) {
+      const card = $(`#${prefix}Card`);
+      const chipEl = $(`#${prefix}Chip`);
+      card?.classList.remove("done", "review", "danger");
+      card?.classList.add(status[1]);
+      if (chipEl) { chipEl.textContent = status[0]; chipEl.className = `chip ${status[1]}`; }
+    }
+    function updateLink(prefix, link) {
+      $(`#${prefix}LinkWrap`)?.classList.toggle("needs-link", val(`#${prefix}`) === "evidence_link");
+      const open = $(`#${prefix}Open`);
+      if (!open) return;
+      if (link) { open.href = link; open.removeAttribute("aria-disabled"); }
+      else { open.removeAttribute("href"); open.setAttribute("aria-disabled", "true"); }
+    }
+    function renderChecks() {
+      ["serviceBox", "campaigns", "plan"].forEach(prefix => updateLink(prefix, val(`#${prefix}Link`)));
+      setDoc("serviceBox", docStatus(val("#serviceBox"), val("#serviceBoxLink")));
+      setDoc("campaigns", docStatus(val("#campaigns"), val("#campaignsLink")));
+      setDoc("plan", docStatus(val("#plan"), val("#planLink")));
+      setDoc("internal", docStatus(val("#internal"), ""));
+      const report = [...(processData.technical_reports || [])].filter(r => r.report_code === "maintenance_plan_validation").sort((a,b) => b.id - a.id)[0];
+      const values = objectValues(report?.validated_values || report?.extracted_values);
+      $("#planCompare").textContent = report ? `Service Box: ${values.servicebox_interval_km || "-"} km · Rentway: ${values.rentway_interval_km || "-"} km` : "Sem relatório de plano validado.";
+    }
+    function renderValues() {
+      const v = processData.vehicle || {};
+      const r = phase("administrative_reception")?.data || {};
+      const h = phase("history_check")?.data || {};
+      setVal("#recDate", r.entry_date || processData.created_at || "");
+      setVal("#recKm", r.km_entry || processData.initial_km || "");
+      setVal("#recObs", r.initial_observation || processData.initial_observation || "");
+      updateObservationCounter();
+      setVal("#recOrigin", processData.origin || "");
+      setVal("#recUnit", v.rentway_unit_nr || "");
+      setVal("#recVisual", r.visible_damage_status || "");
+      setVal("#recDamage", r.damage_description || "");
+      setVal("#recPhoto", r.quadrant_photo_link || "");
+      setVal("#internal", h.internal_history_checked || "pending_review");
+      setVal("#accidents", h.open_accident_reports || "no");
+      setVal("#accidentsDetail", h.accident_reports_detail || "");
+      setVal("#previous", h.previous_processes_reviewed || "yes");
+      setVal("#repeat", h.repeated_incidence || "no");
+      setVal("#historyObs", h.history_observation || "");
+      setVal("#serviceBox", h.service_box_checked || "pending_review");
+      setVal("#serviceBoxLink", h.service_box_link || "");
+      setVal("#campaigns", h.campaigns_checked || "pending_review");
+      setVal("#campaignsLink", h.campaigns_link || "");
+      setVal("#plan", h.maintenance_plan_checked || "pending_review");
+      setVal("#planLink", h.maintenance_plan_link || "");
+      renderChecks();
+    }
+    async function loadConfig() {
+      config = previewMode ? demoConfig : await fetchJson("/api/workshop/process-config");
+      $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
+      $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
+      ["#serviceBox", "#serviceBoxLink", "#campaigns", "#campaignsLink", "#plan", "#planLink", "#internal"].forEach(id => $(id)?.addEventListener("input", renderChecks));
+      $("#reportLink")?.addEventListener("input", () => updateReportOpen());
+      $("#recObs")?.addEventListener("input", updateObservationCounter);
+    }
+    async function loadProcess() {
+      processData = previewMode ? demoProcess : await fetchJson(`/api/workshop/processes/${processId}`);
+      const active = document.querySelector(".phase.active")?.id || tabForPhase(processData.current_phase_code);
+      renderHeader();
+      renderServices();
+      renderReports();
+      renderValues();
+      showPhase(active);
+    }
+    function updateReportOpen() {
+      const open = $("#reportOpen");
+      if (val("#reportLink")) { open.href = val("#reportLink"); open.removeAttribute("aria-disabled"); }
+      else { open.removeAttribute("href"); open.setAttribute("aria-disabled", "true"); }
+    }
+    async function copyFolder() {
+      const path = processData?.document_folder?.path || "";
+      if (!path) return showResult(false, "Caminho documental por definir.");
+      try { await navigator.clipboard.writeText(path); showResult(true, "Caminho da pasta copiado."); }
+      catch { showResult(false, path); }
+    }
+    async function openFolder() {
+      await copyFolder();
+      showResult(true, "Caminho copiado. Abre no Explorador do Windows se o browser bloquear pastas locais.");
+    }
+    function markEvidence(prefix) { setVal(`#${prefix}`, "evidence_link"); renderChecks(); }
+    async function saveReception() {
+      try {
+        await requestJson(`/api/workshop/processes/${processId}/reception`, "POST", {km_entry:Number(val("#recKm")) || null, quadrant_photo_link:val("#recPhoto"), initial_observation:val("#recObs"), visible_damage_status:val("#recVisual"), damage_description:val("#recDamage")});
+        showResult(true, "Receção guardada.");
+      } catch (err) { showResult(false, err.message); }
+    }
+    async function advanceReception() { await saveReception(); showPhase("services"); }
+    async function addService() {
+      try {
+        await requestJson(`/api/workshop/processes/${processId}/services`, "POST", {service_code:val("#serviceCode"), zone:val("#serviceZone"), detail:val("#serviceDetail"), short_observation:val("#serviceObservation")});
+        setVal("#serviceZone", ""); setVal("#serviceDetail", ""); setVal("#serviceObservation", "");
+        showResult(true, "Serviço adicionado.");
+      } catch (err) { showResult(false, err.message); }
+    }
+    async function saveChecks() {
+      try {
+        await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), history_observation:val("#historyObs")});
+        showResult(true, "Verificações guardadas.");
+      } catch (err) { showResult(false, err.message); }
+    }
+    function selectReport(id) {
+      const report = (processData.technical_reports || []).find(item => item.id === id);
+      if (!report) return;
+      selectedReportId = id;
+      setVal("#reportCode", report.report_code);
+      setVal("#reportMoment", report.report_moment);
+      setVal("#reportOrigin", report.reading_origin);
+      setVal("#reportLink", report.original_link || "");
+      setVal("#reportValues", JSON.stringify(report.extracted_values || {}, null, 2));
+      setVal("#validateValues", JSON.stringify(report.validated_values || {}, null, 2));
+      updateReportOpen();
+      showPhase("reports");
+    }
+    async function saveReport() {
+      try {
+        const data = await requestJson(`/api/workshop/processes/${processId}/technical-reports`, "POST", {report_code:val("#reportCode"), report_moment:val("#reportMoment"), reading_origin:val("#reportOrigin"), original_link:val("#reportLink"), extracted_values:jsonFrom("#reportValues")});
+        selectedReportId = data.id;
+        showResult(true, `Relatório #${data.id} adicionado.`);
+      } catch (err) { showResult(false, err.message); }
+    }
+    async function validateReport() {
+      try {
+        if (!selectedReportId) throw new Error("Seleciona um relatório antes de validar.");
+        const validated = val("#validateValues") ? jsonFrom("#validateValues") : jsonFrom("#reportValues");
+        await requestJson(`/api/workshop/technical-reports/${selectedReportId}/validate`, "POST", {validated_values:validated});
+        showResult(true, `Relatório #${selectedReportId} validado.`);
+      } catch (err) { showResult(false, err.message); }
+    }
+    loadConfig().then(loadProcess).catch(err => showResult(false, err.message));
+  </script>
+</body>
+</html>"""
+    return html.replace("__PROCESS_ID__", str(process_id))

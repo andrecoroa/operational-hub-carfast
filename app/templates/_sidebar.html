@@ -26,6 +26,9 @@
     {% if "vehicles.read" in nav_perms %}
       <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
     {% endif %}
+    {% if nav_has_permission(request, "tasks.management.read", "tasks.management.write") %}
+      <a href="/task-board/manage?workspace=management" {% if active_menu == "management" %}class="active"{% endif %}>Centro de Gestão</a>
+    {% endif %}
     <span class="nav-section-label">Sistema</span>
     {% if "imports.run" in nav_perms or "imports.approve" in nav_perms %}
       <a href="/imports" {% if active_menu == "imports" %}class="active"{% endif %}>Importações</a>

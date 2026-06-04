@@ -2045,7 +2045,8 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     .tab.active {{ background:var(--brand-soft); box-shadow:inset 0 0 0 1px var(--brand); color:#7d2f1f; }}
     .tab.incomplete {{ background:#fffaf1; }}
     .tab.done-phase {{ color:var(--green); background:#fbfffc; }}
-    .tab-count {{ position:absolute; top:8px; right:8px; min-width:22px; height:22px; border-radius:999px; display:grid; place-items:center; background:var(--amber-soft); color:var(--amber); font-size:12px; }}
+    .tab-count {{ position:absolute; top:8px; right:8px; min-width:30px; height:22px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:0 7px; background:var(--amber-soft); color:var(--amber); font-size:12px; font-weight:950; }}
+    .alert-triangle {{ display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:9px solid var(--amber); }}
     .panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px; }}
     .phase {{ display:none; }}
     .phase.active {{ display:grid; gap:16px; }}
@@ -2210,7 +2211,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     function alertsForPhase(code) {{ const phase = phaseByCode(code); return (processData?.alerts || []).filter(a => a.phase_id === phase?.id || a.source === code); }}
     function tabForPhase(code) {{ return tabs.find(([, , phase]) => phase === code)?.[0] || "reception"; }}
     function phaseStatus(code) {{ return phaseByCode(code)?.status || ""; }}
-    function renderTabs(active=tabForPhase(processData?.current_phase_code)) {{ $("#tabs").innerHTML = tabs.map(([id,labelText,phase]) => {{ const alerts = phase ? alertsForPhase(phase) : []; const done = phase && ["completed","validated","completed_with_pending_items"].includes(phaseStatus(phase)); return `<button class="tab ${{id === active ? "active" : ""}} ${{alerts.length ? "incomplete" : ""}} ${{done ? "done-phase" : ""}}" onclick="showTab('${{id}}')">${{done ? "✓ " : ""}}${{safe(labelText)}}${{alerts.length ? `<span class="tab-count">⚠ ${{alerts.length}}</span>` : ""}}</button>`; }}).join(""); }}
+    function renderTabs(active=tabForPhase(processData?.current_phase_code)) {{ $("#tabs").innerHTML = tabs.map(([id,labelText,phase]) => {{ const alerts = phase ? alertsForPhase(phase) : []; const done = phase && ["completed","validated","completed_with_pending_items"].includes(phaseStatus(phase)); return `<button class="tab ${{id === active ? "active" : ""}} ${{alerts.length ? "incomplete" : ""}} ${{done ? "done-phase" : ""}}" onclick="showTab('${{id}}')">${{done ? "✓ " : ""}}${{safe(labelText)}}${{alerts.length ? `<span class="tab-count" aria-label="${{alerts.length}} alertas"><span class="alert-triangle"></span>${{alerts.length}}</span>` : ""}}</button>`; }}).join(""); }}
     function renderPhaseAlerts(id) {{
       const tab = tabs.find(item => item[0] === id);
       const phase = tab?.[2];

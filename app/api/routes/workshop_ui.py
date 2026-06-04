@@ -1337,7 +1337,7 @@ def workshop_process_manage_page(process_id: int) -> str:
             <div id="result" class="result"></div>
           </section>
         </div>
-        <div class="panel sticky"><div class="section-title"><h2>Resumo do processo</h2><span id="statusChip" class="chip">-</span></div><div id="summary"></div></div>
+        <div class="panel sticky"><div class="section-title"><h2>Resumo do processo</h2><span id="statusChip" class="chip">-</span></div><div id="documentFolder"></div><div id="summary"></div></div>
       </div>
     </main>
   </div>
@@ -1820,6 +1820,29 @@ def workshop_process_manage_page(process_id: int) -> str:
         </div>
       `;
     }}
+    function renderDocumentFolder() {{
+      const folder = processData.document_folder || {{}};
+      const path = folder.path || "";
+      const holder = document.querySelector("#documentFolder");
+      if (!holder) return;
+      holder.innerHTML = `
+        <div class="summary-block">
+          <div class="summary-title"><h3>Pasta documental</h3>${{chip(folder.status || "defined")}}</div>
+          <ul class="plain-list"><li style="display:block"><span>Pasta base Oficina</span><br><small class="muted">${{safe(path || "Pasta por definir")}}</small></li></ul>
+          <button type="button" onclick="copyDocumentFolder()">Copiar caminho</button>
+        </div>
+      `;
+    }}
+    async function copyDocumentFolder() {{
+      const path = processData?.document_folder?.path || "";
+      if (!path) return showResult(false, "Pasta documental por definir.");
+      try {{
+        await navigator.clipboard.writeText(path);
+        showResult(true, "Caminho da pasta copiado.");
+      }} catch {{
+        showResult(false, path);
+      }}
+    }}
     function renderPhaseMemory() {{
       const reception = phaseData("administrative_reception");
       memory("#receptionMemory", [["KM entrada", reception.km_entry], ["Foto quadrante", reception.quadrant_photo_link], ["Estado visual", reception.visible_damage_status], ["Danos", reception.damage_description], ["Observação", reception.initial_observation]]);
@@ -1856,7 +1879,7 @@ def workshop_process_manage_page(process_id: int) -> str:
       updateServiceFormFields();
       updateReportPreview();
     }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const activeTab = document.querySelector(".tab.active")?.dataset.tab || "reception"; document.querySelector("#header").innerHTML = `<div class="process-heading"><a class="back-button" href="/workshop/processes-ui">Voltar</a><div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseTabs(activeTab); renderPhaseMemory(); renderReportTypeCards(); activateTab(activeTab); if (!selectedReportType && processData.technical_reports?.length) {{ const first = [...processData.technical_reports].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0]; selectedReportType = first.report_code; if (document.querySelector("#reports").classList.contains("active")) selectReport(first.id); else renderReportTypeCards(); }} }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const activeTab = document.querySelector(".tab.active")?.dataset.tab || "reception"; document.querySelector("#header").innerHTML = `<div class="process-heading"><a class="back-button" href="/workshop/processes-ui">Voltar</a><div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderDocumentFolder(); renderSummary(); renderPhaseTabs(activeTab); renderPhaseMemory(); renderReportTypeCards(); activateTab(activeTab); if (!selectedReportType && processData.technical_reports?.length) {{ const first = [...processData.technical_reports].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0]; selectedReportType = first.report_code; if (document.querySelector("#reports").classList.contains("active")) selectReport(first.id); else renderReportTypeCards(); }} }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), service_box_checked:payloadValue("#histServiceBox"), service_box_link:payloadValue("#histServiceBoxLink"), campaigns_checked:payloadValue("#histCampaigns"), campaigns_link:payloadValue("#histCampaignsLink"), maintenance_plan_checked:payloadValue("#histMaintenancePlan"), maintenance_plan_link:payloadValue("#histMaintenancePlanLink"), history_observation:payloadValue("#histObs")}}); showResult(true, "Verificações confirmadas."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}

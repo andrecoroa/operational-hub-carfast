@@ -59,6 +59,10 @@ CHECK_LABELS = {check["code"]: check["label"] for check in TECHNICAL_CHECKS}
 CHECK_STATUSES = {"ok", "not_ok", "not_applicable", "pending_review"}
 READING_ORIGINS = {"stellantis_machine", "autel", "other"}
 REPORT_MOMENTS = {"initial", "final"}
+WORKSHOP_DOCUMENTS_BASE_PATH = (
+    r"C:\Users\andre\OneDrive - D'accord Invest - Serviços Partilhados SA"
+    r"\CARFAST - OFICINA - OFICINA\CarFast v2 - Oficina\Documentos Processos"
+)
 STELLANTIS_BRANDS = {
     "abarth",
     "alfa romeo",
@@ -651,7 +655,12 @@ def create_phased_workshop_process(
         responsible_user_id=creation.responsible_user_id,
         created_by_id=creation.created_by_id,
         scheduled_at=creation.scheduled_at,
-        metadata_json={"title_source": "manual" if "other" in service_codes else "automatic"},
+        metadata_json={
+            "title_source": "manual" if "other" in service_codes else "automatic",
+            "document_folder_path": WORKSHOP_DOCUMENTS_BASE_PATH,
+            "document_folder_scope": "workshop_shared",
+            "document_folder_status": "defined",
+        },
     )
     db.add(process)
     db.flush()
@@ -1585,6 +1594,17 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
                 "updated_at": process.updated_at,
                 "closed_at": process.closed_at,
                 "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+                "document_folder": {
+                    "path": (process.metadata_json or {}).get(
+                        "document_folder_path", WORKSHOP_DOCUMENTS_BASE_PATH
+                    ),
+                    "scope": (process.metadata_json or {}).get(
+                        "document_folder_scope", "workshop_shared"
+                    ),
+                    "status": (process.metadata_json or {}).get(
+                        "document_folder_status", "defined"
+                    ),
+                },
                 "services_label": " + ".join(
                     service.service_label for service in services if service.service_label
                 ),
@@ -1663,6 +1683,17 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         "created_at": process.created_at,
         "closed_at": process.closed_at,
         "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+        "document_folder": {
+            "path": (process.metadata_json or {}).get(
+                "document_folder_path", WORKSHOP_DOCUMENTS_BASE_PATH
+            ),
+            "scope": (process.metadata_json or {}).get(
+                "document_folder_scope", "workshop_shared"
+            ),
+            "status": (process.metadata_json or {}).get(
+                "document_folder_status", "defined"
+            ),
+        },
         "services_label": " + ".join(
             service.service_label for service in services if service.service_label
         ),

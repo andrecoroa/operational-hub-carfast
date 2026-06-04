@@ -2023,33 +2023,43 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     button, input, select, textarea, a.button {{ font:inherit; }}
     .shell {{ min-height:100vh; }}
     .topbar {{ display:flex; justify-content:space-between; gap:18px; align-items:center; padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); }}
-    .heading {{ display:grid; grid-template-columns:42px minmax(0,1fr); gap:16px; align-items:center; }}
+    .heading {{ display:grid; grid-template-columns:42px minmax(0,1fr); gap:16px; align-items:center; min-width:0; }}
     .back {{ display:grid; place-items:center; width:38px; height:38px; border:0; border-radius:8px; background:#fff; color:var(--text); text-decoration:none; font-size:30px; line-height:1; }}
     .back:hover {{ background:var(--brand-soft); color:#7d2f1f; }}
     h1 {{ margin:0 0 6px; font-size:26px; line-height:1.1; }}
     h2 {{ margin:0; font-size:21px; }}
     h3 {{ margin:0; font-size:17px; }}
     p {{ margin:0; }}
-    .meta {{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; color:var(--muted); font-weight:750; }}
+    .meta {{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; color:var(--muted); font-weight:750; min-width:0; }}
     .meta strong {{ color:var(--text); }}
-    .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
+    .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; flex:0 0 auto; }}
     .button, button {{ min-height:42px; border:1px solid var(--line2); border-radius:8px; background:#fff; color:var(--text); padding:9px 14px; font-weight:850; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; }}
     .button[aria-disabled="true"] {{ opacity:.48; pointer-events:none; }}
     .primary {{ background:var(--brand); border-color:var(--brand); color:#fff; }}
     .ghost {{ border-color:transparent; background:#fff; font-size:22px; width:44px; padding:0; }}
-    .content {{ display:grid; grid-template-columns:minmax(0,1fr) 370px; gap:20px; padding:22px 28px 42px; }}
-    .main {{ display:grid; gap:18px; }}
+    .content {{ display:block; padding:22px 28px 42px; }}
+    .main {{ display:grid; gap:16px; width:100%; }}
     .tabs {{ display:grid; grid-template-columns:repeat(8,minmax(88px,1fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }}
-    .tab {{ min-height:58px; border:0; border-left:1px solid var(--line); border-radius:0; background:#fff; font-size:18px; color:var(--text); position:relative; }}
+    .tab {{ min-height:46px; border:0; border-left:1px solid var(--line); border-radius:0; background:#fff; font-size:15px; color:var(--text); position:relative; padding:8px 9px; }}
     .tab:first-child {{ border-left:0; }}
     .tab.active {{ background:var(--brand-soft); box-shadow:inset 0 0 0 1px var(--brand); color:#7d2f1f; }}
     .tab.incomplete {{ background:#fffaf1; }}
+    .tab.done-phase {{ color:var(--green); background:#fbfffc; }}
     .tab-count {{ position:absolute; top:8px; right:8px; min-width:22px; height:22px; border-radius:999px; display:grid; place-items:center; background:var(--amber-soft); color:var(--amber); font-size:12px; }}
     .panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px; }}
     .phase {{ display:none; }}
     .phase.active {{ display:grid; gap:16px; }}
     .section-head {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }}
     .muted {{ color:var(--muted); line-height:1.45; }}
+    .phase-alerts {{ display:none; border:1px solid #efd69d; border-radius:8px; background:#fffaf1; color:var(--amber); padding:10px 12px; font-weight:850; }}
+    .phase-alerts.active {{ display:block; }}
+    .field-alert {{ border-color:#d99b1f !important; box-shadow:0 0 0 2px rgba(217,155,31,.16); }}
+    .field-note {{ display:none; color:var(--amber); font-size:12px; font-weight:850; }}
+    .field-note.active {{ display:block; }}
+    .form-card {{ display:grid; gap:16px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:16px; }}
+    .accordion {{ border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px 14px; }}
+    .accordion summary {{ cursor:pointer; font-weight:950; }}
+    .accordion-body {{ display:grid; gap:12px; margin-top:12px; }}
     .cards {{ display:grid; grid-template-columns:repeat(2,minmax(260px,1fr)); gap:16px; }}
     .doc-card {{ display:grid; gap:14px; align-content:start; min-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; transition:border-color .15s, box-shadow .15s, background .15s; }}
     .doc-card.done-card {{ border-color:#cce4d2; background:#fbfffc; }}
@@ -2072,7 +2082,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     textarea {{ min-height:88px; resize:vertical; }}
     .doc-actions {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:auto; }}
     .doc-actions > * {{ flex:1 1 150px; }}
-    .side {{ display:grid; gap:18px; align-content:start; }}
+    .side {{ display:none; }}
     .side .panel {{ padding:18px; }}
     .side-title {{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }}
     .chip {{ display:inline-flex; align-items:center; justify-content:center; width:max-content; max-width:100%; min-height:28px; border-radius:999px; padding:4px 11px; background:#eef1f3; color:var(--muted); font-size:12px; font-weight:900; }}
@@ -2095,7 +2105,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     .result.ok {{ background:var(--green-soft); border-color:#b7d7be; }}
     .result.err {{ background:var(--red-soft); border-color:#e2b7b3; }}
     .placeholder {{ border:1px dashed var(--line2); border-radius:8px; padding:20px; background:#fbfcfd; color:var(--muted); font-weight:800; }}
-    @media (max-width:1200px) {{ .content {{ grid-template-columns:1fr; }} .tabs {{ grid-template-columns:repeat(4,1fr); }} }}
+    @media (max-width:1200px) {{ .tabs {{ grid-template-columns:repeat(4,1fr); }} }}
     @media (max-width:820px) {{ .topbar,.section-head {{ display:grid; }} .content {{ padding:16px; }} .cards,.grid2,.grid3,.doc-controls {{ grid-template-columns:1fr; }} .tabs {{ grid-template-columns:1fr 1fr; }} }}
   </style>
 </head>
@@ -2103,13 +2113,14 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
   <div class="shell">
     <header class="topbar">
       <div id="header" class="heading"><a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #{process_id}</h1><div class="meta">A carregar...</div></div></div>
-      <div class="actions"><button type="button" onclick="copyFolder()"><span class="icon">PA</span>Abrir pasta do processo</button><button class="ghost" type="button">...</button></div>
+      <div class="actions"><button type="button" onclick="copyFolder()"><span class="icon">PA</span>Abrir pasta</button><button type="button" onclick="copyFolder()">Copiar caminho</button><button class="ghost" type="button">...</button></div>
     </header>
     <main class="content">
       <div class="main">
         <nav id="tabs" class="tabs"></nav>
-        <section id="history" class="panel phase active">
+        <section id="history" class="panel phase">
           <div class="section-head"><div><h2>Documentos esperados</h2><p class="muted">Anexe e valide os documentos necessários para esta fase.</p></div><button class="primary" type="button" onclick="saveHistory()">Guardar verificações</button></div>
+          <div id="historyAlerts" class="phase-alerts"></div>
           <div class="cards">
             <article id="serviceBoxCard" class="doc-card">
               <div class="doc-top"><div class="doc-title"><span class="icon">SB</span>Service Box</div><span id="serviceBoxChip" class="chip review">Em falta</span></div>
@@ -2146,20 +2157,31 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
           </div>
           <details class="panel" style="padding:14px"><summary style="font-weight:900;cursor:pointer">Outras verificações</summary><div class="grid2" style="margin-top:14px"><label>Accident reports<select id="accidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label><label>Processos anteriores<select id="previous"><option value="yes">Sim</option><option value="none">Não existem</option><option value="pending_review">Por rever</option></select></label></div><label>Detalhe accident reports<input id="accidentsDetail"></label><div class="grid2"><label>Incidência repetida<select id="repeat"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por avaliar</option></select></label><label>Observação<textarea id="historyObs"></textarea></label></div></details>
         </section>
-        <section id="services" class="panel phase"><div class="section-head"><div><h2>Serviços a executar</h2><p class="muted">Adicionar trabalhos que surjam depois da criação do processo.</p></div></div><div id="serviceList" class="list"></div><div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div><label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label><button class="primary" onclick="addService()">Adicionar serviço</button></section>
-        <section id="reports" class="panel phase"><div class="section-head"><div><h2>Relatórios técnicos</h2><p class="muted">Selecione um relatório existente ou adicione um novo para validação.</p></div></div><div id="reportList" class="list"></div><div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div><label>Link relatório original<input id="reportLink" placeholder="https://..."></label><div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div><div class="actions" style="justify-content:flex-start"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="validateSelectedReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div></section>
-        <section id="reception" class="panel phase"><h2>Receção</h2><div class="placeholder">Esta fase fica na nova estrutura visual. Para edição detalhada, mantém-se disponível na vista atual até migrarmos todos os campos.</div></section>
+        <section id="services" class="panel phase"><div class="section-head"><div><h2>Serviços a executar</h2><p class="muted">Adicionar trabalhos que surjam depois da criação do processo.</p></div><button class="primary" onclick="addService()">Adicionar serviço</button></div><div id="servicesAlerts" class="phase-alerts"></div><div id="serviceList" class="list"></div><div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div><label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label></section>
+        <section id="reports" class="panel phase"><div class="section-head"><div><h2>Relatórios técnicos</h2><p class="muted">Selecione um relatório existente ou adicione um novo para validação.</p></div></div><div id="reportsAlerts" class="phase-alerts"></div><div id="reportList" class="list"></div><div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div><label>Link relatório original<input id="reportLink" placeholder="https://..."></label><div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div><div class="actions" style="justify-content:flex-start"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="validateSelectedReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div></section>
+        <section id="reception" class="panel phase active">
+          <div class="section-head"><div><h2>Receção</h2><p class="muted">Registar apenas os dados necessários para iniciar o processo.</p></div><div class="actions"><button onclick="saveReception()">Guardar</button><button class="primary" onclick="advanceReception()">Avançar</button></div></div>
+          <div id="receptionAlerts" class="phase-alerts"></div>
+          <div class="form-card">
+            <h3>Dados principais</h3>
+            <div class="grid3">
+              <label>Responsável<input id="recResponsible" placeholder="Responsável pela receção"><span id="recResponsibleNote" class="field-note">Responsável em falta.</span></label>
+              <label>Data entrada<input id="recDate" readonly></label>
+              <label>Quilómetros<input id="recKm" type="number" min="0"><span id="recKmNote" class="field-note">Quilómetros em falta.</span></label>
+            </div>
+            <label>Observação inicial<textarea id="recObs" placeholder="Observação curta da entrada"></textarea><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label>
+          </div>
+          <details class="accordion"><summary>Dados do cliente</summary><div class="accordion-body grid2"><label>Origem<input id="recOrigin" readonly></label><label>Unidade Rentway<input id="recUnit" readonly></label></div></details>
+          <details class="accordion"><summary>Estado da viatura</summary><div class="accordion-body grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Descrição resumida"></label></div></details>
+          <details class="accordion"><summary>Fotografias</summary><div class="accordion-body"><label>Foto quadrante inicial<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label></div></details>
+          <details class="accordion"><summary>Outros dados da receção</summary><div class="accordion-body"><div class="placeholder">Campos administrativos adicionais podem ser migrados aqui sem pesar a entrada principal.</div></div></details>
+        </section>
         <section id="decision" class="panel phase"><h2>Decisão</h2><div class="placeholder">Diagnóstico e decisão serão migrados para cartões de decisão e responsabilidade.</div></section>
         <section id="budget" class="panel phase"><h2>Orçamento</h2><div class="placeholder">Orçamentos e aprovações serão migrados para uma grelha compacta.</div></section>
         <section id="repair" class="panel phase"><h2>Reparação</h2><div class="placeholder">Execução e evidências finais serão migradas mantendo os mesmos endpoints.</div></section>
         <section id="close" class="panel phase"><h2>Fecho</h2><div class="placeholder">Fecho definitivo e relatório de saída serão migrados no mesmo layout.</div></section>
         <div id="result" class="result"></div>
       </div>
-      <aside class="side">
-        <section class="panel"><div class="side-title"><span class="icon">PA</span><h2>Pasta documental</h2></div><div id="folderPath" class="folder-path">A carregar...</div><div class="grid2" style="margin-top:12px"><button onclick="copyFolder()">Abrir pasta</button><button onclick="copyFolder()">Copiar caminho</button></div></section>
-        <section class="panel"><div class="side-title"><span class="icon">AL</span><h2>Alertas</h2><span id="alertCount" class="chip review">0</span></div><ul id="alerts" class="list"></ul></section>
-        <section class="panel"><button style="width:100%" onclick="showTab('reports')">Ver todos os documentos <span id="documentCount" class="chip neutral">0</span></button></section>
-      </aside>
     </main>
   </div>
   <script>
@@ -2186,8 +2208,44 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     async function requestJson(url, method, body) {{ const res = await fetch(url, {{method, headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await res.json(); if(!res.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
     function phaseByCode(code) {{ return processData?.phases?.find(p => p.phase_code === code) || null; }}
     function alertsForPhase(code) {{ const phase = phaseByCode(code); return (processData?.alerts || []).filter(a => a.phase_id === phase?.id || a.source === code); }}
-    function renderTabs(active="history") {{ $("#tabs").innerHTML = tabs.map(([id,labelText,phase]) => {{ const alerts = phase ? alertsForPhase(phase) : []; return `<button class="tab ${{id === active ? "active" : ""}} ${{alerts.length ? "incomplete" : ""}}" onclick="showTab('${{id}}')">${{safe(labelText)}}${{alerts.length ? `<span class="tab-count">${{alerts.length}}</span>` : ""}}</button>`; }}).join(""); }}
-    function showTab(id) {{ document.querySelectorAll(".phase,.tab").forEach(el => el.classList.remove("active")); $(`#${{id}}`)?.classList.add("active"); renderTabs(id); }}
+    function tabForPhase(code) {{ return tabs.find(([, , phase]) => phase === code)?.[0] || "reception"; }}
+    function phaseStatus(code) {{ return phaseByCode(code)?.status || ""; }}
+    function renderTabs(active=tabForPhase(processData?.current_phase_code)) {{ $("#tabs").innerHTML = tabs.map(([id,labelText,phase]) => {{ const alerts = phase ? alertsForPhase(phase) : []; const done = phase && ["completed","validated","completed_with_pending_items"].includes(phaseStatus(phase)); return `<button class="tab ${{id === active ? "active" : ""}} ${{alerts.length ? "incomplete" : ""}} ${{done ? "done-phase" : ""}}" onclick="showTab('${{id}}')">${{done ? "✓ " : ""}}${{safe(labelText)}}${{alerts.length ? `<span class="tab-count">⚠ ${{alerts.length}}</span>` : ""}}</button>`; }}).join(""); }}
+    function renderPhaseAlerts(id) {{
+      const tab = tabs.find(item => item[0] === id);
+      const phase = tab?.[2];
+      const holder = $(`#${{id}}Alerts`);
+      if (!holder) return;
+      const alerts = phase ? alertsForPhase(phase) : [];
+      holder.classList.toggle("active", Boolean(alerts.length));
+      holder.textContent = alerts.length ? alerts.map(a => a.message).join(" · ") : "";
+    }}
+    function setFieldAlert(fieldId, noteId, active) {{
+      const field = $(fieldId);
+      const note = $(noteId);
+      if (field) field.classList.toggle("field-alert", Boolean(active));
+      if (note) note.classList.toggle("active", Boolean(active));
+    }}
+    function highlightMissingFields(id) {{
+      setFieldAlert("#recObs", "#recObsNote", false);
+      setFieldAlert("#recPhoto", "#recPhotoNote", false);
+      setFieldAlert("#recKm", "#recKmNote", false);
+      setFieldAlert("#recResponsible", "#recResponsibleNote", false);
+      if (id !== "reception") return;
+      const alerts = alertsForPhase("administrative_reception");
+      const text = alerts.map(a => `${{a.code || ""}} ${{a.message || ""}}`).join(" ").toLowerCase();
+      setFieldAlert("#recObs", "#recObsNote", text.includes("observ"));
+      setFieldAlert("#recPhoto", "#recPhotoNote", text.includes("foto") || text.includes("quadrante"));
+      setFieldAlert("#recKm", "#recKmNote", text.includes("km") || text.includes("quil"));
+      setFieldAlert("#recResponsible", "#recResponsibleNote", text.includes("respons"));
+    }}
+    function showTab(id) {{
+      document.querySelectorAll(".phase,.tab").forEach(el => el.classList.remove("active"));
+      $(`#${{id}}`)?.classList.add("active");
+      renderTabs(id);
+      renderPhaseAlerts(id);
+      highlightMissingFields(id);
+    }}
     function docStatus(value, link, emptyLabel="Em falta") {{ if (value === "not_applicable") return ["Não aplicável","neutral"]; if (value === "no" || value === "yes") return ["Validado","done"]; if (value === "evidence_link" && link) return ["Por validar","review"]; if (value === "evidence_link") return [emptyLabel,"danger"]; return [emptyLabel,"review"]; }}
     function setChip(id, data) {{ const el = $(id); if (!el) return; el.textContent = data[0]; el.className = `chip ${{data[1]}}`; }}
     function setCardState(id, tone) {{
@@ -2231,16 +2289,37 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
       updateOpen("#serviceBoxOpen", value("#serviceBoxLink")); updateOpen("#campaignsOpen", value("#campaignsLink")); updateOpen("#planOpen", value("#planLink")); updateOpen("#reportOpen", value("#reportLink"));
     }}
     function markLink(prefix) {{ $(`#${{prefix}}`).value = "evidence_link"; renderVerificationCards(); }}
-    function renderHeader() {{ const v = processData.vehicle || {{}}; const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const status = meta(processData.status); const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-"; $("#header").innerHTML = `<a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #${{processData.id}}</h1><div class="meta"><span>▱ <strong>${{safe(v.plate || processData.plate)}}</strong></span><span>|</span><span>${{safe(model || "Dados da viatura por completar")}}</span><span>|</span><span>Unidade ${{safe(v.rentway_unit_nr || "-")}}</span><span>|</span><span>${{safe(processData.initial_km || "-")}} km</span><span class="chip ${{status[1]}}">${{safe(status[0])}}</span><span>Fase atual: <strong>${{safe(current)}}</strong></span></div></div>`; }}
-    function renderSidebar() {{ const folder = processData.document_folder || {{}}; $("#folderPath").textContent = folder.path || "Pasta por definir"; const alerts = Array.from(new Map((processData.alerts || []).map(a => [`${{a.code}}:${{a.message}}`, a])).values()); $("#alertCount").textContent = alerts.length; $("#alerts").innerHTML = alerts.map(a => `<li class="alert-item ${{["high","critical"].includes(a.severity) ? "danger-alert" : ""}}"><span class="alert-dot"></span><span>${{safe(a.message)}}<br><small class="muted">${{safe(a.source || "processo")}}</small></span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas abertos</li>"; $("#documentCount").textContent = processData.technical_reports?.length || 0; }}
+    function renderHeader() {{ const v = processData.vehicle || {{}}; const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const status = meta(processData.status); const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-"; $("#header").innerHTML = `<a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #${{processData.id}}</h1><div class="meta"><span><strong>${{safe(v.plate || processData.plate)}}</strong></span><span>|</span><span>VIN ${{safe(v.vin || "-")}}</span><span>|</span><span>${{safe(model || "Dados da viatura por completar")}}</span><span>|</span><span>Unidade ${{safe(v.rentway_unit_nr || "-")}}</span><span>|</span><span>${{safe(processData.initial_km || "-")}} km</span><span>|</span><span>Estado: <strong>${{safe(status[0])}}</strong></span><span>|</span><span>Fase atual: <strong>${{safe(current)}}</strong></span></div></div>`; }}
+    function renderSidebar() {{
+      const folder = processData.document_folder || {{}};
+      if ($("#folderPath")) $("#folderPath").textContent = folder.path || "Pasta por definir";
+      if ($("#alertCount")) $("#alertCount").textContent = processData.alerts?.length || 0;
+      if ($("#alerts")) $("#alerts").innerHTML = "";
+      if ($("#documentCount")) $("#documentCount").textContent = processData.technical_reports?.length || 0;
+    }}
     function renderServices() {{ $("#serviceList").innerHTML = (processData.services || []).map(s => `<div class="service-row"><div><strong>${{safe(s.service_label)}}</strong><p class="muted">${{safe([s.zone,s.detail,s.short_observation].filter(Boolean).join(" · "))}}</p></div><span class="chip neutral">#${{s.sort_order || s.id}}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`; }}
     function reportName(code) {{ return (config?.stellantis_reports || []).find(r => r.code === code)?.label || code || "Relatório"; }}
     function renderReports() {{ const reports = processData.technical_reports || []; $("#reportList").innerHTML = reports.map(r => `<button class="report-row" onclick="selectReport(${{r.id}})"><span><strong>#${{r.id}} ${{safe(r.report_name || reportName(r.report_code))}}</strong><p class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</p></span>${{chip(r.status)}}</button>`).join("") || `<div class="placeholder">Sem relatórios registados.</div>`; }}
+    function renderReceptionValues() {{
+      const v = processData.vehicle || {{}};
+      const r = phaseByCode("administrative_reception")?.data || {{}};
+      setValue("#recResponsible", r.responsible_name || "");
+      setValue("#recDate", r.entry_date || processData.created_at || "");
+      setValue("#recKm", r.km_entry || processData.initial_km || "");
+      setValue("#recObs", r.initial_observation || "");
+      setValue("#recOrigin", processData.source || "");
+      setValue("#recUnit", v.rentway_unit_nr || "");
+      setValue("#recVisual", r.visible_damage_status || "");
+      setValue("#recDamage", r.damage_description || "");
+      setValue("#recPhoto", r.quadrant_photo_link || "");
+    }}
     function renderHistoryValues() {{ const h = phaseByCode("history_check")?.data || {{}}; setValue("#internal", h.internal_history_checked || "pending_review"); setValue("#accidents", h.open_accident_reports || "no"); setValue("#accidentsDetail", h.accident_reports_detail); setValue("#previous", h.previous_processes_reviewed || "yes"); setValue("#repeat", h.repeated_incidence || "no"); setValue("#historyObs", h.history_observation); setValue("#serviceBox", h.service_box_checked || "pending_review"); setValue("#serviceBoxLink", h.service_box_link); setValue("#campaigns", h.campaigns_checked || "pending_review"); setValue("#campaignsLink", h.campaigns_link); setValue("#plan", h.maintenance_plan_checked || "pending_review"); setValue("#planLink", h.maintenance_plan_link); renderVerificationCards(); }}
     async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); $("#serviceCode").innerHTML = (config.services || []).map(s => `<option value="${{s.code}}">${{safe(s.label)}}</option>`).join(""); $("#reportCode").innerHTML = (config.stellantis_reports || []).map(r => `<option value="${{r.code}}">${{safe(r.label)}}</option>`).join(""); ["#serviceBox","#serviceBoxLink","#campaigns","#campaignsLink","#plan","#planLink","#internal","#reportLink"].forEach(id => $(id)?.addEventListener("input", renderVerificationCards)); }}
-    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); renderHeader(); renderSidebar(); renderTabs(document.querySelector(".phase.active")?.id || "history"); renderServices(); renderReports(); renderHistoryValues(); }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const active = document.querySelector(".phase.active")?.id || tabForPhase(processData.current_phase_code); renderHeader(); renderSidebar(); renderServices(); renderReports(); renderReceptionValues(); renderHistoryValues(); showTab(active); }}
     async function copyFolder() {{ const path = processData?.document_folder?.path || ""; if (!path) return showResult(false, "Pasta documental por definir."); try {{ await navigator.clipboard.writeText(path); showResult(true, "Caminho da pasta copiado."); }} catch {{ showResult(false, path); }} }}
     async function saveHistory() {{ try {{ await requestJson(`/api/workshop/processes/${{processId}}/history-check`, "POST", {{internal_history_checked:value("#internal"), open_accident_reports:value("#accidents"), accident_reports_detail:value("#accidentsDetail"), previous_processes_reviewed:value("#previous"), relevant_interventions_identified:"no", repeated_incidence:value("#repeat"), service_box_checked:value("#serviceBox"), service_box_link:value("#serviceBoxLink"), campaigns_checked:value("#campaigns"), campaigns_link:value("#campaignsLink"), maintenance_plan_checked:value("#plan"), maintenance_plan_link:value("#planLink"), history_observation:value("#historyObs")}}); showResult(true, "Verificações guardadas."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function saveReception() {{ try {{ await requestJson(`/api/workshop/processes/${{processId}}/reception`, "POST", {{km_entry:Number(value("#recKm")) || null, quadrant_photo_link:value("#recPhoto"), initial_observation:value("#recObs"), visible_damage_status:value("#recVisual"), damage_description:value("#recDamage")}}); showResult(true, "Receção guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function advanceReception() {{ await saveReception(); showTab("services"); }}
     async function addService() {{ try {{ await requestJson(`/api/workshop/processes/${{processId}}/services`, "POST", {{service_code:value("#serviceCode"), zone:value("#serviceZone"), detail:value("#serviceDetail"), short_observation:value("#serviceObservation")}}); setValue("#serviceZone",""); setValue("#serviceDetail",""); setValue("#serviceObservation",""); showResult(true, "Serviço adicionado."); }} catch(e) {{ showResult(false, e.message); }} }}
     function parseJson(id) {{ const raw = value(id); if (!raw) return {{}}; return JSON.parse(raw); }}
     function selectReport(id) {{ const r = (processData.technical_reports || []).find(item => item.id === id); if (!r) return; selectedReportId = id; setValue("#reportCode", r.report_code); setValue("#reportMoment", r.report_moment); setValue("#reportOrigin", r.reading_origin); setValue("#reportLink", r.original_link); setValue("#reportValues", JSON.stringify(r.extracted_values || {{}}, null, 2)); setValue("#validateValues", JSON.stringify(r.validated_values || r.extracted_values || {{}}, null, 2)); renderVerificationCards(); showTab("reports"); }}

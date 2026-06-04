@@ -5,6 +5,18 @@ from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
+from app.models.management_center import (
+    ClaimIncident,
+    ClaimRefstroLine,
+    ClaimRentwayAR,
+    ManagementAction,
+    ManagementEvidence,
+    ManagementHistory,
+    ManagementProcess,
+    ManagementProcessAssociation,
+    ManagementProcessType,
+    ManagementRule,
+)
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.settings import SettingsCatalog, SettingsValue
@@ -46,6 +58,9 @@ from app.models.workshop_phased import (
 __all__ = [
     "AuditLog",
     "Base",
+    "ClaimIncident",
+    "ClaimRefstroLine",
+    "ClaimRentwayAR",
     "Document",
     "DocumentEvent",
     "DocumentLink",
@@ -59,6 +74,13 @@ __all__ = [
     "ImportFile",
     "ImportMapping",
     "ImportRawRow",
+    "ManagementAction",
+    "ManagementEvidence",
+    "ManagementHistory",
+    "ManagementProcess",
+    "ManagementProcessAssociation",
+    "ManagementProcessType",
+    "ManagementRule",
     "OrganizationalUnit",
     "Permission",
     "PilotFeedback",

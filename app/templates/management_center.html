@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "management_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content management-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Gestão transversal</p>
+        <h2>Centro de Gestão e Acompanhamento</h2>
+        <p class="breadcrumb">Processos críticos, regras, pendências, SLAs, auditoria e ações guiadas.</p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "management_center" %}
+        {% set feedback_return_url = "/management-center" %}
+        {% include "_pilot_actions.html" %}
+      </div>
+    </header>
+
+    {% if imported %}
+      <section class="notice-inline">
+        {% if imported == "invalid_file" %}
+          <strong>Ficheiro inválido.</strong> Carrega XLSX ou CSV.
+        {% elif imported == "invalid_kind" %}
+          <strong>Tipo inválido.</strong> Escolhe AR Rentway ou REFSTRO.
+        {% else %}
+          <strong>Importação concluída.</strong> Lote #{{ imported }} registado.
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <section class="management-type-strip">
+      <div>
+        <p class="eyebrow">Tipo de processo ativo</p>
+        <strong>{{ process_type.name }}</strong>
+        <span>Primeiro fluxo operacional ligado ao Centro transversal.</span>
+      </div>
+      <a class="button-link secondary-link" href="#processos">Ver processos</a>
+    </section>
+
+    <section class="metric-grid management-kpis">
+      <a class="metric" href="/management-center">
+        <span class="metric-icon blue">PRC</span>
+        <span class="metric-detail"><strong>{{ metrics.total }}</strong><span>Processos registados</span><small>{{ metrics.open }} em acompanhamento</small></span>
+      </a>
+      <a class="metric" href="/management-center?pending=missing_ar">
+        <span class="metric-icon warn">PEN</span>
+        <span class="metric-detail"><strong>{{ metrics.missing_ar }}</strong><span>Pendências críticas</span><small>Inclui processos com AR em falta</small></span>
+      </a>
+      <a class="metric" href="/management-center?pending=missing_ar">
+        <span class="metric-icon amber">!</span>
+        <span class="metric-detail"><strong>{{ metrics.mandatory_actions }}</strong><span>Ações obrigatórias</span><small>Pendências abertas</small></span>
+      </a>
+      <span class="metric">
+        <span class="metric-icon green">€</span>
+        <span class="metric-detail"><strong>{{ "%.2f"|format(metrics.value) }}</strong><span>Valor em acompanhamento</span><small>Dados do tipo ativo</small></span>
+      </span>
+    </section>
+
+    <nav class="task-content-tabs management-tabs">
+      <a class="active" href="/management-center"><strong>Visão Geral</strong><span>Processos</span></a>
+      <a href="#processos"><strong>Processos</strong><span>Lista filtrável</span></a>
+      <a href="#indicadores"><strong>Indicadores</strong><span>Prioridades</span></a>
+      <a href="#slas"><strong>SLAs</strong><span>Ações abertas</span></a>
+      <a href="#auditoria"><strong>Auditoria</strong><span>Importações</span></a>
+      <a href="#regras"><strong>Regras</strong><span>Aplicáveis</span></a>
+    </nav>
+
+    <section class="management-grid">
+      <article class="cockpit-panel" id="indicadores">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Prioridade transversal</p>
+            <h3>Processos que pedem acompanhamento</h3>
+          </div>
+          <a class="table-link" href="/management-center?pending=missing_ar">Pendências críticas</a>
+        </div>
+        <div class="operation-list">
+          {% for process in priority_processes %}
+            <a class="operation-item" href="/management-center/{{ process.id }}">
+              <span class="operation-code">
+                <strong>{{ process.internal_reference }}</strong>
+                <small>{{ phase_labels.get(process.phase, process.phase) }}</small>
+              </span>
+              <span class="operation-main">
+                <strong>{{ process.title }}</strong>
+                <small>{{ process.plate or process.document_reference or "Sem referência operacional" }}</small>
+              </span>
+              <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
+            </a>
+          {% else %}
+            <p class="muted empty-panel">Sem processos prioritários.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Resumo operacional</p>
+            <h3>Modelo do Centro</h3>
+          </div>
+        </div>
+        <dl class="detail-list management-summary-list">
+          <div><dt>Processo</dt><dd>Unidade central de acompanhamento, independente da origem dos dados.</dd></div>
+          <div><dt>Tipo</dt><dd>Cada processo pertence a um tipo com regras próprias.</dd></div>
+          <div><dt>Auditoria</dt><dd>Alterações e associações ficam registadas no histórico.</dd></div>
+          <div><dt>Ações</dt><dd>Pendências geram ações guiadas, obrigatórias quando aplicável.</dd></div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="section management-import-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Ferramentas do tipo ativo</p>
+          <h3>Importação e associação de dados</h3>
+          <p class="breadcrumb">Disponível para {{ process_type.name }}. Outros tipos poderão ter ferramentas próprias.</p>
+        </div>
+      </div>
+      <form class="management-import-form" method="post" action="/management-center/import" enctype="multipart/form-data">
+        <label>
+          Tipo
+          <select name="import_kind">
+            <option value="refstro">REFSTRO / linhas de sinistro</option>
+            <option value="ar">AR Rentway</option>
+          </select>
+        </label>
+        <label>
+          Ficheiro
+          <input type="file" name="file" accept=".xlsx,.csv" required>
+        </label>
+        <button type="submit">Importar</button>
+      </form>
+    </section>
+
+    <section class="section" id="processos">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Processos</p>
+          <h3>Vista operacional por tipo, estado, documento, entidade, pendência e valor</h3>
+        </div>
+      </div>
+      <form class="management-filter-form" method="get" action="/management-center">
+        <label>
+          Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in status_labels.items() %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
+        <label>Documento<input name="document" value="{{ filters.document }}"></label>
+        <label>Cliente<input name="customer" value="{{ filters.customer }}"></label>
+        <label>Condutor<input name="driver" value="{{ filters.driver }}"></label>
+        <label>
+          Pendência
+          <select name="pending">
+            <option value="">Todas</option>
+            <option value="missing_ar" {% if filters.pending == "missing_ar" %}selected{% endif %}>AR em falta</option>
+            <option value="missing_minimum_data" {% if filters.pending == "missing_minimum_data" %}selected{% endif %}>Dados mínimos em falta</option>
+          </select>
+        </label>
+        <button type="submit">Filtrar</button>
+        <a class="button-link secondary-link" href="/management-center">Limpar</a>
+      </form>
+
+      <div class="table-shell management-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Referência</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Matrícula</th>
+              <th>Cliente / condutor</th>
+              <th>Documento</th>
+              <th>Ligações</th>
+              <th>Valor</th>
+              <th>Pendência</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for process in processes %}
+              <tr>
+                <td><a class="table-link" href="/management-center/{{ process.id }}">{{ process.internal_reference }}</a></td>
+                <td>{{ process_type.name }}</td>
+                <td>
+                  <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
+                  <small>{{ phase_labels.get(process.phase, process.phase) }}</small>
+                </td>
+                <td>{{ process.plate or "-" }}</td>
+                <td>
+                  <strong>{{ process.customer_name or "-" }}</strong>
+                  <small>{{ process.driver_name or "-" }}</small>
+                </td>
+                <td>{{ process.document_reference or "-" }}</td>
+                <td>
+                  <strong>{{ counts[process.id].ar }} AR</strong>
+                  <small>{{ counts[process.id].refstro }} REFSTRO · {{ counts[process.id].actions }} ações</small>
+                </td>
+                <td>{{ "%.2f"|format(process.total_claim_value or 0) }}</td>
+                <td>{{ pending_labels.get(process.pending_reason, process.pending_reason or "-") }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="muted">Ainda não existem processos para estes filtros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="management-grid" id="auditoria">
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Auditoria</p>
+            <h3>Importações recentes</h3>
+          </div>
+          <a class="table-link" href="/imports?type={{ REFSTRO_IMPORT_TYPE }}">Histórico</a>
+        </div>
+        <div class="operation-list">
+          {% for batch in recent_imports %}
+            <a class="operation-item" href="/imports/{{ batch.id }}">
+              <span class="operation-code">
+                <strong>#{{ batch.id }}</strong>
+                <small>{{ management_import_type_labels.get(batch.import_type, batch.import_type) }}</small>
+              </span>
+              <span class="operation-main">
+                <strong>{{ batch.detail or batch.status }}</strong>
+                <small>{{ batch.finished_at.strftime("%d/%m/%Y %H:%M") if batch.finished_at else "-" }}</small>
+              </span>
+              <span class="pill status-{{ batch.status }}">{{ import_status_labels.get(batch.status, batch.status) }}</span>
+            </a>
+          {% else %}
+            <p class="muted empty-panel">Sem importações recentes.</p>
+          {% endfor %}
+        </div>
+      </article>
+      <article class="cockpit-panel" id="slas">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">SLAs</p>
+            <h3>Critérios do MVP</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          <div><dt>AR em falta</dt><dd>Obrigatório quando existe matrícula e data.</dd></div>
+          <div><dt>Dados mínimos</dt><dd>Pedido de informação, sem alerta operacional.</dd></div>
+          <div><dt>Fecho Rentway</dt><dd>Validação interna antes de fechar o SIN.</dd></div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="section" id="regras">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Regras</p>
+          <h3>Regras do tipo ativo</h3>
+          <p class="breadcrumb">Estas regras são específicas de {{ process_type.name }} dentro do Centro transversal.</p>
+        </div>
+      </div>
+      <div class="management-rule-list compact-rules">
+        {% for rule in rules %}
+          <article>
+            <span class="pill severity-{{ rule.severity }}">{{ severity_labels.get(rule.severity, rule.severity) }}</span>
+            <strong>{{ rule.title }}</strong>
+            <p>{{ rule.description }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

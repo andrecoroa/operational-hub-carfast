@@ -1274,6 +1274,213 @@ button:hover,
   padding: 18px 20px;
 }
 
+.notice-inline {
+  margin-bottom: 18px;
+  border: 1px solid #cfe0f8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--blue-soft);
+  color: var(--ink);
+}
+
+.management-content {
+  display: grid;
+  gap: 18px;
+}
+
+.management-kpis {
+  margin-bottom: 0;
+}
+
+.management-type-strip {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.035);
+}
+
+.management-type-strip > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.management-type-strip strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.management-type-strip span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.management-kpis .metric {
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.management-kpis .metric-icon {
+  width: 48px;
+  min-width: 48px;
+  font-size: 12px;
+}
+
+.management-tabs {
+  padding: 6px 0 2px;
+}
+
+.management-tabs a {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 132px;
+}
+
+.management-tabs a strong {
+  min-width: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.management-tabs a span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.management-tabs a.active strong {
+  background: transparent;
+}
+
+.management-grid,
+.management-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.management-rule-list,
+.management-action-list {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.management-summary-list {
+  padding: 16px 18px;
+}
+
+.management-summary-list div {
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.compact-rules {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.management-rule-list article,
+.management-action-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfd;
+}
+
+.management-rule-list p,
+.management-action-list p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mandatory-action {
+  border-color: #f1c7c0 !important;
+  background: var(--warn-soft) !important;
+}
+
+.management-import-panel {
+  padding: 0;
+}
+
+.management-import-form,
+.management-filter-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) auto auto;
+  gap: 12px;
+  align-items: end;
+  padding: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.management-import-form {
+  grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) auto;
+}
+
+.management-filter-form label,
+.management-import-form label {
+  min-width: 0;
+}
+
+.management-table-shell td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inactive-row {
+  color: var(--muted);
+  background: #f7f8fa;
+}
+
+.association-move-form {
+  display: grid;
+  grid-template-columns: minmax(108px, 1fr) minmax(100px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.association-move-form input,
+.association-move-form select {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.association-move-form button {
+  min-height: 36px;
+}
+
+.severity-critical {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.severity-warning {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.severity-info {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
 .admin-content .topbar {
   align-items: start;
 }
@@ -6068,6 +6275,11 @@ a.metric:hover {
   }
 
   .task-layout,
+  .management-grid,
+  .management-detail-grid,
+  .management-import-form,
+  .management-filter-form,
+  .association-move-form,
   .detail-grid,
   .admin-overview-grid,
   .admin-management-grid,
@@ -6472,6 +6684,11 @@ a.metric:hover {
   }
 
   .task-layout,
+  .management-grid,
+  .management-detail-grid,
+  .management-import-form,
+  .management-filter-form,
+  .association-move-form,
   .form-grid,
   .compact-form-grid,
   .compact-form-grid.two-col,

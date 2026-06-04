@@ -25,6 +25,17 @@ from app.models.documents import Document, DocumentEvent
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.management_center import (
+    ClaimIncident,
+    ClaimRefstroLine,
+    ClaimRentwayAR,
+    ManagementAction,
+    ManagementHistory,
+    ManagementProcess,
+    ManagementProcessAssociation,
+    ManagementProcessType,
+    ManagementRule,
+)
 from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.tasks import (
@@ -44,6 +55,17 @@ from app.models.workshop import (
     WorkshopTechnicalReading,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
+from app.services.management_center import (
+    ACTION_STATUS_LABELS,
+    AR_IMPORT_TYPE,
+    PROCESS_PHASE_LABELS,
+    PROCESS_STATUS_LABELS,
+    REFSTRO_IMPORT_TYPE,
+    end_association,
+    ensure_management_defaults,
+    import_claims_file,
+    refresh_claim_state,
+)
 from app.services.task_bulk_importer import (
     TASK_BULK_FIELDS,
     TASK_BULK_IMPORT_TYPE,
@@ -1926,12 +1948,6 @@ def dashboard(request: Request):
             Task.task_type.in_(tuple(accessible_task_types))
             if accessible_task_types
             else Task.id == -1
-        )
-        open_task_condition = (
-            task_access_condition,
-            Task.closed_at.is_(None),
-            ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
-            Task.parent_task_id.is_(None),
         )
         open_subtask_condition = (
             task_access_condition,
@@ -5582,6 +5598,440 @@ def task_bulk_import_confirm(request: Request):
         )
 
 
+def management_center_denied(request: Request, write: bool = False) -> RedirectResponse | None:
+    permissions = (
+        ("management_center.write", "admin.manage")
+        if write
+        else ("management_center.read", "management_center.write", "admin.manage")
+    )
+    return require_any_web_permission(request, *permissions)
+
+
+MANAGEMENT_PENDING_LABELS = {
+    "missing_ar": "AR em falta",
+    "missing_minimum_data": "Dados mínimos em falta",
+}
+
+MANAGEMENT_SEVERITY_LABELS = {
+    "critical": "Crítica",
+    "warning": "Atenção",
+    "info": "Informativa",
+}
+
+MANAGEMENT_IMPORT_TYPE_LABELS = {
+    AR_IMPORT_TYPE: "AR Rentway",
+    REFSTRO_IMPORT_TYPE: "REFSTRO / Sinistros",
+}
+
+IMPORT_STATUS_DISPLAY_LABELS = {
+    "pending": "Pendente",
+    "running": "Em execução",
+    "completed": "Concluída",
+    "completed_with_errors": "Concluída com erros",
+    "failed": "Falhada",
+}
+
+
+def management_process_query_filters(
+    *,
+    process_type_id: int,
+    status: str | None,
+    plate: str | None,
+    document: str | None,
+    customer: str | None,
+    driver: str | None,
+    pending: str | None,
+):
+    conditions = [ManagementProcess.process_type_id == process_type_id]
+    if status:
+        conditions.append(ManagementProcess.status == status)
+    if plate:
+        conditions.append(ManagementProcess.plate.ilike(f"%{plate.strip()}%"))
+    if document:
+        conditions.append(ManagementProcess.document_reference.ilike(f"%{document.strip()}%"))
+    if customer:
+        conditions.append(ManagementProcess.customer_name.ilike(f"%{customer.strip()}%"))
+    if driver:
+        conditions.append(ManagementProcess.driver_name.ilike(f"%{driver.strip()}%"))
+    if pending:
+        conditions.append(ManagementProcess.pending_reason == pending)
+    return conditions
+
+
+def process_association_counts(db, process_ids: list[int]) -> dict[int, dict[str, int]]:
+    counts = {process_id: {"ar": 0, "refstro": 0, "actions": 0} for process_id in process_ids}
+    if not process_ids:
+        return counts
+    association_rows = db.execute(
+        select(
+            ManagementProcessAssociation.process_id,
+            ManagementProcessAssociation.entity_type,
+            func.count(ManagementProcessAssociation.id),
+        )
+        .where(
+            ManagementProcessAssociation.process_id.in_(process_ids),
+            ManagementProcessAssociation.active.is_(True),
+        )
+        .group_by(ManagementProcessAssociation.process_id, ManagementProcessAssociation.entity_type)
+    ).all()
+    for process_id, entity_type, total in association_rows:
+        if entity_type == "claim_rentway_ar":
+            counts[process_id]["ar"] = total
+        elif entity_type == "claim_refstro_line":
+            counts[process_id]["refstro"] = total
+    action_rows = db.execute(
+        select(ManagementAction.process_id, func.count(ManagementAction.id))
+        .where(ManagementAction.process_id.in_(process_ids), ManagementAction.status == "open")
+        .group_by(ManagementAction.process_id)
+    ).all()
+    for process_id, total in action_rows:
+        counts[process_id]["actions"] = total
+    return counts
+
+
+@web_router.get("/management-center", response_class=HTMLResponse)
+def management_center_page(
+    request: Request,
+    status: str | None = None,
+    plate: str | None = None,
+    document: str | None = None,
+    customer: str | None = None,
+    driver: str | None = None,
+    pending: str | None = None,
+    imported: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        process_type = ensure_management_defaults(db)
+        db.commit()
+        filters = management_process_query_filters(
+            process_type_id=process_type.id,
+            status=status,
+            plate=plate,
+            document=document,
+            customer=customer,
+            driver=driver,
+            pending=pending,
+        )
+        processes = db.scalars(
+            select(ManagementProcess)
+            .where(*filters)
+            .order_by(
+                ManagementProcess.pending_reason.is_(None),
+                ManagementProcess.sla_due_on.is_(None),
+                ManagementProcess.sla_due_on,
+                ManagementProcess.id.desc(),
+            )
+            .limit(120)
+        ).all()
+        process_ids = [process.id for process in processes]
+        counts = process_association_counts(db, process_ids)
+        metrics = {
+            "total": db.scalar(
+                select(func.count()).select_from(ManagementProcess).where(
+                    ManagementProcess.process_type_id == process_type.id
+                )
+            )
+            or 0,
+            "open": db.scalar(
+                select(func.count()).select_from(ManagementProcess).where(
+                    ManagementProcess.process_type_id == process_type.id,
+                    ManagementProcess.closed_at.is_(None),
+                )
+            )
+            or 0,
+            "missing_ar": db.scalar(
+                select(func.count()).select_from(ManagementProcess).where(
+                    ManagementProcess.process_type_id == process_type.id,
+                    ManagementProcess.pending_reason == "missing_ar",
+                )
+            )
+            or 0,
+            "mandatory_actions": db.scalar(
+                select(func.count())
+                .select_from(ManagementAction)
+                .join(ManagementProcess, ManagementProcess.id == ManagementAction.process_id)
+                .where(
+                    ManagementProcess.process_type_id == process_type.id,
+                    ManagementAction.status == "open",
+                    ManagementAction.mandatory.is_(True),
+                )
+            )
+            or 0,
+            "value": db.scalar(
+                select(func.coalesce(func.sum(ManagementProcess.total_claim_value), 0)).where(
+                    ManagementProcess.process_type_id == process_type.id
+                )
+            )
+            or 0,
+        }
+        priority_processes = db.scalars(
+            select(ManagementProcess)
+            .join(ManagementAction, ManagementAction.process_id == ManagementProcess.id)
+            .where(
+                ManagementProcess.process_type_id == process_type.id,
+                ManagementAction.status == "open",
+            )
+            .order_by(
+                ManagementAction.mandatory.desc(),
+                ManagementAction.due_on.is_(None),
+                ManagementAction.due_on,
+            )
+            .limit(8)
+        ).all()
+        rules = db.scalars(
+            select(ManagementRule)
+            .where(
+                ManagementRule.process_type_id == process_type.id,
+                ManagementRule.active.is_(True),
+            )
+            .order_by(ManagementRule.severity.desc(), ManagementRule.id)
+        ).all()
+        recent_imports = db.scalars(
+            select(ImportBatch)
+            .where(ImportBatch.import_type.in_((AR_IMPORT_TYPE, REFSTRO_IMPORT_TYPE)))
+            .order_by(ImportBatch.id.desc())
+            .limit(5)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "management_center.html",
+            {
+                "process_type": process_type,
+                "process_types": [process_type],
+                "processes": processes,
+                "counts": counts,
+                "metrics": metrics,
+                "priority_processes": priority_processes,
+                "rules": rules,
+                "recent_imports": recent_imports,
+                "status_labels": PROCESS_STATUS_LABELS,
+                "phase_labels": PROCESS_PHASE_LABELS,
+                "pending_labels": MANAGEMENT_PENDING_LABELS,
+                "severity_labels": MANAGEMENT_SEVERITY_LABELS,
+                "management_import_type_labels": MANAGEMENT_IMPORT_TYPE_LABELS,
+                "import_status_labels": IMPORT_STATUS_DISPLAY_LABELS,
+                "AR_IMPORT_TYPE": AR_IMPORT_TYPE,
+                "REFSTRO_IMPORT_TYPE": REFSTRO_IMPORT_TYPE,
+                "filters": {
+                    "status": status or "",
+                    "plate": plate or "",
+                    "document": document or "",
+                    "customer": customer or "",
+                    "driver": driver or "",
+                    "pending": pending or "",
+                },
+                "imported": imported,
+            },
+        )
+
+
+@web_router.post("/management-center/import", response_class=HTMLResponse)
+def management_center_import(
+    request: Request,
+    file: UploadFile,
+    import_kind: str = Form("refstro"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    if import_kind not in {"ar", "refstro"}:
+        return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
+        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+    try:
+        with SessionLocal() as db:
+            result = import_claims_file(
+                db,
+                tmp_path,
+                file.filename,
+                import_kind=import_kind,
+                user_id=user_id,
+            )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(f"/management-center?imported={result['batch_id']}", status_code=303)
+
+
+@web_router.get("/management-center/{process_id}", response_class=HTMLResponse)
+def management_center_detail(request: Request, process_id: int, updated: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        process = db.get(ManagementProcess, process_id)
+        if not process:
+            return RedirectResponse("/management-center", status_code=303)
+        process_type = db.get(ManagementProcessType, process.process_type_id)
+        claim = db.scalar(select(ClaimIncident).where(ClaimIncident.process_id == process.id))
+        associations = db.scalars(
+            select(ManagementProcessAssociation)
+            .where(ManagementProcessAssociation.process_id == process.id)
+            .order_by(ManagementProcessAssociation.active.desc(), ManagementProcessAssociation.id.desc())
+        ).all()
+        ar_ids = [item.entity_id for item in associations if item.entity_type == "claim_rentway_ar"]
+        refstro_ids = [item.entity_id for item in associations if item.entity_type == "claim_refstro_line"]
+        ars = {
+            item.id: item
+            for item in (db.scalars(select(ClaimRentwayAR).where(ClaimRentwayAR.id.in_(ar_ids))).all() if ar_ids else [])
+        }
+        refstros = {
+            item.id: item
+            for item in (
+                db.scalars(select(ClaimRefstroLine).where(ClaimRefstroLine.id.in_(refstro_ids))).all()
+                if refstro_ids
+                else []
+            )
+        }
+        actions = db.scalars(
+            select(ManagementAction)
+            .where(ManagementAction.process_id == process.id)
+            .order_by(ManagementAction.status, ManagementAction.mandatory.desc(), ManagementAction.due_on)
+        ).all()
+        rules = db.scalars(
+            select(ManagementRule)
+            .where(
+                ManagementRule.process_type_id == process.process_type_id,
+                ManagementRule.active.is_(True),
+            )
+            .order_by(ManagementRule.severity.desc(), ManagementRule.id)
+        ).all()
+        history = db.scalars(
+            select(ManagementHistory)
+            .where(ManagementHistory.process_id == process.id)
+            .order_by(ManagementHistory.changed_at.desc(), ManagementHistory.id.desc())
+            .limit(80)
+        ).all()
+        other_processes = db.scalars(
+            select(ManagementProcess)
+            .where(
+                ManagementProcess.process_type_id == process.process_type_id,
+                ManagementProcess.id != process.id,
+            )
+            .order_by(ManagementProcess.internal_reference.desc())
+            .limit(120)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "management_process_detail.html",
+            {
+                "process": process,
+                "process_type": process_type,
+                "claim": claim,
+                "associations": associations,
+                "ars": ars,
+                "refstros": refstros,
+                "actions": actions,
+                "rules": rules,
+                "history": history,
+                "other_processes": other_processes,
+                "status_labels": PROCESS_STATUS_LABELS,
+                "phase_labels": PROCESS_PHASE_LABELS,
+                "pending_labels": MANAGEMENT_PENDING_LABELS,
+                "severity_labels": MANAGEMENT_SEVERITY_LABELS,
+                "action_status_labels": ACTION_STATUS_LABELS,
+                "updated": updated,
+            },
+        )
+
+
+@web_router.post("/management-center/{process_id}/actions/{action_id}/complete", response_class=HTMLResponse)
+def management_center_complete_action(request: Request, process_id: int, action_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        action = db.get(ManagementAction, action_id)
+        if not action or action.process_id != process_id:
+            return RedirectResponse(f"/management-center/{process_id}", status_code=303)
+        action.status = "done"
+        action.completed_at = datetime.now(UTC)
+        action.completed_by_id = user_id
+        db.add(
+            ManagementHistory(
+                process_id=process_id,
+                user_id=user_id,
+                action="action.completed",
+                entity_type="management_action",
+                entity_id=str(action.id),
+                old_value="open",
+                new_value="done",
+                detail=action.title,
+            )
+        )
+        db.commit()
+    return RedirectResponse(f"/management-center/{process_id}?updated=action", status_code=303)
+
+
+@web_router.post("/management-center/{process_id}/associations/{association_id}/move", response_class=HTMLResponse)
+def management_center_move_association(
+    request: Request,
+    process_id: int,
+    association_id: int,
+    target_process_id: int = Form(...),
+    reason: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        association = db.get(ManagementProcessAssociation, association_id)
+        target = db.get(ManagementProcess, target_process_id)
+        if not association or association.process_id != process_id or not target:
+            return RedirectResponse(f"/management-center/{process_id}", status_code=303)
+        move_reason = reason.strip() or f"Correção para {target.internal_reference}."
+        end_association(db, association, reason=move_reason, user_id=user_id)
+        db.add(
+            ManagementProcessAssociation(
+                process_id=target.id,
+                entity_type=association.entity_type,
+                entity_id=association.entity_id,
+                association_role=association.association_role,
+                active=True,
+                reason=move_reason,
+                created_by_id=user_id,
+            )
+        )
+        db.add(
+            ManagementHistory(
+                process_id=target.id,
+                user_id=user_id,
+                action="association.created",
+                entity_type=association.entity_type,
+                entity_id=str(association.entity_id),
+                new_value="active",
+                detail=f"Associação movida de {process_id}. {move_reason}",
+            )
+        )
+        source_claim = db.scalar(select(ClaimIncident).where(ClaimIncident.process_id == process_id))
+        target_claim = db.scalar(select(ClaimIncident).where(ClaimIncident.process_id == target.id))
+        if source_claim:
+            refresh_claim_state(db, source_claim)
+        if target_claim:
+            refresh_claim_state(db, target_claim)
+        db.commit()
+    return RedirectResponse(f"/management-center/{process_id}?updated=association", status_code=303)
+
+
 @web_router.get("/imports/{batch_id}/errors.csv")
 def import_errors_csv(request: Request, batch_id: int):
     if not get_web_user_id(request):
@@ -5634,6 +6084,26 @@ def imports_page(request: Request, type: str | None = None):
                 "history_url": "/imports?type=task_bulk",
                 "created_label": "Subtarefas",
                 "updated_label": "Linhas",
+            },
+            {
+                "code": AR_IMPORT_TYPE,
+                "source_system": "rentway",
+                "title": "Sinistros / AR Rentway",
+                "description": "Histórico AR com Status, requestDate, apólice e estações.",
+                "import_url": "/management-center",
+                "history_url": f"/imports?type={AR_IMPORT_TYPE}",
+                "created_label": "ARs",
+                "updated_label": "SIN tocados",
+            },
+            {
+                "code": REFSTRO_IMPORT_TYPE,
+                "source_system": "carfast",
+                "title": "Sinistros / REFSTRO",
+                "description": "Linhas de sinistro consolidadas por matrícula e data.",
+                "import_url": "/management-center",
+                "history_url": f"/imports?type={REFSTRO_IMPORT_TYPE}",
+                "created_label": "Linhas",
+                "updated_label": "SIN tocados",
             },
         ]
         type_codes = {item["code"] for item in import_types}
@@ -6274,15 +6744,6 @@ def task_center(request: Request):
                 continue
             workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
             Subtask = aliased(Task)
-            open_subtask_parent_ids = (
-                select(Subtask.parent_task_id)
-                .where(
-                    Subtask.parent_task_id.is_not(None),
-                    Subtask.closed_at.is_(None),
-                    ~Subtask.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
-                )
-                .distinct()
-            )
             subtask_parent_ids = select(Subtask.parent_task_id).where(Subtask.parent_task_id.is_not(None)).distinct()
             open_count = db.scalar(
                 select(func.count()).select_from(Task).where(
@@ -7436,9 +7897,9 @@ def quick_record_convert(
         assigned_user_id = parse_optional_int(assigned_to_id)
         if assigned_user_id and not db.get(User, assigned_user_id):
             assigned_user_id = None
-        if not is_assignment_allowed_for_workspace(db, assigned_user_id, current_workspace):
+        if not is_assignment_allowed_for_workspace(db, assigned_user_id, workspace):
             return RedirectResponse(
-                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
         assigned_team_id = parse_optional_int(team_id)
@@ -7447,9 +7908,9 @@ def quick_record_convert(
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
-        if not is_assignment_allowed_for_workspace(db, delegated_user_id, current_workspace):
+        if not is_assignment_allowed_for_workspace(db, delegated_user_id, workspace):
             return RedirectResponse(
-                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
         if delegated_team_id and not db.get(Team, delegated_team_id):

@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "management_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content management-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Centro de Gestão e Acompanhamento</p>
+        <h2>{{ process.internal_reference }}</h2>
+        <p class="breadcrumb">Processo do tipo {{ process_type.name if process_type else "não definido" }} · {{ process.title }}</p>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/management-center">Voltar</a>
+      </div>
+    </header>
+
+    {% if updated %}
+      <section class="notice-inline"><strong>Processo atualizado.</strong> Histórico preservado.</section>
+    {% endif %}
+
+    <section class="metric-grid management-kpis">
+      <span class="metric">
+        <span class="metric-icon blue">PRC</span>
+        <span class="metric-detail"><strong>{{ process.internal_reference }}</strong><span>{{ status_labels.get(process.status, process.status) }}</span><small>{{ phase_labels.get(process.phase, process.phase) }}</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon amber">AR</span>
+        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_rentway_ar")|selectattr("active")|list|length }}</strong><span>ARs associados</span><small>O AR não é a referência única</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon green">REF</span>
+        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_refstro_line")|selectattr("active")|list|length }}</strong><span>REFSTROs associados</span><small>{{ claim.components_json.components|join(", ") if claim and claim.components_json and claim.components_json.components else "Sem componentes" }}</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon warn">€</span>
+        <span class="metric-detail"><strong>{{ "%.2f"|format(process.total_claim_value or 0) }}</strong><span>Valor sinalizado</span><small>Custos {{ "%.2f"|format(process.total_cost_value or 0) }}</small></span>
+      </span>
+    </section>
+
+    <section class="detail-grid management-detail-grid">
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Processo</p>
+            <h3>Dados de acompanhamento</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          <div><dt>Tipo de processo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
+          <div><dt>Matrícula</dt><dd>{{ process.plate or "-" }}</dd></div>
+          <div><dt>Data sinistro</dt><dd>{{ claim.accident_date.strftime("%Y-%m-%d") if claim and claim.accident_date else "-" }}</dd></div>
+          <div><dt>Documento</dt><dd>{{ process.document_reference or "-" }}</dd></div>
+          <div><dt>Cliente</dt><dd>{{ process.customer_name or "-" }}</dd></div>
+          <div><dt>Condutor</dt><dd>{{ process.driver_name or "-" }}</dd></div>
+          <div><dt>Pendência</dt><dd>{{ pending_labels.get(process.pending_reason, process.pending_reason or "-") }}</dd></div>
+        </dl>
+      </article>
+
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Ações</p>
+            <h3>Pendências guiadas</h3>
+          </div>
+        </div>
+        <div class="management-action-list">
+          {% for action in actions %}
+            <article class="{% if action.mandatory and action.status == 'open' %}mandatory-action{% endif %}">
+              <div>
+                <span class="pill status-{{ action.status }}">{{ action_status_labels.get(action.status, action.status) }}</span>
+                {% if action.mandatory %}<span class="pill severity-critical">Obrigatória</span>{% endif %}
+              </div>
+              <strong>{{ action.title }}</strong>
+              <p>{{ action.description or "-" }}</p>
+              {% if action.status == "open" and nav_has_permission(request, "management_center.write", "admin.manage") %}
+                <form method="post" action="/management-center/{{ process.id }}/actions/{{ action.id }}/complete">
+                  <button type="submit">Concluir</button>
+                </form>
+              {% endif %}
+            </article>
+          {% else %}
+            <p class="muted empty-panel">Sem ações abertas ou históricas.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Ligações</p>
+          <h3>Dados associados ao processo</h3>
+        </div>
+      </div>
+      <div class="table-shell management-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Referência</th>
+              <th>Estado / data</th>
+              <th>Valor / componente</th>
+              <th>Associação</th>
+              <th>Correção</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for association in associations %}
+              {% set ar = ars.get(association.entity_id) if association.entity_type == "claim_rentway_ar" else none %}
+              {% set refstro = refstros.get(association.entity_id) if association.entity_type == "claim_refstro_line" else none %}
+              <tr class="{% if not association.active %}inactive-row{% endif %}">
+                <td>{{ "AR Rentway" if ar else "REFSTRO" }}</td>
+                <td>
+                  <strong>{{ ar.ar_reference if ar else refstro.refstro_reference if refstro else association.entity_id }}</strong>
+                  <small>{{ ar.plate if ar else refstro.plate if refstro else "-" }}</small>
+                </td>
+                <td>
+                  {{ ar.status if ar else refstro.status if refstro else "-" }}
+                  <small>{{ ar.request_date.strftime("%Y-%m-%d") if ar and ar.request_date else refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
+                </td>
+                <td>
+                  {% if refstro %}
+                    {{ "%.2f"|format(refstro.claim_value or 0) }}
+                    <small>{{ refstro.component or "-" }}</small>
+                  {% else %}
+                    -
+                    <small>{{ ar.raw_state if ar else "-" }}</small>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="pill status-{{ 'open' if association.active else 'cancelled' }}">{{ "Ativa" if association.active else "Inativa" }}</span>
+                  <small>{{ association.reason or "-" }}</small>
+                </td>
+                <td>
+                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
+                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
+                      <select name="target_process_id" required>
+                        {% for target in other_processes %}
+                          <option value="{{ target.id }}">{{ target.internal_reference }}</option>
+                        {% endfor %}
+                      </select>
+                      <input name="reason" placeholder="Motivo">
+                      <button type="submit">Mover</button>
+                    </form>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">Sem ligações associadas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="management-grid">
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Regras aplicáveis</p>
+            <h3>Tipo {{ process_type.name if process_type else "não definido" }}</h3>
+          </div>
+        </div>
+        <div class="management-rule-list">
+          {% for rule in rules %}
+            <article>
+              <span class="pill severity-{{ rule.severity }}">{{ severity_labels.get(rule.severity, rule.severity) }}</span>
+              <strong>{{ rule.title }}</strong>
+              <p>{{ rule.description }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Timeline</p>
+            <h3>Histórico de alterações</h3>
+          </div>
+        </div>
+        <div class="timeline compact-timeline">
+          {% for item in history %}
+            <article>
+              <span>
+                <strong>{{ item.action }}</strong>
+                <small>{{ item.detail or item.new_value or item.old_value or "-" }}</small>
+              </span>
+              <time>{{ item.changed_at.strftime("%d/%m/%Y %H:%M") if item.changed_at else "-" }}</time>
+            </article>
+          {% else %}
+            <p class="muted empty-panel">Sem histórico registado.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

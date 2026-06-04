@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.admin import Permission, Role, RolePermission
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.services.management_center import ensure_management_defaults
 
 INITIAL_PERMISSIONS = [
     ("dashboard.read", "Ver dashboard"),
@@ -27,6 +28,8 @@ INITIAL_PERMISSIONS = [
     ("tasks.create_recurring", "Criar tarefas recorrentes"),
     ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
+    ("management_center.read", "Ver Centro de Gestão e Acompanhamento"),
+    ("management_center.write", "Gerir Centro de Gestão e Acompanhamento"),
 ]
 
 INITIAL_ROLES = [
@@ -55,6 +58,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.create_recurring",
         "documents.read",
         "documents.write",
+        "management_center.read",
+        "management_center.write",
     },
     "operator": {
         "dashboard.read",
@@ -69,6 +74,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.workshop.write",
         "documents.read",
         "documents.write",
+        "management_center.read",
+        "management_center.write",
     },
     "viewer": {
         "dashboard.read",
@@ -78,6 +85,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.operational.read",
         "tasks.workshop.read",
         "documents.read",
+        "management_center.read",
     },
 }
 
@@ -135,6 +143,7 @@ def seed_initial_data(db: Session) -> None:
     seed_organizational_units(db)
     seed_teams(db)
     seed_catalogs(db)
+    ensure_management_defaults(db)
     db.commit()
 
 

@@ -1211,6 +1211,7 @@ def workshop_process_list_page() -> str:
 
 @router.get("/processes-ui/{process_id}/manage", response_class=HTMLResponse)
 def workshop_process_manage_page(process_id: int) -> str:
+    return workshop_process_manage_v2_page(process_id)
     return f"""<!doctype html>
 <html lang="pt">
 <head>
@@ -1996,6 +1997,220 @@ def workshop_process_manage_page(process_id: int) -> str:
     async function saveBudget() {{ try {{ await post(`/api/workshop/processes/${{processId}}/budget-approval`, {{supplier:payloadValue("#budgetSupplier"), request_description:payloadValue("#budgetDescription"), budget_received:document.querySelector("#budgetReceived").checked, estimated_value:Number(payloadValue("#budgetValue")) || null, budget_link:payloadValue("#budgetLink"), needs_approval:document.querySelector("#budgetNeedsApproval").checked, approval_status:payloadValue("#budgetApproval"), final_result:payloadValue("#budgetResult"), observation:payloadValue("#budgetObs")}}); showResult(true, "Orçamento guardado."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveRepair() {{ try {{ await post(`/api/workshop/processes/${{processId}}/internal-repair`, {{execution_type:payloadValue("#repairType"), result:payloadValue("#repairResult"), intervention_description:payloadValue("#repairDescription"), final_quadrant_photo_link:payloadValue("#repairFinalPhoto"), final_km_visible:Number(payloadValue("#repairFinalKm")) || null}}); showResult(true, "Reparação guardada."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function closeProcess() {{ try {{ await post(`/api/workshop/processes/${{processId}}/close`, {{final_result:payloadValue("#closeResult"), vehicle_ready:payloadValue("#closeReady"), new_vehicle_operational_status:payloadValue("#closeStatus"), final_observation:payloadValue("#closeObs") || "Fecho validado", close_with_pending_items:document.querySelector("#closePending").checked, pending_justification:payloadValue("#closePendingJustification")}}); showResult(true, "Processo fechado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    loadConfig().then(loadProcess).catch(e => showResult(false, e.message));
+  </script>
+</body>
+</html>"""
+
+
+@router.get("/processes-ui/{process_id}/manage-v2", response_class=HTMLResponse)
+def workshop_process_manage_v2_page(process_id: int) -> str:
+    return f"""<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oficina - Processo #{process_id}</title>
+  <style>
+    :root {{
+      --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --line2:#b8c3cc; --text:#07152d; --muted:#607083;
+      --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --amber:#9a6711;
+      --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; --blue:#2f5d8c; --blue-soft:#eef5fb;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; background:var(--bg); color:var(--text); font-size:14px; letter-spacing:0; }}
+    button, input, select, textarea, a.button {{ font:inherit; }}
+    .shell {{ min-height:100vh; }}
+    .topbar {{ display:flex; justify-content:space-between; gap:18px; align-items:center; padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); }}
+    .heading {{ display:grid; grid-template-columns:42px minmax(0,1fr); gap:16px; align-items:center; }}
+    .back {{ display:grid; place-items:center; width:38px; height:38px; border:0; border-radius:8px; background:#fff; color:var(--text); text-decoration:none; font-size:30px; line-height:1; }}
+    .back:hover {{ background:var(--brand-soft); color:#7d2f1f; }}
+    h1 {{ margin:0 0 6px; font-size:26px; line-height:1.1; }}
+    h2 {{ margin:0; font-size:21px; }}
+    h3 {{ margin:0; font-size:17px; }}
+    p {{ margin:0; }}
+    .meta {{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; color:var(--muted); font-weight:750; }}
+    .meta strong {{ color:var(--text); }}
+    .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
+    .button, button {{ min-height:42px; border:1px solid var(--line2); border-radius:8px; background:#fff; color:var(--text); padding:9px 14px; font-weight:850; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; }}
+    .primary {{ background:var(--brand); border-color:var(--brand); color:#fff; }}
+    .ghost {{ border-color:transparent; background:#fff; font-size:22px; width:44px; padding:0; }}
+    .content {{ display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:20px; padding:22px 28px 42px; }}
+    .main {{ display:grid; gap:18px; }}
+    .tabs {{ display:grid; grid-template-columns:repeat(8,minmax(88px,1fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }}
+    .tab {{ min-height:58px; border:0; border-left:1px solid var(--line); border-radius:0; background:#fff; font-size:18px; color:var(--text); position:relative; }}
+    .tab:first-child {{ border-left:0; }}
+    .tab.active {{ background:var(--brand-soft); box-shadow:inset 0 0 0 1px var(--brand); color:#7d2f1f; }}
+    .tab.incomplete {{ background:#fffaf1; }}
+    .tab-count {{ position:absolute; top:8px; right:8px; min-width:22px; height:22px; border-radius:999px; display:grid; place-items:center; background:var(--amber-soft); color:var(--amber); font-size:12px; }}
+    .panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px; }}
+    .phase {{ display:none; }}
+    .phase.active {{ display:grid; gap:16px; }}
+    .section-head {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }}
+    .muted {{ color:var(--muted); line-height:1.45; }}
+    .cards {{ display:grid; grid-template-columns:repeat(2,minmax(260px,1fr)); gap:16px; }}
+    .doc-card {{ display:grid; gap:16px; align-content:start; min-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; }}
+    .doc-top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }}
+    .doc-title {{ display:flex; align-items:center; gap:12px; font-size:20px; font-weight:950; }}
+    .icon {{ display:grid; place-items:center; width:28px; height:28px; color:#1b2a3c; font-size:22px; }}
+    .note {{ border-radius:8px; background:#f7f8f9; padding:11px 12px; color:var(--muted); font-weight:750; }}
+    .warn-note {{ background:var(--amber-soft); color:var(--amber); }}
+    .compare {{ display:grid; gap:7px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:10px 12px; }}
+    .compare div {{ display:flex; justify-content:space-between; gap:12px; }}
+    .compare strong {{ color:#c94f3d; text-align:right; }}
+    .doc-controls {{ display:grid; grid-template-columns:180px minmax(0,1fr); gap:10px; }}
+    .doc-controls input {{ display:none; }}
+    .doc-controls.need-link input {{ display:block; }}
+    label {{ display:grid; gap:6px; color:var(--muted); font-weight:800; }}
+    input, select, textarea {{ width:100%; min-height:42px; border:1px solid var(--line2); border-radius:8px; background:#fff; color:var(--text); padding:9px 11px; font-weight:750; }}
+    textarea {{ min-height:88px; resize:vertical; }}
+    .doc-actions {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:auto; }}
+    .doc-actions > * {{ flex:1 1 150px; }}
+    .side {{ display:grid; gap:18px; align-content:start; }}
+    .side .panel {{ padding:18px; }}
+    .side-title {{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }}
+    .chip {{ display:inline-flex; align-items:center; justify-content:center; width:max-content; max-width:100%; min-height:28px; border-radius:999px; padding:4px 11px; background:#eef1f3; color:var(--muted); font-size:12px; font-weight:900; }}
+    .done {{ color:var(--green); background:var(--green-soft); }}
+    .review {{ color:var(--amber); background:var(--amber-soft); }}
+    .danger {{ color:var(--red); background:var(--red-soft); }}
+    .progress {{ color:var(--blue); background:var(--blue-soft); }}
+    .neutral {{ color:var(--muted); background:#eef1f3; }}
+    .list {{ display:grid; gap:10px; margin:0; padding:0; list-style:none; }}
+    .list li {{ display:flex; justify-content:space-between; align-items:center; gap:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px; font-weight:800; }}
+    .folder-path {{ border:1px solid var(--line); border-radius:8px; background:#fbfcfd; padding:12px; overflow-wrap:anywhere; color:var(--text); font-weight:800; }}
+    .grid2 {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
+    .grid3 {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
+    .service-row, .report-row {{ display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfd; }}
+    .result {{ display:none; border-radius:8px; border:1px solid var(--line); padding:12px; }}
+    .result.active {{ display:block; }}
+    .result.ok {{ background:var(--green-soft); border-color:#b7d7be; }}
+    .result.err {{ background:var(--red-soft); border-color:#e2b7b3; }}
+    .placeholder {{ border:1px dashed var(--line2); border-radius:8px; padding:20px; background:#fbfcfd; color:var(--muted); font-weight:800; }}
+    @media (max-width:1200px) {{ .content {{ grid-template-columns:1fr; }} .tabs {{ grid-template-columns:repeat(4,1fr); }} }}
+    @media (max-width:820px) {{ .topbar,.section-head {{ display:grid; }} .content {{ padding:16px; }} .cards,.grid2,.grid3,.doc-controls {{ grid-template-columns:1fr; }} .tabs {{ grid-template-columns:1fr 1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div id="header" class="heading"><a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #{process_id}</h1><div class="meta">A carregar...</div></div></div>
+      <div class="actions"><button type="button" onclick="copyFolder()">Abrir pasta do processo</button><button class="ghost" type="button">⋮</button></div>
+    </header>
+    <main class="content">
+      <div class="main">
+        <nav id="tabs" class="tabs"></nav>
+        <section id="history" class="panel phase active">
+          <div class="section-head"><div><h2>Documentos esperados</h2><p class="muted">Anexe e valide os documentos necessários para esta fase.</p></div><button class="primary" type="button" onclick="saveHistory()">Guardar verificações</button></div>
+          <div class="cards">
+            <article class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">▣</span>Service Box</div><span id="serviceBoxChip" class="chip review">Em falta</span></div>
+              <p class="muted">Comprovativo da consulta do Service Box da viatura.</p>
+              <div class="note">Obrigatório para viaturas Stellantis.</div>
+              <div id="serviceBoxControls" class="doc-controls"><label>Estado<select id="serviceBox"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="serviceBoxLink" placeholder="https://..."></label></div>
+              <div class="doc-actions"><button class="primary" type="button" onclick="markLink('serviceBox')">Anexar print</button><a id="serviceBoxOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
+            </article>
+            <article class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">◁</span>Campanhas</div><span id="campaignsChip" class="chip review">Por validar</span></div>
+              <p class="muted">Comprovativo da verificação de campanhas em aberto.</p>
+              <div class="note">Registar print ou indicar que não existem campanhas aplicáveis.</div>
+              <div id="campaignsControls" class="doc-controls"><label>Estado<select id="campaigns"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="campaignsLink" placeholder="https://..."></label></div>
+              <div class="doc-actions"><button class="primary" type="button" onclick="saveHistory()">Validar</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
+            </article>
+            <article class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">⌕</span>Plano manutenção</div><span id="planChip" class="chip review">Por rever</span></div>
+              <p class="muted">Plano de manutenção da marca vs. plano parametrizado no Rentway.</p>
+              <div id="planCompare" class="compare"><div><span>Service Box</span><strong>Por validar</strong></div><div><span>Rentway</span><strong>Por validar</strong></div></div>
+              <div id="planNote" class="note warn-note">Valide o relatório de plano para confirmar se existe divergência.</div>
+              <div id="planControls" class="doc-controls"><label>Estado<select id="plan"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Print<input id="planLink" placeholder="https://..."></label></div>
+              <div class="doc-actions"><button class="primary" type="button" onclick="markLink('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir documento</a></div>
+            </article>
+            <article class="doc-card">
+              <div class="doc-top"><div class="doc-title"><span class="icon">◷</span>Histórico interno</div><span id="internalChip" class="chip review">Por rever</span></div>
+              <p class="muted">Relatório do histórico interno da viatura e intervenções relevantes.</p>
+              <div class="doc-controls"><label>Consulta<select id="internal"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option></select></label></div>
+              <div class="doc-actions"><button class="primary" type="button" onclick="saveHistory()">Validar</button></div>
+            </article>
+          </div>
+          <details class="panel" style="padding:14px"><summary style="font-weight:900;cursor:pointer">Outras verificações</summary><div class="grid2" style="margin-top:14px"><label>Accident reports<select id="accidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label><label>Processos anteriores<select id="previous"><option value="yes">Sim</option><option value="none">Não existem</option><option value="pending_review">Por rever</option></select></label></div><label>Detalhe accident reports<input id="accidentsDetail"></label><div class="grid2"><label>Incidência repetida<select id="repeat"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por avaliar</option></select></label><label>Observação<textarea id="historyObs"></textarea></label></div></details>
+        </section>
+        <section id="services" class="panel phase"><div class="section-head"><div><h2>Serviços a executar</h2><p class="muted">Adicionar trabalhos que surjam depois da criação do processo.</p></div></div><div id="serviceList" class="list"></div><div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div><label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label><button class="primary" onclick="addService()">Adicionar serviço</button></section>
+        <section id="reports" class="panel phase"><div class="section-head"><div><h2>Relatórios técnicos</h2><p class="muted">Selecione um relatório existente ou adicione um novo para validação.</p></div></div><div id="reportList" class="list"></div><div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div><label>Link relatório original<input id="reportLink" placeholder="https://..."></label><div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div><div class="actions" style="justify-content:flex-start"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="validateSelectedReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div></section>
+        <section id="reception" class="panel phase"><h2>Receção</h2><div class="placeholder">Esta fase fica na nova estrutura visual. Para edição detalhada, mantém-se disponível na vista atual até migrarmos todos os campos.</div></section>
+        <section id="decision" class="panel phase"><h2>Decisão</h2><div class="placeholder">Diagnóstico e decisão serão migrados para cartões de decisão e responsabilidade.</div></section>
+        <section id="budget" class="panel phase"><h2>Orçamento</h2><div class="placeholder">Orçamentos e aprovações serão migrados para uma grelha compacta.</div></section>
+        <section id="repair" class="panel phase"><h2>Reparação</h2><div class="placeholder">Execução e evidências finais serão migradas mantendo os mesmos endpoints.</div></section>
+        <section id="close" class="panel phase"><h2>Fecho</h2><div class="placeholder">Fecho definitivo e relatório de saída serão migrados no mesmo layout.</div></section>
+        <div id="result" class="result"></div>
+      </div>
+      <aside class="side">
+        <section class="panel"><div class="side-title"><span class="icon">▣</span><h2>Pasta documental</h2></div><div id="folderPath" class="folder-path">A carregar...</div><div class="grid2" style="margin-top:12px"><button onclick="copyFolder()">Abrir pasta</button><button onclick="copyFolder()">Copiar caminho</button></div></section>
+        <section class="panel"><div class="side-title"><span class="icon">▴</span><h2>Alertas</h2><span id="alertCount" class="chip review">0</span></div><ul id="alerts" class="list"></ul></section>
+        <section class="panel"><button style="width:100%" onclick="showTab('reports')">Ver todos os documentos <span id="documentCount" class="chip neutral">0</span></button></section>
+        <a class="button" href="/workshop/processes-ui/{process_id}/manage">Abrir vista atual</a>
+      </aside>
+    </main>
+  </div>
+  <script>
+    const processId = {process_id};
+    let processData = null;
+    let config = null;
+    let selectedReportId = null;
+    const tabs = [
+      ["reception","Receção","administrative_reception"], ["services","Serviços",null], ["history","Verificações","history_check"], ["reports","Relatórios","technical_phase"],
+      ["decision","Decisão","diagnosis_decision"], ["budget","Orçamento","budget_approval"], ["repair","Reparação","internal_repair_execution"], ["close","Fecho","final_closure"]
+    ];
+    const phaseLabels = {{process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações", technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação", internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"}};
+    const statusLabels = {{completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"], open:["Aberto","review"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], added:["Adicionado","progress"], not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], defined:["Definida","done"], high:["Alta","danger"], critical:["Crítica","danger"]}};
+    const valueLabels = {{yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"}};
+    const $ = (id) => document.querySelector(id);
+    function safe(value) {{ return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"); }}
+    function value(id) {{ return $(id)?.value || ""; }}
+    function setValue(id, val) {{ const el = $(id); if (el && val !== null && val !== undefined) el.value = val; }}
+    function meta(code) {{ return statusLabels[code] || [code || "-", "neutral"]; }}
+    function chip(code) {{ const m = meta(code); return `<span class="chip ${{m[1]}}">${{safe(m[0])}}</span>`; }}
+    function label(v) {{ return valueLabels[v] || v || "-"; }}
+    function objectValues(v) {{ return v && typeof v === "object" && !Array.isArray(v) ? v : {{}}; }}
+    function showResult(ok, message) {{ const r = $("#result"); r.className = `result active ${{ok ? "ok" : "err"}}`; r.textContent = typeof message === "string" ? message : JSON.stringify(message); }}
+    async function requestJson(url, method, body) {{ const res = await fetch(url, {{method, headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(body)}}); const data = await res.json(); if(!res.ok) throw new Error(JSON.stringify(data.detail || data)); await loadProcess(); return data; }}
+    function phaseByCode(code) {{ return processData?.phases?.find(p => p.phase_code === code) || null; }}
+    function alertsForPhase(code) {{ const phase = phaseByCode(code); return (processData?.alerts || []).filter(a => a.phase_id === phase?.id || a.source === code); }}
+    function renderTabs(active="history") {{ $("#tabs").innerHTML = tabs.map(([id,labelText,phase]) => {{ const alerts = phase ? alertsForPhase(phase) : []; return `<button class="tab ${{id === active ? "active" : ""}} ${{alerts.length ? "incomplete" : ""}}" onclick="showTab('${{id}}')">${{safe(labelText)}}${{alerts.length ? `<span class="tab-count">${{alerts.length}}</span>` : ""}}</button>`; }}).join(""); }}
+    function showTab(id) {{ document.querySelectorAll(".phase,.tab").forEach(el => el.classList.remove("active")); $(`#${{id}}`)?.classList.add("active"); renderTabs(id); }}
+    function docStatus(value, link, emptyLabel="Em falta") {{ if (value === "not_applicable") return ["Não aplicável","neutral"]; if (value === "no" || value === "yes") return ["Validado","done"]; if (value === "evidence_link" && link) return ["Por validar","review"]; if (value === "evidence_link") return [emptyLabel,"danger"]; return [emptyLabel,"review"]; }}
+    function setChip(id, data) {{ const el = $(id); if (!el) return; el.textContent = data[0]; el.className = `chip ${{data[1]}}`; }}
+    function updateOpen(id, link) {{ const a = $(id); if (!a) return; if (link) a.href = link; else a.removeAttribute("href"); }}
+    function renderVerificationCards() {{
+      [["#serviceBox","#serviceBoxControls"],["#campaigns","#campaignsControls"],["#plan","#planControls"]].forEach(([select,controls]) => $(controls)?.classList.toggle("need-link", value(select) === "evidence_link"));
+      setChip("#serviceBoxChip", docStatus(value("#serviceBox"), value("#serviceBoxLink")));
+      setChip("#campaignsChip", docStatus(value("#campaigns"), value("#campaignsLink")));
+      setChip("#internalChip", docStatus(value("#internal"), "", "Por rever"));
+      const report = [...(processData?.technical_reports || [])].filter(r => r.report_code === "maintenance_plan_validation").sort((a,b) => b.id - a.id)[0];
+      const vals = objectValues(report?.validated_values || report?.extracted_values);
+      const serviceBox = [vals.servicebox_plan, vals.servicebox_interval_km ? `${{vals.servicebox_interval_km}} km` : "", vals.servicebox_interval_months ? `${{vals.servicebox_interval_months}} meses` : ""].filter(Boolean).join(" / ") || "Por validar";
+      const rentway = [vals.rentway_plan, vals.rentway_interval_km ? `${{vals.rentway_interval_km}} km` : "", vals.rentway_interval_months ? `${{vals.rentway_interval_months}} meses` : ""].filter(Boolean).join(" / ") || "Por validar";
+      $("#planCompare").innerHTML = `<div><span>Service Box</span><strong>${{safe(serviceBox)}}</strong></div><div><span>Rentway</span><strong>${{safe(rentway)}}</strong></div>`;
+      const mismatch = (processData?.alerts || []).some(a => ["rentway_maintenance_plan_mismatch","maintenance_request_plan_mismatch"].includes(a.code));
+      setChip("#planChip", mismatch ? ["Divergente","danger"] : docStatus(value("#plan"), value("#planLink")));
+      $("#planNote").textContent = mismatch ? "Existe divergência entre os planos." : (report ? "Plano registado. Confirme se bate certo com Rentway." : "Valide o relatório de plano para confirmar se existe divergência.");
+      updateOpen("#serviceBoxOpen", value("#serviceBoxLink")); updateOpen("#campaignsOpen", value("#campaignsLink")); updateOpen("#planOpen", value("#planLink")); updateOpen("#reportOpen", value("#reportLink"));
+    }}
+    function markLink(prefix) {{ $(`#${{prefix}}`).value = "evidence_link"; renderVerificationCards(); }}
+    function renderHeader() {{ const v = processData.vehicle || {{}}; const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const status = meta(processData.status); const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-"; $("#header").innerHTML = `<a class="back" href="/workshop/processes-ui">‹</a><div><h1>Oficina - Processo #${{processData.id}}</h1><div class="meta"><span>▱ <strong>${{safe(v.plate || processData.plate)}}</strong></span><span>|</span><span>${{safe(model || "Dados da viatura por completar")}}</span><span>|</span><span>Unidade ${{safe(v.rentway_unit_nr || "-")}}</span><span>|</span><span>${{safe(processData.initial_km || "-")}} km</span><span class="chip ${{status[1]}}">${{safe(status[0])}}</span><span>Fase atual: <strong>${{safe(current)}}</strong></span></div></div>`; }}
+    function renderSidebar() {{ const folder = processData.document_folder || {{}}; $("#folderPath").textContent = folder.path || "Pasta por definir"; const alerts = Array.from(new Map((processData.alerts || []).map(a => [`${{a.code}}:${{a.message}}`, a])).values()); $("#alertCount").textContent = alerts.length; $("#alerts").innerHTML = alerts.map(a => `<li><span>${{safe(a.message)}}</span>${{chip(a.status || a.severity)}}</li>`).join("") || "<li>Sem alertas abertos</li>"; $("#documentCount").textContent = processData.technical_reports?.length || 0; }}
+    function renderServices() {{ $("#serviceList").innerHTML = (processData.services || []).map(s => `<div class="service-row"><div><strong>${{safe(s.service_label)}}</strong><p class="muted">${{safe([s.zone,s.detail,s.short_observation].filter(Boolean).join(" · "))}}</p></div><span class="chip neutral">#${{s.sort_order || s.id}}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`; }}
+    function reportName(code) {{ return (config?.stellantis_reports || []).find(r => r.code === code)?.label || code || "Relatório"; }}
+    function renderReports() {{ const reports = processData.technical_reports || []; $("#reportList").innerHTML = reports.map(r => `<button class="report-row" onclick="selectReport(${{r.id}})"><span><strong>#${{r.id}} ${{safe(r.report_name || reportName(r.report_code))}}</strong><p class="muted">${{safe(label(r.report_moment))}} · ${{safe(label(r.reading_origin))}}</p></span>${{chip(r.status)}}</button>`).join("") || `<div class="placeholder">Sem relatórios registados.</div>`; }}
+    function renderHistoryValues() {{ const h = phaseByCode("history_check")?.data || {{}}; setValue("#internal", h.internal_history_checked || "pending_review"); setValue("#accidents", h.open_accident_reports || "no"); setValue("#accidentsDetail", h.accident_reports_detail); setValue("#previous", h.previous_processes_reviewed || "yes"); setValue("#repeat", h.repeated_incidence || "no"); setValue("#historyObs", h.history_observation); setValue("#serviceBox", h.service_box_checked || "pending_review"); setValue("#serviceBoxLink", h.service_box_link); setValue("#campaigns", h.campaigns_checked || "pending_review"); setValue("#campaignsLink", h.campaigns_link); setValue("#plan", h.maintenance_plan_checked || "pending_review"); setValue("#planLink", h.maintenance_plan_link); renderVerificationCards(); }}
+    async function loadConfig() {{ config = await (await fetch("/api/workshop/process-config")).json(); $("#serviceCode").innerHTML = (config.services || []).map(s => `<option value="${{s.code}}">${{safe(s.label)}}</option>`).join(""); $("#reportCode").innerHTML = (config.stellantis_reports || []).map(r => `<option value="${{r.code}}">${{safe(r.label)}}</option>`).join(""); ["#serviceBox","#serviceBoxLink","#campaigns","#campaignsLink","#plan","#planLink","#internal","#reportLink"].forEach(id => $(id)?.addEventListener("input", renderVerificationCards)); }}
+    async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); renderHeader(); renderSidebar(); renderTabs(document.querySelector(".phase.active")?.id || "history"); renderServices(); renderReports(); renderHistoryValues(); }}
+    async function copyFolder() {{ const path = processData?.document_folder?.path || ""; if (!path) return showResult(false, "Pasta documental por definir."); try {{ await navigator.clipboard.writeText(path); showResult(true, "Caminho da pasta copiado."); }} catch {{ showResult(false, path); }} }}
+    async function saveHistory() {{ try {{ await requestJson(`/api/workshop/processes/${{processId}}/history-check`, "POST", {{internal_history_checked:value("#internal"), open_accident_reports:value("#accidents"), accident_reports_detail:value("#accidentsDetail"), previous_processes_reviewed:value("#previous"), relevant_interventions_identified:"no", repeated_incidence:value("#repeat"), service_box_checked:value("#serviceBox"), service_box_link:value("#serviceBoxLink"), campaigns_checked:value("#campaigns"), campaigns_link:value("#campaignsLink"), maintenance_plan_checked:value("#plan"), maintenance_plan_link:value("#planLink"), history_observation:value("#historyObs")}}); showResult(true, "Verificações guardadas."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function addService() {{ try {{ await requestJson(`/api/workshop/processes/${{processId}}/services`, "POST", {{service_code:value("#serviceCode"), zone:value("#serviceZone"), detail:value("#serviceDetail"), short_observation:value("#serviceObservation")}}); setValue("#serviceZone",""); setValue("#serviceDetail",""); setValue("#serviceObservation",""); showResult(true, "Serviço adicionado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    function parseJson(id) {{ const raw = value(id); if (!raw) return {{}}; return JSON.parse(raw); }}
+    function selectReport(id) {{ const r = (processData.technical_reports || []).find(item => item.id === id); if (!r) return; selectedReportId = id; setValue("#reportCode", r.report_code); setValue("#reportMoment", r.report_moment); setValue("#reportOrigin", r.reading_origin); setValue("#reportLink", r.original_link); setValue("#reportValues", JSON.stringify(r.extracted_values || {{}}, null, 2)); setValue("#validateValues", JSON.stringify(r.validated_values || r.extracted_values || {{}}, null, 2)); renderVerificationCards(); showTab("reports"); }}
+    async function addReport() {{ try {{ const data = await requestJson(`/api/workshop/processes/${{processId}}/technical-reports`, "POST", {{report_code:value("#reportCode"), report_moment:value("#reportMoment"), reading_origin:value("#reportOrigin"), original_link:value("#reportLink"), extracted_values:parseJson("#reportValues")}}); selectedReportId = data.id; showResult(true, `Relatório #${{data.id}} adicionado.`); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function validateSelectedReport() {{ try {{ if (!selectedReportId) throw new Error("Selecione um relatório antes de validar."); await requestJson(`/api/workshop/technical-reports/${{selectedReportId}}/validate`, "POST", {{validated_values:parseJson("#validateValues")}}); showResult(true, `Relatório #${{selectedReportId}} validado.`); }} catch(e) {{ showResult(false, e.message); }} }}
     loadConfig().then(loadProcess).catch(e => showResult(false, e.message));
   </script>
 </body>

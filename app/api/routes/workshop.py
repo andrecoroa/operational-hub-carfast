@@ -219,8 +219,11 @@ class WorkshopHistoryCheckConfirm(BaseModel):
     related_previous_process: str | None = None
     history_observation: str | None = None
     service_box_checked: str | None = None
+    service_box_link: str | None = None
     campaigns_checked: str | None = None
+    campaigns_link: str | None = None
     maintenance_plan_checked: str | None = None
+    maintenance_plan_link: str | None = None
     confirmed_by_id: int | None = None
 
 
@@ -515,6 +518,21 @@ def _truthy_validation(value: Any) -> bool:
         "true",
         "1",
     }
+
+
+def _verification_option_satisfied(
+    value: str | None,
+    evidence_link: str | None = None,
+    has_validated_report: bool = False,
+) -> bool:
+    normalized = str(value or "").strip().lower()
+    if has_validated_report:
+        return True
+    if normalized in {"no", "not_applicable", "yes"}:
+        return True
+    if normalized == "evidence_link":
+        return bool(evidence_link)
+    return False
 
 
 def _mark_phase(
@@ -858,14 +876,24 @@ def confirm_history_check(
             )
         )
         stellantis_checks = {
-            "service_box_checked": history.service_box_checked,
-            "campaigns_checked": history.campaigns_checked,
+            "service_box_checked": (
+                history.service_box_checked,
+                history.service_box_link,
+                False,
+            ),
+            "campaigns_checked": (
+                history.campaigns_checked,
+                history.campaigns_link,
+                False,
+            ),
             "maintenance_plan_checked": (
-                "yes" if validated_plan_report else history.maintenance_plan_checked
+                history.maintenance_plan_checked,
+                history.maintenance_plan_link,
+                bool(validated_plan_report),
             ),
         }
-        for field_name, value in stellantis_checks.items():
-            if value != "yes":
+        for field_name, (value, evidence_link, has_validated_report) in stellantis_checks.items():
+            if not _verification_option_satisfied(value, evidence_link, has_validated_report):
                 pending_fields.append(field_name)
 
     alert_messages = {
@@ -899,10 +927,13 @@ def confirm_history_check(
             "related_previous_process": history.related_previous_process,
             "history_observation": history.history_observation,
             "service_box_checked": history.service_box_checked,
+            "service_box_link": history.service_box_link,
             "campaigns_checked": history.campaigns_checked,
+            "campaigns_link": history.campaigns_link,
             "maintenance_plan_checked": (
-                "yes" if validated_plan_report else history.maintenance_plan_checked
+                "evidence_link" if validated_plan_report else history.maintenance_plan_checked
             ),
+            "maintenance_plan_link": history.maintenance_plan_link,
             "maintenance_plan_report_id": validated_plan_report.id
             if validated_plan_report
             else None,

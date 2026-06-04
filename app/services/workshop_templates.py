@@ -48,9 +48,9 @@ WORKSHOP_PHASE_TEMPLATE = [
     },
     {
         "code": "history_check",
-        "name": "Verificacao de Historico",
+        "name": "Verificacoes",
         "sort_order": 3,
-        "purpose": "Rever historico interno, accident reports e reincidencias.",
+        "purpose": "Confirmar historico interno, Service Box, campanhas e plano de manutencao.",
     },
     {
         "code": "technical_phase",

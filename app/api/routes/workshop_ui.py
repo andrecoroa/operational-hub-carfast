@@ -978,7 +978,7 @@ def workshop_process_detail_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], unable_to_read:["Falha na leitura","danger"], critical:["Crítica","danger"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
       technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
@@ -1124,7 +1124,7 @@ def workshop_process_list_page() -> str:
       scheduled:["Marcado","progress"], pending:["Pendente","review"], pending_definition:["Por definir","review"], not_started:["Não iniciado","neutral"], open:["Aberto","review"], cancelled:["Cancelado","danger"]
     };
     const PHASES = {
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
       technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     };
@@ -1250,15 +1250,16 @@ def workshop_process_manage_page(process_id: int) -> str:
               <button class="primary" onclick="addService()">Adicionar serviço</button>
             </div>
             <div id="history" class="form-section">
-              <h2>Verificação de Histórico</h2>
+              <h2>Verificações</h2>
               <div id="historyMemory" class="memory"></div>
-              <div class="grid2"><label>Histórico interno<select id="histInternal"><option value="yes">Sim</option><option value="no">Não</option><option value="pending_review">Por rever</option></select></label><label>Accident reports<select id="histAccidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label></div>
+              <div class="grid2"><label>Consulta histórico interno<select id="histInternal"><option value="yes">Sim</option><option value="no">Não</option><option value="pending_review">Por rever</option></select></label><label>Accident reports<select id="histAccidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label></div>
               <label>Detalhe accident reports<input id="histAccidentsDetail"></label>
               <div class="grid2"><label>Processos anteriores<select id="histPrev"><option value="yes">Sim</option><option value="none">Não existem</option><option value="pending_review">Por rever</option></select></label><label>Incidência repetida<select id="histRepeat"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por avaliar</option></select></label></div>
-              <div class="grid3"><label>Service Box<select id="histServiceBox"><option value="pending_review">Por rever</option><option value="yes">Consultado</option><option value="no">Não aplicável / não consultado</option></select></label><label>Campanhas<select id="histCampaigns"><option value="pending_review">Por rever</option><option value="yes">Consultadas</option><option value="no">Não aplicável / não consultadas</option></select></label><label>Plano manutenção<select id="histMaintenancePlan"><option value="pending_review">Por rever</option><option value="yes">Confirmado</option><option value="no">Não aplicável / não confirmado</option></select></label></div>
-              <p class="muted">Obrigatório para viaturas Stellantis: Service Box, campanhas e plano de manutenção.</p>
-              <label>Observação histórico<textarea id="histObs"></textarea></label>
-              <button id="historyButton" class="primary" onclick="confirmHistory()">Confirmar histórico</button>
+              <div class="grid3"><label>Service Box<select id="histServiceBox"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Campanhas<select id="histCampaigns"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label><label>Plano manutenção<select id="histMaintenancePlan"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label></div>
+              <div class="grid3"><div class="report-original-row"><label>Print Service Box<input id="histServiceBoxLink" placeholder="https://..."></label><a id="histServiceBoxOpen" class="button secondary" href="#" target="_blank" rel="noopener">Abrir</a></div><div class="report-original-row"><label>Print campanhas<input id="histCampaignsLink" placeholder="https://..."></label><a id="histCampaignsOpen" class="button secondary" href="#" target="_blank" rel="noopener">Abrir</a></div><div class="report-original-row"><label>Print plano manutenção<input id="histMaintenancePlanLink" placeholder="https://..."></label><a id="histMaintenancePlanOpen" class="button secondary" href="#" target="_blank" rel="noopener">Abrir</a></div></div>
+              <p class="muted">Para viaturas Stellantis, cada verificação deve ficar como Não, Não aplicável ou com link para print.</p>
+              <label>Observação verificações<textarea id="histObs"></textarea></label>
+              <button id="historyButton" class="primary" onclick="confirmHistory()">Confirmar verificações</button>
             </div>
             <div id="reports" class="form-section">
               <div class="section-title"><h2>Relatórios Técnicos</h2><span id="reportTabCount" class="chip">0</span></div>
@@ -1360,6 +1361,21 @@ def workshop_process_manage_page(process_id: int) -> str:
         return;
       }}
       open.href = url;
+    }}
+    function updateVerificationLink(inputId, openId) {{
+      const url = previewableReportUrl(payloadValue(inputId));
+      const open = document.querySelector(openId);
+      if (!open) return;
+      if (!url) {{
+        open.removeAttribute("href");
+        return;
+      }}
+      open.href = url;
+    }}
+    function updateVerificationLinks() {{
+      updateVerificationLink("#histServiceBoxLink", "#histServiceBoxOpen");
+      updateVerificationLink("#histCampaignsLink", "#histCampaignsOpen");
+      updateVerificationLink("#histMaintenancePlanLink", "#histMaintenancePlanOpen");
     }}
     function activateTab(tabId) {{
       document.querySelectorAll(".tab,.form-section").forEach(x => x.classList.remove("active"));
@@ -1624,11 +1640,11 @@ def workshop_process_manage_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], cancelled:["Cancelado","danger"], high:["Alta","danger"], critical:["Crítica","danger"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificação de histórico",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
       technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
-    const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
+    const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", not_applicable:"Não aplicável", evidence_link:"Link para print", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
     function safe(value) {{
       return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;");
     }}
@@ -1809,8 +1825,8 @@ def workshop_process_manage_page(process_id: int) -> str:
       memory("#receptionMemory", [["KM entrada", reception.km_entry], ["Foto quadrante", reception.quadrant_photo_link], ["Estado visual", reception.visible_damage_status], ["Danos", reception.damage_description], ["Observação", reception.initial_observation]]);
       setValue("#recKm", reception.km_entry); setValue("#recPhoto", reception.quadrant_photo_link); setValue("#recObs", reception.initial_observation); setValue("#recVisual", reception.visible_damage_status); setValue("#recDamage", reception.damage_description); setButton("#receptionButton", "receção", hasData(reception));
       const history = phaseData("history_check");
-      memory("#historyMemory", [["Histórico interno", history.internal_history_checked], ["Accident reports", history.open_accident_reports], ["Detalhe", history.accident_reports_detail], ["Processos anteriores", history.previous_processes_reviewed], ["Incidência repetida", history.repeated_incidence], ["Service Box", history.service_box_checked], ["Campanhas", history.campaigns_checked], ["Plano manutenção", history.maintenance_plan_checked], ["Observação", history.history_observation]]);
-      setValue("#histInternal", history.internal_history_checked); setValue("#histAccidents", history.open_accident_reports); setValue("#histAccidentsDetail", history.accident_reports_detail); setValue("#histPrev", history.previous_processes_reviewed); setValue("#histRepeat", history.repeated_incidence); setValue("#histServiceBox", history.service_box_checked); setValue("#histCampaigns", history.campaigns_checked); setValue("#histMaintenancePlan", history.maintenance_plan_checked); setValue("#histObs", history.history_observation); setButton("#historyButton", "histórico", hasData(history));
+      memory("#historyMemory", [["Histórico interno", history.internal_history_checked], ["Accident reports", history.open_accident_reports], ["Detalhe", history.accident_reports_detail], ["Processos anteriores", history.previous_processes_reviewed], ["Incidência repetida", history.repeated_incidence], ["Service Box", history.service_box_checked], ["Print Service Box", history.service_box_link], ["Campanhas", history.campaigns_checked], ["Print campanhas", history.campaigns_link], ["Plano manutenção", history.maintenance_plan_checked], ["Print plano", history.maintenance_plan_link], ["Observação", history.history_observation]]);
+      setValue("#histInternal", history.internal_history_checked); setValue("#histAccidents", history.open_accident_reports); setValue("#histAccidentsDetail", history.accident_reports_detail); setValue("#histPrev", history.previous_processes_reviewed); setValue("#histRepeat", history.repeated_incidence); setValue("#histServiceBox", history.service_box_checked); setValue("#histServiceBoxLink", history.service_box_link); setValue("#histCampaigns", history.campaigns_checked); setValue("#histCampaignsLink", history.campaigns_link); setValue("#histMaintenancePlan", history.maintenance_plan_checked); setValue("#histMaintenancePlanLink", history.maintenance_plan_link); updateVerificationLinks(); setValue("#histObs", history.history_observation); setButton("#historyButton", "verificações", hasData(history));
       const decision = phaseData("diagnosis_decision");
       memory("#decisionMemory", [["Diagnóstico", decision.main_diagnosis], ["Tipo intervenção", decision.intervention_type], ["Sistema", decision.affected_system], ["Gravidade", decision.severity], ["Pode circular", decision.vehicle_can_circulate], ["Próxima ação", decision.next_action], ["Cobrança cliente", decision.potential_customer_charge ? "Sim" : null]]);
       setValue("#decisionDiagnosis", decision.main_diagnosis); setValue("#decisionType", decision.intervention_type); setValue("#decisionSystem", decision.affected_system); setValue("#decisionSeverity", decision.severity); setValue("#decisionCause", decision.probable_cause); setValue("#decisionObs", decision.diagnosis_observation || decision.decision_observation); setValue("#decisionCirculate", decision.vehicle_can_circulate); setValue("#decisionNext", decision.next_action); setChecked("#decisionNeedsRepair", decision.needs_repair); setChecked("#decisionNeedsBudget", decision.needs_budget); setChecked("#decisionNeedsApproval", decision.needs_approval); setChecked("#decisionCharge", decision.potential_customer_charge); setChecked("#decisionWarranty", decision.warranty); setButton("#decisionButton", "decisão", hasData(decision));
@@ -1833,13 +1849,16 @@ def workshop_process_manage_page(process_id: int) -> str:
       document.querySelector("#reportCode").addEventListener("change", () => {{ selectedReportId = null; selectedReportType = payloadValue("#reportCode"); renderReportTypeCards(); renderReportFields(); updateReportActions(); }});
       document.querySelector("#reportOrigin").addEventListener("change", renderReportFields);
       document.querySelector("#reportLink").addEventListener("input", updateReportPreview);
+      document.querySelector("#histServiceBoxLink").addEventListener("input", updateVerificationLinks);
+      document.querySelector("#histCampaignsLink").addEventListener("input", updateVerificationLinks);
+      document.querySelector("#histMaintenancePlanLink").addEventListener("input", updateVerificationLinks);
       renderReportFields();
       updateServiceFormFields();
       updateReportPreview();
     }}
     async function loadProcess() {{ processData = await (await fetch(`/api/workshop/processes/${{processId}}`)).json(); const v = processData.vehicle || {{}}; const status = statusMeta(processData.status); const model = [v.brand, v.model, v.version].filter(Boolean).join(" "); const activeTab = document.querySelector(".tab.active")?.dataset.tab || "reception"; document.querySelector("#header").innerHTML = `<div class="process-heading"><a class="back-button" href="/workshop/processes-ui">Voltar</a><div><h1>${{safe(processData.services_label || processData.title)}}</h1><p class="subtitle">ID ${{processData.id}} · ${{safe(v.plate || processData.plate || "-")}} · ${{safe(model || "Dados da viatura por completar")}} · ${{safe(status[0])}}</p></div></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/processes-ui">Processos por fases</a></div>`; renderVehicle(); renderServices(); renderSummary(); renderPhaseTabs(activeTab); renderPhaseMemory(); renderReportTypeCards(); activateTab(activeTab); if (!selectedReportType && processData.technical_reports?.length) {{ const first = [...processData.technical_reports].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0]; selectedReportType = first.report_code; if (document.querySelector("#reports").classList.contains("active")) selectReport(first.id); else renderReportTypeCards(); }} }}
     async function confirmReception() {{ try {{ await post(`/api/workshop/processes/${{processId}}/reception`, {{km_entry:Number(payloadValue("#recKm")) || null, quadrant_photo_link:payloadValue("#recPhoto"), initial_observation:payloadValue("#recObs"), visible_damage_status:payloadValue("#recVisual"), damage_description:payloadValue("#recDamage")}}); showResult(true, "Receção confirmada."); }} catch(e) {{ showResult(false, e.message); }} }}
-    async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), service_box_checked:payloadValue("#histServiceBox"), campaigns_checked:payloadValue("#histCampaigns"), maintenance_plan_checked:payloadValue("#histMaintenancePlan"), history_observation:payloadValue("#histObs")}}); showResult(true, "Histórico confirmado."); }} catch(e) {{ showResult(false, e.message); }} }}
+    async function confirmHistory() {{ try {{ await post(`/api/workshop/processes/${{processId}}/history-check`, {{internal_history_checked:payloadValue("#histInternal"), open_accident_reports:payloadValue("#histAccidents"), accident_reports_detail:payloadValue("#histAccidentsDetail"), previous_processes_reviewed:payloadValue("#histPrev"), relevant_interventions_identified:"no", repeated_incidence:payloadValue("#histRepeat"), service_box_checked:payloadValue("#histServiceBox"), service_box_link:payloadValue("#histServiceBoxLink"), campaigns_checked:payloadValue("#histCampaigns"), campaigns_link:payloadValue("#histCampaignsLink"), maintenance_plan_checked:payloadValue("#histMaintenancePlan"), maintenance_plan_link:payloadValue("#histMaintenancePlanLink"), history_observation:payloadValue("#histObs")}}); showResult(true, "Verificações confirmadas."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function addService() {{ try {{ await post(`/api/workshop/processes/${{processId}}/services`, {{service_code:payloadValue("#serviceCode"), detail:payloadValue("#serviceDetail"), zone:payloadValue("#serviceZone"), short_observation:payloadValue("#serviceObservation")}}); document.querySelector("#serviceDetail").value = ""; document.querySelector("#serviceZone").value = ""; document.querySelector("#serviceObservation").value = ""; showResult(true, "Serviço adicionado ao processo."); }} catch(e) {{ showResult(false, e.message); }} }}
     async function saveReportDraft() {{ try {{ const extractedValues = collectReportValues(); document.querySelector("#reportValues").value = JSON.stringify(extractedValues, null, 2); const body = {{report_code:payloadValue("#reportCode"), report_moment:payloadValue("#reportMoment"), reading_origin:payloadValue("#reportOrigin"), original_link:payloadValue("#reportLink"), extracted_values:extractedValues}}; const existing = selectedReportId ? null : matchingReportDraft(); const reportId = selectedReportId || existing?.id; const updating = Boolean(reportId); const data = updating ? await patch(`/api/workshop/technical-reports/${{reportId}}`, body) : await post(`/api/workshop/processes/${{processId}}/technical-reports`, body); selectedReportId = data.id; document.querySelector("#validateReportId").value = data.id; document.querySelector("#validateValues").value = JSON.stringify(extractedValues, null, 2); updateReportActions(); renderReportTypeCards(); selectReport(data.id); showResult(true, updating ? `Relatório #${{data.id}} atualizado. Fica pendente de validação.` : `Relatório #${{data.id}} adicionado. Fica pendente de validação.`); }} catch(e) {{ showResult(false, e.message); }} }}
     async function validateReport() {{ try {{ const reportId = payloadValue("#validateReportId") || selectedReportId || matchingReportDraft()?.id; if (!reportId) throw new Error("Seleciona ou adiciona um relatório antes de validar."); const validatedValues = payloadValue("#validateValues") ? jsonValue("#validateValues") : collectReportValues(); document.querySelector("#validateValues").value = JSON.stringify(validatedValues || {{}}, null, 2); await post(`/api/workshop/technical-reports/${{reportId}}/validate`, {{validated_values:validatedValues || {{}}}}); selectedReportId = Number(reportId); showResult(true, `Relatório #${{reportId}} validado como revisto.`); }} catch(e) {{ showResult(false, e.message); }} }}

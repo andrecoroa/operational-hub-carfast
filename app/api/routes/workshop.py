@@ -59,6 +59,21 @@ CHECK_LABELS = {check["code"]: check["label"] for check in TECHNICAL_CHECKS}
 CHECK_STATUSES = {"ok", "not_ok", "not_applicable", "pending_review"}
 READING_ORIGINS = {"stellantis_machine", "autel", "other"}
 REPORT_MOMENTS = {"initial", "final"}
+STELLANTIS_BRANDS = {
+    "abarth",
+    "alfa romeo",
+    "citroen",
+    "citroën",
+    "ds",
+    "fiat",
+    "jeep",
+    "lancia",
+    "maserati",
+    "opel",
+    "peugeot",
+    "ram",
+    "vauxhall",
+}
 REPORT_STATUSES = {
     "pending",
     "added",
@@ -97,6 +112,12 @@ def _vehicle_summary(vehicle: Vehicle | None, fallback_plate: str | None = None)
         "operational_status": vehicle.operational_status,
         "active": vehicle.active,
     }
+
+
+def _is_stellantis_vehicle(vehicle: Vehicle | None) -> bool:
+    if not vehicle or not vehicle.brand:
+        return False
+    return vehicle.brand.strip().lower() in STELLANTIS_BRANDS
 
 
 class WorkshopServiceInput(BaseModel):
@@ -198,6 +219,8 @@ class WorkshopHistoryCheckConfirm(BaseModel):
     related_previous_process: str | None = None
     history_observation: str | None = None
     service_box_checked: str | None = None
+    campaigns_checked: str | None = None
+    maintenance_plan_checked: str | None = None
     confirmed_by_id: int | None = None
 
 
@@ -781,6 +804,7 @@ def confirm_history_check(
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
     phase = _get_phase_or_404(db, process.id, "history_check")
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
 
     pending_fields = []
     checks = {
@@ -799,13 +823,27 @@ def confirm_history_check(
         pending_fields.append("accident_reports_detail")
     if history.repeated_incidence == "yes" and not history.repeated_incidence_description:
         pending_fields.append("repeated_incidence_description")
+    if _is_stellantis_vehicle(vehicle):
+        stellantis_checks = {
+            "service_box_checked": history.service_box_checked,
+            "campaigns_checked": history.campaigns_checked,
+            "maintenance_plan_checked": history.maintenance_plan_checked,
+        }
+        for field_name, value in stellantis_checks.items():
+            if value != "yes":
+                pending_fields.append(field_name)
 
+    alert_messages = {
+        "service_box_checked": "Consulta Service Box por confirmar",
+        "campaigns_checked": "Campanhas Stellantis por confirmar",
+        "maintenance_plan_checked": "Plano de manutenção Stellantis por confirmar",
+    }
     for field_name in pending_fields:
         _add_alert_once(
             db,
             process.id,
             f"{field_name}_pending",
-            f"{field_name.replace('_', ' ').title()} por rever",
+            alert_messages.get(field_name, f"{field_name.replace('_', ' ').title()} por rever"),
             source="history_check",
             phase_id=phase.id,
         )
@@ -826,6 +864,9 @@ def confirm_history_check(
             "related_previous_process": history.related_previous_process,
             "history_observation": history.history_observation,
             "service_box_checked": history.service_box_checked,
+            "campaigns_checked": history.campaigns_checked,
+            "maintenance_plan_checked": history.maintenance_plan_checked,
+            "requires_stellantis_checks": _is_stellantis_vehicle(vehicle),
             "pending_fields": pending_fields,
         },
         history.confirmed_by_id,

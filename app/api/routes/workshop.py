@@ -1649,6 +1649,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         ],
         "phases": [
             {
+                "id": phase.id,
                 "phase_code": phase.phase_code,
                 "name": phase.name,
                 "status": phase.status,
@@ -1664,6 +1665,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
                 "severity": alert.severity,
                 "status": alert.status,
                 "source": alert.source,
+                "phase_id": alert.phase_id,
             }
             for alert in alerts
         ],

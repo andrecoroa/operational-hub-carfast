@@ -1095,7 +1095,7 @@ def workshop_process_list_page() -> str:
   <div class="app">
     <aside><div class="brand">CarFast v2</div><nav class="nav"><a href="/">Início</a><a href="/fleet">Frota</a><a href="/workshop">Oficina</a><a class="sub" href="/workshop/manage">Processos atuais</a><a class="sub active" href="/workshop/processes-ui">Processos por fases</a><a class="sub" href="/workshop/new-process">Novo processo por fases</a><a href="/task-board">Tarefas</a><a href="/documents">Documentos</a></nav></aside>
     <main>
-      <div class="topbar"><div><h1>Oficina - Processos por fases</h1><p class="subtitle">Acompanhar processos criados no novo modelo por blocos.</p></div><div class="top-actions"><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/new-process">+ Novo processo por fases</a></div></div>
+      <div class="topbar"><div><h1>Oficina - Processos por fases</h1><p class="subtitle">Acompanhar processos criados no novo modelo por blocos.</p></div><div class="top-actions"><a class="button secondary" href="/">Menu principal</a><a class="button secondary" href="/workshop">Oficina</a><a class="button secondary" href="/workshop/manage">Processos atuais</a><a class="button secondary" href="/fleet">Frota</a><a class="button" href="/workshop/new-process">+ Novo processo por fases</a></div></div>
       <section class="board">
         <div class="kpis">
           <div class="kpi"><span>Total processos</span><strong id="kpiTotal">0</strong></div>
@@ -2382,7 +2382,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .hamburger { width:28px; min-height:28px; border:0; padding:0; background:transparent; font-size:26px; font-weight:900; }
     .brand { color:#d83228; font-size:28px; font-weight:950; letter-spacing:.02em; line-height:1; }
     .brand-actions { display:flex; gap:10px; align-items:center; justify-content:flex-end; }
-    .brand-actions button { min-width:172px; min-height:46px; background:#fff; border-color:var(--line); box-shadow:0 1px 3px rgba(15,23,42,.05); }
+    .brand-actions button, .brand-actions .button { min-width:142px; min-height:46px; background:#fff; border-color:var(--line); box-shadow:0 1px 3px rgba(15,23,42,.05); }
     .brand-actions .ghost { min-width:36px; width:36px; border-color:transparent; box-shadow:none; font-size:24px; padding:0; }
     .topbar {
       display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start;
@@ -2538,11 +2538,11 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .result.ok { background:var(--green-soft); border-color:#b7d7be; }
     .result.err { background:var(--red-soft); border-color:#e2b7b3; }
     .placeholder { border:1px dashed var(--line-strong); border-radius:8px; background:var(--surface-soft); padding:18px; color:var(--muted); font-weight:800; }
-    @media (max-width:1120px) { .stepper { grid-template-columns:repeat(4,1fr); } .doc-grid { grid-template-columns:repeat(2,1fr); } .brand-actions button { min-width:auto; } }
+    @media (max-width:1120px) { .stepper { grid-template-columns:repeat(4,1fr); } .doc-grid { grid-template-columns:repeat(2,1fr); } .brand-actions button, .brand-actions .button { min-width:auto; } }
     @media (max-width:760px) {
       .brandbar { grid-template-columns:auto 1fr; height:auto; padding:12px 14px; }
       .brand-actions { grid-column:1 / -1; justify-content:stretch; }
-      .brand-actions button { flex:1; }
+      .brand-actions button, .brand-actions .button { flex:1; }
       .topbar, .phase-head { grid-template-columns:1fr; display:grid; padding:18px 14px; }
       .content { padding:0 0 24px; }
       .grid2, .grid3, .doc-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
@@ -2563,6 +2563,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       <button class="hamburger" type="button" title="Menu">☰</button>
       <div class="brand">CARFAST</div>
       <div class="brand-actions">
+        <a class="button" href="/">Menu principal</a>
+        <a class="button" href="/workshop">Oficina</a>
+        <a class="button" href="/workshop/processes-ui">Lista de processos</a>
         <button type="button" onclick="openFolder()">▭ Abrir pasta</button>
         <button type="button" onclick="copyFolder()">▣ Copiar caminho</button>
         <button class="ghost" type="button" title="Mais opções">⋮</button>

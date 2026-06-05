@@ -73,6 +73,12 @@ from app.services.task_bulk_importer import (
     preview_task_bulk_import,
     store_task_bulk_upload,
 )
+from app.services.trade_debt_importer import (
+    TRADE_DEBT_IMPORT_TYPE,
+    apply_trade_debt_import,
+    preview_trade_debt_import,
+    store_trade_debt_upload,
+)
 from app.services.workshop_history_importer import (
     TECHNICAL_HISTORY_IMPORT_COLUMNS,
     import_workshop_technical_history_file,
@@ -5739,6 +5745,117 @@ def technical_history_import_submit(request: Request, file: UploadFile):
 
 
 TASK_BULK_SESSION_KEY = "task_bulk_import_pending"
+TRADE_DEBT_SESSION_KEY = "trade_debt_import_pending"
+
+
+def trade_debt_form_context(
+    request: Request,
+    *,
+    error: str | None = None,
+    preview: dict | None = None,
+    result: dict | None = None,
+) -> dict:
+    pending = request.session.get(TRADE_DEBT_SESSION_KEY) if hasattr(request, "session") else None
+    return {
+        "error": error,
+        "preview": preview,
+        "result": result,
+        "pending": pending,
+    }
+
+
+@web_router.get("/imports/trade-debt", response_class=HTMLResponse)
+def trade_debt_import_form(request: Request, reset: str | None = None):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    if reset and hasattr(request, "session"):
+        request.session.pop(TRADE_DEBT_SESSION_KEY, None)
+    return templates.TemplateResponse(request, "trade_debt_import.html", trade_debt_form_context(request))
+
+
+@web_router.post("/imports/trade-debt/preview", response_class=HTMLResponse)
+def trade_debt_import_preview(request: Request, file: UploadFile):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        return templates.TemplateResponse(
+            request,
+            "trade_debt_import.html",
+            trade_debt_form_context(request, error="Carrega um ficheiro XLSX."),
+            status_code=400,
+        )
+
+    suffix = Path(file.filename).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        stored_path = store_trade_debt_upload(tmp_path, file.filename)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    with SessionLocal() as db:
+        try:
+            preview = preview_trade_debt_import(db, stored_path)
+        except ValueError as exc:
+            stored_path.unlink(missing_ok=True)
+            return templates.TemplateResponse(
+                request,
+                "trade_debt_import.html",
+                trade_debt_form_context(request, error=str(exc)),
+                status_code=400,
+            )
+    request.session[TRADE_DEBT_SESSION_KEY] = {
+        "path": str(stored_path),
+        "original_name": file.filename,
+    }
+    return templates.TemplateResponse(
+        request,
+        "trade_debt_import.html",
+        trade_debt_form_context(request, preview=preview),
+    )
+
+
+@web_router.post("/imports/trade-debt/confirm", response_class=HTMLResponse)
+def trade_debt_import_confirm(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = require_any_web_permission(request, "imports.run", "admin.manage")
+    if denied:
+        return denied
+    pending = request.session.get(TRADE_DEBT_SESSION_KEY) if hasattr(request, "session") else None
+    if not pending:
+        return RedirectResponse("/imports/trade-debt", status_code=303)
+    path = Path(pending["path"])
+    if not path.exists():
+        return templates.TemplateResponse(
+            request,
+            "trade_debt_import.html",
+            trade_debt_form_context(request, error="O ficheiro pendente já não está disponível."),
+            status_code=400,
+        )
+    with SessionLocal() as db:
+        result = apply_trade_debt_import(
+            db,
+            path,
+            pending["original_name"],
+            user_id=user_id,
+        )
+    request.session.pop(TRADE_DEBT_SESSION_KEY, None)
+    return templates.TemplateResponse(
+        request,
+        "trade_debt_import.html",
+        trade_debt_form_context(request, result=result),
+    )
 
 
 def task_bulk_form_context(
@@ -6517,6 +6634,16 @@ def imports_page(request: Request, type: str | None = None):
                 "history_url": "/imports?type=task_bulk",
                 "created_label": "Subtarefas",
                 "updated_label": "Linhas",
+            },
+            {
+                "code": TRADE_DEBT_IMPORT_TYPE,
+                "source_system": "carfast",
+                "title": "Dívida para comércio",
+                "description": "Preencher Valor em dívida e Entidade financeira na Gestão CarFast da viatura.",
+                "import_url": "/imports/trade-debt",
+                "history_url": f"/imports?type={TRADE_DEBT_IMPORT_TYPE}",
+                "created_label": "Criadas",
+                "updated_label": "Viaturas",
             },
             {
                 "code": AR_IMPORT_TYPE,

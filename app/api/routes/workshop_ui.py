@@ -2190,6 +2190,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     let processData = null;
     let config = null;
     let selectedReportId = null;
+    let selectedReportType = null;
     const tabs = [
       ["reception","Receção","administrative_reception"], ["services","Serviços",null], ["history","Verificações","history_check"], ["reports","Relatórios","technical_phase"],
       ["decision","Decisão","diagnosis_decision"], ["budget","Orçamento","budget_approval"], ["repair","Reparação","internal_repair_execution"], ["close","Fecho","final_closure"]
@@ -2528,6 +2529,19 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-field label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:850; }
     .report-field input { min-height:38px; }
     .report-description { border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); padding:11px 12px; color:var(--muted); font-weight:750; }
+    .report-type-grid { display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:12px; margin-bottom:14px; }
+    .report-type-card {
+      display:grid; gap:8px; min-height:112px; text-align:left; border:1px solid var(--line); border-radius:8px;
+      background:#fff; padding:14px; cursor:pointer;
+    }
+    .report-type-card:hover { border-color:var(--line-strong); background:var(--surface-soft); }
+    .report-type-card.active { border-color:var(--brand); background:#fff8f5; box-shadow:inset 4px 0 0 var(--brand); }
+    .report-type-card strong { font-size:16px; }
+    .report-type-card .report-count { font-size:26px; line-height:1; font-weight:950; }
+    .report-type-card .report-status-line { display:flex; flex-wrap:wrap; gap:6px; align-items:center; color:var(--muted); font-size:12px; font-weight:850; }
+    .report-instance-strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+    .report-instance-strip button { min-height:34px; border-radius:999px; padding:6px 11px; font-size:12px; }
+    .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }
     .inline-checks { display:flex; flex-wrap:wrap; gap:12px 18px; }
     .inline-checks label { display:flex; flex-direction:row; align-items:center; gap:8px; color:var(--text); }
     .inline-checks input { width:18px; min-height:18px; }
@@ -2545,7 +2559,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       .brand-actions button, .brand-actions .button { flex:1; }
       .topbar, .phase-head { grid-template-columns:1fr; display:grid; padding:18px 14px; }
       .content { padding:0 0 24px; }
-      .grid2, .grid3, .doc-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
+      .grid2, .grid3, .doc-grid, .report-type-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
       .report-field > span { border-right:0; border-bottom:1px solid var(--line); }
       .verification-head { display:none; }
       .verification-cell { border-right:0; border-bottom:1px solid var(--line); }
@@ -2677,7 +2691,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         <section id="reports" class="panel phase">
           <div class="phase-head"><div><h2>Relatórios</h2><p class="muted">Preencha os campos esperados do relatório selecionado. O JSON é preparado automaticamente.</p></div><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Adicionar relatório</button></div>
           <div id="reportsAlerts" class="alert-line"></div>
-          <div id="reportList" class="list"></div>
+          <div id="reportTypeCards" class="report-type-grid"></div>
+          <div id="reportList" class="report-instance-strip"></div>
           <div class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
           <div id="reportDescription" class="report-description"></div>
           <label>Link original<input id="reportLink" placeholder="https://..."></label>
@@ -2730,6 +2745,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     let processData = null;
     let config = null;
     let selectedReportId = null;
+    let selectedReportType = null;
     const tabs = [
       ["reception", "Receção", "administrative_reception"],
       ["services", "Serviços", null],
@@ -2892,9 +2908,45 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     function reportName(code) { return (config?.stellantis_reports || []).find(report => report.code === code)?.label || code || "Relatório"; }
     function reportConfig(code=val("#reportCode")) { return (config?.stellantis_reports || []).find(report => report.code === code) || null; }
+    function reportIsValidated(report) {
+      return ["validated", "corrected_manually"].includes(report.status);
+    }
+    function reportIsPending(report) {
+      return ["pending_validation", "added", "pending", "not_started"].includes(report.status);
+    }
     function renderReports() {
       const reports = processData.technical_reports || [];
-      $("#reportList").innerHTML = reports.map(report => `<button type="button" class="row" onclick="selectReport(${report.id})"><span><strong>#${report.id} ${safe(report.report_name || reportName(report.report_code))}</strong><p class="muted">${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))}</p></span>${chip(report.status)}</button>`).join("") || `<div class="placeholder">Sem relatórios registados.</div>`;
+      const types = config?.stellantis_reports || [];
+      const codes = [...new Set([...types.map(type => type.code), ...reports.map(report => report.report_code).filter(Boolean)])];
+      if (!selectedReportType) {
+        const firstPending = [...reports].sort((a,b) => (reportIsPending(a) ? -1 : 0) - (reportIsPending(b) ? -1 : 0) || b.id - a.id)[0];
+        selectedReportType = firstPending?.report_code || codes[0] || null;
+      }
+      $("#reportTypeCards").innerHTML = codes.map(code => {
+        const typeReports = reports.filter(report => report.report_code === code);
+        const validated = typeReports.filter(reportIsValidated).length;
+        const pending = typeReports.filter(reportIsPending).length;
+        const active = selectedReportType === code;
+        const summary = typeReports.length
+          ? `${validated} validado${validated === 1 ? "" : "s"}${pending ? ` · ${pending} por validar` : ""}`
+          : "Sem relatórios anexados";
+        return `<button type="button" class="report-type-card ${active ? "active" : ""}" onclick="selectReportType('${safe(code)}')">
+          <strong>${safe(reportName(code))}</strong>
+          <span class="report-count">${typeReports.length}</span>
+          <span class="report-status-line">${safe(summary)}</span>
+        </button>`;
+      }).join("") || `<div class="placeholder">Sem tipos de relatório configurados.</div>`;
+      const selectedReports = reports.filter(report => report.report_code === selectedReportType);
+      $("#reportList").innerHTML = selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">#${report.id} · ${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</button>`).join("") || `<button type="button" onclick="newReportDraft()">Novo ${safe(reportName(selectedReportType))}</button>`;
+    }
+    function selectReportType(code) {
+      selectedReportType = code;
+      setVal("#reportCode", code);
+      const reports = (processData.technical_reports || []).filter(report => report.report_code === code);
+      const first = [...reports].sort((a,b) => (reportIsPending(a) ? -1 : 0) - (reportIsPending(b) ? -1 : 0) || b.id - a.id)[0];
+      if (first) selectReport(first.id, false);
+      else newReportDraft();
+      renderReports();
     }
     function normalizedKey(value) {
       return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -3059,8 +3111,10 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
       $("#reportCode")?.addEventListener("change", () => {
         selectedReportId = null;
+        selectedReportType = val("#reportCode");
         $("#reportSaveButton").textContent = "Adicionar relatório";
         renderReportFields({});
+        renderReports();
       });
       $("#recObs")?.addEventListener("input", updateObservationCounter);
     }
@@ -3200,6 +3254,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const report = (processData.technical_reports || []).find(item => item.id === id);
       if (!report) return;
       selectedReportId = id;
+      selectedReportType = report.report_code;
       $("#reportSaveButton").textContent = "Guardar alterações";
       setVal("#reportCode", report.report_code);
       setVal("#reportMoment", report.report_moment);
@@ -3209,16 +3264,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#validateValues", JSON.stringify(report.validated_values || report.extracted_values || {}, null, 2));
       renderReportFields(report.extracted_values || report.validated_values || {});
       updateReportOpen();
+      renderReports();
       if (switchTab) showPhase("reports");
     }
     function newReportDraft() {
       selectedReportId = null;
+      selectedReportType = val("#reportCode") || selectedReportType;
+      if (selectedReportType) setVal("#reportCode", selectedReportType);
       $("#reportSaveButton").textContent = "Adicionar relatório";
       setVal("#reportLink", "");
       setVal("#reportValues", "{}");
       setVal("#validateValues", "{}");
       renderReportFields({});
       updateReportOpen();
+      renderReports();
     }
     async function saveReport() {
       try {
@@ -3228,7 +3287,12 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           ? await requestJson(`/api/workshop/technical-reports/${selectedReportId}`, "PATCH", payload)
           : await requestJson(`/api/workshop/processes/${processId}/technical-reports`, "POST", payload);
         selectedReportId = data.id || selectedReportId;
+        selectedReportType = payload.report_code;
+        const existingIndex = (processData.technical_reports || []).findIndex(report => report.id === selectedReportId);
+        if (existingIndex >= 0) processData.technical_reports[existingIndex] = data;
+        else processData.technical_reports = [...(processData.technical_reports || []), data];
         $("#reportSaveButton").textContent = "Guardar alterações";
+        renderReports();
         showResult(true, selectedReportId ? `Relatório #${selectedReportId} guardado.` : "Relatório guardado.");
       } catch (err) { showResult(false, err.message); }
     }
@@ -3237,7 +3301,10 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         if (!selectedReportId) throw new Error("Seleciona um relatório antes de validar.");
         syncReportJsonFromFields();
         const validated = val("#validateValues") ? jsonFrom("#validateValues") : jsonFrom("#reportValues");
-        await requestJson(`/api/workshop/technical-reports/${selectedReportId}/validate`, "POST", {validated_values:validated});
+        const data = await requestJson(`/api/workshop/technical-reports/${selectedReportId}/validate`, "POST", {validated_values:validated});
+        const existingIndex = (processData.technical_reports || []).findIndex(report => report.id === selectedReportId);
+        if (existingIndex >= 0) processData.technical_reports[existingIndex] = data;
+        renderReports();
         showResult(true, `Relatório #${selectedReportId} validado.`);
       } catch (err) { showResult(false, err.message); }
     }

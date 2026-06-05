@@ -48,19 +48,19 @@ WORKSHOP_PHASE_TEMPLATE = [
     },
     {
         "code": "history_check",
-        "name": "Verificacoes",
+        "name": "Verificacoes Administrativas",
         "sort_order": 3,
         "purpose": "Confirmar historico interno, Service Box, campanhas e plano de manutencao.",
     },
     {
         "code": "technical_phase",
-        "name": "Fase Tecnica",
+        "name": "Diagnostico Tecnico",
         "sort_order": 4,
-        "purpose": "Adicionar relatorios, verificacoes, incidentes e resultado tecnico inicial.",
+        "purpose": "Adicionar relatorios tecnicos, leituras de maquina, incidentes e resultado tecnico inicial.",
     },
     {
         "code": "diagnosis_decision",
-        "name": "Diagnostico e Decisao",
+        "name": "Controlo e Validacao",
         "sort_order": 5,
         "purpose": "Transformar dados tecnicos em decisao operacional.",
     },

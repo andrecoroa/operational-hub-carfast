@@ -406,6 +406,7 @@ class WorkshopTechnicalReportCreate(BaseModel):
     extracted_values: dict[str, Any] | list[Any] | None = None
     added_by_id: int | None = None
     observations: str | None = None
+    allow_blank: bool = False
 
     @model_validator(mode="after")
     def validate_report(self) -> "WorkshopTechnicalReportCreate":
@@ -439,6 +440,7 @@ class WorkshopTechnicalReportUpdate(BaseModel):
     raw_values: dict[str, Any] | list[Any] | None = None
     extracted_values: dict[str, Any] | list[Any] | None = None
     observations: str | None = None
+    allow_blank: bool = False
 
     @model_validator(mode="after")
     def validate_report_update(self) -> "WorkshopTechnicalReportUpdate":
@@ -700,6 +702,23 @@ def _report_value(values: dict[str, Any] | list[Any] | None, key: str) -> Any:
         if normalized_item_key == normalized_key:
             return item_value
     return None
+
+
+def _has_report_payload(
+    original_link: str | None,
+    raw_values: dict[str, Any] | list[Any] | None,
+    extracted_values: dict[str, Any] | list[Any] | None,
+) -> bool:
+    if str(original_link or "").strip():
+        return True
+    for values in (raw_values, extracted_values):
+        if isinstance(values, dict) and any(
+            str(value or "").strip() for value in values.values()
+        ):
+            return True
+        if isinstance(values, list) and values:
+            return True
+    return False
 
 
 def _truthy_validation(value: Any) -> bool:
@@ -1258,6 +1277,15 @@ def add_technical_report(
     db: DbSession,
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
+    if not report_input.allow_blank and not _has_report_payload(
+        report_input.original_link,
+        report_input.raw_values,
+        report_input.extracted_values,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível criar relatório em branco sem confirmação.",
+        )
     vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     phase_code = (
         "internal_repair_execution"
@@ -1416,6 +1444,39 @@ def update_technical_report(
             report.status = "pending_validation"
     if report_input.observations is not None:
         report.observations = report_input.observations
+    if not report_input.allow_blank and not _has_report_payload(
+        report.original_link,
+        report.raw_values_json,
+        report.extracted_values_json,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível deixar relatório em branco sem confirmação.",
+        )
+    db.commit()
+    db.refresh(report)
+    return _technical_report_response(report)
+
+
+@router.delete("/technical-reports/{report_id}")
+def void_technical_report(report_id: int, db: DbSession) -> dict[str, Any]:
+    report = db.get(WorkshopTechnicalReport, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Relatório técnico não encontrado.",
+        )
+    if report.status == "voided":
+        return _technical_report_response(report)
+    report.status = "voided"
+    report.observations = "\n".join(
+        item
+        for item in [
+            report.observations,
+            f"Relatório anulado em {datetime.utcnow().isoformat()}.",
+        ]
+        if item
+    )
     db.commit()
     db.refresh(report)
     return _technical_report_response(report)
@@ -2013,6 +2074,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
     reports = db.scalars(
         select(WorkshopTechnicalReport)
         .where(WorkshopTechnicalReport.process_id == process.id)
+        .where(WorkshopTechnicalReport.status != "voided")
         .order_by(WorkshopTechnicalReport.created_at)
     ).all()
     linked_document_ids = db.scalars(

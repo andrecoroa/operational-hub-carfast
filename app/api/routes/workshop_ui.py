@@ -978,8 +978,8 @@ def workshop_process_detail_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], unable_to_read:["Falha na leitura","danger"], critical:["Crítica","danger"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
-      technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
+      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
     const VALUES = {{normal:"Normal", high:"Alta", urgent:"Urgente", reception:"Receção", appointment:"Marcação", station:"Estação", customer_driver:"Cliente / condutor", rentway_alert:"Alerta Rentway", internal_preparation:"Preparação interna", other:"Outro"}};
@@ -1040,9 +1040,9 @@ def workshop_process_detail_page(process_id: int) -> str:
               </ul>
             </section>
             <section>
-              <div class="section-title"><h2>Relatórios e verificações</h2></div>
+              <div class="section-title"><h2>Diagnóstico e verificações técnicas</h2></div>
               <div class="grid-3">
-                <div class="metric"><span>Relatórios técnicos</span><strong>${{process.technical_reports.length}}</strong></div>
+                <div class="metric"><span>Diagnóstico técnico</span><strong>${{process.technical_reports.length}}</strong></div>
                 <div class="metric"><span>Verificações técnicas</span><strong>${{process.technical_checks.length}}</strong></div>
                 <div class="metric"><span>Incidentes</span><strong>${{process.technical_incidents.length}}</strong></div>
               </div>
@@ -1124,8 +1124,8 @@ def workshop_process_list_page() -> str:
       scheduled:["Marcado","progress"], pending:["Pendente","review"], pending_definition:["Por definir","review"], not_started:["Não iniciado","neutral"], open:["Aberto","review"], cancelled:["Cancelado","danger"]
     };
     const PHASES = {
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
-      technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
+      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     };
     const PRIORITY = {low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente"};
@@ -1306,7 +1306,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <div style="display:flex;justify-content:flex-end;margin-top:14px"><button id="historyButton" class="primary" onclick="confirmHistory()">Confirmar verificações</button></div>
             </div>
             <div id="reports" class="form-section">
-              <div class="section-title"><h2>Relatórios Técnicos</h2><span id="reportTabCount" class="chip">0</span></div>
+              <div class="section-title"><h2>Diagnóstico técnico</h2><span id="reportTabCount" class="chip">0</span></div>
               <div id="reportTypeCards" class="report-type-grid"></div>
               <div id="reportInstanceList" class="report-instance-list"></div>
               <div id="selectedReportDetail" class="memory"></div>
@@ -1742,8 +1742,8 @@ def workshop_process_manage_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], cancelled:["Cancelado","danger"], high:["Alta","danger"], critical:["Crítica","danger"], defined:["Definida","done"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações",
-      technical_phase:"Fase técnica", diagnosis_decision:"Diagnóstico e decisão", budget_approval:"Orçamento / aprovação",
+      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
+      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
       internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
     }};
     const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", not_applicable:"Não aplicável", evidence_link:"Link para print", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
@@ -2357,6 +2357,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       padding:8px 14px; font-weight:800; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px;
     }
     button.primary, .button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+    button.danger-outline { border-color:#d9a39b; color:var(--red); background:#fffafa; }
     button.ghost { border-color:transparent; background:transparent; }
     button:disabled, .button[aria-disabled="true"] { opacity:.45; pointer-events:none; }
     h1, h2, h3, p { margin:0; }
@@ -2628,7 +2629,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="checks" class="panel phase">
-          <div class="phase-head"><div><h2>Verificações</h2><p class="muted">Documentos e validações esperadas nesta fase.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar verificações</button></div>
+          <div class="phase-head"><div><h2>Verificações administrativas</h2><p class="muted">Documentos administrativos, histórico, Service Box, campanhas e plano de manutenção.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar verificações</button></div>
           <div id="checksAlerts" class="alert-line"></div>
           <div class="verification-stack">
             <div class="verification-group">
@@ -2689,7 +2690,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="reports" class="panel phase">
-          <div class="phase-head"><div><h2>Relatórios</h2><p class="muted">Preencha os campos esperados do relatório selecionado. O JSON é preparado automaticamente.</p></div><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Adicionar relatório</button></div>
+          <div class="phase-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Adicionar relatório</button></div>
           <div id="reportsAlerts" class="alert-line"></div>
           <div id="reportTypeCards" class="report-type-grid"></div>
           <div id="reportList" class="report-instance-strip"></div>
@@ -2698,11 +2699,21 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           <label>Link original<input id="reportLink" placeholder="https://..."></label>
           <div id="reportFieldGrid" class="report-field-grid"></div>
           <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
-          <div class="actions" style="justify-content:flex-start"><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+          <div class="actions" style="justify-content:flex-start"><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+        </section>
+
+        <section id="technicalChecks" class="panel phase">
+          <div class="phase-head"><div><h2>Verificações técnicas</h2><p class="muted">Confirme pontos técnicos observados na viatura e registe evidências quando necessário.</p></div><button class="primary" type="button" onclick="saveTechnicalCheck()">Guardar verificação</button></div>
+          <div id="technicalChecksAlerts" class="alert-line"></div>
+          <div id="technicalCheckList" class="plain-list"></div>
+          <div class="grid3"><label>Verificação<select id="technicalCheckCode"></select></label><label>Estado<select id="technicalCheckStatus"><option value="ok">Conforme</option><option value="not_ok">Não conforme</option><option value="pending_review">Por rever</option><option value="not_applicable">Não aplicável</option></select></label><label>Evidência<input id="technicalCheckEvidence" placeholder="Link/print/foto"></label></div>
+          <label>Observação<textarea id="technicalCheckObs" placeholder="Notas técnicas, motivo ou detalhe da anomalia"></textarea></label>
+          <div class="inline-checks"><label><input id="technicalCheckTask" type="checkbox">Criar tarefa</label><label><input id="technicalCheckCharge" type="checkbox">Possível cobrança cliente</label></div>
+          <details><summary><span><span class="accordion-icon">＋</span>Detalhes da tarefa</span></summary><div class="accordion-body grid2"><label>Título da tarefa<input id="technicalCheckTaskTitle" placeholder="Ex.: Validar pneus com incidência"></label></div></details>
         </section>
 
         <section id="decision" class="panel phase">
-          <div class="phase-head"><div><h2>Decisão</h2><p class="muted">Registe diagnóstico, impacto operacional e próxima ação.</p></div><button class="primary" type="button" onclick="saveDecision()">Guardar decisão</button></div>
+          <div class="phase-head"><div><h2>Controlo e validação</h2><p class="muted">Valide o diagnóstico, impacto operacional e próxima ação.</p></div><button class="primary" type="button" onclick="saveDecision()">Guardar validação</button></div>
           <div id="decisionAlerts" class="alert-line"></div>
           <div class="grid3"><label>Diagnóstico principal<input id="decisionDiagnosis" placeholder="Resumo do diagnóstico"></label><label>Tipo intervenção<input id="decisionType" placeholder="Interna, externa, garantia..."></label><label>Sistema afetado<input id="decisionSystem" placeholder="Motor, travagem, elétrica..."></label></div>
           <div class="grid3"><label>Gravidade<select id="decisionSeverity"><option value="medium">Média</option><option value="low">Baixa</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label><label>Viatura pode circular?<select id="decisionCirculate"><option value="yes">Sim</option><option value="no">Não</option><option value="conditional">Com restrições</option></select></label><label>Próxima ação<input id="decisionNext" placeholder="Ação seguinte"></label></div>
@@ -2749,16 +2760,17 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     const tabs = [
       ["reception", "Receção", "administrative_reception"],
       ["services", "Serviços", null],
-      ["checks", "Verificações", "history_check"],
-      ["reports", "Relatórios", "technical_phase"],
-      ["decision", "Decisão", "diagnosis_decision"],
+      ["checks", "Verificações administrativas", "history_check"],
+      ["reports", "Diagnóstico técnico", "technical_phase"],
+      ["technicalChecks", "Verificações técnicas", "technical_phase"],
+      ["decision", "Controlo e validação", "diagnosis_decision"],
       ["budget", "Orçamento", "budget_approval"],
       ["repair", "Reparação", "internal_repair_execution"],
       ["close", "Fecho", "final_closure"]
     ];
-    const phaseIcons = {reception:"□", services:"⌕", checks:"○", reports:"▤", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
-    const phaseLabels = {administrative_reception:"Receção", history_check:"Verificações", technical_phase:"Relatórios", diagnosis_decision:"Decisão", budget_approval:"Orçamento", internal_repair_execution:"Reparação", final_closure:"Fecho"};
-    const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
+    const phaseIcons = {reception:"□", services:"⌕", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
+    const phaseLabels = {administrative_reception:"Receção", history_check:"Verificações administrativas", technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento", internal_repair_execution:"Reparação", final_closure:"Fecho"};
+    const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
     const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
     const demoConfig = {
       services: [
@@ -2766,6 +2778,15 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         {code:"tyres", label:"Pneus"},
         {code:"brakes", label:"Travões"},
         {code:"other", label:"Outro"}
+      ],
+      technical_checks: [
+        {code:"levels", label:"Níveis"},
+        {code:"tires", label:"Pneus"},
+        {code:"brakes", label:"Travões"},
+        {code:"lights", label:"Luzes"},
+        {code:"battery", label:"Bateria"},
+        {code:"visible_leaks", label:"Fugas visíveis"},
+        {code:"road_test", label:"Teste de estrada"}
       ],
       stellantis_reports: [
         {code:"maintenance_information", label:"Informações manutenção", description:"KM, dias e limites de manutenção.", fields:[
@@ -2828,6 +2849,25 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function showResult(ok, message) { const el = $("#result"); el.className = `result active ${ok ? "ok" : "err"}`; el.textContent = message; }
     function objectValues(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
     function jsonFrom(id) { const raw = val(id).trim(); return raw ? JSON.parse(raw) : {}; }
+    function hasReportValues(values) {
+      if (Array.isArray(values)) return values.length > 0;
+      if (!values || typeof values !== "object") return false;
+      return Object.values(values).some(value => String(value ?? "").trim());
+    }
+    function reportFormHasContent(values) {
+      return Boolean(val("#reportLink").trim()) || hasReportValues(values);
+    }
+    function matchingReportDraft() {
+      const link = val("#reportLink").trim();
+      if (!link) return null;
+      return (processData?.technical_reports || []).find(report =>
+        report.status !== "voided" &&
+        report.report_code === val("#reportCode") &&
+        report.report_moment === val("#reportMoment") &&
+        report.reading_origin === val("#reportOrigin") &&
+        String(report.original_link || "").trim() === link
+      ) || null;
+    }
     async function requestJson(url, method, body) {
       const response = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
       const data = await response.json();
@@ -2906,6 +2946,15 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const services = processData.services || [];
       $("#serviceList").innerHTML = services.map(service => `<div class="row"><div><strong>${safe(service.service_label)}</strong><p class="muted">${safe([service.zone, service.detail, service.short_observation].filter(Boolean).join(" · ") || "Sem detalhe")}</p></div><span class="chip">${safe(service.sort_order || service.id)}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`;
     }
+    function renderTechnicalChecks() {
+      const checks = processData.technical_checks || [];
+      $("#technicalCheckList").innerHTML = checks.length ? checks.map(check => `
+        <div class="row">
+          <div><strong>${safe(check.label || check.check_code)}</strong><p class="muted">${safe(check.observation || check.evidence_link || "Sem observação")}</p></div>
+          ${chip(check.status)}
+        </div>
+      `).join("") : `<div class="placeholder">Sem verificações técnicas registadas.</div>`;
+    }
     function reportName(code) { return (config?.stellantis_reports || []).find(report => report.code === code)?.label || code || "Relatório"; }
     function reportConfig(code=val("#reportCode")) { return (config?.stellantis_reports || []).find(report => report.code === code) || null; }
     function reportIsValidated(report) {
@@ -2915,7 +2964,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       return ["pending_validation", "added", "pending", "not_started"].includes(report.status);
     }
     function renderReports() {
-      const reports = processData.technical_reports || [];
+      const reports = (processData.technical_reports || []).filter(report => report.status !== "voided");
       const types = config?.stellantis_reports || [];
       const codes = [...new Set([...types.map(type => type.code), ...reports.map(report => report.report_code).filter(Boolean)])];
       if (!selectedReportType) {
@@ -2942,7 +2991,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function selectReportType(code) {
       selectedReportType = code;
       setVal("#reportCode", code);
-      const reports = (processData.technical_reports || []).filter(report => report.report_code === code);
+      const reports = (processData.technical_reports || []).filter(report => report.status !== "voided" && report.report_code === code);
       const first = [...reports].sort((a,b) => (reportIsPending(a) ? -1 : 0) - (reportIsPending(b) ? -1 : 0) || b.id - a.id)[0];
       if (first) selectReport(first.id, false);
       else newReportDraft();
@@ -3107,6 +3156,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       config = previewMode ? demoConfig : await fetchJson("/api/workshop/process-config");
       $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
       $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
+      $("#technicalCheckCode").innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
       ["#serviceBox", "#serviceBoxLink", "#campaigns", "#campaignsLink", "#plan", "#planLink", "#internal"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
       $("#reportCode")?.addEventListener("change", () => {
@@ -3123,6 +3173,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const active = document.querySelector(".phase.active")?.id || tabForPhase(processData.current_phase_code);
       renderHeader();
       renderServices();
+      renderTechnicalChecks();
       renderReports();
       renderValues();
       if (!selectedReportId) {
@@ -3165,7 +3216,26 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     async function saveChecks() {
       try {
         await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), history_observation:val("#historyObs")});
-        showResult(true, "Verificações guardadas.");
+        showResult(true, "Verificações administrativas guardadas.");
+      } catch (err) { showResult(false, err.message); }
+    }
+    async function saveTechnicalCheck() {
+      try {
+        await requestJson(`/api/workshop/processes/${processId}/technical-checks`, "POST", {
+          check_code: val("#technicalCheckCode"),
+          status: val("#technicalCheckStatus"),
+          observation: val("#technicalCheckObs"),
+          evidence_link: val("#technicalCheckEvidence"),
+          creates_task: $("#technicalCheckTask").checked,
+          potential_customer_charge: $("#technicalCheckCharge").checked,
+          task_title: val("#technicalCheckTaskTitle")
+        });
+        setVal("#technicalCheckObs", "");
+        setVal("#technicalCheckEvidence", "");
+        setVal("#technicalCheckTaskTitle", "");
+        setChecked("#technicalCheckTask", false);
+        setChecked("#technicalCheckCharge", false);
+        showResult(true, "Verificação técnica guardada.");
       } catch (err) { showResult(false, err.message); }
     }
     async function saveDecision() {
@@ -3192,7 +3262,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           decision_observation: val("#decisionObs"),
           create_task: $("#decisionCreateTask").checked
         });
-        showResult(true, "Decisão guardada.");
+        showResult(true, "Controlo e validação guardado.");
       } catch (err) { showResult(false, err.message); }
     }
     async function saveBudget() {
@@ -3251,11 +3321,12 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       } catch (err) { showResult(false, err.message); }
     }
     function selectReport(id, switchTab=true) {
-      const report = (processData.technical_reports || []).find(item => item.id === id);
+      const report = (processData.technical_reports || []).find(item => item.id === id && item.status !== "voided");
       if (!report) return;
       selectedReportId = id;
       selectedReportType = report.report_code;
       $("#reportSaveButton").textContent = "Guardar alterações";
+      $("#reportDeleteButton").hidden = false;
       setVal("#reportCode", report.report_code);
       setVal("#reportMoment", report.report_moment);
       setVal("#reportOrigin", report.reading_origin);
@@ -3272,6 +3343,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       selectedReportType = val("#reportCode") || selectedReportType;
       if (selectedReportType) setVal("#reportCode", selectedReportType);
       $("#reportSaveButton").textContent = "Adicionar relatório";
+      $("#reportDeleteButton").hidden = true;
       setVal("#reportLink", "");
       setVal("#reportValues", "{}");
       setVal("#validateValues", "{}");
@@ -3282,9 +3354,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     async function saveReport() {
       try {
         syncReportJsonFromFields();
-        const payload = {report_code:val("#reportCode"), report_moment:val("#reportMoment"), reading_origin:val("#reportOrigin"), original_link:val("#reportLink"), extracted_values:jsonFrom("#reportValues")};
-        const data = selectedReportId
-          ? await requestJson(`/api/workshop/technical-reports/${selectedReportId}`, "PATCH", payload)
+        const extractedValues = jsonFrom("#reportValues");
+        let allowBlank = false;
+        if (!reportFormHasContent(extractedValues)) {
+          allowBlank = window.confirm("Este relatório não tem link nem valores extraídos. Queres mesmo guardar em branco?");
+          if (!allowBlank) {
+            showResult(false, "Relatório em branco não gravado.");
+            return;
+          }
+        }
+        const payload = {report_code:val("#reportCode"), report_moment:val("#reportMoment"), reading_origin:val("#reportOrigin"), original_link:val("#reportLink"), extracted_values:extractedValues, allow_blank:allowBlank};
+        const existing = selectedReportId ? null : matchingReportDraft();
+        const reportId = selectedReportId || existing?.id;
+        const data = reportId
+          ? await requestJson(`/api/workshop/technical-reports/${reportId}`, "PATCH", payload)
           : await requestJson(`/api/workshop/processes/${processId}/technical-reports`, "POST", payload);
         selectedReportId = data.id || selectedReportId;
         selectedReportType = payload.report_code;
@@ -3294,6 +3377,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         $("#reportSaveButton").textContent = "Guardar alterações";
         renderReports();
         showResult(true, selectedReportId ? `Relatório #${selectedReportId} guardado.` : "Relatório guardado.");
+      } catch (err) { showResult(false, err.message); }
+    }
+    async function deleteSelectedReport() {
+      try {
+        if (!selectedReportId) throw new Error("Seleciona um relatório para apagar.");
+        const report = (processData.technical_reports || []).find(item => item.id === selectedReportId);
+        const name = report?.report_name ? ` - ${report.report_name}` : "";
+        if (!window.confirm(`Apagar/anular relatório #${selectedReportId}${name}?`)) return;
+        await requestJson(`/api/workshop/technical-reports/${selectedReportId}`, "DELETE", {});
+        processData.technical_reports = (processData.technical_reports || []).filter(item => item.id !== selectedReportId);
+        selectedReportId = null;
+        renderReports();
+        newReportDraft();
+        showResult(true, "Relatório anulado e removido da lista.");
       } catch (err) { showResult(false, err.message); }
     }
     async function validateReport() {

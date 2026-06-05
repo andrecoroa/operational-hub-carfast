@@ -102,62 +102,84 @@
       </div>
     </form>
 
-    <section class="table-shell commerce-table-shell">
-      <table class="compact-table commerce-table">
-        <thead>
-          <tr>
-            <th>Matrícula</th>
-            <th>Marca / Modelo / Versão</th>
-            <th>Ano</th>
-            <th>Km</th>
-            <th>CurrentStatus</th>
-            <th>DocumentNr</th>
-            <th>Cliente</th>
-            <th>Localização</th>
-            <th>Estado na lista</th>
-            <th>Bloquear venda</th>
-            <th>Motivo bloqueio</th>
-            <th>Pendências</th>
-            <th>Entidade financeira</th>
-            <th>Valor de custo atual</th>
-            <th>Valor em dívida</th>
-            <th>Decisão</th>
-            <th>Responsável</th>
-          </tr>
-        </thead>
-        <tbody>
+    {% if updated %}
+      <div class="success">{{ updated }} viaturas atualizadas na Lista para Comércio.</div>
+    {% endif %}
+
+    <form method="post" action="/fleet/trade-list/update" class="commerce-list-form">
+      <input type="hidden" name="return_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <section class="commerce-list-shell">
+        <div class="commerce-list-header">
+          <span>Incluir</span>
+          <span>Viatura</span>
+          <span>Compra / uso</span>
+          <span>Estado</span>
+          <span>Valores</span>
+          <span>Venda decidida</span>
+        </div>
+        <div class="commerce-list-rows">
           {% for row in rows %}
             {% set vehicle = row.vehicle %}
-            <tr>
-              <td><a class="table-link" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a></td>
-              <td>
+            <article class="commerce-row {% if row.selected_for_sale %}selected{% endif %}">
+              <input type="hidden" name="vehicle_ids" value="{{ vehicle.id }}">
+              <label class="commerce-select-box" title="Marcar para incluir na venda">
+                <input type="checkbox" name="selected_vehicle_ids" value="{{ vehicle.id }}" {% if row.selected_for_sale %}checked{% endif %}>
+              </label>
+
+              <div class="commerce-vehicle-cell">
+                <a class="table-link commerce-plate" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a>
                 <strong>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" / ") or "-" }}</strong>
-                {% if vehicle.rentway_unit_nr %}<small>Unit {{ vehicle.rentway_unit_nr }}</small>{% endif %}
-              </td>
-              <td>{{ vehicle.year or "-" }}</td>
-              <td>{{ "{:,.0f}".format(row.km).replace(",", ".") if row.km is not none else "-" }}</td>
-              <td>{{ row.rentway.current_status or "-" }}</td>
-              <td>{{ row.rentway.document_nr or "-" }}</td>
-              <td>{{ row.rentway.client or "-" }}</td>
-              <td>{{ row.rentway.rental_station or "-" }}</td>
-              <td><span class="commerce-state-pill">{{ row.state_label }}</span></td>
-              <td>{% if row.sale_blocked %}<span class="commerce-block-pill">Sim</span>{% else %}-{% endif %}</td>
-              <td>{{ row.block_reason_label }}</td>
-              <td>{{ row.pending_items or "-" }}</td>
-              <td>{{ row.finance_entity or "-" }}</td>
-              <td>{{ format_eur(row.finance.current_cost) }}</td>
-              <td>{{ format_eur(row.debt_value) }}</td>
-              <td>{{ row.decision_label }}</td>
-              <td>{{ row.responsible or "-" }}</td>
-            </tr>
+                <small>{% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }}{% else %}Sem Unit{% endif %}</small>
+              </div>
+
+              <div class="commerce-facts-cell">
+                <span><b>Ano</b>{{ vehicle.year or "-" }}</span>
+                <span><b>Categoria</b>{{ row.rentway.category or "-" }}</span>
+                <span><b>Compra</b>{{ row.finance.purchase_date or "-" }}</span>
+                <span><b>Km</b>{{ "{:,.0f}".format(row.km).replace(",", ".") if row.km is not none else "-" }}</span>
+              </div>
+
+              <div class="commerce-status-cell">
+                <span class="commerce-state-pill">{{ row.state_label }}</span>
+                <small>{{ row.rentway.current_status or "Sem CurrentStatus" }}</small>
+                {% if row.sale_blocked %}
+                  <span class="commerce-block-pill">Venda bloqueada · {{ row.block_reason_label }}</span>
+                {% endif %}
+              </div>
+
+              <div class="commerce-values-cell">
+                <span><b>Preço atual</b>{{ format_eur(row.finance.current_cost) }}</span>
+                <span><b>Dívida</b>{{ format_eur(row.debt_value) }}</span>
+                <span><b>Financeira</b>{{ row.finance_entity or "-" }}</span>
+              </div>
+
+              <label class="commerce-sale-price-cell">
+                <span>Valor de venda decidido</span>
+                <input type="text" name="sale_price_{{ vehicle.id }}" value="{{ row.sale_price }}" placeholder="0,00 €">
+              </label>
+
+              <div class="commerce-context-line">
+                <span><b>DocumentNr</b>{{ row.rentway.document_nr or "-" }}</span>
+                <span><b>Cliente</b>{{ row.rentway.client or "-" }}</span>
+                <span><b>Localização</b>{{ row.rentway.rental_station or "-" }}</span>
+                <span><b>Pendências</b>{{ row.pending_items or "-" }}</span>
+                <span><b>Decisão</b>{{ row.decision_label }}</span>
+                <span><b>Responsável</b>{{ row.responsible or "-" }}</span>
+              </div>
+            </article>
           {% else %}
-            <tr>
-              <td colspan="17" class="muted">Sem viaturas candidatas para os filtros selecionados.</td>
-            </tr>
+            <div class="empty">Sem viaturas candidatas para os filtros selecionados.</div>
           {% endfor %}
-        </tbody>
-      </table>
-    </section>
+        </div>
+      </section>
+
+      {% if rows %}
+        <div class="commerce-save-bar">
+          <span>{{ rows|length }} viaturas visíveis depois dos filtros.</span>
+          <button type="submit">Gravar seleção e valores</button>
+        </div>
+      {% endif %}
+    </form>
   </main>
 </div>
 {% endblock %}

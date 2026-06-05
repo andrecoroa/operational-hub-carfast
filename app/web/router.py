@@ -143,7 +143,8 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
         "return_date": snapshot_value(data, ["return_date", "returndate"]),
         "value_with_tax": snapshot_value(data, ["value_with_tax", "valuewithtax", "valor_com_iva", "valor_aquisicao"]),
         "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
-        "km": snapshot_value(data, ["km", "odometer", "odometer_km", "current_km", "quilometros"]),
+        "km": snapshot_value(data, ["km", "kms", "odometer", "odometer_km", "current_km", "quilometros"]),
+        "category": snapshot_value(data, ["category", "categoria", "grupo", "vehicle_category", "fleet"]),
     }
 
 
@@ -158,6 +159,8 @@ CARFAST_MANAGEMENT_FIELD_CODES = {
     "trade_decision",
     "trade_decision_reason",
     "trade_responsible",
+    "trade_selected_for_sale",
+    "trade_sale_price",
 }
 
 TRADE_LIST_STATES = [
@@ -2802,6 +2805,7 @@ def fleet_trade_list(
     debt_min: str | None = None,
     debt_max: str | None = None,
     blocked: str | None = None,
+    updated: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -2883,6 +2887,8 @@ def fleet_trade_list(
                 "pending_items": str(manual.get("trade_pending_items") or ""),
                 "finance_entity": str(manual.get("finance_entity") or ""),
                 "debt_value": parse_decimal_text(manual.get("debt_value")),
+                "selected_for_sale": bool(manual.get("trade_selected_for_sale")),
+                "sale_price": str(manual.get("trade_sale_price") or ""),
                 "ready_for_final": bool(decision_code and manual.get("trade_decision_reason") and manual.get("trade_responsible")),
             }
             rows.append(row)
@@ -2986,8 +2992,69 @@ def fleet_trade_list(
                     {row["rentway"].get("rental_station") for row in rows if row["rentway"].get("rental_station")}
                 ),
                 "finance_entity_options": finance_entity_options(db),
+                "updated": updated,
             },
         )
+
+
+@web_router.post("/fleet/trade-list/update", response_class=HTMLResponse)
+async def fleet_trade_list_update(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse("/fleet/trade-list", status_code=303)
+
+    form = await request.form()
+    return_url = str(form.get("return_url") or "/fleet/trade-list")
+    if not return_url.startswith("/") or return_url.startswith("//"):
+        return_url = "/fleet/trade-list"
+
+    vehicle_ids = []
+    for value in form.getlist("vehicle_ids"):
+        try:
+            vehicle_ids.append(int(str(value)))
+        except ValueError:
+            continue
+    selected_ids = set()
+    for value in form.getlist("selected_vehicle_ids"):
+        try:
+            selected_ids.add(int(str(value)))
+        except ValueError:
+            continue
+
+    with SessionLocal() as db:
+        changed = 0
+        for vehicle_id in vehicle_ids:
+            vehicle = db.get(Vehicle, vehicle_id)
+            if not vehicle:
+                continue
+            previous = vehicle_manual_values(db, vehicle_id)
+            selected = vehicle_id in selected_ids
+            raw_price = str(form.get(f"sale_price_{vehicle_id}") or "").strip()[:80]
+            upsert_vehicle_manual_field(db, vehicle_id, "trade_selected_for_sale", selected, user_id)
+            upsert_vehicle_manual_field(db, vehicle_id, "trade_sale_price", raw_price, user_id)
+            current = {
+                "trade_selected_for_sale": selected,
+                "trade_sale_price": raw_price,
+            }
+            if previous.get("trade_selected_for_sale") != selected or str(previous.get("trade_sale_price") or "") != raw_price:
+                changed += 1
+                record_audit(
+                    db,
+                    action="vehicle.trade_list.updated",
+                    entity_type="vehicle",
+                    entity_id=vehicle_id,
+                    detail=f"Lista para Comércio atualizada: {vehicle.plate or vehicle_id}",
+                    before_json={
+                        "trade_selected_for_sale": previous.get("trade_selected_for_sale"),
+                        "trade_sale_price": previous.get("trade_sale_price"),
+                    },
+                    after_json=current,
+                    user_id=user_id,
+                )
+        db.commit()
+    return RedirectResponse(add_query_flag(return_url, "updated", str(changed)), status_code=303)
 
 
 @web_router.get("/fleet/{vehicle_id}", response_class=HTMLResponse)
@@ -3120,6 +3187,7 @@ def update_vehicle_carfast_management(
     trade_decision: str = Form(""),
     trade_decision_reason: str = Form(""),
     trade_responsible: str = Form(""),
+    trade_sale_price: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -3146,6 +3214,7 @@ def update_vehicle_carfast_management(
             "trade_decision": normalized_decision,
             "trade_decision_reason": trade_decision_reason.strip()[:1000],
             "trade_responsible": trade_responsible.strip()[:160],
+            "trade_sale_price": trade_sale_price.strip()[:80],
         }
         previous_values = vehicle_manual_values(db, vehicle.id)
         for field_code, value in new_values.items():

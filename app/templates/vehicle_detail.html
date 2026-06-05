@@ -295,6 +295,7 @@
               <div><span>Entidade financeira</span><strong>{{ carfast_management.get("finance_entity") or "-" }}</strong></div>
               <div><span>Valor de custo atual</span><strong>{{ format_eur(carfast_finance.current_cost) }}</strong></div>
               <div><span>Valor em dívida</span><strong>{{ format_eur(carfast_management.get("debt_value")) }}</strong></div>
+              <div><span>Valor de venda decidido</span><strong>{{ format_eur(carfast_management.get("trade_sale_price")) }}</strong></div>
             </div>
             {% if carfast_finance.initial_cost %}
               <p class="muted compact-note">
@@ -334,6 +335,10 @@
                   <label>
                     Valor em dívida
                     <input type="text" name="debt_value" maxlength="80" value="{{ carfast_management.get('debt_value') or '' }}" placeholder="0,00">
+                  </label>
+                  <label>
+                    Valor de venda decidido
+                    <input type="text" name="trade_sale_price" maxlength="80" value="{{ carfast_management.get('trade_sale_price') or '' }}" placeholder="0,00">
                   </label>
                 </div>
                 <div class="compact-form-grid two-col">

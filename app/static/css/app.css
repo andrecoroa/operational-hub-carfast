@@ -6008,35 +6008,12 @@ a.metric:hover {
   gap: 8px;
 }
 
-.commerce-table-shell {
-  max-height: 68vh;
-}
-
-.commerce-table {
-  min-width: 1900px;
-}
-
-.commerce-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #f8fafb;
-}
-
-.commerce-table td {
-  vertical-align: top;
-}
-
-.commerce-table td small {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-}
-
 .commerce-state-pill,
 .commerce-block-pill {
   display: inline-flex;
   align-items: center;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 999px;
   padding: 4px 9px;
   font-size: 12px;
@@ -6046,6 +6023,179 @@ a.metric:hover {
 .commerce-state-pill {
   background: var(--brand-soft);
   color: var(--brand-dark);
+}
+
+.commerce-list-form {
+  display: grid;
+  gap: 10px;
+}
+
+.commerce-list-shell {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.commerce-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 72px minmax(240px, 1.25fr) minmax(210px, 0.9fr) minmax(180px, 0.8fr) minmax(230px, 1fr) minmax(210px, 0.85fr);
+  gap: 14px;
+  align-items: center;
+  min-width: 1180px;
+  border-bottom: 1px solid var(--line);
+  padding: 11px 14px;
+  background: #f8fafb;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.commerce-list-rows {
+  display: grid;
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.commerce-row {
+  display: grid;
+  grid-template-columns: 72px minmax(240px, 1.25fr) minmax(210px, 0.9fr) minmax(180px, 0.8fr) minmax(230px, 1fr) minmax(210px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 1180px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px;
+  background: #ffffff;
+}
+
+.commerce-row.selected {
+  background: #fbfffc;
+}
+
+.commerce-select-box {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.commerce-select-box input {
+  width: 18px;
+  height: 18px;
+}
+
+.commerce-vehicle-cell,
+.commerce-facts-cell,
+.commerce-status-cell,
+.commerce-values-cell,
+.commerce-sale-price-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.commerce-plate {
+  width: fit-content;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.commerce-vehicle-cell strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.commerce-vehicle-cell small,
+.commerce-status-cell small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.commerce-values-cell {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.commerce-facts-cell {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.commerce-facts-cell span,
+.commerce-values-cell span,
+.commerce-context-line span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: #fbfcfd;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.commerce-facts-cell b,
+.commerce-values-cell b,
+.commerce-context-line b,
+.commerce-sale-price-cell span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.commerce-sale-price-cell input {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 850;
+}
+
+.commerce-context-line {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.commerce-context-line span {
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.commerce-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: 0 -8px 20px rgba(17, 24, 39, 0.06);
+}
+
+.commerce-save-bar span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .event-list {
@@ -6640,9 +6790,39 @@ a.metric:hover {
   .document-cockpit-grid,
   .import-type-grid,
   .commerce-summary-grid,
+  .commerce-filter-form,
   .document-workbench,
   .document-fact-grid {
     grid-template-columns: 1fr;
+  }
+
+  .commerce-list-header {
+    display: none;
+  }
+
+  .commerce-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .commerce-vehicle-cell,
+  .commerce-facts-cell,
+  .commerce-status-cell,
+  .commerce-values-cell,
+  .commerce-sale-price-cell,
+  .commerce-context-line {
+    grid-column: 2;
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-select-box {
+    width: 38px;
+    height: 38px;
+  }
+
+  .commerce-save-bar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .import-card-actions {

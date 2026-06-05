@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle
 from app.models.workshop_phased import (
@@ -61,8 +62,19 @@ READING_ORIGINS = {"stellantis_machine", "autel", "other"}
 REPORT_MOMENTS = {"initial", "final"}
 WORKSHOP_DOCUMENTS_BASE_PATH = (
     r"C:\Users\andre\OneDrive - D'accord Invest - Serviços Partilhados SA"
-    r"\CARFAST - OFICINA - OFICINA\CarFast v2 - Oficina\Documentos Processos"
+    r"\CARFAST - OFICINA - OFICINA\CarFast v2 - Oficina\Documentos Processos por anexar ao processo"
 )
+WORKSHOP_DOCUMENT_TYPES = {
+    "workshop_photo",
+    "workshop_diagnostic",
+    "workshop_bsi",
+    "workshop_report",
+    "workshop_work_order",
+    "workshop_quote",
+    "workshop_supplier_invoice",
+    "workshop_evidence",
+    "workshop_other",
+}
 STELLANTIS_BRANDS = {
     "abarth",
     "alfa romeo",
@@ -122,6 +134,144 @@ def _is_stellantis_vehicle(vehicle: Vehicle | None) -> bool:
     if not vehicle or not vehicle.brand:
         return False
     return vehicle.brand.strip().lower() in STELLANTIS_BRANDS
+
+
+def _workshop_document_type(document_type: str | None, default: str = "workshop_evidence") -> str:
+    if document_type in WORKSHOP_DOCUMENT_TYPES:
+        return document_type
+    return default
+
+
+def _workshop_document_folder(process: WorkshopProcess) -> str:
+    metadata = process.metadata_json or {}
+    return metadata.get("document_folder_path") or WORKSHOP_DOCUMENTS_BASE_PATH
+
+
+def _document_title(process: WorkshopProcess, vehicle: Vehicle | None, label: str) -> str:
+    plate = (vehicle.plate if vehicle else process.plate_snapshot) or "Sem matrícula"
+    return f"{label} - {plate} - Processo #{process.id}"
+
+
+def _upsert_workshop_document_from_link(
+    db: Session,
+    *,
+    process: WorkshopProcess,
+    vehicle: Vehicle | None,
+    link: str | None,
+    title: str,
+    document_type: str | None,
+    user_id: int | None,
+    existing_document_id: int | None = None,
+    source_subject: str | None = None,
+) -> int | None:
+    clean_link = (link or "").strip()
+    if not clean_link:
+        return existing_document_id
+
+    clean_type = _workshop_document_type(document_type)
+    clean_plate = ((vehicle.plate if vehicle else process.plate_snapshot) or "").strip().upper()
+    document = db.get(Document, existing_document_id) if existing_document_id else None
+    if not document:
+        document = db.scalar(
+            select(Document)
+            .join(DocumentLink, DocumentLink.document_id == Document.id)
+            .where(
+                Document.classification == "workshop",
+                Document.vehicle_id == process.vehicle_id,
+                Document.storage_path == clean_link,
+                DocumentLink.entity_type == "workshop_phased_process",
+                DocumentLink.entity_id == str(process.id),
+            )
+        )
+    created = document is None
+    if created:
+        document = Document(
+            title=title[:200],
+            original_name=title[:255],
+            file_name=title[:255],
+            storage_provider="link",
+            uploaded_by_id=user_id,
+        )
+        db.add(document)
+
+    document.title = title[:200]
+    document.document_type = clean_type
+    document.classification = "workshop"
+    document.status = "associated"
+    document.source = "workshop"
+    document.entry_channel = "workshop_process_link"
+    document.source_subject = source_subject or title
+    document.storage_provider = "link"
+    document.storage_path = clean_link
+    document.storage_key = clean_link
+    document.external_url = clean_link
+    document.folder_path = _workshop_document_folder(process)
+    document.vehicle_id = process.vehicle_id
+    document.workshop_process_id = None
+    document.plate = clean_plate or None
+    document.uploaded_by_id = document.uploaded_by_id or user_id
+    db.flush()
+
+    existing_link = db.scalar(
+        select(DocumentLink).where(
+            DocumentLink.document_id == document.id,
+            DocumentLink.entity_type == "workshop_phased_process",
+            DocumentLink.entity_id == str(process.id),
+        )
+    )
+    if not existing_link:
+        db.add(
+            DocumentLink(
+                document_id=document.id,
+                entity_type="workshop_phased_process",
+                entity_id=str(process.id),
+                category=clean_type,
+            )
+        )
+    else:
+        existing_link.category = clean_type
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="document.associated" if created else "document.updated_from_workshop",
+            old_value=None,
+            new_value=clean_link,
+            user_id=user_id,
+        )
+    )
+    return document.id
+
+
+def _technical_report_response(report: WorkshopTechnicalReport) -> dict[str, Any]:
+    return {
+        "id": report.id,
+        "report_code": report.report_code,
+        "report_name": report.report_name,
+        "reading_origin": report.reading_origin,
+        "report_moment": report.report_moment,
+        "status": report.status,
+        "original_link": report.original_link,
+        "original_document_id": report.original_document_id,
+        "extracted_values": report.extracted_values_json,
+        "validated_values": report.validated_values_json,
+        "validated_at": report.validated_at,
+    }
+
+
+def _document_response(document: Document) -> dict[str, Any]:
+    return {
+        "id": document.id,
+        "title": document.title,
+        "document_type": document.document_type,
+        "classification": document.classification,
+        "status": document.status,
+        "vehicle_id": document.vehicle_id,
+        "workshop_process_id": None,
+        "plate": document.plate,
+        "storage_path": document.storage_path,
+        "external_url": document.external_url,
+        "folder_path": document.folder_path,
+    }
 
 
 class WorkshopServiceInput(BaseModel):
@@ -224,11 +374,25 @@ class WorkshopHistoryCheckConfirm(BaseModel):
     history_observation: str | None = None
     service_box_checked: str | None = None
     service_box_link: str | None = None
+    service_box_document_type: str | None = None
     campaigns_checked: str | None = None
     campaigns_link: str | None = None
+    campaigns_document_type: str | None = None
     maintenance_plan_checked: str | None = None
     maintenance_plan_link: str | None = None
+    maintenance_plan_document_type: str | None = None
     confirmed_by_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_document_types(self) -> "WorkshopHistoryCheckConfirm":
+        for document_type in (
+            self.service_box_document_type,
+            self.campaigns_document_type,
+            self.maintenance_plan_document_type,
+        ):
+            if document_type is not None and document_type not in WORKSHOP_DOCUMENT_TYPES:
+                raise ValueError("Tipo documental de oficina inválido.")
+        return self
 
 
 class WorkshopTechnicalReportCreate(BaseModel):
@@ -237,6 +401,7 @@ class WorkshopTechnicalReportCreate(BaseModel):
     reading_origin_detail: str | None = None
     report_moment: str = "initial"
     original_link: str | None = None
+    document_type: str | None = "workshop_report"
     raw_values: dict[str, Any] | list[Any] | None = None
     extracted_values: dict[str, Any] | list[Any] | None = None
     added_by_id: int | None = None
@@ -252,6 +417,8 @@ class WorkshopTechnicalReportCreate(BaseModel):
             raise ValueError("Descrição da origem é obrigatória quando a origem é Outro.")
         if self.report_moment not in REPORT_MOMENTS:
             raise ValueError("Momento do relatório inválido.")
+        if self.document_type is not None and self.document_type not in WORKSHOP_DOCUMENT_TYPES:
+            raise ValueError("Tipo documental de oficina inválido.")
         return self
 
 
@@ -268,6 +435,7 @@ class WorkshopTechnicalReportUpdate(BaseModel):
     reading_origin_detail: str | None = None
     report_moment: str | None = None
     original_link: str | None = None
+    document_type: str | None = None
     raw_values: dict[str, Any] | list[Any] | None = None
     extracted_values: dict[str, Any] | list[Any] | None = None
     observations: str | None = None
@@ -282,6 +450,8 @@ class WorkshopTechnicalReportUpdate(BaseModel):
             raise ValueError("Momento do relatório inválido.")
         if self.reading_origin == "other" and not self.reading_origin_detail:
             raise ValueError("Descrição da origem é obrigatória quando a origem é Outro.")
+        if self.document_type is not None and self.document_type not in WORKSHOP_DOCUMENT_TYPES:
+            raise ValueError("Tipo documental de oficina inválido.")
         return self
 
 
@@ -290,6 +460,7 @@ class WorkshopTechnicalCheckUpsert(BaseModel):
     status: str
     observation: str | None = None
     evidence_link: str | None = None
+    evidence_document_type: str | None = "workshop_evidence"
     creates_task: bool = False
     potential_customer_charge: bool = False
     task_title: str | None = None
@@ -305,6 +476,25 @@ class WorkshopTechnicalCheckUpsert(BaseModel):
             raise ValueError("Estado da verificação inválido.")
         if self.creates_task and not self.task_title:
             raise ValueError("Título da tarefa é obrigatório quando cria tarefa.")
+        if self.evidence_document_type is not None and self.evidence_document_type not in WORKSHOP_DOCUMENT_TYPES:
+            raise ValueError("Tipo documental de oficina inválido.")
+        return self
+
+
+class WorkshopProcessDocumentCreate(BaseModel):
+    title: str | None = None
+    document_type: str = "workshop_evidence"
+    url_original: str | None = None
+    url_archive: str | None = None
+    added_by_id: int | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_document(self) -> "WorkshopProcessDocumentCreate":
+        if self.document_type not in WORKSHOP_DOCUMENT_TYPES:
+            raise ValueError("Tipo documental de oficina inválido.")
+        if not ((self.url_original or "").strip() or (self.url_archive or "").strip()):
+            raise ValueError("Indica pelo menos um link ou caminho.")
         return self
 
 
@@ -767,6 +957,40 @@ def add_workshop_process_service(
     }
 
 
+@router.post("/processes/{process_id}/documents", status_code=status.HTTP_201_CREATED)
+def add_workshop_process_document(
+    process_id: int,
+    document_input: WorkshopProcessDocumentCreate,
+    db: DbSession,
+) -> dict[str, Any]:
+    process = _get_process_or_404(db, process_id)
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+    link = document_input.url_original or document_input.url_archive
+    title = (document_input.title or "").strip() or _document_title(
+        process,
+        vehicle,
+        "Documento de oficina",
+    )
+    document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=link,
+        title=title,
+        document_type=document_input.document_type,
+        user_id=document_input.added_by_id,
+        source_subject=document_input.notes or title,
+    )
+    db.commit()
+    document = db.get(Document, document_id) if document_id else None
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não foi possível associar o documento.",
+        )
+    return _document_response(document)
+
+
 @router.post("/processes/{process_id}/reception")
 def confirm_reception(
     process_id: int,
@@ -775,6 +999,8 @@ def confirm_reception(
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
     phase = _get_phase_or_404(db, process.id, "administrative_reception")
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+    phase_data = phase.data_json or {}
     process.received_at = datetime.utcnow()
     if reception.km_entry is not None:
         process.initial_km = reception.km_entry
@@ -823,6 +1049,32 @@ def confirm_reception(
             source="administrative_reception",
             phase_id=phase.id,
         )
+    quadrant_photo_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=reception.quadrant_photo_link,
+        title=_document_title(process, vehicle, "Foto do quadrante"),
+        document_type="workshop_photo",
+        user_id=reception.confirmed_by_id,
+        existing_document_id=phase_data.get("quadrant_photo_document_id"),
+        source_subject="Foto do quadrante",
+    )
+    vehicle_photo_document_ids = dict(phase_data.get("vehicle_photo_document_ids") or {})
+    for key, link in (reception.vehicle_photo_links or {}).items():
+        document_id = _upsert_workshop_document_from_link(
+            db,
+            process=process,
+            vehicle=vehicle,
+            link=link,
+            title=_document_title(process, vehicle, f"Foto da viatura - {key}"),
+            document_type="workshop_photo",
+            user_id=reception.confirmed_by_id,
+            existing_document_id=vehicle_photo_document_ids.get(key),
+            source_subject="Foto da viatura",
+        )
+        if document_id:
+            vehicle_photo_document_ids[key] = document_id
     _resolve_alerts(db, process.id, resolved_codes, reception.confirmed_by_id)
 
     status_value = "completed" if not missing_required else "pending_review"
@@ -834,7 +1086,9 @@ def confirm_reception(
             "km_entry": reception.km_entry,
             "initial_observation": reception.initial_observation,
             "quadrant_photo_link": reception.quadrant_photo_link,
+            "quadrant_photo_document_id": quadrant_photo_document_id,
             "vehicle_photo_links": reception.vehicle_photo_links or {},
+            "vehicle_photo_document_ids": vehicle_photo_document_ids,
             "visible_damage_status": reception.visible_damage_status,
             "damage_description": reception.damage_description,
             "missing_required": missing_required,
@@ -857,6 +1111,7 @@ def confirm_history_check(
     process = _get_process_or_404(db, process_id)
     phase = _get_phase_or_404(db, process.id, "history_check")
     vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+    phase_data = phase.data_json or {}
 
     pending_fields = []
     checks = {
@@ -920,6 +1175,40 @@ def confirm_history_check(
             phase_id=phase.id,
         )
 
+    service_box_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=history.service_box_link,
+        title=_document_title(process, vehicle, "Consulta Service Box"),
+        document_type=history.service_box_document_type or "workshop_evidence",
+        user_id=history.confirmed_by_id,
+        existing_document_id=phase_data.get("service_box_document_id"),
+        source_subject="Consulta Service Box",
+    )
+    campaigns_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=history.campaigns_link,
+        title=_document_title(process, vehicle, "Campanhas da marca"),
+        document_type=history.campaigns_document_type or "workshop_evidence",
+        user_id=history.confirmed_by_id,
+        existing_document_id=phase_data.get("campaigns_document_id"),
+        source_subject="Campanhas da marca",
+    )
+    maintenance_plan_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=history.maintenance_plan_link,
+        title=_document_title(process, vehicle, "Plano de manutenção"),
+        document_type=history.maintenance_plan_document_type or "workshop_report",
+        user_id=history.confirmed_by_id,
+        existing_document_id=phase_data.get("maintenance_plan_document_id"),
+        source_subject="Plano de manutenção",
+    )
+
     status_value = "completed" if not pending_fields else "pending_review"
     _mark_phase(
         phase,
@@ -937,12 +1226,15 @@ def confirm_history_check(
             "history_observation": history.history_observation,
             "service_box_checked": history.service_box_checked,
             "service_box_link": history.service_box_link,
+            "service_box_document_id": service_box_document_id,
             "campaigns_checked": history.campaigns_checked,
             "campaigns_link": history.campaigns_link,
+            "campaigns_document_id": campaigns_document_id,
             "maintenance_plan_checked": (
                 "evidence_link" if validated_plan_report else history.maintenance_plan_checked
             ),
             "maintenance_plan_link": history.maintenance_plan_link,
+            "maintenance_plan_document_id": maintenance_plan_document_id,
             "maintenance_plan_report_id": validated_plan_report.id
             if validated_plan_report
             else None,
@@ -966,6 +1258,7 @@ def add_technical_report(
     db: DbSession,
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     phase_code = (
         "internal_repair_execution"
         if report_input.report_moment == "final"
@@ -973,6 +1266,16 @@ def add_technical_report(
     )
     phase = _get_phase_or_404(db, process.id, phase_code)
     report_status = "pending_validation" if report_input.extracted_values else "added"
+    original_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=report_input.original_link,
+        title=_document_title(process, vehicle, REPORT_LABELS[report_input.report_code]),
+        document_type=report_input.document_type or "workshop_report",
+        user_id=report_input.added_by_id,
+        source_subject=REPORT_LABELS[report_input.report_code],
+    )
     report = WorkshopTechnicalReport(
         process_id=process.id,
         phase_id=phase.id,
@@ -982,6 +1285,7 @@ def add_technical_report(
         reading_origin_detail=report_input.reading_origin_detail,
         report_moment=report_input.report_moment,
         status=report_status,
+        original_document_id=original_document_id,
         original_link=report_input.original_link,
         raw_values_json=report_input.raw_values,
         extracted_values_json=report_input.extracted_values,
@@ -996,12 +1300,7 @@ def add_technical_report(
         process.current_phase_code = "technical_phase"
     db.commit()
     db.refresh(report)
-    return {
-        "id": report.id,
-        "status": report.status,
-        "report_name": report.report_name,
-        "extracted_values": report.extracted_values_json,
-    }
+    return _technical_report_response(report)
 
 
 @router.post("/technical-reports/{report_id}/validate")
@@ -1068,7 +1367,8 @@ def validate_technical_report(
                 detail={"report_id": report.id},
             )
     db.commit()
-    return {"id": report.id, "status": report.status}
+    db.refresh(report)
+    return _technical_report_response(report)
 
 
 @router.patch("/technical-reports/{report_id}")
@@ -1083,6 +1383,8 @@ def update_technical_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Relatório técnico não encontrado.",
         )
+    process = _get_process_or_404(db, report.process_id)
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     if report_input.report_code is not None:
         report.report_code = report_input.report_code
         report.report_name = REPORT_LABELS[report_input.report_code]
@@ -1094,6 +1396,18 @@ def update_technical_report(
         report.report_moment = report_input.report_moment
     if report_input.original_link is not None:
         report.original_link = report_input.original_link
+    if report_input.original_link is not None or report_input.document_type is not None:
+        report.original_document_id = _upsert_workshop_document_from_link(
+            db,
+            process=process,
+            vehicle=vehicle,
+            link=report.original_link,
+            title=_document_title(process, vehicle, report.report_name),
+            document_type=report_input.document_type or "workshop_report",
+            user_id=report.added_by_id,
+            existing_document_id=report.original_document_id,
+            source_subject=report.report_name,
+        )
     if report_input.raw_values is not None:
         report.raw_values_json = report_input.raw_values
     if report_input.extracted_values is not None:
@@ -1103,12 +1417,8 @@ def update_technical_report(
     if report_input.observations is not None:
         report.observations = report_input.observations
     db.commit()
-    return {
-        "id": report.id,
-        "status": report.status,
-        "report_name": report.report_name,
-        "extracted_values": report.extracted_values_json,
-    }
+    db.refresh(report)
+    return _technical_report_response(report)
 
 
 @router.post("/processes/{process_id}/technical-checks")
@@ -1118,6 +1428,7 @@ def upsert_technical_check(
     db: DbSession,
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     phase = _get_phase_or_404(db, process.id, "technical_phase")
     check = db.scalar(
         select(WorkshopTechnicalCheck).where(
@@ -1153,6 +1464,17 @@ def upsert_technical_check(
     check.status = check_input.status
     check.observation = check_input.observation
     check.evidence_link = check_input.evidence_link
+    check.evidence_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=check_input.evidence_link,
+        title=_document_title(process, vehicle, f"Evidência - {CHECK_LABELS[check_input.check_code]}"),
+        document_type=check_input.evidence_document_type or "workshop_evidence",
+        user_id=None,
+        existing_document_id=check.evidence_document_id,
+        source_subject=CHECK_LABELS[check_input.check_code],
+    )
     check.creates_task = check_input.creates_task
     check.potential_customer_charge = check_input.potential_customer_charge
     check.task_id = task_id
@@ -1336,6 +1658,8 @@ def update_budget_approval(
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
     phase = _get_phase_or_404(db, process.id, "budget_approval")
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+    phase_data = phase.data_json or {}
 
     missing = []
     if not budget.supplier:
@@ -1379,6 +1703,17 @@ def update_budget_approval(
         and (not budget.needs_approval or budget.approval_status in {"approved", "rejected"})
         and bool(budget.final_result)
     )
+    budget_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=budget.budget_link,
+        title=_document_title(process, vehicle, "Orçamento"),
+        document_type="workshop_quote",
+        user_id=budget.requested_by_id,
+        existing_document_id=phase_data.get("budget_document_id"),
+        source_subject="Orçamento de oficina",
+    )
     status_value = "completed" if completed and not missing else "pending_review"
     _mark_phase(
         phase,
@@ -1396,6 +1731,7 @@ def update_budget_approval(
             "vat_included": budget.vat_included,
             "budget_description": budget.budget_description,
             "budget_link": budget.budget_link,
+            "budget_document_id": budget_document_id,
             "budget_valid_until": (
                 budget.budget_valid_until.isoformat() if budget.budget_valid_until else None
             ),
@@ -1437,6 +1773,8 @@ def update_internal_repair(
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
     phase = _get_phase_or_404(db, process.id, "internal_repair_execution")
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+    phase_data = phase.data_json or {}
     missing = []
     if not repair.intervention_description:
         missing.append("Descrição da intervenção")
@@ -1458,6 +1796,33 @@ def update_internal_repair(
             phase_id=phase.id,
         )
 
+    final_quadrant_photo_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=repair.final_quadrant_photo_link,
+        title=_document_title(process, vehicle, "Foto final do quadrante"),
+        document_type="workshop_photo",
+        user_id=repair.confirmed_by_id,
+        existing_document_id=phase_data.get("final_quadrant_photo_document_id"),
+        source_subject="Foto final do quadrante",
+    )
+    final_evidence_document_ids = dict(phase_data.get("final_evidence_document_ids") or {})
+    for key, link in (repair.final_evidence_links or {}).items():
+        document_id = _upsert_workshop_document_from_link(
+            db,
+            process=process,
+            vehicle=vehicle,
+            link=link,
+            title=_document_title(process, vehicle, f"Evidência final - {key}"),
+            document_type="workshop_evidence",
+            user_id=repair.confirmed_by_id,
+            existing_document_id=final_evidence_document_ids.get(key),
+            source_subject="Evidência final de reparação",
+        )
+        if document_id:
+            final_evidence_document_ids[key] = document_id
+
     _mark_phase(
         phase,
         "completed" if not missing else "pending_review",
@@ -1468,8 +1833,10 @@ def update_internal_repair(
             "parts_used": repair.parts_used or [],
             "result": repair.result,
             "final_quadrant_photo_link": repair.final_quadrant_photo_link,
+            "final_quadrant_photo_document_id": final_quadrant_photo_document_id,
             "final_km_visible": repair.final_km_visible,
             "final_evidence_links": repair.final_evidence_links or {},
+            "final_evidence_document_ids": final_evidence_document_ids,
             "final_observation": repair.final_observation,
             "missing_required": missing,
         },
@@ -1648,6 +2015,17 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         .where(WorkshopTechnicalReport.process_id == process.id)
         .order_by(WorkshopTechnicalReport.created_at)
     ).all()
+    linked_document_ids = db.scalars(
+        select(DocumentLink.document_id).where(
+            DocumentLink.entity_type == "workshop_phased_process",
+            DocumentLink.entity_id == str(process.id),
+        )
+    ).all()
+    documents = db.scalars(
+        select(Document)
+        .where(Document.id.in_(linked_document_ids))
+        .order_by(Document.id.desc())
+    ).all() if linked_document_ids else []
     checks = db.scalars(
         select(WorkshopTechnicalCheck)
         .where(WorkshopTechnicalCheck.process_id == process.id)
@@ -1694,6 +2072,22 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
                 "document_folder_status", "defined"
             ),
         },
+        "documents": [
+            {
+                "id": document.id,
+                "title": document.title,
+                "document_type": document.document_type,
+                "classification": document.classification,
+                "status": document.status,
+                "vehicle_id": document.vehicle_id,
+                "workshop_process_id": None,
+                "plate": document.plate,
+                "storage_path": document.storage_path,
+                "external_url": document.external_url,
+                "folder_path": document.folder_path,
+            }
+            for document in documents
+        ],
         "services_label": " + ".join(
             service.service_label for service in services if service.service_label
         ),
@@ -1739,6 +2133,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
                 "reading_origin": report.reading_origin,
                 "report_moment": report.report_moment,
                 "status": report.status,
+                "original_document_id": report.original_document_id,
                 "original_link": report.original_link,
                 "extracted_values": report.extracted_values_json,
                 "validated_values": report.validated_values_json,
@@ -1754,6 +2149,8 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
                 "status": check.status,
                 "creates_task": check.creates_task,
                 "potential_customer_charge": check.potential_customer_charge,
+                "evidence_document_id": check.evidence_document_id,
+                "evidence_link": check.evidence_link,
                 "task_id": check.task_id,
                 "incident_id": check.incident_id,
             }

@@ -813,6 +813,78 @@ def non_zero_refstro_components(raw: dict[str, Any]) -> list[str]:
     return components
 
 
+def preview_suggested_action(
+    *,
+    import_kind: str,
+    payload: dict[str, Any],
+    accident_date: date | None,
+    duplicate_key: bool,
+    grouped_count: int,
+    components: list[str] | None = None,
+) -> dict[str, str]:
+    if duplicate_key:
+        return {
+            "status": "reconciliar depois",
+            "action": "Duplicado provável",
+            "reason": "A mesma referência/matrícula/data aparece mais do que uma vez no ficheiro.",
+        }
+    if import_kind == "ar":
+        if not payload.get("ar_reference"):
+            return {
+                "status": "importado por validar",
+                "action": "Ignorar / sem ação",
+                "reason": "Linha sem referência AR; só deve avançar se for confirmada manualmente.",
+            }
+        if not payload.get("plate") or not (accident_date or payload.get("request_date")):
+            return {
+                "status": "reconciliar depois",
+                "action": "AR em falta",
+                "reason": "AR identificado, mas faltam matrícula ou data para propor processo com segurança.",
+            }
+        status = (payload.get("status") or "").casefold()
+        if "cancel" in status:
+            return {
+                "status": "importado por validar",
+                "action": "Ignorar / sem ação",
+                "reason": "Status sugere cancelamento; deve ser confirmado antes de criar processo.",
+            }
+        if grouped_count > 1:
+            return {
+                "status": "importado por validar",
+                "action": "Associar a processo existente",
+                "reason": "Há mais linhas com a mesma matrícula/data; pode pertencer ao mesmo processo.",
+            }
+        return {
+            "status": "importado por validar",
+            "action": "Criar novo processo",
+            "reason": "AR oficial com referência, matrícula e data; requer validação humana antes de criar SIN/PROC.",
+        }
+
+    if not payload.get("refstro_reference") and not payload.get("plate"):
+        return {
+            "status": "importado por validar",
+            "action": "Ignorar / sem ação",
+            "reason": "Linha sem REFSTRO nem matrícula suficiente para reconciliação.",
+        }
+    if not payload.get("plate") or not payload.get("accident_date"):
+        return {
+            "status": "reconciliar depois",
+            "action": "REFSTRO por reconciliar",
+            "reason": "Participação sem matrícula/data suficientes; fica para tratamento manual.",
+        }
+    if grouped_count > 1 or (components and len(components) > 1):
+        return {
+            "status": "importado por validar",
+            "action": "Associar a processo existente",
+            "reason": "Matrícula/data ou componentes indicam possível associação a um processo já aberto.",
+        }
+    return {
+        "status": "reconciliar depois",
+        "action": "REFSTRO por reconciliar",
+        "reason": "Participação identificada sem AR confirmado no preview; requer validação/associação.",
+    }
+
+
 def preview_claims_file(path: str | Path, original_name: str, *, import_kind: str) -> dict[str, Any]:
     rows = list(iter_management_preview_rows(path, import_kind))
     headers = rows[0][1] if rows else []
@@ -827,6 +899,7 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
     ar_refs = set()
     refstro_refs = set()
     grouped_by_plate_date = Counter()
+    normalized_rows = []
 
     for _, headers, row_number, row, raw in rows:
         col = build_column_lookup(headers)
@@ -844,18 +917,18 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
             status = payload["status"] or "Sem Status"
             status_counter[status] += 1
             phase_counter[preview_status_phase(payload["status"])] += 1
-            if len(samples) < 8:
-                samples.append(
-                    {
-                        "row": row_number,
-                        "kind": "AR",
-                        "reference": payload["ar_reference"] or "-",
-                        "plate": payload["plate"] or "-",
-                        "date": str(accident_date or payload["request_date"] or "-"),
-                        "status": payload["status"] or "-",
-                        "phase": preview_status_phase(payload["status"]),
-                    }
-                )
+            normalized_rows.append(
+                {
+                    "row": row_number,
+                    "kind": "AR",
+                    "payload": payload,
+                    "key": key,
+                    "group_key": (payload["plate"], accident_date or payload["request_date"]),
+                    "date": accident_date or payload["request_date"],
+                    "phase": preview_status_phase(payload["status"]),
+                    "components": [],
+                }
+            )
         else:
             payload = build_refstro_payload(row, col, raw, source_file=original_name, row_number=row_number)
             key = (payload["refstro_reference"], payload["plate"], payload["accident_date"])
@@ -873,21 +946,50 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
                 components = ["Sem componente"]
             for component in components:
                 component_counter[component] += 1
-            if len(samples) < 8:
-                samples.append(
-                    {
-                        "row": row_number,
-                        "kind": "REFSTRO",
-                        "reference": payload["refstro_reference"] or "-",
-                        "plate": payload["plate"] or "-",
-                        "date": str(payload["accident_date"] or "-"),
-                        "status": payload["status"] or "-",
-                        "phase": ", ".join(components),
-                    }
-                )
+            normalized_rows.append(
+                {
+                    "row": row_number,
+                    "kind": "REFSTRO",
+                    "payload": payload,
+                    "key": key,
+                    "group_key": (payload["plate"], payload["accident_date"]),
+                    "date": payload["accident_date"],
+                    "phase": ", ".join(components),
+                    "components": components,
+                }
+            )
 
     duplicate_keys = [key for key, total in duplicate_counter.items() if total > 1 and any(key)]
     grouped_candidates = [key for key, total in grouped_by_plate_date.items() if total > 1]
+    action_counter: Counter[str] = Counter()
+    validation_status_counter: Counter[str] = Counter()
+    for item in normalized_rows:
+        payload = item["payload"]
+        suggestion = preview_suggested_action(
+            import_kind=import_kind,
+            payload=payload,
+            accident_date=item["date"] if import_kind == "ar" else payload.get("accident_date"),
+            duplicate_key=duplicate_counter[item["key"]] > 1 and any(item["key"]),
+            grouped_count=grouped_by_plate_date[item["group_key"]] if all(item["group_key"]) else 0,
+            components=item["components"],
+        )
+        action_counter[suggestion["action"]] += 1
+        validation_status_counter[suggestion["status"]] += 1
+        if len(samples) < 10:
+            samples.append(
+                {
+                    "row": item["row"],
+                    "kind": item["kind"],
+                    "reference": payload.get("ar_reference") or payload.get("refstro_reference") or "-",
+                    "plate": payload.get("plate") or "-",
+                    "date": str(item["date"] or "-"),
+                    "status": payload.get("status") or "-",
+                    "phase": item["phase"],
+                    "suggested_action": suggestion["action"],
+                    "validation_status": suggestion["status"],
+                    "suggested_reason": suggestion["reason"],
+                }
+            )
     if missing_minimum:
         warnings.append(f"{missing_minimum} linhas sem matrícula/data suficientes devem ficar como pedido de informação.")
     if duplicate_keys:
@@ -910,6 +1012,8 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
         "status_counts": status_counter.most_common(12),
         "phase_counts": phase_counter.most_common(12),
         "component_counts": component_counter.most_common(12),
+        "action_counts": action_counter.most_common(),
+        "validation_status_counts": validation_status_counter.most_common(),
         "warnings": warnings,
         "samples": samples,
         "apply_enabled": False,

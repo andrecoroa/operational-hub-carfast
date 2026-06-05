@@ -120,8 +120,8 @@
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Ferramentas do tipo ativo</p>
-          <h3>Importação e associação de dados</h3>
-          <p class="breadcrumb">Disponível para {{ process_type.name }}. Outros tipos poderão ter ferramentas próprias.</p>
+          <h3>Pré-processamento e validação</h3>
+          <p class="breadcrumb">O upload entra em staging: primeiro sugere ações, depois o utilizador valida criação, associação, reconciliação ou ignorar.</p>
         </div>
       </div>
       <form class="management-import-form" method="post" action="/management-center/import-preview" enctype="multipart/form-data">
@@ -138,7 +138,7 @@
         </label>
         <button type="submit">Pré-visualizar</button>
       </form>
-      <p class="management-import-note">A importação final está bloqueada nesta fase. O ficheiro é normalizado e validado em preview antes de qualquer aplicação.</p>
+      <p class="management-import-note">A importação final está bloqueada nesta fase. O ficheiro é normalizado em preview, com sugestões de ação e motivos, antes de qualquer processo oficial nascer.</p>
     </section>
 
     <section class="section" id="processos">

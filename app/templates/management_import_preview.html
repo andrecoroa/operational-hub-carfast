@@ -16,7 +16,7 @@
     </header>
 
     <section class="notice-inline">
-      <strong>Modo staging.</strong> Esta leitura normaliza o ficheiro e identifica riscos, mas não cria processos nem associações.
+      <strong>Modo staging.</strong> Esta leitura normaliza o ficheiro, propõe ações e motivos, mas não cria processos nem associações.
     </section>
 
     <section class="metric-grid management-kpis">
@@ -39,6 +39,10 @@
       <span class="metric">
         <span class="metric-icon green">GRP</span>
         <span class="metric-detail"><strong>{{ preview.grouped_candidates }}</strong><span>Grupos matrícula/data</span><small>Possíveis associações</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon blue">VAL</span>
+        <span class="metric-detail"><strong>{{ preview.total_rows }}</strong><span>Por validação humana</span><small>Sem aplicação automática</small></span>
       </span>
     </section>
 
@@ -87,11 +91,45 @@
       </article>
     </section>
 
+    <section class="management-grid">
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Classificação</p>
+            <h3>Ações sugeridas</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          {% for action, total in preview.action_counts %}
+            <div><dt>{{ action }}</dt><dd>{{ total }}</dd></div>
+          {% else %}
+            <div><dt>Ações</dt><dd>Sem sugestões geradas.</dd></div>
+          {% endfor %}
+        </dl>
+      </article>
+
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Estado staging</p>
+            <h3>Fila de validação</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          {% for status, total in preview.validation_status_counts %}
+            <div><dt>{{ status|capitalize }}</dt><dd>{{ total }}</dd></div>
+          {% else %}
+            <div><dt>Estados</dt><dd>Sem linhas para classificar.</dd></div>
+          {% endfor %}
+        </dl>
+      </article>
+    </section>
+
     <section class="section">
       <div class="table-heading flat-heading">
         <div>
-          <p class="eyebrow">Amostra</p>
-          <h3>Linhas normalizadas</h3>
+          <p class="eyebrow">Amostra de validação</p>
+          <h3>Linhas normalizadas com decisão sugerida</h3>
         </div>
       </div>
       <div class="table-shell management-table-shell">
@@ -104,6 +142,7 @@
               <th>Matrícula</th>
               <th>Data</th>
               <th>Estado / fase</th>
+              <th>Ação sugerida</th>
             </tr>
           </thead>
           <tbody>
@@ -118,9 +157,13 @@
                   <strong>{{ item.status }}</strong>
                   <small>{{ item.phase }}</small>
                 </td>
+                <td>
+                  <strong>{{ item.suggested_action }}</strong>
+                  <small>{{ item.validation_status|capitalize }} · {{ item.suggested_reason }}</small>
+                </td>
               </tr>
             {% else %}
-              <tr><td colspan="6" class="muted">Sem linhas normalizadas para apresentar.</td></tr>
+              <tr><td colspan="7" class="muted">Sem linhas normalizadas para apresentar.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -128,7 +171,7 @@
     </section>
 
     <section class="notice-inline">
-      <strong>Aplicação final indisponível.</strong> O próximo passo é validar este preview e só depois ativar uma ação controlada de aplicação com histórico.
+      <strong>Aplicação final indisponível.</strong> O próximo passo técnico é guardar este staging com estados editáveis: importado por validar, validado, em gestão, ignorado ou reconciliar depois.
     </section>
   </main>
 </div>

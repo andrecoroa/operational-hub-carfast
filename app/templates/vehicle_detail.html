@@ -16,6 +16,7 @@
         {% set feedback_entity_id = vehicle.id %}
         {% set feedback_return_url = "/fleet/" ~ vehicle.id %}
         {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/fleet/trade-list">Lista para Comércio</a>
         <a class="button-link secondary-link" href="/fleet">Voltar</a>
       </div>
     </header>
@@ -44,20 +45,32 @@
             <span class="pill status-{{ vehicle.lifecycle_status }}">{{ vehicle.lifecycle_status or "Sem ciclo" }}</span>
             <span class="pill status-{{ vehicle.operational_status }}">{{ vehicle.operational_status or "Sem estado operacional" }}</span>
             {% if vehicle.rentway_unit_nr %}<span class="pill">Unit {{ vehicle.rentway_unit_nr }}</span>{% endif %}
+            {% if carfast_management.get("sale_blocked") %}<span class="pill carfast-blocked-pill">Venda bloqueada</span>{% endif %}
           </div>
           <div class="task-info-grid workshop-info-grid">
             <div><span>Matrícula</span><strong>{{ vehicle.plate or "-" }}</strong></div>
-            <div><span>Rentway</span><strong>{{ vehicle.rentway_unit_nr or "-" }}</strong></div>
             <div><span>Marca</span><strong>{{ vehicle.brand or "-" }}</strong></div>
             <div><span>Modelo</span><strong>{{ vehicle.model or "-" }}</strong></div>
-            <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
             <div><span>Versão</span><strong>{{ vehicle.version or "-" }}</strong></div>
+            <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
             <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
             <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
             <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
             <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
             <div><span>Ciclo</span><strong>{{ vehicle.lifecycle_status or "-" }}</strong></div>
             <div><span>Operacional</span><strong>{{ vehicle.operational_status or "-" }}</strong></div>
+          </div>
+          <div class="rentway-context-card">
+            <div class="compact-heading">
+              <p class="eyebrow">Contexto Rentway</p>
+            </div>
+            <div class="task-info-grid workshop-info-grid rentway-context-grid">
+              <div><span>CurrentStatus</span><strong>{{ rentway_context.current_status or "-" }}</strong></div>
+              <div><span>DocumentNr</span><strong>{{ rentway_context.document_nr or "-" }}</strong></div>
+              <div><span>Cliente</span><strong>{{ rentway_context.client or "-" }}</strong></div>
+              <div><span>Driver</span><strong>{{ rentway_context.driver or "-" }}</strong></div>
+              <div><span>Localização</span><strong>{{ rentway_context.rental_station or "-" }}</strong></div>
+            </div>
           </div>
         </article>
 
@@ -270,7 +283,90 @@
           <article class="workshop-action-card vehicle-quick-actions">
             <p class="eyebrow">Ação rápida</p>
             <a class="button-link" href="/workshop">Abrir oficina</a>
+            <a class="button-link secondary-link" href="/fleet/trade-list">Abrir Lista para Comércio</a>
           </article>
+
+          <details class="workshop-action-card carfast-management-card">
+            <summary>
+              Gestão CarFast
+              {% if carfast_management.get("sale_blocked") %}<span class="carfast-inline-alert">Venda bloqueada</span>{% endif %}
+            </summary>
+            <div class="carfast-management-summary">
+              <div><span>Entidade financeira</span><strong>{{ carfast_management.get("finance_entity") or "-" }}</strong></div>
+              <div><span>Valor de custo atual</span><strong>{{ format_eur(carfast_finance.current_cost) }}</strong></div>
+              <div><span>Valor em dívida</span><strong>{{ format_eur(carfast_management.get("debt_value")) }}</strong></div>
+            </div>
+            {% if carfast_finance.initial_cost %}
+              <p class="muted compact-note">
+                Custo inicial {{ format_eur(carfast_finance.initial_cost) }} · mês {{ carfast_finance.amortization_month or "-" }} de 96.
+              </p>
+            {% endif %}
+            {% if can_manage_carfast %}
+              <form method="post" action="/fleet/{{ vehicle.id }}/carfast-management" class="form-stack">
+                <label class="checkbox-line">
+                  <input type="checkbox" name="sale_blocked" value="1" {% if carfast_management.get("sale_blocked") %}checked{% endif %}>
+                  Bloquear venda
+                </label>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Motivo bloqueio
+                    <select name="sale_block_reason">
+                      {% for code, label in sale_block_reasons %}
+                        <option value="{{ code }}" {% if carfast_management.get("sale_block_reason") == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Descrição livre
+                    <input type="text" name="sale_block_reason_other" maxlength="500" value="{{ carfast_management.get('sale_block_reason_other') or '' }}" placeholder="Usar quando o motivo for Outro">
+                  </label>
+                </div>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Entidade financeira
+                    <input type="text" name="finance_entity" maxlength="160" value="{{ carfast_management.get('finance_entity') or '' }}">
+                  </label>
+                  <label>
+                    Valor em dívida
+                    <input type="text" name="debt_value" maxlength="80" value="{{ carfast_management.get('debt_value') or '' }}" placeholder="0,00">
+                  </label>
+                </div>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Estado na lista
+                    <select name="trade_list_state">
+                      {% for code, label in trade_list_states %}
+                        <option value="{{ code }}" {% if (carfast_management.get("trade_list_state") or "candidata") == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Decisão
+                    <select name="trade_decision">
+                      {% for code, label in trade_decisions %}
+                        <option value="{{ code }}" {% if (carfast_management.get("trade_decision") or "") == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Motivo / contexto da decisão
+                  <textarea name="trade_decision_reason" rows="2">{{ carfast_management.get("trade_decision_reason") or "" }}</textarea>
+                </label>
+                <label>
+                  Pendências
+                  <textarea name="trade_pending_items" rows="2">{{ carfast_management.get("trade_pending_items") or "" }}</textarea>
+                </label>
+                <label>
+                  Responsável
+                  <input type="text" name="trade_responsible" maxlength="160" value="{{ carfast_management.get('trade_responsible') or '' }}">
+                </label>
+                <button type="submit">Gravar Gestão CarFast</button>
+              </form>
+            {% else %}
+              <p class="muted">Sem permissão para editar a Gestão CarFast.</p>
+            {% endif %}
+          </details>
         </div>
       </aside>
     </section>

@@ -5858,6 +5858,80 @@ a.metric:hover {
   margin-top: 10px;
 }
 
+.rentway-context-card {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.rentway-context-card .compact-heading {
+  margin-bottom: 4px;
+}
+
+.rentway-context-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.carfast-blocked-pill,
+.carfast-inline-alert,
+.commerce-block-pill {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.carfast-inline-alert {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.carfast-management-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.carfast-management-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.carfast-management-summary div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #ffffff;
+}
+
+.carfast-management-summary span,
+.compact-note {
+  font-size: 12px;
+}
+
+.checkbox-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+}
+
+.checkbox-line input {
+  width: 16px;
+  height: 16px;
+}
+
 .vehicle-snapshot-list {
   margin: 0 0 16px;
   padding: 0 18px;
@@ -5870,6 +5944,108 @@ a.metric:hover {
 
 .vehicle-quick-actions .button-link {
   width: 100%;
+}
+
+.commerce-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.commerce-summary-card {
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.commerce-summary-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.commerce-summary-card strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.commerce-summary-card.alert {
+  border-color: #fed7d7;
+  background: #fffafa;
+}
+
+.commerce-summary-card.ok {
+  border-color: #c6f6d5;
+  background: #fbfffc;
+}
+
+.commerce-filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(110px, 0.7fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.commerce-filter-form input,
+.commerce-filter-form select {
+  width: 100%;
+  min-height: 38px;
+}
+
+.commerce-filter-form .filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.commerce-table-shell {
+  max-height: 68vh;
+}
+
+.commerce-table {
+  min-width: 1900px;
+}
+
+.commerce-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafb;
+}
+
+.commerce-table td {
+  vertical-align: top;
+}
+
+.commerce-table td small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.commerce-state-pill,
+.commerce-block-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.commerce-state-pill {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
 }
 
 .event-list {
@@ -6247,7 +6423,8 @@ a.metric:hover {
 
   .metric-grid,
   .compact-metrics,
-  .document-metric-strip {
+  .document-metric-strip,
+  .commerce-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -6280,6 +6457,8 @@ a.metric:hover {
   .management-import-form,
   .management-filter-form,
   .association-move-form,
+  .commerce-filter-form,
+  .rentway-context-grid,
   .detail-grid,
   .admin-overview-grid,
   .admin-management-grid,
@@ -6460,6 +6639,7 @@ a.metric:hover {
   .document-metric-strip,
   .document-cockpit-grid,
   .import-type-grid,
+  .commerce-summary-grid,
   .document-workbench,
   .document-fact-grid {
     grid-template-columns: 1fr;
@@ -6689,6 +6869,8 @@ a.metric:hover {
   .management-import-form,
   .management-filter-form,
   .association-move-form,
+  .commerce-filter-form,
+  .rentway-context-grid,
   .form-grid,
   .compact-form-grid,
   .compact-form-grid.two-col,

@@ -46,7 +46,7 @@ from app.models.tasks import (
     TaskGuidedFlowStepRun,
     TaskHistory,
 )
-from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleOperationalStatusEvent
+from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleManualField, VehicleOperationalStatusEvent
 from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
@@ -124,6 +124,165 @@ def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[st
         "last_service_km": snapshot_value(data, ["last_service_km", "lastservicekm"]),
         "next_service_km": snapshot_value(data, ["next_service_km", "nextservicekm"]),
     }
+
+
+def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+    data = snapshot.data_json if snapshot else None
+    return {
+        "current_status": snapshot_value(data, ["CurrentStatus", "current_status", "current_status_rentway"]),
+        "document_nr": snapshot_value(data, ["DocumentNr", "document_nr", "document_number", "contractnr"]),
+        "client": snapshot_value(data, ["Client", "client", "customer", "customer_name"]),
+        "driver": snapshot_value(data, ["Driver", "driver", "driver_name"]),
+        "rental_station": snapshot_value(data, ["rental_station", "rentalstation", "station", "location"]),
+        "return_date": snapshot_value(data, ["return_date", "returndate"]),
+        "value_with_tax": snapshot_value(data, ["value_with_tax", "valuewithtax", "valor_com_iva", "valor_aquisicao"]),
+        "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
+        "km": snapshot_value(data, ["km", "odometer", "odometer_km", "current_km", "quilometros"]),
+    }
+
+
+CARFAST_MANAGEMENT_FIELD_CODES = {
+    "sale_blocked",
+    "sale_block_reason",
+    "sale_block_reason_other",
+    "finance_entity",
+    "debt_value",
+    "trade_list_state",
+    "trade_pending_items",
+    "trade_decision",
+    "trade_decision_reason",
+    "trade_responsible",
+}
+
+TRADE_LIST_STATES = [
+    ("candidata", "Candidata"),
+    ("em_analise", "Em análise"),
+    ("aprovada", "Aprovada"),
+    ("excluida", "Excluída"),
+    ("adiada", "Adiada"),
+    ("pendente_informacao", "Pendente de informação"),
+]
+TRADE_LIST_STATE_LABELS = dict(TRADE_LIST_STATES)
+
+TRADE_DECISIONS = [
+    ("", "Sem decisão"),
+    ("incluir", "Incluir"),
+    ("excluir", "Excluir"),
+    ("adiar", "Adiar"),
+    ("pedir_info", "Pedir informação"),
+]
+TRADE_DECISION_LABELS = dict(TRADE_DECISIONS)
+
+SALE_BLOCK_REASONS = [
+    ("", "Sem bloqueio"),
+    ("documentacao", "Documentação"),
+    ("financeiro", "Financeiro"),
+    ("oficina", "Oficina"),
+    ("operacional", "Operacional"),
+    ("outro", "Outro"),
+]
+SALE_BLOCK_REASON_LABELS = dict(SALE_BLOCK_REASONS)
+
+
+def vehicle_manual_values(db, vehicle_id: int) -> dict[str, object]:
+    fields = db.scalars(
+        select(VehicleManualField).where(
+            VehicleManualField.vehicle_id == vehicle_id,
+            VehicleManualField.field_code.in_(CARFAST_MANAGEMENT_FIELD_CODES),
+        )
+    ).all()
+    return {field.field_code: field.value_json for field in fields}
+
+
+def upsert_vehicle_manual_field(db, vehicle_id: int, field_code: str, value, user_id: int | None) -> None:
+    field = db.scalar(
+        select(VehicleManualField).where(
+            VehicleManualField.vehicle_id == vehicle_id,
+            VehicleManualField.field_code == field_code,
+        )
+    )
+    if field:
+        field.value_json = value
+        field.updated_by_id = user_id
+        return
+    db.add(
+        VehicleManualField(
+            vehicle_id=vehicle_id,
+            field_code=field_code,
+            value_json=value,
+            updated_by_id=user_id,
+        )
+    )
+
+
+def parse_decimal_text(value: str | int | float | None) -> float | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace(" ", "").replace("\u00a0", "")
+    if not text:
+        return None
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    text = re.sub(r"[^0-9.\-]", "", text)
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def parse_iso_or_dmy_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def amortization_month(purchase_date: date | None, reference_date: date | None = None) -> int | None:
+    if not purchase_date:
+        return None
+    reference = reference_date or date.today()
+    months = (reference.year - purchase_date.year) * 12 + (reference.month - purchase_date.month) + 1
+    return max(1, min(96, months))
+
+
+def current_cost_from_snapshot(snapshot: VehicleExternalSnapshot | None) -> dict[str, float | int | str | None]:
+    context = rentway_commercial_context(snapshot)
+    initial_cost = parse_decimal_text(context.get("value_with_tax"))
+    purchase = parse_iso_or_dmy_date(context.get("purchase_date"))
+    month = amortization_month(purchase)
+    if initial_cost is None or month is None:
+        return {
+            "initial_cost": initial_cost,
+            "purchase_date": context.get("purchase_date"),
+            "amortization_month": month,
+            "current_cost": None,
+        }
+    current_cost = max(0, initial_cost - ((initial_cost / 96) * month))
+    return {
+        "initial_cost": initial_cost,
+        "purchase_date": context.get("purchase_date"),
+        "amortization_month": month,
+        "current_cost": current_cost,
+    }
+
+
+def format_eur(value: str | int | float | None) -> str:
+    number = parse_decimal_text(value)
+    if number is None:
+        return "-"
+    text = f"{number:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{text} €"
+
+
+def can_manage_carfast_fleet(request: Request) -> bool:
+    return has_any_web_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")
 
 
 def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
@@ -2599,6 +2758,210 @@ def vehicles_page(request: Request, q: str | None = None, scope: str = "active",
         )
 
 
+@web_router.get("/fleet/trade-list", response_class=HTMLResponse)
+def fleet_trade_list(
+    request: Request,
+    q: str | None = None,
+    state: str | None = None,
+    brand_model: str | None = None,
+    year: str | None = None,
+    km_min: str | None = None,
+    km_max: str | None = None,
+    current_status: str | None = None,
+    location: str | None = None,
+    pending: str | None = None,
+    decision: str | None = None,
+    responsible: str | None = None,
+    finance_entity: str | None = None,
+    current_cost_min: str | None = None,
+    current_cost_max: str | None = None,
+    debt_min: str | None = None,
+    debt_max: str | None = None,
+    blocked: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+
+    filters = {
+        "q": q or "",
+        "state": state or "",
+        "brand_model": brand_model or "",
+        "year": year or "",
+        "km_min": km_min or "",
+        "km_max": km_max or "",
+        "current_status": current_status or "",
+        "location": location or "",
+        "pending": pending or "",
+        "decision": decision or "",
+        "responsible": responsible or "",
+        "finance_entity": finance_entity or "",
+        "current_cost_min": current_cost_min or "",
+        "current_cost_max": current_cost_max or "",
+        "debt_min": debt_min or "",
+        "debt_max": debt_max or "",
+        "blocked": blocked or "",
+    }
+
+    with SessionLocal() as db:
+        sold_filter = or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
+        vehicles = db.scalars(
+            select(Vehicle)
+            .where(Vehicle.active.is_(True), ~sold_filter)
+            .order_by(Vehicle.id.desc())
+            .limit(5000)
+        ).all()
+        vehicle_ids = [vehicle.id for vehicle in vehicles]
+        snapshots = {
+            snapshot.vehicle_id: snapshot
+            for snapshot in db.scalars(
+                select(VehicleExternalSnapshot).where(
+                    VehicleExternalSnapshot.vehicle_id.in_(vehicle_ids),
+                    VehicleExternalSnapshot.source_system == "rentway",
+                )
+            ).all()
+        } if vehicle_ids else {}
+        manual_fields_by_vehicle: dict[int, dict[str, object]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
+        if vehicle_ids:
+            for field in db.scalars(
+                select(VehicleManualField).where(
+                    VehicleManualField.vehicle_id.in_(vehicle_ids),
+                    VehicleManualField.field_code.in_(CARFAST_MANAGEMENT_FIELD_CODES),
+                )
+            ).all():
+                manual_fields_by_vehicle.setdefault(field.vehicle_id, {})[field.field_code] = field.value_json
+
+        rows = []
+        for vehicle in vehicles:
+            snapshot = snapshots.get(vehicle.id)
+            rentway_context = rentway_commercial_context(snapshot)
+            finance = current_cost_from_snapshot(snapshot)
+            manual = manual_fields_by_vehicle.get(vehicle.id, {})
+            block_reason = str(manual.get("sale_block_reason") or "")
+            if block_reason == "outro" and manual.get("sale_block_reason_other"):
+                block_reason_label = str(manual.get("sale_block_reason_other"))
+            else:
+                block_reason_label = SALE_BLOCK_REASON_LABELS.get(block_reason, "-")
+            state_code = str(manual.get("trade_list_state") or "candidata")
+            decision_code = str(manual.get("trade_decision") or "")
+            row = {
+                "vehicle": vehicle,
+                "rentway": rentway_context,
+                "manual": manual,
+                "finance": finance,
+                "km": parse_decimal_text(rentway_context.get("km")),
+                "sale_blocked": bool(manual.get("sale_blocked")),
+                "block_reason_label": block_reason_label,
+                "state": state_code,
+                "state_label": TRADE_LIST_STATE_LABELS.get(state_code, state_code),
+                "decision": decision_code,
+                "decision_label": TRADE_DECISION_LABELS.get(decision_code, decision_code or "Sem decisão"),
+                "responsible": str(manual.get("trade_responsible") or ""),
+                "pending_items": str(manual.get("trade_pending_items") or ""),
+                "finance_entity": str(manual.get("finance_entity") or ""),
+                "debt_value": parse_decimal_text(manual.get("debt_value")),
+                "ready_for_final": bool(decision_code and manual.get("trade_decision_reason") and manual.get("trade_responsible")),
+            }
+            rows.append(row)
+
+        def includes(value, needle: str) -> bool:
+            return needle.lower() in str(value or "").lower()
+
+        filtered_rows = []
+        for row in rows:
+            vehicle = row["vehicle"]
+            haystack = " ".join(
+                str(item or "")
+                for item in [
+                    vehicle.plate,
+                    vehicle.rentway_unit_nr,
+                    vehicle.vin,
+                    vehicle.brand,
+                    vehicle.model,
+                    vehicle.version,
+                    row["rentway"].get("current_status"),
+                    row["rentway"].get("document_nr"),
+                    row["rentway"].get("client"),
+                    row["rentway"].get("rental_station"),
+                    row["finance_entity"],
+                    row["responsible"],
+                ]
+            )
+            if filters["q"] and not includes(haystack, filters["q"]):
+                continue
+            if filters["state"] and row["state"] != filters["state"]:
+                continue
+            if filters["brand_model"] and not includes(f"{vehicle.brand or ''} {vehicle.model or ''}", filters["brand_model"]):
+                continue
+            if filters["year"] and str(vehicle.year or "") != filters["year"]:
+                continue
+            if filters["current_status"] and row["rentway"].get("current_status") != filters["current_status"]:
+                continue
+            if filters["location"] and row["rentway"].get("rental_station") != filters["location"]:
+                continue
+            if filters["pending"] == "with" and not row["pending_items"]:
+                continue
+            if filters["pending"] == "without" and row["pending_items"]:
+                continue
+            if filters["decision"] and row["decision"] != filters["decision"]:
+                continue
+            if filters["responsible"] and row["responsible"] != filters["responsible"]:
+                continue
+            if filters["finance_entity"] and row["finance_entity"] != filters["finance_entity"]:
+                continue
+            if filters["blocked"] == "yes" and not row["sale_blocked"]:
+                continue
+            if filters["blocked"] == "no" and row["sale_blocked"]:
+                continue
+            km_value = row["km"]
+            if filters["km_min"] and (km_value is None or km_value < (parse_decimal_text(filters["km_min"]) or 0)):
+                continue
+            if filters["km_max"] and (km_value is None or km_value > (parse_decimal_text(filters["km_max"]) or 0)):
+                continue
+            current_cost = row["finance"].get("current_cost")
+            min_cost = parse_decimal_text(filters["current_cost_min"])
+            max_cost = parse_decimal_text(filters["current_cost_max"])
+            if min_cost is not None and (current_cost is None or current_cost < min_cost):
+                continue
+            if max_cost is not None and (current_cost is None or current_cost > max_cost):
+                continue
+            min_debt = parse_decimal_text(filters["debt_min"])
+            max_debt = parse_decimal_text(filters["debt_max"])
+            if min_debt is not None and (row["debt_value"] is None or row["debt_value"] < min_debt):
+                continue
+            if max_debt is not None and (row["debt_value"] is None or row["debt_value"] > max_debt):
+                continue
+            filtered_rows.append(row)
+
+        summary = {
+            "total": len(filtered_rows),
+            "blocked": sum(1 for row in filtered_rows if row["sale_blocked"]),
+            "approved": sum(1 for row in filtered_rows if row["state"] == "aprovada"),
+            "ready": sum(1 for row in filtered_rows if row["ready_for_final"]),
+            "pending_info": sum(1 for row in filtered_rows if row["state"] == "pendente_informacao" or row["pending_items"]),
+        }
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name.asc())).all()
+        return templates.TemplateResponse(
+            request,
+            "vehicle_trade_list.html",
+            {
+                "rows": sorted(filtered_rows, key=lambda item: rentway_unit_sort_key(item["vehicle"]), reverse=True)[:500],
+                "summary": summary,
+                "filters": filters,
+                "state_options": TRADE_LIST_STATES,
+                "decision_options": TRADE_DECISIONS,
+                "users": users,
+                "format_eur": format_eur,
+                "current_status_options": sorted(
+                    {row["rentway"].get("current_status") for row in rows if row["rentway"].get("current_status")}
+                ),
+                "location_options": sorted(
+                    {row["rentway"].get("rental_station") for row in rows if row["rentway"].get("rental_station")}
+                ),
+                "finance_entity_options": sorted({row["finance_entity"] for row in rows if row["finance_entity"]}),
+            },
+        )
+
+
 @web_router.get("/fleet/{vehicle_id}", response_class=HTMLResponse)
 def vehicle_detail(
     request: Request,
@@ -2606,6 +2969,7 @@ def vehicle_detail(
     saved: str | None = None,
     task_created: str | None = None,
     document_created: str | None = None,
+    error: str | None = None,
 ):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
@@ -2620,6 +2984,8 @@ def vehicle_detail(
             .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
             .order_by(VehicleExternalSnapshot.updated_at.desc())
         )
+        carfast_management = vehicle_manual_values(db, vehicle.id)
+        carfast_finance = current_cost_from_snapshot(snapshot)
         events = db.scalars(
             select(VehicleOperationalStatusEvent)
             .where(VehicleOperationalStatusEvent.vehicle_id == vehicle.id)
@@ -2678,6 +3044,15 @@ def vehicle_detail(
                 "vehicle": vehicle,
                 "snapshot": snapshot,
                 "vehicle_context": rentway_vehicle_context(snapshot),
+                "rentway_context": rentway_commercial_context(snapshot),
+                "carfast_management": carfast_management,
+                "carfast_finance": carfast_finance,
+                "can_manage_carfast": can_manage_carfast_fleet(request),
+                "trade_list_states": TRADE_LIST_STATES,
+                "trade_decisions": TRADE_DECISIONS,
+                "sale_block_reasons": SALE_BLOCK_REASONS,
+                "sale_block_reason_labels": SALE_BLOCK_REASON_LABELS,
+                "format_eur": format_eur,
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,
                 "workshop_processes": workshop_processes,
@@ -2694,9 +3069,67 @@ def vehicle_detail(
                 "saved": saved,
                 "task_created": task_created,
                 "document_created": document_created,
-                "error": None,
+                "error": error,
             },
         )
+
+
+@web_router.post("/fleet/{vehicle_id}/carfast-management", response_class=HTMLResponse)
+def update_vehicle_carfast_management(
+    request: Request,
+    vehicle_id: int,
+    sale_blocked: str | None = Form(None),
+    sale_block_reason: str = Form(""),
+    sale_block_reason_other: str = Form(""),
+    finance_entity: str = Form(""),
+    debt_value: str = Form(""),
+    trade_list_state: str = Form("candidata"),
+    trade_pending_items: str = Form(""),
+    trade_decision: str = Form(""),
+    trade_decision_reason: str = Form(""),
+    trade_responsible: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}?error=Sem%20permissão.", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+
+        normalized_state = trade_list_state if trade_list_state in TRADE_LIST_STATE_LABELS else "candidata"
+        normalized_decision = trade_decision if trade_decision in TRADE_DECISION_LABELS else ""
+        normalized_reason = sale_block_reason if sale_block_reason in SALE_BLOCK_REASON_LABELS else ""
+        new_values = {
+            "sale_blocked": sale_blocked == "1",
+            "sale_block_reason": normalized_reason,
+            "sale_block_reason_other": sale_block_reason_other.strip()[:500],
+            "finance_entity": finance_entity.strip()[:160],
+            "debt_value": debt_value.strip()[:80],
+            "trade_list_state": normalized_state,
+            "trade_pending_items": trade_pending_items.strip()[:1000],
+            "trade_decision": normalized_decision,
+            "trade_decision_reason": trade_decision_reason.strip()[:1000],
+            "trade_responsible": trade_responsible.strip()[:160],
+        }
+        previous_values = vehicle_manual_values(db, vehicle.id)
+        for field_code, value in new_values.items():
+            upsert_vehicle_manual_field(db, vehicle.id, field_code, value, user_id)
+        record_audit(
+            db,
+            action="vehicle.carfast_management.updated",
+            entity_type="vehicle",
+            entity_id=vehicle.id,
+            detail=f"Gestão CarFast atualizada: {vehicle.plate or vehicle.id}",
+            before_json=previous_values,
+            after_json=new_values,
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}?saved=1", status_code=303)
 
 
 @web_router.get("/fleet/{vehicle_id}/technical-history", response_class=HTMLResponse)

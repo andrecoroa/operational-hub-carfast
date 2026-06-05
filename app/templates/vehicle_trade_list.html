@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Frota</p>
+        <h2>Lista para Comércio</h2>
+        <span>Preparação de candidatas, sem gestão de venda ou publicação.</span>
+      </div>
+      <div class="topbar-tools">
+        <a class="button-link secondary-link" href="/fleet">Voltar à Frota</a>
+      </div>
+    </header>
+
+    <section class="commerce-summary-grid">
+      <a class="commerce-summary-card" href="/fleet/trade-list">
+        <span>Candidatas filtradas</span>
+        <strong>{{ summary.total }}</strong>
+      </a>
+      <a class="commerce-summary-card alert" href="/fleet/trade-list?blocked=yes">
+        <span>Venda bloqueada</span>
+        <strong>{{ summary.blocked }}</strong>
+      </a>
+      <a class="commerce-summary-card" href="/fleet/trade-list?state=aprovada">
+        <span>Aprovadas</span>
+        <strong>{{ summary.approved }}</strong>
+      </a>
+      <a class="commerce-summary-card" href="/fleet/trade-list?state=pendente_informacao">
+        <span>Pendente informação</span>
+        <strong>{{ summary.pending_info }}</strong>
+      </a>
+      <a class="commerce-summary-card ok" href="/fleet/trade-list?decision=incluir">
+        <span>Com decisão final</span>
+        <strong>{{ summary.ready }}</strong>
+      </a>
+    </section>
+
+    <form method="get" action="/fleet/trade-list" class="commerce-filter-form">
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar matrícula, Unit, VIN, cliente ou financeira">
+      <input type="search" name="brand_model" value="{{ filters.brand_model }}" placeholder="Marca / Modelo">
+      <input type="number" name="year" value="{{ filters.year }}" placeholder="Ano">
+      <input type="number" name="km_min" value="{{ filters.km_min }}" placeholder="Km mín.">
+      <input type="number" name="km_max" value="{{ filters.km_max }}" placeholder="Km máx.">
+      <select name="current_status">
+        <option value="">CurrentStatus</option>
+        {% for option in current_status_options %}
+          <option value="{{ option }}" {% if filters.current_status == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <select name="location">
+        <option value="">Localização</option>
+        {% for option in location_options %}
+          <option value="{{ option }}" {% if filters.location == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <select name="state">
+        <option value="">Estado</option>
+        {% for code, label in state_options %}
+          <option value="{{ code }}" {% if filters.state == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="pending">
+        <option value="">Pendências</option>
+        <option value="with" {% if filters.pending == "with" %}selected{% endif %}>Com pendências</option>
+        <option value="without" {% if filters.pending == "without" %}selected{% endif %}>Sem pendências</option>
+      </select>
+      <select name="decision">
+        <option value="">Decisão</option>
+        {% for code, label in decision_options %}
+          {% if code %}
+            <option value="{{ code }}" {% if filters.decision == code %}selected{% endif %}>{{ label }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+      <input type="search" name="responsible" value="{{ filters.responsible }}" placeholder="Responsável">
+      <select name="finance_entity">
+        <option value="">Entidade financeira</option>
+        {% for option in finance_entity_options %}
+          <option value="{{ option }}" {% if filters.finance_entity == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="current_cost_min" value="{{ filters.current_cost_min }}" placeholder="Custo mín.">
+      <input type="number" name="current_cost_max" value="{{ filters.current_cost_max }}" placeholder="Custo máx.">
+      <input type="number" name="debt_min" value="{{ filters.debt_min }}" placeholder="Dívida mín.">
+      <input type="number" name="debt_max" value="{{ filters.debt_max }}" placeholder="Dívida máx.">
+      <select name="blocked">
+        <option value="">Bloquear venda</option>
+        <option value="yes" {% if filters.blocked == "yes" %}selected{% endif %}>Bloqueadas</option>
+        <option value="no" {% if filters.blocked == "no" %}selected{% endif %}>Não bloqueadas</option>
+      </select>
+      <div class="filter-actions">
+        <button type="submit">Filtrar</button>
+        <a class="button-link secondary-link" href="/fleet/trade-list">Limpar</a>
+      </div>
+    </form>
+
+    <section class="table-shell commerce-table-shell">
+      <table class="compact-table commerce-table">
+        <thead>
+          <tr>
+            <th>Matrícula</th>
+            <th>Marca / Modelo / Versão</th>
+            <th>Ano</th>
+            <th>Km</th>
+            <th>CurrentStatus</th>
+            <th>DocumentNr</th>
+            <th>Cliente</th>
+            <th>Localização</th>
+            <th>Estado na lista</th>
+            <th>Bloquear venda</th>
+            <th>Motivo bloqueio</th>
+            <th>Pendências</th>
+            <th>Entidade financeira</th>
+            <th>Valor de custo atual</th>
+            <th>Valor em dívida</th>
+            <th>Decisão</th>
+            <th>Responsável</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            {% set vehicle = row.vehicle %}
+            <tr>
+              <td><a class="table-link" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a></td>
+              <td>
+                <strong>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" / ") or "-" }}</strong>
+                {% if vehicle.rentway_unit_nr %}<small>Unit {{ vehicle.rentway_unit_nr }}</small>{% endif %}
+              </td>
+              <td>{{ vehicle.year or "-" }}</td>
+              <td>{{ "{:,.0f}".format(row.km).replace(",", ".") if row.km is not none else "-" }}</td>
+              <td>{{ row.rentway.current_status or "-" }}</td>
+              <td>{{ row.rentway.document_nr or "-" }}</td>
+              <td>{{ row.rentway.client or "-" }}</td>
+              <td>{{ row.rentway.rental_station or "-" }}</td>
+              <td><span class="commerce-state-pill">{{ row.state_label }}</span></td>
+              <td>{% if row.sale_blocked %}<span class="commerce-block-pill">Sim</span>{% else %}-{% endif %}</td>
+              <td>{{ row.block_reason_label }}</td>
+              <td>{{ row.pending_items or "-" }}</td>
+              <td>{{ row.finance_entity or "-" }}</td>
+              <td>{{ format_eur(row.finance.current_cost) }}</td>
+              <td>{{ format_eur(row.debt_value) }}</td>
+              <td>{{ row.decision_label }}</td>
+              <td>{{ row.responsible or "-" }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="17" class="muted">Sem viaturas candidatas para os filtros selecionados.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -77,7 +77,7 @@ WEB_PERMISSION_RULES = (
         },
     ),
     (("/workshop",), {"GET": {"workshop.read"}, "POST": {"workshop.write"}}),
-    (("/fleet",), {"GET": {"vehicles.read"}, "POST": {"vehicles.write"}}),
+    (("/fleet",), {"GET": {"vehicles.read"}, "POST": {"vehicles.write", "fleet.commerce.manage"}}),
     (("/management-center",), {"GET": {"management_center.read", "management_center.write"}, "POST": {"management_center.write"}}),
     (("/imports",), {"GET": {"imports.run", "imports.approve"}, "POST": {"imports.run"}}),
     (("/documents",), {"GET": {"documents.read", "documents.write"}, "POST": {"documents.write"}}),

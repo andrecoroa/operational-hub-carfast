@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Frota / Comércio</p>
         <h2>Importar dívida para Gestão CarFast</h2>
-        <p class="breadcrumb">Preview primeiro; a aplicação só preenche Valor em dívida e Entidade financeira na ficha da viatura.</p>
+        <p class="breadcrumb">Preview primeiro; a aplicação só preenche Valor em dívida na ficha da viatura.</p>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "imports" %}
@@ -74,8 +74,7 @@
                 <th>Matrícula</th>
                 <th>Dívida atual</th>
                 <th>Nova dívida</th>
-                <th>Entidade atual</th>
-                <th>Nova entidade</th>
+                <th>Entidade no ficheiro</th>
                 <th>Estado</th>
               </tr>
             </thead>
@@ -86,11 +85,10 @@
                   <td>{{ row.plate }}</td>
                   <td>{{ row.current_debt_value or "-" }}</td>
                   <td><strong>{{ row.debt_value or "-" }}</strong></td>
-                  <td>{{ row.current_finance_entity or "-" }}</td>
-                  <td><strong>{{ row.finance_entity or "-" }}</strong></td>
+                  <td>{{ row.finance_entity or "-" }}</td>
                   <td>
                     {% if row.state == "valid" %}
-                      {% if row.debt_changed or row.finance_changed %}Alterar{% else %}Sem alteração{% endif %}
+                      {% if row.debt_changed %}Alterar dívida{% else %}Sem alteração{% endif %}
                     {% else %}
                       {{ row.message }}
                     {% endif %}
@@ -98,7 +96,7 @@
                 </tr>
               {% else %}
                 <tr>
-                  <td colspan="7" class="muted">Sem linhas para mostrar.</td>
+                  <td colspan="6" class="muted">Sem linhas para mostrar.</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -107,8 +105,8 @@
 
         <section class="task-bulk-confirm-box">
           <p>
-            Ao confirmar, a app atualiza apenas <strong>Valor em dívida</strong> e <strong>Entidade financeira</strong>.
-            Bloqueio de venda e estados da lista não são alterados.
+            Ao confirmar, a app atualiza apenas <strong>Valor em dívida</strong>.
+            Entidade financeira, bloqueio de venda e estados da lista não são alterados.
           </p>
           <form method="post" action="/imports/trade-debt/confirm" class="button-row">
             <button type="submit" {% if preview.summary.valid == 0 %}disabled{% endif %}>Confirmar aplicação</button>

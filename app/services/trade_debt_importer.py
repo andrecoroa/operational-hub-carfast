@@ -22,7 +22,6 @@ TRADE_DEBT_SOURCE_SYSTEM = "carfast_sales_map"
 TRADE_DEBT_STORAGE_DIR = Path("data/imports/trade_debt")
 TRADE_DEBT_SHEET = "Mapa_Base"
 FIELD_DEBT_VALUE = "debt_value"
-FIELD_FINANCE_ENTITY = "finance_entity"
 
 
 def trade_debt_storage_root() -> Path:
@@ -80,7 +79,7 @@ def load_trade_debt_rows(path: str | Path) -> tuple[list[str], list[dict[str, An
         sheet = workbook[TRADE_DEBT_SHEET]
         headers = [sheet.cell(1, column).value for column in range(1, sheet.max_column + 1)]
         index = {name: position + 1 for position, name in enumerate(headers) if name}
-        required = {"matricula", "divida_com_iva", "entidade_divida"}
+        required = {"matricula", "divida_com_iva"}
         missing_headers = sorted(required - set(index))
         if missing_headers:
             raise ValueError(f"Colunas em falta: {', '.join(missing_headers)}")
@@ -122,7 +121,7 @@ def manual_values_for_vehicle(db: Session, vehicle_id: int) -> dict[str, Any]:
     rows = db.scalars(
         select(VehicleManualField).where(
             VehicleManualField.vehicle_id == vehicle_id,
-            VehicleManualField.field_code.in_((FIELD_DEBT_VALUE, FIELD_FINANCE_ENTITY)),
+            VehicleManualField.field_code == FIELD_DEBT_VALUE,
         )
     ).all()
     return {row.field_code: row.value_json for row in rows}
@@ -147,15 +146,12 @@ def preview_trade_debt_import(db: Session, path: str | Path) -> dict[str, Any]:
 
         current = manual_values_for_vehicle(db, vehicle.id) if vehicle else {}
         debt_changed = vehicle is not None and str(current.get(FIELD_DEBT_VALUE) or "") != source_row["debt_value"]
-        finance_changed = vehicle is not None and str(current.get(FIELD_FINANCE_ENTITY) or "") != source_row["finance_entity"]
         rows.append(
             {
                 **source_row,
                 "vehicle_id": vehicle.id if vehicle else None,
                 "current_debt_value": current.get(FIELD_DEBT_VALUE) or "",
-                "current_finance_entity": current.get(FIELD_FINANCE_ENTITY) or "",
                 "debt_changed": debt_changed,
-                "finance_changed": finance_changed,
                 "state": state,
                 "message": message,
             }
@@ -166,7 +162,7 @@ def preview_trade_debt_import(db: Session, path: str | Path) -> dict[str, Any]:
     errors = sum(1 for row in rows if row["state"] == "error")
     duplicates = sum(1 for row in rows if row["state"] == "duplicate")
     with_debt = sum(1 for row in rows if row["state"] == "valid" and row["debt_value"])
-    changed = sum(1 for row in rows if row["state"] == "valid" and (row["debt_changed"] or row["finance_changed"]))
+    changed = sum(1 for row in rows if row["state"] == "valid" and row["debt_changed"])
     return {
         "sheet_name": TRADE_DEBT_SHEET,
         "headers": headers,
@@ -220,7 +216,7 @@ def apply_trade_debt_import(
         status="running",
         imported_by_id=user_id,
         total_rows=preview["summary"]["total"],
-        detail="Importação de dívida e entidade financeira para Gestão CarFast.",
+        detail="Importação pontual de valor em dívida para Gestão CarFast.",
     )
     db.add(batch)
     db.flush()
@@ -278,8 +274,7 @@ def apply_trade_debt_import(
             continue
         vehicle_id = row["vehicle_id"]
         debt_changed = upsert_manual_field(db, vehicle_id, FIELD_DEBT_VALUE, row["debt_value"], user_id)
-        finance_changed = upsert_manual_field(db, vehicle_id, FIELD_FINANCE_ENTITY, row["finance_entity"], user_id)
-        if debt_changed or finance_changed:
+        if debt_changed:
             updated_rows += 1
             updated_vehicle_ids.append(vehicle_id)
 

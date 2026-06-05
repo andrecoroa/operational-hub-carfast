@@ -2529,16 +2529,16 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-field label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:850; }
     .report-field input { min-height:38px; }
     .report-description { border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); padding:11px 12px; color:var(--muted); font-weight:750; }
-    .report-type-grid { display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:12px; margin-bottom:14px; }
+    .report-type-grid { display:grid; grid-template-columns:repeat(5,minmax(145px,1fr)); gap:8px; margin-bottom:12px; }
     .report-type-card {
-      display:grid; gap:8px; min-height:112px; text-align:left; border:1px solid var(--line); border-radius:8px;
-      background:#fff; padding:14px; cursor:pointer;
+      display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; align-items:center; min-height:64px;
+      text-align:left; border:1px solid var(--line); border-radius:8px; background:#fff; padding:9px 10px; cursor:pointer;
     }
     .report-type-card:hover { border-color:var(--line-strong); background:var(--surface-soft); }
-    .report-type-card.active { border-color:var(--brand); background:#fff8f5; box-shadow:inset 4px 0 0 var(--brand); }
-    .report-type-card strong { font-size:16px; }
-    .report-type-card .report-count { font-size:26px; line-height:1; font-weight:950; }
-    .report-type-card .report-status-line { display:flex; flex-wrap:wrap; gap:6px; align-items:center; color:var(--muted); font-size:12px; font-weight:850; }
+    .report-type-card.active { border-color:var(--brand); background:#fff8f5; box-shadow:inset 3px 0 0 var(--brand); }
+    .report-type-card strong { min-width:0; font-size:13px; line-height:1.2; }
+    .report-type-card .report-count { grid-row:1 / span 2; grid-column:2; font-size:22px; line-height:1; font-weight:950; color:var(--text); }
+    .report-type-card .report-status-line { grid-column:1; display:block; min-width:0; color:var(--muted); font-size:11px; line-height:1.2; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .report-instance-strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
     .report-instance-strip button { min-height:34px; border-radius:999px; padding:6px 11px; font-size:12px; }
     .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }

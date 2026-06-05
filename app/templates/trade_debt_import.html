@@ -85,7 +85,7 @@
                   <td>{{ row.plate }}</td>
                   <td>{{ row.current_debt_value or "-" }}</td>
                   <td><strong>{{ row.debt_value or "-" }}</strong></td>
-                  <td>{{ row.finance_entity or "-" }}</td>
+                  <td>{{ row.finance_entity or "-" }} <small>não aplica financeira</small></td>
                   <td>
                     {% if row.state == "valid" %}
                       {% if row.debt_changed %}Alterar dívida{% else %}Sem alteração{% endif %}

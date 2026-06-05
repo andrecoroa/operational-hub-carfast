@@ -109,63 +109,63 @@
     <form method="post" action="/fleet/trade-list/update" class="commerce-list-form">
       <input type="hidden" name="return_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
       <section class="commerce-list-shell">
-        <div class="commerce-list-header">
-          <span>Incluir</span>
-          <span>Viatura</span>
-          <span>Compra / uso</span>
-          <span>Estado</span>
-          <span>Valores</span>
-          <span>Venda decidida</span>
-        </div>
         <div class="commerce-list-rows">
           {% for row in rows %}
             {% set vehicle = row.vehicle %}
-            <article class="commerce-row {% if row.selected_for_sale %}selected{% endif %}">
+            <article class="commerce-card-row {% if row.selected_for_sale %}selected{% endif %}">
               <input type="hidden" name="vehicle_ids" value="{{ vehicle.id }}">
-              <label class="commerce-select-box" title="Marcar para incluir na venda">
-                <input type="checkbox" name="selected_vehicle_ids" value="{{ vehicle.id }}" {% if row.selected_for_sale %}checked{% endif %}>
-              </label>
 
-              <div class="commerce-vehicle-cell">
-                <a class="table-link commerce-plate" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a>
-                <strong>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" / ") or "-" }}</strong>
-                <small>{% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }}{% else %}Sem Unit{% endif %}</small>
-              </div>
+              <header class="commerce-card-header">
+                <label class="commerce-select-box" title="Marcar para incluir na venda">
+                  <input type="checkbox" name="selected_vehicle_ids" value="{{ vehicle.id }}" {% if row.selected_for_sale %}checked{% endif %}>
+                </label>
+                <div class="commerce-title-block">
+                  <a class="table-link commerce-plate" href="/fleet/{{ vehicle.id }}">{{ vehicle.plate or "-" }}</a>
+                  <strong>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" / ") or "-" }}</strong>
+                  <small>{% if vehicle.rentway_unit_nr %}Unit {{ vehicle.rentway_unit_nr }}{% else %}Sem Unit{% endif %}</small>
+                </div>
+                <div class="commerce-card-badges">
+                  <span class="commerce-state-pill">{{ row.state_label }}</span>
+                  {% if row.sale_blocked %}
+                    <span class="commerce-block-pill">Venda bloqueada · {{ row.block_reason_label }}</span>
+                  {% endif %}
+                </div>
+              </header>
 
-              <div class="commerce-facts-cell">
-                <span><b>Ano</b>{{ vehicle.year or "-" }}</span>
-                <span><b>Categoria</b>{{ row.rentway.category or "-" }}</span>
-                <span><b>Compra</b>{{ row.finance.purchase_date or "-" }}</span>
-                <span><b>Km</b>{{ "{:,.0f}".format(row.km).replace(",", ".") if row.km is not none else "-" }}</span>
-              </div>
+              <section class="commerce-card-body">
+                <div class="commerce-card-block finance">
+                  <span><b>Preço atual</b>{{ format_eur(row.finance.current_cost) }}</span>
+                  <span><b>Dívida</b>{{ format_eur(row.debt_value) }}</span>
+                  <span><b>Financeira</b>{{ row.finance_entity or "Sem financeira" }}</span>
+                  <label>
+                    <b>Venda decidida</b>
+                    <input type="text" name="sale_price_{{ vehicle.id }}" value="{{ row.sale_price }}" placeholder="0,00 €">
+                  </label>
+                </div>
 
-              <div class="commerce-status-cell">
-                <span class="commerce-state-pill">{{ row.state_label }}</span>
-                <small>{{ row.rentway.current_status or "Sem CurrentStatus" }}</small>
-                {% if row.sale_blocked %}
-                  <span class="commerce-block-pill">Venda bloqueada · {{ row.block_reason_label }}</span>
-                {% endif %}
-              </div>
+                <div class="commerce-card-block compact">
+                  <span><b>Km</b>{{ "{:,.0f}".format(row.km).replace(",", ".") if row.km is not none else "-" }}</span>
+                  <span><b>Compra</b>{{ row.finance.purchase_date or "-" }}</span>
+                  <span><b>Categoria</b>{{ row.rentway.category or "-" }}</span>
+                  <span><b>Rentway / local</b>{{ row.rentway.current_status or "-" }}{% if row.rentway.rental_station %} · {{ row.rentway.rental_station }}{% endif %}</span>
+                </div>
 
-              <div class="commerce-values-cell">
-                <span><b>Preço atual</b>{{ format_eur(row.finance.current_cost) }}</span>
-                <span><b>Dívida</b>{{ format_eur(row.debt_value) }}</span>
-                <span><b>Financeira</b>{{ row.finance_entity or "-" }}</span>
-              </div>
+                <div class="commerce-card-block compact">
+                  <span><b>Decisão</b>{{ row.decision_label }}</span>
+                  <span><b>Responsável</b>{{ row.responsible or "-" }}</span>
+                  <span><b>Pendências</b>{{ row.pending_items or "-" }}</span>
+                </div>
+              </section>
 
-              <label class="commerce-sale-price-cell">
-                <span>Valor de venda decidido</span>
-                <input type="text" name="sale_price_{{ vehicle.id }}" value="{{ row.sale_price }}" placeholder="0,00 €">
-              </label>
-
-              <div class="commerce-context-line">
-                <span><b>DocumentNr</b>{{ row.rentway.document_nr or "-" }}</span>
-                <span><b>Cliente</b>{{ row.rentway.client or "-" }}</span>
-                <span><b>Localização</b>{{ row.rentway.rental_station or "-" }}</span>
-                <span><b>Pendências</b>{{ row.pending_items or "-" }}</span>
-                <span><b>Decisão</b>{{ row.decision_label }}</span>
-                <span><b>Responsável</b>{{ row.responsible or "-" }}</span>
-              </div>
+              <details class="commerce-rentway-details">
+                <summary>Contexto Rentway</summary>
+                <div>
+                  <span><b>DocumentNr</b>{{ row.rentway.document_nr or "-" }}</span>
+                  <span><b>Cliente</b>{{ row.rentway.client or "-" }}</span>
+                  <span><b>Localização</b>{{ row.rentway.rental_station or "-" }}</span>
+                  <span><b>CurrentStatus</b>{{ row.rentway.current_status or "-" }}</span>
+                </div>
+              </details>
             </article>
           {% else %}
             <div class="empty">Sem viaturas candidatas para os filtros selecionados.</div>

@@ -145,6 +145,17 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
         "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
         "km": snapshot_value(data, ["km", "kms", "odometer", "odometer_km", "current_km", "quilometros"]),
         "category": snapshot_value(data, ["category", "categoria", "grupo", "vehicle_category", "fleet"]),
+        "finance_entity": snapshot_value(
+            data,
+            [
+                "financial_supplier",
+                "financeira",
+                "entidade_financeira",
+                "financial_entity",
+                "finance_entity",
+                "entidade_divida",
+            ],
+        ),
     }
 
 
@@ -2892,7 +2903,7 @@ def fleet_trade_list(
                 "decision_label": TRADE_DECISION_LABELS.get(decision_code, decision_code or "Sem decisão"),
                 "responsible": str(manual.get("trade_responsible") or ""),
                 "pending_items": str(manual.get("trade_pending_items") or ""),
-                "finance_entity": str(manual.get("finance_entity") or ""),
+                "finance_entity": str(manual.get("finance_entity") or rentway_context.get("finance_entity") or ""),
                 "debt_value": parse_decimal_text(manual.get("debt_value")),
                 "selected_for_sale": bool(manual.get("trade_selected_for_sale")),
                 "sale_price": str(manual.get("trade_sale_price") or ""),

@@ -6134,43 +6134,31 @@ a.metric:hover {
   background: #ffffff;
 }
 
-.commerce-list-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 72px minmax(240px, 1.25fr) minmax(210px, 0.9fr) minmax(180px, 0.8fr) minmax(230px, 1fr) minmax(210px, 0.85fr);
-  gap: 14px;
-  align-items: center;
-  min-width: 1180px;
-  border-bottom: 1px solid var(--line);
-  padding: 11px 14px;
-  background: #f8fafb;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 950;
-  text-transform: uppercase;
-}
-
 .commerce-list-rows {
   display: grid;
+  gap: 0;
   max-height: 68vh;
   overflow: auto;
 }
 
-.commerce-row {
+.commerce-card-row {
   display: grid;
-  grid-template-columns: 72px minmax(240px, 1.25fr) minmax(210px, 0.9fr) minmax(180px, 0.8fr) minmax(230px, 1fr) minmax(210px, 0.85fr);
-  gap: 14px;
-  align-items: start;
-  min-width: 1180px;
+  gap: 12px;
   border-bottom: 1px solid var(--line);
-  padding: 14px;
+  padding: 14px 16px;
   background: #ffffff;
 }
 
-.commerce-row.selected {
+.commerce-card-row.selected {
   background: #fbfffc;
+}
+
+.commerce-card-header {
+  display: grid;
+  grid-template-columns: 48px minmax(260px, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
 }
 
 .commerce-select-box {
@@ -6188,13 +6176,9 @@ a.metric:hover {
   height: 18px;
 }
 
-.commerce-vehicle-cell,
-.commerce-facts-cell,
-.commerce-status-cell,
-.commerce-values-cell,
-.commerce-sale-price-cell {
+.commerce-title-block {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -6204,30 +6188,51 @@ a.metric:hover {
   font-weight: 950;
 }
 
-.commerce-vehicle-cell strong {
+.commerce-title-block strong {
   color: var(--ink);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.commerce-vehicle-cell small,
-.commerce-status-cell small {
+.commerce-title-block small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
 }
 
-.commerce-values-cell {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.commerce-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 180px;
 }
 
-.commerce-facts-cell {
+.commerce-card-body {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.25fr) minmax(260px, 0.85fr) minmax(240px, 0.8fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.commerce-card-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.commerce-card-block.finance {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.commerce-facts-cell span,
-.commerce-values-cell span,
-.commerce-context-line span {
+.commerce-card-block.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.commerce-card-block span,
+.commerce-card-block label,
+.commerce-rentway-details span {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -6238,19 +6243,20 @@ a.metric:hover {
   color: var(--ink);
   font-size: 13px;
   font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
-.commerce-facts-cell b,
-.commerce-values-cell b,
-.commerce-context-line b,
-.commerce-sale-price-cell span {
+.commerce-card-block b,
+.commerce-rentway-details b {
   color: var(--muted);
   font-size: 11px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
-.commerce-sale-price-cell input {
+.commerce-card-block input {
+  width: 100%;
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -6258,15 +6264,29 @@ a.metric:hover {
   font-weight: 850;
 }
 
-.commerce-context-line {
-  grid-column: 2 / -1;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-  padding-top: 2px;
+.commerce-rentway-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.commerce-context-line span {
+.commerce-rentway-details summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-weight: 900;
+}
+
+.commerce-rentway-details div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 8px;
+}
+
+.commerce-rentway-details span {
   background: #ffffff;
   color: var(--muted);
   font-size: 12px;
@@ -6893,23 +6913,17 @@ a.metric:hover {
     grid-template-columns: 1fr;
   }
 
-  .commerce-list-header {
-    display: none;
-  }
-
-  .commerce-row {
-    grid-template-columns: 48px minmax(0, 1fr);
-    min-width: 0;
-  }
-
-  .commerce-vehicle-cell,
-  .commerce-facts-cell,
-  .commerce-status-cell,
-  .commerce-values-cell,
-  .commerce-sale-price-cell,
-  .commerce-context-line {
-    grid-column: 2;
+  .commerce-card-header,
+  .commerce-card-body,
+  .commerce-card-block.finance,
+  .commerce-card-block.compact,
+  .commerce-rentway-details div {
     grid-template-columns: 1fr;
+  }
+
+  .commerce-card-badges {
+    justify-content: flex-start;
+    min-width: 0;
   }
 
   .commerce-select-box {

@@ -135,7 +135,7 @@ INITIAL_CATALOGS = {
     ],
     "task_priority": ["normal", "high", "urgent"],
     "document_type": ["general", "invoice", "report", "photo", "contract"],
-    "import_type": ["rentway_fleet", "rentway_contracts", "rentway_impros", "trade_debt"],
+    "import_type": ["rentway_fleet", "rentway_contracts", "rentway_impros"],
 }
 
 

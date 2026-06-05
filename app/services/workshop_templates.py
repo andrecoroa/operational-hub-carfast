@@ -193,14 +193,49 @@ STELLANTIS_REPORTS = [
                 "unit": None,
             },
             {
+                "code": "servicebox_plan_type",
+                "label": "Tipo de plano usado",
+                "unit": None,
+            },
+            {
                 "code": "servicebox_interval_km",
-                "label": "Intervalo Service Box",
+                "label": "Intervalo plano normal Service Box",
                 "unit": "km",
             },
             {
                 "code": "servicebox_interval_months",
-                "label": "Intervalo Service Box",
+                "label": "Intervalo plano normal Service Box",
                 "unit": "meses",
+            },
+            {
+                "code": "systematic_checks_km",
+                "label": "Verificacoes sistematicas",
+                "unit": "km",
+            },
+            {
+                "code": "systematic_checks_months",
+                "label": "Verificacoes sistematicas",
+                "unit": "meses",
+            },
+            {
+                "code": "engine_oil_change_km",
+                "label": "Mudanca oleo motor",
+                "unit": "km",
+            },
+            {
+                "code": "engine_oil_change_months",
+                "label": "Mudanca oleo motor",
+                "unit": "meses",
+            },
+            {
+                "code": "engine_oil_reference_exact",
+                "label": "Referencia exata do oleo",
+                "unit": None,
+            },
+            {
+                "code": "planned_services",
+                "label": "Servicos previstos por km/idade",
+                "unit": None,
             },
             {
                 "code": "servicebox_due_km",

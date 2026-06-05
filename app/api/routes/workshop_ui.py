@@ -1088,7 +1088,7 @@ def workshop_process_list_page() -> str:
   <title>Oficina - Processos por Fases</title>
   <style>
     :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --line2:#b9c5cc; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --blue:#1d5f94; --blue-soft:#eaf3fb; --amber:#9a6711; --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; font-family:Inter,"Segoe UI",Arial,sans-serif; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:block;min-height:100vh}aside{display:none}.brand{font-weight:800;font-size:18px;padding:8px 10px 20px;color:#fff}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:#d9e7ef;text-decoration:none;font-weight:650}.nav .sub{margin-left:18px;color:#b6cad5}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:14px 16px 34px}h1{margin:0 0 4px;font-size:24px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:8px;padding:8px 13px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:24px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:8px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 160px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:72px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.status-cell{display:grid;justify-items:start;gap:5px}.open-count{color:var(--amber);font-size:11px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{display:block;background:#fff;border-right:1px solid var(--line);padding:20px 14px}.brand{font-weight:900;font-size:18px;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:var(--brand);color:#fff;letter-spacing:.08em}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-weight:750}.nav .sub{margin-left:18px;color:var(--muted);font-size:13px}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:20px 22px 34px;min-width:0}h1{margin:0 0 4px;font-size:24px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:8px;padding:8px 13px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:24px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:8px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 160px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:72px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.status-cell{display:grid;justify-items:start;gap:5px}.open-count{color:var(--amber);font-size:11px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.app{grid-template-columns:1fr}aside{display:none}.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
   </style>
 </head>
 <body>
@@ -2405,7 +2405,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .content { padding:0 0 38px; }
     .workspace { display:grid; gap:22px; max-width:none; margin:0; }
     .stepper {
-      display:grid; grid-template-columns:repeat(9,minmax(96px,1fr)); overflow:hidden;
+      display:grid; grid-template-columns:repeat(8,minmax(100px,1fr)); overflow:hidden;
       border:0; border-bottom:1px solid var(--line); border-radius:0; background:#fff; padding:22px 30px 0;
     }
     .step {
@@ -2513,6 +2513,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .verification-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-content:center; }
     .link-input { display:none; }
     .link-input.needs-link { display:grid; }
+    .conditional-input { display:none; }
+    .conditional-input.active { display:grid; }
     .report-field-grid { border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
     .report-field-grid:empty { display:none; }
     .report-table-head, .report-field {
@@ -2543,6 +2545,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-instance-strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
     .report-instance-strip button { min-height:34px; border-radius:999px; padding:6px 11px; font-size:12px; }
     .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }
+    .report-editor[hidden] { display:none; }
+    .report-editor { display:grid; gap:14px; }
     .inline-checks { display:flex; flex-wrap:wrap; gap:12px 18px; }
     .inline-checks label { display:flex; flex-direction:row; align-items:center; gap:8px; color:var(--text); }
     .inline-checks input { width:18px; min-height:18px; }
@@ -2601,31 +2605,27 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
 
         <section id="reception" class="panel phase active">
           <div class="phase-head">
-            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Receção</h2><p class="muted">Registe as informações iniciais da entrada da viatura.</p></div></div>
+            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Receção e serviços</h2><p class="muted">Registe a entrada da viatura e os trabalhos a executar.</p></div></div>
             <div class="actions"><button type="button" onclick="saveReception()">Guardar</button><button class="primary" type="button" onclick="advanceReception()">Avançar</button></div>
           </div>
           <div id="receptionAlerts" class="alert-line"></div>
           <div class="main-card">
             <h3>Dados principais</h3>
-            <div class="grid3">
-              <label>Responsável <span class="required">*</span><span class="field-control"><span class="field-icon">♙</span><input id="recResponsible" placeholder="Selecione o responsável"><span class="field-extra">⌄</span></span><span id="recResponsibleNote" class="field-note">Responsável em falta.</span></label>
-              <label>Data entrada <span class="required">*</span><span class="field-control"><span class="field-icon">▣</span><input id="recDate" readonly><span class="field-extra">▣</span></span></label>
+            <div class="grid2">
               <label>Quilómetros <span class="required">*</span><span class="field-control"><span class="field-icon">◴</span><input id="recKm" type="number" min="0"><span class="field-extra">km</span></span><span id="recKmNote" class="field-note">Quilómetros em falta.</span></label>
+              <label>Origem<span class="field-control"><span class="field-icon">↳</span><input id="recOrigin" readonly><span class="field-extra">auto</span></span></label>
             </div>
             <label>Observação inicial <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Descreva a situação reportada pelo cliente, sintomas ou informações relevantes."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label>
           </div>
-          <details><summary><span><span class="accordion-icon">♙</span>Dados do cliente</span></summary><div class="accordion-body grid2"><label>Origem<input id="recOrigin" readonly></label><label>Unidade Rentway<input id="recUnit" readonly></label></div></details>
+          <div class="main-card">
+            <div class="phase-head"><div><h3>Serviços a executar</h3><p class="muted">Adicione trabalhos que surjam durante a receção, sem abrir outra fase.</p></div><button class="primary" type="button" onclick="addService()">Adicionar serviço</button></div>
+            <div id="serviceList" class="list"></div>
+            <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
+            <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
+          </div>
           <details><summary><span><span class="accordion-icon">▱</span>Estado da viatura</span></summary><div class="accordion-body grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Danos visíveis"></label></div></details>
           <details><summary><span><span class="accordion-icon">▣</span>Fotografias</span></summary><div class="accordion-body"><label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label></div></details>
           <details><summary><span><span class="accordion-icon">＋</span>Outros dados relevantes</span></summary><div class="accordion-body"><div class="placeholder">Campos administrativos extra ficam aqui para não pesar a entrada principal.</div></div></details>
-        </section>
-
-        <section id="services" class="panel phase">
-          <div class="phase-head"><div><h2>Serviços</h2><p class="muted">Trabalhos atuais e novos serviços a adicionar ao processo.</p></div><button class="primary" type="button" onclick="addService()">Adicionar serviço</button></div>
-          <div id="servicesAlerts" class="alert-line"></div>
-          <div id="serviceList" class="list"></div>
-          <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
-          <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
         </section>
 
         <section id="checks" class="panel phase">
@@ -2638,20 +2638,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                 <div class="verification-head"><span>Documento</span><span>Aplicabilidade / estado</span><span>Evidência</span><span>Ações</span></div>
                 <div id="serviceBoxCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">SB</span><div><strong>Service Box</strong><p class="muted">Consulta Service Box ou print anexado.</p></div></div>
-                  <div class="verification-cell"><label>Estado<select id="serviceBox"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label></div>
-                  <div class="verification-cell"><label id="serviceBoxLinkWrap" class="link-input">Link<input id="serviceBoxLink" placeholder="https://..."></label><span id="serviceBoxChip" class="chip review">Por rever</span></div>
+                  <div class="verification-cell"><label>Consultado?<select id="serviceBox"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><label id="serviceBoxLinkWrap" class="conditional-input">Link/print<input id="serviceBoxLink" placeholder="https://..."></label><label id="serviceBoxReasonWrap" class="conditional-input">Motivo<input id="serviceBoxReason" placeholder="Porque não foi consultado"></label><span id="serviceBoxChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('serviceBox')">Anexar print</button><a id="serviceBoxOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
                 <div id="campaignsCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">CP</span><div><strong>Campanhas</strong><p class="muted">Campanhas em aberto, ou confirmação de inexistência.</p></div></div>
-                  <div class="verification-cell"><label>Estado<select id="campaigns"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label></div>
-                  <div class="verification-cell"><label id="campaignsLinkWrap" class="link-input">Link<input id="campaignsLink" placeholder="https://..."></label><span id="campaignsChip" class="chip review">Por rever</span></div>
+                  <div class="verification-cell"><label>Existem campanhas?<select id="campaigns"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><label id="campaignsRefsWrap" class="conditional-input">Referências<input id="campaignsRefs" placeholder="Referências das campanhas"></label><label id="campaignsLinkWrap" class="conditional-input">Link/print<input id="campaignsLink" placeholder="https://..."></label><label id="campaignsReasonWrap" class="conditional-input">Motivo<input id="campaignsReason" placeholder="Porque não foi consultado"></label><span id="campaignsChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('campaigns')">Anexar print</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
                 <div id="planCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">PM</span><div><strong>Plano manutenção</strong><p class="muted">Plano da marca comparado com Rentway.</p></div></div>
-                  <div class="verification-cell"><label>Estado<select id="plan"><option value="pending_review">Por rever</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option><option value="evidence_link">Link para print</option></select></label></div>
-                  <div class="verification-cell"><label id="planLinkWrap" class="link-input">Link<input id="planLink" placeholder="https://..."></label><span id="planChip" class="chip review">Por rever</span><div id="planCompare" class="muted"></div></div>
+                  <div class="verification-cell"><label>Consultado?<select id="plan"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><label id="planLinkWrap" class="conditional-input">Link/plano<input id="planLink" placeholder="https://..."></label><label id="planReasonWrap" class="conditional-input">Motivo<input id="planReason" placeholder="Porque não foi consultado"></label><span id="planChip" class="chip review">Por rever</span><div id="planCompare" class="muted"></div></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
               </div>
@@ -2690,22 +2690,24 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="reports" class="panel phase">
-          <div class="phase-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Adicionar relatório</button></div>
+          <div class="phase-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button class="primary" type="button" onclick="newReportDraft()">Novo relatório</button></div>
           <div id="reportsAlerts" class="alert-line"></div>
           <div id="reportTypeCards" class="report-type-grid"></div>
           <div id="reportList" class="report-instance-strip"></div>
-          <div class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
-          <div id="reportDescription" class="report-description"></div>
-          <label>Link original<input id="reportLink" placeholder="https://..."></label>
-          <div id="reportFieldGrid" class="report-field-grid"></div>
-          <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
-          <div class="actions" style="justify-content:flex-start"><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+          <div id="reportEditor" class="report-editor" hidden>
+            <div class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
+            <div id="reportDescription" class="report-description"></div>
+            <label>Link original<input id="reportLink" placeholder="https://..."></label>
+            <div id="reportFieldGrid" class="report-field-grid"></div>
+            <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
+            <div class="actions" style="justify-content:flex-start"><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Guardar relatório</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+          </div>
         </section>
 
         <section id="technicalChecks" class="panel phase">
           <div class="phase-head"><div><h2>Verificações técnicas</h2><p class="muted">Confirme pontos técnicos observados na viatura e registe evidências quando necessário.</p></div><button class="primary" type="button" onclick="saveTechnicalCheck()">Guardar verificação</button></div>
           <div id="technicalChecksAlerts" class="alert-line"></div>
-          <div id="technicalCheckList" class="plain-list"></div>
+          <div id="technicalCheckList" class="list"></div>
           <div class="grid3"><label>Verificação<select id="technicalCheckCode"></select></label><label>Estado<select id="technicalCheckStatus"><option value="ok">Conforme</option><option value="not_ok">Não conforme</option><option value="pending_review">Por rever</option><option value="not_applicable">Não aplicável</option></select></label><label>Evidência<input id="technicalCheckEvidence" placeholder="Link/print/foto"></label></div>
           <label>Observação<textarea id="technicalCheckObs" placeholder="Notas técnicas, motivo ou detalhe da anomalia"></textarea></label>
           <div class="inline-checks"><label><input id="technicalCheckTask" type="checkbox">Criar tarefa</label><label><input id="technicalCheckCharge" type="checkbox">Possível cobrança cliente</label></div>
@@ -2758,8 +2760,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     let selectedReportId = null;
     let selectedReportType = null;
     const tabs = [
-      ["reception", "Receção", "administrative_reception"],
-      ["services", "Serviços", null],
+      ["reception", "Receção e serviços", "administrative_reception"],
       ["checks", "Verificações administrativas", "history_check"],
       ["reports", "Diagnóstico técnico", "technical_phase"],
       ["technicalChecks", "Verificações técnicas", "technical_phase"],
@@ -2768,7 +2769,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       ["repair", "Reparação", "internal_repair_execution"],
       ["close", "Fecho", "final_closure"]
     ];
-    const phaseIcons = {reception:"□", services:"⌕", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
+    const phaseIcons = {reception:"□", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
     const phaseLabels = {administrative_reception:"Receção", history_check:"Verificações administrativas", technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento", internal_repair_execution:"Reparação", final_closure:"Fecho"};
     const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
     const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
@@ -2796,8 +2797,17 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         ]},
         {code:"maintenance_plan_validation", label:"Validação plano manutenção", description:"Comparar plano Service Box com Rentway.", fields:[
           {code:"requested_service", label:"Solicitação do processo", unit:null},
+          {code:"servicebox_plan_type", label:"Tipo de plano usado", unit:null},
           {code:"servicebox_interval_km", label:"Intervalo Service Box", unit:"km"},
+          {code:"servicebox_interval_months", label:"Intervalo Service Box", unit:"meses"},
+          {code:"systematic_checks_km", label:"Verificações sistemáticas", unit:"km"},
+          {code:"systematic_checks_months", label:"Verificações sistemáticas", unit:"meses"},
+          {code:"engine_oil_change_km", label:"Mudança óleo motor", unit:"km"},
+          {code:"engine_oil_change_months", label:"Mudança óleo motor", unit:"meses"},
+          {code:"engine_oil_reference_exact", label:"Referência exata do óleo", unit:null},
+          {code:"planned_services", label:"Serviços previstos por km/idade", unit:null},
           {code:"rentway_interval_km", label:"Intervalo Rentway", unit:"km"},
+          {code:"rentway_interval_months", label:"Intervalo Rentway", unit:"meses"},
           {code:"request_matches_servicebox_plan", label:"Solicitação bate certo?", unit:null},
           {code:"rentway_matches_servicebox_plan", label:"Rentway correto?", unit:null},
           {code:"validation_notes", label:"Notas", unit:null}
@@ -2933,7 +2943,6 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       markMissing("#recKm", "#recKmNote", text.includes("km") || text.includes("quil"));
       markMissing("#recObs", "#recObsNote", text.includes("observ"));
       markMissing("#recPhoto", "#recPhotoNote", text.includes("foto") || text.includes("quadrante"));
-      markMissing("#recResponsible", "#recResponsibleNote", text.includes("respons"));
     }
     function showPhase(id) {
       document.querySelectorAll(".phase").forEach(el => el.classList.remove("active"));
@@ -2986,15 +2995,18 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </button>`;
       }).join("") || `<div class="placeholder">Sem tipos de relatório configurados.</div>`;
       const selectedReports = reports.filter(report => report.report_code === selectedReportType);
-      $("#reportList").innerHTML = selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">#${report.id} · ${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</button>`).join("") || `<button type="button" onclick="newReportDraft()">Novo ${safe(reportName(selectedReportType))}</button>`;
+      $("#reportList").innerHTML = [
+        ...selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">#${report.id} · ${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</button>`),
+        `<button type="button" onclick="newReportDraft()">Novo ${safe(reportName(selectedReportType))}</button>`
+      ].join("");
     }
     function selectReportType(code) {
       selectedReportType = code;
       setVal("#reportCode", code);
-      const reports = (processData.technical_reports || []).filter(report => report.status !== "voided" && report.report_code === code);
-      const first = [...reports].sort((a,b) => (reportIsPending(a) ? -1 : 0) - (reportIsPending(b) ? -1 : 0) || b.id - a.id)[0];
-      if (first) selectReport(first.id, false);
-      else newReportDraft();
+      selectedReportId = null;
+      $("#reportEditor").hidden = true;
+      $("#reportSaveButton").textContent = "Adicionar relatório";
+      $("#reportDeleteButton").hidden = true;
       renderReports();
     }
     function normalizedKey(value) {
@@ -3025,6 +3037,10 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         const requested = document.querySelector('[data-report-field="requested_service"]');
         if (requested) requested.value = processData?.services_label || processData?.title || "";
       }
+      if (report?.code === "maintenance_plan_validation" && !fieldValue(values, {code:"servicebox_plan_type", label:"Tipo de plano usado"})) {
+        const planType = document.querySelector('[data-report-field="servicebox_plan_type"]');
+        if (planType) planType.value = "Normal";
+      }
       document.querySelectorAll("[data-report-field]").forEach(input => input.addEventListener("input", syncReportJsonFromFields));
       syncReportJsonFromFields();
     }
@@ -3043,11 +3059,13 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function setChecked(id, value) { const el = $(id); if (el) el.checked = Boolean(value); }
     function numeric(id) { const raw = val(id); return raw === "" ? null : Number(raw); }
     function dateTimeValue(id) { return val(id) || null; }
+    function docChoice(value) { return value === "evidence_link" ? "yes" : (value || "pending_review"); }
     function docStatus(value, link, empty="Por rever") {
+      value = docChoice(value);
       if (value === "not_applicable") return ["Não aplicável", "done"];
-      if (value === "yes" || value === "no") return ["Validado", "done"];
-      if (value === "evidence_link" && link) return ["Com evidência", "review"];
-      if (value === "evidence_link") return ["Falta link", "danger"];
+      if (value === "no") return ["Não consultado", "review"];
+      if (value === "yes" && link) return ["Com evidência", "done"];
+      if (value === "yes") return ["Falta link", "danger"];
       return [empty, "review"];
     }
     function setDoc(prefix, status) {
@@ -3058,7 +3076,10 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       if (chipEl) { chipEl.textContent = status[0]; chipEl.className = `chip ${status[1]}`; }
     }
     function updateLink(prefix, link) {
-      $(`#${prefix}LinkWrap`)?.classList.toggle("needs-link", val(`#${prefix}`) === "evidence_link");
+      const selected = val(`#${prefix}`);
+      $(`#${prefix}LinkWrap`)?.classList.toggle("active", selected === "yes");
+      $(`#${prefix}RefsWrap`)?.classList.toggle("active", selected === "yes");
+      $(`#${prefix}ReasonWrap`)?.classList.toggle("active", selected === "no" && prefix !== "campaigns");
       const open = $(`#${prefix}Open`);
       if (!open) return;
       if (link) { open.href = link; open.removeAttribute("aria-disabled"); }
@@ -3097,12 +3118,16 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#previous", h.previous_processes_reviewed || "yes");
       setVal("#repeat", h.repeated_incidence || "no");
       setVal("#historyObs", h.history_observation || "");
-      setVal("#serviceBox", h.service_box_checked || "pending_review");
+      setVal("#serviceBox", docChoice(h.service_box_checked));
       setVal("#serviceBoxLink", h.service_box_link || "");
-      setVal("#campaigns", h.campaigns_checked || "pending_review");
+      setVal("#serviceBoxReason", h.service_box_reason || "");
+      setVal("#campaigns", docChoice(h.campaigns_checked));
       setVal("#campaignsLink", h.campaigns_link || "");
-      setVal("#plan", h.maintenance_plan_checked || "pending_review");
+      setVal("#campaignsRefs", h.campaigns_references || "");
+      setVal("#campaignsReason", h.campaigns_reason || "");
+      setVal("#plan", docChoice(h.maintenance_plan_checked));
       setVal("#planLink", h.maintenance_plan_link || "");
+      setVal("#planReason", h.maintenance_plan_reason || "");
       renderChecks();
       setVal("#decisionDiagnosis", d.main_diagnosis || "");
       setVal("#decisionType", d.intervention_type || "");
@@ -3157,7 +3182,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
       $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
       $("#technicalCheckCode").innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
-      ["#serviceBox", "#serviceBoxLink", "#campaigns", "#campaignsLink", "#plan", "#planLink", "#internal"].forEach(id => $(id)?.addEventListener("input", renderChecks));
+      ["#serviceBox", "#serviceBoxLink", "#serviceBoxReason", "#campaigns", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#plan", "#planLink", "#planReason", "#internal"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
       $("#reportCode")?.addEventListener("change", () => {
         selectedReportId = null;
@@ -3176,11 +3201,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       renderTechnicalChecks();
       renderReports();
       renderValues();
-      if (!selectedReportId) {
-        const first = [...(processData.technical_reports || [])].sort((a,b) => (a.status === "pending_validation" ? -1 : 0) - (b.status === "pending_validation" ? -1 : 0) || b.id - a.id)[0];
-        if (first) selectReport(first.id, false);
-        else renderReportFields({});
-      }
+      if (!selectedReportId) $("#reportEditor").hidden = true;
       showPhase(active);
     }
     function updateReportOpen() {
@@ -3198,14 +3219,14 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       await copyFolder();
       showResult(true, "Caminho copiado. Abre no Explorador do Windows se o browser bloquear pastas locais.");
     }
-    function markEvidence(prefix) { setVal(`#${prefix}`, "evidence_link"); renderChecks(); }
+    function markEvidence(prefix) { setVal(`#${prefix}`, "yes"); renderChecks(); }
     async function saveReception() {
       try {
         await requestJson(`/api/workshop/processes/${processId}/reception`, "POST", {km_entry:Number(val("#recKm")) || null, quadrant_photo_link:val("#recPhoto"), initial_observation:val("#recObs"), visible_damage_status:val("#recVisual"), damage_description:val("#recDamage")});
         showResult(true, "Receção guardada.");
       } catch (err) { showResult(false, err.message); }
     }
-    async function advanceReception() { await saveReception(); showPhase("services"); }
+    async function advanceReception() { await saveReception(); showPhase("checks"); }
     async function addService() {
       try {
         await requestJson(`/api/workshop/processes/${processId}/services`, "POST", {service_code:val("#serviceCode"), zone:val("#serviceZone"), detail:val("#serviceDetail"), short_observation:val("#serviceObservation")});
@@ -3215,7 +3236,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     async function saveChecks() {
       try {
-        await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), history_observation:val("#historyObs")});
+        await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), service_box_reason:val("#serviceBoxReason"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), campaigns_references:val("#campaignsRefs"), campaigns_reason:val("#campaignsReason"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), maintenance_plan_reason:val("#planReason"), history_observation:val("#historyObs")});
         showResult(true, "Verificações administrativas guardadas.");
       } catch (err) { showResult(false, err.message); }
     }
@@ -3325,6 +3346,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       if (!report) return;
       selectedReportId = id;
       selectedReportType = report.report_code;
+      $("#reportEditor").hidden = false;
       $("#reportSaveButton").textContent = "Guardar alterações";
       $("#reportDeleteButton").hidden = false;
       setVal("#reportCode", report.report_code);
@@ -3342,6 +3364,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       selectedReportId = null;
       selectedReportType = val("#reportCode") || selectedReportType;
       if (selectedReportType) setVal("#reportCode", selectedReportType);
+      $("#reportEditor").hidden = false;
       $("#reportSaveButton").textContent = "Adicionar relatório";
       $("#reportDeleteButton").hidden = true;
       setVal("#reportLink", "");
@@ -3371,6 +3394,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           : await requestJson(`/api/workshop/processes/${processId}/technical-reports`, "POST", payload);
         selectedReportId = data.id || selectedReportId;
         selectedReportType = payload.report_code;
+        $("#reportEditor").hidden = false;
         const existingIndex = (processData.technical_reports || []).findIndex(report => report.id === selectedReportId);
         if (existingIndex >= 0) processData.technical_reports[existingIndex] = data;
         else processData.technical_reports = [...(processData.technical_reports || []), data];

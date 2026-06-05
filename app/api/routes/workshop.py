@@ -374,12 +374,16 @@ class WorkshopHistoryCheckConfirm(BaseModel):
     history_observation: str | None = None
     service_box_checked: str | None = None
     service_box_link: str | None = None
+    service_box_reason: str | None = None
     service_box_document_type: str | None = None
     campaigns_checked: str | None = None
     campaigns_link: str | None = None
+    campaigns_references: str | None = None
+    campaigns_reason: str | None = None
     campaigns_document_type: str | None = None
     maintenance_plan_checked: str | None = None
     maintenance_plan_link: str | None = None
+    maintenance_plan_reason: str | None = None
     maintenance_plan_document_type: str | None = None
     confirmed_by_id: int | None = None
 
@@ -737,14 +741,24 @@ def _verification_option_satisfied(
     value: str | None,
     evidence_link: str | None = None,
     has_validated_report: bool = False,
+    reason: str | None = None,
+    references: str | None = None,
+    require_reference_when_yes: bool = False,
+    require_reason_when_no: bool = True,
 ) -> bool:
     normalized = str(value or "").strip().lower()
     if has_validated_report:
         return True
-    if normalized in {"no", "not_applicable", "yes"}:
-        return True
+    if normalized == "yes":
+        if require_reference_when_yes and not str(references or "").strip():
+            return False
+        return bool(str(evidence_link or "").strip())
+    if normalized in {"no", "not_applicable"}:
+        return bool(str(reason or "").strip()) if normalized == "no" and require_reason_when_no else True
     if normalized == "evidence_link":
-        return bool(evidence_link)
+        return bool(str(evidence_link or "").strip())
+    if normalized == "no_items":
+        return True
     return False
 
 
@@ -1163,20 +1177,48 @@ def confirm_history_check(
                 history.service_box_checked,
                 history.service_box_link,
                 False,
+                history.service_box_reason,
+                None,
+                False,
+                True,
             ),
             "campaigns_checked": (
                 history.campaigns_checked,
                 history.campaigns_link,
+                False,
+                history.campaigns_reason,
+                history.campaigns_references,
+                True,
                 False,
             ),
             "maintenance_plan_checked": (
                 history.maintenance_plan_checked,
                 history.maintenance_plan_link,
                 bool(validated_plan_report),
+                history.maintenance_plan_reason,
+                None,
+                False,
+                True,
             ),
         }
-        for field_name, (value, evidence_link, has_validated_report) in stellantis_checks.items():
-            if not _verification_option_satisfied(value, evidence_link, has_validated_report):
+        for field_name, (
+            value,
+            evidence_link,
+            has_validated_report,
+            reason,
+            references,
+            require_reference,
+            require_reason_when_no,
+        ) in stellantis_checks.items():
+            if not _verification_option_satisfied(
+                value,
+                evidence_link,
+                has_validated_report,
+                reason=reason,
+                references=references,
+                require_reference_when_yes=require_reference,
+                require_reason_when_no=require_reason_when_no,
+            ):
                 pending_fields.append(field_name)
 
     alert_messages = {
@@ -1245,14 +1287,18 @@ def confirm_history_check(
             "history_observation": history.history_observation,
             "service_box_checked": history.service_box_checked,
             "service_box_link": history.service_box_link,
+            "service_box_reason": history.service_box_reason,
             "service_box_document_id": service_box_document_id,
             "campaigns_checked": history.campaigns_checked,
             "campaigns_link": history.campaigns_link,
+            "campaigns_references": history.campaigns_references,
+            "campaigns_reason": history.campaigns_reason,
             "campaigns_document_id": campaigns_document_id,
             "maintenance_plan_checked": (
                 "evidence_link" if validated_plan_report else history.maintenance_plan_checked
             ),
             "maintenance_plan_link": history.maintenance_plan_link,
+            "maintenance_plan_reason": history.maintenance_plan_reason,
             "maintenance_plan_document_id": maintenance_plan_document_id,
             "maintenance_plan_report_id": validated_plan_report.id
             if validated_plan_report

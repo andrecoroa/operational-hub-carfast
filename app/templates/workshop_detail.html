@@ -850,7 +850,7 @@
                 <select name="document_type">
                   {% for code, label in document_types %}
                     {% if document_type_areas.get(code) == "workshop" %}
-                      <option value="{{ code }}">{{ label }}</option>
+                      <option value="{{ code }}" {% if code == "workshop_evidence" %}selected{% endif %}>{{ label }}</option>
                     {% endif %}
                   {% endfor %}
                 </select>
@@ -859,7 +859,7 @@
                 Estado
                 <select name="status">
                   {% for code, label in document_statuses %}
-                    <option value="{{ code }}" {% if code == "received" %}selected{% endif %}>{{ label }}</option>
+                    <option value="{{ code }}" {% if code == "associated" %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>
@@ -882,11 +882,11 @@
             </div>
             <label>
               Link do documento / anexo recebido
-              <input type="url" name="url_original" placeholder="https://...">
+              <input type="text" name="url_original" placeholder="https://... ou C:\...">
             </label>
             <label>
               Link arquivado final
-              <input type="url" name="url_archive" placeholder="https://...">
+              <input type="text" name="url_archive" placeholder="https://... ou C:\...">
             </label>
             <details class="advanced-panel">
               <summary>Dados adicionais</summary>

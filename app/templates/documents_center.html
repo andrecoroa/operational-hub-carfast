@@ -56,6 +56,86 @@
         <p>Guardamos caminhos e referências para o Microsoft 365. Os ficheiros binários continuam fora da base de dados.</p>
       </article>
     </section>
+
+    <section class="section document-structure-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Estrutura prevista</p>
+          <h3>Documentação CarFast v2</h3>
+          <p class="breadcrumb">Modelo de arquivo 365 por regime de acesso, com caminhos finais configuráveis no futuro.</p>
+        </div>
+        <span class="implementation-status">Planeado</span>
+      </div>
+
+      <div class="document-structure-root">
+        <strong>Documentação CarFast v2</strong>
+        <small>C:\Users\andre\OneDrive - D'accord Invest - Serviços Partilhados SA\CARFAST - GESTÃO - GESTÃO\Documentação CarFast v2</small>
+      </div>
+
+      <div class="document-structure-grid">
+        <article class="document-structure-card">
+          <p class="eyebrow">Operacional</p>
+          <h4>01_Documentação Operacional</h4>
+          <ul class="document-tree">
+            <li>
+              <span>Viaturas</span>
+              <ul>
+                <li>
+                  <span>[MATRÍCULA]</span>
+                  <ul>
+                    <li><span>01_Documentos_Base</span><small>DUA, livrete, chaves, entrega, identificação da viatura</small></li>
+                    <li><span>02_Oficina_Manutenção</span><small>BSI, diagnósticos, orçamentos, faturas fornecedor, evidências</small></li>
+                    <li><span>03_Sinistros_Danos_Avarias</span><small>participações, fotos, peritagens, responsabilidades, reparações</small></li>
+                    <li><span>04_Comércio_Venda</span><small>preparação venda, anúncios, propostas, entrega ao comprador</small></li>
+                    <li><span>99_Outros</span><small>documentos operacionais sem classificação final</small></li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li>
+              <span>Oficina_Por_Associar</span>
+              <small>entrada oficial: CARFAST - OFICINA - OFICINA\CarFast v2 - Oficina\Documentos Processos por anexar ao processo</small>
+            </li>
+            <li><span>Rentway_Importações</span><small>ficheiros recebidos, lotes, erros e validações operacionais</small></li>
+          </ul>
+        </article>
+
+        <article class="document-structure-card management">
+          <p class="eyebrow">Gestão</p>
+          <h4>02_Documentação Gestão</h4>
+          <ul class="document-tree">
+            <li>
+              <span>Financeiro</span>
+              <ul>
+                <li><span>Fornecedores</span><small>faturas, notas de crédito, comprovativos e reconciliação</small></li>
+                <li><span>Clientes</span><small>contratos, cobranças, cauções, reembolsos e comprovativos</small></li>
+                <li><span>Relatórios</span><small>mapas mensais, controlo financeiro e fechos</small></li>
+              </ul>
+            </li>
+            <li>
+              <span>Contratos_Leasing</span>
+              <ul>
+                <li><span>Por_Entidade</span><small>contratos, adendas, planos financeiros</small></li>
+                <li><span>Por_Viatura</span><small>documentos sensíveis associados a matrícula</small></li>
+              </ul>
+            </li>
+            <li><span>Seguros</span><small>apólices, recibos, participação financeira e histórico</small></li>
+            <li><span>Administração</span><small>decisões, documentos reservados e gestão interna</small></li>
+          </ul>
+        </article>
+
+        <article class="document-structure-card intake">
+          <p class="eyebrow">Triagem</p>
+          <h4>99_Por_Classificar</h4>
+          <ul class="document-tree">
+            <li><span>Entradas_Email</span><small>documentos recebidos por mailbox antes de classificação</small></li>
+            <li><span>Uploads_Manuais</span><small>ficheiros/link registados sem destino final</small></li>
+            <li><span>Importações_Auxiliares</span><small>ficheiros de apoio, validação e erros de importação</small></li>
+            <li><span>Sem_Viatura</span><small>documentos sem matrícula, VIN ou Unit Rentway identificados</small></li>
+          </ul>
+        </article>
+      </div>
+    </section>
   </main>
 </div>
 {% endblock %}

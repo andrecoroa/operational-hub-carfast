@@ -1918,12 +1918,14 @@ DOCUMENT_AREA_LABELS = {
 }
 
 DOCUMENT_TYPES = [
+    ("workshop_photo", "Foto"),
     ("workshop_diagnostic", "Diagnóstico"),
     ("workshop_bsi", "BSI / Dados técnicos"),
+    ("workshop_work_order", "Folha de obra"),
     ("workshop_quote", "Orçamento"),
-    ("workshop_supplier_invoice", "Fatura / Documento fornecedor"),
-    ("workshop_evidence", "Evidência foto/vídeo"),
-    ("workshop_report", "Relatório"),
+    ("workshop_supplier_invoice", "Fatura"),
+    ("workshop_evidence", "Comprovativo / evidência"),
+    ("workshop_report", "Relatório técnico"),
     ("workshop_other", "Outro documento de oficina"),
     ("finance_supplier_invoice", "Fatura fornecedor"),
     ("finance_credit_note", "Nota de crédito"),
@@ -1941,8 +1943,10 @@ DOCUMENT_TYPE_LABELS = {
     "general_archive": "Geral Arquivo",
 }
 DOCUMENT_TYPE_AREAS = {
+    "workshop_photo": "workshop",
     "workshop_diagnostic": "workshop",
     "workshop_bsi": "workshop",
+    "workshop_work_order": "workshop",
     "workshop_quote": "workshop",
     "workshop_supplier_invoice": "workshop",
     "workshop_evidence": "workshop",
@@ -1960,6 +1964,8 @@ DOCUMENT_TYPE_AREAS = {
 DOCUMENT_STATUSES = [
     ("received", "Recebido"),
     ("unclassified", "Por classificar"),
+    ("associated", "Associado"),
+    ("validated", "Validado"),
     ("classified", "Classificado"),
     ("archived", "Arquivado"),
     ("rejected", "Rejeitado / Sem interesse"),
@@ -1980,6 +1986,7 @@ DOCUMENT_SOURCES = [
     ("whatsapp", "WhatsApp"),
     ("scanner", "Scanner"),
     ("rentway", "Rentway"),
+    ("workshop", "Oficina"),
     ("onedrive", "OneDrive/SharePoint"),
     ("other", "Outro"),
 ]
@@ -5381,10 +5388,10 @@ def workshop_create_document(
     request: Request,
     process_id: int,
     title: str = Form(""),
-    document_type: str = Form("workshop_other"),
-    status: str = Form("received"),
+    document_type: str = Form("workshop_evidence"),
+    status: str = Form("associated"),
     document_date: str = Form(""),
-    source: str = Form("email"),
+    source: str = Form("workshop"),
     entry_channel: str = Form(""),
     source_sender: str = Form(""),
     source_subject: str = Form(""),
@@ -5408,7 +5415,7 @@ def workshop_create_document(
                 db,
                 title=title,
                 classification="workshop",
-                document_type=document_type if document_type in DOCUMENT_TYPE_LABELS else "workshop_other",
+                document_type=document_type if document_type in DOCUMENT_TYPE_LABELS else "workshop_evidence",
                 status=status,
                 document_date=parse_optional_date(document_date),
                 source=source,
@@ -5423,7 +5430,7 @@ def workshop_create_document(
                 customer_name="",
                 task_id=None,
                 workshop_process_id=process.id,
-                notes=notes,
+                notes=notes or "Documento associado diretamente no processo de Oficina.",
                 user_id=user_id,
                 folder_path_override=folder_path,
             )
@@ -9949,7 +9956,7 @@ def build_external_portal_description(*, message: str, category: str, station: s
 
 def default_document_type_for_area(area: str) -> str:
     return {
-        "workshop": "workshop_other",
+        "workshop": "workshop_evidence",
         "fleet": "workshop_other",
         "finance": "finance_other",
         "rentway_imports": "general_rentway",
@@ -9968,12 +9975,14 @@ def normalize_document_type_for_area(document_type: str, area: str) -> str:
 
 def document_folder_label(document_type: str | None) -> str:
     labels = {
+        "workshop_photo": "Fotos",
         "workshop_diagnostic": "Diagnóstico",
         "workshop_bsi": "BSI - Dados técnicos",
+        "workshop_work_order": "Folhas de obra",
         "workshop_quote": "Orçamentos",
         "workshop_supplier_invoice": "Faturas fornecedor",
         "workshop_evidence": "Evidências",
-        "workshop_report": "Relatórios",
+        "workshop_report": "Relatórios técnicos",
         "workshop_other": "Outros documentos de oficina",
         "finance_supplier_invoice": "Faturas fornecedor",
         "finance_credit_note": "Notas de crédito",

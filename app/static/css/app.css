@@ -2126,6 +2126,101 @@ button:hover,
   background: #fbfcfd;
 }
 
+.document-structure-panel {
+  margin-top: 18px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.document-structure-panel > .table-heading {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.document-structure-root {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.document-structure-root strong {
+  font-size: 18px;
+}
+
+.document-structure-root small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.document-structure-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(300px, 1fr) minmax(260px, 0.8fr);
+  gap: 14px;
+  padding: 18px;
+}
+
+.document-structure-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.document-structure-card.management {
+  border-color: rgba(33, 85, 214, 0.22);
+  background: #f8fbff;
+}
+
+.document-structure-card.intake {
+  border-color: rgba(138, 91, 19, 0.24);
+  background: #fffdf8;
+}
+
+.document-structure-card h4 {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+
+.document-tree,
+.document-tree ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-tree ul {
+  margin-top: 8px;
+  margin-left: 14px;
+  border-left: 2px solid var(--line);
+  padding-left: 12px;
+}
+
+.document-tree li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.document-tree span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.document-tree small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .task-center-card {
   display: grid;
   align-content: space-between;
@@ -6592,6 +6687,7 @@ a.metric:hover {
   .task-board-groups,
   .document-entry-grid,
   .document-cockpit-grid,
+  .document-structure-grid,
   .import-type-grid,
   .workspace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6788,6 +6884,7 @@ a.metric:hover {
 
   .document-metric-strip,
   .document-cockpit-grid,
+  .document-structure-grid,
   .import-type-grid,
   .commerce-summary-grid,
   .commerce-filter-form,

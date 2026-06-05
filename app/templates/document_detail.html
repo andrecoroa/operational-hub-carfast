@@ -112,7 +112,7 @@
             {% if can_manage_document_links %}
               <label>
                 Link arquivado 365
-                <input type="url" name="url_archive" value="{{ document.external_url or '' }}" placeholder="https://...">
+                <input type="text" name="url_archive" value="{{ document.external_url or '' }}" placeholder="https://... ou C:\...">
               </label>
             {% else %}
               <input type="hidden" name="url_archive" value="{{ document.external_url or '' }}">

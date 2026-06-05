@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Gestão transversal</p>
         <h2>Centro de Gestão e Acompanhamento</h2>
-        <p class="breadcrumb">Sinistros/SIN, regras, pendências, SLAs, auditoria e ações guiadas.</p>
+        <p class="breadcrumb">Processos críticos, regras, pendências, SLAs, auditoria e ações guiadas.</p>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "management_center" %}
@@ -23,43 +23,49 @@
           <strong>Ficheiro inválido.</strong> Carrega XLSX ou CSV.
         {% elif imported == "invalid_kind" %}
           <strong>Tipo inválido.</strong> Escolhe AR Rentway ou REFSTRO.
+        {% elif imported == "preview_required" %}
+          <strong>Importação direta bloqueada.</strong> Usa a pré-visualização antes de aplicar dados.
         {% else %}
-          <strong>Importação concluída.</strong> Lote #{{ imported }} registado.
+          <strong>Pré-visualização concluída.</strong> Revê os conflitos antes de aplicar qualquer dado.
         {% endif %}
       </section>
     {% endif %}
 
     <section class="management-type-strip">
       <div>
-        <p class="eyebrow">Alvo ativo</p>
+        <p class="eyebrow">Tipo de processo ativo</p>
         <strong>{{ process_type.name }}</strong>
-        <span>O SIN é o alvo central; AR e REFSTRO são dados associados ao sinistro.</span>
+        <span>Primeiro fluxo operacional ligado ao Centro transversal.</span>
       </div>
-      <a class="button-link secondary-link" href="#processos">Ver sinistros</a>
+      <a class="button-link secondary-link" href="#processos">Ver processos</a>
     </section>
 
     <section class="metric-grid management-kpis">
       <a class="metric" href="/management-center">
-        <span class="metric-icon blue">PRC</span>
-        <span class="metric-detail"><strong>{{ metrics.total }}</strong><span>Sinistros registados</span><small>{{ metrics.open }} em acompanhamento</small></span>
+        <span class="metric-icon blue">AR</span>
+        <span class="metric-detail"><strong>{{ metrics.official_ar }}</strong><span>SIN/AR oficiais</span><small>Base operacional por AR Rentway</small></span>
       </a>
       <a class="metric" href="/management-center?pending=missing_ar">
-        <span class="metric-icon warn">PEN</span>
-        <span class="metric-detail"><strong>{{ metrics.missing_ar }}</strong><span>Pendências críticas</span><small>Inclui sinistros com AR em falta</small></span>
+        <span class="metric-icon green">REF</span>
+        <span class="metric-detail"><strong>{{ metrics.participations }}</strong><span>Participações REFSTRO</span><small>{{ metrics.participations_with_ar }} com AR associado</small></span>
       </a>
       <a class="metric" href="/management-center?pending=missing_ar">
-        <span class="metric-icon amber">!</span>
-        <span class="metric-detail"><strong>{{ metrics.mandatory_actions }}</strong><span>Ações obrigatórias</span><small>Pendências abertas</small></span>
+        <span class="metric-icon amber">REC</span>
+        <span class="metric-detail"><strong>{{ metrics.participations_to_reconcile }}</strong><span>Por reconciliar</span><small>Participações sem AR validado</small></span>
+      </a>
+      <a class="metric" href="#slas">
+        <span class="metric-icon warn">SLA</span>
+        <span class="metric-detail"><strong>{{ metrics.overdue }}</strong><span>Atrasos / SLA</span><small>{{ metrics.open_actions }} ações abertas</small></span>
       </a>
       <span class="metric">
-        <span class="metric-icon green">€</span>
-        <span class="metric-detail"><strong>{{ "%.2f"|format(metrics.value) }}</strong><span>Valor em acompanhamento</span><small>Dados do tipo ativo</small></span>
+        <span class="metric-icon blue">MON</span>
+        <span class="metric-detail"><strong>{{ metrics.monitoring }}</strong><span>Em monitorização</span><small>AR sem participação associada</small></span>
       </span>
     </section>
 
     <nav class="task-content-tabs management-tabs">
-      <a class="active" href="/management-center"><strong>Visão Geral</strong><span>Sinistros</span></a>
-      <a href="#processos"><strong>Sinistros</strong><span>Lista filtrável</span></a>
+      <a class="active" href="/management-center"><strong>Visão Geral</strong><span>Processos</span></a>
+      <a href="#processos"><strong>Processos</strong><span>Lista filtrável</span></a>
       <a href="#indicadores"><strong>Indicadores</strong><span>Prioridades</span></a>
       <a href="#slas"><strong>SLAs</strong><span>Ações abertas</span></a>
       <a href="#auditoria"><strong>Auditoria</strong><span>Importações</span></a>
@@ -71,7 +77,7 @@
         <div class="table-heading">
           <div>
             <p class="eyebrow">Prioridade transversal</p>
-            <h3>Sinistros que pedem acompanhamento</h3>
+            <h3>Processos que pedem acompanhamento</h3>
           </div>
           <a class="table-link" href="/management-center?pending=missing_ar">Pendências críticas</a>
         </div>
@@ -89,7 +95,7 @@
               <span class="pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span>
             </a>
           {% else %}
-            <p class="muted empty-panel">Sem sinistros prioritários.</p>
+            <p class="muted empty-panel">Sem processos prioritários.</p>
           {% endfor %}
         </div>
       </article>
@@ -102,8 +108,8 @@
           </div>
         </div>
         <dl class="detail-list management-summary-list">
-          <div><dt>Sinistro/SIN</dt><dd>Unidade central de acompanhamento, independente da quantidade de linhas REFSTRO ou ARs.</dd></div>
-          <div><dt>Associações</dt><dd>ARs e REFSTROs ficam ligados ao SIN, mas não substituem a referência interna.</dd></div>
+          <div><dt>Processo</dt><dd>Unidade central de acompanhamento, independente da origem dos dados.</dd></div>
+          <div><dt>Tipo</dt><dd>Cada processo pertence a um tipo com regras próprias.</dd></div>
           <div><dt>Auditoria</dt><dd>Alterações e associações ficam registadas no histórico.</dd></div>
           <div><dt>Ações</dt><dd>Pendências geram ações guiadas, obrigatórias quando aplicável.</dd></div>
         </dl>
@@ -115,14 +121,14 @@
         <div>
           <p class="eyebrow">Ferramentas do tipo ativo</p>
           <h3>Importação e associação de dados</h3>
-          <p class="breadcrumb">Disponível para {{ process_type.name }}. A importação associa ARs e linhas REFSTRO ao SIN.</p>
+          <p class="breadcrumb">Disponível para {{ process_type.name }}. Outros tipos poderão ter ferramentas próprias.</p>
         </div>
       </div>
-      <form class="management-import-form" method="post" action="/management-center/import" enctype="multipart/form-data">
+      <form class="management-import-form" method="post" action="/management-center/import-preview" enctype="multipart/form-data">
         <label>
           Tipo
           <select name="import_kind">
-            <option value="refstro">REFSTRO / linhas associadas</option>
+            <option value="refstro">REFSTRO / linhas de sinistro</option>
             <option value="ar">AR Rentway</option>
           </select>
         </label>
@@ -130,15 +136,16 @@
           Ficheiro
           <input type="file" name="file" accept=".xlsx,.csv" required>
         </label>
-        <button type="submit">Importar</button>
+        <button type="submit">Pré-visualizar</button>
       </form>
+      <p class="management-import-note">A importação final está bloqueada nesta fase. O ficheiro é normalizado e validado em preview antes de qualquer aplicação.</p>
     </section>
 
     <section class="section" id="processos">
       <div class="table-heading flat-heading">
         <div>
-          <p class="eyebrow">Sinistros</p>
-          <h3>Vista operacional por SIN, estado, documento, entidade, pendência e valor</h3>
+          <p class="eyebrow">Processos</p>
+          <h3>Vista operacional por tipo, estado, documento, entidade, pendência e valor</h3>
         </div>
       </div>
       <form class="management-filter-form" method="get" action="/management-center">
@@ -171,13 +178,13 @@
         <table>
           <thead>
             <tr>
-              <th>Referência SIN</th>
+              <th>Referência</th>
               <th>Tipo</th>
               <th>Estado</th>
               <th>Matrícula</th>
               <th>Cliente / condutor</th>
               <th>Documento</th>
-              <th>AR / REFSTRO</th>
+              <th>Ligações</th>
               <th>Valor</th>
               <th>Pendência</th>
             </tr>
@@ -199,13 +206,13 @@
                 <td>{{ process.document_reference or "-" }}</td>
                 <td>
                   <strong>{{ counts[process.id].ar }} AR</strong>
-                  <small>{{ counts[process.id].refstro }} linhas REFSTRO · {{ counts[process.id].actions }} ações</small>
+                  <small>{{ counts[process.id].refstro }} REFSTRO · {{ counts[process.id].actions }} ações</small>
                 </td>
                 <td>{{ "%.2f"|format(process.total_claim_value or 0) }}</td>
                 <td>{{ pending_labels.get(process.pending_reason, process.pending_reason or "-") }}</td>
               </tr>
             {% else %}
-              <tr><td colspan="9" class="muted">Ainda não existem sinistros para estes filtros.</td></tr>
+              <tr><td colspan="9" class="muted">Ainda não existem processos para estes filtros.</td></tr>
             {% endfor %}
           </tbody>
         </table>

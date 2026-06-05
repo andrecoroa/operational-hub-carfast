@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "management_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content management-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Centro de Gestão e Acompanhamento</p>
+        <h2>Pré-visualização de importação</h2>
+        <p class="breadcrumb">{{ process_type.name }} · {{ preview.original_name }} · dados ainda não aplicados.</p>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/management-center">Voltar ao Centro</a>
+      </div>
+    </header>
+
+    <section class="notice-inline">
+      <strong>Modo staging.</strong> Esta leitura normaliza o ficheiro e identifica riscos, mas não cria processos nem associações.
+    </section>
+
+    <section class="metric-grid management-kpis">
+      <span class="metric">
+        <span class="metric-icon blue">{{ "AR" if preview.import_kind == "ar" else "REF" }}</span>
+        <span class="metric-detail">
+          <strong>{{ preview.official_ar_count if preview.import_kind == "ar" else preview.participation_count }}</strong>
+          <span>{{ "ARs detetados" if preview.import_kind == "ar" else "Participações detetadas" }}</span>
+          <small>{{ preview.total_rows }} linhas lidas</small>
+        </span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon amber">DUP</span>
+        <span class="metric-detail"><strong>{{ preview.duplicate_keys }}</strong><span>Duplicados prováveis</span><small>Rever antes de aplicar</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon warn">INF</span>
+        <span class="metric-detail"><strong>{{ preview.missing_minimum }}</strong><span>Dados mínimos em falta</span><small>Geram pedido de informação</small></span>
+      </span>
+      <span class="metric">
+        <span class="metric-icon green">GRP</span>
+        <span class="metric-detail"><strong>{{ preview.grouped_candidates }}</strong><span>Grupos matrícula/data</span><small>Possíveis associações</small></span>
+      </span>
+    </section>
+
+    <section class="management-grid">
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Qualidade</p>
+            <h3>Avisos do preview</h3>
+          </div>
+        </div>
+        <div class="management-action-list">
+          {% for warning in preview.warnings %}
+            <article class="mandatory-action">
+              <strong>{{ warning }}</strong>
+              <p>Este ponto deve ser resolvido ou aceite antes de aplicar a importação.</p>
+            </article>
+          {% else %}
+            <p class="muted empty-panel">Sem avisos relevantes nesta pré-visualização.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="cockpit-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Mapeamento</p>
+            <h3>{{ "Fases por Status" if preview.import_kind == "ar" else "Componentes REFSTRO" }}</h3>
+          </div>
+        </div>
+        <dl class="detail-list">
+          {% if preview.import_kind == "ar" %}
+            {% for phase, total in preview.phase_counts %}
+              <div><dt>{{ phase }}</dt><dd>{{ total }}</dd></div>
+            {% else %}
+              <div><dt>Fases</dt><dd>Sem dados para mapear.</dd></div>
+            {% endfor %}
+          {% else %}
+            {% for component, total in preview.component_counts %}
+              <div><dt>{{ component }}</dt><dd>{{ total }}</dd></div>
+            {% else %}
+              <div><dt>Componentes</dt><dd>Sem componentes detetados.</dd></div>
+            {% endfor %}
+          {% endif %}
+        </dl>
+      </article>
+    </section>
+
+    <section class="section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Amostra</p>
+          <h3>Linhas normalizadas</h3>
+        </div>
+      </div>
+      <div class="table-shell management-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Linha</th>
+              <th>Tipo</th>
+              <th>Referência</th>
+              <th>Matrícula</th>
+              <th>Data</th>
+              <th>Estado / fase</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in preview.samples %}
+              <tr>
+                <td>{{ item.row }}</td>
+                <td>{{ item.kind }}</td>
+                <td>{{ item.reference }}</td>
+                <td>{{ item.plate }}</td>
+                <td>{{ item.date }}</td>
+                <td>
+                  <strong>{{ item.status }}</strong>
+                  <small>{{ item.phase }}</small>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">Sem linhas normalizadas para apresentar.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="notice-inline">
+      <strong>Aplicação final indisponível.</strong> O próximo passo é validar este preview e só depois ativar uma ação controlada de aplicação com histórico.
+    </section>
+  </main>
+</div>
+{% endblock %}

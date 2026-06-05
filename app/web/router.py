@@ -63,7 +63,7 @@ from app.services.management_center import (
     REFSTRO_IMPORT_TYPE,
     end_association,
     ensure_management_defaults,
-    import_claims_file,
+    preview_claims_file,
     refresh_claim_state,
 )
 from app.services.task_bulk_importer import (
@@ -6352,6 +6352,103 @@ def process_association_counts(db, process_ids: list[int]) -> dict[int, dict[str
     return counts
 
 
+def management_business_metrics(db, process_type_id: int) -> dict[str, int | float]:
+    official_ar_associations = db.execute(
+        select(ClaimRentwayAR.id, ManagementProcessAssociation.process_id)
+        .join(
+            ManagementProcessAssociation,
+            ManagementProcessAssociation.entity_id == ClaimRentwayAR.id,
+        )
+        .join(ManagementProcess, ManagementProcess.id == ManagementProcessAssociation.process_id)
+        .where(
+            ManagementProcess.process_type_id == process_type_id,
+            ManagementProcessAssociation.entity_type == "claim_rentway_ar",
+            ManagementProcessAssociation.active.is_(True),
+            ClaimRentwayAR.source_file.is_not(None),
+            ~ClaimRentwayAR.source_file.ilike("%crar_pervehicle%"),
+            ~ClaimRentwayAR.source_file.ilike("%demo%"),
+        )
+    ).all()
+    official_ar_ids = {ar_id for ar_id, _ in official_ar_associations}
+    official_ar_process_ids = {process_id for _, process_id in official_ar_associations}
+
+    refstro_rows = db.execute(
+        select(ClaimRefstroLine.refstro_reference, ManagementProcessAssociation.process_id)
+        .join(
+            ManagementProcessAssociation,
+            ManagementProcessAssociation.entity_id == ClaimRefstroLine.id,
+        )
+        .join(ManagementProcess, ManagementProcess.id == ManagementProcessAssociation.process_id)
+        .where(
+            ManagementProcess.process_type_id == process_type_id,
+            ManagementProcessAssociation.entity_type == "claim_refstro_line",
+            ManagementProcessAssociation.active.is_(True),
+            ClaimRefstroLine.refstro_reference.is_not(None),
+        )
+    ).all()
+    participation_refs = {ref for ref, _ in refstro_rows if ref}
+    associated_participation_refs = {
+        ref for ref, process_id in refstro_rows if ref and process_id in official_ar_process_ids
+    }
+    reconciliation_refs = participation_refs - associated_participation_refs
+    open_actions = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagementAction)
+            .join(ManagementProcess, ManagementProcess.id == ManagementAction.process_id)
+            .where(ManagementProcess.process_type_id == process_type_id, ManagementAction.status == "open")
+        )
+        or 0
+    )
+    mandatory_actions = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagementAction)
+            .join(ManagementProcess, ManagementProcess.id == ManagementAction.process_id)
+            .where(
+                ManagementProcess.process_type_id == process_type_id,
+                ManagementAction.status == "open",
+                ManagementAction.mandatory.is_(True),
+            )
+        )
+        or 0
+    )
+    overdue = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagementProcess)
+            .where(
+                ManagementProcess.process_type_id == process_type_id,
+                ManagementProcess.closed_at.is_(None),
+                ManagementProcess.sla_due_on.is_not(None),
+                ManagementProcess.sla_due_on < date.today(),
+            )
+        )
+        or 0
+    )
+    monitored = max(len(official_ar_ids) - len(associated_participation_refs) - mandatory_actions, 0)
+    return {
+        "official_ar": len(official_ar_ids),
+        "participations": len(participation_refs),
+        "participations_with_ar": len(associated_participation_refs),
+        "participations_to_reconcile": len(reconciliation_refs),
+        "mandatory_actions": mandatory_actions,
+        "open_actions": open_actions,
+        "overdue": overdue,
+        "monitoring": monitored,
+        "technical_processes": db.scalar(
+            select(func.count()).select_from(ManagementProcess).where(ManagementProcess.process_type_id == process_type_id)
+        )
+        or 0,
+        "value": db.scalar(
+            select(func.coalesce(func.sum(ManagementProcess.total_claim_value), 0)).where(
+                ManagementProcess.process_type_id == process_type_id
+            )
+        )
+        or 0,
+    }
+
+
 @web_router.get("/management-center", response_class=HTMLResponse)
 def management_center_page(
     request: Request,
@@ -6393,45 +6490,7 @@ def management_center_page(
         ).all()
         process_ids = [process.id for process in processes]
         counts = process_association_counts(db, process_ids)
-        metrics = {
-            "total": db.scalar(
-                select(func.count()).select_from(ManagementProcess).where(
-                    ManagementProcess.process_type_id == process_type.id
-                )
-            )
-            or 0,
-            "open": db.scalar(
-                select(func.count()).select_from(ManagementProcess).where(
-                    ManagementProcess.process_type_id == process_type.id,
-                    ManagementProcess.closed_at.is_(None),
-                )
-            )
-            or 0,
-            "missing_ar": db.scalar(
-                select(func.count()).select_from(ManagementProcess).where(
-                    ManagementProcess.process_type_id == process_type.id,
-                    ManagementProcess.pending_reason == "missing_ar",
-                )
-            )
-            or 0,
-            "mandatory_actions": db.scalar(
-                select(func.count())
-                .select_from(ManagementAction)
-                .join(ManagementProcess, ManagementProcess.id == ManagementAction.process_id)
-                .where(
-                    ManagementProcess.process_type_id == process_type.id,
-                    ManagementAction.status == "open",
-                    ManagementAction.mandatory.is_(True),
-                )
-            )
-            or 0,
-            "value": db.scalar(
-                select(func.coalesce(func.sum(ManagementProcess.total_claim_value), 0)).where(
-                    ManagementProcess.process_type_id == process_type.id
-                )
-            )
-            or 0,
-        }
+        metrics = management_business_metrics(db, process_type.id)
         priority_processes = db.scalars(
             select(ManagementProcess)
             .join(ManagementAction, ManagementAction.process_id == ManagementProcess.id)
@@ -6499,8 +6558,25 @@ def management_center_import(
     file: UploadFile,
     import_kind: str = Form("refstro"),
 ):
-    user_id = get_web_user_id(request)
-    if not user_id:
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    if import_kind not in {"ar", "refstro"}:
+        return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
+        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
+    return RedirectResponse("/management-center?imported=preview_required", status_code=303)
+
+
+@web_router.post("/management-center/import-preview", response_class=HTMLResponse)
+def management_center_import_preview(
+    request: Request,
+    file: UploadFile,
+    import_kind: str = Form("refstro"),
+):
+    if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
     denied = management_center_denied(request, write=True)
     if denied:
@@ -6514,17 +6590,25 @@ def management_center_import(
         tmp.write(file.file.read())
         tmp_path = Path(tmp.name)
     try:
-        with SessionLocal() as db:
-            result = import_claims_file(
-                db,
-                tmp_path,
-                file.filename,
-                import_kind=import_kind,
-                user_id=user_id,
-            )
+        preview = preview_claims_file(
+            tmp_path,
+            file.filename,
+            import_kind=import_kind,
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
-    return RedirectResponse(f"/management-center?imported={result['batch_id']}", status_code=303)
+    with SessionLocal() as db:
+        process_type = ensure_management_defaults(db)
+        process_type_context = {"name": process_type.name}
+        db.commit()
+    return templates.TemplateResponse(
+        request,
+        "management_import_preview.html",
+        {
+            "preview": preview,
+            "process_type": process_type_context,
+        },
+    )
 
 
 @web_router.get("/management-center/{process_id}", response_class=HTMLResponse)

@@ -1432,6 +1432,15 @@ button:hover,
   grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) auto;
 }
 
+.management-import-note {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 0 18px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .management-filter-form label,
 .management-import-form label {
   min-width: 0;

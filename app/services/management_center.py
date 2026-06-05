@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,26 @@ MANAGEMENT_CENTER_SOURCE_SYSTEM = "carfast_management_center"
 AR_IMPORT_TYPE = "claims_ar_rentway_ar"
 REFSTRO_IMPORT_TYPE = "claims_ar_refstro"
 MANAGEMENT_STORAGE_DIR = Path("data/imports/management_center")
+
+CARFAST_CLAIM_PHASES = [
+    "1.0 ABERTO",
+    "1.1 ABERTO SEM DAAA",
+    "1.2 ABERTO COM DAAA",
+    "1.3 ABERTO RECL COMPANHIA",
+    "1.4 AV VALID ACIDENTE",
+    "2.0 PEND ENVIO PARTICIPAÇ",
+    "2.1 PEND FEEDB MEDIADOR",
+    "2.2 PEND MARCAÇÃO PERITAG",
+    "2.3 PEND RELAT. PERITAGEM",
+    "3.0 REPARAÇÃO POR AUTORIZ",
+    "3.1 REPARAÇÃO EM CURSO",
+    "3.2 REPAR. VALI FECHAR FO",
+    "4.0 COBRAR INDEMNIZAÇÃO",
+    "4.1 COBRAR PARALIZAÇÃO",
+    "5.0 FECHADO SEM REPARAÇÃO",
+    "5.1 FECHADO COM REPARAÇÃO",
+    "5.2 FECHADO SEM PARTICIPA",
+]
 
 PROCESS_STATUS_LABELS = {
     "open": "Aberto",
@@ -196,6 +217,79 @@ def iter_management_rows(path: str | Path):
             yield "CSV", headers, row_number, row, raw
         return
     yield from iter_xlsx_rows(file_path)
+
+
+def preview_header_score(headers: list[Any], import_kind: str) -> int:
+    normalized = {normalize_header(header) for header in headers}
+    if import_kind == "ar":
+        expected = {
+            "accidentreportid",
+            "accidentreport",
+            "ar",
+            "status",
+            "requestdate",
+            "accidentdate",
+            "platenumber",
+            "matricula",
+            "documentno",
+        }
+    else:
+        expected = {
+            "refstro",
+            "matricula",
+            "dtastro",
+            "data sinistro",
+            "rc",
+            "dp",
+            "idscredor",
+            "vidros",
+            "custosgestao",
+            "custototal",
+        }
+    return sum(1 for key in expected if key in normalized)
+
+
+def json_safe_preview_value(value: Any) -> Any:
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
+def iter_management_preview_rows(path: str | Path, import_kind: str):
+    file_path = Path(path)
+    if file_path.suffix.lower() == ".csv":
+        yield from iter_management_rows(file_path)
+        return
+    workbook = load_workbook(file_path, data_only=True, read_only=True)
+    try:
+        sheet = workbook[workbook.sheetnames[0]]
+        candidate_rows = []
+        for row_number, row in enumerate(
+            sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 30), values_only=True),
+            start=1,
+        ):
+            headers = [str(value).strip() if value is not None else "" for value in row]
+            score = preview_header_score(headers, import_kind)
+            if score:
+                candidate_rows.append((score, row_number, headers))
+        if candidate_rows:
+            _, header_row, headers = sorted(candidate_rows, key=lambda item: (-item[0], item[1]))[0]
+        else:
+            headers = [str(cell.value).strip() if cell.value is not None else "" for cell in sheet[1]]
+            header_row = 1
+        for row_number, row in enumerate(sheet.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+            if not any(value not in (None, "") for value in row):
+                continue
+            raw = {
+                headers[idx] or f"coluna_{idx + 1}": json_safe_preview_value(value)
+                for idx, value in enumerate(row)
+                if idx < len(headers)
+            }
+            yield sheet.title, headers, row_number, row, raw
+    finally:
+        workbook.close()
 
 
 def mapped_value(row: tuple[Any, ...], col: dict[str, int], aliases: list[str]) -> Any:
@@ -622,13 +716,19 @@ def build_ar_payload(
 ) -> dict[str, Any]:
     return {
         "ar_reference": clean_text(
-            mapped_value(row, col, ["AR", "ar", "accidentReport", "accident_report", "reportNumber", "nrAR", "sinistro"])
+            mapped_value(
+                row,
+                col,
+                ["AR", "ar", "accidentReportID", "accidentReport", "accident_report", "reportNumber", "nrAR", "sinistro"],
+            )
         ),
         "status": clean_text(mapped_value(row, col, ["Status", "status"])),
         "raw_state": clean_text(mapped_value(row, col, ["state", "State"])),
         "request_date": parse_date_value(mapped_value(row, col, ["requestDate", "request_date", "data", "data AR", "Data AR"])),
-        "plate": normalize_plate(mapped_value(row, col, ["matricula", "matrícula", "plate", "plateNr", "licensePlate"])),
-        "vehicle_reference": clean_text(mapped_value(row, col, ["viatura", "vehicle", "unit", "unitNr", "rentwayUnitNr"])),
+        "plate": normalize_plate(
+            mapped_value(row, col, ["matricula", "matrícula", "plate", "plateNr", "plateNumber", "licensePlate"])
+        ),
+        "vehicle_reference": clean_text(mapped_value(row, col, ["viatura", "vehicle", "unit", "unitNo", "unitNr", "rentwayUnitNr"])),
         "driver_name": clean_text(mapped_value(row, col, ["condutor", "driver", "driverName"])),
         "customer_name": clean_text(mapped_value(row, col, ["cliente", "customer", "customerName"])),
         "ra_reference": clean_text(mapped_value(row, col, ["RA", "ra", "rentalAgreement", "reservation"])),
@@ -655,21 +755,164 @@ def build_refstro_payload(
 ) -> dict[str, Any]:
     return {
         "refstro_reference": clean_text(mapped_value(row, col, ["REFSTRO", "refstro", "referencia sinistro", "referência sinistro"])),
-        "document_reference": clean_text(mapped_value(row, col, ["documento", "document", "doc", "fatura", "invoice"])),
+        "document_reference": clean_text(mapped_value(row, col, ["ADESAO", "adesao", "documento", "document", "doc", "fatura", "invoice"])),
         "plate": normalize_plate(mapped_value(row, col, ["matricula", "matrícula", "plate", "plateNr", "licensePlate"])),
         "accident_date": parse_date_value(
-            mapped_value(row, col, ["data sinistro", "data_sinistro", "accidentDate", "data acidente", "data"])
+            mapped_value(row, col, ["DTASTRO", "data sinistro", "data_sinistro", "accidentDate", "data acidente", "data"])
         ),
         "component": normalize_component(mapped_value(row, col, ["componente", "component", "tipo", "rubrica"])),
         "status": clean_text(mapped_value(row, col, ["status", "estado", "situação", "situacao"])),
-        "close_date": parse_date_value(mapped_value(row, col, ["data fecho", "closeDate", "closedAt", "encerramento"])),
+        "close_date": parse_date_value(
+            mapped_value(row, col, ["DTAENCERR.", "DTAENCERR", "data fecho", "closeDate", "closedAt", "encerramento"])
+        ),
         "customer_name": clean_text(mapped_value(row, col, ["cliente", "customer", "customerName"])),
         "driver_name": clean_text(mapped_value(row, col, ["condutor", "driver", "driverName"])),
-        "claim_value": parse_decimal_value(mapped_value(row, col, ["valor", "claimValue", "valor sinistro", "montante"])),
-        "cost_value": parse_decimal_value(mapped_value(row, col, ["custo", "cost", "custos", "valor custo"])),
+        "claim_value": parse_decimal_value(
+            mapped_value(row, col, ["CUSTO TOTAL", "valor", "claimValue", "valor sinistro", "montante"])
+        ),
+        "cost_value": parse_decimal_value(mapped_value(row, col, ["CUSTO TOTAL", "custo", "cost", "custos", "valor custo"])),
         "source_file": source_file,
         "source_row_number": row_number,
         "raw_json": raw,
+    }
+
+
+def preview_status_phase(status: str | None) -> str:
+    text = (status or "").strip()
+    if not text:
+        return "Sem fase"
+    normalized = text.casefold()
+    for phase in CARFAST_CLAIM_PHASES:
+        if normalized.startswith(phase[:3].casefold()) or normalized == phase.casefold():
+            return phase
+    if "fechado" in normalized or "fech" in normalized:
+        return "5.x Fechado Rentway - validar internamente"
+    if "canceled" in normalized or "cancel" in normalized:
+        return "Cancelado - validar se deve acompanhar"
+    if "repar" in normalized:
+        return "3.x Reparação"
+    if "pend" in normalized:
+        return "2.x Pendente"
+    if "aberto" in normalized:
+        return "1.x Aberto"
+    return "Por mapear"
+
+
+def non_zero_refstro_components(raw: dict[str, Any]) -> list[str]:
+    components = []
+    for source_name, component in {
+        "RC": "RC",
+        "DP": "DP",
+        "IDS Credor": "IDS Credor",
+        "VIDROS": "Vidros",
+        "CUSTOS GESTÃO": "Custos de Gestão",
+    }.items():
+        amount = parse_decimal_value(raw.get(source_name))
+        if amount not in (None, Decimal("0.00")):
+            components.append(component)
+    return components
+
+
+def preview_claims_file(path: str | Path, original_name: str, *, import_kind: str) -> dict[str, Any]:
+    rows = list(iter_management_preview_rows(path, import_kind))
+    headers = rows[0][1] if rows else []
+    sheet_name = rows[0][0] if rows else None
+    duplicate_counter: Counter[tuple[Any, ...]] = Counter()
+    status_counter: Counter[str] = Counter()
+    phase_counter: Counter[str] = Counter()
+    component_counter: Counter[str] = Counter()
+    samples = []
+    warnings = []
+    missing_minimum = 0
+    ar_refs = set()
+    refstro_refs = set()
+    grouped_by_plate_date = Counter()
+
+    for _, headers, row_number, row, raw in rows:
+        col = build_column_lookup(headers)
+        if import_kind == "ar":
+            payload = build_ar_payload(row, col, raw, source_file=original_name, row_number=row_number)
+            accident_date = parse_date_value(mapped_value(row, col, ["accidentDate", "data acidente", "data sinistro"]))
+            key = (payload["ar_reference"], payload["plate"], accident_date or payload["request_date"])
+            duplicate_counter[key] += 1
+            if payload["ar_reference"]:
+                ar_refs.add(payload["ar_reference"])
+            if payload["plate"] and (accident_date or payload["request_date"]):
+                grouped_by_plate_date[(payload["plate"], accident_date or payload["request_date"])] += 1
+            else:
+                missing_minimum += 1
+            status = payload["status"] or "Sem Status"
+            status_counter[status] += 1
+            phase_counter[preview_status_phase(payload["status"])] += 1
+            if len(samples) < 8:
+                samples.append(
+                    {
+                        "row": row_number,
+                        "kind": "AR",
+                        "reference": payload["ar_reference"] or "-",
+                        "plate": payload["plate"] or "-",
+                        "date": str(accident_date or payload["request_date"] or "-"),
+                        "status": payload["status"] or "-",
+                        "phase": preview_status_phase(payload["status"]),
+                    }
+                )
+        else:
+            payload = build_refstro_payload(row, col, raw, source_file=original_name, row_number=row_number)
+            key = (payload["refstro_reference"], payload["plate"], payload["accident_date"])
+            duplicate_counter[key] += 1
+            if payload["refstro_reference"]:
+                refstro_refs.add(payload["refstro_reference"])
+            if payload["plate"] and payload["accident_date"]:
+                grouped_by_plate_date[(payload["plate"], payload["accident_date"])] += 1
+            else:
+                missing_minimum += 1
+            components = non_zero_refstro_components(raw)
+            if not components and payload["component"]:
+                components = [payload["component"]]
+            if not components:
+                components = ["Sem componente"]
+            for component in components:
+                component_counter[component] += 1
+            if len(samples) < 8:
+                samples.append(
+                    {
+                        "row": row_number,
+                        "kind": "REFSTRO",
+                        "reference": payload["refstro_reference"] or "-",
+                        "plate": payload["plate"] or "-",
+                        "date": str(payload["accident_date"] or "-"),
+                        "status": payload["status"] or "-",
+                        "phase": ", ".join(components),
+                    }
+                )
+
+    duplicate_keys = [key for key, total in duplicate_counter.items() if total > 1 and any(key)]
+    grouped_candidates = [key for key, total in grouped_by_plate_date.items() if total > 1]
+    if missing_minimum:
+        warnings.append(f"{missing_minimum} linhas sem matrícula/data suficientes devem ficar como pedido de informação.")
+    if duplicate_keys:
+        warnings.append(f"{len(duplicate_keys)} chaves duplicadas devem ser revistas no preview.")
+    if grouped_candidates:
+        warnings.append(f"{len(grouped_candidates)} grupos por matrícula/data podem representar associações ou componentes.")
+
+    return {
+        "original_name": original_name,
+        "import_kind": import_kind,
+        "sheet_name": sheet_name,
+        "headers": headers,
+        "total_rows": len(rows),
+        "official_ar_count": len(ar_refs),
+        "participation_count": len(refstro_refs),
+        "component_count": sum(component_counter.values()),
+        "missing_minimum": missing_minimum,
+        "duplicate_keys": len(duplicate_keys),
+        "grouped_candidates": len(grouped_candidates),
+        "status_counts": status_counter.most_common(12),
+        "phase_counts": phase_counter.most_common(12),
+        "component_counts": component_counter.most_common(12),
+        "warnings": warnings,
+        "samples": samples,
+        "apply_enabled": False,
     }
 
 

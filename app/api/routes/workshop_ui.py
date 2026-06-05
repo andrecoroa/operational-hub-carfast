@@ -1088,7 +1088,8 @@ def workshop_process_list_page() -> str:
   <title>Oficina - Processos por Fases</title>
   <style>
     :root { --bg:#f5f7f8; --panel:#fff; --line:#d9e0e5; --line2:#b9c5cc; --text:#07152d; --muted:#5c6c7b; --brand:#b24a34; --brand-soft:#fbf1ee; --green:#2f7d50; --green-soft:#edf7ef; --blue:#1d5f94; --blue-soft:#eaf3fb; --amber:#9a6711; --amber-soft:#fff6df; --red:#b42318; --red-soft:#fff4f2; font-family:Inter,"Segoe UI",Arial,sans-serif; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{display:block;background:#fff;border-right:1px solid var(--line);padding:20px 14px}.brand{font-weight:900;font-size:18px;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:var(--brand);color:#fff;letter-spacing:.08em}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-weight:750}.nav .sub{margin-left:18px;color:var(--muted);font-size:13px}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:20px 22px 34px;min-width:0}h1{margin:0 0 4px;font-size:24px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:8px;padding:8px 13px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:24px;line-height:1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) 210px 190px 190px auto;gap:8px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:70px minmax(250px,1.2fr) minmax(220px,1fr) minmax(230px,1fr) 160px 130px 150px 150px;gap:12px;align-items:center}.table-head{padding:10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:72px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 10px}.vehicle-cell{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:88px;height:54px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:16px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.35}.service{font-weight:850}.phase-cell{display:grid;gap:8px}.phase-name{font-weight:850}.status-cell{display:grid;justify-items:start;gap:5px}.open-count{color:var(--amber);font-size:11px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1180px){.app{grid-template-columns:1fr}aside{display:none}.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-size:14px;letter-spacing:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}aside{display:block;background:#fff;border-right:1px solid var(--line);padding:20px 14px}.brand{font-weight:900;font-size:18px;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:var(--brand);color:#fff;letter-spacing:.08em}.nav{display:grid;gap:4px}.nav a{min-height:36px;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-weight:750}.nav .sub{margin-left:18px;color:var(--muted);font-size:13px}.nav .active{background:#f4ebe7;color:#7d2f1f}main{padding:20px 18px 34px;min-width:0}h1{margin:0 0 4px;font-size:24px}.subtitle{margin:0;color:var(--muted)}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:14px}.top-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:8px;padding:8px 11px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;border:1px solid var(--brand)}.button.secondary{background:#fff;color:var(--text);border-color:var(--line)}.board{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;max-width:100%;overflow:hidden}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.kpi{border:1px solid var(--line);border-radius:8px;background:#fbfcfd;padding:10px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:850}.kpi strong{display:block;margin-top:5px;font-size:24px;line-height:1}.filters{display:grid;grid-template-columns:minmax(240px,1fr) minmax(130px,180px) minmax(130px,170px) minmax(130px,170px) auto;gap:8px;align-items:center;margin-bottom:14px}.filters input,.filters select{width:100%;min-height:38px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font:inherit;font-weight:700;padding:8px 10px}.updated{justify-self:end;color:var(--muted);font-size:12px;font-weight:800}.table-head,.process-row{display:grid;grid-template-columns:44px minmax(220px,1.15fr) minmax(130px,.7fr) minmax(160px,.85fr) 90px 80px 92px 78px;gap:6px;align-items:center}.table-head{padding:10px;color:#46576a;font-size:12px;font-weight:900;text-transform:uppercase}.rows{display:grid;gap:8px}.process-row{min-height:68px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 10px}.vehicle-cell{display:grid;grid-template-columns:68px minmax(0,1fr);gap:9px;align-items:center}.vehicle-thumb{display:grid;place-items:center;width:68px;height:48px;border:1px solid var(--line);border-radius:8px;background:#f4f7f8;color:var(--muted);font-size:11px;font-weight:900}.plate{font-size:15px;font-weight:950}.small{font-size:12px;color:var(--muted);line-height:1.25}.service{font-weight:850}.phase-cell{display:grid;gap:7px}.phase-name{font-weight:850}.status-cell{display:grid;justify-items:start;gap:4px}.open-count{color:var(--amber);font-size:11px;font-weight:900}.progress{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.step{height:7px;border-radius:999px;background:#e7ebef}.step.done{background:#7fbd8c}.step.current{background:#2b6cb0}.chip{display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;border-radius:999px;min-height:26px;padding:4px 10px;background:#eef1f3;color:var(--muted);font-size:12px;font-weight:850}.chip.done{color:var(--green);background:var(--green-soft)}.chip.progress{color:var(--blue);background:var(--blue-soft)}.chip.review{color:var(--amber);background:var(--amber-soft)}.chip.danger{color:var(--red);background:var(--red-soft)}.chip.neutral{color:var(--muted);background:#eef1f3}.priority-dot{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-weight:800}.priority-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f63c6}.empty{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:24px;color:var(--muted)}@media(max-width:1280px){.app{grid-template-columns:1fr}aside{display:none}}@media(max-width:1180px){.table-head{display:none}.process-row{grid-template-columns:1fr}.vehicle-cell{grid-template-columns:74px 1fr}.filters,.kpis{grid-template-columns:1fr 1fr}.updated{justify-self:start}}@media(max-width:900px){main{padding:18px 16px}.topbar{display:grid}.filters,.kpis{grid-template-columns:1fr}.process-row .button{width:100%}}
+    @media(min-width:1181px) and (max-width:1280px){.app{grid-template-columns:248px minmax(0,1fr)}aside{display:block}.table-head,.process-row{grid-template-columns:40px minmax(190px,1fr) minmax(118px,.62fr) minmax(148px,.82fr) 80px 68px 78px 70px;gap:5px}.table-head{font-size:11px}.button{padding:8px}.vehicle-cell{grid-template-columns:60px minmax(0,1fr)}.vehicle-thumb{width:60px}.small{font-size:11px}.plate{font-size:14px}}
   </style>
 </head>
 <body>
@@ -1170,7 +1171,7 @@ def workshop_process_list_page() -> str:
         <div class="status-cell"><span class="chip ${status[1]}">${safe(status[0])}</span>${(p.open_alerts_count || 0) > 0 ? `<span class="open-count">${p.open_alerts_count} em falta</span>` : ""}</div>
         <span class="priority-dot">${safe(PRIORITY[p.priority] || p.priority || "-")}</span>
         <span class="small">${safe(dateLabel(p.updated_at || p.created_at))}</span>
-        <a class="button secondary" href="/workshop/processes-ui/${p.id}/manage">Abrir processo</a>
+        <a class="button secondary" href="/workshop/processes-ui/${p.id}/manage">Abrir</a>
       </article>`;
     }
     function matches(p) {
@@ -2401,6 +2402,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       color:var(--muted); font-weight:760; line-height:1.45;
     }
     .meta strong { color:var(--text); }
+    .vehicle-extra-meta { flex-basis:100%; display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:3px; font-size:12px; }
     .actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
     .content { padding:0 0 38px; }
     .workspace { display:grid; gap:22px; max-width:none; margin:0; }
@@ -2498,22 +2500,22 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .board-title h3 { margin:0; }
     .board-title p { margin-top:4px; }
     .verification-head { display:none; }
-    .verification-row { display:grid; grid-template-columns:minmax(260px,.8fr) minmax(260px,1fr) minmax(220px,.75fr); gap:0; align-items:stretch; border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
+    .verification-row { display:grid; grid-template-columns:minmax(210px,.85fr) minmax(220px,.9fr) minmax(260px,1fr) minmax(190px,.7fr); gap:0; align-items:stretch; border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
     .verification-head {
       background:var(--surface-soft); color:var(--muted); font-size:12px; font-weight:950; text-transform:uppercase;
       border-bottom:1px solid var(--line);
     }
-    .verification-head span, .verification-cell { padding:12px 14px; border-bottom:1px solid var(--line); }
-    .verification-cell:last-child { border-bottom:0; }
+    .verification-head span, .verification-cell { padding:9px 10px; border-right:1px solid var(--line); }
+    .verification-cell:last-child { border-right:0; border-bottom:0; }
     .verification-row.done { background:#fbfffc; }
     .verification-row.review { background:#fffdf8; }
     .verification-row.danger { background:#fffafa; }
     .verification-title { display:flex; gap:12px; align-items:flex-start; }
-    .verification-title p { margin-top:5px; }
+    .verification-title p { margin-top:3px; font-size:12px; line-height:1.3; }
     .verification-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-content:center; }
     .choice-boxes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
     .choice-box {
-      position:relative; display:flex; align-items:center; justify-content:center; min-height:38px; border:1px solid var(--line-strong);
+      position:relative; display:flex; align-items:center; justify-content:center; min-height:34px; border:1px solid var(--line-strong);
       border-radius:8px; background:#fff; color:var(--text); font-weight:900; cursor:pointer; user-select:none;
     }
     .choice-box input { position:absolute; inset:0; opacity:0; cursor:pointer; }
@@ -2636,9 +2638,18 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
             <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
             <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
           </div>
-          <details><summary><span><span class="accordion-icon">▱</span>Estado da viatura</span></summary><div class="accordion-body grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Danos visíveis"></label></div></details>
-          <details><summary><span><span class="accordion-icon">▣</span>Fotografias</span></summary><div class="accordion-body"><label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label></div></details>
-          <details><summary><span><span class="accordion-icon">＋</span>Outros dados relevantes</span></summary><div class="accordion-body"><div class="placeholder">Campos administrativos extra ficam aqui para não pesar a entrada principal.</div></div></details>
+          <div class="main-card">
+            <h3>Estado da viatura</h3>
+            <div class="grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Danos visíveis"></label></div>
+          </div>
+          <div class="main-card">
+            <h3>Fotografias</h3>
+            <label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label>
+          </div>
+          <div class="main-card">
+            <h3>Outros dados relevantes</h3>
+            <div class="placeholder">Campos administrativos extra ficam aqui para não pesar a entrada principal.</div>
+          </div>
         </section>
 
         <section id="checks" class="panel phase">
@@ -2865,7 +2876,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       initial_observation: "Entrada para revisão e validação de plano.",
       created_at: "2026-06-04",
       document_folder: {path:"C:\\\\Users\\\\andre\\\\OneDrive - D'accord Invest - Serviços Partilhados SA\\\\CARFAST - OFICINA - OFICINA\\\\CarFast v2 - Oficina\\\\Documentos Processos"},
-      vehicle: {plate:"BC-98-FA", vin:"VF7XXXXXXXXXXXXXX", brand:"CITROEN", model:"BERLINGO XL", version:"1.5 BH 100 S&S CVM6", rentway_unit_nr:"251"},
+      vehicle: {plate:"BC-98-FA", vin:"VF7XXXXXXXXXXXXXX", brand:"CITROEN", model:"BERLINGO XL", version:"1.5 BH 100 S&S CVM6", rentway_unit_nr:"251", fuel:"GASOLINA", last_service:0, next_service:25000, warranty_end_date:"2029-03-31T00:00:00", inspection_date:"2030-02-28T00:00:00", purchase_date:"2026-04-15T00:00:00"},
       services: [{id:1, sort_order:1, service_label:"Revisão / manutenção", zone:"Motor", detail:"Plano de manutenção", short_observation:"Confirmar Service Box"}],
       phases: [
         {id:11, phase_code:"administrative_reception", status:"pending_review", data:{km_entry:119657, initial_observation:"Entrada para revisão e validação de plano."}},
@@ -2904,6 +2915,17 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function meta(code) { return statusLabels[code] || [code || "-", "neutral"]; }
     function chip(code) { const m = meta(code); return `<span class="chip ${m[1]}">${safe(m[0])}</span>`; }
     function label(value) { return valueLabels[value] || value || "-"; }
+    function shortDate(value) {
+      if (!value) return "-";
+      const text = String(value);
+      const match = text.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})/);
+      return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
+    }
+    function kmValue(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      const number = Number(value);
+      return Number.isFinite(number) ? `${number.toLocaleString("pt-PT")} km` : safe(value);
+    }
     function phase(code) { return (processData?.phases || []).find(item => item.phase_code === code) || null; }
     function alertsFor(code) { const p = phase(code); return (processData?.alerts || []).filter(alert => alert.phase_id === p?.id || alert.source === code); }
     function tabForPhase(code) { return tabs.find(([, , phaseCode]) => phaseCode === code)?.[0] || "reception"; }
@@ -2952,8 +2974,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const model = [v.brand, v.model, v.version].filter(Boolean).join(" ");
       const status = meta(processData.status);
       const current = phaseLabels[processData.current_phase_code] || processData.current_phase_code || "-";
-      $("#title").textContent = `Oficina - Processo #${processData.id}`;
-      $("#meta").innerHTML = [
+      const primary = [
         `<strong>▱ ${safe(v.plate || processData.plate || "-")}</strong>`,
         `VIN ${safe(v.vin || "-")}`,
         safe(model || "Dados da viatura por completar"),
@@ -2962,6 +2983,16 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         `Estado: <strong>${safe(status[0])}</strong>`,
         `Fase atual: <strong>${safe(current)}</strong>`
       ].map(item => `<span>${item}</span>`).join("<span>|</span>");
+      const extra = [
+        `Combustível: <strong>${safe(v.fuel || "-")}</strong>`,
+        `Última revisão: <strong>${kmValue(v.last_service)}</strong>`,
+        `Próxima revisão: <strong>${kmValue(v.next_service)}</strong>`,
+        `Garantia até: <strong>${safe(shortDate(v.warranty_end_date || v.warrantyenddate))}</strong>`,
+        `IPO: <strong>${safe(shortDate(v.inspection_date))}</strong>`,
+        `Compra: <strong>${safe(shortDate(v.purchase_date))}</strong>`
+      ].map(item => `<span>${item}</span>`).join("<span>|</span>");
+      $("#title").textContent = `Oficina - Processo #${processData.id}`;
+      $("#meta").innerHTML = `${primary}<span class="vehicle-extra-meta">${extra}</span>`;
     }
     function renderStepper(active) {
       $("#stepper").innerHTML = tabs.map(([id, text, phaseCode]) => {

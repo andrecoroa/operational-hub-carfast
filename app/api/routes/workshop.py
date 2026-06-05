@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.tasks import Task
-from app.models.vehicles import Vehicle
+from app.models.vehicles import Vehicle, VehicleExternalSnapshot
 from app.models.workshop_phased import (
     WorkshopPhasedClosureCheck as WorkshopClosureCheck,
 )
@@ -102,7 +102,33 @@ REPORT_STATUSES = {
 }
 
 
-def _vehicle_summary(vehicle: Vehicle | None, fallback_plate: str | None = None) -> dict[str, Any]:
+def _snapshot_value(data: dict[str, Any], keys: list[str]) -> Any:
+    normalized = {str(key).lower().replace("_", ""): value for key, value in (data or {}).items()}
+    for key in keys:
+        if key in data and data[key] not in (None, ""):
+            return data[key]
+        compact_key = key.lower().replace("_", "")
+        if compact_key in normalized and normalized[compact_key] not in (None, ""):
+            return normalized[compact_key]
+    return None
+
+
+def _vehicle_snapshot_data(db: Session | None, vehicle: Vehicle | None) -> dict[str, Any]:
+    if not db or not vehicle:
+        return {}
+    snapshot = db.scalar(
+        select(VehicleExternalSnapshot)
+        .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+        .order_by(VehicleExternalSnapshot.updated_at.desc(), VehicleExternalSnapshot.id.desc())
+    )
+    return dict(snapshot.data_json or {}) if snapshot else {}
+
+
+def _vehicle_summary(
+    vehicle: Vehicle | None,
+    fallback_plate: str | None = None,
+    db: Session | None = None,
+) -> dict[str, Any]:
     if not vehicle:
         return {
             "id": None,
@@ -115,7 +141,14 @@ def _vehicle_summary(vehicle: Vehicle | None, fallback_plate: str | None = None)
             "lifecycle_status": None,
             "operational_status": None,
             "active": None,
+            "fuel": None,
+            "last_service": None,
+            "next_service": None,
+            "warranty_end_date": None,
+            "inspection_date": None,
+            "purchase_date": None,
         }
+    snapshot = _vehicle_snapshot_data(db, vehicle)
     return {
         "id": vehicle.id,
         "plate": vehicle.plate or fallback_plate,
@@ -127,6 +160,18 @@ def _vehicle_summary(vehicle: Vehicle | None, fallback_plate: str | None = None)
         "lifecycle_status": vehicle.lifecycle_status,
         "operational_status": vehicle.operational_status,
         "active": vehicle.active,
+        "fuel": _snapshot_value(snapshot, ["fuel", "combustivel", "combustível"]),
+        "last_service": _snapshot_value(
+            snapshot,
+            ["last_service", "lastservice", "last_service_done", "lastservicedone", "ultimo_servico"],
+        ),
+        "next_service": _snapshot_value(snapshot, ["next_service", "nextservice", "proximo_servico"]),
+        "warranty_end_date": _snapshot_value(
+            snapshot,
+            ["warrantyenddate", "warranty_end_date", "warrantyend", "fim_garantia"],
+        ),
+        "inspection_date": _snapshot_value(snapshot, ["inspection_date", "inspectiondate", "ipo", "data_inspecao"]),
+        "purchase_date": _snapshot_value(snapshot, ["purchase_date", "purchasedate", "purchase_dat", "data_compra"]),
     }
 
 
@@ -2067,7 +2112,7 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
                 "created_at": process.created_at,
                 "updated_at": process.updated_at,
                 "closed_at": process.closed_at,
-                "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+                "vehicle": _vehicle_summary(vehicle, process.plate_snapshot, db),
                 "document_folder": {
                     "path": (process.metadata_json or {}).get(
                         "document_folder_path", WORKSHOP_DOCUMENTS_BASE_PATH
@@ -2168,7 +2213,7 @@ def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
         "scheduled_at": process.scheduled_at,
         "created_at": process.created_at,
         "closed_at": process.closed_at,
-        "vehicle": _vehicle_summary(vehicle, process.plate_snapshot),
+        "vehicle": _vehicle_summary(vehicle, process.plate_snapshot, db),
         "document_folder": {
             "path": (process.metadata_json or {}).get(
                 "document_folder_path", WORKSHOP_DOCUMENTS_BASE_PATH

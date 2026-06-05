@@ -6053,7 +6053,7 @@ MANAGEMENT_SEVERITY_LABELS = {
 
 MANAGEMENT_IMPORT_TYPE_LABELS = {
     AR_IMPORT_TYPE: "AR Rentway",
-    REFSTRO_IMPORT_TYPE: "REFSTRO / Sinistros",
+    REFSTRO_IMPORT_TYPE: "REFSTRO / linhas associadas",
 }
 
 IMPORT_STATUS_DISPLAY_LABELS = {
@@ -6521,22 +6521,22 @@ def imports_page(request: Request, type: str | None = None):
             {
                 "code": AR_IMPORT_TYPE,
                 "source_system": "rentway",
-                "title": "Sinistros / AR Rentway",
-                "description": "Histórico AR com Status, requestDate, apólice e estações.",
+                "title": "AR Rentway",
+                "description": "ARs associados ao SIN; o AR não é a referência única.",
                 "import_url": "/management-center",
                 "history_url": f"/imports?type={AR_IMPORT_TYPE}",
                 "created_label": "ARs",
-                "updated_label": "SIN tocados",
+                "updated_label": "SIN atualizados",
             },
             {
                 "code": REFSTRO_IMPORT_TYPE,
                 "source_system": "carfast",
-                "title": "Sinistros / REFSTRO",
-                "description": "Linhas de sinistro consolidadas por matrícula e data.",
+                "title": "REFSTRO / componentes",
+                "description": "Linhas REFSTRO associadas ao SIN por matrícula e data.",
                 "import_url": "/management-center",
                 "history_url": f"/imports?type={REFSTRO_IMPORT_TYPE}",
                 "created_label": "Linhas",
-                "updated_label": "SIN tocados",
+                "updated_label": "SIN atualizados",
             },
         ]
         type_codes = {item["code"] for item in import_types}

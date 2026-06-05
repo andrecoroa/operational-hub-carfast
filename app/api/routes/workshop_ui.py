@@ -2492,13 +2492,13 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .doc-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
     .doc-actions > * { flex:1 1 120px; }
     .verification-board { display:grid; gap:10px; }
-    .verification-stack { display:grid; grid-template-columns:repeat(2,minmax(320px,1fr)); gap:16px; align-items:start; }
+    .verification-stack { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
     .verification-group { border:1px solid var(--line); border-radius:8px; background:#fff; padding:16px; }
     .board-title { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px; }
     .board-title h3 { margin:0; }
     .board-title p { margin-top:4px; }
     .verification-head { display:none; }
-    .verification-row { display:grid; grid-template-columns:1fr; gap:0; align-items:stretch; border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
+    .verification-row { display:grid; grid-template-columns:minmax(260px,.8fr) minmax(260px,1fr) minmax(220px,.75fr); gap:0; align-items:stretch; border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
     .verification-head {
       background:var(--surface-soft); color:var(--muted); font-size:12px; font-weight:950; text-transform:uppercase;
       border-bottom:1px solid var(--line);
@@ -2511,6 +2511,13 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .verification-title { display:flex; gap:12px; align-items:flex-start; }
     .verification-title p { margin-top:5px; }
     .verification-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-content:center; }
+    .choice-boxes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .choice-box {
+      position:relative; display:flex; align-items:center; justify-content:center; min-height:38px; border:1px solid var(--line-strong);
+      border-radius:8px; background:#fff; color:var(--text); font-weight:900; cursor:pointer; user-select:none;
+    }
+    .choice-box input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .choice-box:has(input:checked) { border-color:var(--brand); background:var(--brand-soft); color:#7d2f1f; box-shadow:inset 3px 0 0 var(--brand); }
     .link-input { display:none; }
     .link-input.needs-link { display:grid; }
     .conditional-input { display:none; }
@@ -2532,7 +2539,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-field label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:850; }
     .report-field input { min-height:38px; }
     .report-description { border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); padding:11px 12px; color:var(--muted); font-weight:750; }
-    .report-type-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:7px; margin-bottom:12px; }
+    .report-shell { display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; align-items:start; }
+    .report-sidebar { display:grid; gap:10px; }
+    .report-type-grid { display:grid; grid-template-columns:1fr; gap:8px; margin:0; }
     .report-type-card {
       display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 7px; align-items:center; min-height:52px;
       text-align:left; border:1px solid var(--line); border-radius:8px; background:#fff; padding:7px 8px; cursor:pointer;
@@ -2542,9 +2551,13 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-type-card strong { min-width:0; font-size:12px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .report-type-card .report-count { grid-row:1 / span 2; grid-column:2; font-size:19px; line-height:1; font-weight:950; color:var(--text); }
     .report-type-card .report-status-line { grid-column:1; display:block; min-width:0; color:var(--muted); font-size:10px; line-height:1.15; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .report-instance-strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
-    .report-instance-strip button { min-height:34px; border-radius:999px; padding:6px 11px; font-size:12px; }
+    .report-instance-strip { display:grid; gap:8px; margin:0; }
+    .report-instance-strip:empty { display:none; }
+    .report-instance-strip button {
+      display:grid; justify-items:start; gap:2px; min-height:48px; border-radius:8px; padding:8px 10px; font-size:12px; text-align:left;
+    }
     .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }
+    .report-empty-state { display:grid; place-items:center; min-height:220px; border:1px dashed var(--line-strong); border-radius:8px; background:var(--surface-soft); color:var(--muted); font-weight:850; text-align:center; padding:24px; }
     .report-editor[hidden] { display:none; }
     .report-editor { display:grid; gap:14px; }
     .inline-checks { display:flex; flex-wrap:wrap; gap:12px 18px; }
@@ -2564,7 +2577,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       .brand-actions button, .brand-actions .button { flex:1; }
       .topbar, .phase-head { grid-template-columns:1fr; display:grid; padding:18px 14px; }
       .content { padding:0 0 24px; }
-      .grid2, .grid3, .doc-grid, .report-type-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
+      .grid2, .grid3, .doc-grid, .report-shell, .report-type-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
       .report-field > span { border-right:0; border-bottom:1px solid var(--line); }
       .verification-head { display:none; }
       .verification-cell { border-right:0; border-bottom:1px solid var(--line); }
@@ -2638,19 +2651,31 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                 <div class="verification-head"><span>Documento</span><span>Aplicabilidade / estado</span><span>Evidência</span><span>Ações</span></div>
                 <div id="serviceBoxCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">SB</span><div><strong>Service Box</strong><p class="muted">Consulta Service Box ou print anexado.</p></div></div>
-                  <div class="verification-cell"><label>Consultado?<select id="serviceBox"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><div class="choice-boxes" role="radiogroup" aria-label="Service Box consultado">
+                    <label class="choice-box"><input type="radio" name="serviceBoxChoice" value="yes">Sim</label>
+                    <label class="choice-box"><input type="radio" name="serviceBoxChoice" value="no">Não</label>
+                    <label class="choice-box"><input type="radio" name="serviceBoxChoice" value="not_applicable">N/A</label>
+                  </div><input id="serviceBox" type="hidden" value="pending_review"></div>
                   <div class="verification-cell"><label id="serviceBoxLinkWrap" class="conditional-input">Link/print<input id="serviceBoxLink" placeholder="https://..."></label><label id="serviceBoxReasonWrap" class="conditional-input">Motivo<input id="serviceBoxReason" placeholder="Porque não foi consultado"></label><span id="serviceBoxChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('serviceBox')">Anexar print</button><a id="serviceBoxOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
                 <div id="campaignsCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">CP</span><div><strong>Campanhas</strong><p class="muted">Campanhas em aberto, ou confirmação de inexistência.</p></div></div>
-                  <div class="verification-cell"><label>Existem campanhas?<select id="campaigns"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><div class="choice-boxes" role="radiogroup" aria-label="Existem campanhas">
+                    <label class="choice-box"><input type="radio" name="campaignsChoice" value="yes">Sim</label>
+                    <label class="choice-box"><input type="radio" name="campaignsChoice" value="no">Não</label>
+                    <label class="choice-box"><input type="radio" name="campaignsChoice" value="not_applicable">N/A</label>
+                  </div><input id="campaigns" type="hidden" value="pending_review"></div>
                   <div class="verification-cell"><label id="campaignsRefsWrap" class="conditional-input">Referências<input id="campaignsRefs" placeholder="Referências das campanhas"></label><label id="campaignsLinkWrap" class="conditional-input">Link/print<input id="campaignsLink" placeholder="https://..."></label><label id="campaignsReasonWrap" class="conditional-input">Motivo<input id="campaignsReason" placeholder="Porque não foi consultado"></label><span id="campaignsChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('campaigns')">Anexar print</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
                 <div id="planCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">PM</span><div><strong>Plano manutenção</strong><p class="muted">Plano da marca comparado com Rentway.</p></div></div>
-                  <div class="verification-cell"><label>Consultado?<select id="plan"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><div class="choice-boxes" role="radiogroup" aria-label="Plano de manutenção consultado">
+                    <label class="choice-box"><input type="radio" name="planChoice" value="yes">Sim</label>
+                    <label class="choice-box"><input type="radio" name="planChoice" value="no">Não</label>
+                    <label class="choice-box"><input type="radio" name="planChoice" value="not_applicable">N/A</label>
+                  </div><input id="plan" type="hidden" value="pending_review"></div>
                   <div class="verification-cell"><label id="planLinkWrap" class="conditional-input">Link/plano<input id="planLink" placeholder="https://..."></label><label id="planReasonWrap" class="conditional-input">Motivo<input id="planReason" placeholder="Porque não foi consultado"></label><span id="planChip" class="chip review">Por rever</span><div id="planCompare" class="muted"></div></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
@@ -2662,7 +2687,11 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                 <div class="verification-head"><span>Verificação</span><span>Estado</span><span>Detalhe</span><span>Ações</span></div>
                 <div id="internalCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">HI</span><div><strong>Histórico interno</strong><p class="muted">Consulta interna e intervenções relevantes.</p></div></div>
-                  <div class="verification-cell"><label>Consulta<select id="internal"><option value="pending_review">Por rever</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label></div>
+                  <div class="verification-cell"><div class="choice-boxes" role="radiogroup" aria-label="Histórico interno consultado">
+                    <label class="choice-box"><input type="radio" name="internalChoice" value="yes">Sim</label>
+                    <label class="choice-box"><input type="radio" name="internalChoice" value="no">Não</label>
+                    <label class="choice-box"><input type="radio" name="internalChoice" value="not_applicable">N/A</label>
+                  </div><input id="internal" type="hidden" value="pending_review"></div>
                   <div class="verification-cell"><span id="internalChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="saveChecks()">Validar</button></div>
                 </div>
@@ -2692,15 +2721,22 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         <section id="reports" class="panel phase">
           <div class="phase-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button class="primary" type="button" onclick="newReportDraft()">Novo relatório</button></div>
           <div id="reportsAlerts" class="alert-line"></div>
-          <div id="reportTypeCards" class="report-type-grid"></div>
-          <div id="reportList" class="report-instance-strip"></div>
-          <div id="reportEditor" class="report-editor" hidden>
-            <div class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
-            <div id="reportDescription" class="report-description"></div>
-            <label>Link original<input id="reportLink" placeholder="https://..."></label>
-            <div id="reportFieldGrid" class="report-field-grid"></div>
-            <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
-            <div class="actions" style="justify-content:flex-start"><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Guardar relatório</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+          <div class="report-shell">
+            <aside class="report-sidebar" aria-label="Tipos de relatório">
+              <div id="reportTypeCards" class="report-type-grid"></div>
+              <div id="reportList" class="report-instance-strip"></div>
+            </aside>
+            <div>
+              <div id="reportEmptyState" class="report-empty-state">Selecione um relatório existente ou crie um novo relatório para preencher os dados.</div>
+              <div id="reportEditor" class="report-editor" hidden>
+                <div id="reportMetaFields" class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
+                <div id="reportDescription" class="report-description"></div>
+                <label id="reportLinkWrap">Link original<input id="reportLink" placeholder="https://..."></label>
+                <div id="reportFieldGrid" class="report-field-grid"></div>
+                <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
+                <div class="actions" style="justify-content:flex-start"><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Guardar relatório</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -2850,6 +2886,21 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function safe(value) { return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"); }
     function val(id) { return $(id)?.value || ""; }
     function setVal(id, value) { const el = $(id); if (el && value !== undefined && value !== null) el.value = value; }
+    function setChoice(prefix, value) {
+      const normalized = docChoice(value);
+      setVal(`#${prefix}`, normalized);
+      document.querySelectorAll(`input[name="${prefix}Choice"]`).forEach(input => { input.checked = input.value === normalized; });
+    }
+    function bindChoice(prefix) {
+      document.querySelectorAll(`input[name="${prefix}Choice"]`).forEach(input => {
+        input.addEventListener("change", () => {
+          if (input.checked) {
+            setVal(`#${prefix}`, input.value);
+            renderChecks();
+          }
+        });
+      });
+    }
     function meta(code) { return statusLabels[code] || [code || "-", "neutral"]; }
     function chip(code) { const m = meta(code); return `<span class="chip ${m[1]}">${safe(m[0])}</span>`; }
     function label(value) { return valueLabels[value] || value || "-"; }
@@ -2996,17 +3047,27 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       }).join("") || `<div class="placeholder">Sem tipos de relatório configurados.</div>`;
       const selectedReports = reports.filter(report => report.report_code === selectedReportType);
       $("#reportList").innerHTML = [
-        ...selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">#${report.id} · ${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</button>`),
+        ...selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">
+          <strong>#${report.id} ${safe(label(report.report_moment))}</strong>
+          <span>${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</span>
+        </button>`),
         `<button type="button" onclick="newReportDraft()">Novo ${safe(reportName(selectedReportType))}</button>`
       ].join("");
+    }
+    function setReportEditorMode(mode) {
+      const isDraft = mode === "draft";
+      $("#reportEditor").hidden = !mode;
+      $("#reportEmptyState").hidden = Boolean(mode);
+      $("#reportMetaFields").hidden = !isDraft;
+      $("#reportLinkWrap").hidden = !isDraft;
+      $("#reportDeleteButton").hidden = !selectedReportId;
     }
     function selectReportType(code) {
       selectedReportType = code;
       setVal("#reportCode", code);
       selectedReportId = null;
-      $("#reportEditor").hidden = true;
+      setReportEditorMode(null);
       $("#reportSaveButton").textContent = "Adicionar relatório";
-      $("#reportDeleteButton").hidden = true;
       renderReports();
     }
     function normalizedKey(value) {
@@ -3112,20 +3173,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#recVisual", r.visible_damage_status || "");
       setVal("#recDamage", r.damage_description || "");
       setVal("#recPhoto", r.quadrant_photo_link || "");
-      setVal("#internal", h.internal_history_checked || "pending_review");
+      setChoice("internal", h.internal_history_checked || "pending_review");
       setVal("#accidents", h.open_accident_reports || "no");
       setVal("#accidentsDetail", h.accident_reports_detail || "");
       setVal("#previous", h.previous_processes_reviewed || "yes");
       setVal("#repeat", h.repeated_incidence || "no");
       setVal("#historyObs", h.history_observation || "");
-      setVal("#serviceBox", docChoice(h.service_box_checked));
+      setChoice("serviceBox", h.service_box_checked);
       setVal("#serviceBoxLink", h.service_box_link || "");
       setVal("#serviceBoxReason", h.service_box_reason || "");
-      setVal("#campaigns", docChoice(h.campaigns_checked));
+      setChoice("campaigns", h.campaigns_checked);
       setVal("#campaignsLink", h.campaigns_link || "");
       setVal("#campaignsRefs", h.campaigns_references || "");
       setVal("#campaignsReason", h.campaigns_reason || "");
-      setVal("#plan", docChoice(h.maintenance_plan_checked));
+      setChoice("plan", h.maintenance_plan_checked);
       setVal("#planLink", h.maintenance_plan_link || "");
       setVal("#planReason", h.maintenance_plan_reason || "");
       renderChecks();
@@ -3182,7 +3243,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
       $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
       $("#technicalCheckCode").innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
-      ["#serviceBox", "#serviceBoxLink", "#serviceBoxReason", "#campaigns", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#plan", "#planLink", "#planReason", "#internal"].forEach(id => $(id)?.addEventListener("input", renderChecks));
+      ["serviceBox", "campaigns", "plan", "internal"].forEach(bindChoice);
+      ["#serviceBoxLink", "#serviceBoxReason", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#planLink", "#planReason"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
       $("#reportCode")?.addEventListener("change", () => {
         selectedReportId = null;
@@ -3201,7 +3263,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       renderTechnicalChecks();
       renderReports();
       renderValues();
-      if (!selectedReportId) $("#reportEditor").hidden = true;
+      if (!selectedReportId) setReportEditorMode(null);
       showPhase(active);
     }
     function updateReportOpen() {
@@ -3346,9 +3408,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       if (!report) return;
       selectedReportId = id;
       selectedReportType = report.report_code;
-      $("#reportEditor").hidden = false;
+      setReportEditorMode("existing");
       $("#reportSaveButton").textContent = "Guardar alterações";
-      $("#reportDeleteButton").hidden = false;
       setVal("#reportCode", report.report_code);
       setVal("#reportMoment", report.report_moment);
       setVal("#reportOrigin", report.reading_origin);
@@ -3364,9 +3425,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       selectedReportId = null;
       selectedReportType = val("#reportCode") || selectedReportType;
       if (selectedReportType) setVal("#reportCode", selectedReportType);
-      $("#reportEditor").hidden = false;
+      setReportEditorMode("draft");
       $("#reportSaveButton").textContent = "Adicionar relatório";
-      $("#reportDeleteButton").hidden = true;
       setVal("#reportLink", "");
       setVal("#reportValues", "{}");
       setVal("#validateValues", "{}");

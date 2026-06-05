@@ -58,6 +58,7 @@ from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
+    CRAR_PER_VEHICLE_IMPORT_TYPE,
     PROCESS_PHASE_LABELS,
     PROCESS_STATUS_LABELS,
     REFSTRO_IMPORT_TYPE,
@@ -6283,6 +6284,7 @@ MANAGEMENT_SEVERITY_LABELS = {
 
 MANAGEMENT_IMPORT_TYPE_LABELS = {
     AR_IMPORT_TYPE: "AR Rentway",
+    CRAR_PER_VEHICLE_IMPORT_TYPE: "AR Rentway por viatura",
     REFSTRO_IMPORT_TYPE: "REFSTRO / linhas associadas",
 }
 
@@ -6449,6 +6451,33 @@ def management_business_metrics(db, process_type_id: int) -> dict[str, int | flo
     }
 
 
+def management_known_ar_records(db) -> dict[str, dict[str, object]]:
+    rows = db.scalars(
+        select(ClaimRentwayAR).where(
+            ClaimRentwayAR.ar_reference.is_not(None),
+            ClaimRentwayAR.source_file.is_not(None),
+            ~ClaimRentwayAR.source_file.ilike("%crar_pervehicle%"),
+            ~ClaimRentwayAR.source_file.ilike("%demo%"),
+        )
+    ).all()
+    records = {}
+    for ar in rows:
+        if not ar.ar_reference:
+            continue
+        records[str(ar.ar_reference)] = {
+            "id": ar.id,
+            "ar_reference": ar.ar_reference,
+            "plate": ar.plate,
+            "vehicle_reference": ar.vehicle_reference,
+            "request_date": ar.request_date,
+            "ra_reference": ar.ra_reference,
+            "impro_reference": ar.impro_reference,
+            "driver_name": ar.driver_name,
+            "customer_name": ar.customer_name,
+        }
+    return records
+
+
 @web_router.get("/management-center", response_class=HTMLResponse)
 def management_center_page(
     request: Request,
@@ -6515,7 +6544,7 @@ def management_center_page(
         ).all()
         recent_imports = db.scalars(
             select(ImportBatch)
-            .where(ImportBatch.import_type.in_((AR_IMPORT_TYPE, REFSTRO_IMPORT_TYPE)))
+            .where(ImportBatch.import_type.in_((AR_IMPORT_TYPE, CRAR_PER_VEHICLE_IMPORT_TYPE, REFSTRO_IMPORT_TYPE)))
             .order_by(ImportBatch.id.desc())
             .limit(5)
         ).all()
@@ -6563,7 +6592,7 @@ def management_center_import(
     denied = management_center_denied(request, write=True)
     if denied:
         return denied
-    if import_kind not in {"ar", "refstro"}:
+    if import_kind not in {"ar", "ar_rentway_per_vehicle", "refstro"}:
         return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
         return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
@@ -6581,7 +6610,7 @@ def management_center_import_preview(
     denied = management_center_denied(request, write=True)
     if denied:
         return denied
-    if import_kind not in {"ar", "refstro"}:
+    if import_kind not in {"ar", "ar_rentway_per_vehicle", "refstro"}:
         return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
         return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
@@ -6589,11 +6618,14 @@ def management_center_import_preview(
     with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(file.file.read())
         tmp_path = Path(tmp.name)
+    with SessionLocal() as db:
+        known_ar_records = management_known_ar_records(db) if import_kind == "ar_rentway_per_vehicle" else {}
     try:
         preview = preview_claims_file(
             tmp_path,
             file.filename,
             import_kind=import_kind,
+            known_ar_records=known_ar_records,
         )
     finally:
         tmp_path.unlink(missing_ok=True)

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
+{% set is_ar = preview.import_kind == "ar" %}
+{% set is_crar = preview.import_kind == "ar_rentway_per_vehicle" %}
 <div class="app-shell">
   {% set active_menu = "management_center" %}
   {% include "_sidebar.html" %}
@@ -21,25 +23,40 @@
 
     <section class="metric-grid management-kpis">
       <span class="metric">
-        <span class="metric-icon blue">{{ "AR" if preview.import_kind == "ar" else "REF" }}</span>
+        <span class="metric-icon blue">{{ "CRAR" if is_crar else ("AR" if is_ar else "REF") }}</span>
         <span class="metric-detail">
-          <strong>{{ preview.official_ar_count if preview.import_kind == "ar" else preview.participation_count }}</strong>
-          <span>{{ "ARs detetados" if preview.import_kind == "ar" else "Participações detetadas" }}</span>
+          <strong>{{ preview.official_ar_count if is_ar or is_crar else preview.participation_count }}</strong>
+          <span>{{ "ARs no CRAR" if is_crar else ("ARs detetados" if is_ar else "Participações detetadas") }}</span>
           <small>{{ preview.total_rows }} linhas lidas</small>
         </span>
       </span>
-      <span class="metric">
-        <span class="metric-icon amber">DUP</span>
-        <span class="metric-detail"><strong>{{ preview.duplicate_keys }}</strong><span>Duplicados prováveis</span><small>Rever antes de aplicar</small></span>
-      </span>
-      <span class="metric">
-        <span class="metric-icon warn">INF</span>
-        <span class="metric-detail"><strong>{{ preview.missing_minimum }}</strong><span>Dados mínimos em falta</span><small>Geram pedido de informação</small></span>
-      </span>
-      <span class="metric">
-        <span class="metric-icon green">GRP</span>
-        <span class="metric-detail"><strong>{{ preview.grouped_candidates }}</strong><span>Grupos matrícula/data</span><small>Possíveis associações</small></span>
-      </span>
+      {% if is_crar %}
+        <span class="metric">
+          <span class="metric-icon green">OK</span>
+          <span class="metric-detail"><strong>{{ preview.crar_known_ar_matches }}</strong><span>No AR principal</span><small>Podem enriquecer AR existente</small></span>
+        </span>
+        <span class="metric">
+          <span class="metric-icon amber">NOVO</span>
+          <span class="metric-detail"><strong>{{ preview.crar_only_rows }}</strong><span>Só no CRAR</span><small>Validar correspondência</small></span>
+        </span>
+        <span class="metric">
+          <span class="metric-icon warn">CONF</span>
+          <span class="metric-detail"><strong>{{ preview.crar_conflict_rows }}</strong><span>Conflitos</span><small>Matrícula ou viatura divergente</small></span>
+        </span>
+      {% else %}
+        <span class="metric">
+          <span class="metric-icon amber">DUP</span>
+          <span class="metric-detail"><strong>{{ preview.duplicate_keys }}</strong><span>Duplicados prováveis</span><small>Rever antes de aplicar</small></span>
+        </span>
+        <span class="metric">
+          <span class="metric-icon warn">INF</span>
+          <span class="metric-detail"><strong>{{ preview.missing_minimum }}</strong><span>Dados mínimos em falta</span><small>Geram pedido de informação</small></span>
+        </span>
+        <span class="metric">
+          <span class="metric-icon green">GRP</span>
+          <span class="metric-detail"><strong>{{ preview.grouped_candidates }}</strong><span>Grupos matrícula/data</span><small>Possíveis associações</small></span>
+        </span>
+      {% endif %}
       <span class="metric">
         <span class="metric-icon blue">VAL</span>
         <span class="metric-detail"><strong>{{ preview.total_rows }}</strong><span>Por validação humana</span><small>Sem aplicação automática</small></span>
@@ -70,15 +87,21 @@
         <div class="table-heading">
           <div>
             <p class="eyebrow">Mapeamento</p>
-            <h3>{{ "Fases por Status" if preview.import_kind == "ar" else "Componentes REFSTRO" }}</h3>
+            <h3>{{ "Campos adicionais aproveitáveis" if is_crar else ("Fases por Status" if is_ar else "Componentes REFSTRO") }}</h3>
           </div>
         </div>
         <dl class="detail-list">
-          {% if preview.import_kind == "ar" %}
+          {% if is_ar %}
             {% for phase, total in preview.phase_counts %}
               <div><dt>{{ phase }}</dt><dd>{{ total }}</dd></div>
             {% else %}
               <div><dt>Fases</dt><dd>Sem dados para mapear.</dd></div>
+            {% endfor %}
+          {% elif is_crar %}
+            {% for field, total in preview.enrichment_field_counts %}
+              <div><dt>{{ field }}</dt><dd>{{ total }}</dd></div>
+            {% else %}
+              <div><dt>Campos</dt><dd>Sem campos complementares detetados.</dd></div>
             {% endfor %}
           {% else %}
             {% for component, total in preview.component_counts %}

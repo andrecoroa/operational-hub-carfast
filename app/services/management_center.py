@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import shutil
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
@@ -39,6 +40,7 @@ MANAGEMENT_CENTER_TYPE_CODE = "claims_ar"
 MANAGEMENT_CENTER_TYPE_NAME = "Sinistros"
 MANAGEMENT_CENTER_SOURCE_SYSTEM = "carfast_management_center"
 AR_IMPORT_TYPE = "claims_ar_rentway_ar"
+CRAR_PER_VEHICLE_IMPORT_TYPE = "claims_ar_rentway_per_vehicle"
 REFSTRO_IMPORT_TYPE = "claims_ar_refstro"
 MANAGEMENT_STORAGE_DIR = Path("data/imports/management_center")
 
@@ -233,6 +235,17 @@ def preview_header_score(headers: list[Any], import_kind: str) -> int:
             "matricula",
             "documentno",
         }
+    elif import_kind == "ar_rentway_per_vehicle":
+        expected = {
+            "accidentreport",
+            "n",
+            "nmanual",
+            "ndocumento",
+            "datadoacidente",
+            "declaracaoamigavel",
+            "condutor",
+            "cliente",
+        }
     else:
         expected = {
             "refstro",
@@ -249,6 +262,67 @@ def preview_header_score(headers: list[Any], import_kind: str) -> int:
     return sum(1 for key in expected if key in normalized)
 
 
+def parse_crar_vehicle_line(value: Any) -> dict[str, str | None] | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    match = re.match(r"(?P<unit>\d+)\s*-\s*(?P<plate>[A-Z0-9-]+)\s*:\s*(?P<model>.+)", text, flags=re.I)
+    if not match:
+        return None
+    return {
+        "vehicle_reference": clean_text(match.group("unit")),
+        "plate": normalize_plate(match.group("plate")),
+        "vehicle_model": clean_text(match.group("model")),
+    }
+
+
+def iter_crar_per_vehicle_rows(path: str | Path):
+    file_path = Path(path)
+    workbook = load_workbook(file_path, data_only=True, read_only=True)
+    headers = [
+        "Accident report / Nº",
+        "Accident report / Nº manual",
+        "Nº documento / Tipo",
+        "Nº documento / Nº",
+        "Data do acidente",
+        "Declaração amigável",
+        "Condutor",
+        "Condutor / Nº",
+        "Cliente",
+        "Veículo / Nº",
+        "Veículo / Matrícula",
+        "Veículo / Modelo",
+    ]
+    try:
+        sheet = workbook[workbook.sheetnames[0]]
+        current_vehicle = {"vehicle_reference": None, "plate": None, "vehicle_model": None}
+        for row_number, row in enumerate(sheet.iter_rows(min_row=1, values_only=True), start=1):
+            vehicle = parse_crar_vehicle_line(row[3] if len(row) > 3 else None)
+            if vehicle and clean_text(row[2] if len(row) > 2 else None) == "Veículo :":
+                current_vehicle = vehicle
+                continue
+            ar_reference = clean_text(row[0] if row else None)
+            if not ar_reference or not ar_reference.isdigit():
+                continue
+            raw = {
+                "Accident report / Nº": ar_reference,
+                "Accident report / Nº manual": json_safe_preview_value(row[2] if len(row) > 2 else None),
+                "Nº documento / Tipo": json_safe_preview_value(row[3] if len(row) > 3 else None),
+                "Nº documento / Nº": json_safe_preview_value(row[4] if len(row) > 4 else None),
+                "Data do acidente": json_safe_preview_value(row[5] if len(row) > 5 else None),
+                "Declaração amigável": json_safe_preview_value(row[6] if len(row) > 6 else None),
+                "Condutor": json_safe_preview_value(row[7] if len(row) > 7 else None),
+                "Condutor / Nº": json_safe_preview_value(row[10] if len(row) > 10 else None),
+                "Cliente": json_safe_preview_value(row[11] if len(row) > 11 else None),
+                "Veículo / Nº": current_vehicle.get("vehicle_reference"),
+                "Veículo / Matrícula": current_vehicle.get("plate"),
+                "Veículo / Modelo": current_vehicle.get("vehicle_model"),
+            }
+            yield sheet.title, headers, row_number, tuple(raw.get(header) for header in headers), raw
+    finally:
+        workbook.close()
+
+
 def json_safe_preview_value(value: Any) -> Any:
     if isinstance(value, datetime | date):
         return value.isoformat()
@@ -259,6 +333,9 @@ def json_safe_preview_value(value: Any) -> Any:
 
 def iter_management_preview_rows(path: str | Path, import_kind: str):
     file_path = Path(path)
+    if import_kind == "ar_rentway_per_vehicle":
+        yield from iter_crar_per_vehicle_rows(file_path)
+        return
     if file_path.suffix.lower() == ".csv":
         yield from iter_management_rows(file_path)
         return
@@ -745,6 +822,37 @@ def build_ar_payload(
     }
 
 
+def build_crar_per_vehicle_payload(
+    row: tuple[Any, ...],
+    col: dict[str, int],
+    raw: dict[str, Any],
+    *,
+    source_file: str,
+    row_number: int,
+) -> dict[str, Any]:
+    document_type = clean_text(mapped_value(row, col, ["Nº documento / Tipo", "documentType", "document_type"]))
+    document_no = clean_text(mapped_value(row, col, ["Nº documento / Nº", "documentNo", "document_no"]))
+    return {
+        "ar_reference": clean_text(mapped_value(row, col, ["Accident report / Nº", "accidentReportID", "AR"])),
+        "manual_reference": clean_text(mapped_value(row, col, ["Accident report / Nº manual", "manualNo", "Nº manual"])),
+        "document_type": document_type,
+        "document_reference": document_no,
+        "ra_reference": document_no if document_type and document_type.upper() == "RA" else None,
+        "impro_reference": document_no if document_type and document_type.upper() == "IMPRO" else None,
+        "accident_date": parse_date_value(mapped_value(row, col, ["Data do acidente", "accidentDate", "data acidente"])),
+        "daaa_reference": clean_text(mapped_value(row, col, ["Declaração amigável", "friendlyDeclaration", "DAAA"])),
+        "driver_name": clean_text(mapped_value(row, col, ["Condutor", "driver", "driverName"])),
+        "driver_reference": clean_text(mapped_value(row, col, ["Condutor / Nº", "driverNo"])),
+        "customer_name": clean_text(mapped_value(row, col, ["Cliente", "customer", "customerName"])),
+        "plate": normalize_plate(mapped_value(row, col, ["Veículo / Matrícula", "matricula", "plate"])),
+        "vehicle_reference": clean_text(mapped_value(row, col, ["Veículo / Nº", "unitNo", "unit"])),
+        "vehicle_model": clean_text(mapped_value(row, col, ["Veículo / Modelo", "vehicleModel", "modelo"])),
+        "source_file": source_file,
+        "source_row_number": row_number,
+        "raw_json": raw,
+    }
+
+
 def build_refstro_payload(
     row: tuple[Any, ...],
     col: dict[str, int],
@@ -821,12 +929,46 @@ def preview_suggested_action(
     duplicate_key: bool,
     grouped_count: int,
     components: list[str] | None = None,
+    known_ar: dict[str, Any] | None = None,
+    conflicts: list[str] | None = None,
 ) -> dict[str, str]:
     if duplicate_key:
         return {
             "status": "reconciliar depois",
             "action": "Duplicado provável",
             "reason": "A mesma referência/matrícula/data aparece mais do que uma vez no ficheiro.",
+        }
+    if import_kind == "ar_rentway_per_vehicle":
+        useful_fields = [
+            payload.get("ar_reference"),
+            payload.get("plate"),
+            payload.get("accident_date"),
+            payload.get("document_reference"),
+            payload.get("driver_name"),
+            payload.get("customer_name"),
+        ]
+        if not any(useful_fields):
+            return {
+                "status": "importado por validar",
+                "action": "Ignorar / sem ação",
+                "reason": "Linha complementar sem dados úteis para enriquecer AR.",
+            }
+        if conflicts:
+            return {
+                "status": "importado por validar",
+                "action": "Conflito entre fontes",
+                "reason": f"Valores diferentes face ao AR principal: {', '.join(conflicts)}.",
+            }
+        if known_ar:
+            return {
+                "status": "importado por validar",
+                "action": "Enriquecer AR existente",
+                "reason": "AR encontrado no ficheiro principal; CRAR acrescenta dados por viatura/documento/condutor/cliente.",
+            }
+        return {
+            "status": "reconciliar depois",
+            "action": "AR complementar sem correspondência",
+            "reason": "AR existe no CRAR, mas não foi encontrado no conjunto principal; validar antes de criar processo.",
         }
     if import_kind == "ar":
         if not payload.get("ar_reference"):
@@ -885,7 +1027,30 @@ def preview_suggested_action(
     }
 
 
-def preview_claims_file(path: str | Path, original_name: str, *, import_kind: str) -> dict[str, Any]:
+def crar_conflicts(payload: dict[str, Any], known_ar: dict[str, Any] | None) -> list[str]:
+    if not known_ar:
+        return []
+    conflicts = []
+    payload_plate = normalize_plate(payload.get("plate"))
+    known_plate = normalize_plate(known_ar.get("plate"))
+    if payload_plate and known_plate and payload_plate != known_plate:
+        conflicts.append("matrícula")
+    if (
+        payload.get("vehicle_reference")
+        and known_ar.get("vehicle_reference")
+        and str(payload["vehicle_reference"]) != str(known_ar["vehicle_reference"])
+    ):
+        conflicts.append("viatura/unit")
+    return conflicts
+
+
+def preview_claims_file(
+    path: str | Path,
+    original_name: str,
+    *,
+    import_kind: str,
+    known_ar_records: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     rows = list(iter_management_preview_rows(path, import_kind))
     headers = rows[0][1] if rows else []
     sheet_name = rows[0][0] if rows else None
@@ -900,6 +1065,11 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
     refstro_refs = set()
     grouped_by_plate_date = Counter()
     normalized_rows = []
+    known_ar_records = known_ar_records or {}
+    crar_known_ar_matches = 0
+    crar_only_rows = 0
+    crar_conflict_rows = 0
+    enrichment_field_counter: Counter[str] = Counter()
 
     for _, headers, row_number, row, raw in rows:
         col = build_column_lookup(headers)
@@ -927,6 +1097,51 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
                     "date": accident_date or payload["request_date"],
                     "phase": preview_status_phase(payload["status"]),
                     "components": [],
+                }
+            )
+        elif import_kind == "ar_rentway_per_vehicle":
+            payload = build_crar_per_vehicle_payload(row, col, raw, source_file=original_name, row_number=row_number)
+            key = (payload["ar_reference"], payload["plate"], payload["accident_date"])
+            duplicate_counter[key] += 1
+            if payload["ar_reference"]:
+                ar_refs.add(payload["ar_reference"])
+            if payload["plate"] and payload["accident_date"]:
+                grouped_by_plate_date[(payload["plate"], payload["accident_date"])] += 1
+            elif not payload["ar_reference"]:
+                missing_minimum += 1
+            known_ar = known_ar_records.get(str(payload["ar_reference"])) if payload["ar_reference"] else None
+            conflicts = crar_conflicts(payload, known_ar)
+            if known_ar:
+                crar_known_ar_matches += 1
+            else:
+                crar_only_rows += 1
+            if conflicts:
+                crar_conflict_rows += 1
+            for field, label in {
+                "manual_reference": "Nº manual",
+                "document_reference": "Documento RA/IMPRO",
+                "accident_date": "Data do acidente",
+                "daaa_reference": "Declaração amigável",
+                "driver_name": "Condutor",
+                "driver_reference": "Nº condutor",
+                "customer_name": "Cliente",
+                "vehicle_model": "Modelo viatura",
+            }.items():
+                if payload.get(field):
+                    enrichment_field_counter[label] += 1
+            phase_counter["Complementar Rentway por viatura"] += 1
+            normalized_rows.append(
+                {
+                    "row": row_number,
+                    "kind": "CRAR",
+                    "payload": payload,
+                    "key": key,
+                    "group_key": (payload["plate"], payload["accident_date"]),
+                    "date": payload["accident_date"],
+                    "phase": payload["document_type"] or "Complementar",
+                    "components": [],
+                    "known_ar": known_ar,
+                    "conflicts": conflicts,
                 }
             )
         else:
@@ -968,10 +1183,12 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
         suggestion = preview_suggested_action(
             import_kind=import_kind,
             payload=payload,
-            accident_date=item["date"] if import_kind == "ar" else payload.get("accident_date"),
+            accident_date=item["date"] if import_kind in {"ar", "ar_rentway_per_vehicle"} else payload.get("accident_date"),
             duplicate_key=duplicate_counter[item["key"]] > 1 and any(item["key"]),
             grouped_count=grouped_by_plate_date[item["group_key"]] if all(item["group_key"]) else 0,
             components=item["components"],
+            known_ar=item.get("known_ar"),
+            conflicts=item.get("conflicts"),
         )
         action_counter[suggestion["action"]] += 1
         validation_status_counter[suggestion["status"]] += 1
@@ -996,6 +1213,10 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
         warnings.append(f"{len(duplicate_keys)} chaves duplicadas devem ser revistas no preview.")
     if grouped_candidates:
         warnings.append(f"{len(grouped_candidates)} grupos por matrícula/data podem representar associações ou componentes.")
+    if import_kind == "ar_rentway_per_vehicle" and crar_only_rows:
+        warnings.append(f"{crar_only_rows} ARs aparecem no CRAR sem correspondência no ficheiro principal.")
+    if import_kind == "ar_rentway_per_vehicle" and crar_conflict_rows:
+        warnings.append(f"{crar_conflict_rows} ARs têm conflitos de matrícula ou viatura entre fontes.")
 
     return {
         "original_name": original_name,
@@ -1009,9 +1230,13 @@ def preview_claims_file(path: str | Path, original_name: str, *, import_kind: st
         "missing_minimum": missing_minimum,
         "duplicate_keys": len(duplicate_keys),
         "grouped_candidates": len(grouped_candidates),
+        "crar_known_ar_matches": crar_known_ar_matches,
+        "crar_only_rows": crar_only_rows,
+        "crar_conflict_rows": crar_conflict_rows,
         "status_counts": status_counter.most_common(12),
         "phase_counts": phase_counter.most_common(12),
         "component_counts": component_counter.most_common(12),
+        "enrichment_field_counts": enrichment_field_counter.most_common(12),
         "action_counts": action_counter.most_common(),
         "validation_status_counts": validation_status_counter.most_common(),
         "warnings": warnings,
@@ -1028,6 +1253,8 @@ def import_claims_file(
     import_kind: str,
     user_id: int | None,
 ) -> dict[str, Any]:
+    if import_kind == "ar_rentway_per_vehicle":
+        raise ValueError("CRAR per vehicle é fonte complementar e está disponível apenas em preview/staging.")
     process_type = ensure_management_defaults(db)
     import_type = AR_IMPORT_TYPE if import_kind == "ar" else REFSTRO_IMPORT_TYPE
     rows = list(iter_management_rows(path))

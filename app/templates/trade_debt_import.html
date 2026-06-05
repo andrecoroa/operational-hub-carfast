@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content imports-content task-bulk-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Frota / Comércio</p>
+        <h2>Importar dívida para Gestão CarFast</h2>
+        <p class="breadcrumb">Preview primeiro; a aplicação só preenche Valor em dívida e Entidade financeira na ficha da viatura.</p>
+      </div>
+      <div class="button-row">
+        {% set feedback_source_area = "imports" %}
+        {% set feedback_return_url = "/imports/trade-debt" %}
+        {% include "_pilot_actions.html" %}
+        <a class="button-link secondary-link" href="/imports">Histórico</a>
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+      <section class="success">
+        Importação aplicada: lote #{{ result.batch_id }} · {{ result.updated_rows }} viaturas atualizadas · {{ result.with_debt }} com dívida no ficheiro.
+        {% if result.error_rows %}{{ result.error_rows }} linhas ficaram em erro.{% endif %}
+      </section>
+    {% endif %}
+
+    <section class="section task-bulk-form-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Ficheiro</p>
+          <h3>Mapa de vendas com dívida</h3>
+          <p class="breadcrumb">Folha esperada: Mapa_Base. Colunas: matricula, divida_com_iva, entidade_divida.</p>
+        </div>
+      </div>
+      <form method="post" action="/imports/trade-debt/preview" enctype="multipart/form-data" class="form-stack task-bulk-form">
+        <label>
+          XLSX
+          <input type="file" name="file" accept=".xlsx" required>
+        </label>
+        <button type="submit">Pré-visualizar</button>
+      </form>
+    </section>
+
+    {% if preview %}
+      <section class="section task-bulk-preview">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h3>Linhas a aplicar</h3>
+            <p class="breadcrumb">
+              {{ preview.summary.total }} linhas · {{ preview.summary.valid }} viaturas encontradas · {{ preview.summary.with_debt }} com dívida · {{ preview.summary.changed }} com alteração prevista.
+            </p>
+          </div>
+          <a class="button-link secondary-link" href="/imports/trade-debt?reset=1">Limpar</a>
+        </div>
+
+        <section class="metrics-grid task-bulk-summary">
+          <article class="metric"><span>Total</span><strong>{{ preview.summary.total }}</strong></article>
+          <article class="metric"><span>Encontradas</span><strong>{{ preview.summary.valid }}</strong></article>
+          <article class="metric"><span>Com dívida</span><strong>{{ preview.summary.with_debt }}</strong></article>
+          <article class="metric"><span>Erros</span><strong>{{ preview.summary.errors }}</strong></article>
+        </section>
+
+        <div class="table-shell import-table-shell task-bulk-table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Linha</th>
+                <th>Matrícula</th>
+                <th>Dívida atual</th>
+                <th>Nova dívida</th>
+                <th>Entidade atual</th>
+                <th>Nova entidade</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in preview.rows[:120] %}
+                <tr class="{% if row.state == 'error' %}import-row-warning{% endif %}">
+                  <td>{{ row.row_number }}</td>
+                  <td>{{ row.plate }}</td>
+                  <td>{{ row.current_debt_value or "-" }}</td>
+                  <td><strong>{{ row.debt_value or "-" }}</strong></td>
+                  <td>{{ row.current_finance_entity or "-" }}</td>
+                  <td><strong>{{ row.finance_entity or "-" }}</strong></td>
+                  <td>
+                    {% if row.state == "valid" %}
+                      {% if row.debt_changed or row.finance_changed %}Alterar{% else %}Sem alteração{% endif %}
+                    {% else %}
+                      {{ row.message }}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="7" class="muted">Sem linhas para mostrar.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <section class="task-bulk-confirm-box">
+          <p>
+            Ao confirmar, a app atualiza apenas <strong>Valor em dívida</strong> e <strong>Entidade financeira</strong>.
+            Bloqueio de venda e estados da lista não são alterados.
+          </p>
+          <form method="post" action="/imports/trade-debt/confirm" class="button-row">
+            <button type="submit" {% if preview.summary.valid == 0 %}disabled{% endif %}>Confirmar aplicação</button>
+          </form>
+        </section>
+      </section>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

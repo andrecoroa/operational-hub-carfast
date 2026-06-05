@@ -190,6 +190,22 @@ SALE_BLOCK_REASONS = [
 SALE_BLOCK_REASON_LABELS = dict(SALE_BLOCK_REASONS)
 
 
+def finance_entity_options(db, current: str | None = None) -> list[str]:
+    values = {
+        str(field.value_json).strip()
+        for field in db.scalars(
+            select(VehicleManualField).where(
+                VehicleManualField.field_code == "finance_entity",
+                VehicleManualField.value_json.is_not(None),
+            )
+        ).all()
+        if str(field.value_json or "").strip()
+    }
+    if current and current.strip():
+        values.add(current.strip())
+    return sorted(values, key=str.casefold)
+
+
 def vehicle_manual_values(db, vehicle_id: int) -> dict[str, object]:
     fields = db.scalars(
         select(VehicleManualField).where(
@@ -2960,10 +2976,14 @@ def fleet_trade_list(
                 "current_status_options": sorted(
                     {row["rentway"].get("current_status") for row in rows if row["rentway"].get("current_status")}
                 ),
+                "year_options": sorted(
+                    {vehicle.year for vehicle in vehicles if vehicle.year},
+                    reverse=True,
+                ),
                 "location_options": sorted(
                     {row["rentway"].get("rental_station") for row in rows if row["rentway"].get("rental_station")}
                 ),
-                "finance_entity_options": sorted({row["finance_entity"] for row in rows if row["finance_entity"]}),
+                "finance_entity_options": finance_entity_options(db),
             },
         )
 
@@ -3058,6 +3078,10 @@ def vehicle_detail(
                 "trade_decisions": TRADE_DECISIONS,
                 "sale_block_reasons": SALE_BLOCK_REASONS,
                 "sale_block_reason_labels": SALE_BLOCK_REASON_LABELS,
+                "finance_entity_options": finance_entity_options(
+                    db,
+                    str(carfast_management.get("finance_entity") or ""),
+                ),
                 "format_eur": format_eur,
                 "events": events,
                 "vehicle_tasks": vehicle_tasks,

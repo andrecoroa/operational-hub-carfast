@@ -41,7 +41,12 @@
     <form method="get" action="/fleet/trade-list" class="commerce-filter-form">
       <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar matrícula, Unit, VIN, cliente ou financeira">
       <input type="search" name="brand_model" value="{{ filters.brand_model }}" placeholder="Marca / Modelo">
-      <input type="number" name="year" value="{{ filters.year }}" placeholder="Ano">
+      <select name="year">
+        <option value="">Ano</option>
+        {% for option in year_options %}
+          <option value="{{ option }}" {% if filters.year == option|string %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
       <input type="number" name="km_min" value="{{ filters.km_min }}" placeholder="Km mín.">
       <input type="number" name="km_max" value="{{ filters.km_max }}" placeholder="Km máx.">
       <select name="current_status">

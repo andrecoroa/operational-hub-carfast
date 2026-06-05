@@ -324,7 +324,12 @@
                 <div class="compact-form-grid two-col">
                   <label>
                     Entidade financeira
-                    <input type="text" name="finance_entity" maxlength="160" value="{{ carfast_management.get('finance_entity') or '' }}">
+                    <select name="finance_entity">
+                      <option value="">Sem entidade</option>
+                      {% for option in finance_entity_options %}
+                        <option value="{{ option }}" {% if carfast_management.get("finance_entity") == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
                   </label>
                   <label>
                     Valor em dívida

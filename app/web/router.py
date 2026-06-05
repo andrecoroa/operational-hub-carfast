@@ -1927,6 +1927,7 @@ DOCUMENT_TYPES = [
     ("finance_receipt", "Recibo"),
     ("finance_payment_proof", "Comprovativo pagamento"),
     ("finance_customer_document", "Documento cliente"),
+    ("finance_rental_plan", "Plano de renda / Plano financeiro"),
     ("finance_other", "Outro documento financeiro"),
 ]
 DOCUMENT_TYPE_LABELS = {
@@ -1949,6 +1950,7 @@ DOCUMENT_TYPE_AREAS = {
     "finance_receipt": "finance",
     "finance_payment_proof": "finance",
     "finance_customer_document": "finance",
+    "finance_rental_plan": "finance",
     "finance_other": "finance",
 }
 

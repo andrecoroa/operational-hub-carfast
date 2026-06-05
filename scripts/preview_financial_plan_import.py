@@ -11,6 +11,7 @@ from app.core.database import SessionLocal
 from app.services.financial_plan_importer import (
     DEFAULT_PLAN_ROOT,
     DEFAULT_SALES_DEBT_MAP,
+    apply_financial_plan_links,
     preview_financial_plan_import,
     write_preview_report,
 )
@@ -23,7 +24,13 @@ def main() -> None:
     parser.add_argument("--output-dir", default="", help="Diretório de saída. Por defeito usa exports/financial_plan_preview_<timestamp>.")
     parser.add_argument("--use-db", action="store_true", help="Consultar a frota da app para preencher vehicle_id e validar matrículas.")
     parser.add_argument("--no-db", action="store_true", help="Compatibilidade: mantém execução sem consultar a base de dados.")
+    parser.add_argument("--apply", action="store_true", help="Criar documentos apenas para associações seguras. Requer --use-db.")
+    parser.add_argument("--user-id", type=int, default=None, help="ID do utilizador a registar em auditoria/uploaded_by.")
     args = parser.parse_args()
+    if args.apply and not args.use_db:
+        raise SystemExit("--apply requer --use-db para validar vehicle_id na frota da app.")
+    if args.apply and args.no_db:
+        raise SystemExit("--apply não pode ser usado com --no-db.")
 
     output_dir = Path(args.output_dir) if args.output_dir else Path("exports") / f"financial_plan_preview_{datetime.now():%Y%m%d_%H%M%S}"
     db = None
@@ -33,13 +40,29 @@ def main() -> None:
             db = SessionLocal()
         except Exception as exc:
             db_error = str(exc)
+    if args.apply and db is None:
+        raise SystemExit(f"Não foi possível abrir DB para --apply: {db_error or 'SessionLocal indisponível'}")
 
     try:
-        report = preview_financial_plan_import(
-            db,
-            plan_root=Path(args.plan_root),
-            sales_debt_map=Path(args.sales_debt_map),
-        )
+        if args.apply:
+            apply_result = apply_financial_plan_links(
+                db,
+                plan_root=Path(args.plan_root),
+                sales_debt_map=Path(args.sales_debt_map),
+                user_id=args.user_id,
+            )
+            report = preview_financial_plan_import(
+                db,
+                plan_root=Path(args.plan_root),
+                sales_debt_map=Path(args.sales_debt_map),
+            )
+            report["apply_result"] = apply_result
+        else:
+            report = preview_financial_plan_import(
+                db,
+                plan_root=Path(args.plan_root),
+                sales_debt_map=Path(args.sales_debt_map),
+            )
         if db_error:
             report["db_error"] = db_error
         outputs = write_preview_report(report, output_dir)
@@ -51,6 +74,8 @@ def main() -> None:
     print(f"Saida: {output_dir}")
     print(f"Resumo: {report['summary']}")
     print(f"Viaturas carregadas da app: {report['vehicle_count']}")
+    if args.apply:
+        print(f"Apply: {report['apply_result']}")
     if db_error:
         print(f"Aviso DB: {db_error}")
     for key, value in outputs.items():

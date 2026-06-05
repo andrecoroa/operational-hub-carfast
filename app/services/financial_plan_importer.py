@@ -11,14 +11,17 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.documents import Document, DocumentEvent
 from app.models.vehicles import Vehicle
+from app.services.audit import record_audit
 from app.services.spreadsheets import normalize_header
 
 
 PLAN_DOCUMENT_TYPE = "finance_rental_plan"
 PLAN_CLASSIFICATION = "finance"
-PLAN_SOURCE = "financial_plan_preview"
+PLAN_SOURCE = "financial_plan_import"
 PLAN_TARGET_SUBPATH = "02_Financeiro/Planos de renda"
+PLAN_STORAGE_PROVIDER = "sharepoint"
 
 DEFAULT_PLAN_ROOT = Path(
     r"C:\Users\andre\OneDrive - D'accord Invest - Serviços Partilhados SA"
@@ -362,6 +365,139 @@ def preview_financial_plan_import(
     }
 
 
+def safe_document_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in report["rows"]
+        if row["status"] == "auto_associado" and row.get("vehicle_id") and row.get("matched_plate") and row.get("source_path")
+    ]
+
+
+def existing_plan_document(db: Session, row: dict[str, Any]) -> Document | None:
+    file_hash = row.get("hash") or None
+    source_path = row.get("source_path") or ""
+    vehicle_id = int(row["vehicle_id"])
+    statement = select(Document).where(
+        Document.vehicle_id == vehicle_id,
+        Document.document_type == PLAN_DOCUMENT_TYPE,
+    )
+    if file_hash:
+        found = db.scalar(statement.where(Document.file_hash == file_hash))
+        if found:
+            return found
+    if source_path:
+        found = db.scalar(statement.where(Document.storage_path == source_path))
+        if found:
+            return found
+    contract_number = row.get("contract_number") or None
+    supplier_name = row.get("supplier_name") or None
+    if contract_number and supplier_name:
+        return db.scalar(
+            statement.where(
+                Document.contract_number == contract_number,
+                Document.supplier_name == supplier_name,
+            )
+        )
+    return None
+
+
+def build_plan_document(row: dict[str, Any], *, user_id: int | None) -> Document:
+    plate = row["matched_plate"]
+    supplier = row.get("supplier_name") or row.get("entity") or ""
+    contract = row.get("contract_number") or ""
+    suffix = row.get("suffix") or ""
+    title = (
+        f"{plate} - {supplier} - Contrato {contract} - Plano de renda"
+        if contract
+        else f"{plate} - {supplier} - Plano de renda"
+    )
+    file_name = f"{title}{suffix}"[:255] if suffix else title[:255]
+    return Document(
+        title=title[:200],
+        document_type=PLAN_DOCUMENT_TYPE,
+        classification=PLAN_CLASSIFICATION,
+        source=PLAN_SOURCE,
+        entry_channel="importacao_planos_renda",
+        source_sender=supplier or None,
+        source_subject="Importação de planos de renda 19-05",
+        original_name=(row.get("relative_path") or file_name)[:255],
+        file_name=file_name,
+        file_type=suffix.lstrip(".") or None,
+        file_size=int(row["bytes"]) if row.get("bytes") not in (None, "") else None,
+        storage_provider=PLAN_STORAGE_PROVIDER,
+        storage_path=row["source_path"],
+        storage_key=row.get("relative_path") or None,
+        external_url=row["source_path"],
+        folder_path=row.get("target_path_fase2") or None,
+        status="classified",
+        confidentiality_level="management",
+        retention_policy=None,
+        file_hash=row.get("hash") or None,
+        vehicle_id=int(row["vehicle_id"]),
+        plate=plate,
+        supplier_name=supplier or None,
+        contract_number=contract or None,
+        uploaded_by_id=user_id,
+        archived=False,
+    )
+
+
+def apply_financial_plan_links(
+    db: Session,
+    *,
+    plan_root: Path = DEFAULT_PLAN_ROOT,
+    sales_debt_map: Path = DEFAULT_SALES_DEBT_MAP,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    report = preview_financial_plan_import(db, plan_root=plan_root, sales_debt_map=sales_debt_map)
+    safe_rows = safe_document_rows(report)
+    created_documents: list[int] = []
+    skipped_existing: list[int] = []
+
+    for row in safe_rows:
+        existing = existing_plan_document(db, row)
+        if existing:
+            skipped_existing.append(existing.id)
+            continue
+        document = build_plan_document(row, user_id=user_id)
+        db.add(document)
+        db.flush()
+        created_documents.append(document.id)
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="created",
+                old_value=None,
+                new_value="Plano de renda criado por importação controlada.",
+                user_id=user_id,
+            )
+        )
+
+    record_audit(
+        db,
+        action="import.financial_plan_links.completed",
+        entity_type="document",
+        entity_id=None,
+        detail=f"{len(created_documents)} documentos de planos de renda criados; {len(skipped_existing)} já existiam.",
+        after_json={
+            "created_document_ids": created_documents[:200],
+            "skipped_existing_document_ids": skipped_existing[:200],
+            "preview_summary": report["summary"],
+            "safe_rows": len(safe_rows),
+        },
+        user_id=user_id,
+    )
+    db.commit()
+    return {
+        "created_documents": len(created_documents),
+        "skipped_existing": len(skipped_existing),
+        "safe_rows": len(safe_rows),
+        "preview_summary": report["summary"],
+        "vehicle_count": report["vehicle_count"],
+        "created_document_ids": created_documents,
+    }
+
+
 def write_preview_report(report: dict[str, Any], output_dir: Path) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = report["rows"]
@@ -423,6 +559,10 @@ def write_preview_report(report: dict[str, Any], output_dir: Path) -> dict[str, 
         writer.writerow(["contratos_apoio_geral", report["general_contract_keys"]])
         for key, value in report["summary"].items():
             writer.writerow([key, value])
+        apply_result = report.get("apply_result") or {}
+        for key in ("safe_rows", "created_documents", "skipped_existing"):
+            if key in apply_result:
+                writer.writerow([f"apply_{key}", apply_result[key]])
         for suffix, value in report["extension_counts"].items():
             writer.writerow([f"extensao_{suffix}", value])
 

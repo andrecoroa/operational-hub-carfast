@@ -978,9 +978,9 @@ def workshop_process_detail_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], unable_to_read:["Falha na leitura","danger"], critical:["Crítica","danger"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
-      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
-      internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
+      process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
+      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     }};
     const VALUES = {{normal:"Normal", high:"Alta", urgent:"Urgente", reception:"Receção", appointment:"Marcação", station:"Estação", customer_driver:"Cliente / condutor", rentway_alert:"Alerta Rentway", internal_preparation:"Preparação interna", other:"Outro"}};
     function safe(value) {{
@@ -1125,9 +1125,9 @@ def workshop_process_list_page() -> str:
       scheduled:["Marcado","progress"], pending:["Pendente","review"], pending_definition:["Por definir","review"], not_started:["Não iniciado","neutral"], open:["Aberto","review"], cancelled:["Cancelado","danger"]
     };
     const PHASES = {
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
-      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
-      internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
+      process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
+      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     };
     const PRIORITY = {low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente"};
     function meta(map, code) { return map[code] || [code || "-", "neutral"]; }
@@ -1235,7 +1235,7 @@ def workshop_process_manage_page(process_id: int) -> str:
           <section>
             <div id="phaseTabs" class="tabs"></div>
             <div id="reception" class="form-section active">
-              <h2>Receção Administrativa</h2>
+              <h2>Entrada em Oficina</h2>
               <div id="receptionMemory" class="memory"></div>
               <div class="grid2"><label>KM entrada<input id="recKm" type="number" min="0"></label><label>Foto quadrante inicial<input id="recPhoto" placeholder="https://..."></label></div>
               <label>Observação inicial<textarea id="recObs"></textarea></label>
@@ -1307,7 +1307,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <div style="display:flex;justify-content:flex-end;margin-top:14px"><button id="historyButton" class="primary" onclick="confirmHistory()">Confirmar verificações</button></div>
             </div>
             <div id="reports" class="form-section">
-              <div class="section-title"><h2>Diagnóstico técnico</h2><span id="reportTabCount" class="chip">0</span></div>
+              <div class="section-title"><h2>Diagnóstico</h2><span id="reportTabCount" class="chip">0</span></div>
               <div id="reportTypeCards" class="report-type-grid"></div>
               <div id="reportInstanceList" class="report-instance-list"></div>
               <div id="selectedReportDetail" class="memory"></div>
@@ -1331,7 +1331,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               </div>
             </div>
             <div id="checks" class="form-section">
-              <h2>Verificações Técnicas</h2>
+              <h2>Inspeção Técnica</h2>
               <div class="grid3"><label>Verificação<select id="checkCode"></select></label><label>Estado<select id="checkStatus"><option value="ok">OK</option><option value="not_ok">Não OK</option><option value="not_applicable">Não aplicável</option><option value="pending_review">Por rever</option></select></label><label>Evidência<input id="checkEvidence" placeholder="https://..."></label></div>
               <label>Observação<textarea id="checkObs"></textarea></label>
               <div class="grid2"><label><input id="checkTask" type="checkbox"> Gerar tarefa</label><label><input id="checkCharge" type="checkbox"> Potencial cobrança ao cliente</label></div>
@@ -1342,7 +1342,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <label>Descrição incidente<textarea id="incidentDescription"></textarea></label><button onclick="createIncident()">Registar incidente</button>
             </div>
             <div id="decision" class="form-section">
-              <h2>Diagnóstico e Decisão</h2>
+              <h2>Controlo e Conformidade</h2>
               <div id="decisionMemory" class="memory"></div>
               <div class="grid3"><label>Diagnóstico principal<input id="decisionDiagnosis"></label><label>Tipo intervenção<select id="decisionType"><option value="maintenance">Manutenção</option><option value="fault">Avaria</option><option value="warranty">Garantia</option><option value="damage">Dano / sinistro</option><option value="sale_preparation">Preparação venda</option><option value="none">Sem intervenção</option><option value="other">Outro</option></select></label><label>Sistema afetado<input id="decisionSystem" placeholder="Motor, pneus, travagem..."></label></div>
               <div class="grid3"><label>Gravidade<select id="decisionSeverity"><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label><label>Pode circular?<select id="decisionCirculate"><option value="yes">Sim</option><option value="no">Não</option><option value="restricted">Com restrições</option><option value="pending">Por avaliar</option></select></label><label>Próxima ação<select id="decisionNext"><option value="internal_repair">Reparar internamente</option><option value="request_budget">Pedir orçamento</option><option value="send_supplier">Enviar fornecedor</option><option value="wait_parts">Aguardar peça</option><option value="wait_decision">Aguardar decisão</option><option value="immobilize">Imobilizar viatura</option><option value="return_fleet">Pode voltar à frota</option><option value="close_no_intervention">Fechar sem intervenção</option></select></label></div>
@@ -1354,7 +1354,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <button id="decisionButton" class="primary" onclick="saveDecision()">Confirmar decisão</button>
             </div>
             <div id="budget" class="form-section">
-              <h2>Orçamento / Aprovação</h2>
+              <h2>Aprovação da Intervenção</h2>
               <div id="budgetMemory" class="memory"></div>
               <p class="muted">Aplicável sobretudo a reparação externa.</p>
               <div class="grid3"><label>Fornecedor / oficina<input id="budgetSupplier"></label><label>Valor estimado<input id="budgetValue" type="number" step="0.01"></label><label>Estado aprovação<select id="budgetApproval"><option value="pending">Pendente</option><option value="approved">Aprovado</option><option value="rejected">Rejeitado</option><option value="not_required">Não necessita</option></select></label></div>
@@ -1373,7 +1373,7 @@ def workshop_process_manage_page(process_id: int) -> str:
               <button id="repairButton" class="primary" onclick="saveRepair()">Guardar reparação</button>
             </div>
             <div id="close" class="form-section">
-              <h2>Fecho Definitivo</h2>
+              <h2>Fecho da Intervenção</h2>
               <div id="closeMemory" class="memory"></div>
               <div class="grid3"><label>Resultado final<select id="closeResult"><option>Concluído</option><option>Concluído com pendências</option><option>Fechado sem intervenção</option><option>Cancelado</option></select></label><label>Viatura pronta?<select id="closeReady"><option>Sim</option><option>Não</option><option>Com restrições</option></select></label><label>Novo estado<select id="closeStatus"><option value="free">Livre</option><option value="in_contract">Em contrato</option><option value="in_preparation">Em preparação</option><option value="blocked">Bloqueada</option><option value="in_maintenance">Em manutenção</option><option value="for_sale">Em venda</option><option value="immobilized">Imobilizada</option></select></label></div>
               <label>Observação final<textarea id="closeObs"></textarea></label><label><input id="closePending" type="checkbox"> Fechar com pendências</label><label>Justificação pendências<input id="closePendingJustification"></label>
@@ -1743,9 +1743,9 @@ def workshop_process_manage_page(process_id: int) -> str:
       not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], cancelled:["Cancelado","danger"], high:["Alta","danger"], critical:["Crítica","danger"], defined:["Definida","done"]
     }};
     const PHASES = {{
-      process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas",
-      technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação",
-      internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"
+      process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
+      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     }};
     const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", not_applicable:"Não aplicável", evidence_link:"Link para print", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
     function safe(value) {{
@@ -2160,9 +2160,9 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
           <details class="panel" style="padding:14px"><summary style="font-weight:900;cursor:pointer">Outras verificações</summary><div class="grid2" style="margin-top:14px"><label>Accident reports<select id="accidents"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por rever</option></select></label><label>Processos anteriores<select id="previous"><option value="yes">Sim</option><option value="none">Não existem</option><option value="pending_review">Por rever</option></select></label></div><label>Detalhe accident reports<input id="accidentsDetail"></label><div class="grid2"><label>Incidência repetida<select id="repeat"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por avaliar</option></select></label><label>Observação<textarea id="historyObs"></textarea></label></div></details>
         </section>
         <section id="services" class="panel phase"><div class="section-head"><div><h2>Serviços a executar</h2><p class="muted">Adicionar trabalhos que surjam depois da criação do processo.</p></div><button class="primary" onclick="addService()">Adicionar serviço</button></div><div id="servicesAlerts" class="phase-alerts"></div><div id="serviceList" class="list"></div><div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div><label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label></section>
-        <section id="reports" class="panel phase"><div class="section-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Selecione um relatório existente ou adicione um novo para validação.</p></div></div><div id="reportsAlerts" class="phase-alerts"></div><div id="reportList" class="list"></div><div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div><label>Link relatório original<input id="reportLink" placeholder="https://..."></label><div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div><div class="actions" style="justify-content:flex-start"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="validateSelectedReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div></section>
+        <section id="reports" class="panel phase"><div class="section-head"><div><h2>Diagnóstico</h2><p class="muted">Selecione um relatório existente ou adicione um novo para validação.</p></div></div><div id="reportsAlerts" class="phase-alerts"></div><div id="reportList" class="list"></div><div class="grid3"><label>Relatório<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div><label>Link relatório original<input id="reportLink" placeholder="https://..."></label><div class="grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{{"campo":"valor"}}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{{"campo":"valor"}}'></textarea></label></div><div class="actions" style="justify-content:flex-start"><button class="primary" onclick="addReport()">Adicionar relatório</button><button onclick="validateSelectedReport()">Validar selecionado</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div></section>
         <section id="reception" class="panel phase active">
-          <div class="section-head"><div><h2>Receção</h2><p class="muted">Registar apenas os dados necessários para iniciar o processo.</p></div><div class="actions"><button onclick="saveReception()">Guardar</button><button class="primary" onclick="advanceReception()">Avançar</button></div></div>
+          <div class="section-head"><div><h2>Entrada em Oficina</h2><p class="muted">Registar apenas os dados necessários para iniciar o processo.</p></div><div class="actions"><button onclick="saveReception()">Guardar</button><button class="primary" onclick="advanceReception()">Avançar</button></div></div>
           <div id="receptionAlerts" class="phase-alerts"></div>
           <div class="form-card">
             <h3>Dados principais</h3>
@@ -2178,10 +2178,10 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
           <details class="accordion"><summary>Fotografias</summary><div class="accordion-body"><label>Foto quadrante inicial<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label></div></details>
           <details class="accordion"><summary>Outros dados da receção</summary><div class="accordion-body"><div class="placeholder">Campos administrativos adicionais podem ser migrados aqui sem pesar a entrada principal.</div></div></details>
         </section>
-        <section id="decision" class="panel phase"><h2>Controlo e validação</h2><div class="placeholder">Controlo e validação serão migrados para cartões de decisão e responsabilidade.</div></section>
-        <section id="budget" class="panel phase"><h2>Orçamento</h2><div class="placeholder">Orçamentos e aprovações serão migrados para uma grelha compacta.</div></section>
+        <section id="decision" class="panel phase"><h2>Controlo e Conformidade</h2><div class="placeholder">Controlo e conformidade serão migrados para cartões de decisão e responsabilidade.</div></section>
+        <section id="budget" class="panel phase"><h2>Aprovação da Intervenção</h2><div class="placeholder">Orçamentos e aprovações serão migrados para uma grelha compacta.</div></section>
         <section id="repair" class="panel phase"><h2>Reparação</h2><div class="placeholder">Execução e evidências finais serão migradas mantendo os mesmos endpoints.</div></section>
-        <section id="close" class="panel phase"><h2>Fecho</h2><div class="placeholder">Fecho definitivo e relatório de saída serão migrados no mesmo layout.</div></section>
+        <section id="close" class="panel phase"><h2>Fecho da Intervenção</h2><div class="placeholder">Fecho da intervenção e relatório de saída serão migrados no mesmo layout.</div></section>
         <div id="result" class="result"></div>
       </div>
     </main>
@@ -2193,10 +2193,10 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
     let selectedReportId = null;
     let selectedReportType = null;
     const tabs = [
-      ["reception","Receção","administrative_reception"], ["services","Serviços",null], ["history","Verificações administrativas","history_check"], ["reports","Diagnóstico técnico","technical_phase"],
-      ["decision","Controlo e validação","diagnosis_decision"], ["budget","Orçamento","budget_approval"], ["repair","Reparação","internal_repair_execution"], ["close","Fecho","final_closure"]
+      ["reception","Entrada em Oficina","administrative_reception"], ["services","Serviços",null], ["history","Validação Administrativa","history_check"], ["reports","Diagnóstico","technical_phase"],
+      ["decision","Controlo e Conformidade","diagnosis_decision"], ["budget","Aprovação da Intervenção","budget_approval"], ["repair","Reparação","internal_repair_execution"], ["close","Fecho da Intervenção","final_closure"]
     ];
-    const phaseLabels = {{process_creation:"Criação do processo", administrative_reception:"Receção administrativa", history_check:"Verificações administrativas", technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento / aprovação", internal_repair_execution:"Reparação interna / execução", final_closure:"Fecho definitivo"}};
+    const phaseLabels = {{process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"}};
     const statusLabels = {{completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"], open:["Aberto","review"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], added:["Adicionado","progress"], not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], defined:["Definida","done"], high:["Alta","danger"], critical:["Crítica","danger"]}};
     const valueLabels = {{yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"}};
     const $ = (id) => document.querySelector(id);
@@ -2526,6 +2526,29 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .conditional-input.active { display:grid; }
     .report-field-grid { border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
     .report-field-grid:empty { display:none; }
+    .report-zone { display:grid; gap:12px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:14px; }
+    .report-zone h3 { margin:0; }
+    .report-zone-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .report-doc-actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .report-doc-actions button, .report-doc-actions .button { min-height:34px; padding:7px 10px; }
+    .report-checklist, .problem-grid, .decision-grid { display:flex; flex-wrap:wrap; gap:8px 14px; }
+    .report-checklist label, .problem-grid label { display:flex; flex-direction:row; align-items:center; gap:7px; color:var(--text); font-weight:850; }
+    .report-checklist input, .problem-grid input { width:16px; min-height:16px; }
+    .validation-actions { display:grid; grid-template-columns:repeat(4,minmax(130px,1fr)); gap:8px; }
+    .validation-actions button { min-height:40px; }
+    .validation-actions button.active { border-color:var(--brand); background:var(--brand-soft); color:#7d2f1f; box-shadow:inset 3px 0 0 var(--brand); }
+    .report-validation-grid {
+      display:grid; grid-template-columns:minmax(170px,.9fr) minmax(130px,.7fr) minmax(150px,.85fr) 120px minmax(150px,1fr);
+      border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff;
+    }
+    .report-validation-grid > div { padding:9px 10px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); min-width:0; }
+    .report-validation-grid > div:nth-child(5n) { border-right:0; }
+    .report-validation-grid .head { background:var(--surface-soft); color:var(--muted); font-size:12px; font-weight:950; text-transform:uppercase; }
+    .report-validation-grid input, .report-validation-grid select { min-height:34px; padding:7px 8px; }
+    .report-validation-grid .field-name { font-weight:900; }
+    .history-compare { display:grid; gap:8px; }
+    .history-row { display:grid; grid-template-columns:90px 1fr auto; gap:10px; align-items:center; border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); padding:9px 10px; }
+    .history-values { color:var(--muted); font-size:12px; line-height:1.45; }
     .report-table-head, .report-field {
       display:grid; grid-template-columns:minmax(260px,.75fr) minmax(280px,1fr); gap:0; align-items:stretch;
     }
@@ -2560,6 +2583,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }
     .report-empty-state { display:grid; place-items:center; min-height:220px; border:1px dashed var(--line-strong); border-radius:8px; background:var(--surface-soft); color:var(--muted); font-weight:850; text-align:center; padding:24px; }
+    .report-empty-state[hidden], #reportMetaFields[hidden] { display:none !important; }
     .report-editor[hidden] { display:none; }
     .report-editor { display:grid; gap:14px; }
     .inline-checks { display:flex; flex-wrap:wrap; gap:12px 18px; }
@@ -2580,6 +2604,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       .topbar, .phase-head { grid-template-columns:1fr; display:grid; padding:18px 14px; }
       .content { padding:0 0 24px; }
       .grid2, .grid3, .doc-grid, .report-shell, .report-type-grid, .report-table-head, .report-field, .verification-stack, .verification-head, .verification-row { grid-template-columns:1fr; }
+      .report-validation-grid { grid-template-columns:1fr; }
+      .report-validation-grid .head { display:none; }
+      .validation-actions { grid-template-columns:1fr; }
       .report-field > span { border-right:0; border-bottom:1px solid var(--line); }
       .verification-head { display:none; }
       .verification-cell { border-right:0; border-bottom:1px solid var(--line); }
@@ -2620,7 +2647,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
 
         <section id="reception" class="panel phase active">
           <div class="phase-head">
-            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Receção e serviços</h2><p class="muted">Registe a entrada da viatura e os trabalhos a executar.</p></div></div>
+            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Entrada em Oficina</h2><p class="muted">Registe a entrada da viatura e os trabalhos a executar.</p></div></div>
             <div class="actions"><button type="button" onclick="saveReception()">Guardar</button><button class="primary" type="button" onclick="advanceReception()">Avançar</button></div>
           </div>
           <div id="receptionAlerts" class="alert-line"></div>
@@ -2653,7 +2680,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="checks" class="panel phase">
-          <div class="phase-head"><div><h2>Verificações administrativas</h2><p class="muted">Documentos administrativos, histórico, Service Box, campanhas e plano de manutenção.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar verificações</button></div>
+          <div class="phase-head"><div><h2>Validação Administrativa</h2><p class="muted">Documentos administrativos, histórico, Service Box, campanhas e plano de manutenção.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar validação</button></div>
           <div id="checksAlerts" class="alert-line"></div>
           <div class="verification-stack">
             <div class="verification-group">
@@ -2730,7 +2757,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="reports" class="panel phase">
-          <div class="phase-head"><div><h2>Diagnóstico técnico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button class="primary" type="button" onclick="newReportDraft()">Novo relatório</button></div>
+          <div class="phase-head"><div><h2>Diagnóstico</h2><p class="muted">Anexe leituras e relatórios das máquinas para preparar a validação técnica.</p></div><button class="primary" type="button" onclick="newReportDraft()">Novo relatório</button></div>
           <div id="reportsAlerts" class="alert-line"></div>
           <div class="report-shell">
             <aside class="report-sidebar" aria-label="Tipos de relatório">
@@ -2742,17 +2769,52 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
               <div id="reportEditor" class="report-editor" hidden>
                 <div id="reportMetaFields" class="grid3"><label>Tipo<select id="reportCode"></select></label><label>Momento<select id="reportMoment"><option value="initial">Inicial</option><option value="final">Final</option></select></label><label>Origem<select id="reportOrigin"><option value="stellantis_machine">Máquina Stellantis</option><option value="autel">Autel</option><option value="other">Outro</option></select></label></div>
                 <div id="reportDescription" class="report-description"></div>
-                <label id="reportLinkWrap">Link original<input id="reportLink" placeholder="https://..."></label>
-                <div id="reportFieldGrid" class="report-field-grid"></div>
-                <details><summary><span><span class="accordion-icon">▤</span>JSON preparado</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
-                <div class="actions" style="justify-content:flex-start"><button id="reportSaveButton" class="primary" type="button" onclick="saveReport()">Guardar relatório</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button type="button" onclick="validateReport()">Validar selecionado</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir original</a></div>
+                <section class="report-zone">
+                  <div class="report-zone-head"><div><h3>Documento de origem</h3><p class="muted">Confirme que o documento corresponde à viatura e à leitura que está a validar.</p></div><span id="reportAuditChip" class="chip review">Por validar</span></div>
+                  <div class="grid2"><label id="reportLinkWrap">Link/caminho original<input id="reportLink" placeholder="https://... ou caminho"></label><label>Nota do documento<input id="reportDocumentNote" placeholder="Ex.: relatório legível, página 2, leitura final..."></label></div>
+                  <div class="report-doc-actions"><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir documento</a><button type="button" onclick="copyReportLink()">Copiar caminho</button><button type="button" onclick="replaceReportDocument()">Substituir documento</button><button id="reportSaveButton" type="button" onclick="saveReport()">Guardar alterações</button></div>
+                  <div class="report-checklist">
+                    <label><input id="docReadable" type="checkbox">Documento legível</label>
+                    <label><input id="docPlateConfirmed" type="checkbox">Matrícula confirmada</label>
+                    <label><input id="docDateConfirmed" type="checkbox">Data confirmada</label>
+                    <label><input id="docKmConfirmed" type="checkbox">KM confirmados</label>
+                  </div>
+                </section>
+                <section class="report-zone">
+                  <div class="report-zone-head"><div><h3>Dados extraídos</h3><p class="muted">Corrija o valor antes de validar. Cada campo fica com estado e observação.</p></div></div>
+                  <div id="reportFieldGrid" class="report-validation-grid"></div>
+                  <details><summary><span><span class="accordion-icon">▤</span>JSON técnico</span></summary><div class="accordion-body grid2"><label>Valores extraídos JSON<textarea id="reportValues" placeholder='{"campo":"valor"}'></textarea></label><label>Valores validados JSON<textarea id="validateValues" placeholder='{"campo":"valor"}'></textarea></label></div></details>
+                </section>
+                <section class="report-zone">
+                  <div class="report-zone-head"><div><h3>Decisão de validação</h3><p class="muted">Registe o resultado técnico e a ação seguinte.</p></div></div>
+                  <div class="validation-actions">
+                    <button type="button" data-validation-decision="validate" onclick="setValidationDecision('validate')">Validar</button>
+                    <button type="button" data-validation-decision="correct_and_validate" onclick="setValidationDecision('correct_and_validate')">Corrigir e validar</button>
+                    <button type="button" data-validation-decision="keep_pending" onclick="setValidationDecision('keep_pending')">Manter por validar</button>
+                    <button type="button" data-validation-decision="reject_reading" onclick="setValidationDecision('reject_reading')">Rejeitar leitura</button>
+                  </div>
+                  <input id="validationDecision" type="hidden" value="validate">
+                  <div class="problem-grid">
+                    <label><input data-report-problem="oil_degradation" type="checkbox">Degradação óleo</label>
+                    <label><input data-report-problem="missing_telecharge" type="checkbox">Falta telecarregamento</label>
+                    <label><input data-report-problem="missing_bsi_record" type="checkbox">BSI sem registo</label>
+                    <label><input data-report-problem="maintenance_interval_incoherent" type="checkbox">Intervalo manutenção incoerente</label>
+                    <label><input data-report-problem="other" type="checkbox">Outro</label>
+                  </div>
+                  <div class="grid2"><label>Ação seguinte<select id="reportNextAction"><option value="no_action">Sem ação</option><option value="create_workshop_task">Criar tarefa Oficina</option><option value="request_confirmation">Pedir confirmação</option><option value="link_existing_process">Associar a processo existente</option></select></label><label>Nota de validação<input id="reportValidationNote" placeholder="Resumo da decisão"></label></div>
+                  <div class="actions" style="justify-content:flex-start"><button class="primary" type="button" onclick="validateReport()">Gravar decisão</button><button type="button" onclick="newReportDraft()">Novo relatório</button><button id="reportDeleteButton" class="danger-outline" type="button" onclick="deleteSelectedReport()" hidden>Apagar relatório</button></div>
+                </section>
+                <section class="report-zone">
+                  <div class="report-zone-head"><div><h3>Histórico comparativo</h3><p class="muted">Relatórios anteriores do mesmo tipo neste processo para comparação rápida.</p></div></div>
+                  <div id="reportHistoryCompare" class="history-compare"></div>
+                </section>
               </div>
             </div>
           </div>
         </section>
 
         <section id="technicalChecks" class="panel phase">
-          <div class="phase-head"><div><h2>Verificações técnicas</h2><p class="muted">Confirme pontos técnicos observados na viatura e registe evidências quando necessário.</p></div><button class="primary" type="button" onclick="saveTechnicalCheck()">Guardar verificação</button></div>
+          <div class="phase-head"><div><h2>Inspeção Técnica</h2><p class="muted">Confirme pontos técnicos observados na viatura e registe evidências quando necessário.</p></div><button class="primary" type="button" onclick="saveTechnicalCheck()">Guardar inspeção</button></div>
           <div id="technicalChecksAlerts" class="alert-line"></div>
           <div id="technicalCheckList" class="list"></div>
           <div class="grid3"><label>Verificação<select id="technicalCheckCode"></select></label><label>Estado<select id="technicalCheckStatus"><option value="ok">Conforme</option><option value="not_ok">Não conforme</option><option value="pending_review">Por rever</option><option value="not_applicable">Não aplicável</option></select></label><label>Evidência<input id="technicalCheckEvidence" placeholder="Link/print/foto"></label></div>
@@ -2762,7 +2824,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="decision" class="panel phase">
-          <div class="phase-head"><div><h2>Controlo e validação</h2><p class="muted">Valide o diagnóstico, impacto operacional e próxima ação.</p></div><button class="primary" type="button" onclick="saveDecision()">Guardar validação</button></div>
+          <div class="phase-head"><div><h2>Controlo e Conformidade</h2><p class="muted">Valide o diagnóstico, impacto operacional e próxima ação.</p></div><button class="primary" type="button" onclick="saveDecision()">Guardar conformidade</button></div>
           <div id="decisionAlerts" class="alert-line"></div>
           <div class="grid3"><label>Diagnóstico principal<input id="decisionDiagnosis" placeholder="Resumo do diagnóstico"></label><label>Tipo intervenção<input id="decisionType" placeholder="Interna, externa, garantia..."></label><label>Sistema afetado<input id="decisionSystem" placeholder="Motor, travagem, elétrica..."></label></div>
           <div class="grid3"><label>Gravidade<select id="decisionSeverity"><option value="medium">Média</option><option value="low">Baixa</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label><label>Viatura pode circular?<select id="decisionCirculate"><option value="yes">Sim</option><option value="no">Não</option><option value="conditional">Com restrições</option></select></label><label>Próxima ação<input id="decisionNext" placeholder="Ação seguinte"></label></div>
@@ -2771,7 +2833,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="budget" class="panel phase">
-          <div class="phase-head"><div><h2>Orçamento</h2><p class="muted">Pedido, receção e decisão de aprovação do orçamento.</p></div><button class="primary" type="button" onclick="saveBudget()">Guardar orçamento</button></div>
+          <div class="phase-head"><div><h2>Aprovação da Intervenção</h2><p class="muted">Pedido, receção e decisão de aprovação da intervenção.</p></div><button class="primary" type="button" onclick="saveBudget()">Guardar aprovação</button></div>
           <div id="budgetAlerts" class="alert-line"></div>
           <div class="grid3"><label>Fornecedor / oficina<input id="budgetSupplier" placeholder="Fornecedor"></label><label>Descrição do pedido<input id="budgetRequest" placeholder="Pedido enviado"></label><label>Prazo fornecedor<input id="budgetDeadline" type="datetime-local"></label></div>
           <div class="inline-checks"><label><input id="budgetReceived" type="checkbox">Orçamento recebido</label><label><input id="budgetVat" type="checkbox">IVA incluído</label><label><input id="budgetNeedsApproval" type="checkbox" checked>Precisa aprovação</label></div>
@@ -2788,7 +2850,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         </section>
 
         <section id="close" class="panel phase">
-          <div class="phase-head"><div><h2>Fecho</h2><p class="muted">Validação final, estado operacional e encerramento.</p></div><button class="primary" type="button" onclick="closeProcess()">Fechar processo</button></div>
+          <div class="phase-head"><div><h2>Fecho da Intervenção</h2><p class="muted">Validação final, estado operacional e encerramento.</p></div><button class="primary" type="button" onclick="closeProcess()">Fechar intervenção</button></div>
           <div id="closeAlerts" class="alert-line"></div>
           <div class="grid3"><label>Resultado final<input id="closeResult" placeholder="Processo concluído"></label><label>Viatura pronta?<select id="closeReady"><option value="yes">Sim</option><option value="no">Não</option><option value="conditional">Com pendências</option></select></label><label>Novo estado operacional<input id="closeStatus" placeholder="operational, maintenance..."></label></div>
           <div class="grid3"><label>Teste final<select id="closeTest"><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">Não aplicável</option></select></label><label>Regressar à frota?<select id="closeFleet"><option value="yes">Sim</option><option value="no">Não</option><option value="conditional">Com restrições</option></select></label><label>KM final<input id="closeKm" type="number" min="0"></label></div>
@@ -2807,18 +2869,18 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     let selectedReportId = null;
     let selectedReportType = null;
     const tabs = [
-      ["reception", "Receção e serviços", "administrative_reception"],
-      ["checks", "Verificações administrativas", "history_check"],
-      ["reports", "Diagnóstico técnico", "technical_phase"],
-      ["technicalChecks", "Verificações técnicas", "technical_phase"],
-      ["decision", "Controlo e validação", "diagnosis_decision"],
-      ["budget", "Orçamento", "budget_approval"],
+      ["reception", "Entrada em Oficina", "administrative_reception"],
+      ["checks", "Validação Administrativa", "history_check"],
+      ["reports", "Diagnóstico", "technical_phase"],
+      ["technicalChecks", "Inspeção Técnica", "technical_phase"],
+      ["decision", "Controlo e Conformidade", "diagnosis_decision"],
+      ["budget", "Aprovação da Intervenção", "budget_approval"],
       ["repair", "Reparação", "internal_repair_execution"],
-      ["close", "Fecho", "final_closure"]
+      ["close", "Fecho da Intervenção", "final_closure"]
     ];
     const phaseIcons = {reception:"□", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
-    const phaseLabels = {administrative_reception:"Receção", history_check:"Verificações administrativas", technical_phase:"Diagnóstico técnico", diagnosis_decision:"Controlo e validação", budget_approval:"Orçamento", internal_repair_execution:"Reparação", final_closure:"Fecho"};
-    const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
+    const phaseLabels = {process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"};
+    const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], corrected_manually:["Corrigido e validado","done"], unable_to_read:["Leitura rejeitada","danger"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
     const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
     const demoConfig = {
       services: [
@@ -3090,7 +3152,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       $("#reportEditor").hidden = !mode;
       $("#reportEmptyState").hidden = Boolean(mode);
       $("#reportMetaFields").hidden = !isDraft;
-      $("#reportLinkWrap").hidden = !isDraft;
+      $("#reportLinkWrap").hidden = false;
       $("#reportDeleteButton").hidden = !selectedReportId;
     }
     function selectReportType(code) {
@@ -3112,19 +3174,58 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       }
       return "";
     }
+    function selectedReport() {
+      return (processData?.technical_reports || []).find(item => item.id === selectedReportId && item.status !== "voided") || null;
+    }
+    function reportCorrection(report=selectedReport()) {
+      return objectValues(report?.correction || {});
+    }
+    function fieldReview(field, report=selectedReport()) {
+      return objectValues(reportCorrection(report).field_reviews || {})[field.code] || {};
+    }
+    function setValidationDecision(decision) {
+      setVal("#validationDecision", decision || "validate");
+      document.querySelectorAll("[data-validation-decision]").forEach(button => {
+        button.classList.toggle("active", button.dataset.validationDecision === val("#validationDecision"));
+      });
+    }
+    function setReportValidationDefaults(report=selectedReport()) {
+      const correction = reportCorrection(report);
+      const checklist = objectValues(correction.document_checklist || {});
+      setChecked("#docReadable", checklist.readable);
+      setChecked("#docPlateConfirmed", checklist.plate_confirmed);
+      setChecked("#docDateConfirmed", checklist.date_confirmed);
+      setChecked("#docKmConfirmed", checklist.km_confirmed);
+      setVal("#reportDocumentNote", correction.document_note || "");
+      setVal("#reportValidationNote", correction.validation_note || report?.observations || "");
+      setVal("#reportNextAction", correction.next_action || "no_action");
+      const problems = new Set(Array.isArray(correction.detected_problems) ? correction.detected_problems : []);
+      document.querySelectorAll("[data-report-problem]").forEach(input => { input.checked = problems.has(input.dataset.reportProblem); });
+      setValidationDecision(correction.validation_decision || (report?.status === "unable_to_read" ? "reject_reading" : "validate"));
+      const audit = correction.decided_at ? `Decidido em ${safe(shortDate(correction.decided_at))}` : meta(report?.status || "pending_validation")[0];
+      $("#reportAuditChip").textContent = audit;
+      $("#reportAuditChip").className = `chip ${meta(report?.status || "pending_validation")[1]}`;
+    }
     function renderReportFields(values={}) {
       const report = reportConfig();
+      const current = selectedReport();
       const fields = report?.fields || [];
       $("#reportDescription").textContent = report?.description || "Escolha um tipo de relatório para ver os campos esperados.";
       $("#reportFieldGrid").innerHTML = fields.length ? `
-        <div class="report-table-head"><span>Descrição</span><span>Dados a validar</span></div>
+        <div class="head">Campo</div><div class="head">Valor extraído</div><div class="head">Valor corrigido</div><div class="head">Estado</div><div class="head">Observação</div>
         ${fields.map(field => `
-          <div class="report-field">
-            <span>${safe(field.label)}${field.unit ? `<small>Unidade: ${safe(field.unit)}</small>` : `<small>Sem unidade definida</small>`}</span>
-            <label>Valor encontrado no relatório<input data-report-field="${safe(field.code)}" data-report-label="${safe(field.label)}" value="${safe(fieldValue(values, field))}" placeholder="Preencher valor a validar"></label>
-          </div>
+          <div class="field-name">${safe(field.label)}${field.unit ? `<br><small>${safe(field.unit)}</small>` : ""}</div>
+          <div>${safe(fieldValue(values, field) || "-")}</div>
+          <div><input data-report-field="${safe(field.code)}" data-report-label="${safe(field.label)}" value="${safe(fieldReview(field, current).corrected_value ?? fieldValue(current?.validated_values || {}, field) ?? fieldValue(values, field))}" placeholder="Valor corrigido"></div>
+          <div><select data-report-field-state="${safe(field.code)}"><option value="ok">OK</option><option value="review">Rever</option><option value="critical">Crítico</option><option value="not_applicable">Não aplicável</option></select></div>
+          <div><input data-report-field-note="${safe(field.code)}" value="${safe(fieldReview(field, current).observation || "")}" placeholder="Observação"></div>
         `).join("")}
       ` : "";
+      fields.forEach(field => {
+        const review = fieldReview(field, current);
+        const state = document.querySelector(`[data-report-field-state="${field.code}"]`);
+        if (state) state.value = review.state || "ok";
+      });
       if (report?.code === "maintenance_plan_validation" && !fieldValue(values, {code:"requested_service", label:"Solicitação do processo"})) {
         const requested = document.querySelector('[data-report-field="requested_service"]');
         if (requested) requested.value = processData?.services_label || processData?.title || "";
@@ -3134,7 +3235,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         if (planType) planType.value = "Normal";
       }
       document.querySelectorAll("[data-report-field]").forEach(input => input.addEventListener("input", syncReportJsonFromFields));
+      document.querySelectorAll("[data-report-field-state], [data-report-field-note]").forEach(input => input.addEventListener("input", syncReportJsonFromFields));
       syncReportJsonFromFields();
+      renderReportHistoryCompare();
     }
     function collectReportFieldValues() {
       const values = {};
@@ -3143,10 +3246,68 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       });
       return values;
     }
+    function collectFieldReviews() {
+      const reviews = {};
+      document.querySelectorAll("[data-report-field]").forEach(input => {
+        const code = input.dataset.reportField;
+        const report = selectedReport();
+        const configField = (reportConfig()?.fields || []).find(field => field.code === code) || {code, label: input.dataset.reportLabel};
+        const extracted = fieldValue(report?.extracted_values || {}, configField);
+        const corrected = input.value.trim();
+        reviews[code] = {
+          label: input.dataset.reportLabel || code,
+          extracted_value: extracted,
+          corrected_value: corrected,
+          state: document.querySelector(`[data-report-field-state="${code}"]`)?.value || "ok",
+          observation: document.querySelector(`[data-report-field-note="${code}"]`)?.value || "",
+          changed: String(extracted ?? "") !== String(corrected ?? "")
+        };
+      });
+      return reviews;
+    }
+    function collectReportCorrection() {
+      return {
+        document_checklist: {
+          readable: $("#docReadable")?.checked || false,
+          plate_confirmed: $("#docPlateConfirmed")?.checked || false,
+          date_confirmed: $("#docDateConfirmed")?.checked || false,
+          km_confirmed: $("#docKmConfirmed")?.checked || false
+        },
+        document_note: val("#reportDocumentNote"),
+        field_reviews: collectFieldReviews(),
+        detected_problems: [...document.querySelectorAll("[data-report-problem]:checked")].map(input => input.dataset.reportProblem),
+        next_action: val("#reportNextAction") || "no_action",
+        validation_note: val("#reportValidationNote")
+      };
+    }
     function syncReportJsonFromFields() {
       const values = collectReportFieldValues();
       setVal("#reportValues", JSON.stringify(values, null, 2));
       if (!val("#validateValues") || val("#validateValues") === "{}") setVal("#validateValues", JSON.stringify(values, null, 2));
+    }
+    async function copyReportLink() {
+      const link = val("#reportLink");
+      if (!link) return showResult(false, "Sem link/caminho para copiar.");
+      try { await navigator.clipboard.writeText(link); showResult(true, "Caminho do relatório copiado."); }
+      catch { showResult(false, link); }
+    }
+    function replaceReportDocument() {
+      $("#reportLinkWrap").hidden = false;
+      $("#reportLink")?.focus();
+      showResult(true, "Atualiza o link/caminho e grava as alterações.");
+    }
+    function renderReportHistoryCompare() {
+      const holder = $("#reportHistoryCompare");
+      if (!holder) return;
+      const fields = ["servicebox_interval_km", "dilution_estimated_oil", "oil_dilution_estimated", "carbon_estimated_oil", "anti_dilution_protection", "telecharge_date", "bsi_record", "km_before_next_maintenance", "days_before_next_maintenance"];
+      const reports = (processData?.technical_reports || [])
+        .filter(report => report.status !== "voided" && report.report_code === selectedReportType && report.id !== selectedReportId)
+        .sort((a,b) => (b.id || 0) - (a.id || 0));
+      holder.innerHTML = reports.length ? reports.map(report => {
+        const values = objectValues(report.validated_values || report.extracted_values || {});
+        const relevant = fields.map(field => values[field] !== undefined && values[field] !== null && values[field] !== "" ? `${field}: ${values[field]}` : "").filter(Boolean).slice(0, 6).join(" · ");
+        return `<div class="history-row"><strong>#${report.id}</strong><div><div>${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))}</div><div class="history-values">${safe(relevant || "Sem valores comparáveis registados.")}</div></div>${chip(report.status)}</div>`;
+      }).join("") : `<div class="placeholder">Sem relatórios anteriores deste tipo neste processo.</div>`;
     }
     function setChecked(id, value) { const el = $(id); if (el) el.checked = Boolean(value); }
     function numeric(id) { const raw = val(id); return raw === "" ? null : Number(raw); }
@@ -3448,6 +3609,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#reportValues", JSON.stringify(report.extracted_values || {}, null, 2));
       setVal("#validateValues", JSON.stringify(report.validated_values || report.extracted_values || {}, null, 2));
       renderReportFields(report.extracted_values || report.validated_values || {});
+      setReportValidationDefaults(report);
       updateReportOpen();
       renderReports();
       if (switchTab) showPhase("reports");
@@ -3459,8 +3621,12 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setReportEditorMode("draft");
       $("#reportSaveButton").textContent = "Adicionar relatório";
       setVal("#reportLink", "");
+      setVal("#reportDocumentNote", "");
+      setVal("#reportValidationNote", "");
+      setVal("#reportNextAction", "no_action");
       setVal("#reportValues", "{}");
       setVal("#validateValues", "{}");
+      setReportValidationDefaults(null);
       renderReportFields({});
       updateReportOpen();
       renderReports();
@@ -3490,6 +3656,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         if (existingIndex >= 0) processData.technical_reports[existingIndex] = data;
         else processData.technical_reports = [...(processData.technical_reports || []), data];
         $("#reportSaveButton").textContent = "Guardar alterações";
+        selectReport(data.id, false);
         renderReports();
         showResult(true, selectedReportId ? `Relatório #${selectedReportId} guardado.` : "Relatório guardado.");
       } catch (err) { showResult(false, err.message); }
@@ -3513,11 +3680,21 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         if (!selectedReportId) throw new Error("Seleciona um relatório antes de validar.");
         syncReportJsonFromFields();
         const validated = val("#validateValues") ? jsonFrom("#validateValues") : jsonFrom("#reportValues");
-        const data = await requestJson(`/api/workshop/technical-reports/${selectedReportId}/validate`, "POST", {validated_values:validated});
+        const correction = collectReportCorrection();
+        const decision = val("#validationDecision") || "validate";
+        const data = await requestJson(`/api/workshop/technical-reports/${selectedReportId}/validate`, "POST", {
+          validated_values: validated,
+          correction,
+          validation_decision: decision,
+          observations: val("#reportValidationNote")
+        });
         const existingIndex = (processData.technical_reports || []).findIndex(report => report.id === selectedReportId);
         if (existingIndex >= 0) processData.technical_reports[existingIndex] = data;
+        setReportValidationDefaults(data);
+        renderReportFields(data.extracted_values || data.validated_values || {});
         renderReports();
-        showResult(true, `Relatório #${selectedReportId} validado.`);
+        const message = decision === "keep_pending" ? "mantido por validar" : (decision === "reject_reading" ? "rejeitado" : "validado");
+        showResult(true, `Relatório #${selectedReportId} ${message}.`);
       } catch (err) { showResult(false, err.message); }
     }
     loadConfig().then(loadProcess).catch(err => showResult(false, err.message));

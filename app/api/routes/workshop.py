@@ -299,6 +299,9 @@ def _technical_report_response(report: WorkshopTechnicalReport) -> dict[str, Any
         "original_document_id": report.original_document_id,
         "extracted_values": report.extracted_values_json,
         "validated_values": report.validated_values_json,
+        "correction": report.correction_json,
+        "observations": report.observations,
+        "validated_by_id": report.validated_by_id,
         "validated_at": report.validated_at,
     }
 
@@ -475,8 +478,20 @@ class WorkshopTechnicalReportCreate(BaseModel):
 class WorkshopTechnicalReportValidate(BaseModel):
     validated_values: dict[str, Any] | list[Any]
     correction: dict[str, Any] | None = None
+    validation_decision: str = "validate"
     validated_by_id: int | None = None
     observations: str | None = None
+
+    @model_validator(mode="after")
+    def validate_decision(self) -> "WorkshopTechnicalReportValidate":
+        if self.validation_decision not in {
+            "validate",
+            "correct_and_validate",
+            "keep_pending",
+            "reject_reading",
+        }:
+            raise ValueError("Decisão de validação inválida.")
+        return self
 
 
 class WorkshopTechnicalReportUpdate(BaseModel):
@@ -1434,13 +1449,26 @@ def validate_technical_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Relatório técnico não encontrado.",
         )
+    correction_payload = {
+        **(validation.correction or {}),
+        "validation_decision": validation.validation_decision,
+        "decided_at": datetime.utcnow().isoformat(),
+        "decided_by_id": validation.validated_by_id,
+    }
     report.validated_values_json = validation.validated_values
-    report.correction_json = validation.correction
+    report.correction_json = correction_payload
     report.validated_by_id = validation.validated_by_id
-    report.validated_at = datetime.utcnow()
+    report.validated_at = None if validation.validation_decision == "keep_pending" else datetime.utcnow()
     report.observations = validation.observations or report.observations
-    report.status = "corrected_manually" if validation.correction else "validated"
-    if report.report_code == "maintenance_plan_validation":
+    if validation.validation_decision == "keep_pending":
+        report.status = "pending_validation"
+    elif validation.validation_decision == "reject_reading":
+        report.status = "unable_to_read"
+    elif validation.validation_decision == "correct_and_validate":
+        report.status = "corrected_manually"
+    else:
+        report.status = "validated"
+    if report.report_code == "maintenance_plan_validation" and report.status in {"validated", "corrected_manually"}:
         history_phase = db.scalar(
             select(WorkshopProcessPhase).where(
                 WorkshopProcessPhase.process_id == report.process_id,

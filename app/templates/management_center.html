@@ -23,8 +23,14 @@
           <strong>Ficheiro inválido.</strong> Carrega XLSX ou CSV.
         {% elif imported == "invalid_kind" %}
           <strong>Tipo inválido.</strong> Escolhe AR Rentway ou REFSTRO.
+        {% elif imported == "invalid_date" %}
+          <strong>Data inválida.</strong> Usa o formato AAAA-MM-DD.
+        {% elif imported == "load_confirm_missing" %}
+          <strong>Confirmação em falta.</strong> Escreve CARREGAR para aplicar a carga final.
         {% elif imported == "preview_required" %}
           <strong>Importação direta bloqueada.</strong> Usa a pré-visualização antes de aplicar dados.
+        {% elif imported == "loaded" %}
+          <strong>Processos carregados.</strong> A base do Centro foi atualizada com os ficheiros originais.
         {% else %}
           <strong>Pré-visualização concluída.</strong> Revê os conflitos antes de aplicar qualquer dado.
         {% endif %}
@@ -38,6 +44,22 @@
         <span>Primeiro fluxo operacional ligado ao Centro transversal.</span>
       </div>
       <a class="button-link secondary-link" href="#processos">Ver processos</a>
+    </section>
+
+    <section class="management-load-strip">
+      <div>
+        <p class="eyebrow">Dados carregados</p>
+        <strong>{{ metrics.technical_processes }} processos no Centro</strong>
+        <span>
+          {{ metrics.official_ar }} ARs oficiais · {{ metrics.participations }} participações REFSTRO ·
+          {{ metrics.participations_to_reconcile }} por reconciliar · {{ metrics.open_actions }} ações abertas
+        </span>
+        <small>Atualizado às {{ page_loaded_at }}</small>
+      </div>
+      <div class="management-load-actions">
+        <a class="button-link secondary-link" href="#processos">Ver lista carregada</a>
+        <a class="button-link secondary-link" href="/management-center?pending=missing_ar">Ver AR em falta</a>
+      </div>
     </section>
 
     <section class="metric-grid management-kpis">
@@ -140,6 +162,26 @@
         <button type="submit">Pré-visualizar</button>
       </form>
       <p class="management-import-note">A importação final está bloqueada nesta fase. O ficheiro é normalizado em preview, com sugestões de ação e motivos, antes de qualquer processo oficial nascer.</p>
+    </section>
+
+    <section class="section management-import-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Produção</p>
+          <h3>Carga final controlada</h3>
+          <p class="breadcrumb">Usar apenas quando os quatro ficheiros originais estiverem validados. A carga substitui os dados atuais do Centro para evitar duplicações.</p>
+        </div>
+      </div>
+      <form class="management-final-load-form" method="post" action="/management-center/load-originals" enctype="multipart/form-data">
+        <label>Desde<input type="date" name="from_date" value="2024-01-01" required></label>
+        <label>AR Rentway<input type="file" name="accident_report" accept=".xlsx" required></label>
+        <label>CRAR por viatura<input type="file" name="crar" accept=".xlsx" required></label>
+        <label>REFSTRO antigo<input type="file" name="refstro_old" accept=".xlsx" required></label>
+        <label>REFSTRO recente<input type="file" name="refstro_recent" accept=".xlsx" required></label>
+        <label>Confirmação<input name="reset_confirm" placeholder="CARREGAR" required></label>
+        <button type="submit">Carregar processos</button>
+      </form>
+      <p class="management-import-note">Esta ação aplica dados finais à base onde a app está a correr. Em produção, é isto que preenche a versão publicada.</p>
     </section>
 
     <section class="section" id="processos">

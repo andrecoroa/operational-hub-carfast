@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 import io
 from pathlib import Path
 import re
+from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
 
@@ -6641,6 +6642,70 @@ def management_center_import_preview(
             "process_type": process_type_context,
         },
     )
+
+
+@web_router.post("/management-center/load-originals", response_class=HTMLResponse)
+def management_center_load_originals(
+    request: Request,
+    accident_report: UploadFile,
+    crar: UploadFile,
+    refstro_old: UploadFile,
+    refstro_recent: UploadFile,
+    from_date: str = Form("2024-01-01"),
+    reset_confirm: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    if reset_confirm.strip().upper() != "CARREGAR":
+        return RedirectResponse("/management-center?imported=load_confirm_missing", status_code=303)
+    uploads = {
+        "accident_report": accident_report,
+        "crar": crar,
+        "refstro_old": refstro_old,
+        "refstro_recent": refstro_recent,
+    }
+    if any(not item.filename or not item.filename.lower().endswith(".xlsx") for item in uploads.values()):
+        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
+    try:
+        cutoff_date = date.fromisoformat(from_date)
+    except ValueError:
+        return RedirectResponse("/management-center?imported=invalid_date", status_code=303)
+
+    with TemporaryDirectory(prefix="management_center_load_") as tmp_dir:
+        tmp_root = Path(tmp_dir)
+        paths = {}
+        for key, upload in uploads.items():
+            target = tmp_root / (upload.filename or f"{key}.xlsx")
+            target.write_bytes(upload.file.read())
+            paths[key] = target
+        with SessionLocal() as db:
+            from scripts.import_management_center_originals import (
+                final_counts,
+                import_accident_report,
+                import_crar,
+                import_refstro_sources,
+                reset_management_center,
+            )
+
+            reset_management_center(db)
+            import_accident_report(db, paths["accident_report"], user_id, cutoff_date=cutoff_date)
+            import_crar(db, paths["crar"], user_id, cutoff_date=cutoff_date)
+            import_refstro_sources(db, paths, user_id, cutoff_date=cutoff_date)
+            counts = final_counts(db)
+            record_audit(
+                db,
+                action="management_center.load_originals.completed",
+                entity_type="management_center",
+                detail="Carga final dos originais Sinistros/AR aplicada pelo Centro de Gestão.",
+                user_id=user_id,
+                after_json={"from_date": cutoff_date.isoformat(), "counts": counts},
+            )
+            db.commit()
+    return RedirectResponse("/management-center?imported=loaded", status_code=303)
 
 
 @web_router.get("/management-center/{process_id}", response_class=HTMLResponse)

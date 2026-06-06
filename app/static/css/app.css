@@ -1321,6 +1321,42 @@ button:hover,
   font-size: 13px;
 }
 
+.management-load-strip {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fffdf8;
+}
+
+.management-load-strip > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.management-load-strip strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.management-load-strip span,
+.management-load-strip small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.management-load-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .management-kpis .metric {
   grid-template-columns: auto 1fr;
   gap: 12px;
@@ -1432,6 +1468,15 @@ button:hover,
   grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) auto;
 }
 
+.management-final-load-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 180px) repeat(4, minmax(170px, 1fr)) minmax(150px, 180px) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 18px;
+  border-top: 1px solid var(--line);
+}
+
 .management-import-note {
   margin: 0;
   border-top: 1px solid var(--line);
@@ -1442,7 +1487,8 @@ button:hover,
 }
 
 .management-filter-form label,
-.management-import-form label {
+.management-import-form label,
+.management-final-load-form label {
   min-width: 0;
 }
 
@@ -6730,6 +6776,7 @@ a.metric:hover {
   .management-grid,
   .management-detail-grid,
   .management-import-form,
+  .management-final-load-form,
   .management-filter-form,
   .association-move-form,
   .commerce-filter-form,
@@ -7167,6 +7214,7 @@ a.metric:hover {
   .management-grid,
   .management-detail-grid,
   .management-import-form,
+  .management-final-load-form,
   .management-filter-form,
   .association-move-form,
   .commerce-filter-form,

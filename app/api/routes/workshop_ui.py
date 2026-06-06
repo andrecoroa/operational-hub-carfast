@@ -1042,8 +1042,8 @@ def workshop_process_detail_page(process_id: int) -> str:
             <section>
               <div class="section-title"><h2>Diagnóstico e verificações técnicas</h2></div>
               <div class="grid-3">
-                <div class="metric"><span>Diagnóstico técnico</span><strong>${{process.technical_reports.length}}</strong></div>
-                <div class="metric"><span>Verificações técnicas</span><strong>${{process.technical_checks.length}}</strong></div>
+                <div class="metric"><span>Diagnóstico</span><strong>${{process.technical_reports.length}}</strong></div>
+                <div class="metric"><span>Inspeção Técnica</span><strong>${{process.technical_checks.length}}</strong></div>
                 <div class="metric"><span>Incidentes</span><strong>${{process.technical_incidents.length}}</strong></div>
               </div>
             </section>
@@ -3491,7 +3491,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     async function saveChecks() {
       try {
         await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), service_box_reason:val("#serviceBoxReason"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), campaigns_references:val("#campaignsRefs"), campaigns_reason:val("#campaignsReason"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), maintenance_plan_reason:val("#planReason"), history_observation:val("#historyObs")});
-        showResult(true, "Verificações administrativas guardadas.");
+        showResult(true, "Validação Administrativa guardada.");
       } catch (err) { showResult(false, err.message); }
     }
     async function saveTechnicalCheck() {
@@ -3537,7 +3537,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           decision_observation: val("#decisionObs"),
           create_task: $("#decisionCreateTask").checked
         });
-        showResult(true, "Controlo e validação guardado.");
+        showResult(true, "Controlo e Conformidade guardado.");
       } catch (err) { showResult(false, err.message); }
     }
     async function saveBudget() {

@@ -2412,7 +2412,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     .step {
       position:relative; min-height:138px; border:0; border-radius:0; background:#fff;
-      color:var(--text); padding:0 8px 30px; font-size:14px; font-weight:800; white-space:nowrap;
+      color:var(--text); min-width:0; padding:0 8px 30px; font-size:14px; font-weight:800; white-space:normal;
       display:grid; justify-items:center; align-content:start; gap:12px;
     }
     .step::before { content:""; position:absolute; top:30px; left:-50%; right:50%; height:2px; background:#e2e7ec; z-index:0; }
@@ -2427,7 +2427,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       box-shadow:0 1px 3px rgba(15,23,42,.04);
     }
     .step.active .step-icon { border-color:#dc3328; color:#dc3328; box-shadow:0 0 0 4px #fff; }
-    .step-label { font-weight:850; font-size:15px; }
+    .step-label { max-width:100%; font-weight:850; font-size:14px; line-height:1.2; text-align:center; overflow-wrap:anywhere; }
     .step .count {
       position:absolute; top:26px; right:18%; min-width:24px; height:21px; border-radius:999px;
       display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:0 6px;
@@ -3299,14 +3299,17 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function renderReportHistoryCompare() {
       const holder = $("#reportHistoryCompare");
       if (!holder) return;
-      const fields = ["servicebox_interval_km", "dilution_estimated_oil", "oil_dilution_estimated", "carbon_estimated_oil", "anti_dilution_protection", "telecharge_date", "bsi_record", "km_before_next_maintenance", "days_before_next_maintenance"];
+      const fields = ["servicebox_interval_km", "dilution_estimated_oil", "oil_dilution_estimated", "oil_dilution_rate", "carbon_estimated_oil", "oil_carbon_rate", "anti_dilution_protection", "telecharge_date", "bsi_record", "km_before_next_maintenance", "days_before_next_maintenance"];
+      const kmFields = ["km", "mileage", "vehicle_km", "odometer", "kilometragem", "quilometragem", "km_before_next_maintenance"];
       const reports = (processData?.technical_reports || [])
         .filter(report => report.status !== "voided" && report.report_code === selectedReportType && report.id !== selectedReportId)
         .sort((a,b) => (b.id || 0) - (a.id || 0));
       holder.innerHTML = reports.length ? reports.map(report => {
         const values = objectValues(report.validated_values || report.extracted_values || {});
+        const km = kmFields.map(field => values[field]).find(value => value !== undefined && value !== null && value !== "") || processData?.initial_km || "-";
+        const date = report.validated_at || report.added_at || "";
         const relevant = fields.map(field => values[field] !== undefined && values[field] !== null && values[field] !== "" ? `${field}: ${values[field]}` : "").filter(Boolean).slice(0, 6).join(" · ");
-        return `<div class="history-row"><strong>#${report.id}</strong><div><div>${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))}</div><div class="history-values">${safe(relevant || "Sem valores comparáveis registados.")}</div></div>${chip(report.status)}</div>`;
+        return `<div class="history-row"><strong>#${report.id}</strong><div><div>${safe(label(report.report_moment))} · ${safe(label(report.reading_origin))} · ${safe(shortDate(date))} · ${safe(kmValue(km))}</div><div class="history-values">${safe(relevant || "Sem valores comparáveis registados.")}</div></div>${chip(report.status)}</div>`;
       }).join("") : `<div class="placeholder">Sem relatórios anteriores deste tipo neste processo.</div>`;
     }
     function setChecked(id, value) { const el = $(id); if (el) el.checked = Boolean(value); }

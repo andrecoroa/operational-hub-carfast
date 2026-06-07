@@ -301,6 +301,7 @@ def _technical_report_response(report: WorkshopTechnicalReport) -> dict[str, Any
         "validated_values": report.validated_values_json,
         "correction": report.correction_json,
         "observations": report.observations,
+        "added_at": report.added_at,
         "validated_by_id": report.validated_by_id,
         "validated_at": report.validated_at,
     }

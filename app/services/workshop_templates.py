@@ -35,28 +35,28 @@ WORKSHOP_PRIORITIES = [
 
 WORKSHOP_PHASE_TEMPLATE = [
     {
-        "code": "process_creation",
-        "name": "Criacao do Processo",
-        "sort_order": 1,
-        "purpose": "Abrir processo por entrada imediata ou marcacao.",
-    },
-    {
         "code": "administrative_reception",
         "name": "Entrada em Oficina",
-        "sort_order": 2,
+        "sort_order": 1,
         "purpose": "Confirmar entrada, KM, observacao, fotos e alertas sem bloquear.",
     },
     {
         "code": "history_check",
         "name": "Validacao Administrativa",
-        "sort_order": 3,
+        "sort_order": 2,
         "purpose": "Confirmar historico interno, Service Box, campanhas e plano de manutencao.",
     },
     {
         "code": "technical_phase",
         "name": "Diagnostico",
-        "sort_order": 4,
+        "sort_order": 3,
         "purpose": "Adicionar relatorios tecnicos, leituras de maquina, incidentes e resultado tecnico inicial.",
+    },
+    {
+        "code": "technical_inspection",
+        "name": "Inspecao Tecnica",
+        "sort_order": 4,
+        "purpose": "Confirmar verificacoes tecnicas observadas na viatura e registar evidencias.",
     },
     {
         "code": "diagnosis_decision",

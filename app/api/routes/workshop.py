@@ -702,6 +702,57 @@ def _get_phase_or_404(
     return phase
 
 
+def _phase_template_by_code(phase_code: str) -> dict[str, Any] | None:
+    return next(
+        (phase for phase in WORKSHOP_PHASE_TEMPLATE if phase["code"] == phase_code),
+        None,
+    )
+
+
+def _ensure_phase(
+    db: Session,
+    process: WorkshopProcess,
+    phase_code: str,
+) -> WorkshopProcessPhase:
+    phase = db.scalar(
+        select(WorkshopProcessPhase).where(
+            WorkshopProcessPhase.process_id == process.id,
+            WorkshopProcessPhase.phase_code == phase_code,
+        )
+    )
+    template = _phase_template_by_code(phase_code)
+    if phase:
+        if template:
+            phase.name = template["name"]
+            phase.sort_order = template["sort_order"]
+            phase.data_json = {
+                **(phase.data_json or {}),
+                "purpose": (phase.data_json or {}).get("purpose") or template.get("purpose"),
+            }
+        return phase
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Fase {phase_code} não encontrada.",
+        )
+    phase = WorkshopProcessPhase(
+        process_id=process.id,
+        phase_code=phase_code,
+        name=template["name"],
+        status="not_started",
+        sort_order=template["sort_order"],
+        data_json={"purpose": template.get("purpose")},
+    )
+    db.add(phase)
+    db.flush()
+    return phase
+
+
+def _ensure_expected_phases(db: Session, process: WorkshopProcess) -> None:
+    for template in WORKSHOP_PHASE_TEMPLATE:
+        _ensure_phase(db, process, template["code"])
+
+
 def _add_alert_once(
     db: Session,
     process_id: int,
@@ -964,9 +1015,7 @@ def create_phased_workshop_process(
 
     for phase in WORKSHOP_PHASE_TEMPLATE:
         status_value = phase.get("default_status", "not_started")
-        if phase["code"] == "process_creation":
-            status_value = "completed"
-        elif phase["code"] == current_phase:
+        if phase["code"] == current_phase:
             status_value = "pending"
         db.add(
             WorkshopProcessPhase(
@@ -1610,7 +1659,7 @@ def upsert_technical_check(
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
     vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
-    phase = _get_phase_or_404(db, process.id, "technical_phase")
+    phase = _ensure_phase(db, process, "technical_inspection")
     check = db.scalar(
         select(WorkshopTechnicalCheck).where(
             WorkshopTechnicalCheck.process_id == process.id,
@@ -1683,6 +1732,7 @@ def upsert_technical_check(
         )
 
     phase.status = "with_incidents" if check_input.status == "not_ok" else "in_progress"
+    process.current_phase_code = "technical_inspection"
     db.commit()
     db.refresh(check)
     return {"id": check.id, "status": check.status, "task_id": check.task_id}
@@ -1695,7 +1745,7 @@ def create_technical_incident(
     db: DbSession,
 ) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
-    phase = _get_phase_or_404(db, process.id, "technical_phase")
+    phase = _ensure_phase(db, process, "technical_inspection")
     incident = WorkshopTechnicalIncident(
         process_id=process.id,
         phase_id=phase.id,
@@ -1721,6 +1771,7 @@ def create_technical_incident(
         phase_id=phase.id,
     )
     phase.status = "with_incidents"
+    process.current_phase_code = "technical_inspection"
     db.commit()
     db.refresh(incident)
     return {"id": incident.id, "status": incident.status}
@@ -2174,6 +2225,17 @@ def list_workshop_processes(db: DbSession) -> list[dict[str, Any]]:
 @router.get("/processes/{process_id}")
 def get_workshop_process(process_id: int, db: DbSession) -> dict[str, Any]:
     process = _get_process_or_404(db, process_id)
+    existing_phase_codes = set(
+        db.scalars(
+            select(WorkshopProcessPhase.phase_code).where(
+                WorkshopProcessPhase.process_id == process.id
+            )
+        ).all()
+    )
+    expected_phase_codes = {phase["code"] for phase in WORKSHOP_PHASE_TEMPLATE}
+    if not expected_phase_codes.issubset(existing_phase_codes):
+        _ensure_expected_phases(db, process)
+        db.commit()
 
     services = db.scalars(
         select(WorkshopProcessService)

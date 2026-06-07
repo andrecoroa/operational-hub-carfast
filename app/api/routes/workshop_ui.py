@@ -979,7 +979,7 @@ def workshop_process_detail_page(process_id: int) -> str:
     }};
     const PHASES = {{
       process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
-      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
       internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     }};
     const VALUES = {{normal:"Normal", high:"Alta", urgent:"Urgente", reception:"Receção", appointment:"Marcação", station:"Estação", customer_driver:"Cliente / condutor", rentway_alert:"Alerta Rentway", internal_preparation:"Preparação interna", other:"Outro"}};
@@ -1126,7 +1126,7 @@ def workshop_process_list_page() -> str:
     };
     const PHASES = {
       process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
-      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
       internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     };
     const PRIORITY = {low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente"};
@@ -1744,7 +1744,7 @@ def workshop_process_manage_page(process_id: int) -> str:
     }};
     const PHASES = {{
       process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa",
-      technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
+      technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção",
       internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"
     }};
     const VALUES = {{yes:"Sim", no:"Não", pending_review:"Por rever", none:"Não existem", not_ok:"Não OK", not_applicable:"Não aplicável", evidence_link:"Link para print", low:"Baixa", medium:"Média", high:"Alta", critical:"Crítica", normal:"Normal", urgent:"Urgente", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro", free:"Livre", in_contract:"Em contrato", in_preparation:"Em preparação", blocked:"Bloqueada", in_maintenance:"Em manutenção", for_sale:"Em venda", immobilized:"Imobilizada"}};
@@ -2196,7 +2196,7 @@ def workshop_process_manage_v2_page(process_id: int) -> str:
       ["reception","Entrada em Oficina","administrative_reception"], ["services","Serviços",null], ["history","Validação Administrativa","history_check"], ["reports","Diagnóstico","technical_phase"],
       ["decision","Controlo e Conformidade","diagnosis_decision"], ["budget","Aprovação da Intervenção","budget_approval"], ["repair","Reparação","internal_repair_execution"], ["close","Fecho da Intervenção","final_closure"]
     ];
-    const phaseLabels = {{process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"}};
+    const phaseLabels = {{process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"}};
     const statusLabels = {{completed:["Concluído","done"], completed_with_pending_items:["Concluído com pendências","review"], validated:["Validado","done"], open:["Aberto","review"], in_progress:["Em curso","progress"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], added:["Adicionado","progress"], not_applicable:["Não aplicável","neutral"], not_started:["Não iniciado","neutral"], defined:["Definida","done"], high:["Alta","danger"], critical:["Crítica","danger"]}};
     const valueLabels = {{yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"}};
     const $ = (id) => document.querySelector(id);
@@ -2662,8 +2662,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           <div class="main-card">
             <div class="phase-head"><div><h3>Serviços a executar</h3><p class="muted">Adicione trabalhos que surjam durante a receção, sem abrir outra fase.</p></div><button class="primary" type="button" onclick="addService()">Adicionar serviço</button></div>
             <div id="serviceList" class="list"></div>
-            <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label>Zona / sistema<input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label>Detalhe<input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
-            <label>Observação curta<textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
+            <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label><span id="serviceZoneLabel">Zona / sistema</span><input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label><span id="serviceDetailLabel">Detalhe</span><input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
+            <label><span id="serviceObservationLabel">Observação curta</span><textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
           </div>
           <div class="main-card">
             <h3>Estado da viatura</h3>
@@ -2872,16 +2872,30 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       ["reception", "Entrada em Oficina", "administrative_reception"],
       ["checks", "Validação Administrativa", "history_check"],
       ["reports", "Diagnóstico", "technical_phase"],
-      ["technicalChecks", "Inspeção Técnica", "technical_phase"],
+      ["technicalChecks", "Inspeção Técnica", "technical_inspection"],
       ["decision", "Controlo e Conformidade", "diagnosis_decision"],
       ["budget", "Aprovação da Intervenção", "budget_approval"],
       ["repair", "Reparação", "internal_repair_execution"],
       ["close", "Fecho da Intervenção", "final_closure"]
     ];
     const phaseIcons = {reception:"□", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
-    const phaseLabels = {process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"};
+    const phaseLabels = {process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"};
     const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], corrected_manually:["Corrigido e validado","done"], unable_to_read:["Leitura rejeitada","danger"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
     const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
+    const serviceFieldProfiles = {
+      revision_maintenance: {zone:"Plano / sistema", zonePlaceholder:"Manutenção programada, motor, filtros...", detail:"Serviço previsto", detailPlaceholder:"Revisão 25 000 km, óleo, filtros...", observation:"Motivo / pedido", observationPlaceholder:"Pedido Rentway, Service Box, observação do cliente..."},
+      tires: {zone:"Posição / pneu", zonePlaceholder:"Frente, trás, esquerdo, direito...", detail:"Medida / trabalho", detailPlaceholder:"Substituir, reparar furo, calibrar, alinhar...", observation:"Evidência", observationPlaceholder:"Profundidade, desgaste, foto ou indicação do técnico..."},
+      tyres: {zone:"Posição / pneu", zonePlaceholder:"Frente, trás, esquerdo, direito...", detail:"Medida / trabalho", detailPlaceholder:"Substituir, reparar furo, calibrar, alinhar...", observation:"Evidência", observationPlaceholder:"Profundidade, desgaste, foto ou indicação do técnico..."},
+      brakes: {zone:"Eixo / componente", zonePlaceholder:"Frente, traseira, discos, pastilhas...", detail:"Sintoma / trabalho", detailPlaceholder:"Ruído, vibração, substituir pastilhas...", observation:"Evidência", observationPlaceholder:"Medição, ruído reportado, foto ou teste..."},
+      dashboard_warning: {zone:"Aviso / sistema", zonePlaceholder:"Motor, AdBlue, ABS, pressão pneus...", detail:"Mensagem / código", detailPlaceholder:"Texto do aviso ou código apresentado", observation:"Contexto", observationPlaceholder:"Quando surge, condições, foto do painel..."},
+      battery: {zone:"Bateria / carga", zonePlaceholder:"Arranque, bateria 12V, alternador...", detail:"Teste / trabalho", detailPlaceholder:"Teste bateria, substituir, carregar...", observation:"Evidência", observationPlaceholder:"Tensão, CCA, print do teste..."},
+      mechanics: {zone:"Sistema mecânico", zonePlaceholder:"Motor, transmissão, suspensão...", detail:"Sintoma / trabalho", detailPlaceholder:"Diagnosticar fuga, ruído, folga...", observation:"Indicação técnica", observationPlaceholder:"Motivo, evidência, teste realizado..."},
+      body_paint: {zone:"Zona da carroçaria", zonePlaceholder:"Para-choques, porta, lateral, jante...", detail:"Dano / trabalho", detailPlaceholder:"Risco, amolgadela, pintura, polimento...", observation:"Evidência", observationPlaceholder:"Foto, responsabilidade, observação de receção..."},
+      damage: {zone:"Zona afetada", zonePlaceholder:"Frente, traseira, lateral, interior...", detail:"Descrição do dano", detailPlaceholder:"Dano visível, peça afetada, gravidade...", observation:"Contexto", observationPlaceholder:"Origem, foto, participação ou incidente..."},
+      warranty: {zone:"Sistema / garantia", zonePlaceholder:"Motor, infotainment, elétrica...", detail:"Sintoma reclamado", detailPlaceholder:"Descrição para análise de garantia", observation:"Evidência", observationPlaceholder:"Data, km, prints, histórico relevante..."},
+      sale_preparation: {zone:"Preparação", zonePlaceholder:"Limpeza, estética, mecânica, pneus...", detail:"Trabalho necessário", detailPlaceholder:"Preparar para venda, corrigir detalhe...", observation:"Prioridade", observationPlaceholder:"Impacto na venda, evidência, prazo..."},
+      other: {zone:"Zona / sistema", zonePlaceholder:"Área ou sistema afetado", detail:"Detalhe", detailPlaceholder:"Descrição do trabalho", observation:"Observação curta", observationPlaceholder:"Motivo, evidência, indicação do técnico..."}
+    };
     const demoConfig = {
       services: [
         {code:"revision_maintenance", label:"Revisão / manutenção"},
@@ -2944,10 +2958,11 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         {id:11, phase_code:"administrative_reception", status:"pending_review", data:{km_entry:119657, initial_observation:"Entrada para revisão e validação de plano."}},
         {id:12, phase_code:"history_check", status:"not_started", data:{}},
         {id:13, phase_code:"technical_phase", status:"not_started", data:{}},
-        {id:14, phase_code:"diagnosis_decision", status:"not_started", data:{main_diagnosis:"A validar plano de manutenção", vehicle_can_circulate:"yes", severity:"medium", next_action:"Confirmar orçamento se houver divergência"}},
-        {id:15, phase_code:"budget_approval", status:"not_started", data:{}},
-        {id:16, phase_code:"internal_repair_execution", status:"not_started", data:{}},
-        {id:17, phase_code:"final_closure", status:"not_started", data:{}}
+        {id:14, phase_code:"technical_inspection", status:"not_started", data:{}},
+        {id:15, phase_code:"diagnosis_decision", status:"not_started", data:{main_diagnosis:"A validar plano de manutenção", vehicle_can_circulate:"yes", severity:"medium", next_action:"Confirmar orçamento se houver divergência"}},
+        {id:16, phase_code:"budget_approval", status:"not_started", data:{}},
+        {id:17, phase_code:"internal_repair_execution", status:"not_started", data:{}},
+        {id:18, phase_code:"final_closure", status:"not_started", data:{}}
       ],
       alerts: [
         {code:"quadrant_photo_missing", message:"Foto do quadrante em falta", severity:"medium", source:"administrative_reception", phase_id:11},
@@ -3098,6 +3113,15 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function renderServices() {
       const services = processData.services || [];
       $("#serviceList").innerHTML = services.map(service => `<div class="row"><div><strong>${safe(service.service_label)}</strong><p class="muted">${safe([service.zone, service.detail, service.short_observation].filter(Boolean).join(" · ") || "Sem detalhe")}</p></div><span class="chip">${safe(service.sort_order || service.id)}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`;
+    }
+    function updateServiceFieldProfile() {
+      const profile = serviceFieldProfiles[val("#serviceCode")] || serviceFieldProfiles.other;
+      $("#serviceZoneLabel").textContent = profile.zone;
+      $("#serviceZone").placeholder = profile.zonePlaceholder;
+      $("#serviceDetailLabel").textContent = profile.detail;
+      $("#serviceDetail").placeholder = profile.detailPlaceholder;
+      $("#serviceObservationLabel").textContent = profile.observation;
+      $("#serviceObservation").placeholder = profile.observationPlaceholder;
     }
     function renderTechnicalChecks() {
       const checks = processData.technical_checks || [];
@@ -3438,6 +3462,8 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
       $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
       $("#technicalCheckCode").innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
+      $("#serviceCode")?.addEventListener("change", updateServiceFieldProfile);
+      updateServiceFieldProfile();
       ["serviceBox", "campaigns", "plan", "internal"].forEach(bindChoice);
       ["#serviceBoxLink", "#serviceBoxReason", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#planLink", "#planReason"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());

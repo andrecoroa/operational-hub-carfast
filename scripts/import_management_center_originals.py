@@ -34,6 +34,7 @@ from app.models.management_center import (
 from app.services.audit import record_audit
 from app.services.management_center import (
     AR_IMPORT_TYPE,
+    CRAR_PER_VEHICLE_IMPORT_TYPE,
     MANAGEMENT_CENTER_SOURCE_SYSTEM,
     REFSTRO_IMPORT_TYPE,
     associate_to_process,
@@ -147,7 +148,9 @@ def source_paths(source_dir: Path) -> dict[str, Path]:
 
 def reset_management_center(db: Session) -> None:
     batch_ids = db.scalars(
-        select(ImportBatch.id).where(ImportBatch.import_type.in_((AR_IMPORT_TYPE, REFSTRO_IMPORT_TYPE)))
+        select(ImportBatch.id).where(
+            ImportBatch.import_type.in_((AR_IMPORT_TYPE, CRAR_PER_VEHICLE_IMPORT_TYPE, REFSTRO_IMPORT_TYPE))
+        )
     ).all()
     if batch_ids:
         db.execute(delete(ImportRawRow).where(ImportRawRow.batch_id.in_(batch_ids)))
@@ -882,7 +885,7 @@ def import_crar(db: Session, path: Path, user_id: int | None, *, cutoff_date: da
     ]
     batch = create_batch(
         db,
-        import_type=AR_IMPORT_TYPE,
+        import_type=CRAR_PER_VEHICLE_IMPORT_TYPE,
         source_path=path,
         sheet_name=sheet_name,
         headers=headers,

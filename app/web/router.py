@@ -9854,7 +9854,14 @@ def task_close(request: Request, task_id: int):
 
 @web_router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "error": None,
+            "next_url": safe_internal_next(request.query_params.get("next")),
+        },
+    )
 
 
 @web_router.post("/login", response_class=HTMLResponse)
@@ -9862,14 +9869,19 @@ def login_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    next_url: str = Form("/"),
 ):
+    clean_next_url = safe_internal_next(next_url)
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == email.strip().lower()))
         if not user or not user.active or not verify_password(password, user.password_hash):
             return templates.TemplateResponse(
                 request,
                 "login.html",
-                {"error": "Email ou password invalidos."},
+                {
+                    "error": "Email ou password invalidos.",
+                    "next_url": clean_next_url,
+                },
                 status_code=401,
             )
         request.session["user_id"] = user.id
@@ -9882,7 +9894,7 @@ def login_submit(
             user_id=user.id,
         )
         db.commit()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(clean_next_url, status_code=303)
 
 
 def safe_internal_next(value: str | None) -> str:

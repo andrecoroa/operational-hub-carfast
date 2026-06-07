@@ -153,7 +153,10 @@ def create_app() -> FastAPI:
         required_permissions = route_required_permissions(path, request.method)
         if required_permissions and not has_required_permission(request, required_permissions):
             if not request.session.get("user_id"):
-                return RedirectResponse("/login", status_code=303)
+                next_url = request.url.path
+                if request.url.query:
+                    next_url = f"{next_url}?{request.url.query}"
+                return RedirectResponse(f"/login?next={quote(next_url, safe='')}", status_code=303)
             if path == "/":
                 return RedirectResponse("/manual", status_code=303)
             return RedirectResponse("/", status_code=303)

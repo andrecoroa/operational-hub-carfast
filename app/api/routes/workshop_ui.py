@@ -2567,6 +2567,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-shell { display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; align-items:start; }
     .report-sidebar { display:grid; gap:10px; }
     .report-type-grid { display:grid; grid-template-columns:1fr; gap:8px; margin:0; }
+    .report-type-section { display:grid; gap:6px; }
     .report-type-card {
       display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 7px; align-items:center; min-height:52px;
       text-align:left; border:1px solid var(--line); border-radius:8px; background:#fff; padding:7px 8px; cursor:pointer;
@@ -2576,12 +2577,13 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .report-type-card strong { min-width:0; font-size:12px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .report-type-card .report-count { grid-row:1 / span 2; grid-column:2; font-size:19px; line-height:1; font-weight:950; color:var(--text); }
     .report-type-card .report-status-line { grid-column:1; display:block; min-width:0; color:var(--muted); font-size:10px; line-height:1.15; font-weight:850; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .report-instance-strip { display:grid; gap:8px; margin:0; }
+    .report-instance-strip { display:grid; gap:6px; margin:0 0 4px 12px; padding-left:10px; border-left:2px solid #e8edf1; }
     .report-instance-strip:empty { display:none; }
     .report-instance-strip button {
-      display:grid; justify-items:start; gap:2px; min-height:48px; border-radius:8px; padding:8px 10px; font-size:12px; text-align:left;
+      display:grid; justify-items:start; gap:2px; min-height:42px; border-radius:8px; padding:7px 9px; font-size:12px; text-align:left;
     }
     .report-instance-strip button.active { border-color:var(--brand); background:#fff4ee; color:#7d2f1f; }
+    .report-instance-strip .new-report-button { border-style:dashed; color:#7d2f1f; background:#fffaf8; }
     .report-empty-state { display:grid; place-items:center; min-height:220px; border:1px dashed var(--line-strong); border-radius:8px; background:var(--surface-soft); color:var(--muted); font-weight:850; text-align:center; padding:24px; }
     .report-empty-state[hidden], #reportMetaFields[hidden] { display:none !important; }
     .report-editor[hidden] { display:none; }
@@ -2762,7 +2764,6 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           <div class="report-shell">
             <aside class="report-sidebar" aria-label="Tipos de relatório">
               <div id="reportTypeCards" class="report-type-grid"></div>
-              <div id="reportList" class="report-instance-strip"></div>
             </aside>
             <div>
               <div id="reportEmptyState" class="report-empty-state">Selecione um relatório existente ou crie um novo relatório para preencher os dados.</div>
@@ -3156,20 +3157,22 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
         const summary = typeReports.length
           ? `${validated} validado${validated === 1 ? "" : "s"}${pending ? ` · ${pending} por validar` : ""}`
           : "Sem relatórios anexados";
-        return `<button type="button" class="report-type-card ${active ? "active" : ""}" onclick="selectReportType('${safe(code)}')">
-          <strong>${safe(reportName(code))}</strong>
-          <span class="report-count">${typeReports.length}</span>
-          <span class="report-status-line">${safe(summary)}</span>
-        </button>`;
+        const instances = active ? `<div class="report-instance-strip">
+          ${typeReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">
+            <strong>#${report.id} ${safe(label(report.report_moment))}</strong>
+            <span>${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</span>
+          </button>`).join("")}
+          <button type="button" class="new-report-button" onclick="newReportDraft()">Novo ${safe(reportName(code))}</button>
+        </div>` : "";
+        return `<div class="report-type-section">
+          <button type="button" class="report-type-card ${active ? "active" : ""}" onclick="selectReportType('${safe(code)}')">
+            <strong>${safe(reportName(code))}</strong>
+            <span class="report-count">${typeReports.length}</span>
+            <span class="report-status-line">${safe(summary)}</span>
+          </button>
+          ${instances}
+        </div>`;
       }).join("") || `<div class="placeholder">Sem tipos de relatório configurados.</div>`;
-      const selectedReports = reports.filter(report => report.report_code === selectedReportType);
-      $("#reportList").innerHTML = [
-        ...selectedReports.map(report => `<button type="button" class="${report.id === selectedReportId ? "active" : ""}" onclick="selectReport(${report.id})">
-          <strong>#${report.id} ${safe(label(report.report_moment))}</strong>
-          <span>${safe(label(report.reading_origin))} · ${safe(meta(report.status)[0])}</span>
-        </button>`),
-        `<button type="button" onclick="newReportDraft()">Novo ${safe(reportName(selectedReportType))}</button>`
-      ].join("");
     }
     function setReportEditorMode(mode) {
       const isDraft = mode === "draft";

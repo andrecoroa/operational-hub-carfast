@@ -1,4 +1,5 @@
 import csv
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 import io
 from pathlib import Path
@@ -6479,6 +6480,253 @@ def management_known_ar_records(db) -> dict[str, dict[str, object]]:
     return records
 
 
+def parse_management_raw_date(value) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")[:19]).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+
+
+def ar_reconciliation_date(ar: ClaimRentwayAR) -> date | None:
+    raw = ar.raw_json if isinstance(ar.raw_json, dict) else {}
+    accident_date = parse_management_raw_date(raw.get("accidentDate"))
+    if accident_date:
+        return accident_date
+    sources = raw.get("_sources", [])
+    for source in sources if isinstance(sources, list) else []:
+        source_raw = source.get("raw") if isinstance(source, dict) else {}
+        accident_date = parse_management_raw_date(source_raw.get("accident_date") or source_raw.get("Data do acidente"))
+        if accident_date:
+            return accident_date
+    return ar.request_date
+
+
+def money_value(value) -> float:
+    return float(value or 0)
+
+
+def normalize_plate_for_web(value: str | None) -> str:
+    return (value or "").strip().upper().replace("-", "").replace(" ", "")
+
+
+def reconciliation_association_maps(db):
+    associations = db.scalars(
+        select(ManagementProcessAssociation).where(ManagementProcessAssociation.active.is_(True))
+    ).all()
+    ar_process_by_id: dict[int, int] = {}
+    ref_process_by_id: dict[int, int] = {}
+    ar_ids_by_process: dict[int, set[int]] = defaultdict(set)
+    ref_ids_by_process: dict[int, set[int]] = defaultdict(set)
+    for association in associations:
+        if association.entity_type == "claim_rentway_ar":
+            ar_process_by_id[association.entity_id] = association.process_id
+            ar_ids_by_process[association.process_id].add(association.entity_id)
+        elif association.entity_type == "claim_refstro_line":
+            ref_process_by_id[association.entity_id] = association.process_id
+            ref_ids_by_process[association.process_id].add(association.entity_id)
+    return ar_process_by_id, ref_process_by_id, ar_ids_by_process, ref_ids_by_process
+
+
+def build_reconciliation_ref_groups(ref_lines: list[ClaimRefstroLine], ref_process_by_id: dict[int, int]) -> list[dict]:
+    grouped: dict[tuple, dict] = {}
+    for line in ref_lines:
+        key = (line.refstro_reference or f"linha-{line.id}", line.plate or "-", line.accident_date)
+        item = grouped.setdefault(
+            key,
+            {
+                "refstro_reference": line.refstro_reference or "-",
+                "plate": line.plate,
+                "accident_date": line.accident_date,
+                "document_reference": line.document_reference,
+                "components": set(),
+                "value": 0.0,
+                "line_ids": [],
+                "process_ids": set(),
+                "status": line.status,
+            },
+        )
+        if line.component:
+            item["components"].add(line.component)
+        item["value"] += money_value(line.claim_value)
+        item["line_ids"].append(line.id)
+        process_id = ref_process_by_id.get(line.id)
+        if process_id:
+            item["process_ids"].add(process_id)
+    result = []
+    for item in grouped.values():
+        item["components"] = sorted(item["components"]) or ["Sem componente"]
+        item["process_ids"] = sorted(item["process_ids"])
+        result.append(item)
+    return result
+
+
+def build_reconciliation_rows(
+    db,
+    *,
+    plate_filter: str | None = None,
+    mode: str = "pending",
+    window_days: int = 30,
+    limit: int = 180,
+) -> dict:
+    ar_process_by_id, ref_process_by_id, _ar_ids_by_process, ref_ids_by_process = reconciliation_association_maps(db)
+    ar_query = select(ClaimRentwayAR).where(
+        ClaimRentwayAR.plate.is_not(None),
+        ClaimRentwayAR.source_file.is_not(None),
+        ~ClaimRentwayAR.source_file.ilike("%crar_pervehicle%"),
+        ~ClaimRentwayAR.source_file.ilike("%demo%"),
+    )
+    ref_query = select(ClaimRefstroLine).where(ClaimRefstroLine.plate.is_not(None))
+    clean_plate = normalize_plate_for_web(plate_filter)
+    if clean_plate:
+        ar_query = ar_query.where(ClaimRentwayAR.plate.ilike(f"%{clean_plate}%"))
+        ref_query = ref_query.where(ClaimRefstroLine.plate.ilike(f"%{clean_plate}%"))
+    ars = db.scalars(ar_query.order_by(ClaimRentwayAR.plate, ClaimRentwayAR.request_date, ClaimRentwayAR.id)).all()
+    ref_lines = db.scalars(ref_query.order_by(ClaimRefstroLine.plate, ClaimRefstroLine.accident_date, ClaimRefstroLine.id)).all()
+    refs = build_reconciliation_ref_groups(ref_lines, ref_process_by_id)
+
+    process_ids = {process_id for process_id in ar_process_by_id.values()} | {pid for ref in refs for pid in ref["process_ids"]}
+    processes = {
+        process.id: process
+        for process in (
+            db.scalars(select(ManagementProcess).where(ManagementProcess.id.in_(process_ids))).all()
+            if process_ids
+            else []
+        )
+    }
+
+    ars_by_plate: dict[str, list[dict]] = defaultdict(list)
+    for ar in ars:
+        ar_date = ar_reconciliation_date(ar)
+        process_id = ar_process_by_id.get(ar.id)
+        ars_by_plate[ar.plate or "-"].append(
+            {
+                "id": ar.id,
+                "ar_reference": ar.ar_reference or "-",
+                "date": ar_date,
+                "status": ar.status or "-",
+                "driver_name": ar.driver_name or "-",
+                "customer_name": ar.customer_name or "-",
+                "document_reference": ar.ra_reference or ar.impro_reference or "-",
+                "process_id": process_id,
+                "process_reference": processes.get(process_id).internal_reference if process_id in processes else "-",
+                "has_refstro": bool(process_id and ref_ids_by_process.get(process_id)),
+            }
+        )
+
+    rows = []
+    stats = {"strong": 0, "probable": 0, "doubt": 0, "missing_ar": 0, "monitoring": 0, "associated": 0}
+    for ref in refs:
+        candidate_ars = ars_by_plate.get(ref["plate"] or "-", [])
+        already_associated = any(ar["process_id"] in ref["process_ids"] for ar in candidate_ars if ar["process_id"])
+        best_ar = None
+        best_delta = None
+        for ar in candidate_ars:
+            if not ar["date"] or not ref["accident_date"]:
+                continue
+            delta = abs((ar["date"] - ref["accident_date"]).days)
+            if delta <= window_days and (best_delta is None or delta < best_delta):
+                best_ar = ar
+                best_delta = delta
+        if already_associated:
+            suggestion = "Associado"
+            confidence = "associated"
+            reason = "REFSTRO já está no mesmo processo que um AR desta matrícula."
+        elif best_ar and best_delta is not None and best_delta <= 1:
+            suggestion = "Match forte"
+            confidence = "strong"
+            reason = "Mesma matrícula e data igual ou muito próxima."
+        elif best_ar and best_delta is not None and best_delta <= 7:
+            suggestion = "Provável"
+            confidence = "probable"
+            reason = f"Mesma matrícula com diferença de {best_delta} dias."
+        elif best_ar:
+            suggestion = "Dúvida"
+            confidence = "doubt"
+            reason = f"Mesma matrícula, mas diferença de {best_delta} dias."
+        else:
+            suggestion = "Sem AR"
+            confidence = "missing_ar"
+            reason = "Participação REFSTRO sem AR candidato dentro da janela."
+        stats[confidence] += 1
+        if mode == "pending" and confidence == "associated":
+            continue
+        if mode == "strong" and confidence != "strong":
+            continue
+        if mode == "doubt" and confidence not in {"doubt", "missing_ar"}:
+            continue
+        rows.append(
+            {
+                "plate": ref["plate"] or "-",
+                "ar": best_ar or (candidate_ars[0] if candidate_ars else None),
+                "ref": ref,
+                "suggestion": suggestion,
+                "confidence": confidence,
+                "reason": reason,
+                "delta_days": best_delta,
+                "candidate_count": len(candidate_ars),
+            }
+        )
+
+    ref_process_ids = {pid for ref in refs for pid in ref["process_ids"]}
+    for plate, ar_list in ars_by_plate.items():
+        for ar in ar_list:
+            if ar["process_id"] in ref_process_ids:
+                continue
+            if mode not in {"all", "monitoring"}:
+                continue
+            stats["monitoring"] += 1
+            rows.append(
+                {
+                    "plate": plate,
+                    "ar": ar,
+                    "ref": None,
+                    "suggestion": "Monitorização",
+                    "confidence": "monitoring",
+                    "reason": "AR sem REFSTRO associado.",
+                    "delta_days": None,
+                    "candidate_count": 0,
+                }
+            )
+
+    rows.sort(
+        key=lambda row: (
+            row["plate"] or "",
+            row["ref"]["accident_date"] if row["ref"] and row["ref"].get("accident_date") else date.max,
+            row["ar"]["date"] if row["ar"] and row["ar"].get("date") else date.max,
+        )
+    )
+    visible_rows = rows[:limit]
+    selected_plate = clean_plate or (visible_rows[0]["plate"] if visible_rows else "")
+    plate_rows = [row for row in rows if row["plate"] == selected_plate][:40] if selected_plate else []
+    grouped_counts = defaultdict(int)
+    for row in rows:
+        grouped_counts[row["plate"]] += 1
+    return {
+        "rows": visible_rows,
+        "plate_rows": plate_rows,
+        "selected_plate": selected_plate,
+        "grouped_counts": sorted(grouped_counts.items(), key=lambda item: (-item[1], item[0]))[:20],
+        "grouped_count_by_plate": dict(grouped_counts),
+        "stats": stats,
+        "total_rows": len(rows),
+        "mode": mode,
+        "window_days": window_days,
+        "plate_filter": plate_filter or "",
+    }
+
+
 @web_router.get("/management-center", response_class=HTMLResponse)
 def management_center_page(
     request: Request,
@@ -6706,6 +6954,53 @@ def management_center_load_originals(
             )
             db.commit()
     return RedirectResponse("/management-center?imported=loaded", status_code=303)
+
+
+@web_router.get("/management-center/reconciliation", response_class=HTMLResponse)
+def management_center_reconciliation(
+    request: Request,
+    plate: str | None = None,
+    mode: str = "pending",
+    window_days: int = 30,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login?next=%2Fmanagement-center%2Freconciliation", status_code=303)
+    denied = management_center_denied(request)
+    if denied:
+        return denied
+    if mode not in {"pending", "all", "strong", "doubt", "monitoring"}:
+        mode = "pending"
+    window_days = max(1, min(window_days, 90))
+    with SessionLocal() as db:
+        process_type = ensure_management_defaults(db)
+        metrics = management_business_metrics(db, process_type.id)
+        reconciliation = build_reconciliation_rows(
+            db,
+            plate_filter=plate,
+            mode=mode,
+            window_days=window_days,
+        )
+        response = templates.TemplateResponse(
+            request,
+            "management_reconciliation.html",
+            {
+                "process_type": process_type,
+                "metrics": metrics,
+                "reconciliation": reconciliation,
+                "mode_labels": {
+                    "pending": "Pendentes",
+                    "all": "Todos",
+                    "strong": "Match forte",
+                    "doubt": "Dúvidas",
+                    "monitoring": "Monitorização",
+                },
+                "page_loaded_at": datetime.now().strftime("%H:%M:%S"),
+            },
+        )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 
 @web_router.get("/management-center/{process_id}", response_class=HTMLResponse)

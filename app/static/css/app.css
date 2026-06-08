@@ -1400,6 +1400,160 @@ button:hover,
   background: transparent;
 }
 
+.reconciliation-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.reconciliation-filter-panel {
+  padding: 0;
+}
+
+.reconciliation-filter-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(150px, 180px) minmax(150px, 180px) auto auto minmax(140px, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 18px;
+}
+
+.reconciliation-timestamp {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reconciliation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+
+.reconciliation-table-section {
+  min-width: 0;
+}
+
+.reconciliation-table-shell {
+  overflow-x: auto;
+}
+
+.reconciliation-table-shell table {
+  min-width: 1380px;
+}
+
+.reconciliation-head-ar {
+  background: #edf4ff;
+  color: var(--blue-dark);
+}
+
+.reconciliation-head-suggestion {
+  background: #fff3d7;
+  color: var(--amber);
+}
+
+.reconciliation-head-ref {
+  background: #eaf8ef;
+  color: var(--green);
+}
+
+.reconciliation-group-row td {
+  background: #f7f8fa;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.reconciliation-associated {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.reconciliation-strong {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.reconciliation-probable {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.reconciliation-doubt,
+.reconciliation-missing_ar {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.reconciliation-monitoring {
+  background: #eef1f6;
+  color: var(--muted);
+}
+
+.compact-action-link {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.reconciliation-side-panel {
+  overflow: hidden;
+}
+
+.reconciliation-side-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.reconciliation-side-list article {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.reconciliation-side-list p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.reconciliation-side-list small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reconciliation-plate-list {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 16px 18px;
+}
+
+.reconciliation-plate-list a {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.reconciliation-plate-list span {
+  color: var(--muted);
+}
+
 .management-grid,
 .management-detail-grid {
   display: grid;
@@ -6778,6 +6932,8 @@ a.metric:hover {
   .management-import-form,
   .management-final-load-form,
   .management-filter-form,
+  .reconciliation-layout,
+  .reconciliation-filter-form,
   .association-move-form,
   .commerce-filter-form,
   .rentway-context-grid,

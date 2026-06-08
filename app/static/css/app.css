@@ -1423,6 +1423,7 @@ button:hover,
   font-weight: 900;
 }
 
+.reconciliation-workspace,
 .reconciliation-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
@@ -1430,39 +1431,156 @@ button:hover,
   align-items: start;
 }
 
+.reconciliation-case-section,
 .reconciliation-table-section {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reconciliation-case-section .table-heading p.muted {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.reconciliation-case-list {
+  display: grid;
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.reconciliation-case-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.reconciliation-case-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.reconciliation-case-header > div {
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
-.reconciliation-table-shell {
-  overflow-x: auto;
+.reconciliation-case-header span:not(.pill) {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.reconciliation-table-shell table {
-  min-width: 1380px;
+.reconciliation-plate {
+  color: var(--brand-dark);
+  font-size: 20px;
+  font-weight: 950;
+  text-decoration: none;
 }
 
-.reconciliation-head-ar {
-  background: #edf4ff;
-  color: var(--blue-dark);
+.reconciliation-case-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(140px, 0.55fr);
+  gap: 10px;
+  align-items: stretch;
 }
 
-.reconciliation-head-suggestion {
-  background: #fff3d7;
-  color: var(--amber);
+.reconciliation-process-card,
+.reconciliation-evidence-card,
+.reconciliation-decision-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfd;
 }
 
-.reconciliation-head-ref {
-  background: #eaf8ef;
-  color: var(--green);
+.reconciliation-process-card {
+  border-color: #f0cfc7;
+  background: #fffaf8;
 }
 
-.reconciliation-group-row td {
-  background: #f7f8fa;
+.reconciliation-process-card h4,
+.reconciliation-evidence-card h4 {
+  margin: 0;
   color: var(--ink);
+  font-size: 17px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.reconciliation-process-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reconciliation-next-step {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--warn-soft);
+  color: var(--warn);
   font-size: 12px;
   font-weight: 900;
+}
+
+.reconciliation-evidence-card dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.reconciliation-evidence-card dl div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.reconciliation-evidence-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
   text-transform: uppercase;
+}
+
+.reconciliation-evidence-card dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.reconciliation-decision-card {
+  background: #f7f8fa;
+}
+
+.reconciliation-decision-card strong {
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.reconciliation-decision-card span,
+.reconciliation-decision-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .reconciliation-associated {
@@ -6932,7 +7050,9 @@ a.metric:hover {
   .management-import-form,
   .management-final-load-form,
   .management-filter-form,
+  .reconciliation-workspace,
   .reconciliation-layout,
+  .reconciliation-case-grid,
   .reconciliation-filter-form,
   .association-move-form,
   .commerce-filter-form,

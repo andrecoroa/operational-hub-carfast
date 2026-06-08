@@ -1028,7 +1028,10 @@ def main() -> None:
             "started_at": datetime.now(UTC).isoformat(),
             "source_dir": str(args.source_dir),
             "from_date": args.from_date.isoformat(),
-            "policy": "AR-first: o processo interno nasce preferencialmente do AR; REFSTRO/companhia é associada depois.",
+            "policy": (
+                "AR-first: o processo interno nasce do AR principal; "
+                "CRAR per vehicle enriquece ARs existentes; REFSTRO/companhia é associada depois."
+            ),
             "accident_report": import_accident_report(db, paths["accident_report"], user_id, cutoff_date=args.from_date),
             "crar": import_crar(db, paths["crar"], user_id, cutoff_date=args.from_date),
             "refstro": import_refstro_sources(db, paths, user_id, cutoff_date=args.from_date),

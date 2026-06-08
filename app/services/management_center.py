@@ -37,7 +37,7 @@ from app.services.spreadsheets import (
 )
 
 MANAGEMENT_CENTER_TYPE_CODE = "claims_ar"
-MANAGEMENT_CENTER_TYPE_NAME = "Sinistros"
+MANAGEMENT_CENTER_TYPE_NAME = "Sinistros / AR"
 MANAGEMENT_CENTER_SOURCE_SYSTEM = "carfast_management_center"
 AR_IMPORT_TYPE = "claims_ar_rentway_ar"
 CRAR_PER_VEHICLE_IMPORT_TYPE = "claims_ar_rentway_per_vehicle"
@@ -112,7 +112,7 @@ MANAGEMENT_RULE_DEFINITIONS = [
     (
         "missing_ar_action",
         "AR em falta exige ação",
-        "Quando há sinistro identificado sem AR ativo associado, o SIN fica em AR em falta e abre ação obrigatória.",
+        "Quando há sinistro identificado sem AR ativo associado, o processo fica em AR em falta e abre ação obrigatória.",
         "critical",
     ),
     (
@@ -124,7 +124,7 @@ MANAGEMENT_RULE_DEFINITIONS = [
     (
         "rentway_closed_not_internal",
         "Fecho Rentway não fecha internamente",
-        "Um AR fechado no Rentway passa a validação interna, mas não fecha automaticamente o SIN CarFast.",
+        "Um AR fechado no Rentway passa a validação interna, mas não fecha automaticamente o processo CarFast.",
         "warning",
     ),
     (
@@ -136,7 +136,7 @@ MANAGEMENT_RULE_DEFINITIONS = [
     (
         "minimum_data_information_request",
         "Sem mínimos há pedido de informação",
-        "Sem matrícula ou data suficientes não há alerta operacional; o SIN fica como pedido de informação.",
+        "Sem matrícula ou data suficientes não há alerta operacional; o processo fica como pedido de informação.",
         "info",
     ),
 ]
@@ -382,14 +382,14 @@ def ensure_management_defaults(db: Session) -> ManagementProcessType:
         process_type = ManagementProcessType(
             code=MANAGEMENT_CENTER_TYPE_CODE,
             name=MANAGEMENT_CENTER_TYPE_NAME,
-            description="Acompanhamento por sinistro/SIN; ARs Rentway e linhas REFSTRO são dados associados.",
+            description="Processos de acompanhamento de sinistros, ARs Rentway e REFSTROs.",
             active=True,
         )
         db.add(process_type)
         db.flush()
     else:
         process_type.name = MANAGEMENT_CENTER_TYPE_NAME
-        process_type.description = "Acompanhamento por sinistro/SIN; ARs Rentway e linhas REFSTRO são dados associados."
+        process_type.description = "Processos de acompanhamento de sinistros, ARs Rentway e REFSTROs."
     existing_rules = {
         rule.code
         for rule in db.scalars(select(ManagementRule).where(ManagementRule.process_type_id == process_type.id))
@@ -550,7 +550,7 @@ def get_or_create_claim(
                 action="process.enriched",
                 entity_type="claim_incident",
                 entity_id=claim.id,
-                detail="Dados do SIN enriquecidos por importação.",
+                detail="Dados do processo enriquecidos por importação.",
                 user_id=user_id,
             )
         return claim
@@ -1264,7 +1264,7 @@ def import_claims_file(
         status="running",
         imported_by_id=user_id,
         total_rows=len(rows),
-        detail=f"Importação Centro de Gestão: {MANAGEMENT_CENTER_TYPE_NAME} / dados associados.",
+        detail=f"Importação Centro de Gestão: {MANAGEMENT_CENTER_TYPE_NAME}.",
     )
     db.add(batch)
     db.flush()
@@ -1383,7 +1383,7 @@ def import_claims_file(
     batch.updated_rows = len(touched_process_ids)
     batch.error_rows = error_rows
     batch.finished_at = datetime.now(UTC)
-    batch.detail = f"{created_rows} linhas guardadas; {len(touched_process_ids)} SIN atualizados."
+    batch.detail = f"{created_rows} linhas guardadas; {len(touched_process_ids)} processos tocados."
     record_audit(
         db,
         action="management_center.import.completed",

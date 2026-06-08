@@ -46,23 +46,6 @@
       <a class="button-link secondary-link" href="#processos">Ver processos</a>
     </section>
 
-    <section class="management-load-strip">
-      <div>
-        <p class="eyebrow">Dados carregados</p>
-        <strong>{{ metrics.technical_processes }} processos no Centro</strong>
-        <span>
-          {{ metrics.official_ar }} ARs oficiais · {{ metrics.participations }} participações REFSTRO ·
-          {{ metrics.participations_to_reconcile }} por reconciliar · {{ metrics.open_actions }} ações abertas
-        </span>
-        <small>Atualizado às {{ page_loaded_at }}</small>
-      </div>
-      <div class="management-load-actions">
-        <a class="button-link secondary-link" href="#processos">Ver lista carregada</a>
-        <a class="button-link secondary-link" href="/management-center?pending=missing_ar">Ver AR em falta</a>
-        <a class="button-link secondary-link" href="/management-center/reconciliation">Reconciliação</a>
-      </div>
-    </section>
-
     <section class="metric-grid management-kpis">
       <a class="metric" href="/management-center">
         <span class="metric-icon blue">AR</span>
@@ -86,13 +69,30 @@
       </span>
     </section>
 
+    <section class="management-load-strip">
+      <div>
+        <p class="eyebrow">Dados carregados</p>
+        <strong>{{ metrics.technical_processes }} processos no Centro</strong>
+        <span>
+          {{ metrics.official_ar }} ARs oficiais · {{ metrics.participations }} participações REFSTRO ·
+          {{ metrics.participations_to_reconcile }} por reconciliar · {{ metrics.open_actions }} ações abertas
+        </span>
+        <small>Atualizado às {{ page_loaded_at }}</small>
+      </div>
+      <div class="management-load-actions">
+        <a class="button-link secondary-link" href="/management-center/reconciliation">Reconciliação</a>
+        <a class="button-link secondary-link" href="#processos">Ver lista carregada</a>
+        <a class="button-link secondary-link" href="/management-center?pending=missing_ar">Ver AR em falta</a>
+      </div>
+    </section>
+
     <nav class="task-content-tabs management-tabs">
       <a class="active" href="/management-center"><strong>Visão Geral</strong><span>Processos</span></a>
       <a href="#processos"><strong>Processos</strong><span>Lista filtrável</span></a>
+      <a href="/management-center/reconciliation"><strong>Reconciliação</strong><span>AR / REFSTRO</span></a>
       <a href="#indicadores"><strong>Indicadores</strong><span>Prioridades</span></a>
       <a href="#slas"><strong>SLAs</strong><span>Ações abertas</span></a>
       <a href="#auditoria"><strong>Auditoria</strong><span>Importações</span></a>
-      <a href="/management-center/reconciliation"><strong>Reconciliação</strong><span>AR / REFSTRO</span></a>
       <a href="#regras"><strong>Regras</strong><span>Aplicáveis</span></a>
     </nav>
 

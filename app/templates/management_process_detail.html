@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Centro de Gestão e Acompanhamento</p>
         <h2>{{ process.internal_reference }}</h2>
-        <p class="breadcrumb">Sinistro/SIN do tipo {{ process_type.name if process_type else "não definido" }} · {{ process.title }}</p>
+        <p class="breadcrumb">Processo do tipo {{ process_type.name if process_type else "não definido" }} · {{ process.title }}</p>
       </div>
       <div class="button-row">
         <a class="button-link secondary-link" href="/management-center">Voltar</a>
@@ -16,7 +16,7 @@
     </header>
 
     {% if updated %}
-      <section class="notice-inline"><strong>Sinistro atualizado.</strong> Histórico preservado.</section>
+      <section class="notice-inline"><strong>Processo atualizado.</strong> Histórico preservado.</section>
     {% endif %}
 
     <section class="metric-grid management-kpis">
@@ -30,7 +30,7 @@
       </span>
       <span class="metric">
         <span class="metric-icon green">REF</span>
-        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_refstro_line")|selectattr("active")|list|length }}</strong><span>Linhas REFSTRO</span><small>{{ claim.components_json.components|join(", ") if claim and claim.components_json and claim.components_json.components else "Sem componentes" }}</small></span>
+        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_refstro_line")|selectattr("active")|list|length }}</strong><span>REFSTROs associados</span><small>{{ claim.components_json.components|join(", ") if claim and claim.components_json and claim.components_json.components else "Sem componentes" }}</small></span>
       </span>
       <span class="metric">
         <span class="metric-icon warn">€</span>
@@ -42,12 +42,12 @@
       <article class="cockpit-panel">
         <div class="table-heading">
           <div>
-            <p class="eyebrow">Sinistro</p>
+            <p class="eyebrow">Processo</p>
             <h3>Dados de acompanhamento</h3>
           </div>
         </div>
         <dl class="detail-list">
-          <div><dt>Tipo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
+          <div><dt>Tipo de processo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
           <div><dt>Matrícula</dt><dd>{{ process.plate or "-" }}</dd></div>
           <div><dt>Data sinistro</dt><dd>{{ claim.accident_date.strftime("%Y-%m-%d") if claim and claim.accident_date else "-" }}</dd></div>
           <div><dt>Documento</dt><dd>{{ process.document_reference or "-" }}</dd></div>
@@ -90,7 +90,7 @@
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Ligações</p>
-          <h3>Dados associados ao SIN</h3>
+          <h3>Dados associados ao processo</h3>
         </div>
       </div>
       <div class="table-shell management-table-shell">

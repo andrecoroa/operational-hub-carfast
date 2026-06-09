@@ -37,7 +37,7 @@
       </section>
     {% endif %}
 
-    <section class="management-type-strip management-command-strip">
+    <section class="management-type-strip management-command-strip management-center-hero">
       <div>
         <p class="eyebrow">Tipo de processo ativo</p>
         <strong>{{ process_type.name }}</strong>
@@ -46,7 +46,7 @@
       <a class="button-link secondary-link" href="/management-center?view=processes#processos">Ver processos</a>
     </section>
 
-    <section class="metric-grid management-kpis management-kpis-compact">
+    <section class="metric-grid management-kpis management-kpis-compact management-overview-kpis">
       <a class="metric" href="/management-center?view=processes">
         <span class="metric-icon blue">AR</span>
         <span class="metric-detail"><strong>{{ metrics.official_ar }}</strong><span>SIN/AR</span></span>
@@ -72,7 +72,7 @@
     </nav>
 
     {% if active_view == "processes" %}
-    <section class="section">
+    <section class="section management-card-section" id="processos">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Processos</p>
@@ -80,7 +80,7 @@
           <p class="breadcrumb">Lista principal para acompanhamento operacional.</p>
         </div>
       </div>
-      <form class="management-filter-form compact-origin-filter" method="get" action="/management-center">
+      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
         <input type="hidden" name="view" value="processes">
         <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
         <label>Documento<input name="document" value="{{ filters.document }}"></label>
@@ -118,11 +118,12 @@
           </thead>
           <tbody>
             {% for process in processes %}
-              <tr>
-                <td><a href="/management-center/{{ process.id }}">{{ process.internal_reference }}</a></td>
-                <td>{{ process.plate or process.document_reference or "-" }}</td>
-                <td>{{ status_labels.get(process.status, process.status) }}</td>
-                <td>{{ liability_labels.get(process_liabilities.get(process.id) or "", process_liabilities.get(process.id) or "-") }}</td>
+              {% set process_liability = process_liabilities.get(process.id) %}
+              <tr class="management-row-click">
+                <td><a class="management-ref-link" href="/management-center/{{ process.id }}">{{ process.internal_reference }}</a></td>
+                <td><strong>{{ process.plate or process.document_reference or "-" }}</strong></td>
+                <td><span class="management-status-pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
+                <td><span class="management-liability-pill liability-{{ process_liability or 'awaiting_responsibility' }}">{{ liability_labels.get(process_liability or "", process_liability or "-") }}</span></td>
                 <td>{{ process.updated_at.strftime("%d/%m %H:%M") if process.updated_at else "-" }}</td>
                 <td>{{ process.driver_name or process.customer_name or "-" }}</td>
                 <td><a class="table-link" href="/management-center/{{ process.id }}">Abrir</a></td>
@@ -143,7 +144,7 @@
     </section>
 
     {% elif active_view == "origins" %}
-    <section class="section management-origins-panel">
+    <section class="section management-origins-panel management-card-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Origens</p>
@@ -151,7 +152,7 @@
           <p class="breadcrumb">Leitura simples: AR Rentway, REFSTRO e não classificados.</p>
         </div>
       </div>
-      <form class="management-filter-form compact-origin-filter" method="get" action="/management-center">
+      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
         <input type="hidden" name="view" value="origins">
         <label>Tipo
           <select name="origin">
@@ -167,7 +168,10 @@
       </form>
 
       <div class="management-origin-block">
-        <h4 class="eyebrow">a) AR Rentway</h4>
+        <div class="management-subsection-title">
+          <span class="management-source-dot source-ar">AR</span>
+          <h4>AR Rentway</h4>
+        </div>
         <div class="table-shell management-table-shell management-origin-table-shell">
           <table>
             <thead>
@@ -176,18 +180,18 @@
             <tbody>
               {% for item in origin_rows if item.kind == "AR Rentway" %}
                 <tr>
-                  <td>{{ item.reference }}</td>
-                  <td>{{ item.plate }}</td>
+                  <td><strong>{{ item.reference }}</strong></td>
+                  <td><strong>{{ item.plate }}</strong></td>
                   <td>{{ item.date or "-" }}</td>
                   <td>{{ item.detail }}</td>
                   <td>
                     {% if item.process_id %}
                       <a class="table-link" href="/management-center/{{ item.process_id }}">{{ item.process_reference }}</a>
                     {% else %}
-                      Sem processo
+                      <span class="management-status-pill status-waiting">Sem processo</span>
                     {% endif %}
                   </td>
-                  <td>{% if item.crar_enriched %}CRAR complementar{% else %}Não recebido{% endif %}</td>
+                  <td>{% if item.crar_enriched %}<span class="management-status-pill status-analysis">CRAR complementar</span>{% else %}<span class="management-status-pill status-waiting">Não recebido</span>{% endif %}</td>
                 </tr>
               {% else %}
                 <tr><td colspan="6" class="muted">Sem ARs no filtro atual.</td></tr>
@@ -198,7 +202,10 @@
       </div>
 
       <div class="management-origin-block">
-        <h4 class="eyebrow">b) REFSTRO</h4>
+        <div class="management-subsection-title">
+          <span class="management-source-dot source-ref">REF</span>
+          <h4>REFSTRO</h4>
+        </div>
         <div class="table-shell management-table-shell management-origin-table-shell">
           <table>
             <thead>
@@ -207,15 +214,15 @@
             <tbody>
               {% for item in origin_rows if item.kind == "REFSTRO" %}
                 <tr>
-                  <td class="management-origin-reference-cell">{{ item.reference }}</td>
-                  <td>{{ item.plate }}</td>
+                  <td class="management-origin-reference-cell"><strong>{{ item.reference }}</strong></td>
+                  <td><strong>{{ item.plate }}</strong></td>
                   <td>{{ item.date or "-" }}</td>
                   <td>{{ item.status }}</td>
                   <td>
                     {% if item.process_id %}
                       <a class="table-link" href="/management-center/{{ item.process_id }}">{{ item.process_reference }}</a>
                     {% else %}
-                      Sem processo
+                      <span class="management-status-pill status-waiting">Sem processo</span>
                     {% endif %}
                   </td>
                   <td>
@@ -240,7 +247,10 @@
       </div>
 
       <div class="management-origin-block">
-        <h4 class="eyebrow">c) Não classificados</h4>
+        <div class="management-subsection-title">
+          <span class="management-source-dot source-open">?</span>
+          <h4>Não classificados</h4>
+        </div>
         <div class="table-shell management-table-shell management-origin-table-shell">
           <table>
             <thead>

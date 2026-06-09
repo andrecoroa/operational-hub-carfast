@@ -19,7 +19,7 @@
       <section class="notice-inline"><strong>Processo atualizado.</strong> Histórico preservado.</section>
     {% endif %}
 
-    <section class="metric-grid management-kpis">
+    <section class="metric-grid management-kpis management-overview-kpis">
       <span class="metric">
         <span class="metric-icon blue">PRC</span>
         <span class="metric-detail"><strong>{{ process.internal_reference }}</strong><span>{{ status_labels.get(process.status, process.status) }}</span><small>{{ phase_labels.get(process.phase, process.phase) }}</small></span>
@@ -38,8 +38,8 @@
       </span>
     </section>
 
-    <section class="detail-grid management-detail-grid">
-      <article class="cockpit-panel">
+    <section class="detail-grid management-detail-grid management-detail-layout">
+      <article class="cockpit-panel management-primary-panel">
         <div class="table-heading">
           <div>
             <p class="eyebrow">Processo</p>
@@ -48,7 +48,7 @@
         </div>
         <dl class="detail-list">
           <div><dt>Tipo de processo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
-          <div><dt>Matrícula</dt><dd>{{ process.plate or "-" }}</dd></div>
+          <div><dt>Matrícula</dt><dd><strong>{{ process.plate or "-" }}</strong></dd></div>
           <div><dt>Data sinistro</dt><dd>{{ claim.accident_date.strftime("%Y-%m-%d") if claim and claim.accident_date else "-" }}</dd></div>
           <div>
             <dt>AR Rentway</dt>
@@ -66,7 +66,7 @@
             <dt>REFSTRO</dt>
             <dd>
               {% if refstro_associations %}
-                <span>{{ tracking_references.refstro_line_count }} linha(s) associada(s)</span>
+                <span class="management-status-pill status-analysis">{{ tracking_references.refstro_line_count }} linha(s) associada(s)</span>
               {% else %}
                 -
               {% endif %}
@@ -147,15 +147,15 @@
                   <button type="submit">Guardar</button>
                 </form>
               {% else %}
-                {{ liability_labels.get(liability_value, liability_value or "-") }}
+                <span class="management-liability-pill liability-{{ liability_value or 'awaiting_responsibility' }}">{{ liability_labels.get(liability_value, liability_value or "-") }}</span>
               {% endif %}
             </dd>
           </div>
-          <div><dt>Pendência</dt><dd>{{ pending_labels.get(process.pending_reason, process.pending_reason or "-") }}</dd></div>
+          <div><dt>Pendência</dt><dd>{% if process.pending_reason %}<span class="management-status-pill status-waiting">{{ pending_labels.get(process.pending_reason, process.pending_reason) }}</span>{% else %}-{% endif %}</dd></div>
         </dl>
       </article>
 
-      <article class="cockpit-panel">
+      <article class="cockpit-panel management-side-panel">
         <div class="table-heading">
           <div>
             <p class="eyebrow">Ações</p>
@@ -184,7 +184,7 @@
       </article>
     </section>
 
-    <section class="section">
+    <section class="section management-card-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Ligações</p>
@@ -219,7 +219,7 @@
                 </td>
                 <td>-<small>{{ ar.raw_state if ar else "-" }}</small></td>
                 <td>
-                  <span class="pill status-open">Ativa</span>
+                  <span class="management-status-pill status-open">Ativa</span>
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
@@ -284,7 +284,7 @@
                   <small>{{ refstro.driver_name if refstro else "-" }}</small>
                 </td>
                 <td>
-                  <span class="pill status-open">Ativa</span>
+                  <span class="management-status-pill status-open">Ativa</span>
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
@@ -339,7 +339,7 @@
                   {{ ar.status if ar else refstro.status if refstro else "-" }}
                   <small>{{ ar.request_date.strftime("%Y-%m-%d") if ar and ar.request_date else refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
                 </td>
-                <td><span class="pill status-cancelled">Inativa</span></td>
+                <td><span class="management-status-pill status-cancelled">Inativa</span></td>
                 <td><small>{{ association.reason or "-" }}</small></td>
               </tr>
             {% else %}

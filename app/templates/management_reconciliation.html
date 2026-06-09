@@ -15,7 +15,7 @@
       </div>
     </header>
 
-    <section class="metric-grid management-kpis reconciliation-kpis">
+    <section class="metric-grid management-kpis management-overview-kpis reconciliation-kpis">
       <span class="metric">
         <span class="metric-icon amber">REC</span>
         <span class="metric-detail"><strong>{{ metrics.participations_to_reconcile }}</strong><span>Por reconciliar</span><small>REFSTRO sem AR validado</small></span>
@@ -34,8 +34,8 @@
       </span>
     </section>
 
-    <section class="section reconciliation-filter-panel">
-      <form class="reconciliation-filter-form" method="get" action="/management-center/reconciliation">
+    <section class="section reconciliation-filter-panel management-card-section">
+      <form class="reconciliation-filter-form management-toolbar" method="get" action="/management-center/reconciliation">
         <label>Matrícula<input name="plate" value="{{ reconciliation.plate_filter }}" placeholder="BC24RI"></label>
         <label>
           Vista
@@ -59,7 +59,7 @@
       </form>
     </section>
 
-    <section class="section reconciliation-board">
+    <section class="section reconciliation-board management-card-section">
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Comparação operativa</p>
@@ -75,7 +75,7 @@
             <a class="reconciliation-line-summary" href="/management-center/reconciliation?selected_plate={{ plate }}&mode={{ reconciliation.mode }}&window_days={{ reconciliation.window_days }}{% if reconciliation.plate_filter %}&plate={{ reconciliation.plate_filter }}{% endif %}">
               <span class="reconciliation-line-plate">{{ plate }}</span>
               <span>{{ total }} pendência(s)</span>
-              <span class="pill reconciliation-{{ active_plate and 'strong' or 'monitoring' }}">{{ active_plate and "Aberto" or "Ver" }}</span>
+              <span class="management-status-pill reconciliation-{{ active_plate and 'strong' or 'monitoring' }}">{{ active_plate and "Aberto" or "Ver" }}</span>
             </a>
             {% if active_plate %}
               <div class="reconciliation-expanded">
@@ -90,7 +90,7 @@
                         <article class="reconciliation-source-card">
                           <div>
                             <strong>AR {{ ar.ar_reference }}</strong>
-                            <span class="pill reconciliation-{{ 'associated' if ar.has_refstro else 'monitoring' }}">{{ "Já tem REFSTRO" if ar.has_refstro else "Pendente" }}</span>
+                            <span class="management-status-pill reconciliation-{{ 'associated' if ar.has_refstro else 'monitoring' }}">{{ "Já tem REFSTRO" if ar.has_refstro else "Pendente" }}</span>
                           </div>
                           <small>{{ ar.date or "-" }} · {{ ar.status }}</small>
                           <small>{{ ar.customer_name }} · {{ ar.driver_name }}</small>
@@ -115,7 +115,7 @@
                         <article class="reconciliation-source-card reconciliation-ref-card">
                           <div>
                             <strong>{{ ref.refstro_reference }}</strong>
-                            <span class="pill reconciliation-{{ row.confidence }}">{{ row.suggestion }}</span>
+                            <span class="management-status-pill reconciliation-{{ row.confidence }}">{{ row.suggestion }}</span>
                           </div>
                           <small>{{ ref.accident_date or "-" }} · {{ ref.line_count }} linha(s) · {{ ref.refstro_count }} referência(s)</small>
                           <ul class="reconciliation-values-list">

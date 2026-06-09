@@ -29,10 +29,6 @@
   --shadow: 0 10px 24px rgba(17, 24, 39, 0.07);
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
   margin: 0;
   min-height: 100vh;
@@ -8302,4 +8298,210 @@ a.metric:hover {
   .responsive-card-table .small-button {
     width: 100%;
   }
+}
+
+/* Management Center phase 1 visual refinements */
+.management-center-hero {
+  border-color: #dbe6f4;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.management-card-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(23, 32, 38, 0.035);
+}
+
+.management-overview-kpis .metric {
+  min-height: 72px;
+  border-color: #dce5ee;
+}
+
+.management-toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) auto auto;
+  gap: 10px;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  padding: 14px 16px;
+  background: #fbfcfd;
+}
+
+.management-toolbar label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.management-toolbar input,
+.management-toolbar select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.management-toolbar button,
+.management-toolbar .button-link {
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.management-row-click:hover {
+  background: #fbfdff;
+}
+
+.management-ref-link {
+  color: var(--brand-dark);
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.management-status-pill,
+.management-liability-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.management-status-pill.status-open,
+.management-status-pill.status-analysis,
+.management-status-pill.reconciliation-associated,
+.management-status-pill.reconciliation-strong {
+  border-color: #cce7d6;
+  background: #f2fbf5;
+  color: #1f7a42;
+}
+
+.management-status-pill.status-waiting,
+.management-status-pill.reconciliation-probable,
+.management-status-pill.reconciliation-monitoring {
+  border-color: #f2dda5;
+  background: #fff8e6;
+  color: #8a6417;
+}
+
+.management-status-pill.status-cancelled,
+.management-status-pill.reconciliation-doubt,
+.management-status-pill.reconciliation-missing_ar {
+  border-color: #f1c7c0;
+  background: #fff2ef;
+  color: var(--brand-dark);
+}
+
+.management-liability-pill.liability-awaiting_responsibility {
+  border-color: #f2dda5;
+  background: #fff8e6;
+  color: #8a6417;
+}
+
+.management-liability-pill.liability-culpado {
+  border-color: #f1c7c0;
+  background: #fff2ef;
+  color: var(--brand-dark);
+}
+
+.management-liability-pill.liability-sem_culpa {
+  border-color: #cce7d6;
+  background: #f2fbf5;
+  color: #1f7a42;
+}
+
+.management-liability-pill.liability-50_50,
+.management-liability-pill.liability-na {
+  border-color: #dbe6f4;
+  background: #f7fbff;
+  color: var(--blue-dark);
+}
+
+.management-subsection-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
+}
+
+.management-subsection-title h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.management-source-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.management-source-dot.source-ar {
+  background: #edf4ff;
+  color: var(--blue-dark);
+}
+
+.management-source-dot.source-ref {
+  background: #f2fbf5;
+  color: #1f7a42;
+}
+
+.management-source-dot.source-open {
+  background: #fff8e6;
+  color: #8a6417;
+}
+
+.management-detail-layout {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+}
+
+.management-primary-panel,
+.management-side-panel {
+  min-width: 0;
+}
+
+.management-liability-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  max-width: 340px;
+}
+
+.management-liability-form select,
+.management-liability-form button {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 780px) {
+  .management-toolbar,
+  .management-detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+* {
+  box-sizing: border-box;
 }

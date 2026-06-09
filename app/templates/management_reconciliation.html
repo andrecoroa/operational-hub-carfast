@@ -59,121 +59,117 @@
       </form>
     </section>
 
-    <section class="reconciliation-workspace">
-      <div class="section reconciliation-case-section">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Casos para validação</p>
-            <h3>{{ reconciliation.total_rows }} situações encontradas</h3>
-            <p class="muted">O processo fica sempre visível. AR e REFSTRO aparecem como evidências para decisão.</p>
-          </div>
-        </div>
-        <div class="reconciliation-case-list">
-          {% for row in reconciliation.rows %}
-            {% set process_id = none %}
-            {% set process_label = "Por validar" %}
-            {% if row.ar and row.ar.process_id %}
-              {% set process_id = row.ar.process_id %}
-              {% set process_label = row.ar.process_reference %}
-            {% elif row.ref and row.ref.process_ids %}
-              {% set process_id = row.ref.process_ids[0] %}
-              {% set process_label = "Processo associado" %}
-            {% endif %}
-            <article class="reconciliation-case-card">
-              <div class="reconciliation-case-header">
-                <div>
-                  <a class="reconciliation-plate" href="/management-center/reconciliation?plate={{ row.plate }}&mode={{ reconciliation.mode }}&window_days={{ reconciliation.window_days }}">{{ row.plate }}</a>
-                  <span>{{ reconciliation.grouped_count_by_plate.get(row.plate, 1) }} ocorrência(s) nesta matrícula</span>
-                </div>
-                <span class="pill reconciliation-{{ row.confidence }}">{{ row.suggestion }}</span>
-              </div>
-
-              <div class="reconciliation-case-grid">
-                <section class="reconciliation-process-card">
-                  <p class="eyebrow">Processo</p>
-                  <h4>
-                    {% if process_id %}
-                      <a class="table-link" href="/management-center/{{ process_id }}">{{ process_label }}</a>
-                    {% else %}
-                      {{ process_label }}
-                    {% endif %}
-                  </h4>
-                  <p>{{ row.reason }}</p>
-                  {% if process_id %}
-                    <a class="button-link secondary-link compact-action-link" href="/management-center/{{ process_id }}">Abrir processo</a>
-                  {% else %}
-                    <span class="reconciliation-next-step">Validar no processo antes de associar</span>
-                  {% endif %}
-                </section>
-
-                <section class="reconciliation-evidence-card">
-                  <p class="eyebrow">AR Rentway</p>
-                  <h4>{{ row.ar.ar_reference if row.ar else "Sem AR" }}</h4>
-                  <dl>
-                    <div><dt>Data</dt><dd>{{ row.ar.date if row.ar and row.ar.date else "-" }}</dd></div>
-                    <div><dt>Status</dt><dd>{{ row.ar.status if row.ar else "-" }}</dd></div>
-                    <div><dt>Condutor</dt><dd>{{ row.ar.driver_name if row.ar and row.ar.driver_name else "-" }}</dd></div>
-                    <div><dt>Cliente</dt><dd>{{ row.ar.customer_name if row.ar and row.ar.customer_name else "-" }}</dd></div>
-                  </dl>
-                </section>
-
-                <section class="reconciliation-evidence-card">
-                  <p class="eyebrow">REFSTRO / Allianz</p>
-                  <h4>{{ row.ref.refstro_reference if row.ref else "Sem participação" }}</h4>
-                  <dl>
-                    <div><dt>Data</dt><dd>{{ row.ref.accident_date if row.ref else "-" }}</dd></div>
-                    <div><dt>Valor</dt><dd>{{ "%.2f"|format(row.ref.value if row.ref else 0) }} €</dd></div>
-                    <div><dt>Componentes</dt><dd>{{ row.ref.components|join(", ") if row.ref else "-" }}</dd></div>
-                    <div><dt>Documento</dt><dd>{{ row.ref.document_reference if row.ref and row.ref.document_reference else "-" }}</dd></div>
-                  </dl>
-                </section>
-
-                <section class="reconciliation-decision-card">
-                  <p class="eyebrow">Leitura</p>
-                  <strong>{{ row.delta_days if row.delta_days is not none else "-" }} dias</strong>
-                  <span>diferença entre datas</span>
-                  <small>{{ row.reason }}</small>
-                </section>
-              </div>
-            </article>
-          {% else %}
-            <p class="muted empty-panel">Sem casos para estes filtros.</p>
-          {% endfor %}
+    <section class="section reconciliation-board">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Comparação operativa</p>
+          <h3>{{ reconciliation.total_rows }} referência(s) para gestão</h3>
+          <p class="muted">Visualização simplificada: AR ↔ REFSTRO por placa e data de sinistro.</p>
         </div>
       </div>
 
-      <aside class="cockpit-panel reconciliation-side-panel">
-        <div class="table-heading">
-          <div>
-            <p class="eyebrow">Matrícula selecionada</p>
-            <h3>{{ reconciliation.selected_plate or "Sem seleção" }}</h3>
-          </div>
-        </div>
-        <div class="reconciliation-side-list">
-          {% for row in reconciliation.plate_rows %}
-            <article>
-              <span class="pill reconciliation-{{ row.confidence }}">{{ row.suggestion }}</span>
-              <strong>{{ row.ar.ar_reference if row.ar else "Sem AR" }} · {{ row.ref.refstro_reference if row.ref else "Sem REFSTRO" }}</strong>
-              <p>{{ row.reason }}</p>
-              <small>
-                AR {{ row.ar.date if row.ar and row.ar.date else "-" }}
-                · REF {{ row.ref.accident_date if row.ref else "-" }}
-                · {{ "%.2f"|format(row.ref.value if row.ref else 0) }} €
-              </small>
-            </article>
-          {% else %}
-            <p class="muted empty-panel">Escolhe uma matrícula para ver candidatos.</p>
-          {% endfor %}
-        </div>
-        <div class="reconciliation-plate-list">
-          <p class="eyebrow">Mais matrículas</p>
-          {% for plate, total in reconciliation.grouped_counts[:10] %}
-            <a href="/management-center/reconciliation?plate={{ plate }}&mode={{ reconciliation.mode }}&window_days={{ reconciliation.window_days }}">
-              <strong>{{ plate }}</strong><span>{{ total }}</span>
+      <div class="reconciliation-line-list">
+        {% for plate, total in reconciliation.grouped_counts %}
+          {% set active_plate = plate == reconciliation.selected_plate %}
+          <article class="reconciliation-line {% if active_plate %}active{% endif %}">
+            <a class="reconciliation-line-summary" href="/management-center/reconciliation?selected_plate={{ plate }}&mode={{ reconciliation.mode }}&window_days={{ reconciliation.window_days }}{% if reconciliation.plate_filter %}&plate={{ reconciliation.plate_filter }}{% endif %}">
+              <span class="reconciliation-line-plate">{{ plate }}</span>
+              <span>{{ total }} pendência(s)</span>
+              <span class="pill reconciliation-{{ active_plate and 'strong' or 'monitoring' }}">{{ active_plate and "Aberto" or "Ver" }}</span>
             </a>
-          {% endfor %}
-        </div>
-      </aside>
+            {% if active_plate %}
+              <div class="reconciliation-expanded">
+                <div class="reconciliation-match-workspace">
+                  <section class="reconciliation-match-column">
+                    <div class="reconciliation-match-heading">
+                      <strong>ARs da matrícula</strong>
+                      <small>{{ reconciliation.plate_ar_candidates|length }} registo(s)</small>
+                    </div>
+                    <div class="reconciliation-match-list">
+                      {% for ar in reconciliation.plate_ar_candidates %}
+                        <article class="reconciliation-source-card">
+                          <div>
+                            <strong>AR {{ ar.ar_reference }}</strong>
+                            <span class="pill reconciliation-{{ 'associated' if ar.has_refstro else 'monitoring' }}">{{ "Já tem REFSTRO" if ar.has_refstro else "Pendente" }}</span>
+                          </div>
+                          <small>{{ ar.date or "-" }} · {{ ar.status }}</small>
+                          <small>{{ ar.customer_name }} · {{ ar.driver_name }}</small>
+                          {% if ar.process_id %}
+                            <a class="table-link" href="/management-center/{{ ar.process_id }}">{{ ar.process_reference }}</a>
+                          {% endif %}
+                        </article>
+                      {% else %}
+                        <p class="muted empty-panel">Sem ARs para esta matrícula.</p>
+                      {% endfor %}
+                    </div>
+                  </section>
+
+                  <section class="reconciliation-match-column">
+                    <div class="reconciliation-match-heading">
+                      <strong>REFSTRO por reconciliar</strong>
+                      <small>{{ reconciliation.plate_ref_rows|length }} grupo(s)</small>
+                    </div>
+                    <div class="reconciliation-match-list">
+                      {% for row in reconciliation.plate_ref_rows %}
+                        {% set ref = row.ref %}
+                        <article class="reconciliation-source-card reconciliation-ref-card">
+                          <div>
+                            <strong>{{ ref.refstro_reference }}</strong>
+                            <span class="pill reconciliation-{{ row.confidence }}">{{ row.suggestion }}</span>
+                          </div>
+                          <small>{{ ref.accident_date or "-" }} · {{ ref.line_count }} linha(s) · {{ ref.refstro_count }} referência(s)</small>
+                          <ul class="reconciliation-values-list">
+                            {% for item in ref.component_breakdown %}
+                              <li>{{ item.component }}: {{ "%.2f"|format(item.value or 0) }} €</li>
+                            {% else %}
+                              <li>Sem rubricas.</li>
+                            {% endfor %}
+                          </ul>
+                          <small>Total: {{ "%.2f"|format(ref.value or 0) }} €</small>
+
+                          {% if nav_has_permission(request, "management_center.write", "admin.manage") %}
+                            <form class="reconciliation-match-form" method="post" action="/management-center/reconciliation/associate">
+                              <input type="hidden" name="mode" value="attach_to_ar">
+                              <input type="hidden" name="ref_line_ids" value="{{ row.ref_line_ids }}">
+                              <input type="hidden" name="selected_plate" value="{{ reconciliation.selected_plate }}">
+                              <input type="hidden" name="selected_mode" value="{{ reconciliation.mode }}">
+                              <input type="hidden" name="window_days" value="{{ reconciliation.window_days }}">
+                              <input type="hidden" name="plate_filter" value="{{ reconciliation.plate_filter }}">
+                              <select name="ar_id" required>
+                                {% for ar in reconciliation.plate_ar_candidates %}
+                                  <option value="{{ ar.id }}" {% if row.ar and row.ar.id == ar.id %}selected{% endif %}>AR {{ ar.ar_reference }} · {{ ar.date or "-" }}</option>
+                                {% endfor %}
+                              </select>
+                              <button type="submit" {% if not reconciliation.plate_ar_candidates %}disabled{% endif %}>Associar</button>
+                            </form>
+                            <form class="reconciliation-match-form" method="post" action="/management-center/reconciliation/associate">
+                              <input type="hidden" name="mode" value="create_new">
+                              <input type="hidden" name="ref_line_ids" value="{{ row.ref_line_ids }}">
+                              <input type="hidden" name="selected_plate" value="{{ reconciliation.selected_plate }}">
+                              <input type="hidden" name="selected_mode" value="{{ reconciliation.mode }}">
+                              <input type="hidden" name="window_days" value="{{ reconciliation.window_days }}">
+                              <input type="hidden" name="plate_filter" value="{{ reconciliation.plate_filter }}">
+                              <button type="submit" class="secondary-button">Criar SIN sem AR</button>
+                            </form>
+                          {% endif %}
+                          <small>{{ row.reason }}</small>
+                          {% if ref.process_ids %}
+                            <a class="table-link" href="/management-center/{{ ref.process_ids[0] }}">Abrir processo atual</a>
+                          {% endif %}
+                        </article>
+                      {% else %}
+                        <p class="muted empty-panel">Sem REFSTRO por reconciliar nesta matrícula.</p>
+                      {% endfor %}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted empty-panel">Sem matrículas com pendência para estes filtros.</p>
+        {% endfor %}
+      </div>
     </section>
   </main>
 </div>

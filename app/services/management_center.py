@@ -491,6 +491,7 @@ def create_claim_process(
         pending_detail="Completar matrícula e data do sinistro." if not plate or not accident_date else None,
         opened_on=accident_date or date.today(),
         sla_due_on=(accident_date or date.today()) + timedelta(days=2),
+        raw_summary_json={"liability": "awaiting_responsibility"},
     )
     db.add(process)
     db.flush()
@@ -736,10 +737,12 @@ def refresh_claim_state(db: Session, claim: ClaimIncident) -> None:
     claim.has_missing_ar = bool(not claim.has_missing_minimum_data and not ars)
     process.total_claim_value = total_claim
     process.total_cost_value = total_cost
+    previous_summary = process.raw_summary_json if isinstance(process.raw_summary_json, dict) else {}
     process.raw_summary_json = {
         "ar_count": len(ars),
         "refstro_count": len(refstros),
         "components": components,
+        "liability": previous_summary.get("liability") or "awaiting_responsibility",
     }
 
     if claim.has_missing_minimum_data:

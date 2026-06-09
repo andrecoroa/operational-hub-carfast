@@ -7,6 +7,7 @@ import re
 from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -64,6 +65,9 @@ from app.services.management_center import (
     PROCESS_PHASE_LABELS,
     PROCESS_STATUS_LABELS,
     REFSTRO_IMPORT_TYPE,
+    add_history,
+    associate_to_process,
+    create_claim_process,
     end_association,
     ensure_management_defaults,
     preview_claims_file,
@@ -6265,11 +6269,7 @@ def task_bulk_import_confirm(request: Request):
 
 
 def management_center_denied(request: Request, write: bool = False) -> RedirectResponse | None:
-    permissions = (
-        ("management_center.write", "admin.manage")
-        if write
-        else ("management_center.read", "management_center.write", "admin.manage")
-    )
+    permissions = ("management_center.write", "admin.manage") if write else ("management_center.read", "management_center.write", "admin.manage")
     return require_any_web_permission(request, *permissions)
 
 
@@ -6277,6 +6277,35 @@ MANAGEMENT_PENDING_LABELS = {
     "missing_ar": "AR em falta",
     "missing_minimum_data": "Dados mínimos em falta",
 }
+
+LIABILITY_LABELS = {
+    "awaiting_responsibility": "Aguarda Responsabilidade",
+    "culpado": "Culpado",
+    "sem_culpa": "Sem Culpa",
+    "50_50": "50 / 50",
+    "na": "N/A",
+}
+
+
+def normalize_liability_value(raw_value: str | None) -> str | None:
+    if raw_value is None:
+        return None
+    text = raw_value.strip()
+    if not text:
+        return None
+    for code, label in LIABILITY_LABELS.items():
+        if text == code:
+            return code
+        if text.lower() == label.lower():
+            return code
+    return None
+
+
+def management_process_liability(process: ManagementProcess) -> str | None:
+    raw = process.raw_summary_json
+    if isinstance(raw, dict):
+        return normalize_liability_value(raw.get("liability")) or "awaiting_responsibility"
+    return "awaiting_responsibility"
 
 MANAGEMENT_SEVERITY_LABELS = {
     "critical": "Crítica",
@@ -6287,7 +6316,7 @@ MANAGEMENT_SEVERITY_LABELS = {
 MANAGEMENT_IMPORT_TYPE_LABELS = {
     AR_IMPORT_TYPE: "AR Rentway",
     CRAR_PER_VEHICLE_IMPORT_TYPE: "AR Rentway por viatura",
-    REFSTRO_IMPORT_TYPE: "REFSTRO / linhas associadas",
+    REFSTRO_IMPORT_TYPE: "REFSTRO / Sinistros",
 }
 
 IMPORT_STATUS_DISPLAY_LABELS = {
@@ -6517,10 +6546,6 @@ def money_value(value) -> float:
     return float(value or 0)
 
 
-def normalize_plate_for_web(value: str | None) -> str:
-    return (value or "").strip().upper().replace("-", "").replace(" ", "")
-
-
 def reconciliation_association_maps(db):
     associations = db.scalars(
         select(ManagementProcessAssociation).where(ManagementProcessAssociation.active.is_(True))
@@ -6542,23 +6567,40 @@ def reconciliation_association_maps(db):
 def build_reconciliation_ref_groups(ref_lines: list[ClaimRefstroLine], ref_process_by_id: dict[int, int]) -> list[dict]:
     grouped: dict[tuple, dict] = {}
     for line in ref_lines:
-        key = (line.refstro_reference or f"linha-{line.id}", line.plate or "-", line.accident_date)
+        if line.plate and line.accident_date:
+            key = ("incident", line.plate, line.accident_date)
+        else:
+            key = ("reference", line.refstro_reference or f"linha-{line.id}", line.plate or "-", line.accident_date)
         item = grouped.setdefault(
             key,
             {
-                "refstro_reference": line.refstro_reference or "-",
+                "refstro_reference": "-",
+                "refstro_references": set(),
                 "plate": line.plate,
                 "accident_date": line.accident_date,
-                "document_reference": line.document_reference,
+                "document_reference": "-",
+                "document_references": set(),
                 "components": set(),
+                "component_totals": {},
                 "value": 0.0,
                 "line_ids": [],
                 "process_ids": set(),
-                "status": line.status,
+                "statuses": set(),
             },
         )
+        if line.refstro_reference:
+            item["refstro_references"].add(line.refstro_reference)
+        if line.document_reference:
+            item["document_references"].add(line.document_reference)
         if line.component:
             item["components"].add(line.component)
+        component_key = line.component or "Sem componente"
+        try:
+            item["component_totals"][component_key] = item["component_totals"].get(component_key, 0.0) + money_value(line.claim_value)
+        except AttributeError:
+            pass
+        if line.status:
+            item["statuses"].add(line.status)
         item["value"] += money_value(line.claim_value)
         item["line_ids"].append(line.id)
         process_id = ref_process_by_id.get(line.id)
@@ -6568,19 +6610,51 @@ def build_reconciliation_ref_groups(ref_lines: list[ClaimRefstroLine], ref_proce
     for item in grouped.values():
         item["components"] = sorted(item["components"]) or ["Sem componente"]
         item["process_ids"] = sorted(item["process_ids"])
+        refstro_references = sorted(item.pop("refstro_references"))
+        document_references = sorted(item.pop("document_references"))
+        statuses = sorted(item.pop("statuses"))
+        item["refstro_reference"] = ", ".join(refstro_references) if refstro_references else "-"
+        item["document_reference"] = ", ".join(document_references) if document_references else "-"
+        item["status"] = ", ".join(statuses) if statuses else None
+        item["line_count"] = len(item["line_ids"])
+        item["refstro_count"] = len(refstro_references)
+        component_totals = item.pop("component_totals", {})
+        item["component_breakdown"] = [
+            {"component": component, "value": value}
+            for component, value in sorted(component_totals.items(), key=lambda current: (-current[1], current[0]))
+        ]
+        item["component_count"] = len(item["component_breakdown"])
         result.append(item)
     return result
+
+
+def parse_ref_line_ids(raw_value: str | None) -> list[int]:
+    if not raw_value:
+        return []
+    ids: list[int] = []
+    for value in raw_value.split(','):
+        value = value.strip()
+        if not value:
+            continue
+        try:
+            ids.append(int(value))
+        except ValueError:
+            continue
+    return ids
 
 
 def build_reconciliation_rows(
     db,
     *,
     plate_filter: str | None = None,
+    selected_plate: str | None = None,
+    selected_ref_line_ids: list[int] | None = None,
     mode: str = "pending",
     window_days: int = 30,
     limit: int = 180,
 ) -> dict:
-    ar_process_by_id, ref_process_by_id, _ar_ids_by_process, ref_ids_by_process = reconciliation_association_maps(db)
+    selected_ref_set = set(selected_ref_line_ids or [])
+    ar_process_by_id, ref_process_by_id, ar_ids_by_process, ref_ids_by_process = reconciliation_association_maps(db)
     ar_query = select(ClaimRentwayAR).where(
         ClaimRentwayAR.plate.is_not(None),
         ClaimRentwayAR.source_file.is_not(None),
@@ -6595,6 +6669,8 @@ def build_reconciliation_rows(
     ars = db.scalars(ar_query.order_by(ClaimRentwayAR.plate, ClaimRentwayAR.request_date, ClaimRentwayAR.id)).all()
     ref_lines = db.scalars(ref_query.order_by(ClaimRefstroLine.plate, ClaimRefstroLine.accident_date, ClaimRefstroLine.id)).all()
     refs = build_reconciliation_ref_groups(ref_lines, ref_process_by_id)
+    if selected_ref_set:
+        refs = [ref for ref in refs if any(line_id in selected_ref_set for line_id in ref["line_ids"])]
 
     process_ids = {process_id for process_id in ar_process_by_id.values()} | {pid for ref in refs for pid in ref["process_ids"]}
     processes = {
@@ -6624,6 +6700,8 @@ def build_reconciliation_rows(
                 "has_refstro": bool(process_id and ref_ids_by_process.get(process_id)),
             }
         )
+    for values in ars_by_plate.values():
+        values.sort(key=lambda item: (item["date"] or date.max, item["id"]))
 
     rows = []
     stats = {"strong": 0, "probable": 0, "doubt": 0, "missing_ar": 0, "monitoring": 0, "associated": 0}
@@ -6671,16 +6749,19 @@ def build_reconciliation_rows(
                 "plate": ref["plate"] or "-",
                 "ar": best_ar or (candidate_ars[0] if candidate_ars else None),
                 "ref": ref,
+                "ar_candidates": candidate_ars,
+                "ref_line_ids": ",".join(str(line_id) for line_id in ref["line_ids"]),
                 "suggestion": suggestion,
                 "confidence": confidence,
                 "reason": reason,
                 "delta_days": best_delta,
                 "candidate_count": len(candidate_ars),
+                "accident_date": ref["accident_date"],
             }
         )
 
     ref_process_ids = {pid for ref in refs for pid in ref["process_ids"]}
-    for plate, ar_list in ars_by_plate.items():
+    for ar_list in ars_by_plate.values():
         for ar in ar_list:
             if ar["process_id"] in ref_process_ids:
                 continue
@@ -6689,14 +6770,17 @@ def build_reconciliation_rows(
             stats["monitoring"] += 1
             rows.append(
                 {
-                    "plate": plate,
+                    "plate": next((plate for plate, items in ars_by_plate.items() if ar in items), "-"),
                     "ar": ar,
                     "ref": None,
+                    "ar_candidates": [ar],
+                    "ref_line_ids": "",
                     "suggestion": "Monitorização",
                     "confidence": "monitoring",
                     "reason": "AR sem REFSTRO associado.",
                     "delta_days": None,
                     "candidate_count": 0,
+                    "accident_date": None,
                 }
             )
 
@@ -6707,17 +6791,49 @@ def build_reconciliation_rows(
             row["ar"]["date"] if row["ar"] and row["ar"].get("date") else date.max,
         )
     )
-    visible_rows = rows[:limit]
-    selected_plate = clean_plate or (visible_rows[0]["plate"] if visible_rows else "")
-    plate_rows = [row for row in rows if row["plate"] == selected_plate][:40] if selected_plate else []
     grouped_counts = defaultdict(int)
     for row in rows:
         grouped_counts[row["plate"]] += 1
+    grouped_items = sorted(grouped_counts.items(), key=lambda item: (-item[1], item[0]))
+    visible_rows = rows[:limit]
+    selected_clean_plate = normalize_plate_for_web(selected_plate) or clean_plate
+    if not selected_clean_plate and grouped_items:
+        selected_clean_plate = normalize_plate_for_web(grouped_items[0][0])
+    selected_plate_value = ""
+    if selected_clean_plate:
+        selected_plate_value = next(
+            (plate for plate, _ in grouped_items if normalize_plate_for_web(plate) == selected_clean_plate),
+            "",
+        )
+        if not selected_plate_value and grouped_items:
+            selected_plate_value = grouped_items[0][0]
+            selected_clean_plate = normalize_plate_for_web(selected_plate_value)
+    plate_rows = (
+        [row for row in rows if normalize_plate_for_web(row["plate"]) == selected_clean_plate][:12]
+        if selected_clean_plate
+        else []
+    )
+    plate_ar_candidates = (
+        ars_by_plate.get(selected_plate_value, []) if selected_plate_value else []
+    )
+    if selected_clean_plate and not plate_ar_candidates:
+        plate_ar_candidates = next(
+            (items for plate, items in ars_by_plate.items() if normalize_plate_for_web(plate) == selected_clean_plate),
+            [],
+        )
+    plate_ref_rows = [row for row in plate_rows if row.get("ref")]
+    visible_grouped_items = grouped_items[:20]
+    if selected_plate_value and all(plate != selected_plate_value for plate, _ in visible_grouped_items):
+        selected_group = next((item for item in grouped_items if item[0] == selected_plate_value), None)
+        if selected_group:
+            visible_grouped_items = [selected_group, *visible_grouped_items[:19]]
     return {
         "rows": visible_rows,
         "plate_rows": plate_rows,
-        "selected_plate": selected_plate,
-        "grouped_counts": sorted(grouped_counts.items(), key=lambda item: (-item[1], item[0]))[:20],
+        "plate_ar_candidates": plate_ar_candidates,
+        "plate_ref_rows": plate_ref_rows,
+        "selected_plate": selected_plate_value,
+        "grouped_counts": visible_grouped_items,
         "grouped_count_by_plate": dict(grouped_counts),
         "stats": stats,
         "total_rows": len(rows),
@@ -6727,15 +6843,24 @@ def build_reconciliation_rows(
     }
 
 
+def normalize_plate_for_web(value: str | None) -> str:
+    return (value or "").strip().upper().replace("-", "").replace(" ", "")
+
+
 @web_router.get("/management-center", response_class=HTMLResponse)
 def management_center_page(
     request: Request,
+    view: str = "processes",
+    origin: str = "all",
+    process_page: int = 1,
+    queue_page: int = 1,
     status: str | None = None,
     plate: str | None = None,
     document: str | None = None,
     customer: str | None = None,
     driver: str | None = None,
     pending: str | None = None,
+    liability: str | None = None,
     imported: str | None = None,
 ):
     if not get_web_user_id(request):
@@ -6743,10 +6868,38 @@ def management_center_page(
     denied = management_center_denied(request)
     if denied:
         return denied
+    if view not in {"processes", "origins"}:
+        view = "processes"
+    if origin not in {"all", "ar", "refstro", "unclassified"}:
+        origin = "all"
+    liability_filter = normalize_liability_value(liability)
+    process_page = max(process_page, 1)
+    queue_page = max(queue_page, 1)
+    process_page_size = 12
+    queue_page_size = 10
+
+    def page_url(**updates: object) -> str:
+        params = {
+            "view": view,
+            "origin": origin,
+            "process_page": process_page,
+            "queue_page": queue_page,
+            "status": status or "",
+            "plate": plate or "",
+            "document": document or "",
+            "customer": customer or "",
+            "driver": driver or "",
+            "pending": pending or "",
+            "liability": liability_filter or "",
+        }
+        params.update(updates)
+        clean_params = {key: value for key, value in params.items() if value not in (None, "")}
+        return f"/management-center?{urlencode(clean_params)}"
+
     with SessionLocal() as db:
         process_type = ensure_management_defaults(db)
         db.commit()
-        filters = management_process_query_filters(
+        query_filters = management_process_query_filters(
             process_type_id=process_type.id,
             status=status,
             plate=plate,
@@ -6755,41 +6908,86 @@ def management_center_page(
             driver=driver,
             pending=pending,
         )
-        processes = db.scalars(
+        all_processes = db.scalars(
             select(ManagementProcess)
-            .where(*filters)
+            .where(*query_filters)
             .order_by(
                 ManagementProcess.pending_reason.is_(None),
                 ManagementProcess.sla_due_on.is_(None),
                 ManagementProcess.sla_due_on,
                 ManagementProcess.id.desc(),
             )
-            .limit(120)
         ).all()
+        if liability_filter:
+            all_processes = [
+                process for process in all_processes
+                if management_process_liability(process) == liability_filter
+            ]
+        process_total = len(all_processes)
+        process_total_pages = max(1, (process_total + process_page_size - 1) // process_page_size)
+        process_page = min(process_page, process_total_pages)
+        processes = all_processes[(process_page - 1) * process_page_size:process_page * process_page_size]
+        process_liabilities = {
+            process.id: management_process_liability(process)
+            for process in processes
+        }
         process_ids = [process.id for process in processes]
         counts = process_association_counts(db, process_ids)
+        claim_dates = {
+            item.process_id: item.accident_date
+            for item in (
+                db.scalars(select(ClaimIncident).where(ClaimIncident.process_id.in_(process_ids))).all()
+                if process_ids
+                else []
+            )
+        }
         metrics = management_business_metrics(db, process_type.id)
-        priority_processes = db.scalars(
-            select(ManagementProcess)
+        queue_total = db.scalar(
+            select(func.count())
+            .select_from(ManagementAction)
+            .join(ManagementProcess, ManagementAction.process_id == ManagementProcess.id)
+            .where(
+                ManagementProcess.process_type_id == process_type.id,
+                ManagementAction.status == "open",
+            )
+        ) or 0
+        queue_total_pages = max(1, (queue_total + queue_page_size - 1) // queue_page_size)
+        queue_page = min(queue_page, queue_total_pages)
+        priority_rows = db.execute(
+            select(ManagementProcess, ManagementAction)
             .join(ManagementAction, ManagementAction.process_id == ManagementProcess.id)
             .where(
                 ManagementProcess.process_type_id == process_type.id,
                 ManagementAction.status == "open",
             )
-            .order_by(
-                ManagementAction.mandatory.desc(),
-                ManagementAction.due_on.is_(None),
-                ManagementAction.due_on,
-            )
-            .limit(8)
+            .order_by(ManagementAction.mandatory.desc(), ManagementAction.due_on.is_(None), ManagementAction.due_on)
+            .offset((queue_page - 1) * queue_page_size)
+            .limit(queue_page_size)
         ).all()
+        priority_process_ids = [row[0].id for row in priority_rows]
+        priority_counts = process_association_counts(db, priority_process_ids)
+        priority_claim_dates = {
+            item.process_id: item.accident_date
+            for item in (
+                db.scalars(select(ClaimIncident).where(ClaimIncident.process_id.in_(priority_process_ids))).all()
+                if priority_process_ids
+                else []
+            )
+        }
+        priority_items = [
+            {
+                "process": process,
+                "action": action,
+                "counts": priority_counts[process.id],
+                "accident_date": priority_claim_dates.get(process.id),
+            }
+            for process, action in priority_rows
+        ]
         rules = db.scalars(
-            select(ManagementRule)
-            .where(
+            select(ManagementRule).where(
                 ManagementRule.process_type_id == process_type.id,
                 ManagementRule.active.is_(True),
-            )
-            .order_by(ManagementRule.severity.desc(), ManagementRule.id)
+            ).order_by(ManagementRule.severity.desc(), ManagementRule.id)
         ).all()
         recent_imports = db.scalars(
             select(ImportBatch)
@@ -6797,22 +6995,172 @@ def management_center_page(
             .order_by(ImportBatch.id.desc())
             .limit(5)
         ).all()
-        return templates.TemplateResponse(
+        origin_ar_query = select(ClaimRentwayAR).where(
+            ClaimRentwayAR.source_file.is_not(None),
+            ~ClaimRentwayAR.source_file.ilike("%crar_pervehicle%"),
+            ~ClaimRentwayAR.source_file.ilike("%demo%"),
+        )
+        origin_ref_query = select(ClaimRefstroLine)
+        if plate:
+            origin_ar_query = origin_ar_query.where(ClaimRentwayAR.plate.ilike(f"%{plate.strip()}%"))
+            origin_ref_query = origin_ref_query.where(ClaimRefstroLine.plate.ilike(f"%{plate.strip()}%"))
+        origin_ars = []
+        if origin in {"all", "ar", "unclassified"}:
+            origin_ars = db.scalars(origin_ar_query.order_by(ClaimRentwayAR.request_date.desc(), ClaimRentwayAR.id.desc()).limit(80)).all()
+        origin_refs = []
+        if origin in {"all", "refstro", "unclassified"}:
+            origin_refs = db.scalars(
+                origin_ref_query.order_by(ClaimRefstroLine.accident_date.desc(), ClaimRefstroLine.refstro_reference.desc()).limit(600)
+            ).all()
+        origin_entity_links = db.scalars(
+            select(ManagementProcessAssociation).where(ManagementProcessAssociation.active.is_(True))
+        ).all()
+        ar_process_by_id = {
+            item.entity_id: item.process_id
+            for item in origin_entity_links
+            if item.entity_type == "claim_rentway_ar"
+        }
+        ref_process_by_id = {
+            item.entity_id: item.process_id
+            for item in origin_entity_links
+            if item.entity_type == "claim_refstro_line"
+        }
+        process_ref_by_id = {
+            item.id: item.internal_reference
+            for item in db.scalars(select(ManagementProcess).where(ManagementProcess.process_type_id == process_type.id)).all()
+        }
+        origin_ar_rows = []
+        for ar in origin_ars:
+            process_id = ar_process_by_id.get(ar.id)
+            if origin == "unclassified" and process_id:
+                continue
+            raw = ar.raw_json if isinstance(ar.raw_json, dict) else {}
+            sources = raw.get("_sources", []) if isinstance(raw, dict) else []
+            crar_sources = [
+                source for source in sources
+                if isinstance(source, dict) and "crar_pervehicle" in str(source.get("source_file", "")).lower()
+            ]
+            origin_ar_rows.append(
+                {
+                    "kind": "AR Rentway",
+                    "reference": ar.ar_reference or "-",
+                    "plate": ar.plate or "-",
+                    "date": ar_reconciliation_date(ar),
+                    "status": ar.status or "-",
+                    "detail": ar.customer_name or ar.driver_name or ar.vehicle_reference or "-",
+                    "process_id": process_id,
+                    "process_reference": process_ref_by_id.get(process_id, "Por classificar") if process_id else "Por classificar",
+                    "crar_enriched": bool(crar_sources),
+                }
+            )
+        origin_ref_rows = []
+        origin_ref_groups: dict[tuple, dict] = {}
+        for ref_line in origin_refs:
+            if ref_line.plate and ref_line.accident_date:
+                group_key = ("incident", ref_line.plate.strip(), ref_line.accident_date)
+            else:
+                group_key = ("reference", ref_line.refstro_reference or f"linha-{ref_line.id}", ref_line.plate or "-", ref_line.accident_date)
+            group = origin_ref_groups.setdefault(
+                group_key,
+                {
+                    "kind": "REFSTRO",
+                    "references": set(),
+                    "plate": ref_line.plate or "-",
+                    "date": ref_line.accident_date,
+                    "line_ids": [],
+                    "process_ids": set(),
+                    "component_totals": {},
+                    "value": 0.0,
+                },
+            )
+            if ref_line.refstro_reference:
+                group["references"].add(ref_line.refstro_reference)
+            group["line_ids"].append(ref_line.id)
+            process_id = ref_process_by_id.get(ref_line.id)
+            if process_id:
+                group["process_ids"].add(process_id)
+            component = ref_line.component or "Sem componente"
+            value = money_value(ref_line.claim_value)
+            group["component_totals"][component] = group["component_totals"].get(component, 0.0) + value
+            group["value"] += value
+        for group in origin_ref_groups.values():
+            process_ids = sorted(group["process_ids"])
+            process_id = process_ids[0] if process_ids else None
+            if origin == "unclassified" and process_ids:
+                continue
+            references = sorted(group["references"])
+            component_breakdown = [
+                {"component": component, "value": value}
+                for component, value in sorted(group["component_totals"].items(), key=lambda item: (-item[1], item[0]))
+            ]
+            origin_ref_rows.append(
+                {
+                    "kind": "REFSTRO",
+                    "reference": ", ".join(references) if references else "-",
+                    "plate": group["plate"],
+                    "date": group["date"],
+                    "status": f"{len(group['line_ids'])} linha(s) / {len(references) or 1} referência(s)",
+                    "component_count": len(component_breakdown) or 0,
+                    "component_breakdown": component_breakdown,
+                    "detail": f"{float(group['value'] or 0):.2f} €",
+                    "process_id": process_id,
+                    "process_reference": process_ref_by_id.get(process_id, "Por classificar") if process_id else "Por classificar",
+                    "crar_enriched": False,
+                    "selection_value": f"ref:{','.join(str(line_id) for line_id in group['line_ids'])}",
+                }
+            )
+        origin_rows = []
+        if origin in {"all", "ar", "unclassified"}:
+            origin_rows.extend(origin_ar_rows)
+        if origin in {"all", "refstro", "unclassified"}:
+            origin_rows.extend(origin_ref_rows)
+        origin_rows = sorted(origin_rows, key=lambda item: (item["date"] or date.min, item["kind"], item["reference"]), reverse=True)[:120]
+        origin_stats = {
+            "all": metrics["official_ar"] + metrics["participations"],
+            "ars": metrics["official_ar"],
+            "refstro": metrics["participations"],
+            "unclassified": sum(1 for item in origin_rows if not item["process_id"]),
+            "shown": len(origin_rows),
+        }
+        response = templates.TemplateResponse(
             request,
             "management_center.html",
             {
                 "process_type": process_type,
                 "process_types": [process_type],
                 "processes": processes,
+                "process_liabilities": process_liabilities,
                 "counts": counts,
+                "claim_dates": claim_dates,
+                "process_pagination": {
+                    "page": process_page,
+                    "pages": process_total_pages,
+                    "total": process_total,
+                    "page_size": process_page_size,
+                    "prev_url": page_url(view="processes", process_page=process_page - 1) if process_page > 1 else None,
+                    "next_url": page_url(view="processes", process_page=process_page + 1) if process_page < process_total_pages else None,
+                },
                 "metrics": metrics,
-                "priority_processes": priority_processes,
+                "priority_items": priority_items,
+                "queue_pagination": {
+                    "page": queue_page,
+                    "pages": queue_total_pages,
+                    "total": queue_total,
+                    "page_size": queue_page_size,
+                    "prev_url": page_url(view="processes", queue_page=queue_page - 1) if queue_page > 1 else None,
+                    "next_url": page_url(view="processes", queue_page=queue_page + 1) if queue_page < queue_total_pages else None,
+                },
                 "rules": rules,
                 "recent_imports": recent_imports,
+                "active_view": view,
+                "origin_filter": origin,
+                "origin_rows": origin_rows,
+                "origin_stats": origin_stats,
                 "status_labels": PROCESS_STATUS_LABELS,
                 "phase_labels": PROCESS_PHASE_LABELS,
                 "pending_labels": MANAGEMENT_PENDING_LABELS,
                 "severity_labels": MANAGEMENT_SEVERITY_LABELS,
+                "liability_labels": LIABILITY_LABELS,
                 "management_import_type_labels": MANAGEMENT_IMPORT_TYPE_LABELS,
                 "import_status_labels": IMPORT_STATUS_DISPLAY_LABELS,
                 "AR_IMPORT_TYPE": AR_IMPORT_TYPE,
@@ -6824,10 +7172,16 @@ def management_center_page(
                     "customer": customer or "",
                     "driver": driver or "",
                     "pending": pending or "",
+                    "liability": liability_filter or "",
                 },
                 "imported": imported,
+                "page_loaded_at": datetime.now().strftime("%H:%M:%S"),
             },
         )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 
 @web_router.post("/management-center/import", response_class=HTMLResponse)
@@ -6960,6 +7314,8 @@ def management_center_load_originals(
 def management_center_reconciliation(
     request: Request,
     plate: str | None = None,
+    selected_plate: str | None = None,
+    selected_ref_lines: str | None = None,
     mode: str = "pending",
     window_days: int = 30,
 ):
@@ -6977,6 +7333,8 @@ def management_center_reconciliation(
         reconciliation = build_reconciliation_rows(
             db,
             plate_filter=plate,
+            selected_ref_line_ids=parse_ref_line_ids(selected_ref_lines),
+            selected_plate=selected_plate,
             mode=mode,
             window_days=window_days,
         )
@@ -7003,6 +7361,178 @@ def management_center_reconciliation(
         return response
 
 
+
+@web_router.post("/management-center/reconciliation/associate", response_class=HTMLResponse)
+def management_center_reconciliation_associate(
+    request: Request,
+    mode: str = Form("attach_to_ar"),
+    ref_line_ids: str = Form(""),
+    ar_id: int | None = Form(None),
+    selected_plate: str = Form(""),
+    selected_mode: str = Form("pending"),
+    window_days: int = Form(30),
+    plate_filter: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+
+    ref_ids = parse_ref_line_ids(ref_line_ids)
+    if not ref_ids:
+        return RedirectResponse(
+            f"/management-center/reconciliation?{urlencode({'selected_plate': selected_plate, 'mode': selected_mode, 'window_days': window_days, 'plate': plate_filter})}",
+            status_code=303,
+        )
+
+    with SessionLocal() as db:
+        process_type = ensure_management_defaults(db)
+        target_process_id: int | None = None
+        refs = db.scalars(
+            select(ClaimRefstroLine).where(ClaimRefstroLine.id.in_(ref_ids)).order_by(ClaimRefstroLine.accident_date, ClaimRefstroLine.id)
+        ).all()
+        if not refs or len(refs) != len(ref_ids):
+            return RedirectResponse(
+                f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}",
+                status_code=303,
+            )
+
+        process_ids_to_refresh: set[int] = set()
+        if mode == "attach_to_ar":
+            if not ar_id:
+                return RedirectResponse(
+                    f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}&error=missing_ar",
+                    status_code=303,
+                )
+            ar = db.get(ClaimRentwayAR, ar_id)
+            if not ar:
+                return RedirectResponse(
+                    f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}&error=invalid_ar",
+                    status_code=303,
+                )
+            ar_assoc = db.scalar(
+                select(ManagementProcessAssociation).where(
+                    ManagementProcessAssociation.entity_type == "claim_rentway_ar",
+                    ManagementProcessAssociation.entity_id == ar.id,
+                    ManagementProcessAssociation.active.is_(True),
+                ).order_by(ManagementProcessAssociation.id.desc())
+            )
+            if ar_assoc:
+                target_process_id = ar_assoc.process_id
+            else:
+                claim = create_claim_process(
+                    db,
+                    process_type,
+                    plate=ar.plate,
+                    accident_date=ar_reconciliation_date(ar),
+                    customer_name=ar.customer_name,
+                    driver_name=ar.driver_name,
+                    document_reference=ar.ar_reference,
+                    user_id=user_id,
+                )
+                target_process_id = claim.process_id
+                db.flush()
+                associate_to_process(
+                    db,
+                    target_process_id,
+                    entity_type="claim_rentway_ar",
+                    entity_id=ar.id,
+                    reason="AR associado no fluxo de reconciliação.",
+                    user_id=user_id,
+                )
+            for ref in refs:
+                previous = db.scalar(
+                    select(ManagementProcessAssociation).where(
+                        ManagementProcessAssociation.entity_type == "claim_refstro_line",
+                        ManagementProcessAssociation.entity_id == ref.id,
+                        ManagementProcessAssociation.active.is_(True),
+                    )
+                )
+                if previous and previous.process_id != target_process_id:
+                    end_association(db, previous, reason="Reconciliação: reatribuição para processo AR selecionado.", user_id=user_id)
+                    process_ids_to_refresh.add(previous.process_id)
+                    add_history(
+                        db,
+                        previous.process_id,
+                        action="association.moved",
+                        entity_type="claim_refstro_line",
+                        entity_id=ref.id,
+                        detail=f"REFSTRO {ref.refstro_reference or ref.id} movido para {target_process_id}",
+                        user_id=user_id,
+                    )
+                elif previous and previous.process_id == target_process_id:
+                    process_ids_to_refresh.add(target_process_id)
+                    continue
+
+                associate_to_process(
+                    db,
+                    target_process_id,
+                    entity_type="claim_refstro_line",
+                    entity_id=ref.id,
+                    reason="REFSTRO associado após validação manual.",
+                    user_id=user_id,
+                )
+                process_ids_to_refresh.add(target_process_id)
+
+        elif mode == "create_new":
+            ref = refs[0]
+            selected_ar = db.get(ClaimRentwayAR, ar_id) if ar_id else None
+            reference_plate = ref.plate or (selected_ar.plate if selected_ar else None)
+            candidate_date = ref.accident_date
+            claim = create_claim_process(
+                db,
+                process_type,
+                plate=reference_plate,
+                accident_date=candidate_date,
+                customer_name=selected_ar.customer_name if selected_ar else ref.customer_name,
+                driver_name=selected_ar.driver_name if selected_ar else ref.driver_name,
+                document_reference=(selected_ar.ar_reference if selected_ar else None) or ref.document_reference,
+                user_id=user_id,
+            )
+            target_process_id = claim.process_id
+            if selected_ar:
+                associate_to_process(
+                    db,
+                    target_process_id,
+                    entity_type="claim_rentway_ar",
+                    entity_id=selected_ar.id,
+                    reason="AR associado ao processo criado em reconciliação.",
+                    user_id=user_id,
+                )
+                process_ids_to_refresh.add(target_process_id)
+            for ref in refs:
+                associate_to_process(
+                    db,
+                    target_process_id,
+                    entity_type="claim_refstro_line",
+                    entity_id=ref.id,
+                    reason="REFSTRO associado após criação de SIN.",
+                    user_id=user_id,
+                )
+            process_ids_to_refresh.add(target_process_id)
+        else:
+            return RedirectResponse(
+                f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}",
+                status_code=303,
+            )
+
+        for process_id in process_ids_to_refresh:
+            claim = db.scalar(select(ClaimIncident).where(ClaimIncident.process_id == process_id))
+            if claim:
+                refresh_claim_state(db, claim)
+        db.commit()
+
+    if target_process_id:
+        return RedirectResponse(
+            f"/management-center/{target_process_id}?updated=association&ref_focus={selected_plate}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/management-center/reconciliation?selected_plate={selected_plate}&mode={selected_mode}&window_days={window_days}&plate={plate_filter}",
+        status_code=303,
+    )
 @web_router.get("/management-center/{process_id}", response_class=HTMLResponse)
 def management_center_detail(request: Request, process_id: int, updated: str | None = None):
     if not get_web_user_id(request):
@@ -7035,18 +7565,66 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
                 else []
             )
         }
+        ar_crar_status = {}
+        for ar in ars.values():
+            raw_json = ar.raw_json if isinstance(ar.raw_json, dict) else {}
+            sources = raw_json.get("_sources", []) if isinstance(raw_json, dict) else []
+            crar_sources = [
+                source for source in sources
+                if isinstance(source, dict) and "crar_pervehicle" in str(source.get("source_file", "")).lower()
+            ]
+            if len(crar_sources) > 1:
+                ar_crar_status[ar.id] = "Conflito"
+            elif len(crar_sources) == 1:
+                ar_crar_status[ar.id] = "CRAR complementar"
+            else:
+                ar_crar_status[ar.id] = "Não recebido"
         actions = db.scalars(
             select(ManagementAction)
             .where(ManagementAction.process_id == process.id)
             .order_by(ManagementAction.status, ManagementAction.mandatory.desc(), ManagementAction.due_on)
         ).all()
+        active_associations = [item for item in associations if item.active]
+        inactive_associations = [item for item in associations if not item.active]
+        ar_associations = [item for item in active_associations if item.entity_type == "claim_rentway_ar"]
+        refstro_associations = [
+            item for item in active_associations if item.entity_type == "claim_refstro_line"
+        ]
+        ar_references = sorted(
+            {
+                ars[item.entity_id].ar_reference
+                for item in ar_associations
+                if item.entity_id in ars and ars[item.entity_id].ar_reference
+            }
+        )
+        refstro_references = sorted(
+            {
+                refstros[item.entity_id].refstro_reference
+                for item in refstro_associations
+                if item.entity_id in refstros and refstros[item.entity_id].refstro_reference
+            }
+        )
+        refstro_component_totals: dict[str, float] = {}
+        for association in refstro_associations:
+            refstro = refstros.get(association.entity_id)
+            if not refstro:
+                continue
+            component = refstro.component or "Sem componente"
+            refstro_component_totals[component] = refstro_component_totals.get(component, 0.0) + money_value(refstro.claim_value)
+        tracking_references = {
+            "ar_references": ar_references,
+            "refstro_references": refstro_references,
+            "refstro_line_count": len(refstro_associations),
+            "refstro_component_breakdown": [
+                {"component": component, "value": value}
+                for component, value in sorted(refstro_component_totals.items(), key=lambda item: (-item[1], item[0]))
+            ],
+        }
         rules = db.scalars(
-            select(ManagementRule)
-            .where(
+            select(ManagementRule).where(
                 ManagementRule.process_type_id == process.process_type_id,
                 ManagementRule.active.is_(True),
-            )
-            .order_by(ManagementRule.severity.desc(), ManagementRule.id)
+            ).order_by(ManagementRule.severity.desc(), ManagementRule.id)
         ).all()
         history = db.scalars(
             select(ManagementHistory)
@@ -7068,23 +7646,71 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
             "management_process_detail.html",
             {
                 "process": process,
+                "liability_value": management_process_liability(process),
                 "process_type": process_type,
                 "claim": claim,
                 "associations": associations,
+                "active_associations": active_associations,
+                "inactive_associations": inactive_associations,
+                "ar_associations": ar_associations,
+                "refstro_associations": refstro_associations,
                 "ars": ars,
                 "refstros": refstros,
+                "tracking_references": tracking_references,
                 "actions": actions,
                 "rules": rules,
                 "history": history,
                 "other_processes": other_processes,
+                "ar_crar_status": ar_crar_status,
                 "status_labels": PROCESS_STATUS_LABELS,
                 "phase_labels": PROCESS_PHASE_LABELS,
                 "pending_labels": MANAGEMENT_PENDING_LABELS,
+                "liability_labels": LIABILITY_LABELS,
+                "liability_options": LIABILITY_LABELS.items(),
                 "severity_labels": MANAGEMENT_SEVERITY_LABELS,
                 "action_status_labels": ACTION_STATUS_LABELS,
                 "updated": updated,
             },
         )
+
+
+@web_router.post("/management-center/{process_id}/liability", response_class=HTMLResponse)
+def management_center_set_liability(request: Request, process_id: int, liability: str = Form(...)):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request, write=True)
+    if denied:
+        return denied
+    selected_liability = normalize_liability_value(liability)
+    if not selected_liability:
+        return RedirectResponse(f"/management-center/{process_id}?updated=liability_invalid", status_code=303)
+
+    with SessionLocal() as db:
+        process = db.get(ManagementProcess, process_id)
+        if not process:
+            return RedirectResponse("/management-center", status_code=303)
+
+        raw_summary = process.raw_summary_json
+        if not isinstance(raw_summary, dict):
+            raw_summary = {}
+        old_value = management_process_liability(process)
+        raw_summary["liability"] = selected_liability
+        process.raw_summary_json = raw_summary
+        db.add(
+            ManagementHistory(
+                process_id=process_id,
+                user_id=user_id,
+                action="claim.liability",
+                entity_type="management_process",
+                entity_id=str(process.id),
+                old_value=LIABILITY_LABELS.get(old_value or "", old_value or ""),
+                new_value=LIABILITY_LABELS.get(selected_liability, selected_liability),
+                detail="Classificação de responsabilidade atualizada.",
+            )
+        )
+        db.commit()
+    return RedirectResponse(f"/management-center/{process_id}?updated=liability", status_code=303)
 
 
 @web_router.post("/management-center/{process_id}/actions/{action_id}/complete", response_class=HTMLResponse)

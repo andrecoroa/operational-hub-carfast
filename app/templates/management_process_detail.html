@@ -26,11 +26,11 @@
       </span>
       <span class="metric">
         <span class="metric-icon amber">AR</span>
-        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_rentway_ar")|selectattr("active")|list|length }}</strong><span>ARs associados</span><small>O AR não é a referência única</small></span>
+        <span class="metric-detail"><strong>{{ ar_associations|length }}</strong><span>ARs associados</span><small>O AR não é a referência única</small></span>
       </span>
       <span class="metric">
         <span class="metric-icon green">REF</span>
-        <span class="metric-detail"><strong>{{ associations|selectattr("entity_type", "equalto", "claim_refstro_line")|selectattr("active")|list|length }}</strong><span>REFSTROs associados</span><small>{{ claim.components_json.components|join(", ") if claim and claim.components_json and claim.components_json.components else "Sem componentes" }}</small></span>
+        <span class="metric-detail"><strong>{{ refstro_associations|length }}</strong><span>REFSTROs associados</span><small>{{ claim.components_json.components|join(", ") if claim and claim.components_json and claim.components_json.components else "Sem componentes" }}</small></span>
       </span>
       <span class="metric">
         <span class="metric-icon warn">€</span>
@@ -50,9 +50,107 @@
           <div><dt>Tipo de processo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
           <div><dt>Matrícula</dt><dd>{{ process.plate or "-" }}</dd></div>
           <div><dt>Data sinistro</dt><dd>{{ claim.accident_date.strftime("%Y-%m-%d") if claim and claim.accident_date else "-" }}</dd></div>
-          <div><dt>Documento</dt><dd>{{ process.document_reference or "-" }}</dd></div>
+          <div>
+            <dt>AR Rentway</dt>
+            <dd>
+              {% if tracking_references.ar_references %}
+                {% for reference in tracking_references.ar_references %}
+                  <span class="management-reference-chip">AR {{ reference }}</span>
+                {% endfor %}
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>REFSTRO</dt>
+            <dd>
+              {% if refstro_associations %}
+                <span>{{ tracking_references.refstro_line_count }} linha(s) associada(s)</span>
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
+          <div class="management-refstro-lines-row">
+            <dt>Linhas REFSTRO</dt>
+            <dd>
+              {% if refstro_associations %}
+                <div class="management-inline-table-shell">
+                  <table class="management-refstro-line-table">
+                    <thead>
+                      <tr>
+                        <th>REFSTRO</th>
+                        <th>Doc.</th>
+                        <th>Data</th>
+                        <th>Estado</th>
+                        <th>Rubrica</th>
+                        <th>Valor</th>
+                        <th>Custo</th>
+                        <th>Cliente / condutor</th>
+                        <th>Origem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for association in refstro_associations %}
+                        {% set refstro = refstros.get(association.entity_id) %}
+                        <tr>
+                          <td><strong>{{ refstro.refstro_reference if refstro else "-" }}</strong></td>
+                          <td>{{ refstro.document_reference if refstro and refstro.document_reference else "-" }}</td>
+                          <td>
+                            {{ refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}
+                            {% if refstro and refstro.close_date %}
+                              <small>Fecho {{ refstro.close_date.strftime("%Y-%m-%d") }}</small>
+                            {% endif %}
+                          </td>
+                          <td>{{ refstro.status if refstro and refstro.status else "-" }}</td>
+                          <td>{{ refstro.component if refstro and refstro.component else "-" }}</td>
+                          <td>{{ "%.2f"|format(refstro.claim_value or 0) if refstro else "-" }} €</td>
+                          <td>{{ "%.2f"|format(refstro.cost_value or 0) if refstro else "-" }} €</td>
+                          <td>
+                            {{ refstro.customer_name if refstro and refstro.customer_name else "-" }}
+                            {% if refstro and refstro.driver_name %}
+                              <small>{{ refstro.driver_name }}</small>
+                            {% endif %}
+                          </td>
+                          <td>
+                            {{ refstro.source_file if refstro and refstro.source_file else "-" }}
+                            {% if refstro and refstro.source_row_number %}
+                              <small>Linha {{ refstro.source_row_number }}</small>
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                -
+              {% endif %}
+            </dd>
+          </div>
           <div><dt>Cliente</dt><dd>{{ process.customer_name or "-" }}</dd></div>
           <div><dt>Condutor</dt><dd>{{ process.driver_name or "-" }}</dd></div>
+          <div>
+            <dt>Responsabilidade</dt>
+            <dd>
+              {% if nav_has_permission(request, "management_center.write", "admin.manage") %}
+                <form method="post" action="/management-center/{{ process.id }}/liability" class="management-liability-form">
+                  <select name="liability">
+                    {% for code, label in liability_options %}
+                      <option value="{{ code }}" {% if liability_value == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                    {% if liability_value and liability_value not in liability_labels %}
+                      <option value="{{ liability_value }}" selected>{{ liability_value }}</option>
+                    {% endif %}
+                  </select>
+                  <button type="submit">Guardar</button>
+                </form>
+              {% else %}
+                {{ liability_labels.get(liability_value, liability_value or "-") }}
+              {% endif %}
+            </dd>
+          </div>
           <div><dt>Pendência</dt><dd>{{ pending_labels.get(process.pending_reason, process.pending_reason or "-") }}</dd></div>
         </dl>
       </article>
@@ -64,7 +162,7 @@
             <h3>Pendências guiadas</h3>
           </div>
         </div>
-        <div class="management-action-list">
+        <div class="management-action-list management-detail-compact">
           {% for action in actions %}
             <article class="{% if action.mandatory and action.status == 'open' %}mandatory-action{% endif %}">
               <div>
@@ -93,43 +191,35 @@
           <h3>Dados associados ao processo</h3>
         </div>
       </div>
-      <div class="table-shell management-table-shell">
+
+      <h4>ARs no processo</h4>
+      <div class="table-shell management-table-shell management-association-table-shell">
         <table>
           <thead>
             <tr>
-              <th>Tipo</th>
               <th>Referência</th>
               <th>Estado / data</th>
-              <th>Valor / componente</th>
+              <th>Detalhe</th>
               <th>Associação</th>
               <th>Correção</th>
             </tr>
           </thead>
           <tbody>
-            {% for association in associations %}
-              {% set ar = ars.get(association.entity_id) if association.entity_type == "claim_rentway_ar" else none %}
-              {% set refstro = refstros.get(association.entity_id) if association.entity_type == "claim_refstro_line" else none %}
-              <tr class="{% if not association.active %}inactive-row{% endif %}">
-                <td>{{ "AR Rentway" if ar else "REFSTRO" }}</td>
+            {% for association in ar_associations %}
+              {% set ar = ars.get(association.entity_id) %}
+              <tr>
                 <td>
-                  <strong>{{ ar.ar_reference if ar else refstro.refstro_reference if refstro else association.entity_id }}</strong>
-                  <small>{{ ar.plate if ar else refstro.plate if refstro else "-" }}</small>
+                  <strong>AR {{ ar.ar_reference if ar else "-" }}</strong>
+                  <small>{{ ar.plate if ar else "-" }}</small>
+                  <small>{{ ar_crar_status.get(ar.id, "Não recebido") if ar else "-" }}</small>
                 </td>
                 <td>
-                  {{ ar.status if ar else refstro.status if refstro else "-" }}
-                  <small>{{ ar.request_date.strftime("%Y-%m-%d") if ar and ar.request_date else refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
+                  {{ ar.status if ar else "-" }}
+                  <small>{{ ar.request_date.strftime("%Y-%m-%d") if ar and ar.request_date else "-" }}</small>
                 </td>
+                <td>-<small>{{ ar.raw_state if ar else "-" }}</small></td>
                 <td>
-                  {% if refstro %}
-                    {{ "%.2f"|format(refstro.claim_value or 0) }}
-                    <small>{{ refstro.component or "-" }}</small>
-                  {% else %}
-                    -
-                    <small>{{ ar.raw_state if ar else "-" }}</small>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="pill status-{{ 'open' if association.active else 'cancelled' }}">{{ "Ativa" if association.active else "Inativa" }}</span>
+                  <span class="pill status-open">Ativa</span>
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
@@ -149,7 +239,111 @@
                 </td>
               </tr>
             {% else %}
-              <tr><td colspan="6" class="muted">Sem ligações associadas.</td></tr>
+              <tr><td colspan="5" class="muted">Sem AR ativos associados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <h4>REFSTROs no processo</h4>
+      <div class="table-shell management-table-shell management-association-table-shell">
+        <table>
+          <thead>
+            <tr>
+                <th>Referência</th>
+                <th>Estado / datas</th>
+                <th>Detalhe financeiro</th>
+                <th>Cliente / condutor</th>
+                <th>Associação</th>
+                <th>Correção</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for association in refstro_associations %}
+              {% set refstro = refstros.get(association.entity_id) %}
+              <tr>
+                <td>
+                  <strong>REF {{ refstro.refstro_reference if refstro else "-" }}</strong>
+                  <small>{{ refstro.plate if refstro else "-" }}</small>
+                  {% if refstro and refstro.document_reference %}
+                    <small>Doc.: {{ refstro.document_reference }}</small>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ refstro.status if refstro else "-" }}
+                  <small>{{ refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
+                  <small>Fecho: {{ refstro.close_date.strftime("%Y-%m-%d") if refstro and refstro.close_date else "-" }}</small>
+                </td>
+                <td>
+                  <strong>Reembolso: {{ "%.2f"|format(refstro.claim_value or 0) }} €</strong>
+                  <small>Componente: {{ refstro.component or "-" }}</small>
+                  <small>Custo: {{ "%.2f"|format(refstro.cost_value or 0) }} €</small>
+                </td>
+                <td>
+                  <strong>{{ refstro.customer_name if refstro else "-" }}</strong>
+                  <small>{{ refstro.driver_name if refstro else "-" }}</small>
+                </td>
+                <td>
+                  <span class="pill status-open">Ativa</span>
+                  <small>{{ association.reason or "-" }}</small>
+                </td>
+                <td>
+                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
+                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
+                      <select name="target_process_id" required>
+                        {% for target in other_processes %}
+                          <option value="{{ target.id }}">{{ target.internal_reference }}</option>
+                        {% endfor %}
+                      </select>
+                      <input name="reason" placeholder="Motivo">
+                      <button type="submit">Mover</button>
+                    </form>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">Sem REFSTROs ativos associados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Registos inativos</h4>
+      <div class="table-shell management-table-shell management-association-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Referência</th>
+              <th>Estado / data</th>
+              <th>Associação</th>
+              <th>Correção</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for association in inactive_associations %}
+              {% set ar = ars.get(association.entity_id) if association.entity_type == "claim_rentway_ar" else none %}
+              {% set refstro = refstros.get(association.entity_id) if association.entity_type == "claim_refstro_line" else none %}
+              <tr class="inactive-row">
+                <td>{{ "AR Rentway" if ar else "REFSTRO" if refstro else association.entity_type }}</td>
+                <td>
+                  <strong>{% if ar %}AR {{ ar.ar_reference }}{% elif refstro %}REF {{ refstro.refstro_reference }}{% else %}{{ association.entity_id }}{% endif %}</strong>
+                  <small>{{ ar.plate if ar else refstro.plate if refstro else "-" }}</small>
+                  {% if ar %}
+                    <small>{{ ar_crar_status.get(ar.id, "Não recebido") }}</small>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ ar.status if ar else refstro.status if refstro else "-" }}
+                  <small>{{ ar.request_date.strftime("%Y-%m-%d") if ar and ar.request_date else refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
+                </td>
+                <td><span class="pill status-cancelled">Inativa</span></td>
+                <td><small>{{ association.reason or "-" }}</small></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Sem registos inativos.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -182,7 +376,7 @@
             <h3>Histórico de alterações</h3>
           </div>
         </div>
-        <div class="timeline compact-timeline">
+        <div class="timeline compact-timeline management-detail-compact-timeline">
           {% for item in history %}
             <article>
               <span>

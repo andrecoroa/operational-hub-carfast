@@ -15,7 +15,7 @@
       </div>
     </header>
 
-    <section class="metric-grid management-kpis management-overview-kpis reconciliation-kpis">
+    <section class="metric-grid management-kpis management-kpis-compact management-overview-kpis reconciliation-kpis">
       <span class="metric">
         <span class="metric-icon amber">REC</span>
         <span class="metric-detail"><strong>{{ metrics.participations_to_reconcile }}</strong><span>Por reconciliar</span><small>REFSTRO sem AR validado</small></span>
@@ -88,15 +88,19 @@
                     <div class="reconciliation-match-list">
                       {% for ar in reconciliation.plate_ar_candidates %}
                         <article class="reconciliation-source-card">
-                          <div>
-                            <strong>AR {{ ar.ar_reference }}</strong>
+                          <div class="reconciliation-ar-line reconciliation-ar-process-line">
+                            {% if ar.process_id %}
+                              <a class="reconciliation-sin-link" href="/management-center/{{ ar.process_id }}">Ref. interna {{ ar.process_reference }}</a>
+                            {% else %}
+                              <strong>Sem Ref. interna</strong>
+                            {% endif %}
                             <span class="management-status-pill reconciliation-{{ 'associated' if ar.has_refstro else 'monitoring' }}">{{ "Já tem REFSTRO" if ar.has_refstro else "Pendente" }}</span>
                           </div>
-                          <small>{{ ar.date or "-" }} · {{ ar.status }}</small>
-                          <small>{{ ar.customer_name }} · {{ ar.driver_name }}</small>
-                          {% if ar.process_id %}
-                            <a class="table-link" href="/management-center/{{ ar.process_id }}">{{ ar.process_reference }}</a>
-                          {% endif %}
+                          <div class="reconciliation-ar-line">
+                            <strong>AR {{ ar.ar_reference }}</strong>
+                            <small>{{ ar.date or "-" }} · {{ ar.status or "-" }}</small>
+                          </div>
+                          <small class="reconciliation-party-line">{{ ar.customer_name or "-" }} · {{ ar.driver_name or "-" }}</small>
                         </article>
                       {% else %}
                         <p class="muted empty-panel">Sem ARs para esta matrícula.</p>

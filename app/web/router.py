@@ -7632,15 +7632,36 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
             .order_by(ManagementHistory.changed_at.desc(), ManagementHistory.id.desc())
             .limit(80)
         ).all()
-        other_processes = db.scalars(
+        clean_process_plate = normalize_plate_for_web(process.plate)
+        other_process_candidates = db.scalars(
             select(ManagementProcess)
             .where(
                 ManagementProcess.process_type_id == process.process_type_id,
                 ManagementProcess.id != process.id,
             )
-            .order_by(ManagementProcess.internal_reference.desc())
+            .order_by(
+                ManagementProcess.opened_on.desc(),
+                ManagementProcess.internal_reference.desc(),
+            )
             .limit(120)
         ).all()
+        other_processes = [
+            candidate for candidate in other_process_candidates
+            if normalize_plate_for_web(candidate.plate) == clean_process_plate
+        ][:5]
+        refstro_raw_fields = [
+            ("REFSTRO", "REFSTRO"),
+            ("ADESAO", "Adesão"),
+            ("MATRICULA", "Matrícula"),
+            ("DTASTRO", "Data sinistro"),
+            ("DTAENCERR.", "Fecho"),
+            ("RC", "RC"),
+            ("DP", "DP"),
+            ("IDS Credor", "IDS Credor"),
+            ("VIDROS", "Vidros"),
+            ("CUSTOS GESTÃO", "Custos gestão"),
+            ("CUSTO TOTAL", "Custo total"),
+        ]
         return templates.TemplateResponse(
             request,
             "management_process_detail.html",
@@ -7661,6 +7682,7 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
                 "rules": rules,
                 "history": history,
                 "other_processes": other_processes,
+                "refstro_raw_fields": refstro_raw_fields,
                 "ar_crar_status": ar_crar_status,
                 "status_labels": PROCESS_STATUS_LABELS,
                 "phase_labels": PROCESS_PHASE_LABELS,
@@ -7763,6 +7785,12 @@ def management_center_move_association(
         target = db.get(ManagementProcess, target_process_id)
         if not association or association.process_id != process_id or not target:
             return RedirectResponse(f"/management-center/{process_id}", status_code=303)
+        source = db.get(ManagementProcess, process_id)
+        if not source or normalize_plate_for_web(source.plate) != normalize_plate_for_web(target.plate):
+            return RedirectResponse(
+                f"/management-center/{process_id}?updated=association_invalid_plate",
+                status_code=303,
+            )
         move_reason = reason.strip() or f"Correção para {target.internal_reference}."
         end_association(db, association, reason=move_reason, user_id=user_id)
         db.add(

@@ -1,5 +1,23 @@
 {% extends "base.html" %}
 {% block body %}
+{% macro correction_actions(process, association, other_processes) -%}
+  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
+    <details class="association-correction-menu">
+      <summary>Corrigir associação</summary>
+      <div class="association-correction-actions">
+        {% for target in other_processes %}
+          <form method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
+            <input type="hidden" name="target_process_id" value="{{ target.id }}">
+            <input type="hidden" name="reason" value="Correção manual: associação movida para processo da mesma matrícula.">
+            <button type="submit" title="Mover para {{ target.internal_reference }}">{{ target.internal_reference }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </details>
+  {% else %}
+    <span class="muted">Sem outro processo da mesma matrícula.</span>
+  {% endif %}
+{%- endmacro %}
 <div class="app-shell">
   {% set active_menu = "management_center" %}
   {% include "_sidebar.html" %}
@@ -7,7 +25,27 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Centro de Gestão e Acompanhamento</p>
-        <h2>{{ process.internal_reference }}</h2>
+        <h2>Ref. interna {{ process.internal_reference }}</h2>
+        <div class="management-origin-badges">
+          {% if tracking_references.ar_references %}
+            {% for reference in tracking_references.ar_references[:3] %}
+              <span class="management-origin-badge origin-ar">Origem AR {{ reference }}</span>
+            {% endfor %}
+            {% if tracking_references.ar_references|length > 3 %}
+              <span class="management-origin-badge">+{{ tracking_references.ar_references|length - 3 }} AR</span>
+            {% endif %}
+          {% else %}
+            <span class="management-origin-badge origin-missing">AR em falta</span>
+          {% endif %}
+          {% if tracking_references.refstro_references %}
+            {% for reference in tracking_references.refstro_references[:2] %}
+              <span class="management-origin-badge origin-ref">REFSTRO {{ reference }}</span>
+            {% endfor %}
+            {% if tracking_references.refstro_references|length > 2 %}
+              <span class="management-origin-badge">+{{ tracking_references.refstro_references|length - 2 }} REFSTRO</span>
+            {% endif %}
+          {% endif %}
+        </div>
         <p class="breadcrumb">Processo do tipo {{ process_type.name if process_type else "não definido" }} · {{ process.title }}</p>
       </div>
       <div class="button-row">
@@ -19,10 +57,10 @@
       <section class="notice-inline"><strong>Processo atualizado.</strong> Histórico preservado.</section>
     {% endif %}
 
-    <section class="metric-grid management-kpis management-overview-kpis">
+    <section class="metric-grid management-kpis management-kpis-compact management-overview-kpis management-detail-kpis">
       <span class="metric">
         <span class="metric-icon blue">PRC</span>
-        <span class="metric-detail"><strong>{{ process.internal_reference }}</strong><span>{{ status_labels.get(process.status, process.status) }}</span><small>{{ phase_labels.get(process.phase, process.phase) }}</small></span>
+        <span class="metric-detail"><strong title="Ref. interna {{ process.internal_reference }}">{{ process.internal_reference }}</strong><span>Ref. interna</span><small>{{ status_labels.get(process.status, process.status) }}</small></span>
       </span>
       <span class="metric">
         <span class="metric-icon amber">AR</span>
@@ -47,6 +85,7 @@
           </div>
         </div>
         <dl class="detail-list">
+          <div><dt>Ref. interna</dt><dd><strong>{{ process.internal_reference }}</strong></dd></div>
           <div><dt>Tipo de processo</dt><dd>{{ process_type.name if process_type else "-" }}</dd></div>
           <div><dt>Matrícula</dt><dd><strong>{{ process.plate or "-" }}</strong></dd></div>
           <div><dt>Data sinistro</dt><dd>{{ claim.accident_date.strftime("%Y-%m-%d") if claim and claim.accident_date else "-" }}</dd></div>
@@ -67,63 +106,6 @@
             <dd>
               {% if refstro_associations %}
                 <span class="management-status-pill status-analysis">{{ tracking_references.refstro_line_count }} linha(s) associada(s)</span>
-              {% else %}
-                -
-              {% endif %}
-            </dd>
-          </div>
-          <div class="management-refstro-lines-row">
-            <dt>Linhas REFSTRO</dt>
-            <dd>
-              {% if refstro_associations %}
-                <div class="management-inline-table-shell">
-                  <table class="management-refstro-line-table">
-                    <thead>
-                      <tr>
-                        <th>REFSTRO</th>
-                        <th>Doc.</th>
-                        <th>Data</th>
-                        <th>Estado</th>
-                        <th>Rubrica</th>
-                        <th>Valor</th>
-                        <th>Custo</th>
-                        <th>Cliente / condutor</th>
-                        <th>Origem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for association in refstro_associations %}
-                        {% set refstro = refstros.get(association.entity_id) %}
-                        <tr>
-                          <td><strong>{{ refstro.refstro_reference if refstro else "-" }}</strong></td>
-                          <td>{{ refstro.document_reference if refstro and refstro.document_reference else "-" }}</td>
-                          <td>
-                            {{ refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}
-                            {% if refstro and refstro.close_date %}
-                              <small>Fecho {{ refstro.close_date.strftime("%Y-%m-%d") }}</small>
-                            {% endif %}
-                          </td>
-                          <td>{{ refstro.status if refstro and refstro.status else "-" }}</td>
-                          <td>{{ refstro.component if refstro and refstro.component else "-" }}</td>
-                          <td>{{ "%.2f"|format(refstro.claim_value or 0) if refstro else "-" }} €</td>
-                          <td>{{ "%.2f"|format(refstro.cost_value or 0) if refstro else "-" }} €</td>
-                          <td>
-                            {{ refstro.customer_name if refstro and refstro.customer_name else "-" }}
-                            {% if refstro and refstro.driver_name %}
-                              <small>{{ refstro.driver_name }}</small>
-                            {% endif %}
-                          </td>
-                          <td>
-                            {{ refstro.source_file if refstro and refstro.source_file else "-" }}
-                            {% if refstro and refstro.source_row_number %}
-                              <small>Linha {{ refstro.source_row_number }}</small>
-                            {% endif %}
-                          </td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
               {% else %}
                 -
               {% endif %}
@@ -153,6 +135,63 @@
           </div>
           <div><dt>Pendência</dt><dd>{% if process.pending_reason %}<span class="management-status-pill status-waiting">{{ pending_labels.get(process.pending_reason, process.pending_reason) }}</span>{% else %}-{% endif %}</dd></div>
         </dl>
+        {% if refstro_associations %}
+          <div class="management-refstro-lines-panel">
+            <div class="management-refstro-lines-title">
+              <span class="management-source-dot source-ref">REF</span>
+              <div>
+                <strong>Linhas REFSTRO importadas</strong>
+                <small>{{ tracking_references.refstro_line_count }} linha(s) associada(s)</small>
+              </div>
+            </div>
+            <div class="management-inline-table-shell">
+              <table class="management-refstro-line-table management-refstro-raw-table">
+                <thead>
+                  <tr>
+                    {% for field_key, field_label in refstro_raw_fields %}
+                      <th>{{ field_label }}</th>
+                    {% endfor %}
+                    <th>Fonte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for association in refstro_associations %}
+                    {% set refstro = refstros.get(association.entity_id) %}
+                    {% set raw = refstro.raw_json if refstro and refstro.raw_json else {} %}
+                    <tr>
+                      {% for field_key, field_label in refstro_raw_fields %}
+                        {% if field_key == "REFSTRO" %}
+                          {% set field_value = refstro.refstro_reference if refstro and refstro.refstro_reference else raw.get(field_key, "-") %}
+                        {% elif field_key == "ADESAO" %}
+                          {% set field_value = refstro.document_reference if refstro and refstro.document_reference else raw.get(field_key, "-") %}
+                        {% elif field_key == "MATRICULA" %}
+                          {% set field_value = refstro.plate if refstro and refstro.plate else raw.get(field_key, "-") %}
+                        {% elif field_key == "DTASTRO" %}
+                          {% set field_value = refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else raw.get(field_key, "-") %}
+                        {% elif field_key == "DTAENCERR." %}
+                          {% set field_value = refstro.close_date.strftime("%Y-%m-%d") if refstro and refstro.close_date else raw.get(field_key, "-") %}
+                        {% elif field_key == "CUSTOS GESTÃO" %}
+                          {% set field_value = raw.get("_management_cost", raw.get(field_key, "-")) %}
+                        {% elif field_key == "CUSTO TOTAL" %}
+                          {% set field_value = raw.get("_total_cost", raw.get(field_key, "-")) %}
+                        {% else %}
+                          {% set field_value = raw.get(field_key, "-") %}
+                        {% endif %}
+                        <td title="{{ field_value }}">{{ field_value }}</td>
+                      {% endfor %}
+                      <td>
+                        <span title="{{ refstro.source_file if refstro and refstro.source_file else '-' }}">{{ refstro.source_file if refstro and refstro.source_file else "-" }}</span>
+                        {% if refstro and refstro.source_row_number %}
+                          <small>Linha {{ refstro.source_row_number }}</small>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endif %}
       </article>
 
       <article class="cockpit-panel management-side-panel">
@@ -197,11 +236,10 @@
         <table>
           <thead>
             <tr>
-              <th>Referência</th>
+              <th>AR Rentway</th>
               <th>Estado / data</th>
               <th>Detalhe</th>
               <th>Associação</th>
-              <th>Correção</th>
             </tr>
           </thead>
           <tbody>
@@ -222,38 +260,25 @@
                   <span class="management-status-pill status-open">Ativa</span>
                   <small>{{ association.reason or "-" }}</small>
                 </td>
-                <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
-                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
-                      <select name="target_process_id" required>
-                        {% for target in other_processes %}
-                          <option value="{{ target.id }}">{{ target.internal_reference }}</option>
-                        {% endfor %}
-                      </select>
-                      <input name="reason" placeholder="Motivo">
-                      <button type="submit">Mover</button>
-                    </form>
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
               </tr>
             {% else %}
-              <tr><td colspan="5" class="muted">Sem AR ativos associados.</td></tr>
+              <tr><td colspan="4" class="muted">Sem AR ativos associados.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
 
       <h4>REFSTROs no processo</h4>
-      <div class="table-shell management-table-shell management-association-table-shell">
+      <div class="table-shell management-table-shell management-association-table-shell management-refstro-association-shell">
         <table>
           <thead>
             <tr>
-                <th>Referência</th>
-                <th>Estado / datas</th>
-                <th>Detalhe financeiro</th>
-                <th>Cliente / condutor</th>
+                <th>REFSTRO</th>
+                <th>Adesão</th>
+                <th>Matrícula</th>
+                <th>Datas</th>
+                <th>Rubrica</th>
+                <th>Valores</th>
                 <th>Associação</th>
                 <th>Correção</th>
             </tr>
@@ -261,50 +286,37 @@
           <tbody>
             {% for association in refstro_associations %}
               {% set refstro = refstros.get(association.entity_id) %}
+              {% set raw = refstro.raw_json if refstro and refstro.raw_json else {} %}
               <tr>
                 <td>
-                  <strong>REF {{ refstro.refstro_reference if refstro else "-" }}</strong>
-                  <small>{{ refstro.plate if refstro else "-" }}</small>
-                  {% if refstro and refstro.document_reference %}
-                    <small>Doc.: {{ refstro.document_reference }}</small>
-                  {% endif %}
+                  <strong>{{ refstro.refstro_reference if refstro else raw.get("REFSTRO", "-") }}</strong>
+                  <small>Linha {{ refstro.source_row_number if refstro and refstro.source_row_number else "-" }}</small>
+                </td>
+                <td>{{ refstro.document_reference if refstro and refstro.document_reference else raw.get("ADESAO", "-") }}</td>
+                <td><strong>{{ refstro.plate if refstro and refstro.plate else raw.get("MATRICULA", "-") }}</strong></td>
+                <td>
+                  {{ refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else raw.get("DTASTRO", "-") }}
+                  <small>Fecho: {{ refstro.close_date.strftime("%Y-%m-%d") if refstro and refstro.close_date else raw.get("DTAENCERR.", "-") }}</small>
                 </td>
                 <td>
-                  {{ refstro.status if refstro else "-" }}
-                  <small>{{ refstro.accident_date.strftime("%Y-%m-%d") if refstro and refstro.accident_date else "-" }}</small>
-                  <small>Fecho: {{ refstro.close_date.strftime("%Y-%m-%d") if refstro and refstro.close_date else "-" }}</small>
+                  <strong>{{ refstro.component if refstro and refstro.component else "-" }}</strong>
+                  <small>{{ refstro.status if refstro and refstro.status else "-" }}</small>
                 </td>
                 <td>
-                  <strong>Reembolso: {{ "%.2f"|format(refstro.claim_value or 0) }} €</strong>
-                  <small>Componente: {{ refstro.component or "-" }}</small>
-                  <small>Custo: {{ "%.2f"|format(refstro.cost_value or 0) }} €</small>
-                </td>
-                <td>
-                  <strong>{{ refstro.customer_name if refstro else "-" }}</strong>
-                  <small>{{ refstro.driver_name if refstro else "-" }}</small>
+                  <strong>{{ "%.2f"|format(refstro.claim_value or 0) if refstro else "-" }} €</strong>
+                  <small>Custo: {{ "%.2f"|format(refstro.cost_value or 0) if refstro else "-" }} €</small>
+                  <small>Total linha: {{ raw.get("CUSTO TOTAL", "-") }}</small>
                 </td>
                 <td>
                   <span class="management-status-pill status-open">Ativa</span>
                   <small>{{ association.reason or "-" }}</small>
                 </td>
                 <td>
-                  {% if association.active and nav_has_permission(request, "management_center.write", "admin.manage") and other_processes %}
-                    <form class="association-move-form" method="post" action="/management-center/{{ process.id }}/associations/{{ association.id }}/move">
-                      <select name="target_process_id" required>
-                        {% for target in other_processes %}
-                          <option value="{{ target.id }}">{{ target.internal_reference }}</option>
-                        {% endfor %}
-                      </select>
-                      <input name="reason" placeholder="Motivo">
-                      <button type="submit">Mover</button>
-                    </form>
-                  {% else %}
-                    -
-                  {% endif %}
+                  {{ correction_actions(process, association, other_processes) }}
                 </td>
               </tr>
             {% else %}
-              <tr><td colspan="6" class="muted">Sem REFSTROs ativos associados.</td></tr>
+              <tr><td colspan="8" class="muted">Sem REFSTROs ativos associados.</td></tr>
             {% endfor %}
           </tbody>
         </table>

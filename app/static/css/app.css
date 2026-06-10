@@ -8300,6 +8300,204 @@ a.metric:hover {
   }
 }
 
+/* Management Center SIN/REFSTRO detail refinements */
+.metric-grid.management-detail-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.management-detail-kpis .metric {
+  min-width: 0;
+  min-height: 64px;
+}
+
+.management-detail-kpis .metric-detail {
+  min-width: 0;
+}
+
+.management-detail-kpis .metric-detail strong,
+.management-detail-kpis .metric-detail span,
+.management-detail-kpis .metric-detail small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-origin-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.management-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-origin-badge.origin-ar {
+  border-color: #dbe5f7;
+  background: #f5f8ff;
+  color: #31548e;
+}
+
+.management-origin-badge.origin-ref {
+  border-color: #d6eadc;
+  background: #f3fbf5;
+  color: #2f6a3e;
+}
+
+.management-origin-badge.origin-missing {
+  border-color: #f2dda5;
+  background: #fff8e6;
+  color: #8a6417;
+}
+
+.management-refstro-lines-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 14px 18px 18px;
+}
+
+.management-refstro-lines-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.management-refstro-lines-title > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.management-refstro-lines-title strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.management-refstro-lines-title small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.management-refstro-raw-table {
+  width: 100%;
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.management-refstro-raw-table th,
+.management-refstro-raw-table td {
+  padding: 7px 8px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-refstro-association-shell table {
+  min-width: 1040px;
+}
+
+.association-correction-menu {
+  position: relative;
+}
+
+.association-correction-menu summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #ffffff;
+  color: var(--brand-dark);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 950;
+  list-style: none;
+}
+
+.association-correction-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.association-correction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.association-correction-actions button {
+  min-height: 28px;
+  border: 1px solid #f0c6ba;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.reconciliation-ar-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reconciliation-ar-process-line {
+  align-items: center;
+}
+
+.reconciliation-sin-link {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--brand-dark);
+  font-size: 15px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reconciliation-sin-link:hover {
+  color: var(--brand);
+}
+
+.reconciliation-party-line {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 780px) {
+  .metric-grid.management-detail-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Management Center phase 1 visual refinements */
 .management-center-hero {
   border-color: #dbe6f4;

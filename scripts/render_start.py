@@ -35,7 +35,7 @@ def host_resolvable(hostname: str | None) -> bool:
 def main() -> None:
     port = os.environ.get("PORT", "10000")
     candidates: list[str] = []
-    for key in ("DATABASE_URL", "CARFAST_DATABASE_URL", "DATABASE_URL_FALLBACK", "RENDER_DATABASE_URL"):
+    for key in ("RENDER_DATABASE_URL", "CARFAST_DATABASE_URL", "DATABASE_URL_FALLBACK", "DATABASE_URL"):
         value = os.environ.get(key)
         if value and value not in candidates:
             candidates.append(value)

@@ -52,6 +52,13 @@ def main() -> None:
             )
 
     if not candidates:
+        db_keys = [k for k in os.environ.keys() if "DB" in k.upper() or "DATABASE" in k.upper() or "POSTGRES" in k.upper()]
+        print(f"[render_start] Variáveis de ambiente DB visíveis: {sorted(db_keys)}")
+        print(
+            "[render_start] Resolver isto no Render:"
+            " em Service > Environment definir CARFAST_DATABASE_URL com a connection string"
+            " ou anexar Postgres via fromDatabase para DATABASE_URL."
+        )
         raise RuntimeError("A variável DATABASE_URL (ou equivalente) não está definida.")
 
     candidate_used = False

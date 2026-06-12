@@ -54,3 +54,19 @@ importantes.
 Nota: `preDeployCommand` nao e suportado em servicos free. Por isso, no plano
 free, as migracoes correm em `scripts/render_start.py` antes de iniciar o
 Uvicorn.
+
+## Recuperação de Falha: HOST DE BASE Invalido
+
+Se o serviço falhar no arranque com erro `failed to resolve host ...`, faz isto:
+
+1. Confirmar qual host está a ser usado no log (`[render_start] candidato_x: host=...`).
+2. Em `Web Service` > `Environment`, definir:
+   - `RENDER_DATABASE_URL` ou `CARFAST_DATABASE_URL` com a connection string atual do PostgreSQL do Render.
+3. Remover `DATABASE_URL` manual antiga (se existir) e deixar o `fromDatabase` do `render.yaml` cuidar do valor.
+4. `Manual Deploy` novamente.
+
+O `scripts/render_start.py` tenta estes candidatos nesta ordem:
+`DATABASE_URL`, `CARFAST_DATABASE_URL`, `DATABASE_URL_FALLBACK`, `RENDER_DATABASE_URL`.
+Se o primeiro falhar, tenta o seguinte e indica no log qual candidato falhou.
+
+Importante: **nunca** colocar credenciais sensíveis no código/repositório.

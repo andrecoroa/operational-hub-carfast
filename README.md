@@ -112,3 +112,8 @@ desenvolvimento:
 python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+## Produção v2
+
+Ver também: `docs/DEPLOY_V2_PRODUCTION.md`.
+

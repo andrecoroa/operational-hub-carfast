@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 import socket
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 
 def run(command: list[str], *, retries: int = 0, delay_seconds: int = 2, env: dict[str, str] | None = None) -> None:
@@ -32,13 +32,40 @@ def host_resolvable(hostname: str | None) -> bool:
         return False
 
 
+def add_candidate(candidates: list[str], value: str | None) -> None:
+    if value and value not in candidates:
+        candidates.append(value)
+
+
+def render_external_url_candidates(database_url: str) -> list[str]:
+    parsed = urlparse(database_url)
+    host = parsed.hostname or ""
+    if not host.startswith("dpg-") or "." in host:
+        return []
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.setdefault("sslmode", "require")
+    rendered: list[str] = []
+    for region_domain in ("frankfurt-postgres.render.com", "oregon-postgres.render.com"):
+        netloc = host + "." + region_domain
+        if parsed.username:
+            auth = parsed.username
+            if parsed.password:
+                auth += ":" + parsed.password
+            netloc = auth + "@" + netloc
+        rendered.append(urlunparse(parsed._replace(netloc=netloc, query=urlencode(query))))
+    return rendered
+
+
 def main() -> None:
     port = os.environ.get("PORT", "10000")
     candidates: list[str] = []
     for key in ("RENDER_DATABASE_URL", "CARFAST_DATABASE_URL", "DATABASE_URL_FALLBACK", "DATABASE_URL"):
         value = os.environ.get(key)
-        if value and value not in candidates:
-            candidates.append(value)
+        add_candidate(candidates, value)
+        if value:
+            for fallback_url in render_external_url_candidates(value):
+                add_candidate(candidates, fallback_url)
 
     if not candidates:
         print("[render_start] Nenhuma DATABASE_URL definida antes do arranque.")
@@ -101,3 +128,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

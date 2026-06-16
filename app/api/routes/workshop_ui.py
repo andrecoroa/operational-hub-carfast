@@ -2649,35 +2649,40 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
 
         <section id="reception" class="panel phase active">
           <div class="phase-head">
-            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Entrada em Oficina</h2><p class="muted">Registe a entrada da viatura e os trabalhos a executar.</p></div></div>
-            <div class="actions"><button type="button" onclick="saveReception()">Guardar</button><button class="primary" type="button" onclick="advanceReception()">Avançar</button></div>
+            <div class="phase-title"><span class="phase-title-icon">□</span><div><h2>Entrada em Oficina</h2><p class="muted">Identifique a viatura, o motivo da entrada, evidência mínima e encaminhamento.</p></div></div>
+            <div class="actions"><button class="primary" type="button" onclick="saveReception()">Guardar entrada</button></div>
           </div>
           <div id="receptionAlerts" class="alert-line"></div>
           <div class="main-card">
-            <h3>Dados principais</h3>
-            <div class="grid2">
+            <h3>Identificação</h3>
+            <div class="grid3">
+              <label>Matrícula<span class="field-control"><span class="field-icon">▱</span><input id="recPlate" readonly><span class="field-extra">auto</span></span></label>
+              <label>Viatura / modelo<span class="field-control"><span class="field-icon">▤</span><input id="recVehicle" readonly><span class="field-extra">auto</span></span></label>
               <label>Quilómetros <span class="required">*</span><span class="field-control"><span class="field-icon">◴</span><input id="recKm" type="number" min="0"><span class="field-extra">km</span></span><span id="recKmNote" class="field-note">Quilómetros em falta.</span></label>
-              <label>Origem<span class="field-control"><span class="field-icon">↳</span><input id="recOrigin" readonly><span class="field-extra">auto</span></span></label>
             </div>
-            <label>Observação inicial <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Descreva a situação reportada pelo cliente, sintomas ou informações relevantes."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label>
+            <div class="grid3">
+              <label>Data/hora entrada<input id="recDate" placeholder="AAAA-MM-DD HH:MM"></label>
+              <label>Origem do processo<select id="recOrigin"><option value="">Selecionar</option><option value="breakdown">Avaria</option><option value="maintenance">Manutenção</option><option value="damage">Dano</option><option value="sale_preparation">Preparação</option><option value="other">Outro</option></select></label>
+              <label>Prioridade<select id="recPriority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
+            </div>
           </div>
           <div class="main-card">
-            <div class="phase-head"><div><h3>Serviços a executar</h3><p class="muted">Adicione trabalhos que surjam durante a receção, sem abrir outra fase.</p></div><button class="primary" type="button" onclick="addService()">Adicionar serviço</button></div>
-            <div id="serviceList" class="list"></div>
-            <div class="grid3"><label>Serviço<select id="serviceCode"></select></label><label><span id="serviceZoneLabel">Zona / sistema</span><input id="serviceZone" placeholder="Motor, travagem, pneus..."></label><label><span id="serviceDetailLabel">Detalhe</span><input id="serviceDetail" placeholder="Descrição do trabalho"></label></div>
-            <label><span id="serviceObservationLabel">Observação curta</span><textarea id="serviceObservation" placeholder="Motivo, evidência, indicação do técnico..."></textarea></label>
+            <h3>Motivo da entrada</h3>
+            <div class="grid2"><label>Queixa / pedido principal<input id="recMainRequest" placeholder="Ex.: revisão, avaria luz motor, danos..."></label><label>Sintoma reportado<input id="recSymptom" placeholder="Sintoma reportado pelo cliente/operador"></label></div>
+            <div class="grid2"><label>Imobilizada?<select id="recImmobilized"><option value="">Selecionar</option><option value="no">Não</option><option value="yes">Sim</option></select></label><label>Observação curta <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Resumo curto da entrada e contexto relevante."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label></div>
           </div>
           <div class="main-card">
-            <h3>Estado da viatura</h3>
-            <div class="grid2"><label>Estado visual<select id="recVisual"><option value="">Selecionar</option><option>Sem danos aparentes</option><option>Com danos ligeiros</option><option>Com danos relevantes</option><option>Não verificado</option></select></label><label>Descrição danos<input id="recDamage" placeholder="Danos visíveis"></label></div>
+            <h3>Estado visual inicial</h3>
+            <div class="grid2"><label>Danos visíveis?<select id="recVisual"><option value="">Selecionar</option><option>Não</option><option>Sim - ligeiros</option><option>Sim - relevantes</option><option>Não verificado</option></select></label><label>Observação de danos<input id="recDamage" placeholder="Resumo dos danos visíveis"></label></div>
           </div>
           <div class="main-card">
-            <h3>Fotografias</h3>
-            <label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label>
+            <h3>Documentos / Fotos</h3>
+            <div class="grid3"><label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label><label>Foto viatura / dano<input id="recVehiclePhoto" placeholder="https://..."></label><label>Documento de entrada<input id="recDocument" placeholder="https://..."></label></div>
+            <div class="actions" style="justify-content:flex-start"><button type="button" onclick="copyFolder()">Copiar pasta</button><a id="recDocumentsLink" class="button" href="/documents">Ver anexos associados</a></div>
           </div>
           <div class="main-card">
-            <h3>Outros dados relevantes</h3>
-            <div class="placeholder">Campos administrativos extra ficam aqui para não pesar a entrada principal.</div>
+            <h3>Encaminhamento</h3>
+            <div class="grid3"><label>Responsável<input id="recResponsible" type="number" min="1" placeholder="ID utilizador"></label><label>Próxima fase<select id="recNext"><option value="history_check">Validação administrativa</option><option value="technical_phase">Diagnóstico</option><option value="pending_decision">Aguardar decisão</option></select></label><label>Estado seguinte<span class="field-control"><span class="field-icon">→</span><input value="Entrada guardada" readonly><span class="field-extra">auto</span></span></label></div>
           </div>
         </section>
 
@@ -3430,15 +3435,27 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const b = phase("budget_approval")?.data || {};
       const repair = phase("internal_repair_execution")?.data || {};
       const closure = phase("final_closure")?.data || {};
-      setVal("#recDate", r.entry_date || processData.created_at || "");
+      const model = [v.brand, v.model, v.version].filter(Boolean).join(" ");
+      setVal("#recPlate", v.plate || processData.plate || "");
+      setVal("#recVehicle", model || "");
+      setVal("#recDate", r.entry_at || r.entry_date || processData.created_at || "");
       setVal("#recKm", r.km_entry || processData.initial_km || "");
       setVal("#recObs", r.initial_observation || processData.initial_observation || "");
       updateObservationCounter();
-      setVal("#recOrigin", processData.origin || "");
-      setVal("#recUnit", v.rentway_unit_nr || "");
+      setVal("#recOrigin", r.process_origin || processData.origin || "");
+      setVal("#recPriority", r.priority || processData.priority || "normal");
+      setVal("#recMainRequest", r.main_request || processData.title || "");
+      setVal("#recSymptom", r.reported_symptom || "");
+      setVal("#recImmobilized", r.immobilized || "");
       setVal("#recVisual", r.visible_damage_status || "");
       setVal("#recDamage", r.damage_description || "");
       setVal("#recPhoto", r.quadrant_photo_link || "");
+      setVal("#recVehiclePhoto", objectValues(r.vehicle_photo_links || {}).entry || "");
+      setVal("#recDocument", r.document_link || "");
+      setVal("#recResponsible", r.responsible_user_id || "");
+      setVal("#recNext", r.next_step || "history_check");
+      const docLink = $("#recDocumentsLink");
+      if (docLink) docLink.href = `/documents?plate=${encodeURIComponent(v.plate || processData.plate || "")}`;
       setChoice("internal", h.internal_history_checked || "pending_review");
       setVal("#accidents", h.open_accident_reports || "no");
       setVal("#accidentsDetail", h.accident_reports_detail || "");
@@ -3553,8 +3570,24 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function markEvidence(prefix) { setVal(`#${prefix}`, "yes"); renderChecks(); }
     async function saveReception() {
       try {
-        await requestJson(`/api/workshop/processes/${processId}/reception`, "POST", {km_entry:Number(val("#recKm")) || null, quadrant_photo_link:val("#recPhoto"), initial_observation:val("#recObs"), visible_damage_status:val("#recVisual"), damage_description:val("#recDamage")});
-        showResult(true, "Receção guardada.");
+        await requestJson(`/api/workshop/processes/${processId}/reception`, "POST", {
+          km_entry:Number(val("#recKm")) || null,
+          entry_at:val("#recDate"),
+          process_origin:val("#recOrigin"),
+          priority:val("#recPriority"),
+          main_request:val("#recMainRequest"),
+          reported_symptom:val("#recSymptom"),
+          initial_observation:val("#recObs"),
+          immobilized:val("#recImmobilized"),
+          quadrant_photo_link:val("#recPhoto"),
+          vehicle_photo_links:val("#recVehiclePhoto") ? {entry:val("#recVehiclePhoto")} : {},
+          document_link:val("#recDocument"),
+          visible_damage_status:val("#recVisual"),
+          damage_description:val("#recDamage"),
+          responsible_user_id:Number(val("#recResponsible")) || null,
+          next_step:val("#recNext")
+        });
+        showResult(true, "Entrada guardada.");
       } catch (err) { showResult(false, err.message); }
     }
     async function advanceReception() { await saveReception(); showPhase("checks"); }

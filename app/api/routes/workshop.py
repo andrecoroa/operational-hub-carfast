@@ -406,11 +406,20 @@ class WorkshopProcessSummary(BaseModel):
 
 class WorkshopReceptionConfirm(BaseModel):
     km_entry: int | None = None
+    entry_at: str | None = None
+    process_origin: str | None = None
+    priority: str | None = None
+    main_request: str | None = None
+    reported_symptom: str | None = None
     initial_observation: str | None = None
+    immobilized: str | None = None
     quadrant_photo_link: str | None = None
     vehicle_photo_links: dict[str, str] | None = None
+    document_link: str | None = None
     visible_damage_status: str | None = None
     damage_description: str | None = None
+    responsible_user_id: int | None = None
+    next_step: str | None = None
     confirmed_by_id: int | None = None
 
 
@@ -1167,7 +1176,12 @@ def confirm_reception(
     if reception.initial_observation:
         process.initial_observation = reception.initial_observation
     process.status = "pending_review"
-    process.current_phase_code = "history_check"
+    next_phase_code = {
+        "history_check": "history_check",
+        "technical_phase": "technical_phase",
+        "pending_decision": "diagnosis_decision",
+    }.get(reception.next_step or "history_check", "history_check")
+    process.current_phase_code = next_phase_code
 
     missing_required = []
     resolved_codes: set[str] = set()
@@ -1235,6 +1249,17 @@ def confirm_reception(
         )
         if document_id:
             vehicle_photo_document_ids[key] = document_id
+    reception_document_id = _upsert_workshop_document_from_link(
+        db,
+        process=process,
+        vehicle=vehicle,
+        link=reception.document_link,
+        title=_document_title(process, vehicle, "Documento de entrada"),
+        document_type="workshop_evidence",
+        user_id=reception.confirmed_by_id,
+        existing_document_id=phase_data.get("reception_document_id"),
+        source_subject="Documento de entrada",
+    )
     _resolve_alerts(db, process.id, resolved_codes, reception.confirmed_by_id)
 
     status_value = "completed" if not missing_required else "pending_review"
@@ -1243,19 +1268,29 @@ def confirm_reception(
         status_value,
         {
             "confirmed_at": process.received_at.isoformat(),
+            "entry_at": reception.entry_at,
+            "process_origin": reception.process_origin,
+            "priority": reception.priority,
+            "main_request": reception.main_request,
+            "reported_symptom": reception.reported_symptom,
             "km_entry": reception.km_entry,
             "initial_observation": reception.initial_observation,
+            "immobilized": reception.immobilized,
             "quadrant_photo_link": reception.quadrant_photo_link,
             "quadrant_photo_document_id": quadrant_photo_document_id,
             "vehicle_photo_links": reception.vehicle_photo_links or {},
             "vehicle_photo_document_ids": vehicle_photo_document_ids,
+            "document_link": reception.document_link,
+            "reception_document_id": reception_document_id,
             "visible_damage_status": reception.visible_damage_status,
             "damage_description": reception.damage_description,
+            "responsible_user_id": reception.responsible_user_id,
+            "next_step": reception.next_step,
             "missing_required": missing_required,
         },
         reception.confirmed_by_id,
     )
-    next_phase = _get_phase_or_404(db, process.id, "history_check")
+    next_phase = _get_phase_or_404(db, process.id, next_phase_code)
     if next_phase.status == "not_started":
         next_phase.status = "pending"
     db.commit()

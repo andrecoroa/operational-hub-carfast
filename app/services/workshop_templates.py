@@ -147,6 +147,11 @@ STELLANTIS_REPORTS = [
                 "unit": "Dia(s)",
             },
             {"code": "maintenance_count", "label": "N. manutencoes efetuadas", "unit": None},
+            {
+                "code": "oil_change_limit_exceeded",
+                "label": "Limite excedido sem substituir oleo motor?",
+                "unit": None,
+            },
         ],
     },
     {

@@ -25,6 +25,10 @@ FIELD_ALIASES: dict[str, list[str]] = {
     "days_before_next_maintenance": ["Dias restantes antes manutencao", "Dias restantes antes manutenção"],
     "time_limit_exceeded": ["Limite temporal ultrapassado"],
     "km_limit_exceeded": ["Limite quilometrico ultrapassado", "Limite quilométrico ultrapassado"],
+    "oil_change_limit_exceeded": [
+        "Limite manutencao excedido sem substituir oleo motor",
+        "Limite manutenção excedido sem substituir óleo motor",
+    ],
     "maintenance_key_display": ["Chave de manutencao", "Chave de manutenção"],
     "days_since_last_reset": ["Dias desde ultima reposicao", "Dias desde última reposição"],
     "maintenance_count": ["N. manutencoes efetuadas", "Nº manutenções efetuadas", "N. manutenções efetuadas"],
@@ -149,6 +153,16 @@ def _extract_psa_maintenance_information(lines: list[str]) -> dict[str, Any]:
         and _window_contains(lines, idx, ("manutencoes", "efetuadas"), stop_after=5),
         with_index=True,
     )
+    oil_change_limit_idx = _find_index(
+        lines,
+        lambda _line, idx: _window_contains(
+            lines,
+            idx,
+            ("limite de manutencao", "sem substituir", "oleo do motor"),
+            stop_after=8,
+        ),
+        with_index=True,
+    )
 
     return _clean_empty(
         {
@@ -160,6 +174,7 @@ def _extract_psa_maintenance_information(lines: list[str]) -> dict[str, Any]:
             "maintenance_key_display": _maintenance_key_text(lines, maintenance_key_idx),
             "days_since_last_reset": _next_number_from(lines, days_since_idx, stop_after=10) if days_since_idx >= 0 else "",
             "maintenance_count": _next_number_from(lines, count_idx, stop_after=5) if count_idx >= 0 else "",
+            "oil_change_limit_exceeded": _yes_no_from(lines, oil_change_limit_idx, stop_after=10) if oil_change_limit_idx >= 0 else "",
         }
     )
 

@@ -34,6 +34,7 @@ from app.models.workshop_phased import (
 from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
+from app.services.workshop_report_extractor import extract_workshop_report_values
 from app.services.workshop_templates import (
     STELLANTIS_REPORTS,
     TECHNICAL_CHECKS,
@@ -519,6 +520,19 @@ class WorkshopTechnicalReportUpdate(BaseModel):
             raise ValueError("Descrição da origem é obrigatória quando a origem é Outro.")
         if self.document_type is not None and self.document_type not in WORKSHOP_DOCUMENT_TYPES:
             raise ValueError("Tipo documental de oficina inválido.")
+        return self
+
+
+class WorkshopTechnicalReportExtract(BaseModel):
+    report_code: str
+    original_link: str
+
+    @model_validator(mode="after")
+    def validate_extract(self) -> "WorkshopTechnicalReportExtract":
+        if self.report_code not in REPORT_CODES:
+            raise ValueError("Relatório técnico inválido.")
+        if not self.original_link.strip():
+            raise ValueError("Indica primeiro o link ou caminho do relatório.")
         return self
 
 
@@ -1485,6 +1499,31 @@ def add_technical_report(
     db.commit()
     db.refresh(report)
     return _technical_report_response(report)
+
+
+@router.post("/processes/{process_id}/technical-reports/extract")
+def extract_technical_report_values(
+    process_id: int,
+    report_input: WorkshopTechnicalReportExtract,
+    db: DbSession,
+) -> dict[str, Any]:
+    _get_process_or_404(db, process_id)
+    try:
+        values = extract_workshop_report_values(
+            report_input.original_link,
+            report_input.report_code,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return {
+        "report_code": report_input.report_code,
+        "original_link": report_input.original_link,
+        "extracted_values": values,
+        "status": "pending_validation",
+    }
 
 
 @router.post("/technical-reports/{report_id}/validate")

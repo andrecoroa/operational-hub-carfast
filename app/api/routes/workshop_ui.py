@@ -3122,17 +3122,19 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       highlightReception();
     }
     function renderServices() {
+      if (!$("#serviceList")) return;
       const services = processData.services || [];
       $("#serviceList").innerHTML = services.map(service => `<div class="row"><div><strong>${safe(service.service_label)}</strong><p class="muted">${safe([service.zone, service.detail, service.short_observation].filter(Boolean).join(" · ") || "Sem detalhe")}</p></div><span class="chip">${safe(service.sort_order || service.id)}</span></div>`).join("") || `<div class="placeholder">Sem serviços registados.</div>`;
     }
     function updateServiceFieldProfile() {
+      if (!$("#serviceCode")) return;
       const profile = serviceFieldProfiles[val("#serviceCode")] || serviceFieldProfiles.other;
-      $("#serviceZoneLabel").textContent = profile.zone;
-      $("#serviceZone").placeholder = profile.zonePlaceholder;
-      $("#serviceDetailLabel").textContent = profile.detail;
-      $("#serviceDetail").placeholder = profile.detailPlaceholder;
-      $("#serviceObservationLabel").textContent = profile.observation;
-      $("#serviceObservation").placeholder = profile.observationPlaceholder;
+      if ($("#serviceZoneLabel")) $("#serviceZoneLabel").textContent = profile.zone;
+      if ($("#serviceZone")) $("#serviceZone").placeholder = profile.zonePlaceholder;
+      if ($("#serviceDetailLabel")) $("#serviceDetailLabel").textContent = profile.detail;
+      if ($("#serviceDetail")) $("#serviceDetail").placeholder = profile.detailPlaceholder;
+      if ($("#serviceObservationLabel")) $("#serviceObservationLabel").textContent = profile.observation;
+      if ($("#serviceObservation")) $("#serviceObservation").placeholder = profile.observationPlaceholder;
     }
     function renderTechnicalChecks() {
       const checks = processData.technical_checks || [];
@@ -3523,11 +3525,20 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     async function loadConfig() {
       config = previewMode ? demoConfig : await fetchJson("/api/workshop/process-config");
-      $("#serviceCode").innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
-      $("#reportCode").innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
-      $("#technicalCheckCode").innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
-      $("#serviceCode")?.addEventListener("change", updateServiceFieldProfile);
-      updateServiceFieldProfile();
+      const serviceCode = $("#serviceCode");
+      const reportCode = $("#reportCode");
+      const technicalCheckCode = $("#technicalCheckCode");
+      if (serviceCode) {
+        serviceCode.innerHTML = (config.services || []).map(service => `<option value="${service.code}">${safe(service.label)}</option>`).join("");
+        serviceCode.addEventListener("change", updateServiceFieldProfile);
+        updateServiceFieldProfile();
+      }
+      if (reportCode) {
+        reportCode.innerHTML = (config.stellantis_reports || []).map(report => `<option value="${report.code}">${safe(report.label)}</option>`).join("");
+      }
+      if (technicalCheckCode) {
+        technicalCheckCode.innerHTML = (config.technical_checks || []).map(check => `<option value="${check.code}">${safe(check.label)}</option>`).join("");
+      }
       ["serviceBox", "campaigns", "plan", "internal"].forEach(bindChoice);
       ["#serviceBoxLink", "#serviceBoxReason", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#planLink", "#planReason"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());

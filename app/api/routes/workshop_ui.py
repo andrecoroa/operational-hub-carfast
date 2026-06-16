@@ -2773,7 +2773,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                 <section class="report-zone">
                   <div class="report-zone-head"><div><h3>Documento de origem</h3><p class="muted">Confirme que o documento corresponde à viatura e à leitura que está a validar.</p></div><span id="reportAuditChip" class="chip review">Por validar</span></div>
                   <div class="grid2"><label id="reportLinkWrap">Link/caminho original<input id="reportLink" placeholder="https://... ou caminho"></label><label>Nota do documento<input id="reportDocumentNote" placeholder="Ex.: relatório legível, página 2, leitura final..."></label></div>
-                  <div class="report-doc-actions"><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir documento</a><button type="button" onclick="copyReportLink()">Copiar caminho</button><button type="button" onclick="replaceReportDocument()">Substituir documento</button><button type="button" onclick="extractReportValues()">Extrair dados do PDF</button><button id="reportSaveButton" type="button" onclick="saveReport()">Guardar alterações</button></div>
+                  <div class="report-doc-actions"><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir documento</a><button type="button" onclick="copyReportLink()">Copiar caminho</button><button type="button" onclick="replaceReportDocument()">Substituir documento</button><button type="button" onclick="extractReportValues()">Extrair pelo link</button><button type="button" onclick="chooseReportPdf()">Carregar PDF e extrair</button><button id="reportSaveButton" type="button" onclick="saveReport()">Guardar alterações</button><input id="reportPdfFile" type="file" accept="application/pdf,.pdf" hidden></div>
                   <div class="report-checklist">
                     <label><input id="docReadable" type="checkbox">Documento legível</label>
                     <label><input id="docPlateConfirmed" type="checkbox">Matrícula confirmada</label>
@@ -3322,18 +3322,40 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           report_code: val("#reportCode"),
           original_link: link
         });
-        const extracted = data.extracted_values || {};
-        if (!hasReportValues(extracted)) {
-          renderReportFields({});
-          showResult(false, "O PDF foi lido, mas não foram encontrados campos correspondentes a este tipo de relatório.");
-          return;
-        }
-        setVal("#reportValues", JSON.stringify(extracted, null, 2));
-        setVal("#validateValues", "{}");
-        renderReportFields(extracted);
-        setValidationDecision("keep_pending");
-        showResult(true, "Dados extraídos do PDF. Confirma/corrige os campos antes de gravar e validar.");
+        applyExtractedReportValues(data.extracted_values || {});
       } catch (err) { showResult(false, err.message); }
+    }
+    function applyExtractedReportValues(extracted) {
+      if (!hasReportValues(extracted)) {
+        renderReportFields({});
+        showResult(false, "O PDF foi lido, mas não foram encontrados campos correspondentes a este tipo de relatório.");
+        return;
+      }
+      setVal("#reportValues", JSON.stringify(extracted, null, 2));
+      setVal("#validateValues", "{}");
+      renderReportFields(extracted);
+      setValidationDecision("keep_pending");
+      showResult(true, "Dados extraídos do PDF. Confirma/corrige os campos antes de gravar e validar.");
+    }
+    function chooseReportPdf() {
+      $("#reportPdfFile")?.click();
+    }
+    async function extractUploadedReportValues(file) {
+      try {
+        if (!file) return;
+        const currentValues = jsonFrom("#reportValues");
+        if (hasReportValues(currentValues) && !window.confirm("Substituir os valores extraídos atuais pelos valores lidos do PDF?")) return;
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch(`/api/workshop/processes/${processId}/technical-reports/extract-upload?report_code=${encodeURIComponent(val("#reportCode"))}`, {
+          method: "POST",
+          body: form
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || "Não foi possível extrair o PDF carregado.");
+        applyExtractedReportValues(data.extracted_values || {});
+      } catch (err) { showResult(false, err.message); }
+      finally { if ($("#reportPdfFile")) $("#reportPdfFile").value = ""; }
     }
     async function copyReportLink() {
       const link = val("#reportLink");
@@ -3493,6 +3515,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       ["serviceBox", "campaigns", "plan", "internal"].forEach(bindChoice);
       ["#serviceBoxLink", "#serviceBoxReason", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#planLink", "#planReason"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
+      $("#reportPdfFile")?.addEventListener("change", event => extractUploadedReportValues(event.target.files?.[0]));
       $("#reportCode")?.addEventListener("change", () => {
         selectedReportId = null;
         selectedReportType = val("#reportCode");

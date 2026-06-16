@@ -46,6 +46,19 @@ def extract_workshop_report_values(source: str, report_code: str) -> dict[str, A
     finally:
         if cleanup:
             path.unlink(missing_ok=True)
+    return _extract_values_from_text(text, report_code)
+
+
+def extract_workshop_report_values_from_bytes(
+    content: bytes,
+    report_code: str,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    text = _extract_pdf_text_from_bytes(content, filename or "relatorio.pdf")
+    return _extract_values_from_text(text, report_code)
+
+
+def _extract_values_from_text(text: str, report_code: str) -> dict[str, Any]:
     lines = [_normalize(line) for line in text.splitlines() if _normalize(line)]
     values: dict[str, Any] = {}
     for field in _fields_for_report(report_code):
@@ -95,6 +108,25 @@ def _extract_pdf_text(path: Path) -> str:
         raise ValueError("A extração automática só está preparada para ficheiros PDF.")
     parts: list[str] = []
     with fitz.open(path) as doc:
+        for page in doc:
+            parts.append(page.get_text("text"))
+    text = "\n".join(parts)
+    if not text.strip():
+        raise ValueError("O PDF não devolveu texto. Pode ser imagem/scanner e precisar de OCR.")
+    return text
+
+
+def _extract_pdf_text_from_bytes(content: bytes, filename: str) -> str:
+    try:
+        import fitz  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("PyMuPDF não está instalado. Adiciona a dependência PyMuPDF para ativar a extração.") from exc
+    if not filename.lower().endswith(".pdf"):
+        raise ValueError("A extração automática só está preparada para ficheiros PDF.")
+    if not content:
+        raise ValueError("O ficheiro PDF está vazio.")
+    parts: list[str] = []
+    with fitz.open(stream=content, filetype="pdf") as doc:
         for page in doc:
             parts.append(page.get_text("text"))
     text = "\n".join(parts)

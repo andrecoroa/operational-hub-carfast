@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,7 +34,10 @@ from app.models.workshop_phased import (
 from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
-from app.services.workshop_report_extractor import extract_workshop_report_values
+from app.services.workshop_report_extractor import (
+    extract_workshop_report_values,
+    extract_workshop_report_values_from_bytes,
+)
 from app.services.workshop_templates import (
     STELLANTIS_REPORTS,
     TECHNICAL_CHECKS,
@@ -1521,6 +1524,39 @@ def extract_technical_report_values(
     return {
         "report_code": report_input.report_code,
         "original_link": report_input.original_link,
+        "extracted_values": values,
+        "status": "pending_validation",
+    }
+
+
+@router.post("/processes/{process_id}/technical-reports/extract-upload")
+async def extract_uploaded_technical_report_values(
+    process_id: int,
+    report_code: str,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    _get_process_or_404(db, process_id)
+    if report_code not in REPORT_CODES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Relatório técnico inválido.",
+        )
+    try:
+        values = extract_workshop_report_values_from_bytes(
+            await file.read(),
+            report_code,
+            file.filename,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return {
+        "report_code": report_code,
+        "original_link": None,
+        "file_name": file.filename,
         "extracted_values": values,
         "status": "pending_validation",
     }

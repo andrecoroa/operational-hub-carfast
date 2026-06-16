@@ -3199,6 +3199,11 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       for (const key of candidates) {
         if (Object.prototype.hasOwnProperty.call(map, key) && map[key] !== null && map[key] !== undefined) return map[key];
       }
+      const normalizedMap = {};
+      Object.entries(map).forEach(([key, value]) => { normalizedMap[normalizedKey(key)] = value; });
+      for (const key of candidates.map(normalizedKey)) {
+        if (Object.prototype.hasOwnProperty.call(normalizedMap, key) && normalizedMap[key] !== null && normalizedMap[key] !== undefined) return normalizedMap[key];
+      }
       return "";
     }
     function selectedReport() {

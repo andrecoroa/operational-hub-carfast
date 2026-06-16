@@ -2773,7 +2773,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                 <section class="report-zone">
                   <div class="report-zone-head"><div><h3>Documento de origem</h3><p class="muted">Confirme que o documento corresponde à viatura e à leitura que está a validar.</p></div><span id="reportAuditChip" class="chip review">Por validar</span></div>
                   <div class="grid2"><label id="reportLinkWrap">Link/caminho original<input id="reportLink" placeholder="https://... ou caminho"></label><label>Nota do documento<input id="reportDocumentNote" placeholder="Ex.: relatório legível, página 2, leitura final..."></label></div>
-                  <div class="report-doc-actions"><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir documento</a><button type="button" onclick="copyReportLink()">Copiar caminho</button><button type="button" onclick="replaceReportDocument()">Substituir documento</button><button type="button" onclick="extractReportValues()">Extrair pelo link</button><button type="button" onclick="chooseReportPdf()">Carregar PDF e extrair</button><button id="reportSaveButton" type="button" onclick="saveReport()">Guardar alterações</button><input id="reportPdfFile" type="file" accept="application/pdf,.pdf" hidden></div>
+                  <div class="report-doc-actions"><a id="reportOpen" class="button" target="_blank" rel="noopener">Abrir documento</a><button type="button" onclick="copyReportLink()">Copiar caminho</button><button type="button" onclick="replaceReportDocument()">Substituir documento</button><button type="button" onclick="chooseReportPdf()">Carregar PDF e extrair</button><button id="reportSaveButton" type="button" onclick="saveReport()">Guardar alterações</button><input id="reportPdfFile" type="file" accept="application/pdf,.pdf" hidden></div>
                   <div class="report-checklist">
                     <label><input id="docReadable" type="checkbox">Documento legível</label>
                     <label><input id="docPlateConfirmed" type="checkbox">Matrícula confirmada</label>
@@ -3323,19 +3323,6 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       const values = {...currentValues, ...fieldValues};
       setVal("#reportValues", JSON.stringify(values, null, 2));
       if (!val("#validateValues") || val("#validateValues") === "{}") setVal("#validateValues", JSON.stringify(values, null, 2));
-    }
-    async function extractReportValues() {
-      try {
-        const link = val("#reportLink");
-        if (!link) throw new Error("Indica primeiro o link/caminho do relatório.");
-        const currentValues = jsonFrom("#reportValues");
-        if (hasReportValues(currentValues) && !window.confirm("Substituir os valores extraídos atuais pelos valores lidos do PDF?")) return;
-        const data = await requestJson(`/api/workshop/processes/${processId}/technical-reports/extract`, "POST", {
-          report_code: val("#reportCode"),
-          original_link: link
-        });
-        applyExtractedReportValues(data.extracted_values || {});
-      } catch (err) { showResult(false, err.message); }
     }
     function applyExtractedReportValues(extracted) {
       if (!hasReportValues(extracted)) {

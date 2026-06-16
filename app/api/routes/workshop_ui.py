@@ -3015,6 +3015,11 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       if (!values || typeof values !== "object") return false;
       return Object.values(values).some(value => String(value ?? "").trim());
     }
+    function reportEditValues(report) {
+      const extracted = objectValues(report?.extracted_values || {});
+      const validated = objectValues(report?.validated_values || {});
+      return hasReportValues(extracted) ? extracted : validated;
+    }
     function reportFormHasContent(values) {
       return Boolean(val("#reportLink").trim()) || hasReportValues(values);
     }
@@ -3313,7 +3318,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       };
     }
     function syncReportJsonFromFields() {
-      const values = collectReportFieldValues();
+      const currentValues = jsonFrom("#reportValues");
+      const fieldValues = collectReportFieldValues();
+      const values = {...currentValues, ...fieldValues};
       setVal("#reportValues", JSON.stringify(values, null, 2));
       if (!val("#validateValues") || val("#validateValues") === "{}") setVal("#validateValues", JSON.stringify(values, null, 2));
     }
@@ -3689,9 +3696,10 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#reportMoment", report.report_moment);
       setVal("#reportOrigin", report.reading_origin);
       setVal("#reportLink", report.original_link || "");
-      setVal("#reportValues", JSON.stringify(report.extracted_values || {}, null, 2));
-      setVal("#validateValues", JSON.stringify(report.validated_values || report.extracted_values || {}, null, 2));
-      renderReportFields(report.extracted_values || report.validated_values || {});
+      const extractedValues = reportEditValues(report);
+      setVal("#reportValues", JSON.stringify(extractedValues, null, 2));
+      setVal("#validateValues", JSON.stringify(hasReportValues(report.validated_values) ? report.validated_values : extractedValues, null, 2));
+      renderReportFields(extractedValues);
       setReportValidationDefaults(report);
       updateReportOpen();
       renderReports();
@@ -3717,7 +3725,9 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     async function saveReport() {
       try {
         syncReportJsonFromFields();
-        const extractedValues = jsonFrom("#reportValues");
+        const previousValues = objectValues(selectedReport()?.extracted_values || {});
+        const extractedValues = {...previousValues, ...jsonFrom("#reportValues")};
+        setVal("#reportValues", JSON.stringify(extractedValues, null, 2));
         let allowBlank = false;
         if (!reportFormHasContent(extractedValues)) {
           allowBlank = window.confirm("Este relatório não tem link nem valores extraídos. Queres mesmo guardar em branco?");

@@ -137,7 +137,8 @@ def _extract_psa_maintenance_information(lines: list[str]) -> dict[str, Any]:
     )
     km_limit_idx = _find_index(
         lines,
-        lambda _line, idx: _window_contains(lines, idx, ("limite de manutencao", "quilometrico"), stop_after=5),
+        lambda line, idx: "quilometrico" in _simplify(line)
+        and _window_contains(lines, max(idx - 1, 0), ("limite de manutencao", "ultrapassado"), stop_after=5),
         with_index=True,
     )
     maintenance_key_idx = _find_index(lines, lambda line: "visualizacao da chave" in _simplify(line))
@@ -380,11 +381,12 @@ def _value_after_anchor(
 def _yes_no_from(lines: list[str], start: int, stop_after: int = 6) -> str:
     if start < 0:
         return ""
-    simple = " ".join(_simplify(line) for line in lines[start : start + stop_after])
-    if "nao" in simple:
-        return "Não"
-    if "sim" in simple:
-        return "Sim"
+    for line in lines[start : start + stop_after]:
+        words = set(_simplify(line).split())
+        if "nao" in words:
+            return "Não"
+        if "sim" in words:
+            return "Sim"
     return ""
 
 

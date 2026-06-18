@@ -160,15 +160,13 @@
           </details>
 
           <details class="workshop-record-group" {% if history_audits %}open{% endif %}>
-            <summary>Auditorias de histórico <span>{{ history_audits|length }}</span></summary>
+            <summary>Auditorias técnicas <span>{{ history_audits|length }}</span></summary>
             <div class="event-list">
               {% for audit in history_audits %}
                 <article class="event-item">
                   <div>
                     <strong>
-                      <a class="table-link" href="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}">
-                        Auditoria #{{ audit.id }}
-                      </a>
+                      <a class="table-link" href="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}">Auditoria técnica #{{ audit.id }}</a>
                     </strong>
                     <span>{{ history_audit_status_labels.get(audit.status, audit.status) }}</span>
                   </div>
@@ -182,7 +180,7 @@
                   {% endif %}
                 </article>
               {% else %}
-                <p class="muted">Sem auditorias de histórico abertas para esta viatura.</p>
+                <p class="muted">Sem auditorias técnicas abertas para esta viatura.</p>
               {% endfor %}
             </div>
           </details>
@@ -315,7 +313,7 @@
           </article>
 
           <details class="workshop-action-card">
-            <summary>Criar auditoria de histórico</summary>
+            <summary>Criar auditoria técnica</summary>
             {% if can_manage_carfast %}
               <form method="post" action="/fleet/{{ vehicle.id }}/history-audits" class="form-stack">
                 <label>
@@ -341,7 +339,7 @@
                     </select>
                   </label>
                 </div>
-                <button type="submit">Criar auditoria</button>
+                <button type="submit">Criar auditoria técnica</button>
               </form>
             {% else %}
               <p class="muted">Sem permissão para criar auditorias.</p>

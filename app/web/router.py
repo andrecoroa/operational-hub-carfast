@@ -349,11 +349,13 @@ def ensure_history_audit_process_type(db) -> ManagementProcessType:
         select(ManagementProcessType).where(ManagementProcessType.code == "vehicle_history_audit")
     )
     if process_type:
+        process_type.name = "Auditoria Técnica da Viatura"
+        process_type.description = "Memória técnica/histórica da viatura para decisões futuras."
         return process_type
     process_type = ManagementProcessType(
         code="vehicle_history_audit",
-        name="Auditoria de Histórico de Viatura",
-        description="Reconstrução técnica/documental do histórico de uma viatura.",
+        name="Auditoria Técnica da Viatura",
+        description="Memória técnica/histórica da viatura para decisões futuras.",
         active=True,
     )
     db.add(process_type)
@@ -362,12 +364,20 @@ def ensure_history_audit_process_type(db) -> ManagementProcessType:
 
 
 def next_history_audit_reference(db) -> str:
-    count = db.scalar(
-        select(func.count(ManagementProcess.id)).where(
-            ManagementProcess.internal_reference.like("AUDH-%")
+    reference_year = date.today().year
+    sequence = (
+        db.scalar(
+            select(func.count(ManagementProcess.id)).where(
+                ManagementProcess.internal_reference.like(f"AUD-{reference_year}-%")
+            )
         )
-    ) or 0
-    return f"AUDH-{date.today().year}-{int(count) + 1:06d}"
+        or 0
+    ) + 1
+    while True:
+        reference = f"AUD-{reference_year}-{sequence:06d}"
+        if not db.scalar(select(ManagementProcess).where(ManagementProcess.internal_reference == reference)):
+            return reference
+        sequence += 1
 
 
 def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
@@ -1888,6 +1898,10 @@ HISTORY_AUDIT_PHASES = [
 ]
 HISTORY_AUDIT_PHASE_LABELS = dict(HISTORY_AUDIT_PHASES)
 HISTORY_AUDIT_STATUS_LABELS = {
+    "building": "Em construção",
+    "validation": "Em validação",
+    "truth_assumed": "Verdade assumida",
+    "monitoring": "Em acompanhamento",
     "open": "Aberta",
     "in_progress": "Em curso",
     "pending_discussion": "Para discussão",
@@ -1944,6 +1958,12 @@ HISTORY_AUDIT_ISSUE_TYPES = [
     ("other", "Outro"),
 ]
 HISTORY_AUDIT_ISSUE_STATUS_LABELS = {
+    "por_analisar": "Por analisar",
+    "em_discussao": "Em discussão",
+    "aguardar_resposta": "Aguardar resposta",
+    "confirmado": "Confirmado",
+    "descartado": "Descartado",
+    "resolvido": "Resolvido",
     "new": "Novo",
     "in_analysis": "Em análise",
     "to_discuss": "Para discutir",
@@ -3412,7 +3432,7 @@ def create_vehicle_history_audit(
         management_process = ManagementProcess(
             process_type_id=process_type.id,
             internal_reference=internal_reference,
-            title=f"Auditoria histórico {vehicle.plate or vehicle.id}",
+            title=f"Auditoria técnica {vehicle.plate or vehicle.id}",
             status="open",
             phase="document_collection",
             priority=priority or "normal",
@@ -3426,7 +3446,7 @@ def create_vehicle_history_audit(
             management_process_id=management_process.id,
             vehicle_id=vehicle.id,
             plate=vehicle.plate or "",
-            status="open",
+            status="building",
             phase="document_collection",
             responsible_user_id=parse_optional_int(responsible_user_id),
             priority=priority or "normal",
@@ -3837,8 +3857,8 @@ def add_vehicle_history_audit_issue(
                 decision=decision.strip() or None,
             )
         )
-        if status == "to_discuss":
-            audit.status = "pending_discussion"
+        if status in {"to_discuss", "em_discussao"}:
+            audit.status = "validation"
             audit.phase = "discussion"
         db.commit()
     return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=issue", status_code=303)
@@ -7593,7 +7613,7 @@ def management_center_page(
     denied = management_center_denied(request)
     if denied:
         return denied
-    if view not in {"processes", "origins"}:
+    if view not in {"processes", "origins", "technical_audits"}:
         view = "processes"
     if origin not in {"all", "ar", "refstro", "unclassified"}:
         origin = "all"
@@ -7623,6 +7643,7 @@ def management_center_page(
 
     with SessionLocal() as db:
         process_type = ensure_management_defaults(db)
+        audit_process_type = ensure_history_audit_process_type(db)
         db.commit()
         query_filters = management_process_query_filters(
             process_type_id=process_type.id,
@@ -7847,12 +7868,108 @@ def management_center_page(
             "unclassified": sum(1 for item in origin_rows if not item["process_id"]),
             "shown": len(origin_rows),
         }
+        audit_filters = []
+        if plate:
+            audit_filters.append(VehicleHistoryAudit.plate.ilike(f"%{plate.strip()}%"))
+        if view == "technical_audits" and status:
+            audit_filters.append(VehicleHistoryAudit.status == status)
+        audit_query = select(VehicleHistoryAudit).where(*audit_filters).order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+        technical_audits = db.scalars(audit_query.limit(120)).all()
+        audit_ids = [audit.id for audit in technical_audits]
+        audit_process_ids = [audit.management_process_id for audit in technical_audits if audit.management_process_id]
+        audit_documents = (
+            db.scalars(select(VehicleHistoryAuditDocument).where(VehicleHistoryAuditDocument.audit_id.in_(audit_ids))).all()
+            if audit_ids
+            else []
+        )
+        audit_issues = (
+            db.scalars(select(VehicleHistoryAuditIssue).where(VehicleHistoryAuditIssue.audit_id.in_(audit_ids))).all()
+            if audit_ids
+            else []
+        )
+        audit_documents_by_id: dict[int, list[VehicleHistoryAuditDocument]] = defaultdict(list)
+        for document_item in audit_documents:
+            audit_documents_by_id[document_item.audit_id].append(document_item)
+        audit_issues_by_id: dict[int, list[VehicleHistoryAuditIssue]] = defaultdict(list)
+        for issue_item in audit_issues:
+            audit_issues_by_id[issue_item.audit_id].append(issue_item)
+        audit_processes_by_id = {
+            item.id: item
+            for item in (
+                db.scalars(select(ManagementProcess).where(ManagementProcess.id.in_(audit_process_ids))).all()
+                if audit_process_ids
+                else []
+            )
+        }
+        audit_vehicle_ids = [audit.vehicle_id for audit in technical_audits]
+        audit_vehicles_by_id = {
+            item.id: item
+            for item in (
+                db.scalars(select(Vehicle).where(Vehicle.id.in_(audit_vehicle_ids))).all()
+                if audit_vehicle_ids
+                else []
+            )
+        }
+        audit_user_ids = [audit.responsible_user_id for audit in technical_audits if audit.responsible_user_id]
+        audit_users_by_id = {
+            item.id: item
+            for item in (
+                db.scalars(select(User).where(User.id.in_(audit_user_ids))).all()
+                if audit_user_ids
+                else []
+            )
+        }
+        unresolved_issue_states = {"new", "in_analysis", "to_discuss", "waiting_evidence", "por_analisar", "em_discussao", "aguardar_resposta"}
+        technical_audit_rows = []
+        for audit in technical_audits:
+            issues_for_audit = audit_issues_by_id.get(audit.id, [])
+            open_issues = [item for item in issues_for_audit if item.status in unresolved_issue_states]
+            high_issues = [item for item in open_issues if item.severity in {"high", "critical", "alta", "critica"}]
+            process = audit_processes_by_id.get(audit.management_process_id or 0)
+            vehicle = audit_vehicles_by_id.get(audit.vehicle_id)
+            responsible = audit_users_by_id.get(audit.responsible_user_id or 0)
+            technical_audit_rows.append(
+                {
+                    "audit": audit,
+                    "process": process,
+                    "vehicle": vehicle,
+                    "responsible": responsible,
+                    "document_count": len(audit_documents_by_id.get(audit.id, [])),
+                    "issue_count": len(open_issues),
+                    "high_issue_count": len(high_issues),
+                    "last_action": audit.summary or audit.reason or "-",
+                }
+            )
+        audit_plates = [audit.plate for audit in technical_audits if audit.plate]
+        audit_open_tasks = (
+            db.scalar(select(func.count()).select_from(Task).where(Task.plate.in_(audit_plates), Task.closed_at.is_(None)))
+            if audit_plates
+            else 0
+        ) or 0
+        technical_audit_metrics = {
+            "open_audits": db.scalar(
+                select(func.count()).select_from(VehicleHistoryAudit).where(VehicleHistoryAudit.status != "closed")
+            ) or 0,
+            "critical_vehicles": sum(1 for row in technical_audit_rows if row["high_issue_count"]),
+            "open_problems": db.scalar(
+                select(func.count())
+                .select_from(VehicleHistoryAuditIssue)
+                .where(VehicleHistoryAuditIssue.status.in_(unresolved_issue_states))
+            ) or 0,
+            "open_tasks": audit_open_tasks,
+        }
+        highlighted_audit_issues = db.scalars(
+            select(VehicleHistoryAuditIssue)
+            .where(VehicleHistoryAuditIssue.status.in_(unresolved_issue_states))
+            .order_by(VehicleHistoryAuditIssue.id.desc())
+            .limit(12)
+        ).all()
         response = templates.TemplateResponse(
             request,
             "management_center.html",
             {
                 "process_type": process_type,
-                "process_types": [process_type],
+                "process_types": [process_type, audit_process_type],
                 "processes": processes,
                 "process_liabilities": process_liabilities,
                 "counts": counts,
@@ -7881,6 +7998,13 @@ def management_center_page(
                 "origin_filter": origin,
                 "origin_rows": origin_rows,
                 "origin_stats": origin_stats,
+                "technical_audit_rows": technical_audit_rows,
+                "technical_audit_metrics": technical_audit_metrics,
+                "highlighted_audit_issues": highlighted_audit_issues,
+                "history_audit_status_labels": HISTORY_AUDIT_STATUS_LABELS,
+                "history_audit_phase_labels": HISTORY_AUDIT_PHASE_LABELS,
+                "history_audit_issue_status_labels": HISTORY_AUDIT_ISSUE_STATUS_LABELS,
+                "history_audit_issue_types": dict(HISTORY_AUDIT_ISSUE_TYPES),
                 "status_labels": PROCESS_STATUS_LABELS,
                 "phase_labels": PROCESS_PHASE_LABELS,
                 "pending_labels": MANAGEMENT_PENDING_LABELS,
@@ -8270,6 +8394,12 @@ def management_center_detail(request: Request, process_id: int, updated: str | N
         if not process:
             return RedirectResponse("/management-center", status_code=303)
         process_type = db.get(ManagementProcessType, process.process_type_id)
+        if process_type and process_type.code == "vehicle_history_audit":
+            audit = db.scalar(
+                select(VehicleHistoryAudit).where(VehicleHistoryAudit.management_process_id == process.id)
+            )
+            if audit:
+                return RedirectResponse(f"/fleet/{audit.vehicle_id}/history-audits/{audit.id}", status_code=303)
         claim = db.scalar(select(ClaimIncident).where(ClaimIncident.process_id == process.id))
         associations = db.scalars(
             select(ManagementProcessAssociation)

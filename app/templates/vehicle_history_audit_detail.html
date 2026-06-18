@@ -6,7 +6,7 @@
   <main class="content">
     <header class="topbar">
       <div>
-        <p class="eyebrow">Auditoria de Histórico de Viatura</p>
+        <p class="eyebrow">Auditoria Técnica da Viatura</p>
         <h2>{{ vehicle.plate or "Sem matrícula" }} · Auditoria #{{ audit.id }}</h2>
       </div>
       <div class="button-row">
@@ -42,6 +42,18 @@
           {% if audit.reason %}
             <p class="compact-note">{{ audit.reason }}</p>
           {% endif %}
+          <div class="pill-row">
+            {% for code, label in [
+              ("document_collection", "Recolha"),
+              ("technical_loading", "Extração"),
+              ("crosscheck", "Validação"),
+              ("discussion", "Discussão"),
+              ("assumed_truth", "Verdade"),
+              ("closed", "Fecho")
+            ] %}
+              <span class="pill {% if audit.phase == code %}status-open{% endif %}">{{ label }}</span>
+            {% endfor %}
+          </div>
         </article>
 
         <article class="section">
@@ -70,6 +82,55 @@
             {% else %}
               <p class="muted">Sem documentos/referências registados nesta auditoria.</p>
             {% endfor %}
+          </div>
+        </article>
+
+        <article class="section">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Classificação documental</p>
+              <h3>Folhas de obra e faturas</h3>
+            </div>
+          </div>
+          <div class="compact-form-grid two-col">
+            <div>
+              <h4>Folhas de obra</h4>
+              <div class="event-list">
+                {% set work_orders = [] %}
+                {% for item in documents %}
+                  {% if item.document_type == "work_order" %}
+                    {% set _ = work_orders.append(item) %}
+                  {% endif %}
+                {% endfor %}
+                {% for item in work_orders %}
+                  <article class="event-item">
+                    <div><strong>{{ item.link or "Folha de obra" }}</strong><span>{{ item.extraction_status }}</span></div>
+                    {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
+                  </article>
+                {% else %}
+                  <p class="muted">Sem folhas de obra classificadas nesta auditoria.</p>
+                {% endfor %}
+              </div>
+            </div>
+            <div>
+              <h4>Faturas</h4>
+              <div class="event-list">
+                {% set invoices = [] %}
+                {% for item in documents %}
+                  {% if item.document_type == "invoice" %}
+                    {% set _ = invoices.append(item) %}
+                  {% endif %}
+                {% endfor %}
+                {% for item in invoices %}
+                  <article class="event-item">
+                    <div><strong>{{ item.link or "Fatura" }}</strong><span>{{ item.extraction_status }}</span></div>
+                    {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
+                  </article>
+                {% else %}
+                  <p class="muted">Sem faturas classificadas nesta auditoria.</p>
+                {% endfor %}
+              </div>
+            </div>
           </div>
         </article>
 
@@ -107,7 +168,7 @@
                       {% if can_edit %}
                         <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues">
                           <input type="hidden" name="issue_type" value="technical_reading">
-                          <input type="hidden" name="status" value="to_discuss">
+                          <input type="hidden" name="status" value="em_discussao">
                           <input type="hidden" name="severity" value="medium">
                           <input type="hidden" name="description" value="Rever leitura {{ reading.field_label }}: {{ reading.extracted_value or '-' }} {{ reading.unit or '' }}">
                           <input type="hidden" name="technical_source" value="{{ reading.field_label }} / {{ reading.field_code }}">

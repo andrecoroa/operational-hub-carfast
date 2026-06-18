@@ -69,6 +69,7 @@
       <a class="{% if active_view == 'processes' %}active{% endif %}" href="/management-center?view=processes"><strong>Processos</strong><span>aceites no fluxo</span></a>
       <a class="{% if active_view == 'origins' %}active{% endif %}" href="/management-center?view=origins"><strong>Origens</strong><span>ARs e REFSTRO</span></a>
       <a class="{% if active_view == 'reconciliation' %}active{% endif %}" href="/management-center/reconciliation"><strong>Reconciliação</strong><span>AR x REFSTRO</span></a>
+      <a class="{% if active_view == 'technical_audits' %}active{% endif %}" href="/management-center?view=technical_audits"><strong>Auditoria Técnica</strong><span>histórico de viaturas</span></a>
     </nav>
 
     {% if active_view == "processes" %}
@@ -140,6 +141,118 @@
           {% if process_pagination.prev_url %}<a class="button-link secondary-link compact-action-link" href="{{ process_pagination.prev_url }}#processos">Anterior</a>{% endif %}
           {% if process_pagination.next_url %}<a class="button-link secondary-link compact-action-link" href="{{ process_pagination.next_url }}#processos">Seguinte</a>{% endif %}
         </div>
+      </div>
+    </section>
+
+    {% elif active_view == "technical_audits" %}
+    <section class="metric-grid management-kpis management-kpis-compact">
+      <div class="metric">
+        <span class="metric-icon blue">AUD</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_audits }}</strong><span>Auditorias abertas</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon warn">!</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.critical_vehicles }}</strong><span>Viaturas críticas</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon amber">PB</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_problems }}</strong><span>Problemas por resolver</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon green">TK</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_tasks }}</strong><span>Tarefas abertas</span></span>
+      </div>
+    </section>
+
+    <section class="section management-card-section" id="auditorias">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Auditoria Técnica</p>
+          <h3>{{ technical_audit_rows|length }} auditorias em vista</h3>
+          <p class="breadcrumb">Memória técnica viva da viatura, ligada à ficha da frota.</p>
+        </div>
+      </div>
+      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
+        <input type="hidden" name="view" value="technical_audits">
+        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
+        <label>Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in history_audit_status_labels.items() %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Filtrar</button>
+        <a class="button-link secondary-link" href="/management-center?view=technical_audits">Limpar</a>
+      </form>
+
+      <div class="table-shell management-table-shell management-process-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref interna</th>
+              <th>Matrícula</th>
+              <th>Estado</th>
+              <th>Documentos</th>
+              <th>Problemas</th>
+              <th>Última ação</th>
+              <th>Responsável</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in technical_audit_rows %}
+              {% set audit = row.audit %}
+              {% set process = row.process %}
+              <tr>
+                <td><strong>{{ process.internal_reference if process else "AUD-" ~ audit.id }}</strong></td>
+                <td><strong>{{ audit.plate or "-" }}</strong></td>
+                <td>
+                  <span class="management-status-pill status-{{ audit.status }}">
+                    {{ history_audit_status_labels.get(audit.status, audit.status) }}
+                  </span>
+                  <small class="muted">{{ history_audit_phase_labels.get(audit.phase, audit.phase) }}</small>
+                </td>
+                <td>{{ row.document_count }}</td>
+                <td>
+                  {{ row.issue_count }}
+                  {% if row.high_issue_count %}
+                    <span class="management-status-pill status-alert">{{ row.high_issue_count }} críticas</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.last_action|truncate(80) }}</td>
+                <td>{{ row.responsible.name if row.responsible else "-" }}</td>
+                <td><a class="table-link" href="/fleet/{{ audit.vehicle_id }}/history-audits/{{ audit.id }}">Abrir</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="muted">Sem auditorias técnicas para estes critérios.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section management-card-section">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Problemas em destaque</p>
+          <h3>Para análise/discussão</h3>
+        </div>
+      </div>
+      <div class="event-list">
+        {% for issue in highlighted_audit_issues %}
+          <article class="event-item">
+            <div>
+              <strong>{{ history_audit_issue_types.get(issue.issue_type, issue.issue_type) }}</strong>
+              <span>{{ history_audit_issue_status_labels.get(issue.status, issue.status) }}</span>
+            </div>
+            <p>{{ issue.description }}</p>
+            <p class="muted">Gravidade {{ issue.severity }}</p>
+          </article>
+        {% else %}
+          <p class="muted">Sem problemas pendentes nas auditorias técnicas.</p>
+        {% endfor %}
       </div>
     </section>
 

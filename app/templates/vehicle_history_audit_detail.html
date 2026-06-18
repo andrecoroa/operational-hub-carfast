@@ -62,11 +62,68 @@
                 {% if item.link %}
                   <p><a class="table-link" href="{{ item.link }}" target="_blank" rel="noreferrer">Abrir referência</a></p>
                 {% endif %}
+                {% if item.extraction_error %}
+                  <p class="alert">Extração falhou: {{ item.extraction_error }}</p>
+                {% endif %}
                 {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
               </article>
             {% else %}
               <p class="muted">Sem documentos/referências registados nesta auditoria.</p>
             {% endfor %}
+          </div>
+        </article>
+
+        <article class="section">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Leituras extraídas</p>
+              <h3>Dados técnicos por validar</h3>
+            </div>
+          </div>
+          <div class="responsive-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Campo</th>
+                  <th>Valor extraído</th>
+                  <th>Valor corrigido</th>
+                  <th>Unidade</th>
+                  <th>Estado</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for reading in readings %}
+                  <tr>
+                    <td>
+                      <strong>{{ reading.field_label }}</strong>
+                      <span class="muted">{{ reading.field_code }}</span>
+                    </td>
+                    <td>{{ reading.extracted_value or "-" }}</td>
+                    <td>{{ reading.corrected_value or "-" }}</td>
+                    <td>{{ reading.unit or "-" }}</td>
+                    <td>{{ reading.status }}</td>
+                    <td>
+                      {% if can_edit %}
+                        <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues">
+                          <input type="hidden" name="issue_type" value="technical_reading">
+                          <input type="hidden" name="status" value="to_discuss">
+                          <input type="hidden" name="severity" value="medium">
+                          <input type="hidden" name="description" value="Rever leitura {{ reading.field_label }}: {{ reading.extracted_value or '-' }} {{ reading.unit or '' }}">
+                          <input type="hidden" name="technical_source" value="{{ reading.field_label }} / {{ reading.field_code }}">
+                          <input type="hidden" name="evidence" value="Leitura extraída na auditoria #{{ audit.id }}">
+                          <button type="submit" class="button-link secondary-link">Discutir</button>
+                        </form>
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="6">Sem leituras extraídas. Carrega um relatório técnico para iniciar a validação.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
         </article>
 
@@ -228,6 +285,44 @@
                   <textarea name="summary" rows="3">{{ audit.summary or "" }}</textarea>
                 </label>
                 <button type="submit">Guardar estado</button>
+              </form>
+            </details>
+
+            <details class="workshop-action-card" open>
+              <summary>Adicionar relatório técnico</summary>
+              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/technical-reports" class="form-stack" enctype="multipart/form-data">
+                <label>
+                  PDF
+                  <input type="file" name="report_file" accept="application/pdf,.pdf" required>
+                </label>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Tipo de relatório
+                    <select name="report_code">
+                      {% for code, label in document_types %}
+                        <option value="{{ code }}">{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Momento
+                    <select name="moment">
+                      {% for code in ["history", "pre", "post", "final", "unknown"] %}
+                        <option value="{{ code }}">{{ code }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Confiança inicial
+                  <select name="confidence_level">
+                    {% for code, label in confidence_labels.items() %}
+                      <option value="{{ code }}" {% if code == "medium" %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>Notas<textarea name="notes" rows="2" placeholder="Contexto do relatório, origem, pasta, ou motivo da recolha"></textarea></label>
+                <button type="submit">Carregar, classificar e extrair</button>
               </form>
             </details>
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -38,7 +38,28 @@ class VehicleHistoryAuditDocument(TimestampMixin, Base):
     link: Mapped[str | None] = mapped_column(Text)
     extraction_status: Mapped[str] = mapped_column(String(80), default="pending", index=True)
     confidence_level: Mapped[str] = mapped_column(String(40), default="medium", index=True)
+    extracted_values_json: Mapped[dict | None] = mapped_column(JSON)
+    extraction_error: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class VehicleHistoryAuditReading(TimestampMixin, Base):
+    __tablename__ = "vehicle_history_audit_readings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("vehicle_history_audits.id", ondelete="CASCADE"), index=True)
+    audit_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicle_history_audit_documents.id", ondelete="CASCADE"),
+        index=True,
+    )
+    field_code: Mapped[str] = mapped_column(String(120), index=True)
+    field_label: Mapped[str] = mapped_column(String(200))
+    extracted_value: Mapped[str | None] = mapped_column(Text)
+    corrected_value: Mapped[str | None] = mapped_column(Text)
+    unit: Mapped[str | None] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(80), default="pending_validation", index=True)
+    observation: Mapped[str | None] = mapped_column(Text)
+    confidence_level: Mapped[str] = mapped_column(String(40), default="medium", index=True)
 
 
 class VehicleHistoryAuditService(TimestampMixin, Base):

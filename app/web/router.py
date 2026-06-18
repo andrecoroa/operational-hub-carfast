@@ -1,6 +1,7 @@
 import csv
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+import hashlib
 import io
 from pathlib import Path
 import re
@@ -9,7 +10,7 @@ from tempfile import NamedTemporaryFile
 from time import monotonic
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select
@@ -54,6 +55,7 @@ from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
     VehicleHistoryAuditIssue,
+    VehicleHistoryAuditReading,
     VehicleHistoryAuditRule,
     VehicleHistoryAuditService,
     VehicleHistoryAuditTruth,
@@ -99,6 +101,8 @@ from app.services.workshop_history_importer import (
     import_workshop_technical_history_file,
     technical_history_template_csv,
 )
+from app.services.workshop_report_extractor import extract_workshop_report_values_from_bytes
+from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.users import create_user
@@ -1894,9 +1898,12 @@ HISTORY_AUDIT_DOCUMENT_TYPES = [
     ("invoice", "Fatura"),
     ("work_order", "Folha de obra"),
     ("technical_report", "Relatório técnico"),
-    ("bsi", "BSI"),
-    ("lubrication", "Lubrificação"),
-    ("telecharge", "Telecarregamento"),
+    ("maintenance_information", "BSI / Informações manutenção"),
+    ("engine_lubrication", "Lubrificação motor"),
+    ("maintenance_programming", "Programação manutenção"),
+    ("fault_reading", "Jornal defeitos"),
+    ("global_test", "Teste global"),
+    ("telecoding_identification", "Telecarregamento"),
     ("service_box", "Service Box"),
     ("tsb", "TSB / Campanha"),
     ("other", "Outro"),
@@ -1933,6 +1940,7 @@ HISTORY_AUDIT_ISSUE_TYPES = [
     ("plan", "Plano"),
     ("tsb", "TSB"),
     ("documents", "Documentos"),
+    ("technical_reading", "Leitura técnica"),
     ("other", "Outro"),
 ]
 HISTORY_AUDIT_ISSUE_STATUS_LABELS = {
@@ -1952,6 +1960,59 @@ HISTORY_AUDIT_RULE_TYPES = [
     ("documents", "Documentos"),
     ("other", "Outro"),
 ]
+HISTORY_AUDIT_REPORT_LABELS = dict(HISTORY_AUDIT_DOCUMENT_TYPES)
+HISTORY_AUDIT_EXTRACTABLE_REPORTS = {
+    "maintenance_information",
+    "engine_lubrication",
+    "maintenance_programming",
+    "fault_reading",
+    "telecoding_identification",
+}
+
+
+def stellantis_report_fields(report_code: str) -> list[dict[str, object]]:
+    for report in STELLANTIS_REPORTS:
+        if report.get("code") == report_code:
+            return list(report.get("fields") or [])
+    return []
+
+
+def history_audit_reading_rows(
+    report_code: str,
+    extracted_values: dict | None,
+) -> list[dict[str, str | None]]:
+    values = extracted_values if isinstance(extracted_values, dict) else {}
+    fields = stellantis_report_fields(report_code)
+    rows: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    for field in fields:
+        code = str(field.get("code") or "")
+        if not code:
+            continue
+        seen.add(code)
+        value = values.get(code)
+        if value in (None, ""):
+            continue
+        rows.append(
+            {
+                "field_code": code,
+                "field_label": str(field.get("label") or code),
+                "unit": str(field.get("unit")) if field.get("unit") else None,
+                "extracted_value": str(value),
+            }
+        )
+    for code, value in values.items():
+        if code in seen or value in (None, ""):
+            continue
+        rows.append(
+            {
+                "field_code": str(code),
+                "field_label": str(code).replace("_", " ").title(),
+                "unit": None,
+                "extracted_value": str(value),
+            }
+        )
+    return rows
 
 ADMIN_USER_ROLES = [
     ("operator", "Operador"),
@@ -3426,6 +3487,11 @@ def vehicle_history_audit_detail(request: Request, vehicle_id: int, audit_id: in
             .where(VehicleHistoryAuditIssue.audit_id == audit.id)
             .order_by(VehicleHistoryAuditIssue.id.desc())
         ).all()
+        readings = db.scalars(
+            select(VehicleHistoryAuditReading)
+            .where(VehicleHistoryAuditReading.audit_id == audit.id)
+            .order_by(VehicleHistoryAuditReading.id.desc())
+        ).all()
         truth = db.scalar(
             select(VehicleHistoryAuditTruth).where(VehicleHistoryAuditTruth.audit_id == audit.id)
         )
@@ -3452,6 +3518,7 @@ def vehicle_history_audit_detail(request: Request, vehicle_id: int, audit_id: in
                 "documents": documents,
                 "services": services,
                 "issues": issues,
+                "readings": readings,
                 "truth": truth,
                 "rules": rules,
                 "source_documents": source_documents,
@@ -3461,6 +3528,7 @@ def vehicle_history_audit_detail(request: Request, vehicle_id: int, audit_id: in
                 "status_labels": HISTORY_AUDIT_STATUS_LABELS,
                 "confidence_labels": HISTORY_AUDIT_CONFIDENCE_LABELS,
                 "document_types": HISTORY_AUDIT_DOCUMENT_TYPES,
+                "extractable_report_codes": HISTORY_AUDIT_EXTRACTABLE_REPORTS,
                 "service_families": HISTORY_AUDIT_SERVICE_FAMILIES,
                 "issue_types": HISTORY_AUDIT_ISSUE_TYPES,
                 "issue_status_labels": HISTORY_AUDIT_ISSUE_STATUS_LABELS,
@@ -3573,6 +3641,118 @@ def add_vehicle_history_audit_document(
         )
         db.commit()
     return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=document", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/technical-reports", response_class=HTMLResponse)
+async def add_vehicle_history_audit_technical_report(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    report_file: UploadFile = File(...),
+    report_code: str = Form("other"),
+    moment: str = Form("history"),
+    confidence_level: str = Form("medium"),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+
+    content = await report_file.read()
+    filename = Path(report_file.filename or "relatorio.pdf").name
+    clean_report_code = report_code if report_code in HISTORY_AUDIT_REPORT_LABELS else "other"
+    extracted_values: dict = {}
+    extraction_error: str | None = None
+    extraction_status = "classified_manual"
+    if clean_report_code in HISTORY_AUDIT_EXTRACTABLE_REPORTS:
+        try:
+            extracted_values = extract_workshop_report_values_from_bytes(content, clean_report_code, filename)
+            extraction_status = "extracted_pending_validation" if extracted_values else "no_values_found"
+        except Exception as exc:  # noqa: BLE001
+            extraction_status = "extraction_failed_manual_validation"
+            extraction_error = str(exc)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not vehicle or not audit or audit.vehicle_id != vehicle.id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        file_hash = hashlib.sha256(content).hexdigest() if content else None
+        document_title = f"{HISTORY_AUDIT_REPORT_LABELS.get(clean_report_code, 'Relatório técnico')} - {vehicle.plate or vehicle.id}"
+        document = Document(
+            title=document_title,
+            document_type=clean_report_code,
+            classification="technical",
+            source="history_audit",
+            original_name=filename,
+            file_name=filename,
+            file_type=Path(filename).suffix.lstrip(".") or None,
+            file_size=len(content) if content else None,
+            storage_provider="history_audit_upload",
+            storage_path=f"history-audit-upload://{audit.id}/{filename}",
+            storage_key=file_hash,
+            folder_path=f"Documentação de Viaturas/{vehicle.plate or vehicle.id}/04_Auditoria_Historico",
+            status="associated" if not extraction_error else "pending_manual_validation",
+            vehicle_id=vehicle.id,
+            plate=vehicle.plate,
+            uploaded_by_id=user_id,
+        )
+        db.add(document)
+        db.flush()
+        audit_document = VehicleHistoryAuditDocument(
+            audit_id=audit.id,
+            document_id=document.id,
+            plate=audit.plate,
+            document_type=clean_report_code,
+            source="history_audit",
+            moment=moment,
+            link=document.storage_path,
+            extraction_status=extraction_status,
+            confidence_level=confidence_level,
+            extracted_values_json=extracted_values or None,
+            extraction_error=extraction_error,
+            notes=notes.strip() or None,
+        )
+        db.add(audit_document)
+        db.flush()
+        db.add(
+            DocumentLink(
+                document_id=document.id,
+                entity_type="vehicle_history_audit",
+                entity_id=str(audit.id),
+                category=clean_report_code,
+            )
+        )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.history_audit_report_uploaded",
+                new_value=extraction_status,
+                user_id=user_id,
+            )
+        )
+        for row in history_audit_reading_rows(clean_report_code, extracted_values):
+            db.add(
+                VehicleHistoryAuditReading(
+                    audit_id=audit.id,
+                    audit_document_id=audit_document.id,
+                    field_code=row["field_code"] or "",
+                    field_label=row["field_label"] or row["field_code"] or "",
+                    extracted_value=row["extracted_value"],
+                    corrected_value=None,
+                    unit=row["unit"],
+                    status="pending_validation",
+                    observation=None,
+                    confidence_level=confidence_level,
+                )
+            )
+        audit.phase = "technical_loading"
+        if extraction_error:
+            audit.status = "in_progress"
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=technical_report", status_code=303)
 
 
 @web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/services", response_class=HTMLResponse)

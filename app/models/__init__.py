@@ -37,6 +37,14 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
+from app.models.vehicle_history_audit import (
+    VehicleHistoryAudit,
+    VehicleHistoryAuditDocument,
+    VehicleHistoryAuditIssue,
+    VehicleHistoryAuditRule,
+    VehicleHistoryAuditService,
+    VehicleHistoryAuditTruth,
+)
 from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
@@ -102,6 +110,12 @@ __all__ = [
     "UserRole",
     "Vehicle",
     "VehicleExternalSnapshot",
+    "VehicleHistoryAudit",
+    "VehicleHistoryAuditDocument",
+    "VehicleHistoryAuditIssue",
+    "VehicleHistoryAuditRule",
+    "VehicleHistoryAuditService",
+    "VehicleHistoryAuditTruth",
     "VehicleIdentifier",
     "VehicleLifecycleEvent",
     "VehicleManualField",

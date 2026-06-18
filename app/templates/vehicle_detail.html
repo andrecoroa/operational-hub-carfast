@@ -159,6 +159,34 @@
             </div>
           </details>
 
+          <details class="workshop-record-group" {% if history_audits %}open{% endif %}>
+            <summary>Auditorias de histórico <span>{{ history_audits|length }}</span></summary>
+            <div class="event-list">
+              {% for audit in history_audits %}
+                <article class="event-item">
+                  <div>
+                    <strong>
+                      <a class="table-link" href="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}">
+                        Auditoria #{{ audit.id }}
+                      </a>
+                    </strong>
+                    <span>{{ history_audit_status_labels.get(audit.status, audit.status) }}</span>
+                  </div>
+                  <p>
+                    {{ history_audit_phase_labels.get(audit.phase, audit.phase) }}
+                    &middot; prioridade {{ audit.priority or "normal" }}
+                    &middot; confiança {{ audit.confidence_level or "média" }}
+                  </p>
+                  {% if audit.reason %}
+                    <p>{{ audit.reason }}</p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem auditorias de histórico abertas para esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+
           <details class="workshop-record-group" {% if events %}open{% endif %}>
             <summary>Eventos internos <span>{{ events|length }}</span></summary>
             <div class="event-list">
@@ -285,6 +313,40 @@
             <a class="button-link" href="/workshop">Abrir oficina</a>
             <a class="button-link secondary-link" href="/fleet/trade-list">Abrir Lista para Comércio</a>
           </article>
+
+          <details class="workshop-action-card">
+            <summary>Criar auditoria de histórico</summary>
+            {% if can_manage_carfast %}
+              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits" class="form-stack">
+                <label>
+                  Motivo da auditoria
+                  <textarea name="reason" rows="3" placeholder="Ex.: reconstruir histórico técnico antes de decisão de venda/oficina"></textarea>
+                </label>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Prioridade
+                    <select name="priority">
+                      <option value="normal">Normal</option>
+                      <option value="high">Alta</option>
+                      <option value="low">Baixa</option>
+                    </select>
+                  </label>
+                  <label>
+                    Responsável
+                    <select name="responsible_user_id">
+                      <option value="">Sem responsável</option>
+                      {% for user in active_users %}
+                        <option value="{{ user.id }}">{{ user.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                </div>
+                <button type="submit">Criar auditoria</button>
+              </form>
+            {% else %}
+              <p class="muted">Sem permissão para criar auditorias.</p>
+            {% endif %}
+          </details>
 
           <details class="workshop-action-card carfast-management-card">
             <summary>

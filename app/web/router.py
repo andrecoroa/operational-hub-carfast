@@ -24,7 +24,7 @@ from app.core.change_notice import (
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
-from app.models.documents import Document, DocumentEvent
+from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
@@ -50,6 +50,14 @@ from app.models.tasks import (
     TaskHistory,
 )
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleManualField, VehicleOperationalStatusEvent
+from app.models.vehicle_history_audit import (
+    VehicleHistoryAudit,
+    VehicleHistoryAuditDocument,
+    VehicleHistoryAuditIssue,
+    VehicleHistoryAuditRule,
+    VehicleHistoryAuditService,
+    VehicleHistoryAuditTruth,
+)
 from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
@@ -326,6 +334,36 @@ def format_eur(value: str | int | float | None) -> str:
 
 def can_manage_carfast_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")
+
+
+def can_view_fleet(request: Request) -> bool:
+    return has_any_web_permission(request, "vehicles.read", "vehicles.write", "admin.manage")
+
+
+def ensure_history_audit_process_type(db) -> ManagementProcessType:
+    process_type = db.scalar(
+        select(ManagementProcessType).where(ManagementProcessType.code == "vehicle_history_audit")
+    )
+    if process_type:
+        return process_type
+    process_type = ManagementProcessType(
+        code="vehicle_history_audit",
+        name="Auditoria de Histórico de Viatura",
+        description="Reconstrução técnica/documental do histórico de uma viatura.",
+        active=True,
+    )
+    db.add(process_type)
+    db.flush()
+    return process_type
+
+
+def next_history_audit_reference(db) -> str:
+    count = db.scalar(
+        select(func.count(ManagementProcess.id)).where(
+            ManagementProcess.internal_reference.like("AUDH-%")
+        )
+    ) or 0
+    return f"AUDH-{date.today().year}-{int(count) + 1:06d}"
 
 
 def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
@@ -1834,6 +1872,87 @@ PILOT_FEEDBACK_SOURCE_LABELS = {
     "general": "Geral",
 }
 
+HISTORY_AUDIT_PHASES = [
+    ("document_collection", "Recolha documental"),
+    ("service_classification", "Classificação de serviços"),
+    ("technical_loading", "Carregamento técnico"),
+    ("crosscheck", "Cruzamento / divergências"),
+    ("discussion", "Discussão"),
+    ("assumed_truth", "Verdade assumida"),
+    ("future_rules", "Regras futuras"),
+    ("closed", "Fecho"),
+]
+HISTORY_AUDIT_PHASE_LABELS = dict(HISTORY_AUDIT_PHASES)
+HISTORY_AUDIT_STATUS_LABELS = {
+    "open": "Aberta",
+    "in_progress": "Em curso",
+    "pending_discussion": "Para discussão",
+    "closed": "Fechada",
+}
+HISTORY_AUDIT_CONFIDENCE_LABELS = {"low": "Baixa", "medium": "Média", "high": "Alta"}
+HISTORY_AUDIT_DOCUMENT_TYPES = [
+    ("invoice", "Fatura"),
+    ("work_order", "Folha de obra"),
+    ("technical_report", "Relatório técnico"),
+    ("bsi", "BSI"),
+    ("lubrication", "Lubrificação"),
+    ("telecharge", "Telecarregamento"),
+    ("service_box", "Service Box"),
+    ("tsb", "TSB / Campanha"),
+    ("other", "Outro"),
+]
+HISTORY_AUDIT_SERVICE_FAMILIES = [
+    ("maintenance", "Manutenção"),
+    ("oil", "Óleo"),
+    ("filter", "Filtro"),
+    ("diagnosis", "Diagnóstico"),
+    ("telecharge", "Telecarregamento"),
+    ("tyres", "Pneus"),
+    ("brake_pads", "Calços"),
+    ("brake_discs", "Discos"),
+    ("braking", "Travagem"),
+    ("suspension", "Suspensão"),
+    ("steering", "Direção"),
+    ("battery", "Bateria"),
+    ("wipers", "Escovas"),
+    ("lighting", "Iluminação"),
+    ("adblue", "AdBlue"),
+    ("belts", "Correias"),
+    ("ac", "AC"),
+    ("body_damage", "Carroçaria / danos"),
+    ("other", "Outros"),
+]
+HISTORY_AUDIT_ISSUE_TYPES = [
+    ("bsi", "BSI"),
+    ("oil", "Óleo"),
+    ("telecharge", "Telecarregamento"),
+    ("maintenance", "Manutenção"),
+    ("tyres", "Pneus"),
+    ("brakes", "Travões"),
+    ("billing", "Faturação"),
+    ("plan", "Plano"),
+    ("tsb", "TSB"),
+    ("documents", "Documentos"),
+    ("other", "Outro"),
+]
+HISTORY_AUDIT_ISSUE_STATUS_LABELS = {
+    "new": "Novo",
+    "in_analysis": "Em análise",
+    "to_discuss": "Para discutir",
+    "waiting_evidence": "Aguarda evidência",
+    "converted_incident": "Convertido em incidente",
+    "discarded": "Descartado",
+    "resolved": "Resolvido",
+}
+HISTORY_AUDIT_RULE_TYPES = [
+    ("workshop", "Oficina"),
+    ("sale", "Venda"),
+    ("maintenance", "Manutenção"),
+    ("claim", "Reclamação"),
+    ("documents", "Documentos"),
+    ("other", "Outro"),
+]
+
 ADMIN_USER_ROLES = [
     ("operator", "Operador"),
     ("manager", "Gestor"),
@@ -3157,6 +3276,13 @@ def vehicle_detail(
             .order_by(Document.id.desc())
             .limit(20)
         ).all()
+        history_audits = db.scalars(
+            select(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.vehicle_id == vehicle.id)
+            .order_by(VehicleHistoryAudit.id.desc())
+            .limit(10)
+        ).all()
+        active_users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
         return templates.TemplateResponse(
             request,
             "vehicle_detail.html",
@@ -3184,6 +3310,10 @@ def vehicle_detail(
                 "technical_readings_count": technical_readings_count,
                 "reading_process_by_id": reading_process_by_id,
                 "documents": documents,
+                "history_audits": history_audits,
+                "history_audit_phase_labels": HISTORY_AUDIT_PHASE_LABELS,
+                "history_audit_status_labels": HISTORY_AUDIT_STATUS_LABELS,
+                "active_users": active_users,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
                 "document_area_labels": DOCUMENT_AREA_LABELS,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
@@ -3196,6 +3326,421 @@ def vehicle_detail(
                 "error": error,
             },
         )
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits", response_class=HTMLResponse)
+def create_vehicle_history_audit(
+    request: Request,
+    vehicle_id: int,
+    reason: str = Form(""),
+    priority: str = Form("normal"),
+    responsible_user_id: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}?error=Sem%20permissão.", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+        process_type = ensure_history_audit_process_type(db)
+        internal_reference = next_history_audit_reference(db)
+        management_process = ManagementProcess(
+            process_type_id=process_type.id,
+            internal_reference=internal_reference,
+            title=f"Auditoria histórico {vehicle.plate or vehicle.id}",
+            status="open",
+            phase="document_collection",
+            priority=priority or "normal",
+            plate=vehicle.plate,
+            opened_on=date.today(),
+            raw_summary_json={"vehicle_id": vehicle.id, "kind": "vehicle_history_audit"},
+        )
+        db.add(management_process)
+        db.flush()
+        audit = VehicleHistoryAudit(
+            management_process_id=management_process.id,
+            vehicle_id=vehicle.id,
+            plate=vehicle.plate or "",
+            status="open",
+            phase="document_collection",
+            responsible_user_id=parse_optional_int(responsible_user_id),
+            priority=priority or "normal",
+            reason=reason.strip() or None,
+            confidence_level="medium",
+            opened_at=datetime.now(UTC),
+        )
+        db.add(audit)
+        db.flush()
+        add_history(
+            db,
+            management_process.id,
+            action="vehicle_history_audit.created",
+            entity_type="vehicle_history_audit",
+            entity_id=audit.id,
+            new_value=audit.reason,
+            detail=f"Auditoria criada para {vehicle.plate or vehicle.id}",
+            user_id=user_id,
+        )
+        record_audit(
+            db,
+            action="vehicle.history_audit.created",
+            entity_type="vehicle",
+            entity_id=vehicle.id,
+            detail=f"Auditoria de histórico criada: {internal_reference}",
+            user_id=user_id,
+        )
+        db.commit()
+        audit_id = audit.id
+
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+
+
+@web_router.get("/fleet/{vehicle_id}/history-audits/{audit_id}", response_class=HTMLResponse)
+def vehicle_history_audit_detail(request: Request, vehicle_id: int, audit_id: int):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not can_view_fleet(request):
+        return RedirectResponse("/fleet", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not vehicle or not audit or audit.vehicle_id != vehicle.id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        documents = db.scalars(
+            select(VehicleHistoryAuditDocument)
+            .where(VehicleHistoryAuditDocument.audit_id == audit.id)
+            .order_by(VehicleHistoryAuditDocument.id.desc())
+        ).all()
+        services = db.scalars(
+            select(VehicleHistoryAuditService)
+            .where(VehicleHistoryAuditService.audit_id == audit.id)
+            .order_by(VehicleHistoryAuditService.service_date.desc().nullslast(), VehicleHistoryAuditService.id.desc())
+        ).all()
+        issues = db.scalars(
+            select(VehicleHistoryAuditIssue)
+            .where(VehicleHistoryAuditIssue.audit_id == audit.id)
+            .order_by(VehicleHistoryAuditIssue.id.desc())
+        ).all()
+        truth = db.scalar(
+            select(VehicleHistoryAuditTruth).where(VehicleHistoryAuditTruth.audit_id == audit.id)
+        )
+        rules = db.scalars(
+            select(VehicleHistoryAuditRule)
+            .where(VehicleHistoryAuditRule.audit_id == audit.id)
+            .order_by(VehicleHistoryAuditRule.id.desc())
+        ).all()
+        source_documents = db.scalars(
+            select(Document)
+            .where(or_(Document.vehicle_id == vehicle.id, Document.plate == (vehicle.plate or "")))
+            .order_by(Document.id.desc())
+            .limit(80)
+        ).all()
+        active_users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        management_process = db.get(ManagementProcess, audit.management_process_id) if audit.management_process_id else None
+        return templates.TemplateResponse(
+            request,
+            "vehicle_history_audit_detail.html",
+            {
+                "vehicle": vehicle,
+                "audit": audit,
+                "management_process": management_process,
+                "documents": documents,
+                "services": services,
+                "issues": issues,
+                "truth": truth,
+                "rules": rules,
+                "source_documents": source_documents,
+                "active_users": active_users,
+                "phase_options": HISTORY_AUDIT_PHASES,
+                "phase_labels": HISTORY_AUDIT_PHASE_LABELS,
+                "status_labels": HISTORY_AUDIT_STATUS_LABELS,
+                "confidence_labels": HISTORY_AUDIT_CONFIDENCE_LABELS,
+                "document_types": HISTORY_AUDIT_DOCUMENT_TYPES,
+                "service_families": HISTORY_AUDIT_SERVICE_FAMILIES,
+                "issue_types": HISTORY_AUDIT_ISSUE_TYPES,
+                "issue_status_labels": HISTORY_AUDIT_ISSUE_STATUS_LABELS,
+                "rule_types": HISTORY_AUDIT_RULE_TYPES,
+                "can_edit": can_manage_carfast_fleet(request),
+            },
+        )
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/update", response_class=HTMLResponse)
+def update_vehicle_history_audit(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    phase: str = Form("document_collection"),
+    status: str = Form("open"),
+    priority: str = Form("normal"),
+    confidence_level: str = Form("medium"),
+    summary: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not audit or audit.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        audit.phase = phase
+        audit.status = status
+        audit.priority = priority
+        audit.confidence_level = confidence_level
+        audit.summary = summary.strip() or None
+        if status == "closed" and not audit.closed_at:
+            audit.closed_at = datetime.now(UTC)
+        if audit.management_process_id:
+            process = db.get(ManagementProcess, audit.management_process_id)
+            if process:
+                process.phase = phase
+                process.status = "closed" if status == "closed" else "open"
+                process.priority = priority
+                if status == "closed" and not process.closed_at:
+                    process.closed_at = datetime.now(UTC)
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?updated=1", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/documents", response_class=HTMLResponse)
+def add_vehicle_history_audit_document(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    title: str = Form(""),
+    document_type: str = Form("other"),
+    source: str = Form("history_audit"),
+    moment: str = Form("unknown"),
+    link: str = Form(""),
+    extraction_status: str = Form("pending"),
+    confidence_level: str = Form("medium"),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not vehicle or not audit or audit.vehicle_id != vehicle.id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        clean_link = link.strip()
+        document = None
+        if clean_link:
+            document = Document(
+                title=title.strip() or f"Auditoria histórico - {document_type}",
+                document_type=document_type,
+                classification="technical" if document_type in {"technical_report", "bsi", "lubrication", "telecharge", "service_box", "tsb"} else "audit",
+                source="history_audit",
+                original_name=Path(clean_link).name or title.strip() or "documento_auditoria",
+                file_name=Path(clean_link).name or title.strip() or "documento_auditoria",
+                file_type=Path(clean_link).suffix.lstrip(".") or None,
+                storage_provider="external",
+                storage_path=clean_link,
+                external_url=clean_link if clean_link.startswith(("http://", "https://")) else None,
+                folder_path=f"Documentação de Viaturas/{vehicle.plate or vehicle.id}/04_Auditoria_Historico",
+                status="associated",
+                vehicle_id=vehicle.id,
+                plate=vehicle.plate,
+                uploaded_by_id=user_id,
+            )
+            db.add(document)
+            db.flush()
+            db.add(DocumentLink(document_id=document.id, entity_type="vehicle_history_audit", entity_id=str(audit.id), category=document_type))
+            db.add(DocumentEvent(document_id=document.id, action="document.associated_to_history_audit", new_value=clean_link, user_id=user_id))
+        db.add(
+            VehicleHistoryAuditDocument(
+                audit_id=audit.id,
+                document_id=document.id if document else None,
+                plate=audit.plate,
+                document_type=document_type,
+                source=source,
+                moment=moment,
+                link=clean_link or None,
+                extraction_status=extraction_status,
+                confidence_level=confidence_level,
+                notes=notes.strip() or None,
+            )
+        )
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=document", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/services", response_class=HTMLResponse)
+def add_vehicle_history_audit_service(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    service_date: str = Form(""),
+    km: str = Form(""),
+    supplier: str = Form(""),
+    family: str = Form("other"),
+    subtype: str = Form(""),
+    quantity: str = Form(""),
+    axle: str = Form(""),
+    side: str = Form(""),
+    document_id: str = Form(""),
+    confidence_level: str = Form("medium"),
+    notes: str = Form(""),
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not audit or audit.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        db.add(
+            VehicleHistoryAuditService(
+                audit_id=audit.id,
+                service_date=parse_optional_date(service_date),
+                km=parse_optional_int(km),
+                supplier=supplier.strip() or None,
+                family=family,
+                subtype=subtype.strip() or None,
+                quantity=quantity.strip() or None,
+                axle=axle.strip() or None,
+                side=side.strip() or None,
+                document_id=parse_optional_int(document_id),
+                confidence_level=confidence_level,
+                notes=notes.strip() or None,
+            )
+        )
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=service", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/issues", response_class=HTMLResponse)
+def add_vehicle_history_audit_issue(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    issue_type: str = Form("other"),
+    description: str = Form(...),
+    administrative_source: str = Form(""),
+    technical_source: str = Form(""),
+    severity: str = Form("medium"),
+    status: str = Form("new"),
+    evidence: str = Form(""),
+    recommended_action: str = Form(""),
+    decision: str = Form(""),
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not audit or audit.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        db.add(
+            VehicleHistoryAuditIssue(
+                audit_id=audit.id,
+                issue_type=issue_type,
+                description=description.strip(),
+                administrative_source=administrative_source.strip() or None,
+                technical_source=technical_source.strip() or None,
+                severity=severity,
+                status=status,
+                evidence=evidence.strip() or None,
+                recommended_action=recommended_action.strip() or None,
+                decision=decision.strip() or None,
+            )
+        )
+        if status == "to_discuss":
+            audit.status = "pending_discussion"
+            audit.phase = "discussion"
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=issue", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/truth", response_class=HTMLResponse)
+def save_vehicle_history_audit_truth(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    assumed_start_date: str = Form(""),
+    last_reliable_km: str = Form(""),
+    last_valid_maintenance: str = Form(""),
+    estimated_maintenance_count: str = Form(""),
+    bsi_status: str = Form(""),
+    telecharge_status: str = Form(""),
+    assumed_version: str = Form(""),
+    plan_to_follow: str = Form(""),
+    pending_items: str = Form(""),
+    confidence_level: str = Form("medium"),
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not audit or audit.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        truth = db.scalar(select(VehicleHistoryAuditTruth).where(VehicleHistoryAuditTruth.audit_id == audit.id))
+        if not truth:
+            truth = VehicleHistoryAuditTruth(audit_id=audit.id)
+            db.add(truth)
+        truth.assumed_start_date = parse_optional_date(assumed_start_date)
+        truth.last_reliable_km = parse_optional_int(last_reliable_km)
+        truth.last_valid_maintenance = last_valid_maintenance.strip() or None
+        truth.estimated_maintenance_count = parse_optional_int(estimated_maintenance_count)
+        truth.bsi_status = bsi_status.strip() or None
+        truth.telecharge_status = telecharge_status.strip() or None
+        truth.assumed_version = assumed_version.strip() or None
+        truth.plan_to_follow = plan_to_follow.strip() or None
+        truth.pending_items = pending_items.strip() or None
+        truth.confidence_level = confidence_level
+        audit.phase = "assumed_truth"
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?saved=truth", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/history-audits/{audit_id}/rules", response_class=HTMLResponse)
+def add_vehicle_history_audit_rule(
+    request: Request,
+    vehicle_id: int,
+    audit_id: int,
+    rule_type: str = Form("other"),
+    rule: str = Form(...),
+    mandatory: str | None = Form(None),
+    applies_when: str = Form(""),
+    status: str = Form("active"),
+    observation: str = Form(""),
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}", status_code=303)
+    with SessionLocal() as db:
+        audit = db.get(VehicleHistoryAudit, audit_id)
+        if not audit or audit.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/fleet/{vehicle_id}", status_code=303)
+        db.add(
+            VehicleHistoryAuditRule(
+                audit_id=audit.id,
+                rule_type=rule_type,
+                rule=rule.strip(),
+                mandatory=mandatory == "on",
+                applies_when=applies_when.strip() or None,
+                status=status,
+                observation=observation.strip() or None,
+            )
+        )
+        audit.phase = "future_rules"
+        db.commit()
+    return RedirectResponse(f"/fleet/{vehicle_id}/history-audits/{audit_id}?added=rule", status_code=303)
 
 
 @web_router.post("/fleet/{vehicle_id}/carfast-management", response_class=HTMLResponse)

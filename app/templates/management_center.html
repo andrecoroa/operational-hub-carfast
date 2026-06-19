@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Gestão transversal</p>
         <h2>Centro de Gestão e Acompanhamento</h2>
-        <p class="breadcrumb">Vista operacional do Centro sem ações de automação nesta fase.</p>
+        <p class="breadcrumb">Escolhe o tipo de processo antes de entrar no detalhe operacional.</p>
       </div>
       <div class="button-row">
         {% set feedback_source_area = "management_center" %}
@@ -17,382 +17,84 @@
       </div>
     </header>
 
-    {% if imported %}
-      <section class="notice-inline">
-        {% if imported == "invalid_file" %}
-          <strong>Ficheiro inválido.</strong> Carrega XLSX ou CSV.
-        {% elif imported == "invalid_kind" %}
-          <strong>Tipo inválido.</strong> Escolhe AR Rentway ou REFSTRO.
-        {% elif imported == "invalid_date" %}
-          <strong>Data inválida.</strong> Usa o formato AAAA-MM-DD.
-        {% elif imported == "load_confirm_missing" %}
-          <strong>Confirmação em falta.</strong> Escreve CARREGAR para aplicar a carga final.
-        {% elif imported == "preview_required" %}
-          <strong>Importação direta bloqueada.</strong> Usa a pré-visualização antes de aplicar dados.
-        {% elif imported == "loaded" %}
-          <strong>Processos carregados.</strong> A base do Centro foi atualizada com os ficheiros originais.
-        {% else %}
-          <strong>Pré-visualização concluída.</strong> Revê os conflitos antes de aplicar qualquer dado.
-        {% endif %}
-      </section>
-    {% endif %}
-
-    <section class="management-type-strip management-command-strip management-center-hero">
+    <section class="management-hub-hero">
       <div>
-        <p class="eyebrow">Tipo de processo ativo</p>
-        <strong>{{ process_type.name }}</strong>
-        <span>{{ metrics.technical_processes }} processos · atualizado às {{ page_loaded_at }}</span>
+        <p class="eyebrow">Entrada principal</p>
+        <h3>Processos separados por natureza</h3>
+        <p>Sinistros, auditoria técnica, oficina e venda têm contextos diferentes. Esta página serve para escolher o fluxo certo sem misturar AR/REFSTRO com histórico técnico.</p>
       </div>
-      <a class="button-link secondary-link" href="/management-center?view=processes#processos">Ver processos</a>
     </section>
 
-    <section class="metric-grid management-kpis management-kpis-compact management-overview-kpis">
-      <a class="metric" href="/management-center?view=processes">
-        <span class="metric-icon blue">AR</span>
-        <span class="metric-detail"><strong>{{ metrics.official_ar }}</strong><span>SIN/AR</span></span>
-      </a>
-      <a class="metric" href="/management-center?view=origins&origin=refstro">
-        <span class="metric-icon green">REF</span>
-        <span class="metric-detail"><strong>{{ metrics.participations }}</strong><span>REFSTRO</span></span>
-      </a>
-      <a class="metric" href="/management-center/reconciliation">
-        <span class="metric-icon amber">REC</span>
-        <span class="metric-detail"><strong>{{ metrics.participations_to_reconcile }}</strong><span>Por reconciliar</span></span>
-      </a>
-      <a class="metric" href="/management-center?view=processes#slas">
-        <span class="metric-icon warn">SLA</span>
-        <span class="metric-detail"><strong>{{ metrics.open_actions }}</strong><span>Ações em carteira</span></span>
-      </a>
-    </section>
-
-    <nav class="task-content-tabs management-tabs">
-      <a class="{% if active_view == 'processes' %}active{% endif %}" href="/management-center?view=processes"><strong>Processos</strong><span>aceites no fluxo</span></a>
-      <a class="{% if active_view == 'origins' %}active{% endif %}" href="/management-center?view=origins"><strong>Origens</strong><span>ARs e REFSTRO</span></a>
-      <a class="{% if active_view == 'reconciliation' %}active{% endif %}" href="/management-center/reconciliation"><strong>Reconciliação</strong><span>AR x REFSTRO</span></a>
-      <a class="{% if active_view == 'technical_audits' %}active{% endif %}" href="/management-center?view=technical_audits"><strong>Auditoria Técnica</strong><span>histórico de viaturas</span></a>
-    </nav>
-
-    {% if active_view == "processes" %}
-    <section class="section management-card-section" id="processos">
-      <div class="table-heading flat-heading">
+    <section class="management-hub-grid">
+      <a class="management-hub-card" href="/management-center/sinistros">
+        <span class="management-hub-icon">SIN</span>
         <div>
-          <p class="eyebrow">Processos</p>
-          <h3>{{ process_pagination.total }} processos no fluxo</h3>
-          <p class="breadcrumb">Lista principal para acompanhamento operacional.</p>
+          <p class="eyebrow">Sinistros / AR</p>
+          <h3>Sinistros e seguradora</h3>
+          <p>Processos SIN, AR Rentway, origens REFSTRO e reconciliação.</p>
+          <dl>
+            <div><dt>Processos</dt><dd>{{ claims_metrics.technical_processes }}</dd></div>
+            <div><dt>AR oficiais</dt><dd>{{ claims_metrics.official_ar }}</dd></div>
+            <div><dt>Por reconciliar</dt><dd>{{ claims_metrics.participations_to_reconcile }}</dd></div>
+          </dl>
         </div>
-      </div>
-      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
-        <input type="hidden" name="view" value="processes">
-        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
-        <label>Documento<input name="document" value="{{ filters.document }}"></label>
-        <label>Estado
-          <select name="status">
-            <option value="">Todos</option>
-            {% for code, label in status_labels.items() %}
-              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Responsabilidade
-          <select name="liability">
-            <option value="">Todas</option>
-            {% for code, label in liability_labels.items() %}
-              <option value="{{ code }}" {% if filters.liability == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <button type="submit">Filtrar</button>
-        <a class="button-link secondary-link" href="/management-center?view=processes">Limpar</a>
-      </form>
-      <div class="table-shell management-table-shell management-process-table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>RefInterna</th>
-              <th>Matrícula</th>
-              <th>Status</th>
-              <th>Responsabilidade</th>
-              <th>Atualizado</th>
-              <th>Responsável</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for process in processes %}
-              {% set process_liability = process_liabilities.get(process.id) %}
-              <tr class="management-row-click">
-                <td><a class="management-ref-link" href="/management-center/{{ process.id }}">{{ process.internal_reference }}</a></td>
-                <td><strong>{{ process.plate or process.document_reference or "-" }}</strong></td>
-                <td><span class="management-status-pill status-{{ process.status }}">{{ status_labels.get(process.status, process.status) }}</span></td>
-                <td><span class="management-liability-pill liability-{{ process_liability or 'awaiting_responsibility' }}">{{ liability_labels.get(process_liability or "", process_liability or "-") }}</span></td>
-                <td>{{ process.updated_at.strftime("%d/%m %H:%M") if process.updated_at else "-" }}</td>
-                <td>{{ process.driver_name or process.customer_name or "-" }}</td>
-                <td><a class="table-link" href="/management-center/{{ process.id }}">Abrir</a></td>
-              </tr>
-            {% else %}
-              <tr><td colspan="7" class="muted">Sem processos para estes critérios.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="pagination-row management-list-pagination">
-        <span>{{ process_pagination.page }} / {{ process_pagination.pages }} · {{ process_pagination.page_size }} por página</span>
-        <div>
-          {% if process_pagination.prev_url %}<a class="button-link secondary-link compact-action-link" href="{{ process_pagination.prev_url }}#processos">Anterior</a>{% endif %}
-          {% if process_pagination.next_url %}<a class="button-link secondary-link compact-action-link" href="{{ process_pagination.next_url }}#processos">Seguinte</a>{% endif %}
-        </div>
-      </div>
-    </section>
+      </a>
 
-    {% elif active_view == "technical_audits" %}
-    <section class="metric-grid management-kpis management-kpis-compact">
-      <div class="metric">
-        <span class="metric-icon blue">AUD</span>
-        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_audits }}</strong><span>Auditorias abertas</span></span>
-      </div>
-      <div class="metric">
-        <span class="metric-icon warn">!</span>
-        <span class="metric-detail"><strong>{{ technical_audit_metrics.critical_vehicles }}</strong><span>Viaturas críticas</span></span>
-      </div>
-      <div class="metric">
-        <span class="metric-icon amber">PB</span>
-        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_problems }}</strong><span>Problemas por resolver</span></span>
-      </div>
-      <div class="metric">
-        <span class="metric-icon green">TK</span>
-        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_tasks }}</strong><span>Tarefas abertas</span></span>
-      </div>
-    </section>
-
-    <section class="section management-card-section" id="auditorias">
-      <div class="table-heading flat-heading">
+      <a class="management-hub-card primary" href="/management-center/auditorias">
+        <span class="management-hub-icon">AUD</span>
         <div>
           <p class="eyebrow">Auditoria Técnica</p>
-          <h3>{{ technical_audit_rows|length }} auditorias em vista</h3>
-          <p class="breadcrumb">Memória técnica viva da viatura, ligada à ficha da frota.</p>
+          <h3>Histórico técnico de viaturas</h3>
+          <p>Documentos, evidências, relatórios extraídos, problemas identificados e verdade assumida.</p>
+          <dl>
+            <div><dt>Abertas</dt><dd>{{ audit_metrics.open_audits }}</dd></div>
+            <div><dt>Críticas</dt><dd>{{ audit_metrics.critical_vehicles }}</dd></div>
+            <div><dt>Problemas</dt><dd>{{ audit_metrics.open_problems }}</dd></div>
+          </dl>
         </div>
-      </div>
-      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
-        <input type="hidden" name="view" value="technical_audits">
-        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
-        <label>Estado
-          <select name="status">
-            <option value="">Todos</option>
-            {% for code, label in history_audit_status_labels.items() %}
-              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <button type="submit">Filtrar</button>
-        <a class="button-link secondary-link" href="/management-center?view=technical_audits">Limpar</a>
-      </form>
+      </a>
 
-      <div class="table-shell management-table-shell management-process-table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>Ref interna</th>
-              <th>Matrícula</th>
-              <th>Estado</th>
-              <th>Documentos</th>
-              <th>Problemas</th>
-              <th>Última ação</th>
-              <th>Responsável</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in technical_audit_rows %}
-              {% set audit = row.audit %}
-              {% set process = row.process %}
-              <tr>
-                <td><strong>{{ process.internal_reference if process else "AUD-" ~ audit.id }}</strong></td>
-                <td><strong>{{ audit.plate or "-" }}</strong></td>
-                <td>
-                  <span class="management-status-pill status-{{ audit.status }}">
-                    {{ history_audit_status_labels.get(audit.status, audit.status) }}
-                  </span>
-                  <small class="muted">{{ history_audit_phase_labels.get(audit.phase, audit.phase) }}</small>
-                </td>
-                <td>{{ row.document_count }}</td>
-                <td>
-                  {{ row.issue_count }}
-                  {% if row.high_issue_count %}
-                    <span class="management-status-pill status-alert">{{ row.high_issue_count }} críticas</span>
-                  {% endif %}
-                </td>
-                <td>{{ row.last_action|truncate(80) }}</td>
-                <td>{{ row.responsible.name if row.responsible else "-" }}</td>
-                <td><a class="table-link" href="/fleet/{{ audit.vehicle_id }}/history-audits/{{ audit.id }}">Abrir</a></td>
-              </tr>
-            {% else %}
-              <tr><td colspan="8" class="muted">Sem auditorias técnicas para estes critérios.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="section management-card-section">
-      <div class="table-heading flat-heading">
+      <a class="management-hub-card" href="/workshop/processes-ui">
+        <span class="management-hub-icon">OF</span>
         <div>
-          <p class="eyebrow">Problemas em destaque</p>
-          <h3>Para análise/discussão</h3>
+          <p class="eyebrow">Oficina</p>
+          <h3>Processos por fases</h3>
+          <p>Entrada em oficina, validação operacional, diagnóstico, inspeção e fecho da intervenção.</p>
+          <dl>
+            <div><dt>Entrada</dt><dd>Operação</dd></div>
+            <div><dt>Fases</dt><dd>8</dd></div>
+          </dl>
         </div>
-      </div>
-      <div class="event-list">
-        {% for issue in highlighted_audit_issues %}
-          <article class="event-item">
-            <div>
-              <strong>{{ history_audit_issue_types.get(issue.issue_type, issue.issue_type) }}</strong>
-              <span>{{ history_audit_issue_status_labels.get(issue.status, issue.status) }}</span>
-            </div>
-            <p>{{ issue.description }}</p>
-            <p class="muted">Gravidade {{ issue.severity }}</p>
-          </article>
-        {% else %}
-          <p class="muted">Sem problemas pendentes nas auditorias técnicas.</p>
-        {% endfor %}
-      </div>
-    </section>
+      </a>
 
-    {% elif active_view == "origins" %}
-    <section class="section management-origins-panel management-card-section">
-      <div class="table-heading flat-heading">
+      <a class="management-hub-card" href="/fleet/trade-list">
+        <span class="management-hub-icon">VEN</span>
         <div>
-          <p class="eyebrow">Origens</p>
-          <h3>Fontes carregadas</h3>
-          <p class="breadcrumb">Leitura simples: AR Rentway, REFSTRO e não classificados.</p>
+          <p class="eyebrow">Venda / Comércio</p>
+          <h3>Lista para comércio</h3>
+          <p>Viaturas candidatas, dívida, preço decidido, bloqueios e decisão comercial.</p>
+          <dl>
+            <div><dt>Lista</dt><dd>Frota</dd></div>
+            <div><dt>Estado</dt><dd>Gestão</dd></div>
+          </dl>
         </div>
-      </div>
-      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center">
-        <input type="hidden" name="view" value="origins">
-        <label>Tipo
-          <select name="origin">
-            <option value="all" {% if origin_filter == "all" %}selected{% endif %}>Todos</option>
-            <option value="ar" {% if origin_filter == "ar" %}selected{% endif %}>Apenas AR Rentway</option>
-            <option value="refstro" {% if origin_filter == "refstro" %}selected{% endif %}>Apenas REFSTRO</option>
-            <option value="unclassified" {% if origin_filter == "unclassified" %}selected{% endif %}>Apenas sem processo</option>
-          </select>
-        </label>
-        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
-        <button type="submit">Filtrar</button>
-        <a class="button-link secondary-link" href="/management-center?view=origins">Limpar</a>
-      </form>
-
-      <div class="management-origin-block">
-        <div class="management-subsection-title">
-          <span class="management-source-dot source-ar">AR</span>
-          <h4>AR Rentway</h4>
-        </div>
-        <div class="table-shell management-table-shell management-origin-table-shell">
-          <table>
-            <thead>
-              <tr><th>Referência</th><th>Matrícula</th><th>Data</th><th>Detalhe</th><th>Ligação</th><th>CRAR</th></tr>
-            </thead>
-            <tbody>
-              {% for item in origin_rows if item.kind == "AR Rentway" %}
-                <tr>
-                  <td><strong>{{ item.reference }}</strong></td>
-                  <td><strong>{{ item.plate }}</strong></td>
-                  <td>{{ item.date or "-" }}</td>
-                  <td>{{ item.detail }}</td>
-                  <td>
-                    {% if item.process_id %}
-                      <a class="table-link" href="/management-center/{{ item.process_id }}">{{ item.process_reference }}</a>
-                    {% else %}
-                      <span class="management-status-pill status-waiting">Sem processo</span>
-                    {% endif %}
-                  </td>
-                  <td>{% if item.crar_enriched %}<span class="management-status-pill status-analysis">CRAR complementar</span>{% else %}<span class="management-status-pill status-waiting">Não recebido</span>{% endif %}</td>
-                </tr>
-              {% else %}
-                <tr><td colspan="6" class="muted">Sem ARs no filtro atual.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="management-origin-block">
-        <div class="management-subsection-title">
-          <span class="management-source-dot source-ref">REF</span>
-          <h4>REFSTRO</h4>
-        </div>
-        <div class="table-shell management-table-shell management-origin-table-shell">
-          <table>
-            <thead>
-              <tr><th>Referências</th><th>Matrícula</th><th>Data</th><th>Linhas</th><th>Ligação</th><th>Rubricas e valor</th></tr>
-            </thead>
-            <tbody>
-              {% for item in origin_rows if item.kind == "REFSTRO" %}
-                <tr>
-                  <td class="management-origin-reference-cell"><strong>{{ item.reference }}</strong></td>
-                  <td><strong>{{ item.plate }}</strong></td>
-                  <td>{{ item.date or "-" }}</td>
-                  <td>{{ item.status }}</td>
-                  <td>
-                    {% if item.process_id %}
-                      <a class="table-link" href="/management-center/{{ item.process_id }}">{{ item.process_reference }}</a>
-                    {% else %}
-                      <span class="management-status-pill status-waiting">Sem processo</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if item.component_breakdown %}
-                      <ul class="management-origin-component-list">
-                        {% for component_item in item.component_breakdown %}
-                          <li>{{ component_item.component }}: {{ "%.2f"|format(component_item.value or 0) }} €</li>
-                        {% endfor %}
-                      </ul>
-                      <small class="muted">Total: {{ item.detail }}</small>
-                    {% else %}
-                      {{ item.detail }}
-                    {% endif %}
-                  </td>
-                </tr>
-              {% else %}
-                <tr><td colspan="6" class="muted">Sem REFSTRO no filtro atual.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="management-origin-block">
-        <div class="management-subsection-title">
-          <span class="management-source-dot source-open">?</span>
-          <h4>Não classificados</h4>
-        </div>
-        <div class="table-shell management-table-shell management-origin-table-shell">
-          <table>
-            <thead>
-              <tr><th>Tipo</th><th>Referência</th><th>Matrícula</th><th>Data</th><th>Detalhe</th></tr>
-            </thead>
-            <tbody>
-              {% set unclassified_rows = [] %}
-              {% for item in origin_rows %}
-                {% if not item.process_id %}
-                  {% set _ = unclassified_rows.append(item) %}
-                {% endif %}
-              {% endfor %}
-              {% for item in unclassified_rows %}
-                <tr>
-                  <td>{{ item.kind }}</td>
-                  <td>{{ item.reference }}</td>
-                  <td>{{ item.plate }}</td>
-                  <td>{{ item.date or "-" }}</td>
-                  <td>{{ item.detail }}</td>
-                </tr>
-              {% else %}
-                <tr><td colspan="5" class="muted">Sem itens por classificar.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </a>
     </section>
-    {% endif %}
+
+    <section class="management-hub-strip">
+      <article>
+        <strong>Sinistros / AR</strong>
+        <span>Processos, origens, reconciliação AR/REFSTRO, ARs por classificar e REFSTRO por reconciliar.</span>
+      </article>
+      <article>
+        <strong>Auditoria Técnica</strong>
+        <span>Auditorias abertas, viaturas críticas, problemas, documentos por validar, histórico técnico e evidências.</span>
+      </article>
+      <article>
+        <strong>Outros processos</strong>
+        <span>Oficina, venda/comércio e novos fluxos entram como áreas separadas quando estiverem maduras.</span>
+      </article>
+    </section>
   </main>
 </div>
 {% endblock %}

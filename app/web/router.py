@@ -8,13 +8,14 @@ import re
 from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
     CHANGE_NOTICE_SECTIONS,
@@ -7592,8 +7593,155 @@ def normalize_plate_for_web(value: str | None) -> str:
     return (value or "").strip().upper().replace("-", "").replace(" ", "")
 
 
+def _technical_audit_dashboard_context(
+    db: Session,
+    *,
+    plate: str | None = None,
+    status: str | None = None,
+    limit: int = 120,
+) -> dict[str, Any]:
+    audit_filters = []
+    if plate:
+        audit_filters.append(VehicleHistoryAudit.plate.ilike(f"%{plate.strip()}%"))
+    if status:
+        audit_filters.append(VehicleHistoryAudit.status == status)
+    audit_query = (
+        select(VehicleHistoryAudit)
+        .where(*audit_filters)
+        .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+    )
+    technical_audits = db.scalars(audit_query.limit(limit)).all()
+    audit_ids = [audit.id for audit in technical_audits]
+    audit_documents = (
+        db.scalars(select(VehicleHistoryAuditDocument).where(VehicleHistoryAuditDocument.audit_id.in_(audit_ids))).all()
+        if audit_ids
+        else []
+    )
+    audit_issues = (
+        db.scalars(select(VehicleHistoryAuditIssue).where(VehicleHistoryAuditIssue.audit_id.in_(audit_ids))).all()
+        if audit_ids
+        else []
+    )
+    audit_documents_by_id: dict[int, list[VehicleHistoryAuditDocument]] = defaultdict(list)
+    for document_item in audit_documents:
+        audit_documents_by_id[document_item.audit_id].append(document_item)
+    audit_issues_by_id: dict[int, list[VehicleHistoryAuditIssue]] = defaultdict(list)
+    for issue_item in audit_issues:
+        audit_issues_by_id[issue_item.audit_id].append(issue_item)
+    audit_process_ids = [audit.management_process_id for audit in technical_audits if audit.management_process_id]
+    audit_processes_by_id = {
+        item.id: item
+        for item in (
+            db.scalars(select(ManagementProcess).where(ManagementProcess.id.in_(audit_process_ids))).all()
+            if audit_process_ids
+            else []
+        )
+    }
+    audit_vehicle_ids = [audit.vehicle_id for audit in technical_audits]
+    audit_vehicles_by_id = {
+        item.id: item
+        for item in (
+            db.scalars(select(Vehicle).where(Vehicle.id.in_(audit_vehicle_ids))).all()
+            if audit_vehicle_ids
+            else []
+        )
+    }
+    audit_user_ids = [audit.responsible_user_id for audit in technical_audits if audit.responsible_user_id]
+    audit_users_by_id = {
+        item.id: item
+        for item in (
+            db.scalars(select(User).where(User.id.in_(audit_user_ids))).all()
+            if audit_user_ids
+            else []
+        )
+    }
+    unresolved_issue_states = {"new", "in_analysis", "to_discuss", "waiting_evidence", "por_analisar", "em_discussao", "aguardar_resposta"}
+    technical_audit_rows = []
+    for audit in technical_audits:
+        issues_for_audit = audit_issues_by_id.get(audit.id, [])
+        open_issues = [item for item in issues_for_audit if item.status in unresolved_issue_states]
+        high_issues = [item for item in open_issues if item.severity in {"high", "critical", "alta", "critica"}]
+        process = audit_processes_by_id.get(audit.management_process_id or 0)
+        vehicle = audit_vehicles_by_id.get(audit.vehicle_id)
+        responsible = audit_users_by_id.get(audit.responsible_user_id or 0)
+        technical_audit_rows.append(
+            {
+                "audit": audit,
+                "process": process,
+                "vehicle": vehicle,
+                "responsible": responsible,
+                "document_count": len(audit_documents_by_id.get(audit.id, [])),
+                "issue_count": len(open_issues),
+                "high_issue_count": len(high_issues),
+                "last_action": audit.summary or audit.reason or "-",
+            }
+        )
+    audit_plates = [audit.plate for audit in technical_audits if audit.plate]
+    audit_open_tasks = (
+        db.scalar(select(func.count()).select_from(Task).where(Task.plate.in_(audit_plates), Task.closed_at.is_(None)))
+        if audit_plates
+        else 0
+    ) or 0
+    metrics = {
+        "open_audits": db.scalar(
+            select(func.count()).select_from(VehicleHistoryAudit).where(VehicleHistoryAudit.status != "closed")
+        ) or 0,
+        "critical_vehicles": sum(1 for row in technical_audit_rows if row["high_issue_count"]),
+        "open_problems": db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAuditIssue)
+            .where(VehicleHistoryAuditIssue.status.in_(unresolved_issue_states))
+        ) or 0,
+        "open_tasks": audit_open_tasks,
+        "documents_to_validate": db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAuditDocument)
+            .where(VehicleHistoryAuditDocument.extraction_status.in_(("pending", "por_validar", "pending_validation", "extracted")))
+        ) or 0,
+    }
+    highlighted_issues = db.scalars(
+        select(VehicleHistoryAuditIssue)
+        .where(VehicleHistoryAuditIssue.status.in_(unresolved_issue_states))
+        .order_by(VehicleHistoryAuditIssue.id.desc())
+        .limit(12)
+    ).all()
+    return {
+        "technical_audit_rows": technical_audit_rows,
+        "technical_audit_metrics": metrics,
+        "highlighted_audit_issues": highlighted_issues,
+        "unresolved_issue_states": unresolved_issue_states,
+    }
+
+
 @web_router.get("/management-center", response_class=HTMLResponse)
-def management_center_page(
+def management_center_page(request: Request):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        process_type = ensure_management_defaults(db)
+        ensure_history_audit_process_type(db)
+        db.commit()
+        claims_metrics = management_business_metrics(db, process_type.id)
+        audit_context = _technical_audit_dashboard_context(db, limit=80)
+        response = templates.TemplateResponse(
+            request,
+            "management_center.html",
+            {
+                "claims_metrics": claims_metrics,
+                "audit_metrics": audit_context["technical_audit_metrics"],
+            },
+        )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+
+@web_router.get("/management-center/sinistros", response_class=HTMLResponse)
+def management_center_claims_page(
     request: Request,
     view: str = "processes",
     origin: str = "all",
@@ -7613,7 +7761,7 @@ def management_center_page(
     denied = management_center_denied(request)
     if denied:
         return denied
-    if view not in {"processes", "origins", "technical_audits"}:
+    if view not in {"processes", "origins"}:
         view = "processes"
     if origin not in {"all", "ar", "refstro", "unclassified"}:
         origin = "all"
@@ -7639,7 +7787,7 @@ def management_center_page(
         }
         params.update(updates)
         clean_params = {key: value for key, value in params.items() if value not in (None, "")}
-        return f"/management-center?{urlencode(clean_params)}"
+        return f"/management-center/sinistros?{urlencode(clean_params)}"
 
     with SessionLocal() as db:
         process_type = ensure_management_defaults(db)
@@ -7966,7 +8114,7 @@ def management_center_page(
         ).all()
         response = templates.TemplateResponse(
             request,
-            "management_center.html",
+            "management_claims_center.html",
             {
                 "process_type": process_type,
                 "process_types": [process_type, audit_process_type],
@@ -8033,6 +8181,42 @@ def management_center_page(
         return response
 
 
+@web_router.get("/management-center/auditorias", response_class=HTMLResponse)
+def management_center_technical_audits_page(
+    request: Request,
+    status: str | None = None,
+    plate: str | None = None,
+):
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    denied = management_center_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        ensure_history_audit_process_type(db)
+        db.commit()
+        audit_context = _technical_audit_dashboard_context(db, plate=plate, status=status)
+        response = templates.TemplateResponse(
+            request,
+            "management_technical_audits.html",
+            {
+                **audit_context,
+                "history_audit_status_labels": HISTORY_AUDIT_STATUS_LABELS,
+                "history_audit_phase_labels": HISTORY_AUDIT_PHASE_LABELS,
+                "history_audit_issue_status_labels": HISTORY_AUDIT_ISSUE_STATUS_LABELS,
+                "history_audit_issue_types": dict(HISTORY_AUDIT_ISSUE_TYPES),
+                "filters": {
+                    "status": status or "",
+                    "plate": plate or "",
+                },
+            },
+        )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+
 @web_router.post("/management-center/import", response_class=HTMLResponse)
 def management_center_import(
     request: Request,
@@ -8045,10 +8229,10 @@ def management_center_import(
     if denied:
         return denied
     if import_kind not in {"ar", "ar_rentway_per_vehicle", "refstro"}:
-        return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_kind", status_code=303)
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
-        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
-    return RedirectResponse("/management-center?imported=preview_required", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_file", status_code=303)
+    return RedirectResponse("/management-center/sinistros?imported=preview_required", status_code=303)
 
 
 @web_router.post("/management-center/import-preview", response_class=HTMLResponse)
@@ -8063,9 +8247,9 @@ def management_center_import_preview(
     if denied:
         return denied
     if import_kind not in {"ar", "ar_rentway_per_vehicle", "refstro"}:
-        return RedirectResponse("/management-center?imported=invalid_kind", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_kind", status_code=303)
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".csv")):
-        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_file", status_code=303)
     suffix = Path(file.filename).suffix
     with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(file.file.read())
@@ -8112,7 +8296,7 @@ def management_center_load_originals(
     if denied:
         return denied
     if reset_confirm.strip().upper() != "CARREGAR":
-        return RedirectResponse("/management-center?imported=load_confirm_missing", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=load_confirm_missing", status_code=303)
     uploads = {
         "accident_report": accident_report,
         "crar": crar,
@@ -8120,11 +8304,11 @@ def management_center_load_originals(
         "refstro_recent": refstro_recent,
     }
     if any(not item.filename or not item.filename.lower().endswith(".xlsx") for item in uploads.values()):
-        return RedirectResponse("/management-center?imported=invalid_file", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_file", status_code=303)
     try:
         cutoff_date = date.fromisoformat(from_date)
     except ValueError:
-        return RedirectResponse("/management-center?imported=invalid_date", status_code=303)
+        return RedirectResponse("/management-center/sinistros?imported=invalid_date", status_code=303)
 
     with TemporaryDirectory(prefix="management_center_load_") as tmp_dir:
         tmp_root = Path(tmp_dir)
@@ -8156,7 +8340,7 @@ def management_center_load_originals(
                 after_json={"from_date": cutoff_date.isoformat(), "counts": counts},
             )
             db.commit()
-    return RedirectResponse("/management-center?imported=loaded", status_code=303)
+    return RedirectResponse("/management-center/sinistros?imported=loaded", status_code=303)
 
 
 @web_router.get("/management-center/reconciliation", response_class=HTMLResponse)
@@ -8720,7 +8904,7 @@ def imports_page(request: Request, type: str | None = None):
                 "source_system": "rentway",
                 "title": "AR Rentway",
                 "description": "ARs associados ao SIN; o AR não é a referência única.",
-                "import_url": "/management-center",
+                "import_url": "/management-center/sinistros",
                 "history_url": f"/imports?type={AR_IMPORT_TYPE}",
                 "created_label": "ARs",
                 "updated_label": "SIN atualizados",
@@ -8730,7 +8914,7 @@ def imports_page(request: Request, type: str | None = None):
                 "source_system": "carfast",
                 "title": "REFSTRO / componentes",
                 "description": "Linhas REFSTRO associadas ao SIN por matrícula e data.",
-                "import_url": "/management-center",
+                "import_url": "/management-center/sinistros",
                 "history_url": f"/imports?type={REFSTRO_IMPORT_TYPE}",
                 "created_label": "Linhas",
                 "updated_label": "SIN atualizados",

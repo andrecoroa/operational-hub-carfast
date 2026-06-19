@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell">
-  {% set active_menu = "fleet" %}
+  {% set active_menu = "management_center" %}
   {% include "_sidebar.html" %}
   <main class="content">
     <header class="topbar">
       <div>
         <p class="eyebrow">Auditoria Técnica da Viatura</p>
-        <h2>{{ vehicle.plate or "Sem matrícula" }} · Auditoria #{{ audit.id }}</h2>
+        <h2>{{ management_process.internal_reference if management_process else "AUD-" ~ audit.id }} | {{ vehicle.plate or "Sem matrícula" }}</h2>
+        <p class="breadcrumb">Histórico técnico, evidências, problemas identificados e verdade assumida.</p>
       </div>
       <div class="button-row">
+        <a class="button-link secondary-link" href="/management-center/auditorias">Auditorias</a>
         {% if management_process %}
           <a class="button-link secondary-link" href="/management-center/{{ management_process.id }}">Centro de Gestão</a>
         {% endif %}
@@ -54,9 +56,17 @@
               <span class="pill {% if audit.phase == code %}status-open{% endif %}">{{ label }}</span>
             {% endfor %}
           </div>
+          <nav class="task-content-tabs management-tabs audit-detail-tabs">
+            <a href="#documentos"><strong>Documentos / Evidências</strong><span>arquivo e referências</span></a>
+            <a href="#folhas-faturas"><strong>Folhas de obra</strong><span>e faturas</span></a>
+            <a href="#relatorios"><strong>Relatórios técnicos</strong><span>leituras extraídas</span></a>
+            <a href="#comparacao"><strong>Comparação</strong><span>serviços e divergências</span></a>
+            <a href="#problemas"><strong>Problemas</strong><span>discussão</span></a>
+            <a href="#verdade"><strong>Fecho / Verdade</strong><span>regras futuras</span></a>
+          </nav>
         </article>
 
-        <article class="section">
+        <article class="section" id="documentos">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Recolha documental</p>
@@ -85,7 +95,7 @@
           </div>
         </article>
 
-        <article class="section">
+        <article class="section" id="folhas-faturas">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Classificação documental</p>
@@ -134,7 +144,7 @@
           </div>
         </article>
 
-        <article class="section">
+        <article class="section" id="relatorios">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Leituras extraídas</p>
@@ -188,7 +198,7 @@
           </div>
         </article>
 
-        <article class="section">
+        <article class="section" id="comparacao">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Serviços identificados</p>
@@ -225,7 +235,7 @@
           </div>
         </article>
 
-        <article class="section">
+        <article class="section" id="problemas">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Divergências</p>
@@ -252,7 +262,7 @@
           </div>
         </article>
 
-        <article class="section">
+        <article class="section" id="verdade">
           <div class="table-heading flat-heading">
             <div>
               <p class="eyebrow">Verdade assumida</p>

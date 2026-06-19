@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "management_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content management-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Centro de Gestão / Auditoria Técnica</p>
+        <h2>Auditoria Técnica de Viaturas</h2>
+        <p class="breadcrumb">Histórico técnico, evidências, problemas identificados e verdade assumida por viatura.</p>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary-link" href="/management-center">Centro</a>
+        <a class="button-link secondary-link" href="/fleet">Frota</a>
+      </div>
+    </header>
+
+    <section class="management-audit-hero">
+      <div>
+        <p class="eyebrow">Processo próprio</p>
+        <h3>Memória técnica viva da viatura</h3>
+        <p>Serve para reunir documentos, classificar leituras, discutir divergências e definir a verdade técnica assumida.</p>
+      </div>
+      <div class="management-audit-modules">
+        <span>Documentos / Evidências</span>
+        <span>Folhas de obra</span>
+        <span>Faturas</span>
+        <span>Relatórios técnicos</span>
+        <span>Comparação</span>
+        <span>Problemas</span>
+        <span>Tarefas</span>
+        <span>Fecho</span>
+      </div>
+    </section>
+
+    <section class="metric-grid management-kpis management-kpis-compact">
+      <div class="metric">
+        <span class="metric-icon blue">AUD</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_audits }}</strong><span>Auditorias abertas</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon warn">!</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.critical_vehicles }}</strong><span>Viaturas críticas</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon amber">PB</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_problems }}</strong><span>Problemas por resolver</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon green">DOC</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.documents_to_validate }}</strong><span>Documentos por validar</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-icon blue">TK</span>
+        <span class="metric-detail"><strong>{{ technical_audit_metrics.open_tasks }}</strong><span>Tarefas pendentes</span></span>
+      </div>
+    </section>
+
+    <nav class="task-content-tabs management-tabs">
+      <a class="active" href="/management-center/auditorias"><strong>Auditorias abertas</strong><span>viaturas em análise</span></a>
+      <a href="#problemas"><strong>Problemas identificados</strong><span>para discussão</span></a>
+      <a href="#historico"><strong>Histórico técnico</strong><span>evidências e leituras</span></a>
+    </nav>
+
+    <section class="section management-card-section" id="auditorias">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Auditorias Técnicas</p>
+          <h3>{{ technical_audit_rows|length }} auditorias em vista</h3>
+          <p class="breadcrumb">Cada linha representa uma auditoria técnica de viatura, não um sinistro.</p>
+        </div>
+      </div>
+      <form class="management-filter-form compact-origin-filter management-toolbar" method="get" action="/management-center/auditorias">
+        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
+        <label>Estado
+          <select name="status">
+            <option value="">Todos</option>
+            {% for code, label in history_audit_status_labels.items() %}
+              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Filtrar</button>
+        <a class="button-link secondary-link" href="/management-center/auditorias">Limpar</a>
+      </form>
+
+      <div class="table-shell management-table-shell management-process-table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref interna</th>
+              <th>Matrícula</th>
+              <th>Estado</th>
+              <th>Fase</th>
+              <th>Documentos</th>
+              <th>Problemas</th>
+              <th>Última ação</th>
+              <th>Responsável</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in technical_audit_rows %}
+              {% set audit = row.audit %}
+              {% set process = row.process %}
+              <tr>
+                <td><strong>{{ process.internal_reference if process else "AUD-" ~ audit.id }}</strong></td>
+                <td><strong>{{ audit.plate or "-" }}</strong></td>
+                <td><span class="management-status-pill status-{{ audit.status }}">{{ history_audit_status_labels.get(audit.status, audit.status) }}</span></td>
+                <td>{{ history_audit_phase_labels.get(audit.phase, audit.phase) }}</td>
+                <td>{{ row.document_count }}</td>
+                <td>
+                  {{ row.issue_count }}
+                  {% if row.high_issue_count %}
+                    <span class="management-status-pill status-alert">{{ row.high_issue_count }} críticas</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.last_action|truncate(80) }}</td>
+                <td>{{ row.responsible.name if row.responsible else "-" }}</td>
+                <td><a class="table-link" href="/fleet/{{ audit.vehicle_id }}/history-audits/{{ audit.id }}">Abrir auditoria</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="muted">Sem auditorias técnicas para estes critérios.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section management-card-section" id="problemas">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Problemas identificados</p>
+          <h3>Para análise, discussão ou evidência adicional</h3>
+        </div>
+      </div>
+      <div class="event-list">
+        {% for issue in highlighted_audit_issues %}
+          <article class="event-item">
+            <div>
+              <strong>{{ history_audit_issue_types.get(issue.issue_type, issue.issue_type) }}</strong>
+              <span>{{ history_audit_issue_status_labels.get(issue.status, issue.status) }}</span>
+            </div>
+            <p>{{ issue.description }}</p>
+            <p class="muted">Gravidade {{ issue.severity }}</p>
+          </article>
+        {% else %}
+          <p class="muted">Sem problemas pendentes nas auditorias técnicas.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section management-card-section" id="historico">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Histórico técnico</p>
+          <h3>Como usar esta área</h3>
+        </div>
+      </div>
+      <div class="management-audit-guidance">
+        <article><strong>Documentos / Evidências</strong><span>Arquiva links, PDFs e comprovativos ligados à viatura.</span></article>
+        <article><strong>Relatórios técnicos</strong><span>Upload do PDF extrai leituras para validação humana.</span></article>
+        <article><strong>Comparação</strong><span>FO, faturas, relatórios e Rentway são cruzados por análise humana nesta fase.</span></article>
+        <article><strong>Verdade assumida</strong><span>Regista a base técnica que passa a orientar oficina, venda e manutenção.</span></article>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

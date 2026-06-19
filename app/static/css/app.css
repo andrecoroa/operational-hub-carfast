@@ -8502,6 +8502,177 @@ a.metric:hover {
   }
 }
 
+.management-hub-hero,
+.management-audit-hero {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.management-hub-hero h3,
+.management-audit-hero h3 {
+  margin: 0 0 6px;
+  color: #111827;
+}
+
+.management-hub-hero p,
+.management-audit-hero p {
+  margin: 0;
+  color: #4b5563;
+  max-width: 860px;
+}
+
+.management-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.management-hub-card {
+  display: flex;
+  gap: 12px;
+  min-height: 170px;
+  padding: 16px;
+  background: #fff;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.management-hub-card:hover {
+  border-color: #dc2626;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
+  transform: translateY(-1px);
+}
+
+.management-hub-card.primary {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.management-hub-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #991b1b;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.management-hub-card h3 {
+  margin: 2px 0 6px;
+  font-size: 17px;
+}
+
+.management-hub-card p {
+  margin: 0 0 12px;
+  color: #4b5563;
+  line-height: 1.35;
+}
+
+.management-hub-card dl,
+.management-hub-strip {
+  display: grid;
+  gap: 8px;
+}
+
+.management-hub-card dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.management-hub-card dl div {
+  padding: 8px;
+  background: #f9fafb;
+  border: 1px solid #eef2f7;
+  border-radius: 7px;
+}
+
+.management-hub-card dt {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.management-hub-card dd {
+  margin: 2px 0 0;
+  font-weight: 800;
+  color: #111827;
+}
+
+.management-hub-strip {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 18px;
+}
+
+.management-hub-strip article,
+.management-audit-guidance article {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.management-hub-strip strong,
+.management-audit-guidance strong {
+  display: block;
+  color: #111827;
+}
+
+.management-hub-strip span,
+.management-audit-guidance span {
+  display: block;
+  margin-top: 4px;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+.management-audit-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.management-audit-modules,
+.management-audit-guidance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.management-audit-modules span {
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.audit-detail-tabs {
+  margin-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .management-audit-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .management-hub-card dl {
+    grid-template-columns: 1fr;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

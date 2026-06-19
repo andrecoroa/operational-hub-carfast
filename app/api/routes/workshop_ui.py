@@ -2496,6 +2496,16 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     .verification-board { display:grid; gap:10px; }
     .verification-stack { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
     .verification-group { border:1px solid var(--line); border-radius:8px; background:#fff; padding:16px; }
+    .compact-phase-card { gap:12px; padding:14px 16px; }
+    .compact-phase-card h3 { margin:0; }
+    .compact-operational-validation { gap:10px; }
+    .compact-operational-validation .verification-group { padding:12px; }
+    .compact-operational-validation .board-title { margin-bottom:10px; }
+    .compact-operational-validation .board-title p { display:none; }
+    .compact-operational-validation .verification-row { grid-template-columns:minmax(190px,.8fr) minmax(190px,.8fr) minmax(230px,1fr) minmax(150px,.55fr); }
+    .compact-operational-validation .verification-cell { padding:7px 8px; }
+    .compact-operational-validation #planCard { display:none; }
+    .compact-operational-validation > .verification-group:last-child { display:none; }
     .board-title { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px; }
     .board-title h3 { margin:0; }
     .board-title p { margin-top:4px; }
@@ -2653,48 +2663,35 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
             <div class="actions"><button class="primary" type="button" onclick="saveReception()">Guardar entrada</button></div>
           </div>
           <div id="receptionAlerts" class="alert-line"></div>
-          <div class="main-card">
+          <div class="main-card compact-phase-card">
             <h3>Identificação</h3>
             <div class="grid3">
               <label>Matrícula<span class="field-control"><span class="field-icon">▱</span><input id="recPlate" readonly><span class="field-extra">auto</span></span></label>
-              <label>Viatura / modelo<span class="field-control"><span class="field-icon">▤</span><input id="recVehicle" readonly><span class="field-extra">auto</span></span></label>
               <label>Quilómetros <span class="required">*</span><span class="field-control"><span class="field-icon">◴</span><input id="recKm" type="number" min="0"><span class="field-extra">km</span></span><span id="recKmNote" class="field-note">Quilómetros em falta.</span></label>
+              <label>Foto quadrante<input id="recPhotoFile" type="file" accept="image/*" capture="environment"><input id="recPhoto" placeholder="nome/link da foto"><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label>
             </div>
             <div class="grid3">
               <label>Data/hora entrada<input id="recDate" placeholder="AAAA-MM-DD HH:MM"></label>
-              <label>Motivo da entrada<select id="recOrigin"><option value="">Selecionar</option><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label>
-              <label>Prioridade<select id="recPriority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
-            </div>
-            <div class="grid3">
-              <label>Local receção<input id="recLocation" placeholder="Oficina / estação"></label>
+              <label>Local<input id="recLocation" placeholder="Oficina / estação"></label>
               <label>Recebido por<input id="recReceivedBy" placeholder="Nome"></label>
-              <label>Chave entregue<select id="recKey"><option value="">Selecionar</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">N/A</option></select></label>
             </div>
-            <label>Documentos recebidos<input id="recDocsReceived" placeholder="Livrete, DUA, guias, outros"></label>
+            <input id="recVehicle" type="hidden"><input id="recPriority" type="hidden" value="normal"><input id="recKey" type="hidden"><input id="recDocsReceived" type="hidden">
           </div>
-          <div class="main-card">
-            <h3>Motivo da entrada</h3>
-            <div class="grid2"><label>Queixa / pedido principal<input id="recMainRequest" placeholder="Ex.: revisão, avaria luz motor, danos..."></label><label>Sintoma reportado<input id="recSymptom" placeholder="Sintoma reportado pelo cliente/operador"></label></div>
-            <div class="grid2"><label>Imobilizada?<select id="recImmobilized"><option value="">Selecionar</option><option value="no">Não</option><option value="yes">Sim</option></select></label><label>Observação curta <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Resumo curto da entrada e contexto relevante."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label></div>
+          <div class="main-card compact-phase-card">
+            <h3>Motivo</h3>
+            <div class="grid2"><label>Motivo da entrada<select id="recOrigin"><option value="">Selecionar</option><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label><label>Descrição curta <span class="required">*</span><span class="textarea-wrap"><textarea id="recObs" maxlength="500" placeholder="Resumo curto da entrada e contexto relevante."></textarea><span id="recObsCounter" class="char-count">0 / 500</span></span><span id="recObsNote" class="field-note">Observação inicial em falta.</span></label></div>
+            <input id="recMainRequest" type="hidden"><input id="recSymptom" type="hidden">
           </div>
-          <div class="main-card">
-            <h3>Estado visual inicial</h3>
-            <div class="grid3"><label>Danos visíveis na entrada?<select id="recVisual"><option value="">Selecionar</option><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Origem dos danos<select id="recDamageOrigin"><option value="not_applicable">N/A</option><option value="already_registered">Já registados</option><option value="new">Novos</option><option value="pending_review">Por confirmar</option></select></label><label>Necessita ligar a sinistro?<select id="recClaimLink"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label></div>
-            <label>Resumo dos danos<input id="recDamage" placeholder="Resumo dos danos visíveis"></label>
+          <div class="main-card compact-phase-card">
+            <h3>Estado inicial</h3>
+            <div class="grid3"><label>Danos visíveis?<select id="recVisual"><option value="">Selecionar</option><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Fotos gerais<input id="recVehiclePhotoFile" type="file" accept="image/*" capture="environment" multiple><input id="recVehiclePhoto" placeholder="nome/link das fotos"></label><label>Pode circular?<select id="recCanCirculate"><option value="">Selecionar</option><option value="yes">Sim</option><option value="no">Não</option><option value="pending_review">Por confirmar</option></select></label></div>
+            <label>Nota curta<input id="recDamage" placeholder="Resumo de danos ou estado inicial"></label>
+            <input id="recDamageOrigin" type="hidden" value="not_applicable"><input id="recClaimLink" type="hidden" value="no"><input id="recDocument" type="hidden"><input id="recImmobilized" type="hidden">
           </div>
+          <input id="recRequestedService" type="hidden"><input id="recSupplier" type="hidden"><input id="recEstimatedValue" type="hidden"><input id="recAuthorization" type="hidden" value="no"><input id="recAuthorizationReason" type="hidden">
           <div class="main-card">
-            <h3>Documentos / Fotos</h3>
-            <div class="grid3"><label>Foto quadrante<input id="recPhotoFile" type="file" accept="image/*" capture="environment"><input id="recPhoto" placeholder="link/caminho ou nome do ficheiro"><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label><label>Fotos de entrada<input id="recVehiclePhotoFile" type="file" accept="image/*" capture="environment" multiple><input id="recVehiclePhoto" placeholder="link/caminho ou nome do ficheiro"></label><label>Documento de entrada<input id="recDocument" placeholder="https://..."></label></div>
-            <div class="actions" style="justify-content:flex-start"><button type="button" onclick="copyFolder()">Copiar pasta</button><a id="recDocumentsLink" class="button" href="/documents">Ver anexos associados</a></div>
-          </div>
-          <div class="main-card">
-            <h3>Serviço solicitado</h3>
-            <div class="grid3"><label>Serviço pedido<select id="recRequestedService"><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label><label>Fornecedor/oficina prevista<input id="recSupplier" placeholder="Fornecedor ou oficina"></label><label>Valor estimado<input id="recEstimatedValue" type="number" step="0.01"></label></div>
-            <div class="grid2"><label>Necessita autorização?<select id="recAuthorization"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Motivo autorização<input id="recAuthorizationReason" placeholder="Motivo inicial, se aplicável"></label></div>
-          </div>
-          <div class="main-card">
-            <h3>Encaminhamento</h3>
-            <div class="grid3"><label>Responsável<input id="recResponsible" type="number" min="1" placeholder="ID utilizador"></label><label>Próxima fase<select id="recNext"><option value="history_check">Validação Operacional</option><option value="technical_phase">Diagnóstico</option><option value="pending_decision">Aguardar decisão</option></select></label><label>Estado seguinte<span class="field-control"><span class="field-icon">→</span><input value="Entrada guardada" readonly><span class="field-extra">auto</span></span></label></div>
+            <h3>Próxima ação</h3>
+            <input id="recResponsible" type="hidden"><input id="recNext" type="hidden" value="history_check">
             <div class="actions" style="justify-content:flex-start"><button type="button" onclick="saveReception()">Guardar entrada</button><button class="primary" type="button" onclick="advanceReception()">Avançar fase</button><button type="button" onclick="showResult(true, 'Criar tarefa: usar Centro de Tarefas associado à matrícula.')">Criar tarefa</button><button type="button" onclick="showResult(true, 'Problema identificado pode ser criado na Auditoria Técnica da viatura.')">Criar problema identificado</button></div>
           </div>
         </section>
@@ -2714,7 +2711,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
               <div><span>Venda / bloqueio</span><strong id="opSale">Por consultar</strong></div>
             </div>
           </div>
-          <div class="verification-stack">
+          <div class="verification-stack compact-operational-validation">
             <div class="verification-group">
               <div class="board-title"><div><h3>Service Box / Campanhas</h3><p class="muted">Confirmar evidência operacional antes do diagnóstico.</p></div></div>
               <div class="grid3"><label>Última verificação Service Box<input id="serviceBoxLastChecked" type="date"></label><label>Validade<select id="serviceBoxValidity"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="manual">Manual</option></select></label><label>Verificação necessária?<select id="serviceBoxNeeded"><option value="yes">Sim</option><option value="no">Não</option></select></label></div>
@@ -2780,7 +2777,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
               <label>O que o técnico deve despistar<textarea id="diagnosisFocus" placeholder="Ex.: confirmar degradação recorrente, fuga, BSI, telecarregamento..."></textarea></label>
               <label>Relatórios necessários<input id="requiredReports" placeholder="Lubrificação motor, Informações manutenção, Programação manutenção, Telecarregamento, Leitura defeitos, Teste global, Fotos/outros"></label>
               <label>Perguntas para responder no diagnóstico<textarea id="diagnosisQuestions" placeholder="Confirmar nº manutenções BSI; BSI coincide com faturas; taxa diluição/carbono; telecarregamento; recorrência..."></textarea></label>
-              <div class="grid3"><label>Prioridade técnica<select id="technicalPriority"><option value="normal">Normal</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label><label>Validação operacional fechada?<select id="operationalValidation"><option value="no">Não</option><option value="yes">Sim</option><option value="reserved">Com reservas</option></select></label><label>Motivo da reserva<input id="reserveReason" placeholder="Obrigatório se houver reservas"></label></div>
+              <input id="technicalPriority" type="hidden" value="normal"><input id="operationalValidation" type="hidden" value="no"><input id="reserveReason" type="hidden">
             </div>
             <div class="verification-group">
               <div class="board-title"><div><h3>Histórico e contexto</h3><p class="muted">Verificações internas e sinais de repetição/incidência.</p></div></div>
@@ -3510,6 +3507,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setVal("#recMainRequest", r.main_request || processData.title || "");
       setVal("#recSymptom", r.reported_symptom || "");
       setVal("#recImmobilized", r.immobilized || "");
+      setVal("#recCanCirculate", r.immobilized === "yes" ? "no" : r.immobilized === "no" ? "yes" : "");
       setVal("#recVisual", r.visible_damage_status || "");
       setVal("#recDamageOrigin", r.damage_origin || "not_applicable");
       setVal("#recClaimLink", r.damage_needs_claim_link || "no");
@@ -3718,7 +3716,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           main_request:val("#recMainRequest"),
           reported_symptom:val("#recSymptom"),
           initial_observation:val("#recObs"),
-          immobilized:val("#recImmobilized"),
+          immobilized:val("#recCanCirculate") === "no" ? "yes" : val("#recCanCirculate") === "yes" ? "no" : val("#recImmobilized"),
           quadrant_photo_link:val("#recPhoto"),
           quadrant_photo_file_name:quadrantPhotoFile,
           vehicle_photo_links:val("#recVehiclePhoto") ? {entry:val("#recVehiclePhoto")} : {},
@@ -3728,7 +3726,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           damage_origin:val("#recDamageOrigin"),
           damage_description:val("#recDamage"),
           damage_needs_claim_link:val("#recClaimLink"),
-          requested_service:val("#recRequestedService"),
+          requested_service:val("#recRequestedService") || val("#recOrigin"),
           planned_supplier:val("#recSupplier"),
           initial_authorization_needed:val("#recAuthorization"),
           initial_authorization_reason:val("#recAuthorizationReason"),

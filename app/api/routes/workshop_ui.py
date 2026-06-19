@@ -2662,9 +2662,15 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
             </div>
             <div class="grid3">
               <label>Data/hora entrada<input id="recDate" placeholder="AAAA-MM-DD HH:MM"></label>
-              <label>Origem do processo<select id="recOrigin"><option value="">Selecionar</option><option value="breakdown">Avaria</option><option value="maintenance">Manutenção</option><option value="damage">Dano</option><option value="sale_preparation">Preparação</option><option value="other">Outro</option></select></label>
+              <label>Motivo da entrada<select id="recOrigin"><option value="">Selecionar</option><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label>
               <label>Prioridade<select id="recPriority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
             </div>
+            <div class="grid3">
+              <label>Local receção<input id="recLocation" placeholder="Oficina / estação"></label>
+              <label>Recebido por<input id="recReceivedBy" placeholder="Nome"></label>
+              <label>Chave entregue<select id="recKey"><option value="">Selecionar</option><option value="yes">Sim</option><option value="no">Não</option><option value="not_applicable">N/A</option></select></label>
+            </div>
+            <label>Documentos recebidos<input id="recDocsReceived" placeholder="Livrete, DUA, guias, outros"></label>
           </div>
           <div class="main-card">
             <h3>Motivo da entrada</h3>
@@ -2673,25 +2679,45 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
           </div>
           <div class="main-card">
             <h3>Estado visual inicial</h3>
-            <div class="grid2"><label>Danos visíveis?<select id="recVisual"><option value="">Selecionar</option><option>Não</option><option>Sim - ligeiros</option><option>Sim - relevantes</option><option>Não verificado</option></select></label><label>Observação de danos<input id="recDamage" placeholder="Resumo dos danos visíveis"></label></div>
+            <div class="grid3"><label>Danos visíveis na entrada?<select id="recVisual"><option value="">Selecionar</option><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Origem dos danos<select id="recDamageOrigin"><option value="not_applicable">N/A</option><option value="already_registered">Já registados</option><option value="new">Novos</option><option value="pending_review">Por confirmar</option></select></label><label>Necessita ligar a sinistro?<select id="recClaimLink"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label></div>
+            <label>Resumo dos danos<input id="recDamage" placeholder="Resumo dos danos visíveis"></label>
           </div>
           <div class="main-card">
             <h3>Documentos / Fotos</h3>
-            <div class="grid3"><label>Foto quadrante<input id="recPhoto" placeholder="https://..."><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label><label>Foto viatura / dano<input id="recVehiclePhoto" placeholder="https://..."></label><label>Documento de entrada<input id="recDocument" placeholder="https://..."></label></div>
+            <div class="grid3"><label>Foto quadrante<input id="recPhotoFile" type="file" accept="image/*" capture="environment"><input id="recPhoto" placeholder="link/caminho ou nome do ficheiro"><span id="recPhotoNote" class="field-note">Foto do quadrante em falta.</span></label><label>Fotos de entrada<input id="recVehiclePhotoFile" type="file" accept="image/*" capture="environment" multiple><input id="recVehiclePhoto" placeholder="link/caminho ou nome do ficheiro"></label><label>Documento de entrada<input id="recDocument" placeholder="https://..."></label></div>
             <div class="actions" style="justify-content:flex-start"><button type="button" onclick="copyFolder()">Copiar pasta</button><a id="recDocumentsLink" class="button" href="/documents">Ver anexos associados</a></div>
           </div>
           <div class="main-card">
+            <h3>Serviço solicitado</h3>
+            <div class="grid3"><label>Serviço pedido<select id="recRequestedService"><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label><label>Fornecedor/oficina prevista<input id="recSupplier" placeholder="Fornecedor ou oficina"></label><label>Valor estimado<input id="recEstimatedValue" type="number" step="0.01"></label></div>
+            <div class="grid2"><label>Necessita autorização?<select id="recAuthorization"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Motivo autorização<input id="recAuthorizationReason" placeholder="Motivo inicial, se aplicável"></label></div>
+          </div>
+          <div class="main-card">
             <h3>Encaminhamento</h3>
-            <div class="grid3"><label>Responsável<input id="recResponsible" type="number" min="1" placeholder="ID utilizador"></label><label>Próxima fase<select id="recNext"><option value="history_check">Validação administrativa</option><option value="technical_phase">Diagnóstico</option><option value="pending_decision">Aguardar decisão</option></select></label><label>Estado seguinte<span class="field-control"><span class="field-icon">→</span><input value="Entrada guardada" readonly><span class="field-extra">auto</span></span></label></div>
+            <div class="grid3"><label>Responsável<input id="recResponsible" type="number" min="1" placeholder="ID utilizador"></label><label>Próxima fase<select id="recNext"><option value="history_check">Validação Operacional</option><option value="technical_phase">Diagnóstico</option><option value="pending_decision">Aguardar decisão</option></select></label><label>Estado seguinte<span class="field-control"><span class="field-icon">→</span><input value="Entrada guardada" readonly><span class="field-extra">auto</span></span></label></div>
+            <div class="actions" style="justify-content:flex-start"><button type="button" onclick="saveReception()">Guardar entrada</button><button class="primary" type="button" onclick="advanceReception()">Avançar fase</button><button type="button" onclick="showResult(true, 'Criar tarefa: usar Centro de Tarefas associado à matrícula.')">Criar tarefa</button><button type="button" onclick="showResult(true, 'Problema identificado pode ser criado na Auditoria Técnica da viatura.')">Criar problema identificado</button></div>
           </div>
         </section>
 
         <section id="checks" class="panel phase">
-          <div class="phase-head"><div><h2>Validação Administrativa</h2><p class="muted">Documentos administrativos, histórico, Service Box, campanhas e plano de manutenção.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar validação</button></div>
+          <div class="phase-head"><div><h2>Validação Operacional</h2><p class="muted">Preparar contexto operacional para o técnico antes do Diagnóstico.</p></div><button class="primary" type="button" onclick="saveChecks()">Guardar validação operacional</button></div>
           <div id="checksAlerts" class="alert-line"></div>
+          <div class="main-card">
+            <h3>Resumo da viatura</h3>
+            <div class="task-info-grid workshop-info-grid">
+              <div><span>Matrícula</span><strong id="opPlate">-</strong></div>
+              <div><span>Viatura</span><strong id="opVehicle">-</strong></div>
+              <div><span>Km entrada</span><strong id="opKm">-</strong></div>
+              <div><span>Data matrícula</span><strong id="opPlateDate">-</strong></div>
+              <div><span>Compra / início CarFast</span><strong id="opPurchaseDate">-</strong></div>
+              <div><span>Auditoria técnica</span><strong id="opAudit">Por consultar</strong></div>
+              <div><span>Venda / bloqueio</span><strong id="opSale">Por consultar</strong></div>
+            </div>
+          </div>
           <div class="verification-stack">
             <div class="verification-group">
-              <div class="board-title"><div><h3>Marca e manutenção</h3><p class="muted">Aplicável conforme marca/modelo. Se não se aplicar, marcar como Não aplicável.</p></div></div>
+              <div class="board-title"><div><h3>Service Box / Campanhas</h3><p class="muted">Confirmar evidência operacional antes do diagnóstico.</p></div></div>
+              <div class="grid3"><label>Última verificação Service Box<input id="serviceBoxLastChecked" type="date"></label><label>Validade<select id="serviceBoxValidity"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="manual">Manual</option></select></label><label>Verificação necessária?<select id="serviceBoxNeeded"><option value="yes">Sim</option><option value="no">Não</option></select></label></div>
               <div class="verification-board">
                 <div class="verification-head"><span>Documento</span><span>Aplicabilidade / estado</span><span>Evidência</span><span>Ações</span></div>
                 <div id="serviceBoxCard" class="verification-row">
@@ -2714,6 +2740,12 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                   <div class="verification-cell"><label id="campaignsRefsWrap" class="conditional-input">Referências<input id="campaignsRefs" placeholder="Referências das campanhas"></label><label id="campaignsLinkWrap" class="conditional-input">Link/print<input id="campaignsLink" placeholder="https://..."></label><label id="campaignsReasonWrap" class="conditional-input">Motivo<input id="campaignsReason" placeholder="Porque não foi consultado"></label><span id="campaignsChip" class="chip review">Por rever</span></div>
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('campaigns')">Anexar print</button><a id="campaignsOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
+                <div class="verification-row">
+                  <div class="verification-cell verification-title"><span class="doc-code">NC</span><div><strong>Campanha ativa</strong><p class="muted">Registar número/descrição quando existir.</p></div></div>
+                  <div class="verification-cell"><label>Campanhas ativas?<select id="campaignsActive"><option value="pending_review">Por confirmar</option><option value="yes">Sim</option><option value="no">Não</option></select></label></div>
+                  <div class="verification-cell"><label>Nº campanha<input id="campaignNumber" placeholder="Referência"></label><label>Descrição<input id="campaignDescription" placeholder="Descrição curta"></label></div>
+                  <div class="verification-cell"><label>Observação<input id="serviceBoxObs" placeholder="Observação Service Box / campanhas"></label></div>
+                </div>
                 <div id="planCard" class="verification-row">
                   <div class="verification-cell verification-title"><span class="doc-code">PM</span><div><strong>Plano manutenção</strong><p class="muted">Plano da marca comparado com Rentway.</p></div></div>
                   <div class="verification-cell"><div class="choice-boxes" role="radiogroup" aria-label="Plano de manutenção consultado">
@@ -2725,6 +2757,30 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
                   <div class="verification-cell verification-actions"><button type="button" onclick="markEvidence('plan')">Anexar plano</button><a id="planOpen" class="button" target="_blank" rel="noopener">Abrir</a></div>
                 </div>
               </div>
+            </div>
+            <div class="verification-group">
+              <div class="board-title"><div><h3>Plano de manutenção</h3><p class="muted">Comparar plano anexado, Rentway e cálculo operacional.</p></div></div>
+              <div class="grid3"><label>Plano anexado?<select id="planAttached"><option value="no">Não</option><option value="yes">Sim</option></select></label><label>Plano aplicável confirmado?<select id="planConfirmed"><option value="pending_review">Por confirmar</option><option value="yes">Sim</option><option value="no">Não</option></select></label><label>Diferença Rentway vs cálculo<select id="rentwayVsCalc"><option value="pending_review">Por confirmar</option><option value="ok">OK</option><option value="divergent">Divergente</option></select></label></div>
+              <div class="grid3"><label>Intervalo previsto km<input id="planIntervalKm" type="number" min="0"></label><label>Intervalo previsto meses<input id="planIntervalMonths" type="number" min="0"></label><label>Observação<input id="planOperationalObs" placeholder="Observação do plano"></label></div>
+              <div class="grid2"><label>Próxima manutenção Rentway data<input id="rentwayNextDate" type="date"></label><label>Próxima manutenção Rentway km<input id="rentwayNextKm" type="number" min="0"></label><label>Próxima manutenção calculada data<input id="calcNextDate" type="date"></label><label>Próxima manutenção calculada km<input id="calcNextKm" type="number" min="0"></label></div>
+            </div>
+            <div class="verification-group">
+              <div class="board-title"><div><h3>Histórico do serviço pedido</h3><p class="muted">Contexto rápido do último serviço antes do diagnóstico.</p></div></div>
+              <div class="grid3"><label>Serviço a validar<select id="serviceToValidate"><option value="revision">Revisão</option><option value="oil_degradation">Degradação óleo</option><option value="tires">Pneus</option><option value="brakes">Travões</option><option value="damage_claim">Danos / sinistro</option><option value="breakdown">Avaria</option><option value="other">Outro</option></select></label><label>Última vez realizada - data<input id="lastServiceDate" type="date"></label><label>Última vez realizada - km<input id="lastServiceKm" type="number" min="0"></label></div>
+              <div class="grid3"><label>Fornecedor<input id="lastServiceSupplier"></label><label>Documento associado<input id="lastServiceDocument" placeholder="FO / fatura / relatório"></label><label>Fonte<select id="lastServiceSource"><option value="">Selecionar</option><option value="fo">FO</option><option value="invoice">Fatura</option><option value="report">Relatório</option><option value="rentway">Rentway</option><option value="manual">Manual</option></select></label></div>
+              <div class="grid2"><label>Repetição suspeita?<select id="suspiciousRepeat"><option value="pending_review">Por confirmar</option><option value="no">Não</option><option value="yes">Sim</option></select></label><label>Observação<input id="serviceHistoryObs" placeholder="Motivo/observação"></label></div>
+              <div class="actions" style="justify-content:flex-start"><a class="button" id="workOrdersLink" href="/documents">Ver folhas de obra</a><a class="button" id="invoicesLink" href="/documents">Ver faturas</a><a class="button" id="reportsLink" href="#reports">Ver relatórios</a></div>
+            </div>
+            <div class="verification-group">
+              <div class="board-title"><div><h3>Pendências da viatura</h3><p class="muted">Sinais a considerar antes de entregar ao técnico.</p></div></div>
+              <div class="grid3"><label>Danos Rentway por atualizar<select id="pendingDamageUpdate"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Sinistros pendentes<select id="pendingClaims"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Auditoria técnica em curso<select id="technicalAuditStatus"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Problemas identificados abertos<select id="openProblems"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Tarefas pendentes<select id="pendingTasks"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label><label>Venda bloqueada<select id="saleBlocked"><option value="no">Não</option><option value="yes">Sim</option><option value="pending_review">Por confirmar</option></select></label></div>
+            </div>
+            <div class="verification-group">
+              <div class="board-title"><div><h3>Orientação para Diagnóstico</h3><p class="muted">Instruções para o técnico responder na fase seguinte.</p></div></div>
+              <label>O que o técnico deve despistar<textarea id="diagnosisFocus" placeholder="Ex.: confirmar degradação recorrente, fuga, BSI, telecarregamento..."></textarea></label>
+              <label>Relatórios necessários<input id="requiredReports" placeholder="Lubrificação motor, Informações manutenção, Programação manutenção, Telecarregamento, Leitura defeitos, Teste global, Fotos/outros"></label>
+              <label>Perguntas para responder no diagnóstico<textarea id="diagnosisQuestions" placeholder="Confirmar nº manutenções BSI; BSI coincide com faturas; taxa diluição/carbono; telecarregamento; recorrência..."></textarea></label>
+              <div class="grid3"><label>Prioridade técnica<select id="technicalPriority"><option value="normal">Normal</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label><label>Validação operacional fechada?<select id="operationalValidation"><option value="no">Não</option><option value="yes">Sim</option><option value="reserved">Com reservas</option></select></label><label>Motivo da reserva<input id="reserveReason" placeholder="Obrigatório se houver reservas"></label></div>
             </div>
             <div class="verification-group">
               <div class="board-title"><div><h3>Histórico e contexto</h3><p class="muted">Verificações internas e sinais de repetição/incidência.</p></div></div>
@@ -2876,7 +2932,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     let selectedReportType = null;
     const tabs = [
       ["reception", "Entrada em Oficina", "administrative_reception"],
-      ["checks", "Validação Administrativa", "history_check"],
+      ["checks", "Validação Operacional", "history_check"],
       ["reports", "Diagnóstico", "technical_phase"],
       ["technicalChecks", "Inspeção Técnica", "technical_inspection"],
       ["decision", "Controlo e Conformidade", "diagnosis_decision"],
@@ -2885,7 +2941,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       ["close", "Fecho da Intervenção", "final_closure"]
     ];
     const phaseIcons = {reception:"□", checks:"○", reports:"▤", technicalChecks:"✓", decision:"⚖", budget:"▦", repair:"⚙", close:"⚑"};
-    const phaseLabels = {process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Administrativa", technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"};
+    const phaseLabels = {process_creation:"Entrada em Oficina", administrative_reception:"Entrada em Oficina", history_check:"Validação Operacional", technical_phase:"Diagnóstico", technical_inspection:"Inspeção Técnica", diagnosis_decision:"Controlo e Conformidade", budget_approval:"Aprovação da Intervenção", internal_repair_execution:"Reparação", final_closure:"Fecho da Intervenção"};
     const statusLabels = {open:["Aberto","review"], pending:["Pendente","review"], pending_review:["Por rever","review"], pending_validation:["Por validar","review"], in_progress:["Em curso","progress"], completed:["Concluído","done"], validated:["Validado","done"], corrected_manually:["Corrigido e validado","done"], unable_to_read:["Leitura rejeitada","danger"], completed_with_pending_items:["Concluído com pendências","review"], added:["Adicionado","progress"], ok:["Conforme","done"], not_ok:["Não conforme","danger"], not_started:["Não iniciado","neutral"], not_applicable:["Não aplicável","neutral"], high:["Alta","danger"], critical:["Crítica","danger"]};
     const valueLabels = {yes:"Sim", no:"Não", none:"Não existem", pending_review:"Por rever", not_applicable:"Não aplicável", evidence_link:"Link para print", initial:"Inicial", final:"Final", stellantis_machine:"Máquina Stellantis", autel:"Autel", other:"Outro"};
     const serviceFieldProfiles = {
@@ -2980,6 +3036,7 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function safe(value) { return String(value ?? "-").replace(/[&<>"']/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"); }
     function val(id) { return $(id)?.value || ""; }
     function setVal(id, value) { const el = $(id); if (el && value !== undefined && value !== null) el.value = value; }
+    function setText(id, value) { const el = $(id); if (el) el.textContent = value ?? ""; }
     function setChoice(prefix, value) {
       const normalized = docChoice(value);
       setVal(`#${prefix}`, normalized);
@@ -3446,18 +3503,36 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       updateObservationCounter();
       setVal("#recOrigin", r.process_origin || processData.origin || "");
       setVal("#recPriority", r.priority || processData.priority || "normal");
+      setVal("#recLocation", r.reception_location || "");
+      setVal("#recReceivedBy", r.received_by || "");
+      setVal("#recKey", r.key_delivered || "");
+      setVal("#recDocsReceived", r.documents_received || "");
       setVal("#recMainRequest", r.main_request || processData.title || "");
       setVal("#recSymptom", r.reported_symptom || "");
       setVal("#recImmobilized", r.immobilized || "");
       setVal("#recVisual", r.visible_damage_status || "");
+      setVal("#recDamageOrigin", r.damage_origin || "not_applicable");
+      setVal("#recClaimLink", r.damage_needs_claim_link || "no");
       setVal("#recDamage", r.damage_description || "");
       setVal("#recPhoto", r.quadrant_photo_link || "");
       setVal("#recVehiclePhoto", objectValues(r.vehicle_photo_links || {}).entry || "");
       setVal("#recDocument", r.document_link || "");
+      setVal("#recRequestedService", r.requested_service || r.process_origin || "revision");
+      setVal("#recSupplier", r.planned_supplier || "");
+      setVal("#recAuthorization", r.initial_authorization_needed || "no");
+      setVal("#recAuthorizationReason", r.initial_authorization_reason || "");
+      setVal("#recEstimatedValue", r.estimated_value || "");
       setVal("#recResponsible", r.responsible_user_id || "");
       setVal("#recNext", r.next_step || "history_check");
       const docLink = $("#recDocumentsLink");
       if (docLink) docLink.href = `/documents?plate=${encodeURIComponent(v.plate || processData.plate || "")}`;
+      setText("#opPlate", v.plate || processData.plate || "-");
+      setText("#opVehicle", model || "-");
+      setText("#opKm", r.km_entry || processData.initial_km || "-");
+      setText("#opPlateDate", v.plate_date || v.registration_date || "-");
+      setText("#opPurchaseDate", v.purchase_date || "-");
+      setText("#opAudit", h.technical_audit_status || "Por consultar");
+      setText("#opSale", h.sale_blocked || "Por consultar");
       setChoice("internal", h.internal_history_checked || "pending_review");
       setVal("#accidents", h.open_accident_reports || "no");
       setVal("#accidentsDetail", h.accident_reports_detail || "");
@@ -3467,13 +3542,53 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       setChoice("serviceBox", h.service_box_checked);
       setVal("#serviceBoxLink", h.service_box_link || "");
       setVal("#serviceBoxReason", h.service_box_reason || "");
+      setVal("#serviceBoxLastChecked", h.service_box_last_checked_at || "");
+      setVal("#serviceBoxValidity", h.service_box_validity_days || "30");
+      setVal("#serviceBoxNeeded", h.service_box_needed || "yes");
+      setVal("#serviceBoxObs", h.service_box_observation || "");
       setChoice("campaigns", h.campaigns_checked);
       setVal("#campaignsLink", h.campaigns_link || "");
       setVal("#campaignsRefs", h.campaigns_references || "");
       setVal("#campaignsReason", h.campaigns_reason || "");
+      setVal("#campaignsActive", h.campaigns_active || "pending_review");
+      setVal("#campaignNumber", h.campaign_number || "");
+      setVal("#campaignDescription", h.campaign_description || "");
       setChoice("plan", h.maintenance_plan_checked);
       setVal("#planLink", h.maintenance_plan_link || "");
       setVal("#planReason", h.maintenance_plan_reason || "");
+      setVal("#planAttached", h.maintenance_plan_attached || (h.maintenance_plan_link ? "yes" : "no"));
+      setVal("#planConfirmed", h.maintenance_plan_confirmed || "pending_review");
+      setVal("#planIntervalKm", h.interval_km || "");
+      setVal("#planIntervalMonths", h.interval_months || "");
+      setVal("#rentwayNextDate", h.rentway_next_service_date || "");
+      setVal("#rentwayNextKm", h.rentway_next_service_km || "");
+      setVal("#calcNextDate", h.calculated_next_service_date || "");
+      setVal("#calcNextKm", h.calculated_next_service_km || "");
+      setVal("#rentwayVsCalc", h.rentway_vs_calculation || "pending_review");
+      setVal("#planOperationalObs", h.maintenance_plan_observation || "");
+      setVal("#serviceToValidate", h.service_to_validate || r.requested_service || r.process_origin || "revision");
+      setVal("#lastServiceDate", h.last_service_date || "");
+      setVal("#lastServiceKm", h.last_service_km || "");
+      setVal("#lastServiceSupplier", h.last_service_supplier || "");
+      setVal("#lastServiceDocument", h.last_service_document || "");
+      setVal("#lastServiceSource", h.last_service_source || "");
+      setVal("#suspiciousRepeat", h.suspicious_repetition || "pending_review");
+      setVal("#serviceHistoryObs", h.service_history_observation || "");
+      setVal("#pendingDamageUpdate", h.pending_damage_update || "no");
+      setVal("#pendingClaims", h.pending_claims || h.open_accident_reports || "no");
+      setVal("#technicalAuditStatus", h.technical_audit_status || "pending_review");
+      setVal("#openProblems", h.open_identified_problems || "pending_review");
+      setVal("#pendingTasks", h.pending_tasks || "pending_review");
+      setVal("#saleBlocked", h.sale_blocked || "pending_review");
+      setVal("#diagnosisFocus", h.diagnosis_focus || "");
+      setVal("#requiredReports", h.required_reports || "");
+      setVal("#diagnosisQuestions", h.diagnosis_questions || "");
+      setVal("#technicalPriority", h.technical_priority || "normal");
+      setVal("#operationalValidation", h.operational_validation_status || "no");
+      setVal("#reserveReason", h.reserve_reason || "");
+      const plateParam = encodeURIComponent(v.plate || processData.plate || "");
+      if ($("#workOrdersLink")) $("#workOrdersLink").href = `/documents?plate=${plateParam}`;
+      if ($("#invoicesLink")) $("#invoicesLink").href = `/documents?plate=${plateParam}`;
       renderChecks();
       setVal("#decisionDiagnosis", d.main_diagnosis || "");
       setVal("#decisionType", d.intervention_type || "");
@@ -3543,6 +3658,14 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
       ["#serviceBoxLink", "#serviceBoxReason", "#campaignsLink", "#campaignsRefs", "#campaignsReason", "#planLink", "#planReason"].forEach(id => $(id)?.addEventListener("input", renderChecks));
       $("#reportLink")?.addEventListener("input", () => updateReportOpen());
       $("#reportPdfFile")?.addEventListener("change", event => extractUploadedReportValues(event.target.files?.[0]));
+      $("#recPhotoFile")?.addEventListener("change", event => {
+        const file = event.target.files?.[0];
+        if (file) setVal("#recPhoto", file.name);
+      });
+      $("#recVehiclePhotoFile")?.addEventListener("change", event => {
+        const names = [...(event.target.files || [])].map(file => file.name).join(", ");
+        if (names) setVal("#recVehiclePhoto", names);
+      });
       $("#reportCode")?.addEventListener("change", () => {
         selectedReportId = null;
         selectedReportType = val("#reportCode");
@@ -3581,20 +3704,35 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     function markEvidence(prefix) { setVal(`#${prefix}`, "yes"); renderChecks(); }
     async function saveReception() {
       try {
+        const quadrantPhotoFile = $("#recPhotoFile")?.files?.[0]?.name || "";
+        const entryPhotoFileName = [...($("#recVehiclePhotoFile")?.files || [])].map(file => file.name).join(", ");
         await requestJson(`/api/workshop/processes/${processId}/reception`, "POST", {
           km_entry:Number(val("#recKm")) || null,
           entry_at:val("#recDate"),
           process_origin:val("#recOrigin"),
           priority:val("#recPriority"),
+          reception_location:val("#recLocation"),
+          received_by:val("#recReceivedBy"),
+          key_delivered:val("#recKey"),
+          documents_received:val("#recDocsReceived"),
           main_request:val("#recMainRequest"),
           reported_symptom:val("#recSymptom"),
           initial_observation:val("#recObs"),
           immobilized:val("#recImmobilized"),
           quadrant_photo_link:val("#recPhoto"),
+          quadrant_photo_file_name:quadrantPhotoFile,
           vehicle_photo_links:val("#recVehiclePhoto") ? {entry:val("#recVehiclePhoto")} : {},
+          entry_photo_file_name:entryPhotoFileName,
           document_link:val("#recDocument"),
           visible_damage_status:val("#recVisual"),
+          damage_origin:val("#recDamageOrigin"),
           damage_description:val("#recDamage"),
+          damage_needs_claim_link:val("#recClaimLink"),
+          requested_service:val("#recRequestedService"),
+          planned_supplier:val("#recSupplier"),
+          initial_authorization_needed:val("#recAuthorization"),
+          initial_authorization_reason:val("#recAuthorizationReason"),
+          estimated_value:numeric("#recEstimatedValue"),
           responsible_user_id:Number(val("#recResponsible")) || null,
           next_step:val("#recNext")
         });
@@ -3611,8 +3749,63 @@ def workshop_process_manage_v3_page(process_id: int) -> str:
     }
     async function saveChecks() {
       try {
-        await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {internal_history_checked:val("#internal"), open_accident_reports:val("#accidents"), accident_reports_detail:val("#accidentsDetail"), previous_processes_reviewed:val("#previous"), relevant_interventions_identified:"no", repeated_incidence:val("#repeat"), service_box_checked:val("#serviceBox"), service_box_link:val("#serviceBoxLink"), service_box_reason:val("#serviceBoxReason"), campaigns_checked:val("#campaigns"), campaigns_link:val("#campaignsLink"), campaigns_references:val("#campaignsRefs"), campaigns_reason:val("#campaignsReason"), maintenance_plan_checked:val("#plan"), maintenance_plan_link:val("#planLink"), maintenance_plan_reason:val("#planReason"), history_observation:val("#historyObs")});
-        showResult(true, "Validação Administrativa guardada.");
+        await requestJson(`/api/workshop/processes/${processId}/history-check`, "POST", {
+          internal_history_checked:val("#internal"),
+          open_accident_reports:val("#accidents"),
+          accident_reports_detail:val("#accidentsDetail"),
+          previous_processes_reviewed:val("#previous"),
+          relevant_interventions_identified:"no",
+          repeated_incidence:val("#repeat"),
+          service_box_checked:val("#serviceBox"),
+          service_box_link:val("#serviceBoxLink"),
+          service_box_reason:val("#serviceBoxReason"),
+          service_box_last_checked_at:val("#serviceBoxLastChecked"),
+          service_box_validity_days:val("#serviceBoxValidity"),
+          service_box_needed:val("#serviceBoxNeeded"),
+          service_box_observation:val("#serviceBoxObs"),
+          campaigns_checked:val("#campaigns"),
+          campaigns_link:val("#campaignsLink"),
+          campaigns_references:val("#campaignsRefs"),
+          campaigns_reason:val("#campaignsReason"),
+          campaigns_active:val("#campaignsActive"),
+          campaign_number:val("#campaignNumber"),
+          campaign_description:val("#campaignDescription"),
+          maintenance_plan_checked:val("#plan"),
+          maintenance_plan_link:val("#planLink"),
+          maintenance_plan_reason:val("#planReason"),
+          maintenance_plan_attached:val("#planAttached"),
+          maintenance_plan_confirmed:val("#planConfirmed"),
+          interval_km:numeric("#planIntervalKm"),
+          interval_months:numeric("#planIntervalMonths"),
+          rentway_next_service_date:val("#rentwayNextDate"),
+          rentway_next_service_km:numeric("#rentwayNextKm"),
+          calculated_next_service_date:val("#calcNextDate"),
+          calculated_next_service_km:numeric("#calcNextKm"),
+          rentway_vs_calculation:val("#rentwayVsCalc"),
+          maintenance_plan_observation:val("#planOperationalObs"),
+          service_to_validate:val("#serviceToValidate"),
+          last_service_date:val("#lastServiceDate"),
+          last_service_km:numeric("#lastServiceKm"),
+          last_service_supplier:val("#lastServiceSupplier"),
+          last_service_document:val("#lastServiceDocument"),
+          last_service_source:val("#lastServiceSource"),
+          suspicious_repetition:val("#suspiciousRepeat"),
+          service_history_observation:val("#serviceHistoryObs"),
+          pending_damage_update:val("#pendingDamageUpdate"),
+          pending_claims:val("#pendingClaims"),
+          technical_audit_status:val("#technicalAuditStatus"),
+          open_identified_problems:val("#openProblems"),
+          pending_tasks:val("#pendingTasks"),
+          sale_blocked:val("#saleBlocked"),
+          diagnosis_focus:val("#diagnosisFocus"),
+          required_reports:val("#requiredReports"),
+          diagnosis_questions:val("#diagnosisQuestions"),
+          technical_priority:val("#technicalPriority"),
+          operational_validation_status:val("#operationalValidation"),
+          reserve_reason:val("#reserveReason"),
+          history_observation:val("#historyObs")
+        });
+        showResult(true, "Validação Operacional guardada.");
       } catch (err) { showResult(false, err.message); }
     }
     async function saveTechnicalCheck() {

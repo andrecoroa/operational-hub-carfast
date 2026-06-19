@@ -409,15 +409,28 @@ class WorkshopReceptionConfirm(BaseModel):
     entry_at: str | None = None
     process_origin: str | None = None
     priority: str | None = None
+    reception_location: str | None = None
+    received_by: str | None = None
+    key_delivered: str | None = None
+    documents_received: str | None = None
     main_request: str | None = None
     reported_symptom: str | None = None
     initial_observation: str | None = None
     immobilized: str | None = None
     quadrant_photo_link: str | None = None
+    quadrant_photo_file_name: str | None = None
     vehicle_photo_links: dict[str, str] | None = None
+    entry_photo_file_name: str | None = None
     document_link: str | None = None
     visible_damage_status: str | None = None
+    damage_origin: str | None = None
     damage_description: str | None = None
+    damage_needs_claim_link: str | None = None
+    requested_service: str | None = None
+    planned_supplier: str | None = None
+    initial_authorization_needed: str | None = None
+    initial_authorization_reason: str | None = None
+    estimated_value: float | None = None
     responsible_user_id: int | None = None
     next_step: str | None = None
     confirmed_by_id: int | None = None
@@ -438,15 +451,52 @@ class WorkshopHistoryCheckConfirm(BaseModel):
     service_box_link: str | None = None
     service_box_reason: str | None = None
     service_box_document_type: str | None = None
+    service_box_last_checked_at: str | None = None
+    service_box_validity_days: str | None = None
+    service_box_needed: str | None = None
+    service_box_observation: str | None = None
     campaigns_checked: str | None = None
     campaigns_link: str | None = None
     campaigns_references: str | None = None
     campaigns_reason: str | None = None
     campaigns_document_type: str | None = None
+    campaigns_active: str | None = None
+    campaign_number: str | None = None
+    campaign_description: str | None = None
     maintenance_plan_checked: str | None = None
     maintenance_plan_link: str | None = None
     maintenance_plan_reason: str | None = None
     maintenance_plan_document_type: str | None = None
+    maintenance_plan_attached: str | None = None
+    maintenance_plan_confirmed: str | None = None
+    interval_km: int | None = None
+    interval_months: int | None = None
+    rentway_next_service_date: str | None = None
+    rentway_next_service_km: int | None = None
+    calculated_next_service_date: str | None = None
+    calculated_next_service_km: int | None = None
+    rentway_vs_calculation: str | None = None
+    maintenance_plan_observation: str | None = None
+    service_to_validate: str | None = None
+    last_service_date: str | None = None
+    last_service_km: int | None = None
+    last_service_supplier: str | None = None
+    last_service_document: str | None = None
+    last_service_source: str | None = None
+    suspicious_repetition: str | None = None
+    service_history_observation: str | None = None
+    pending_damage_update: str | None = None
+    pending_claims: str | None = None
+    technical_audit_status: str | None = None
+    open_identified_problems: str | None = None
+    pending_tasks: str | None = None
+    sale_blocked: str | None = None
+    diagnosis_focus: str | None = None
+    required_reports: str | None = None
+    diagnosis_questions: str | None = None
+    technical_priority: str | None = None
+    operational_validation_status: str | None = None
+    reserve_reason: str | None = None
     confirmed_by_id: int | None = None
 
     @model_validator(mode="after")
@@ -1271,19 +1321,32 @@ def confirm_reception(
             "entry_at": reception.entry_at,
             "process_origin": reception.process_origin,
             "priority": reception.priority,
+            "reception_location": reception.reception_location,
+            "received_by": reception.received_by,
+            "key_delivered": reception.key_delivered,
+            "documents_received": reception.documents_received,
             "main_request": reception.main_request,
             "reported_symptom": reception.reported_symptom,
             "km_entry": reception.km_entry,
             "initial_observation": reception.initial_observation,
             "immobilized": reception.immobilized,
             "quadrant_photo_link": reception.quadrant_photo_link,
+            "quadrant_photo_file_name": reception.quadrant_photo_file_name,
             "quadrant_photo_document_id": quadrant_photo_document_id,
             "vehicle_photo_links": reception.vehicle_photo_links or {},
+            "entry_photo_file_name": reception.entry_photo_file_name,
             "vehicle_photo_document_ids": vehicle_photo_document_ids,
             "document_link": reception.document_link,
             "reception_document_id": reception_document_id,
             "visible_damage_status": reception.visible_damage_status,
+            "damage_origin": reception.damage_origin,
             "damage_description": reception.damage_description,
+            "damage_needs_claim_link": reception.damage_needs_claim_link,
+            "requested_service": reception.requested_service,
+            "planned_supplier": reception.planned_supplier,
+            "initial_authorization_needed": reception.initial_authorization_needed,
+            "initial_authorization_reason": reception.initial_authorization_reason,
+            "estimated_value": reception.estimated_value,
             "responsible_user_id": reception.responsible_user_id,
             "next_step": reception.next_step,
             "missing_required": missing_required,
@@ -1450,21 +1513,58 @@ def confirm_history_check(
             "service_box_checked": history.service_box_checked,
             "service_box_link": history.service_box_link,
             "service_box_reason": history.service_box_reason,
+            "service_box_last_checked_at": history.service_box_last_checked_at,
+            "service_box_validity_days": history.service_box_validity_days,
+            "service_box_needed": history.service_box_needed,
+            "service_box_observation": history.service_box_observation,
             "service_box_document_id": service_box_document_id,
             "campaigns_checked": history.campaigns_checked,
             "campaigns_link": history.campaigns_link,
             "campaigns_references": history.campaigns_references,
             "campaigns_reason": history.campaigns_reason,
+            "campaigns_active": history.campaigns_active,
+            "campaign_number": history.campaign_number,
+            "campaign_description": history.campaign_description,
             "campaigns_document_id": campaigns_document_id,
             "maintenance_plan_checked": (
                 "evidence_link" if validated_plan_report else history.maintenance_plan_checked
             ),
             "maintenance_plan_link": history.maintenance_plan_link,
             "maintenance_plan_reason": history.maintenance_plan_reason,
+            "maintenance_plan_attached": history.maintenance_plan_attached,
+            "maintenance_plan_confirmed": history.maintenance_plan_confirmed,
+            "interval_km": history.interval_km,
+            "interval_months": history.interval_months,
+            "rentway_next_service_date": history.rentway_next_service_date,
+            "rentway_next_service_km": history.rentway_next_service_km,
+            "calculated_next_service_date": history.calculated_next_service_date,
+            "calculated_next_service_km": history.calculated_next_service_km,
+            "rentway_vs_calculation": history.rentway_vs_calculation,
+            "maintenance_plan_observation": history.maintenance_plan_observation,
             "maintenance_plan_document_id": maintenance_plan_document_id,
             "maintenance_plan_report_id": validated_plan_report.id
             if validated_plan_report
             else None,
+            "service_to_validate": history.service_to_validate,
+            "last_service_date": history.last_service_date,
+            "last_service_km": history.last_service_km,
+            "last_service_supplier": history.last_service_supplier,
+            "last_service_document": history.last_service_document,
+            "last_service_source": history.last_service_source,
+            "suspicious_repetition": history.suspicious_repetition,
+            "service_history_observation": history.service_history_observation,
+            "pending_damage_update": history.pending_damage_update,
+            "pending_claims": history.pending_claims,
+            "technical_audit_status": history.technical_audit_status,
+            "open_identified_problems": history.open_identified_problems,
+            "pending_tasks": history.pending_tasks,
+            "sale_blocked": history.sale_blocked,
+            "diagnosis_focus": history.diagnosis_focus,
+            "required_reports": history.required_reports,
+            "diagnosis_questions": history.diagnosis_questions,
+            "technical_priority": history.technical_priority,
+            "operational_validation_status": history.operational_validation_status,
+            "reserve_reason": history.reserve_reason,
             "requires_stellantis_checks": _is_stellantis_vehicle(vehicle),
             "pending_fields": pending_fields,
         },

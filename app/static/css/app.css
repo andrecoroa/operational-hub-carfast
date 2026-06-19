@@ -8663,6 +8663,144 @@ a.metric:hover {
   margin-top: 14px;
 }
 
+.audit-workspace {
+  background: #f6f8fa;
+}
+
+.audit-summary-band {
+  display: grid;
+  gap: 14px;
+}
+
+.audit-module-tabs {
+  margin: 12px 0;
+}
+
+.audit-module-tabs button {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-weight: 850;
+  text-align: left;
+  cursor: pointer;
+}
+
+.audit-module-tabs button.active {
+  border-color: #dc2626;
+  background: #fff5f5;
+  color: #991b1b;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.audit-module-panel {
+  display: none;
+}
+
+.audit-module-panel.active {
+  display: block;
+}
+
+.audit-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.audit-kpi-grid > div {
+  background: #f9fafb;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.audit-kpi-grid span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.audit-kpi-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #111827;
+  font-size: 22px;
+}
+
+.audit-action-drawer {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.audit-action-drawer summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 900;
+  color: #111827;
+}
+
+.audit-action-drawer form {
+  padding: 0 12px 12px;
+}
+
+.audit-report-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.audit-report-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.audit-report-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.audit-report-card strong,
+.audit-report-card small {
+  display: block;
+  min-width: 0;
+}
+
+.audit-report-card small {
+  margin-top: 3px;
+  color: #6b7280;
+}
+
+.audit-report-card form {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.audit-report-card input[type="file"] {
+  min-width: 0;
+  font-size: 12px;
+}
+
 @media (max-width: 760px) {
   .management-audit-hero {
     grid-template-columns: 1fr;

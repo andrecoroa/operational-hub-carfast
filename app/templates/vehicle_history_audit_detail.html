@@ -3,7 +3,7 @@
 <div class="app-shell">
   {% set active_menu = "management_center" %}
   {% include "_sidebar.html" %}
-  <main class="content">
+  <main class="content audit-workspace">
     <header class="topbar">
       <div>
         <p class="eyebrow">Auditoria Técnica da Viatura</p>
@@ -12,536 +12,246 @@
       </div>
       <div class="button-row">
         <a class="button-link secondary-link" href="/management-center/auditorias">Auditorias</a>
-        {% if management_process %}
-          <a class="button-link secondary-link" href="/management-center/{{ management_process.id }}">Centro de Gestão</a>
-        {% endif %}
         <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Ficha da viatura</a>
       </div>
     </header>
 
-    <section class="workshop-page-grid vehicle-page-grid">
-      <div class="workshop-main-column">
-        <article class="section workshop-summary-card">
-          <div class="panel-heading compact-heading">
-            <div>
-              <p class="eyebrow">Estado</p>
-              <h3>{{ phase_labels.get(audit.phase, audit.phase) }}</h3>
-            </div>
-            <div class="pill-row">
-              <span class="pill status-{{ audit.status }}">{{ status_labels.get(audit.status, audit.status) }}</span>
-              <span class="pill">Prioridade {{ audit.priority or "normal" }}</span>
-              <span class="pill">Confiança {{ confidence_labels.get(audit.confidence_level, audit.confidence_level) }}</span>
-            </div>
-          </div>
-          <div class="task-info-grid workshop-info-grid">
-            <div><span>Matrícula</span><strong>{{ vehicle.plate or "-" }}</strong></div>
-            <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
-            <div><span>Viatura</span><strong>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" ") or "-" }}</strong></div>
-            <div><span>Unit Rentway</span><strong>{{ vehicle.rentway_unit_nr or "-" }}</strong></div>
-            <div><span>Ref. Gestão</span><strong>{{ management_process.internal_reference if management_process else "-" }}</strong></div>
-            <div><span>Aberta em</span><strong>{{ audit.opened_at.strftime("%Y-%m-%d") if audit.opened_at else "-" }}</strong></div>
-          </div>
-          {% if audit.reason %}
-            <p class="compact-note">{{ audit.reason }}</p>
-          {% endif %}
-          <div class="pill-row">
-            {% for code, label in [
-              ("document_collection", "Recolha"),
-              ("technical_loading", "Extração"),
-              ("crosscheck", "Validação"),
-              ("discussion", "Discussão"),
-              ("assumed_truth", "Verdade"),
-              ("closed", "Fecho")
-            ] %}
-              <span class="pill {% if audit.phase == code %}status-open{% endif %}">{{ label }}</span>
-            {% endfor %}
-          </div>
-          <nav class="task-content-tabs management-tabs audit-detail-tabs">
-            <a href="#documentos"><strong>Documentos / Evidências</strong><span>arquivo e referências</span></a>
-            <a href="#folhas-faturas"><strong>Folhas de obra</strong><span>e faturas</span></a>
-            <a href="#relatorios"><strong>Relatórios técnicos</strong><span>leituras extraídas</span></a>
-            <a href="#comparacao"><strong>Comparação</strong><span>serviços e divergências</span></a>
-            <a href="#problemas"><strong>Problemas</strong><span>discussão</span></a>
-            <a href="#verdade"><strong>Fecho / Verdade</strong><span>regras futuras</span></a>
-          </nav>
-        </article>
+    {% set general_documents = [] %}
+    {% set work_orders = [] %}
+    {% set invoices = [] %}
+    {% set technical_documents = [] %}
+    {% for item in documents %}
+      {% if item.document_type == "work_order" %}
+        {% set _ = work_orders.append(item) %}
+      {% elif item.document_type == "invoice" %}
+        {% set _ = invoices.append(item) %}
+      {% elif item.document_type in ["technical_report", "maintenance_information", "engine_lubrication", "maintenance_programming", "fault_reading", "global_test", "telecoding_identification"] %}
+        {% set _ = technical_documents.append(item) %}
+      {% else %}
+        {% set _ = general_documents.append(item) %}
+      {% endif %}
+    {% endfor %}
 
-        <article class="section" id="documentos">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Recolha documental</p>
-              <h3>Documentos e referências</h3>
-            </div>
-          </div>
-          <div class="event-list">
-            {% for item in documents %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ item.document_type }}</strong>
-                  <span>{{ confidence_labels.get(item.confidence_level, item.confidence_level) }}</span>
-                </div>
-                <p>{{ item.source }} · {{ item.moment }} · {{ item.extraction_status }}</p>
-                {% if item.link %}
-                  <p><a class="table-link" href="{{ item.link }}" target="_blank" rel="noreferrer">Abrir referência</a></p>
-                {% endif %}
-                {% if item.extraction_error %}
-                  <p class="alert">Extração falhou: {{ item.extraction_error }}</p>
-                {% endif %}
-                {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem documentos/referências registados nesta auditoria.</p>
-            {% endfor %}
-          </div>
-        </article>
-
-        <article class="section" id="folhas-faturas">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Classificação documental</p>
-              <h3>Folhas de obra e faturas</h3>
-            </div>
-          </div>
-          <div class="compact-form-grid two-col">
-            <div>
-              <h4>Folhas de obra</h4>
-              <div class="event-list">
-                {% set work_orders = [] %}
-                {% for item in documents %}
-                  {% if item.document_type == "work_order" %}
-                    {% set _ = work_orders.append(item) %}
-                  {% endif %}
-                {% endfor %}
-                {% for item in work_orders %}
-                  <article class="event-item">
-                    <div><strong>{{ item.link or "Folha de obra" }}</strong><span>{{ item.extraction_status }}</span></div>
-                    {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
-                  </article>
-                {% else %}
-                  <p class="muted">Sem folhas de obra classificadas nesta auditoria.</p>
-                {% endfor %}
-              </div>
-            </div>
-            <div>
-              <h4>Faturas</h4>
-              <div class="event-list">
-                {% set invoices = [] %}
-                {% for item in documents %}
-                  {% if item.document_type == "invoice" %}
-                    {% set _ = invoices.append(item) %}
-                  {% endif %}
-                {% endfor %}
-                {% for item in invoices %}
-                  <article class="event-item">
-                    <div><strong>{{ item.link or "Fatura" }}</strong><span>{{ item.extraction_status }}</span></div>
-                    {% if item.notes %}<p>{{ item.notes }}</p>{% endif %}
-                  </article>
-                {% else %}
-                  <p class="muted">Sem faturas classificadas nesta auditoria.</p>
-                {% endfor %}
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="section" id="relatorios">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Leituras extraídas</p>
-              <h3>Dados técnicos por validar</h3>
-            </div>
-          </div>
-          <div class="responsive-table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Campo</th>
-                  <th>Valor extraído</th>
-                  <th>Valor corrigido</th>
-                  <th>Unidade</th>
-                  <th>Estado</th>
-                  <th>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for reading in readings %}
-                  <tr>
-                    <td>
-                      <strong>{{ reading.field_label }}</strong>
-                      <span class="muted">{{ reading.field_code }}</span>
-                    </td>
-                    <td>{{ reading.extracted_value or "-" }}</td>
-                    <td>{{ reading.corrected_value or "-" }}</td>
-                    <td>{{ reading.unit or "-" }}</td>
-                    <td>{{ reading.status }}</td>
-                    <td>
-                      {% if can_edit %}
-                        <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues">
-                          <input type="hidden" name="issue_type" value="technical_reading">
-                          <input type="hidden" name="status" value="em_discussao">
-                          <input type="hidden" name="severity" value="medium">
-                          <input type="hidden" name="description" value="Rever leitura {{ reading.field_label }}: {{ reading.extracted_value or '-' }} {{ reading.unit or '' }}">
-                          <input type="hidden" name="technical_source" value="{{ reading.field_label }} / {{ reading.field_code }}">
-                          <input type="hidden" name="evidence" value="Leitura extraída na auditoria #{{ audit.id }}">
-                          <button type="submit" class="button-link secondary-link">Discutir</button>
-                        </form>
-                      {% else %}
-                        -
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="6">Sem leituras extraídas. Carrega um relatório técnico para iniciar a validação.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="section" id="comparacao">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Serviços identificados</p>
-              <h3>Histórico reconstruído</h3>
-            </div>
-          </div>
-          <div class="responsive-table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Km</th>
-                  <th>Família</th>
-                  <th>Subtipo</th>
-                  <th>Fornecedor</th>
-                  <th>Confiança</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for service in services %}
-                  <tr>
-                    <td>{{ service.service_date or "-" }}</td>
-                    <td>{{ service.km or "-" }}</td>
-                    <td>{{ service.family }}</td>
-                    <td>{{ service.subtype or "-" }}</td>
-                    <td>{{ service.supplier or "-" }}</td>
-                    <td>{{ confidence_labels.get(service.confidence_level, service.confidence_level) }}</td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="6">Sem serviços identificados.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="section" id="problemas">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Divergências</p>
-              <h3>Problemas para análise/discussão</h3>
-            </div>
-          </div>
-          <div class="event-list">
-            {% for issue in issues %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ issue.issue_type }}</strong>
-                  <span>{{ issue_status_labels.get(issue.status, issue.status) }}</span>
-                </div>
-                <p>{{ issue.description }}</p>
-                {% if issue.administrative_source or issue.technical_source %}
-                  <p>Admin: {{ issue.administrative_source or "-" }} · Técnico: {{ issue.technical_source or "-" }}</p>
-                {% endif %}
-                {% if issue.recommended_action %}<p>Ação recomendada: {{ issue.recommended_action }}</p>{% endif %}
-                {% if issue.decision %}<p>Decisão: {{ issue.decision }}</p>{% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem divergências registadas.</p>
-            {% endfor %}
-          </div>
-        </article>
-
-        <article class="section" id="verdade">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Verdade assumida</p>
-              <h3>Base técnica para decisões futuras</h3>
-            </div>
-          </div>
-          {% if truth %}
-            <div class="task-info-grid workshop-info-grid">
-              <div><span>Data início real</span><strong>{{ truth.assumed_start_date or "-" }}</strong></div>
-              <div><span>Último km confiável</span><strong>{{ truth.last_reliable_km or "-" }}</strong></div>
-              <div><span>Nº manutenções estimado</span><strong>{{ truth.estimated_maintenance_count or "-" }}</strong></div>
-              <div><span>Estado BSI</span><strong>{{ truth.bsi_status or "-" }}</strong></div>
-              <div><span>Telecarregamento</span><strong>{{ truth.telecharge_status or "-" }}</strong></div>
-              <div><span>Confiança</span><strong>{{ confidence_labels.get(truth.confidence_level, truth.confidence_level) }}</strong></div>
-            </div>
-            {% if truth.last_valid_maintenance %}<p>Última manutenção válida: {{ truth.last_valid_maintenance }}</p>{% endif %}
-            {% if truth.plan_to_follow %}<p>Plano a seguir: {{ truth.plan_to_follow }}</p>{% endif %}
-            {% if truth.pending_items %}<p>Pendências: {{ truth.pending_items }}</p>{% endif %}
-          {% else %}
-            <p class="muted">Ainda sem verdade assumida registada.</p>
-          {% endif %}
-        </article>
-
-        <article class="section">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Regras futuras</p>
-              <h3>Aplicação operacional</h3>
-            </div>
-          </div>
-          <div class="event-list">
-            {% for rule in rules %}
-              <article class="event-item">
-                <div>
-                  <strong>{{ rule.rule_type }}</strong>
-                  <span>{{ "Obrigatória" if rule.mandatory else "Recomendação" }}</span>
-                </div>
-                <p>{{ rule.rule }}</p>
-                {% if rule.applies_when %}<p>Aplicar quando: {{ rule.applies_when }}</p>{% endif %}
-                {% if rule.observation %}<p>{{ rule.observation }}</p>{% endif %}
-              </article>
-            {% else %}
-              <p class="muted">Sem regras futuras registadas.</p>
-            {% endfor %}
-          </div>
-        </article>
-      </div>
-
-      <aside class="workshop-side-column">
-        <div class="workshop-actions">
-          {% if can_edit %}
-            <details class="workshop-action-card" open>
-              <summary>Atualizar auditoria</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/update" class="form-stack">
-                <div class="compact-form-grid two-col">
-                  <label>
-                    Fase
-                    <select name="phase">
-                      {% for code in phase_options %}
-                        <option value="{{ code }}" {% if audit.phase == code %}selected{% endif %}>{{ phase_labels.get(code, code) }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Estado
-                    <select name="status">
-                      {% for code, label in status_labels.items() %}
-                        <option value="{{ code }}" {% if audit.status == code %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Prioridade
-                    <select name="priority">
-                      {% for code in ["low", "normal", "high", "urgent"] %}
-                        <option value="{{ code }}" {% if audit.priority == code %}selected{% endif %}>{{ code }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Confiança
-                    <select name="confidence_level">
-                      {% for code, label in confidence_labels.items() %}
-                        <option value="{{ code }}" {% if audit.confidence_level == code %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  Resumo / observações
-                  <textarea name="summary" rows="3">{{ audit.summary or "" }}</textarea>
-                </label>
-                <button type="submit">Guardar estado</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card" open>
-              <summary>Adicionar relatório técnico</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/technical-reports" class="form-stack" enctype="multipart/form-data">
-                <label>
-                  PDF
-                  <input type="file" name="report_file" accept="application/pdf,.pdf" required>
-                </label>
-                <div class="compact-form-grid two-col">
-                  <label>
-                    Tipo de relatório
-                    <select name="report_code">
-                      {% for code, label in document_types %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Momento
-                    <select name="moment">
-                      {% for code in ["history", "pre", "post", "final", "unknown"] %}
-                        <option value="{{ code }}">{{ code }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  Confiança inicial
-                  <select name="confidence_level">
-                    {% for code, label in confidence_labels.items() %}
-                      <option value="{{ code }}" {% if code == "medium" %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>Notas<textarea name="notes" rows="2" placeholder="Contexto do relatório, origem, pasta, ou motivo da recolha"></textarea></label>
-                <button type="submit">Carregar, classificar e extrair</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card">
-              <summary>Adicionar documento/referência</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/documents" class="form-stack">
-                <label>Título<input type="text" name="title" maxlength="200"></label>
-                <div class="compact-form-grid two-col">
-                  <label>
-                    Tipo
-                    <select name="document_type">
-                      {% for code, label in document_types %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Momento
-                    <select name="moment">
-                      {% for code in ["history", "pre", "post", "final", "unknown"] %}
-                        <option value="{{ code }}">{{ code }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                </div>
-                <label>Link/caminho final<input type="text" name="link" placeholder="Documentação de Viaturas/..."></label>
-                <div class="compact-form-grid two-col">
-                  <label>Estado extração<input type="text" name="extraction_status" value="pending"></label>
-                  <label>
-                    Confiança
-                    <select name="confidence_level">
-                      {% for code, label in confidence_labels.items() %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                </div>
-                <label>Notas<textarea name="notes" rows="2"></textarea></label>
-                <button type="submit">Adicionar referência</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card">
-              <summary>Registar serviço identificado</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/services" class="form-stack">
-                <div class="compact-form-grid two-col">
-                  <label>Data<input type="date" name="service_date"></label>
-                  <label>Km<input type="number" name="km" min="0"></label>
-                  <label>Fornecedor/oficina<input type="text" name="supplier" maxlength="200"></label>
-                  <label>
-                    Família
-                    <select name="family">
-                      {% for code, label in service_families %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>Subtipo<input type="text" name="subtype" maxlength="160"></label>
-                  <label>Quantidade/eixo/lado<input type="text" name="quantity" maxlength="80"></label>
-                </div>
-                <label>
-                  Documento origem
-                  <select name="document_id">
-                    <option value="">Sem documento</option>
-                    {% for document in source_documents %}
-                      <option value="{{ document.id }}">{{ document.title or document.original_name }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>Notas<textarea name="notes" rows="2"></textarea></label>
-                <button type="submit">Adicionar serviço</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card">
-              <summary>Registar divergência/problema</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues" class="form-stack">
-                <div class="compact-form-grid two-col">
-                  <label>
-                    Tipo
-                    <select name="issue_type">
-                      {% for code, label in issue_types %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    Estado
-                    <select name="status">
-                      {% for code, label in issue_status_labels.items() %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>Gravidade<input type="text" name="severity" value="medium"></label>
-                </div>
-                <label>Descrição<textarea name="description" rows="3" required></textarea></label>
-                <label>Fonte administrativa<textarea name="administrative_source" rows="2"></textarea></label>
-                <label>Fonte técnica<textarea name="technical_source" rows="2"></textarea></label>
-                <label>Evidência<textarea name="evidence" rows="2"></textarea></label>
-                <label>Ação recomendada<textarea name="recommended_action" rows="2"></textarea></label>
-                <button type="submit">Adicionar problema</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card">
-              <summary>Definir verdade assumida</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/truth" class="form-stack">
-                <div class="compact-form-grid two-col">
-                  <label>Data início real<input type="date" name="assumed_start_date" value="{{ truth.assumed_start_date if truth else '' }}"></label>
-                  <label>Último km confiável<input type="number" name="last_reliable_km" min="0" value="{{ truth.last_reliable_km if truth else '' }}"></label>
-                  <label>Nº manutenções estimado<input type="number" name="estimated_maintenance_count" min="0" value="{{ truth.estimated_maintenance_count if truth else '' }}"></label>
-                  <label>Estado BSI<input type="text" name="bsi_status" value="{{ truth.bsi_status if truth else '' }}"></label>
-                  <label>Telecarregamento<input type="text" name="telecharge_status" value="{{ truth.telecharge_status if truth else '' }}"></label>
-                  <label>Versão/calibração<input type="text" name="assumed_version" value="{{ truth.assumed_version if truth else '' }}"></label>
-                </div>
-                <label>Última manutenção válida<textarea name="last_valid_maintenance" rows="2">{{ truth.last_valid_maintenance if truth else "" }}</textarea></label>
-                <label>Plano a seguir<textarea name="plan_to_follow" rows="2">{{ truth.plan_to_follow if truth else "" }}</textarea></label>
-                <label>Pendências<textarea name="pending_items" rows="2">{{ truth.pending_items if truth else "" }}</textarea></label>
-                <button type="submit">Guardar verdade assumida</button>
-              </form>
-            </details>
-
-            <details class="workshop-action-card">
-              <summary>Adicionar regra futura</summary>
-              <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/rules" class="form-stack">
-                <label>
-                  Tipo
-                  <select name="rule_type">
-                    {% for code, label in rule_types %}
-                      <option value="{{ code }}">{{ label }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>Regra<textarea name="rule" rows="3" required></textarea></label>
-                <label>Quando aplicar<textarea name="applies_when" rows="2"></textarea></label>
-                <label class="checkbox-line"><input type="checkbox" name="mandatory"> Obrigatória</label>
-                <button type="submit">Adicionar regra</button>
-              </form>
-            </details>
-          {% else %}
-            <article class="workshop-action-card">
-              <p class="muted">Sem permissão para editar esta auditoria.</p>
-            </article>
-          {% endif %}
+    <section class="section audit-summary-band">
+      <div class="panel-heading compact-heading">
+        <div>
+          <p class="eyebrow">Resumo</p>
+          <h3>{{ [vehicle.brand, vehicle.model, vehicle.version]|select|join(" ") or vehicle.plate or "-" }}</h3>
         </div>
-      </aside>
+        <div class="pill-row">
+          <span class="pill status-{{ audit.status }}">{{ status_labels.get(audit.status, audit.status) }}</span>
+          <span class="pill">{{ phase_labels.get(audit.phase, audit.phase) }}</span>
+          <span class="pill">Confiança {{ confidence_labels.get(audit.confidence_level, audit.confidence_level) }}</span>
+        </div>
+      </div>
+      <div class="task-info-grid workshop-info-grid">
+        <div><span>Matrícula</span><strong>{{ vehicle.plate or "-" }}</strong></div>
+        <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
+        <div><span>Unit Rentway</span><strong>{{ vehicle.rentway_unit_nr or "-" }}</strong></div>
+        <div><span>Documentos por validar</span><strong>{{ documents|selectattr("extraction_status", "ne", "validated")|list|length }}</strong></div>
+        <div><span>Problemas ativos</span><strong>{{ issues|rejectattr("status", "in", ["resolved", "discarded", "resolvido", "descartado"])|list|length }}</strong></div>
+        <div><span>Leituras técnicas</span><strong>{{ readings|length }}</strong></div>
+      </div>
+      {% if audit.summary or audit.reason %}
+        <p class="compact-note">{{ audit.summary or audit.reason }}</p>
+      {% endif %}
+    </section>
+
+    <nav class="task-content-tabs management-tabs audit-module-tabs" aria-label="Módulos da auditoria">
+      <button type="button" class="active" data-audit-tab="summary">Resumo</button>
+      <button type="button" data-audit-tab="documents">Documentos</button>
+      <button type="button" data-audit-tab="workorders">Folhas de obra</button>
+      <button type="button" data-audit-tab="invoices">Faturas</button>
+      <button type="button" data-audit-tab="reports">Relatórios técnicos</button>
+      <button type="button" data-audit-tab="comparison">Comparação</button>
+      <button type="button" data-audit-tab="issues">Problemas</button>
+      <button type="button" data-audit-tab="tasks">Tarefas</button>
+      <button type="button" data-audit-tab="closure">Fecho</button>
+    </nav>
+
+    <section class="audit-module-panel active" data-audit-panel="summary">
+      <article class="section">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Estado da auditoria</p>
+            <h3>Resumo operacional</h3>
+          </div>
+        </div>
+        <div class="audit-kpi-grid">
+          <div><span>Documentos gerais</span><strong>{{ general_documents|length }}</strong></div>
+          <div><span>Folhas de obra</span><strong>{{ work_orders|length }}</strong></div>
+          <div><span>Faturas</span><strong>{{ invoices|length }}</strong></div>
+          <div><span>Relatórios técnicos</span><strong>{{ technical_documents|length }}</strong></div>
+          <div><span>Problemas</span><strong>{{ issues|length }}</strong></div>
+          <div><span>Regras futuras</span><strong>{{ rules|length }}</strong></div>
+        </div>
+        {% if can_edit %}
+          <details class="audit-action-drawer">
+            <summary>Atualizar estado da auditoria</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/update" class="form-stack">
+              <div class="compact-form-grid two-col">
+                <label>Fase<select name="phase">{% for code in phase_options %}<option value="{{ code }}" {% if audit.phase == code %}selected{% endif %}>{{ phase_labels.get(code, code) }}</option>{% endfor %}</select></label>
+                <label>Estado<select name="status">{% for code, label in status_labels.items() %}<option value="{{ code }}" {% if audit.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Prioridade<select name="priority">{% for code in ["low", "normal", "high", "urgent"] %}<option value="{{ code }}" {% if audit.priority == code %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label>
+                <label>Confiança<select name="confidence_level">{% for code, label in confidence_labels.items() %}<option value="{{ code }}" {% if audit.confidence_level == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              </div>
+              <label>Resumo / observações<textarea name="summary" rows="3">{{ audit.summary or "" }}</textarea></label>
+              <button type="submit">Guardar estado</button>
+            </form>
+          </details>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="documents">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Documentos gerais</p><h3>Service Box, plano, TSB/campanhas e comprovativos</h3></div></div>
+        {% if can_edit %}
+          <details class="audit-action-drawer">
+            <summary>Adicionar documento geral</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/documents" class="form-stack">
+              <label>Título<input type="text" name="title" maxlength="200"></label>
+              <div class="compact-form-grid two-col">
+                <label>Tipo<select name="document_type"><option value="service_box">Service Box</option><option value="tsb">TSB / Campanha</option><option value="other">Comprovativo / Outro</option></select></label>
+                <label>Momento<select name="moment"><option value="history">Histórico</option><option value="pre">Pré</option><option value="post">Pós</option><option value="final">Final</option><option value="unknown">Desconhecido</option></select></label>
+              </div>
+              <label>Link/caminho final<input type="text" name="link" placeholder="Documentação de Viaturas/..."></label>
+              <input type="hidden" name="extraction_status" value="pending">
+              <label>Notas<textarea name="notes" rows="2"></textarea></label>
+              <button type="submit">Adicionar documento</button>
+            </form>
+          </details>
+        {% endif %}
+        <div class="event-list">
+          {% for item in general_documents %}
+            <article class="event-item"><div><strong>{{ item.document_type }}</strong><span>{{ item.extraction_status }}</span></div><p>{{ item.source }} · {{ item.moment }}</p>{% if item.link %}<p><a class="table-link" href="{{ item.link }}" target="_blank" rel="noreferrer">Abrir referência</a></p>{% endif %}{% if item.notes %}<p>{{ item.notes }}</p>{% endif %}</article>
+          {% else %}
+            <p class="muted">Sem documentos gerais registados.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="workorders">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Folhas de obra</p><h3>FO e classificação visual dos serviços</h3></div></div>
+        {% if can_edit %}
+          <details class="audit-action-drawer">
+            <summary>Adicionar folha de obra</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/documents" class="form-stack">
+              <input type="hidden" name="document_type" value="work_order"><input type="hidden" name="moment" value="history"><input type="hidden" name="extraction_status" value="pending">
+              <div class="compact-form-grid two-col"><label>Nº FO<input name="title" maxlength="200"></label><label>Link/documento<input name="link"></label></div>
+              <label>Classificação / detalhe<textarea name="notes" rows="3" placeholder="Data; Km; Fornecedor; Estado; Valor; Revisão S/N; Óleo S/N; Pneus F/T/F+T/ND; Calços; Discos; Outros"></textarea></label>
+              <button type="submit">Adicionar FO</button>
+            </form>
+          </details>
+        {% endif %}
+        <div class="table-shell management-table-shell"><table><thead><tr><th>FO</th><th>Estado</th><th>Classificação</th><th>Documento</th></tr></thead><tbody>{% for item in work_orders %}<tr><td><strong>{{ item.link or item.id }}</strong></td><td>{{ item.extraction_status }}</td><td>{{ item.notes or "-" }}</td><td>{% if item.link %}<a class="table-link" href="{{ item.link }}" target="_blank" rel="noreferrer">Abrir</a>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sem folhas de obra registadas.</td></tr>{% endfor %}</tbody></table></div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="invoices">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Faturas</p><h3>Faturas, FO associada e serviços cobrados</h3></div></div>
+        {% if can_edit %}
+          <details class="audit-action-drawer">
+            <summary>Adicionar fatura</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/documents" class="form-stack">
+              <input type="hidden" name="document_type" value="invoice"><input type="hidden" name="moment" value="history"><input type="hidden" name="extraction_status" value="pending">
+              <div class="compact-form-grid two-col"><label>Nº fatura<input name="title" maxlength="200"></label><label>Link/documento<input name="link"></label></div>
+              <label>Classificação / detalhe<textarea name="notes" rows="3" placeholder="Data; Km; Fornecedor; Valor s/IVA; IVA; Valor c/IVA; FO associada; Revisão; Óleo; Pneus; Calços; Discos; Telecarregamento"></textarea></label>
+              <button type="submit">Adicionar fatura</button>
+            </form>
+          </details>
+        {% endif %}
+        <div class="table-shell management-table-shell"><table><thead><tr><th>Fatura</th><th>Estado</th><th>Classificação</th><th>Documento</th></tr></thead><tbody>{% for item in invoices %}<tr><td><strong>{{ item.link or item.id }}</strong></td><td>{{ item.extraction_status }}</td><td>{{ item.notes or "-" }}</td><td>{% if item.link %}<a class="table-link" href="{{ item.link }}" target="_blank" rel="noreferrer">Abrir</a>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sem faturas registadas.</td></tr>{% endfor %}</tbody></table></div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="reports">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Relatórios técnicos</p><h3>Carregar, extrair e validar por tipo</h3></div></div>
+        {% set report_cards = [("engine_lubrication", "Lubrificação motor", "LM"), ("maintenance_information", "Informações manutenção", "BSI"), ("maintenance_programming", "Programação manutenção", "PM"), ("telecoding_identification", "Telecarregamento", "TC"), ("fault_reading", "Leitura defeitos", "LD"), ("global_test", "Teste global", "TG"), ("service_box", "Service Box / Plano", "SB"), ("technical_report", "Outro relatório", "OR")] %}
+        <div class="audit-report-card-grid">
+          {% for code, title, icon in report_cards %}
+            {% set ns = namespace(total=0, pending=0, validated=0) %}
+            {% for doc in technical_documents %}
+              {% if doc.document_type == code %}
+                {% set ns.total = ns.total + 1 %}
+                {% if doc.extraction_status in ["validated", "corrigido", "validado"] %}{% set ns.validated = ns.validated + 1 %}{% else %}{% set ns.pending = ns.pending + 1 %}{% endif %}
+              {% endif %}
+            {% endfor %}
+            <article class="audit-report-card">
+              <span class="audit-report-icon">{{ icon }}</span>
+              <div><strong>{{ title }}</strong><small>{{ ns.total }} carregados · {{ ns.pending }} por validar · {{ ns.validated }} validados</small></div>
+              {% if can_edit %}
+                <form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/technical-reports" enctype="multipart/form-data">
+                  <input type="hidden" name="report_code" value="{{ code }}"><input type="hidden" name="moment" value="history"><input type="hidden" name="confidence_level" value="medium">
+                  <input type="file" name="report_file" accept="application/pdf,.pdf" required>
+                  <button type="submit">Carregar</button>
+                </form>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+        <div class="responsive-table-wrapper">
+          <table class="data-table"><thead><tr><th>Campo</th><th>Valor extraído</th><th>Valor corrigido</th><th>Unidade</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for reading in readings %}<tr><td><strong>{{ reading.field_label }}</strong><span class="muted">{{ reading.field_code }}</span></td><td>{{ reading.extracted_value or "-" }}</td><td>{{ reading.corrected_value or "-" }}</td><td>{{ reading.unit or "-" }}</td><td>{{ reading.status }}</td><td>{% if can_edit %}<form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues"><input type="hidden" name="issue_type" value="technical_reading"><input type="hidden" name="status" value="em_discussao"><input type="hidden" name="severity" value="medium"><input type="hidden" name="description" value="Rever leitura {{ reading.field_label }}: {{ reading.extracted_value or '-' }} {{ reading.unit or '' }}"><input type="hidden" name="technical_source" value="{{ reading.field_label }} / {{ reading.field_code }}"><input type="hidden" name="evidence" value="Leitura extraída na auditoria #{{ audit.id }}"><button type="submit" class="button-link secondary-link">Criar problema</button></form>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="6">Sem leituras extraídas.</td></tr>{% endfor %}</tbody></table>
+        </div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="comparison">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Comparação</p><h3>FO, faturas, BSI, plano e relatórios</h3></div></div>
+        <div class="management-audit-guidance">
+          <article><strong>FO vs Fatura</strong><span>Serviços solicitados sem cobrança ou cobrança sem FO.</span></article>
+          <article><strong>FO/Fatura vs BSI</strong><span>Validar se o histórico técnico coincide com serviços registados.</span></article>
+          <article><strong>Plano vs Rentway</strong><span>Confirmar intervalo, próxima manutenção e divergências.</span></article>
+          <article><strong>Pré vs Pós</strong><span>Comparar relatórios técnicos antes e depois da intervenção.</span></article>
+          <article><strong>Telecarregamento</strong><span>Previsto vs executado, versões e datas.</span></article>
+        </div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="issues">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Problemas identificados</p><h3>Lista única para análise/discussão</h3></div></div>
+        {% if can_edit %}
+          <details class="audit-action-drawer"><summary>Registar problema</summary><form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/issues" class="form-stack"><div class="compact-form-grid two-col"><label>Tipo<select name="issue_type">{% for code, label in issue_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label><label>Estado<select name="status">{% for code, label in issue_status_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label><label>Gravidade<input type="text" name="severity" value="medium"></label></div><label>Descrição<textarea name="description" rows="3" required></textarea></label><label>Evidência<textarea name="evidence" rows="2"></textarea></label><label>Próxima ação<textarea name="recommended_action" rows="2"></textarea></label><button type="submit">Adicionar problema</button></form></details>
+        {% endif %}
+        <div class="event-list">{% for issue in issues %}<article class="event-item"><div><strong>{{ issue.issue_type }}</strong><span>{{ issue_status_labels.get(issue.status, issue.status) }}</span></div><p>{{ issue.description }}</p>{% if issue.evidence %}<p>Evidência: {{ issue.evidence }}</p>{% endif %}{% if issue.recommended_action %}<p>Ação: {{ issue.recommended_action }}</p>{% endif %}</article>{% else %}<p class="muted">Sem problemas registados.</p>{% endfor %}</div>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="tasks">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Tarefas</p><h3>Ações associadas à auditoria/problema</h3></div></div>
+        <p class="muted">As tarefas continuam a ser criadas no Centro de Tarefas e associadas à matrícula/problema quando houver ação concreta.</p>
+        <a class="button-link secondary-link" href="/task-board?plate={{ vehicle.plate }}">Ver tarefas da matrícula</a>
+      </article>
+    </section>
+
+    <section class="audit-module-panel" data-audit-panel="closure">
+      <article class="section">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Fecho</p><h3>Verdade assumida e regras futuras</h3></div></div>
+        {% if truth %}<div class="task-info-grid workshop-info-grid"><div><span>Data início real</span><strong>{{ truth.assumed_start_date or "-" }}</strong></div><div><span>Último km confiável</span><strong>{{ truth.last_reliable_km or "-" }}</strong></div><div><span>Nº manutenções estimado</span><strong>{{ truth.estimated_maintenance_count or "-" }}</strong></div><div><span>Estado BSI</span><strong>{{ truth.bsi_status or "-" }}</strong></div><div><span>Telecarregamento</span><strong>{{ truth.telecharge_status or "-" }}</strong></div><div><span>Confiança</span><strong>{{ confidence_labels.get(truth.confidence_level, truth.confidence_level) }}</strong></div></div>{% else %}<p class="muted">Ainda sem verdade assumida registada.</p>{% endif %}
+        {% if can_edit %}
+          <details class="audit-action-drawer"><summary>Definir verdade assumida</summary><form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/truth" class="form-stack"><div class="compact-form-grid two-col"><label>Data início real<input type="date" name="assumed_start_date" value="{{ truth.assumed_start_date if truth else '' }}"></label><label>Último km confiável<input type="number" name="last_reliable_km" min="0" value="{{ truth.last_reliable_km if truth else '' }}"></label><label>Nº manutenções estimado<input type="number" name="estimated_maintenance_count" min="0" value="{{ truth.estimated_maintenance_count if truth else '' }}"></label><label>Estado BSI<input type="text" name="bsi_status" value="{{ truth.bsi_status if truth else '' }}"></label><label>Telecarregamento<input type="text" name="telecharge_status" value="{{ truth.telecharge_status if truth else '' }}"></label><label>Versão/calibração<input type="text" name="assumed_version" value="{{ truth.assumed_version if truth else '' }}"></label></div><label>Última manutenção válida<textarea name="last_valid_maintenance" rows="2">{{ truth.last_valid_maintenance if truth else "" }}</textarea></label><label>Plano a seguir<textarea name="plan_to_follow" rows="2">{{ truth.plan_to_follow if truth else "" }}</textarea></label><label>Pendências<textarea name="pending_items" rows="2">{{ truth.pending_items if truth else "" }}</textarea></label><button type="submit">Guardar verdade assumida</button></form></details>
+          <details class="audit-action-drawer"><summary>Adicionar regra futura</summary><form method="post" action="/fleet/{{ vehicle.id }}/history-audits/{{ audit.id }}/rules" class="form-stack"><label>Tipo<select name="rule_type">{% for code, label in rule_types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label><label>Regra<textarea name="rule" rows="3" required></textarea></label><label>Quando aplicar<textarea name="applies_when" rows="2"></textarea></label><label class="checkbox-line"><input type="checkbox" name="mandatory"> Obrigatória</label><button type="submit">Adicionar regra</button></form></details>
+        {% endif %}
+        <div class="event-list">{% for rule in rules %}<article class="event-item"><div><strong>{{ rule.rule_type }}</strong><span>{{ "Obrigatória" if rule.mandatory else "Recomendação" }}</span></div><p>{{ rule.rule }}</p>{% if rule.applies_when %}<p>Aplicar quando: {{ rule.applies_when }}</p>{% endif %}</article>{% else %}<p class="muted">Sem regras futuras registadas.</p>{% endfor %}</div>
+      </article>
     </section>
   </main>
 </div>
+<script>
+  document.querySelectorAll("[data-audit-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-audit-tab]").forEach((item) => item.classList.remove("active"));
+      document.querySelectorAll("[data-audit-panel]").forEach((panel) => panel.classList.remove("active"));
+      button.classList.add("active");
+      document.querySelector(`[data-audit-panel="${button.dataset.auditTab}"]`)?.classList.add("active");
+    });
+  });
+</script>
 {% endblock %}

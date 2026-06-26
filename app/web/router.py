@@ -123,7 +123,7 @@ def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
 
 
 def snapshot_value(data: dict | None, candidates: list[str]) -> str | None:
-    if not data:
+    if not data or not isinstance(data, dict):
         return None
     normalized_candidates = {re.sub(r"[^a-z0-9]", "", candidate.lower()) for candidate in candidates}
     for key, value in data.items():
@@ -3429,15 +3429,15 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
                     "primary_alert": context["alerts"][0] if context["alerts"] else None,
                 }
             )
+        sale_block_fields = db.scalars(
+            select(VehicleManualField.value_json).where(
+                VehicleManualField.field_code == "sale_blocked",
+            )
+        ).all()
         counts = {
             "active": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.active.is_(True), ~sold_filter)) or 0,
             "for_sale": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")) or 0,
-            "blocked_sale": db.scalar(
-                select(func.count()).select_from(VehicleManualField).where(
-                    VehicleManualField.field_code == "sale_blocked",
-                    VehicleManualField.value_json == True,
-                )
-            ) or 0,
+            "blocked_sale": sum(1 for value in sale_block_fields if value is True or str(value).lower() == "true"),
             "total": db.scalar(select(func.count()).select_from(Vehicle)) or 0,
         }
     return templates.TemplateResponse(

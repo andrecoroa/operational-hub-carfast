@@ -139,8 +139,13 @@ def snapshot_value(data: dict | None, candidates: list[str]) -> str | None:
     return None
 
 
-def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+def snapshot_data(snapshot: VehicleExternalSnapshot | None) -> dict:
     data = snapshot.data_json if snapshot else None
+    return data if isinstance(data, dict) else {}
+
+
+def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+    data = snapshot_data(snapshot)
     return {
         "groupid": snapshot_value(data, ["groupid", "group_id", "categoria_grupo", "grupo"]),
         "category": snapshot_value(data, ["category", "categoria", "tipo_categoria"]),
@@ -162,7 +167,7 @@ def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[st
 
 
 def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
-    data = snapshot.data_json if snapshot else None
+    data = snapshot_data(snapshot)
     return {
         "current_status": snapshot_value(data, ["CurrentStatus", "current_status", "current_status_rentway"]),
         "document_nr": snapshot_value(data, ["DocumentNr", "document_nr", "document_number", "contractnr"]),
@@ -3122,7 +3127,7 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
         .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
         .order_by(VehicleExternalSnapshot.updated_at.desc())
     )
-    data = snapshot.data_json if snapshot else {}
+    data = snapshot_data(snapshot)
     vehicle_context = rentway_vehicle_context(snapshot)
     commercial_context = rentway_commercial_context(snapshot)
     manual_fields = {
@@ -3249,7 +3254,7 @@ def latest_vehicle_snapshot(db: Session, vehicle_id: int) -> VehicleExternalSnap
 
 def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, object]:
     snapshot = latest_vehicle_snapshot(db, vehicle.id)
-    data = snapshot.data_json if snapshot else {}
+    data = snapshot_data(snapshot)
     vehicle_context = rentway_vehicle_context(snapshot)
     commercial_context = rentway_commercial_context(snapshot)
     manual_fields = vehicle_manual_values(db, vehicle.id)
@@ -3339,6 +3344,66 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     }
 
 
+def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = None) -> dict[str, object]:
+    alerts = []
+    if error:
+        alerts.append(
+            {
+                "severity": "warn",
+                "title": "Dados parciais",
+                "detail": "Alguns dados externos desta viatura precisam de revisão.",
+            }
+        )
+    return {
+        "vehicle": vehicle,
+        "snapshot": None,
+        "manual": {},
+        "rules": {},
+        "commercial": {},
+        "identity": {
+            "unit": vehicle.rentway_unit_nr or "-",
+            "plate": vehicle.plate or "-",
+            "brand": vehicle.brand or "-",
+            "model": vehicle.model or "-",
+            "version": vehicle.version or "-",
+            "vin": vehicle.vin or "-",
+            "groupid": "-",
+            "colour": "-",
+            "fuel": "-",
+        },
+        "dates": {
+            "registration": "-",
+            "purchase": "-",
+            "real_start": "Por validar",
+            "rentway_ipo": "-",
+            "calculated_ipo": "-",
+            "service_calculated": "-",
+        },
+        "maintenance": {
+            "last_rentway_km": "-",
+            "next_rentway_km": "-",
+            "calculated_km": "-",
+            "status": "Por validar",
+        },
+        "finance": {
+            "initial_cost": "-",
+            "current_cost": "-",
+            "amortization_month": "-",
+            "debt_value": "-",
+            "finance_entity": "-",
+        },
+        "status": {
+            "lifecycle": vehicle.lifecycle_status or "-",
+            "operational": vehicle.operational_status or "-",
+            "rentway": "-",
+            "location": "-",
+            "client": "-",
+            "document": "-",
+        },
+        "alerts": alerts,
+    }
+
+
 
 def clean_vehicle_document_group(document: Document) -> str:
     doc_type = (document.document_type or "").strip().lower()
@@ -3392,9 +3457,12 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
     normalized_query = normalize_identifier(raw_query) if raw_query else ""
     with SessionLocal() as db:
         stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(500)
-        sold_filter = or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
         if scope == "active":
-            stmt = stmt.where(Vehicle.active.is_(True), ~sold_filter)
+            stmt = stmt.where(
+                Vehicle.active.is_(True),
+                or_(Vehicle.lifecycle_status.is_(None), Vehicle.lifecycle_status != "sold"),
+                or_(Vehicle.operational_status.is_(None), Vehicle.operational_status != "sold"),
+            )
         elif scope == "for_sale":
             stmt = stmt.where(Vehicle.lifecycle_status == "for_sale")
         if raw_query:
@@ -3420,7 +3488,10 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
         ]
         rows = []
         for vehicle in vehicles:
-            context = clean_vehicle_display_context(db, vehicle)
+            try:
+                context = clean_vehicle_display_context(db, vehicle)
+            except Exception as exc:
+                context = clean_vehicle_fallback_context(vehicle, exc)
             rows.append(
                 {
                     "vehicle": vehicle,
@@ -3435,7 +3506,15 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
             )
         ).all()
         counts = {
-            "active": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.active.is_(True), ~sold_filter)) or 0,
+            "active": db.scalar(
+                select(func.count())
+                .select_from(Vehicle)
+                .where(
+                    Vehicle.active.is_(True),
+                    or_(Vehicle.lifecycle_status.is_(None), Vehicle.lifecycle_status != "sold"),
+                    or_(Vehicle.operational_status.is_(None), Vehicle.operational_status != "sold"),
+                )
+            ) or 0,
             "for_sale": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")) or 0,
             "blocked_sale": sum(1 for value in sale_block_fields if value is True or str(value).lower() == "true"),
             "total": db.scalar(select(func.count()).select_from(Vehicle)) or 0,

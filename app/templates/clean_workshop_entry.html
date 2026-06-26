@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
+        <h2>{{ vehicle_context.process_ref }} | Entrada{% if is_historical %} histórica{% endif %}</h2>
+        <p>{% if is_historical %}Reconstruir uma intervenção antiga com documentos, leituras e evidências disponíveis. Campos obrigatórios ficam mais flexíveis.{% else %}Registar a entrada da viatura, motivo, km, quadrante e estado inicial.{% endif %}</p>
+        <div class="clean-header-meta">
+          <span><b>Registado em</b><em>{{ current_entry_timestamp }}</em></span>
+          <span><b>Registado por</b><em>{{ current_user_name }}</em></span>
+          {% if is_historical %}<span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>{% endif %}
+        </div>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <button type="button" class="button-link secondary-link">Criar tarefa</button>
+        <button type="button" class="button-link danger-link">Criar problema</button>
+        {% if is_historical %}
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Nova entrada</a>
+        {% else %}
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+        {% endif %}
+        <a class="button-link secondary-link" href="/workshop/processes-ui">Oficina atual</a>
+      </div>
+    </header>
+
+    <section class="clean-vehicle-header-card">
+      <div class="clean-vehicle-identity">
+        <strong>{{ vehicle_context.plate }}</strong>
+        <span>{{ vehicle_context.vehicle }}</span>
+        <em>{{ vehicle_context.process_ref }} · Chassi: {{ vehicle_context.vin }}</em>
+      </div>
+      <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
+        <div class="clean-vehicle-quick-facts">
+          <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
+          <span><b>Data matrícula</b><em>{{ vehicle_context.registration_date }}</em></span>
+        </div>
+        {% for alert in vehicle_context.alerts %}
+          <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+        {% else %}
+          <span>Sem alertas de divergência ou datas próximas.</span>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-stepper clean-stepper-seven">
+      {% for step in workshop_steps %}
+        <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
+      {% endfor %}
+    </section>
+
+    <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
+      {% if is_historical %}<input type="hidden" name="process_mode" value="historical">{% endif %}
+      <section class="clean-phase-workbench clean-card-wide">
+        <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
+          <button class="clean-substep-card active" type="button" data-target="motivo">
+            <span><b>Motivo da entrada</b><em>Pedido recebido e prioridade</em></span>
+            <strong>Obrigatório</strong>
+          </button>
+          <button class="clean-substep-card" type="button" data-target="danos">
+            <span><b>Verificações físicas</b><em>Danos, documentos e equipamento</em></span>
+            <strong>Por validar</strong>
+          </button>
+          <button class="clean-substep-card" type="button" data-target="saida">
+            <span><b>Saída da entrada</b><em>Guardar ou avançar fase</em></span>
+            <strong>Rascunho</strong>
+          </button>
+        </aside>
+
+        <div class="clean-substep-detail">
+          <article class="clean-substep-panel active" id="clean-substep-motivo">
+            <div class="table-heading flat-heading">
+              <div>
+                <p class="eyebrow">Motivo da entrada</p>
+                <h3>Porque entrou?</h3>
+                <p>Selecionar um ou mais motivos prováveis. A validação administrativa confirma quais seguem e quando foram executados anteriormente.</p>
+              </div>
+            </div>
+            <div class="clean-chip-grid clean-chip-grid-final">
+              {% for reason in entry_reasons %}
+                <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if loop.first %}checked{% endif %}> <span>{{ reason }}</span></label>
+              {% endfor %}
+            </div>
+            {% if is_historical %}
+              <div class="clean-history-mode-panel">
+                <strong>Reconstrução de histórico</strong>
+                <span>Usar quando a intervenção já aconteceu e estás a carregar documentos antigos para teste, auditoria e extração de dados.</span>
+                <div class="clean-phase-field-grid">
+                  <label>Data da intervenção<input type="date" name="historical_intervention_date"></label>
+                  <label>Km conhecido<input name="historical_km" inputmode="numeric" placeholder="Km, se conhecido"></label>
+                  <label>Oficina / fornecedor<input name="historical_supplier" placeholder="Fornecedor ou oficina"></label>
+                  <label>Nível de confiança<select name="historical_confidence"><option>Parcial</option><option>Completo</option><option>Só documentos</option><option>Por validar</option></select></label>
+                </div>
+              </div>
+            {% endif %}
+            <div class="clean-phase-field-grid"><label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma..."></textarea></label>
+<label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme..."></textarea></label>
+
+              <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ vehicle_context.entry_km }}"></label>
+<label>Quem reportou<select name="reported_by"><option>Operador</option><option>Cliente</option><option>Oficina</option><option>Sistema</option></select></label>
+              <label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Crítica</option></select></label>
+              <label>Viatura pode circular?<select name="can_drive"><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+            </div>
+          </article>
+
+          <article class="clean-substep-panel" id="clean-substep-danos">
+            <div class="table-heading flat-heading">
+              <div>
+                <p class="eyebrow">Estado físico inicial</p>
+                <h3>Verificações físicas</h3>
+                <p>Confirmar danos, coerência com Rentway, documentos e equipamentos mínimos da viatura.</p>
+              </div>
+            </div>
+            <div class="clean-physical-check-grid">
+              {% set physical_checks = [
+                ("visible_damage", "Danos visíveis?"),
+                ("rentway_damage_match", "Danos coerentes com Rentway?"),
+                ("dua_copy", "Cópia de DUA?"),
+                ("green_card_valid", "Carta Verde válida?"),
+                ("vv_device", "Dispositivo VV?"),
+                ("reflective_vest", "Colete refletor?"),
+                ("triangle", "Triângulo?"),
+                ("spare_tyre", "Pneu suplente?"),
+                ("jack", "Macaco?"),
+                ("inflation_kit", "Kit enchimento?")
+              ] %}
+              {% for code, label in physical_checks %}
+                <div class="clean-physical-check-item">
+                  <span>{{ label }}</span>
+                  <div class="clean-choice-boxes" role="radiogroup" aria-label="{{ label }}">
+                    <label><input type="radio" name="{{ code }}" value="yes"><span>Sim</span></label>
+                    <label><input type="radio" name="{{ code }}" value="no"><span>Não</span></label>
+                    <label><input type="radio" name="{{ code }}" value="not_checked" checked><span>N/V</span></label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+
+              <div class="clean-upload-box clean-upload-prominent">
+                <strong>Foto do quadrante</strong>
+              <span>{% if is_historical %}Opcional no histórico. Usar se existir evidência antiga de km, avisos ou estado.{% else %}Campo obrigatório para comprovar km, avisos e estado à entrada.{% endif %}</span>
+              <div class="clean-upload-actions">
+                <label class="clean-file-button">Carregar imagem<input name="dashboard_photo" type="file" accept="image/*"></label>
+                <label class="clean-file-button">Tirar foto<input name="dashboard_photo_camera" type="file" accept="image/*" capture="environment"></label>
+              </div>
+            </div>
+            <div class="clean-upload-box clean-upload-prominent">
+              <strong>Fotos dos lados da viatura</strong>
+              <span>{% if is_historical %}Opcional no histórico. Anexar apenas se existir evidência antiga relevante.{% else %}Anexar uma foto por lado para registo do estado à entrada.{% endif %}</span>
+              <div class="clean-side-photo-grid">
+                <div>
+                  <b>Frente</b>
+                  <div class="clean-upload-actions">
+                    <label class="clean-file-button">Carregar<input name="vehicle_front_photo" type="file" accept="image/*"></label>
+                    <label class="clean-file-button">Tirar foto<input name="vehicle_front_photo_camera" type="file" accept="image/*" capture="environment"></label>
+                  </div>
+                </div>
+                <div>
+                  <b>Traseira</b>
+                  <div class="clean-upload-actions">
+                    <label class="clean-file-button">Carregar<input name="vehicle_rear_photo" type="file" accept="image/*"></label>
+                    <label class="clean-file-button">Tirar foto<input name="vehicle_rear_photo_camera" type="file" accept="image/*" capture="environment"></label>
+                  </div>
+                </div>
+                <div>
+                  <b>Lateral esquerda</b>
+                  <div class="clean-upload-actions">
+                    <label class="clean-file-button">Carregar<input name="vehicle_left_photo" type="file" accept="image/*"></label>
+                    <label class="clean-file-button">Tirar foto<input name="vehicle_left_photo_camera" type="file" accept="image/*" capture="environment"></label>
+                  </div>
+                </div>
+                <div>
+                  <b>Lateral direita</b>
+                  <div class="clean-upload-actions">
+                    <label class="clean-file-button">Carregar<input name="vehicle_right_photo" type="file" accept="image/*"></label>
+                    <label class="clean-file-button">Tirar foto<input name="vehicle_right_photo_camera" type="file" accept="image/*" capture="environment"></label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <label class="clean-full-label">Notas / evidência física<textarea rows="3" name="physical_check_note" placeholder="Registar apenas divergências, falta de equipamento ou danos relevantes..."></textarea></label>
+            <div class="clean-upload-box clean-upload-inline">
+              <strong>Fotos de apoio</strong>
+              <span>Adicionar imagens quando existir dano, falta de equipamento ou divergência.</span>
+              <div class="clean-upload-actions">
+                <label class="clean-file-button">Carregar imagem<input name="entry_photos" type="file" accept="image/*" multiple></label>
+                <label class="clean-file-button">Tirar foto<input name="entry_photos_camera" type="file" accept="image/*" capture="environment" multiple></label>
+              </div>
+            </div>
+          </article>
+
+          <article class="clean-substep-panel" id="clean-substep-saida">
+            <div class="table-heading flat-heading">
+              <div>
+                <p class="eyebrow">Saída da fase</p>
+                <h3>Entrada pronta para validação?</h3>
+                <p>{% if is_historical %}Guardar reconstrução histórica ou avançar quando houver informação suficiente para classificar documentos e validar evidências.{% else %}Guardar o registo inicial ou avançar para validação administrativa quando o mínimo obrigatório estiver completo.{% endif %}</p>
+              </div>
+            </div>
+            <div class="clean-validation-decision clean-exit-decision">
+              <div class="clean-minimum-checks">
+                <strong>Condições mínimas</strong>
+                {% set minimum_checks = [
+                  ("minimum_reason", "Pelo menos um motivo selecionado"),
+                  ("minimum_km", "KM confirmado"),
+                  ("minimum_dashboard_photo", "Foto do quadrante anexada" if not is_historical else "Evidência de km anexada ou justificada"),
+                  ("minimum_photos", "Danos/fotos revistos" if not is_historical else "Evidência física anexada ou N/A")
+                ] %}
+                {% for code, label in minimum_checks %}
+                  <div class="clean-physical-check-item clean-minimum-check-item">
+                    <span>{{ label }}</span>
+                    <div class="clean-choice-boxes" role="radiogroup" aria-label="{{ label }}">
+                      <label><input type="radio" name="{{ code }}" value="yes"><span>Sim</span></label>
+                      <label><input type="radio" name="{{ code }}" value="no"><span>Não</span></label>
+                      <label><input type="radio" name="{{ code }}" value="not_checked" checked><span>N/V</span></label>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+              <div class="clean-exit-fields">
+                <label>Saída prevista<input name="expected_exit" type="datetime-local"></label>
+                <label>Notas para a validação administrativa<textarea rows="4" placeholder="Algo que quem valida deve saber antes de consultar histórico, plano ou Service Box..."></textarea></label>
+              </div>
+              <div class="clean-action-list">
+                <button type="button">Guardar entrada</button>
+                <button type="button" onclick="window.location.href='{{ next_phase_url }}'">Avançar para Validação Administrativa</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </form>
+  </main>
+</div>
+<script>
+  document.querySelectorAll(".clean-phase-workbench").forEach((workbench) => {
+    const cards = Array.from(workbench.querySelectorAll(".clean-substep-card"));
+    const panels = Array.from(workbench.querySelectorAll(".clean-substep-panel"));
+    cards.forEach((card) => {
+      card.addEventListener("click", () => {
+        const target = card.dataset.target;
+        cards.forEach((item) => item.classList.toggle("active", item === card));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+      });
+    });
+  });
+</script>
+{% endblock %}
+
+
+

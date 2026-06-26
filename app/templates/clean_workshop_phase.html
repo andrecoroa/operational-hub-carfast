@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "workshop" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
+        <h2>{{ vehicle_context.process_ref }} | {{ phase.title }}</h2>
+        <p>{% if is_historical %}Reconstrução histórica: validar documentos e evidências antigas com flexibilidade nos campos indisponíveis.{% else %}{{ phase.subtitle }}{% endif %}</p>
+        {% if is_historical %}
+          <div class="clean-header-meta">
+            <span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>
+          </div>
+        {% endif %}
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <button type="button" class="button-link secondary-link">Criar tarefa</button>
+        <button type="button" class="button-link danger-link">Criar problema</button>
+        {% if is_historical %}
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Nova entrada</a>
+        {% else %}
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+        {% endif %}
+        <a class="button-link secondary-link" href="/workshop/processes-ui">Oficina atual</a>
+      </div>
+    </header>
+
+    <section class="clean-vehicle-header-card">
+      <div class="clean-vehicle-identity">
+        <strong>{{ vehicle_context.plate }}</strong>
+        <span>{{ vehicle_context.vehicle }}</span>
+        <em>{{ vehicle_context.process_ref }} · Chassi: {{ vehicle_context.vin }}</em>
+      </div>
+      <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
+        <div class="clean-vehicle-quick-facts">
+          <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
+          <span><b>Data matrícula</b><em>{{ vehicle_context.registration_date }}</em></span>
+        </div>
+        {% for alert in vehicle_context.alerts %}
+          <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+        {% else %}
+          <span>Sem alertas de divergência ou datas próximas.</span>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-stepper clean-stepper-seven">
+      {% for step in workshop_steps %}
+        <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
+      {% endfor %}
+    </section>
+
+    <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
+      {% if phase_key == "validacao" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="prerequisitos">
+              <span><b>Pré-requisitos da viatura</b><em>Ficha, campanhas e dados base</em></span>
+              <strong class="warn">2 tarefas</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="pedido">
+              <span><b>Validação do pedido</b><em>Serviço validado após histórico</em></span>
+              <strong>Por validar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="orientacao">
+              <span><b>Orientação diagnóstico</b><em>Relatórios e próxima fase</em></span>
+              <strong>Rascunho</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel active" id="clean-substep-prerequisitos">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Pré-requisitos</p>
+                  <h3>Condições da viatura para avançar</h3>
+                  <p>Informação permanente vem da ficha da viatura. Se faltar algo crítico, o processo gera tarefa e pode bloquear avanço.</p>
+                </div>
+                <span class="clean-status-pill warn">2 tarefas geradas</span>
+              </div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Pré-requisito</b><b>Origem</b><b>Estado / dado</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Plano de manutenção</span><em>Ficha da viatura</em><strong>Validado em 15/05/2026</strong><mark class="ok">Informativo</mark><a href="/fleet">Abrir plano</a></div>
+                <div><span>Service Box / campanhas</span><em>Stellantis</em><strong>1 campanha por executar</strong><mark class="danger">Bloqueante</mark><a href="/task-board">Tarefa #328</a></div>
+                <div><span>Data início CarFast</span><em>Ficha da viatura</em><strong>20/05/2024</strong><mark class="ok">Informativo</mark><a href="/fleet">Ver ficha</a></div>
+                <div><span>Auditoria histórico</span><em>Centro de processos</em><strong>Em curso</strong><mark class="warn">Aviso</mark><a href="/management-center/auditorias">Abrir auditoria</a></div>
+              </div>
+              <p class="clean-rule-note">Regra: bloqueante impede avançar. Aviso permite avançar com reserva. Informativo acompanha o processo.</p>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-pedido">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Pedido</p><h3>Validação do serviço pedido</h3><p>Depois de consultar histórico, confirmas que serviço ou serviços devem seguir para diagnóstico/decisão. O pedido de entrada não é alterado.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <div class="clean-history-quick-actions">
+                  <a href="/documents">Consultar folhas de obra</a>
+                  <a href="/documents">Consultar faturas</a>
+                  <a href="/documents">Consultar relatórios anteriores</a>
+                </div>
+                <div class="clean-service-validation-list">
+                  <div class="clean-service-validation-head">
+                    <strong>Serviços a validar</strong>
+                    <button type="button">Adicionar serviço</button>
+                  </div>
+                  <div class="clean-service-validation-row clean-service-validation-row-head">
+                    <b>Serviço</b>
+                    <b>Já fez antes?</b>
+                    <b>Data</b>
+                    <b>Km</b>
+                    <b>Fornecedor</b>
+                    <b>Documento</b>
+                    <b>Decisão</b>
+                  </div>
+                  <div class="clean-service-validation-row">
+                    <select name="service_type"><option>Revisão / degradação óleo</option><option>Revisão</option><option>Degradação óleo</option><option>Pneus</option><option>Travões</option><option>IPO</option><option>Avaria</option><option>Outro</option></select>
+                    <select name="service_already_done"><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Não aplicável</option></select>
+                    <input type="date" name="previous_service_date">
+                    <input name="previous_service_km" inputmode="numeric" placeholder="Km">
+                    <input name="previous_service_supplier" placeholder="Fornecedor">
+                    <input name="previous_service_document" placeholder="FO / fatura">
+                    <select><option>Por decidir</option><option>Seguir diagnóstico</option><option>Autorizar</option><option>Pedir confirmação</option><option>Ignorar</option></select>
+                  </div>
+                  <div class="clean-service-validation-row">
+                    <select name="service_type"><option>Pneus</option><option>Revisão / degradação óleo</option><option>Revisão</option><option>Degradação óleo</option><option>Travões</option><option>IPO</option><option>Avaria</option><option>Outro</option></select>
+                    <select name="service_already_done"><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Não aplicável</option></select>
+                    <input type="date" name="previous_service_date">
+                    <input name="previous_service_km" inputmode="numeric" placeholder="Km">
+                    <input name="previous_service_supplier" placeholder="Fornecedor">
+                    <input name="previous_service_document" placeholder="FO / fatura">
+                    <select><option>Por decidir</option><option>Seguir diagnóstico</option><option>Autorizar</option><option>Pedir confirmação</option><option>Ignorar</option></select>
+                  </div>
+                </div>
+                <label>Motivo / observação da validação<textarea rows="3" placeholder="Ex.: serviço feito há pouco tempo, km incoerente, pedido recorrente..."></textarea></label>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-orientacao">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Orientação para Diagnóstico Técnico</h3>
+                  <p>Fechar a validação administrativa com instrução clara para o técnico.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Validação administrativa fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
+                  <label>Prioridade técnica<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Diagnóstico Técnico" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">O que o técnico deve despistar<textarea rows="5" placeholder="Ex.: confirmar degradação do óleo, histórico BSI, telecarregamento e divergência de manutenção..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Relatórios necessários</strong>
+                  <label><input type="checkbox"> Lubrificação motor</label><label><input type="checkbox"> Informações manutenção</label><label><input type="checkbox"> Programação manutenção</label><label><input type="checkbox"> Telecarregamento</label><label><input type="checkbox"> Leitura defeitos</label><label><input type="checkbox"> Teste global</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Motivo da reserva<textarea rows="3" placeholder="Ex.: auditoria histórica em curso ou campanhas por executar..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% elif phase_key == "diagnostico" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="relatorios">
+              <span><b>Relatórios técnicos</b><em>Carregar e extrair leituras</em></span>
+              <strong class="warn">Por validar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="leituras">
+              <span><b>Dados extraídos</b><em>Corrigir e validar campos</em></span>
+              <strong>Rascunho</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="comparacao">
+              <span><b>Comparação histórica</b><em>Relatórios anteriores e pós</em></span>
+              <strong>Por validar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="problemas">
+              <span><b>Problemas identificados</b><em>Registar evidências</em></span>
+              <strong class="warn">2 alertas</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="saida-diagnostico">
+              <span><b>Saída diagnóstico</b><em>Orientar inspeção técnica</em></span>
+              <strong>Pendente</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel active" id="clean-substep-relatorios">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Relatórios</p>
+                  <h3>Relatórios técnicos necessários</h3>
+                  <p>Carregar o PDF/imagem, arquivar no processo e extrair os dados para validação.</p>
+                </div>
+                <span class="clean-status-pill warn">3 por validar</span>
+              </div>
+              <div class="clean-report-list">
+                <div class="clean-report-row clean-report-row-head">
+                  <b>Relatório</b><b>Aplicação</b><b>Estado</b><b>Ações</b>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">LUB</span>
+                  <div><strong>Lubrificação motor</strong><small>Obrigatório para Diesel com suspeita de degradação óleo</small></div>
+                  <mark class="danger">Obrigatório</mark>
+                  <em>Por carregar</em>
+                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">MAN</span>
+                  <div><strong>Informações manutenção</strong><small>Obrigatório para validar BSI, km, dias e número de manutenções</small></div>
+                  <mark class="danger">Obrigatório</mark>
+                  <em>Dados extraídos</em>
+                  <div class="clean-report-actions"><label>Substituir<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">PRG</span>
+                  <div><strong>Programação manutenção</strong><small>Recomendado quando há divergência de intervalos ou plano</small></div>
+                  <mark class="warn">Recomendado</mark>
+                  <em>Em falta</em>
+                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Dispensar</button></div>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">TEL</span>
+                  <div><strong>Telecarregamento</strong><small>Obrigatório quando TSB/procedimento exigir atualização</small></div>
+                  <mark class="warn">Condicional</mark>
+                  <em>Em falta</em>
+                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">DEF</span>
+                  <div><strong>Leitura defeitos</strong><small>Obrigatório em avaria ou quando há alertas no quadrante</small></div>
+                  <mark class="warn">Condicional</mark>
+                  <em>Por validar</em>
+                  <div class="clean-report-actions"><label>Substituir<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                </div>
+                <div class="clean-report-row">
+                  <span class="audit-report-icon">TST</span>
+                  <div><strong>Teste global</strong><small>Opcional conforme orientação técnica da fase anterior</small></div>
+                  <mark class="ok">Opcional</mark>
+                  <em>Não aplicável</em>
+                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Aplicar</button></div>
+                </div>
+              </div>
+              <p class="clean-rule-note">Regra: ao carregar relatório, extrair dados automaticamente e deixar em estado Por validar.</p>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-leituras">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Leituras</p><h3>Dados extraídos por validar</h3><p>Validar cada valor antes de usar no processo ou gerar problema.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Campo</b><b>Relatório</b><b>Valor extraído</b><b>Estado</b><b>Ação</b></div>
+                <div><span>Km última reposição manutenção</span><em>Informações manutenção</em><strong>90 357 km</strong><mark class="ok">OK</mark><a href="#">Validar</a></div>
+                <div><span>Km antes próxima manutenção</span><em>Informações manutenção</em><strong>-2 804 km</strong><mark class="warn">Confirmar</mark><a href="#">Corrigir</a></div>
+                <div><span>Diluição óleo</span><em>Lubrificação motor</em><strong>25,18%</strong><mark class="danger">Alerta</mark><a href="#">Criar problema</a></div>
+                <div><span>Proteção anti-diluição</span><em>Lubrificação motor</em><strong>Inativa</strong><mark class="warn">Confirmar</mark><a href="#">Validar</a></div>
+                <div><span>Data telecarregamento</span><em>Telecarregamento</em><strong>2036-02-11</strong><mark class="danger">Inválido</mark><a href="#">Criar problema</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-comparacao">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Comparação</p><h3>Histórico e pré/pós intervenção</h3><p>Cruzar relatórios atuais com histórico da viatura, folhas de obra e faturas.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Relatório pré-intervenção<select><option>Existe</option><option>Não existe</option><option>Por confirmar</option></select></label>
+                <label>Relatório pós-intervenção<select><option>Não existe</option><option>Existe</option><option>Por confirmar</option></select></label>
+                <label>Manutenção BSI vs faturação<select><option>Divergente</option><option>OK</option><option>Por confirmar</option></select></label>
+                <label>Telecarregamento vs TSB<select><option>Por confirmar</option><option>Obrigatório executado</option><option>Obrigatório não executado</option></select></label>
+                <label>Diferenças relevantes<textarea rows="3" placeholder="Resumo das divergências encontradas..."></textarea></label>
+                <label>Evidência objetiva<textarea rows="3" placeholder="Relatório, página, campo ou documento que suporta a conclusão..."></textarea></label>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-problemas">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Problemas</p><h3>Problemas técnicos identificados</h3><p>Registar o problema uma vez, com evidência, para acompanhar até resolução.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Problema</b><b>Origem</b><b>Evidência</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Diluição óleo acima do limite</span><em>Lubrificação motor</em><strong>25,18%</strong><mark class="danger">Crítico</mark><a href="#">Abrir problema</a></div>
+                <div><span>Data telecarregamento futura</span><em>Telecarregamento</em><strong>2036-02-11</strong><mark class="danger">Inválido</mark><a href="#">Abrir problema</a></div>
+                <div><span>BSI sem registo coerente</span><em>Informações manutenção</em><strong>Por confirmar</strong><mark class="warn">Aviso</mark><a href="#">Investigar</a></div>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-saida-diagnostico">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Orientação para Inspeção Técnica</h3>
+                  <p>Transformar o diagnóstico em instruções objetivas para a inspeção física.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Diagnóstico fechado?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
+                  <label>Prioridade técnica<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Inspeção Técnica" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Conclusão do diagnóstico<textarea rows="5" placeholder="O que ficou provado, o que falta confirmar e que inspeções físicas são necessárias..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Inspeções necessárias</strong>
+                  <label><input type="checkbox"> Óleo / lubrificação</label><label><input type="checkbox"> Manutenção BSI</label><label><input type="checkbox"> Pneus</label><label><input type="checkbox"> Travões</label><label><input type="checkbox"> Teste de estrada</label><label><input type="checkbox"> Evidência fotográfica</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% elif phase_key == "inspecao" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="checklist">
+              <span><b>Checklist técnica</b><em>Pontos físicos principais</em></span>
+              <strong class="warn">Por rever</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="pneus-travoes">
+              <span><b>Pneus e travões</b><em>Desgaste e evidências</em></span>
+              <strong>Por validar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="oleo-niveis">
+              <span><b>Óleo e níveis</b><em>Confirmação física</em></span>
+              <strong class="warn">Alerta</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="saida-inspecao">
+              <span><b>Saída inspeção</b><em>Decisão para auditoria</em></span>
+              <strong>Pendente</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel active" id="clean-substep-checklist">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Checklist</p>
+                  <h3>Verificações técnicas principais</h3>
+                  <p>Registar apenas o essencial. Não conforme deve ter observação e evidência.</p>
+                </div>
+                <span class="clean-status-pill warn">5 por rever</span>
+              </div>
+              <div class="clean-check-legend" aria-label="Legenda dos botões">
+                <span><b>OK</b> Conforme</span>
+                <span><b>NC</b> Não conforme</span>
+                <span><b>N/A</b> Não aplicável</span>
+                <span><b>P/R</b> Por rever</span>
+              </div>
+              <div class="clean-check-list">
+                <div class="clean-check-row"><strong>Luzes e sinalização</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Luzes e sinalização"><label><input type="radio" name="check_luzes_e_sinalização" value="ok"><span>OK</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="nc"><span>NC</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="na"><span>N/A</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Bateria / arranque</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Bateria / arranque"><label><input type="radio" name="check_bateria___arranque" value="ok"><span>OK</span></label><label><input type="radio" name="check_bateria___arranque" value="nc"><span>NC</span></label><label><input type="radio" name="check_bateria___arranque" value="na"><span>N/A</span></label><label><input type="radio" name="check_bateria___arranque" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Fugas visíveis</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Fugas visíveis"><label><input type="radio" name="check_fugas_visíveis" value="ok"><span>OK</span></label><label><input type="radio" name="check_fugas_visíveis" value="nc"><span>NC</span></label><label><input type="radio" name="check_fugas_visíveis" value="na"><span>N/A</span></label><label><input type="radio" name="check_fugas_visíveis" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Ruídos anormais</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Ruídos anormais"><label><input type="radio" name="check_ruídos_anormais" value="ok"><span>OK</span></label><label><input type="radio" name="check_ruídos_anormais" value="nc"><span>NC</span></label><label><input type="radio" name="check_ruídos_anormais" value="na"><span>N/A</span></label><label><input type="radio" name="check_ruídos_anormais" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Teste de estrada</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Teste de estrada"><label><input type="radio" name="check_teste_de_estrada" value="ok"><span>OK</span></label><label><input type="radio" name="check_teste_de_estrada" value="nc"><span>NC</span></label><label><input type="radio" name="check_teste_de_estrada" value="na"><span>N/A</span></label><label><input type="radio" name="check_teste_de_estrada" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-pneus-travoes">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Desgaste</p><h3>Pneus, calços e discos</h3><p>Registar posição, estado e se deve gerar tarefa/problema.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Item</b><b>Posição</b><b>Estado / medida</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Pneus</span><em>Frente</em><strong>Por medir</strong><mark class="warn">Confirmar</mark><a href="#">Adicionar foto</a></div>
+                <div><span>Pneus</span><em>Traseira</em><strong>Por medir</strong><mark class="warn">Confirmar</mark><a href="#">Adicionar foto</a></div>
+                <div><span>Calços</span><em>Frente</em><strong>Desgaste a confirmar</strong><mark class="warn">Aviso</mark><a href="#">Criar tarefa</a></div>
+                <div><span>Discos</span><em>Frente</em><strong>Por rever</strong><mark class="ok">Informativo</mark><a href="#">Registar</a></div>
+                <div><span>Travões</span><em>Traseira</em><strong>Por rever</strong><mark class="ok">Informativo</mark><a href="#">Registar</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-oleo-niveis">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Óleo / níveis</p><h3>Confirmação física e coerência com diagnóstico</h3><p>Usar quando o diagnóstico aponta para degradação de óleo, fugas ou manutenção.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Nível óleo<select><option>Por confirmar</option><option>OK</option><option>Baixo</option><option>Excesso</option></select></label>
+                <label>Estado visual óleo<select><option>Por confirmar</option><option>Normal</option><option>Suspeito</option></select></label>
+                <label>Líquido refrigeração<select><option>Por confirmar</option><option>OK</option><option>Baixo</option></select></label>
+                <label>Líquido travões<select><option>Por confirmar</option><option>OK</option><option>Baixo</option></select></label>
+                <label>Confirma suspeita do diagnóstico?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+                <label>Evidência/foto<label class="clean-file-button">Carregar foto<input type="file" accept="image/*" capture="environment"></label></label>
+                <label>Observação<textarea rows="3" placeholder="Registar sinais físicos, incoerências ou limitações da inspeção..."></textarea></label>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-saida-inspecao">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Condições para Auditoria e Validação</h3>
+                  <p>Resumir o que foi confirmado fisicamente e o que segue para decisão.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Inspeção fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
+                  <label>Prioridade<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Auditoria e Validação" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Resumo da inspeção<textarea rows="5" placeholder="O que foi confirmado fisicamente e que pontos continuam pendentes..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Resultado da inspeção</strong>
+                  <label><input type="checkbox"> Criar tarefa</label><label><input type="checkbox"> Criar problema</label><label><input type="checkbox"> Precisa orçamento</label><label><input type="checkbox"> Pode avançar com reserva</label><label><input type="checkbox"> Sem inconformidades</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% elif phase_key == "auditoria" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="evidencias">
+              <span><b>Evidências recolhidas</b><em>Diagnóstico, inspeção e histórico</em></span>
+              <strong class="warn">Por fechar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="coerencia">
+              <span><b>Coerência técnica</b><em>BSI, óleo, TSB e faturação</em></span>
+              <strong class="warn">2 alertas</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="problemas-auditoria">
+              <span><b>Problemas e tarefas</b><em>Pendências para resolver</em></span>
+              <strong>3 abertas</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="decisao">
+              <span><b>Decisão operacional</b><em>Reparar, pedir orçamento, bloquear</em></span>
+              <strong>Pendente</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="saida-auditoria">
+              <span><b>Saída auditoria</b><em>Condições para reparação</em></span>
+              <strong>Pendente</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel active" id="clean-substep-evidencias">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Evidências</p>
+                  <h3>Resumo do que ficou recolhido</h3>
+                  <p>Concentrar apenas as evidências que suportam decisão, sem repetir todos os dados brutos.</p>
+                </div>
+                <span class="clean-status-pill warn">2 por validar</span>
+              </div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Origem</b><b>Estado</b><b>Conclusão</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Diagnóstico técnico</span><em>Com reserva</em><strong>Diluição óleo crítica e BSI por confirmar</strong><mark class="warn">Aviso</mark><a href="/v2-clean/workshop/diagnostico">Abrir</a></div>
+                <div><span>Inspeção técnica</span><em>Por fechar</em><strong>Falta validar pneus/travões</strong><mark class="warn">Aviso</mark><a href="/v2-clean/workshop/inspecao">Abrir</a></div>
+                <div><span>Histórico viatura</span><em>Em curso</em><strong>Auditoria histórica ainda não concluída</strong><mark class="warn">Reserva</mark><a href="/management-center/auditorias">Abrir</a></div>
+                <div><span>Documentação</span><em>Parcial</em><strong>FO existe; fatura por confirmar</strong><mark class="ok">Informativo</mark><a href="/documents">Ver</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-coerencia">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Coerência</p><h3>Validação técnica antes da decisão</h3><p>Identificar se os dados sustentam a reparação, cobrança, reclamação ou discussão com fornecedor/marca.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Validação</b><b>Fonte</b><b>Resultado</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>BSI vs serviços faturados</span><em>Relatório + faturas</em><strong>Divergência por confirmar</strong><mark class="warn">Investigar</mark><a href="#">Criar tarefa</a></div>
+                <div><span>Óleo vs limite técnico</span><em>Lubrificação motor</em><strong>25,18% diluição</strong><mark class="danger">Crítico</mark><a href="#">Problema</a></div>
+                <div><span>Telecarregamento obrigatório</span><em>TSB / relatório</em><strong>Por confirmar</strong><mark class="warn">Aviso</mark><a href="#">Validar</a></div>
+                <div><span>Repetição do serviço</span><em>FO / histórico</em><strong>Serviço recente: 12/02/2026</strong><mark class="warn">Aviso</mark><a href="#">Analisar</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-problemas-auditoria">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Pendências</p><h3>Problemas e tarefas abertas</h3><p>O processo não deve perder problemas identificados durante diagnóstico ou inspeção.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Tipo</b><b>Origem</b><b>Resumo</b><b>Prioridade</b><b>Ação</b></div>
+                <div><span>Problema</span><em>Diagnóstico</em><strong>Diluição óleo acima do limite</strong><mark class="danger">Crítica</mark><a href="#">Abrir</a></div>
+                <div><span>Problema</span><em>Telecarregamento</em><strong>Data futura no relatório</strong><mark class="danger">Alta</mark><a href="#">Abrir</a></div>
+                <div><span>Tarefa</span><em>Campanhas</em><strong>Executar campanha Service Box</strong><mark class="warn">Alta</mark><a href="/task-board">Abrir</a></div>
+                <div><span>Tarefa</span><em>Documentação</em><strong>Confirmar fatura do serviço</strong><mark class="warn">Normal</mark><a href="/task-board">Abrir</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-decisao">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Decisão</p><h3>Decisão operacional</h3><p>Definir o que fazer antes de passar à reparação.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Decisão principal<select><option>Por decidir</option><option>Reparar</option><option>Pedir orçamento</option><option>Reclamar fornecedor/marca</option><option>Fechar sem reparação</option><option>Bloquear viatura</option></select></label>
+                <label>Reparação autorizada?<select><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Com reserva</option></select></label>
+                <label>Responsabilidade provável<select><option>Por apurar</option><option>CarFast</option><option>Cliente</option><option>Fornecedor</option><option>Marca</option><option>Seguradora</option></select></label>
+                <label>Orçamento necessário?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+                <label>Valor estimado<input placeholder="0,00 €"></label>
+                <label>Motivo da decisão<textarea rows="3" placeholder="Resumo claro da decisão e base técnica..."></textarea></label>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-saida-auditoria">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Condições para Reparação</h3>
+                  <p>Fechar a auditoria com decisão operacional e condições de execução.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Auditoria fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
+                  <label>Prioridade<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Reparação" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Decisão da auditoria<textarea rows="5" placeholder="Conclusão técnica, intervenção autorizada e condições para a oficina executar..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Condições para avançar</strong>
+                  <label><input type="checkbox"> Serviço confirmado</label><label><input type="checkbox"> Orçamento necessário tratado</label><label><input type="checkbox"> Campanhas verificadas</label><label><input type="checkbox"> Problemas registados</label><label><input type="checkbox"> Responsável definido</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% elif phase_key == "reparacao" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="ordem-reparacao">
+              <span><b>Ordem de reparação</b><em>O que foi autorizado executar</em></span>
+              <strong>Em curso</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="execucao">
+              <span><b>Execução</b><em>Estado, prazos e responsável</em></span>
+              <strong class="warn">Por atualizar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="evidencias-reparacao">
+              <span><b>Evidências</b><em>Fotos, FO e relatórios pós</em></span>
+              <strong>2 em falta</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="desvios">
+              <span><b>Desvios</b><em>Alterações ao previsto</em></span>
+              <strong>Sem desvios</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="saida-reparacao">
+              <span><b>Saída reparação</b><em>Pronto para validação final</em></span>
+              <strong>Pendente</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel active" id="clean-substep-ordem-reparacao">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Ordem</p>
+                  <h3>Trabalho autorizado</h3>
+                  <p>Resumo do que foi decidido na auditoria e deve ser executado pela oficina.</p>
+                </div>
+                <span class="clean-status-pill warn">Com reserva</span>
+              </div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Serviço</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Confirmar óleo / lubrificação</span><em>Auditoria</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir decisão</a></div>
+                <div><span>Validar BSI/manutenção</span><em>Diagnóstico</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir relatório</a></div>
+                <div><span>Executar campanha</span><em>Service Box</em><strong>Pendente</strong><mark class="danger">Bloqueante</mark><a href="/task-board">Tarefa</a></div>
+                <div><span>Pneus/travões</span><em>Inspeção</em><strong>Por confirmar</strong><mark class="ok">Informativo</mark><a href="#">Ver inspeção</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-execucao">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Execução</p><h3>Acompanhamento da reparação</h3><p>Atualizar o estado real do trabalho e previsão de conclusão.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Estado da reparação<select><option>Em curso</option><option>A aguardar peças</option><option>A aguardar orçamento</option><option>Concluída</option><option>Bloqueada</option></select></label>
+                <label>Responsável/oficina<input value="Oficina Porto"></label>
+                <label>Início reparação<input type="date"></label>
+                <label>Previsão conclusão<input type="date"></label>
+                <label>Viatura imobilizada?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+                <label>Observação execução<textarea rows="3" placeholder="Ponto de situação, atrasos, dependências..."></textarea></label>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-evidencias-reparacao">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Evidências</p><h3>Documentos e fotos da intervenção</h3><p>Documentos carregados aqui ficam associados ao processo e à viatura.</p></div></div>
+              <div class="clean-report-list">
+                <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra</strong><small>Obrigatória para fechar reparação</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos da reparação</strong><small>Evidência visual do trabalho executado</small></div><mark class="warn">Recomendado</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="image/*" capture="environment" multiple></label><button type="button">Dispensar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório quando houve diagnóstico técnico prévio</small></div><mark class="warn">Condicional</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">CMP</span><div><strong>Comprovativo campanha</strong><small>Necessário se havia campanha por executar</small></div><mark class="danger">Bloqueante</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Abrir tarefa</button></div></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-desvios">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Desvios</p><h3>Alterações ao previsto</h3><p>Qualquer alteração relevante deve ficar registada antes do fecho.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Houve alteração ao previsto?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
+                <label>Novo orçamento necessário?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
+                <label>Motivo do desvio<textarea rows="3" placeholder="Peças adicionais, diagnóstico diferente, atraso, indisponibilidade..."></textarea></label>
+                <label>Impacto no prazo<select><option>Sem impacto</option><option>Adia conclusão</option><option>Bloqueia reparação</option></select></label>
+                <label>Impacto financeiro<input placeholder="0,00 €"></label>
+                <label>Ação necessária<textarea rows="3" placeholder="Quem tem de validar e até quando..."></textarea></label>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-saida-reparacao">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Pronto para Validação e Fecho</h3>
+                  <p>Confirmar que a reparação executada já pode seguir para validação final.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Reparação fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
+                  <label>Estado de saída<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Validação e Fecho" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Resumo da reparação<textarea rows="5" placeholder="O que foi executado, documentos recebidos e pendências para fecho..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Condições</strong>
+                  <label><input type="checkbox"> Reparação concluída</label><label><input type="checkbox"> FO anexada</label><label><input type="checkbox"> Fotos anexadas</label><label><input type="checkbox"> Relatório pós tratado</label><label><input type="checkbox"> Campanhas tratadas</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% elif phase_key == "fecho" %}
+        <section class="clean-phase-workbench clean-card-wide">
+          <aside class="clean-substep-rail" aria-label="Subpassos da fase">
+            <button class="clean-substep-card active" type="button" data-target="validacao-final">
+              <span><b>Validação final</b><em>Viatura pronta e segura</em></span>
+              <strong class="warn">Por validar</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="documentos-fecho">
+              <span><b>Documentos finais</b><em>FO, faturas e relatórios</em></span>
+              <strong>2 em falta</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="historico-fecho">
+              <span><b>Atualizar histórico</b><em>Ficha, serviço e problemas</em></span>
+              <strong>Pendente</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="pendencias-fecho">
+              <span><b>Pendências</b><em>Reservas, tarefas e responsáveis</em></span>
+              <strong class="warn">Com reserva</strong>
+            </button>
+            <button class="clean-substep-card" type="button" data-target="encerramento">
+              <span><b>Encerramento</b><em>Resultado final do processo</em></span>
+              <strong>Pendente</strong>
+            </button>
+          </aside>
+
+          <div class="clean-substep-detail">
+            <article class="clean-substep-panel" id="clean-substep-validacao-final">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Validação final da viatura</h3>
+                  <p>Confirmar que a viatura está pronta, segura e coerente com o que foi executado.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Viatura pronta?<select><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Com reserva</option></select></label>
+                  <label>Estado final<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Encerramento" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Observação de saída<textarea rows="5" placeholder="Notas relevantes no momento de libertar a viatura..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Condições finais</strong>
+                  <label><input type="checkbox"> KM saída confirmado</label><label><input type="checkbox"> Foto quadrante saída</label><label><input type="checkbox"> Teste final OK</label><label><input type="checkbox"> Pode circular</label><label><input type="checkbox"> Regressar à frota</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-documentos-fecho">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Documentos</p><h3>Documentos finais do processo</h3><p>Fechar sem perder rasto: tudo que prova a intervenção deve ficar associado.</p></div></div>
+              <div class="clean-report-list">
+                <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra fechada</strong><small>Documento base da intervenção</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FAT</span><div><strong>Fatura esperada</strong><small>Pode ficar como pendência se ainda não emitida</small></div><mark class="warn">Condicional</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Criar pendência</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório se diagnóstico exigiu prova pós</small></div><mark class="warn">Condicional</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos finais</strong><small>Quadrante e evidência visual de saída</small></div><mark class="warn">Recomendado</mark><em>Parcial</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="image/*" capture="environment" multiple></label><button type="button">Validar</button></div></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-historico-fecho">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Histórico</p><h3>Atualizações na ficha e histórico</h3><p>Garantir que o resultado do processo alimenta a ficha da viatura e futuras decisões.</p></div></div>
+              <div class="clean-prereq-table">
+                <div class="clean-prereq-head"><b>Atualização</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
+                <div><span>Serviço executado</span><em>FO / processo</em><strong>Por confirmar</strong><mark class="warn">Pendente</mark><a href="#">Registar</a></div>
+                <div><span>Próxima manutenção</span><em>Relatório / cálculo</em><strong>Por atualizar</strong><mark class="warn">Pendente</mark><a href="#">Atualizar</a></div>
+                <div><span>Problemas técnicos</span><em>Diagnóstico</em><strong>2 abertos</strong><mark class="danger">Acompanhar</mark><a href="#">Abrir lista</a></div>
+                <div><span>Auditoria histórico</span><em>Centro processos</em><strong>Em curso</strong><mark class="warn">Reserva</mark><a href="/management-center/auditorias">Abrir</a></div>
+                <div><span>Estado venda/frota</span><em>Ficha viatura</em><strong>Venda bloqueada</strong><mark class="warn">Aviso</mark><a href="/fleet">Ver ficha</a></div>
+              </div>
+            </article>
+
+            <article class="clean-substep-panel" id="clean-substep-pendencias-fecho">
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Pendências</p><h3>O que fica em aberto após fecho</h3><p>Permitir fechar com reserva, mas sem perder dono, prazo e motivo.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Fechar com pendências?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
+                <label>Tipo de pendência<select><option>N/A</option><option>Documento</option><option>Fatura</option><option>Problema técnico</option><option>Tarefa externa</option><option>Auditoria histórico</option></select></label>
+                <label>Responsável<input placeholder="Responsável pela pendência"></label>
+                <label>Prazo<input type="date"></label>
+                <label>Bloqueia utilização?<select><option>Não</option><option>Sim</option><option>Com reserva</option></select></label>
+                <label>Descrição da pendência<textarea rows="3" placeholder="O que falta, porquê e que evidência suporta..."></textarea></label>
+              </div>
+            </article>
+            <article class="clean-substep-panel" id="clean-substep-encerramento">
+              <div class="table-heading flat-heading">
+                <div>
+                  <p class="eyebrow">Saída da fase</p>
+                  <h3>Encerramento do processo</h3>
+                  <p>Fechar o processo com resultado, pendências e histórico atualizado.</p>
+                </div>
+              </div>
+              <div class="clean-phase-exit-standard">
+                <div class="clean-phase-exit-status">
+                  <label>Resultado<select><option>Fechado com reparação</option><option>Fechado com reserva</option><option>Fechado sem reparação</option><option>Não fechar</option></select></label>
+                  <label>Estado de fecho<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Próxima fase<input value="Processo fechado" readonly></label>
+                </div>
+                <label class="clean-phase-exit-main">Resumo final<textarea rows="5" placeholder="Resultado objetivo: o que entrou, o que foi feito, evidência e estado de saída..."></textarea></label>
+                <div class="clean-phase-exit-checks">
+                  <strong>Condições de fecho</strong>
+                  <label><input type="checkbox"> Viatura validada</label><label><input type="checkbox"> Documentos mínimos associados</label><label><input type="checkbox"> Histórico atualizado</label><label><input type="checkbox"> Pendências atribuídas</label><label><input type="checkbox"> Estado frota definido</label>
+                </div>
+                <label class="clean-phase-exit-reserve">Nota final<textarea rows="3" placeholder="Notas para auditoria futura, fornecedor ou discussão técnica..."></textarea></label>
+              </div>
+            </article>
+          </div>
+        </section>
+
+      {% else %}
+        {% for section in phase.sections %}
+          <article class="clean-panel clean-panel-compact clean-card-main {% if section.large %}clean-card-wide{% endif %}">
+            <div class="table-heading flat-heading"><div><p class="eyebrow">{{ section.eyebrow }}</p><h3>{{ section.title }}</h3></div></div>
+            {% if section.report_cards %}
+              <div class="audit-report-card-grid">{% for report in section.report_cards %}<div class="audit-report-card"><span class="audit-report-icon">{{ report[:3]|upper }}</span><div><strong>{{ report }}</strong><small>0 carregados · 0 por validar · 0 validados</small></div><label class="clean-file-button">Carregar<input type="file" accept="application/pdf,image/*"></label></div>{% endfor %}</div>
+            {% endif %}
+            {% if section.check_cards %}
+              <div class="audit-report-card-grid">{% for check in section.check_cards %}<div class="audit-report-card"><span class="audit-report-icon">{{ check[:3]|upper }}</span><div><strong>{{ check }}</strong><small>Por rever · evidência opcional · tarefa se necessário</small></div><select><option>Por rever</option><option>Conforme</option><option>Não conforme</option><option>Não aplicável</option></select></div>{% endfor %}</div>
+            {% endif %}
+            {% if section.table %}<div class="table-shell management-table-shell"><table><thead><tr>{% for col in section.table %}<th>{{ col }}</th>{% endfor %}</tr></thead><tbody><tr>{% for col in section.table %}<td class="muted">Por preencher</td>{% endfor %}</tr><tr>{% for col in section.table %}<td class="muted">Por preencher</td>{% endfor %}</tr></tbody></table></div>{% endif %}
+            {% if section.fields %}<div class="clean-phase-field-grid">{% for field in section.fields %}<label>{{ field }}{% if field.endswith("?") or "Estado" in field or "Prioridade" in field or "concluída" in field %}<select><option>Por confirmar</option><option>Sim</option><option>Não</option><option>OK</option></select>{% elif "Observação" in field or "Conclusão" in field or "Motivo" in field or "Resultado" in field or "Serviços" in field %}<textarea rows="3" placeholder="Registar..."></textarea>{% else %}<input placeholder="Por preencher">{% endif %}</label>{% endfor %}</div>{% endif %}
+            {% if section.uploads %}<div class="clean-upload-row">{% for upload in section.uploads %}<label class="clean-file-button">{{ upload }}<input type="file" accept="image/*,application/pdf" capture="environment"></label>{% endfor %}</div>{% endif %}
+          </article>
+        {% endfor %}
+      {% endif %}
+
+      <article class="clean-panel clean-panel-compact clean-card-wide">
+        <div class="clean-context-action-grid">
+          <div class="clean-context-list"><span><b>Regra de modelo</b><em>Campos e cartões podem aparecer conforme motivo, marca, combustível e estado da auditoria.</em></span><span><b>Bloqueios</b><em>Auditoria histórica e campanhas por executar podem bloquear fases finais.</em></span></div>
+          <div class="clean-history-actions"><a href="/fleet">Ficha da viatura</a><a href="/documents">Documentos</a><a href="/task-board">Tarefas</a><a href="/management-center/auditorias">Auditoria</a></div>
+          <div class="clean-action-list">
+            <button type="button">Guardar fase</button>
+            {% if previous_phase_url %}<button type="button" class="secondary-phase-action" onclick="window.location.href='{{ previous_phase_url }}'">Voltar fase</button>{% endif %}
+            {% if next_phase_url %}<button type="button" class="next-phase-action" onclick="window.location.href='{{ next_phase_url }}'">{{ phase.primary_action }}</button>{% else %}<button type="button" class="next-phase-action">{{ phase.primary_action }}</button>{% endif %}
+          </div>
+        </div>
+      </article>
+    </form>
+  </main>
+</div>
+<script>
+  document.querySelectorAll(".clean-phase-workbench").forEach((workbench) => {
+    const cards = Array.from(workbench.querySelectorAll(".clean-substep-card"));
+    const panels = Array.from(workbench.querySelectorAll(".clean-substep-panel"));
+    cards.forEach((card) => {
+      card.addEventListener("click", () => {
+        const target = card.dataset.target;
+        cards.forEach((item) => item.classList.toggle("active", item === card));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+      });
+    });
+  });
+  document.querySelectorAll(".clean-service-validation-list").forEach((list) => {
+    const addButton = list.querySelector(".clean-service-validation-head button");
+    addButton?.addEventListener("click", () => {
+      const rows = Array.from(list.querySelectorAll(".clean-service-validation-row:not(.clean-service-validation-row-head)"));
+      const sourceRow = rows.at(-1);
+      if (!sourceRow) return;
+      const newRow = sourceRow.cloneNode(true);
+      newRow.querySelectorAll("input, textarea").forEach((field) => { field.value = ""; });
+      newRow.querySelectorAll("select").forEach((field) => { field.selectedIndex = 0; });
+      list.appendChild(newRow);
+    });
+  });
+</script>
+{% endblock %}
+
+
+
+

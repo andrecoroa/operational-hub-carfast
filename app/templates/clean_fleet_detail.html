@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    {% set vehicle = ctx.vehicle %}
+    <section class="clean-vehicle-header-card clean-fleet-single-header">
+      <div class="clean-vehicle-identity">
+        <p class="eyebrow">Frota / ficha v2-clean</p>
+        <strong>{{ ctx.identity.plate or '-' }}</strong>
+        <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
+        <em>Unit {{ ctx.identity.unit or '-' }} · Chassi: {{ ctx.identity.vin }}{% if ctx.identity.colour and ctx.identity.colour != '-' %} · {{ ctx.identity.colour }}{% endif %}</em>
+      </div>
+      <div class="clean-fleet-header-right">
+        <div class="clean-header-actions clean-header-actions-strong">
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+          <a class="button-link secondary-link" href="/management-center/auditorias">Auditoria</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+          <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Ficha atual</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
+        </div>
+        <div class="clean-vehicle-alerts {% if not ctx.alerts %}is-empty{% endif %}">
+          {% for alert in ctx.alerts %}
+            <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+          {% else %}
+            <span>Sem alertas de divergência ou datas próximas.</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="clean-vehicle-quick-facts">
+        <span><b>Estado</b><em>{{ ctx.status.operational }}</em></span>
+        <span><b>Localização</b><em>{{ ctx.status.location }}</em></span>
+        <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
+        <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
+        <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
+        <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_rentway_km }} km</em></span>
+      </div>
+    </section>
+
+    <section class="clean-phase-workbench clean-card-wide clean-fleet-workbench">
+      <aside class="clean-substep-rail" aria-label="Blocos da ficha">
+        <button class="clean-substep-card active" type="button" data-target="regras">
+          <span><b>Regras e datas</b><em>IPO, início e categoria</em></span>
+          <strong>{{ ctx.rules.ipo_status }}</strong>
+        </button>
+        <button class="clean-substep-card" type="button" data-target="manutencao">
+          <span><b>Manutenção</b><em>Rentway vs cálculo</em></span>
+          <strong>{{ ctx.maintenance.status }}</strong>
+        </button>
+        <button class="clean-substep-card" type="button" data-target="financeiro">
+          <span><b>Financeiro</b><em>Custo, dívida e entidade</em></span>
+          <strong>{{ ctx.finance.debt_value }}</strong>
+        </button>
+        <button class="clean-substep-card" type="button" data-target="historico">
+          <span><b>Documentação / histórico</b><em>Documentos, tarefas, auditorias</em></span>
+          <strong>{{ documents|length + tasks|length + audits|length }}</strong>
+        </button>
+      </aside>
+
+      <div class="clean-substep-detail">
+        <article class="clean-substep-panel active" id="clean-substep-regras">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Regras e datas</p><h3>Base para decisões</h3><p>Datas e classificação que suportam IPO, auditoria e manutenção.</p></div></div>
+          <div class="clean-detail-facts">
+            <div><span>Data matrícula</span><strong>{{ ctx.dates.registration }}</strong></div>
+            <div><span>Data compra / início CarFast</span><strong>{{ ctx.dates.purchase }}</strong></div>
+            <div><span>Início real</span><strong>{{ ctx.dates.real_start }}</strong></div>
+            <div><span>Categoria para regras</span><strong>{{ ctx.rules.rule_category_label }}</strong></div>
+            <div><span>IPO Rentway</span><strong>{{ ctx.dates.rentway_ipo }}</strong></div>
+            <div><span>IPO calculada</span><strong>{{ ctx.dates.calculated_ipo }}</strong></div>
+          </div>
+        </article>
+
+        <article class="clean-substep-panel" id="clean-substep-manutencao">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Manutenção</p><h3>Rentway vs cálculo</h3><p>Leitura rápida das datas e quilómetros que podem gerar divergências.</p></div></div>
+          <div class="clean-detail-facts">
+            <div><span>Último serviço Rentway</span><strong>{{ ctx.maintenance.last_rentway_km }} km</strong></div>
+            <div><span>Próximo serviço Rentway</span><strong>{{ ctx.maintenance.next_rentway_km }} km</strong></div>
+            <div><span>Próximo serviço calculado</span><strong>{{ ctx.maintenance.calculated_km }} km</strong></div>
+            <div><span>Data calculada</span><strong>{{ ctx.dates.service_calculated }}</strong></div>
+            <div><span>Estado</span><strong>{{ ctx.maintenance.status }}</strong></div>
+          </div>
+        </article>
+
+        <article class="clean-substep-panel" id="clean-substep-financeiro">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Financeiro</p><h3>Valores essenciais</h3><p>Informação suficiente para preparar venda, decisão ou análise financeira.</p></div></div>
+          <div class="clean-detail-facts">
+            <div><span>Entidade financeira</span><strong>{{ ctx.finance.finance_entity }}</strong></div>
+            <div><span>Custo inicial</span><strong>{{ ctx.finance.initial_cost }}</strong></div>
+            <div><span>Valor custo atual</span><strong>{{ ctx.finance.current_cost }}</strong></div>
+            <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
+            <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong></div>
+          </div>
+        </article>
+
+        <article class="clean-substep-panel" id="clean-substep-historico">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Documentação e histórico</p><h3>Arquivo permanente da viatura</h3><p>Resumo por tipo documental. A tabela completa fica disponível para auditoria e pesquisa.</p></div></div>
+          <div class="clean-document-summary-grid">
+            {% for code, label in document_group_labels.items() %}
+              {% if code != 'other' %}
+                <a class="{% if code == 'missing' and document_summary.get(code, 0) %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group={{ code }}">
+                  <span>{{ label }}</span>
+                  <strong>{{ document_summary.get(code, 0) }}</strong>
+                </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <div class="clean-fleet-doc-actions">
+            <a class="button-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ver documentação</a>
+            <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}">Adicionar documento</a>
+            <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Ver tarefas</a>
+          </div>
+          <div class="clean-document-strip">
+            {% for document in documents %}
+              <a href="/documents/{{ document.id }}"><b>{{ document.title or document.original_name }}</b><span>{{ document.classification or '-' }} · {{ document.document_type or '-' }}</span></a>
+            {% else %}
+              <p class="muted">Sem documentos associados.</p>
+            {% endfor %}
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  (() => {
+    document.querySelectorAll(".clean-fleet-workbench [data-target]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const workbench = button.closest(".clean-fleet-workbench");
+        const target = button.dataset.target;
+        workbench.querySelectorAll(".clean-substep-card").forEach((item) => item.classList.toggle("active", item === button));
+        workbench.querySelectorAll(".clean-substep-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+      });
+    });
+  })();
+</script>
+{% endblock %}
+

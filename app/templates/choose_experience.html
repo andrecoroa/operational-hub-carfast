@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="experience-choice-page">
+  <section class="experience-choice-shell">
+    <div class="experience-choice-heading">
+      <p class="eyebrow">CarFast</p>
+      <h1>Escolher experiência</h1>
+      <p>Entra na versão atual para operação diária ou na nova experiência para validar Oficina, Frota e Documentação.</p>
+    </div>
+
+    <div class="experience-choice-grid">
+      <a class="experience-choice-card" href="/switch-experience/current">
+        <span>Atual</span>
+        <strong>CarFast atual</strong>
+        <p>Versão em uso operacional, com os fluxos atuais da equipa.</p>
+        <b>Entrar na app atual</b>
+      </a>
+
+      {% if can_use_clean %}
+        <a class="experience-choice-card clean" href="/switch-experience/clean">
+          <span>Em validação</span>
+          <strong>Nova experiência</strong>
+          <p>Nova organização visual para testar Oficina, Frota, Documentação e processos históricos.</p>
+          <b>Entrar na app nova</b>
+        </a>
+      {% else %}
+        <article class="experience-choice-card disabled">
+          <span>Em validação</span>
+          <strong>Nova experiência</strong>
+          <p>Disponível apenas para perfis autorizados durante a fase de validação.</p>
+          <b>Sem acesso</b>
+        </article>
+      {% endif %}
+    </div>
+
+    <form method="post" action="/logout">
+      <button class="experience-logout" type="submit">Sair</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

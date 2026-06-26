@@ -47,18 +47,50 @@
             {% if vehicle.rentway_unit_nr %}<span class="pill">Unit {{ vehicle.rentway_unit_nr }}</span>{% endif %}
             {% if carfast_management.get("sale_blocked") %}<span class="pill carfast-blocked-pill">Venda bloqueada</span>{% endif %}
           </div>
+          <div class="compact-heading vehicle-subheading">
+            <p class="eyebrow">Identificação / Características</p>
+          </div>
           <div class="task-info-grid workshop-info-grid">
+            <div><span>Unit Rentway</span><strong>{{ vehicle.rentway_unit_nr or "-" }}</strong></div>
             <div><span>Matrícula</span><strong>{{ vehicle.plate or "-" }}</strong></div>
             <div><span>Marca</span><strong>{{ vehicle.brand or "-" }}</strong></div>
             <div><span>Modelo</span><strong>{{ vehicle.model or "-" }}</strong></div>
             <div><span>Versão</span><strong>{{ vehicle.version or "-" }}</strong></div>
-            <div><span>VIN</span><strong>{{ vehicle.vin or "-" }}</strong></div>
-            <div><span>Data matrícula</span><strong>{{ vehicle_context.plate_date or "-" }}</strong></div>
-            <div><span>Data compra</span><strong>{{ vehicle_context.purchase_date or "-" }}</strong></div>
-            <div><span>Último serviço</span><strong>{{ vehicle_context.last_service_done or vehicle_context.last_service_km or "-" }}</strong></div>
-            <div><span>Próximo serviço</span><strong>{{ vehicle_context.next_service or vehicle_context.next_service_km or "-" }}</strong></div>
-            <div><span>Ciclo</span><strong>{{ vehicle.lifecycle_status or "-" }}</strong></div>
-            <div><span>Operacional</span><strong>{{ vehicle.operational_status or "-" }}</strong></div>
+            <div><span>Chassi</span><strong>{{ vehicle.vin or "-" }}</strong></div>
+            <div><span>Categoria/grupo</span><strong>{{ vehicle_context.groupid or "-" }}</strong></div>
+            <div><span>Cor</span><strong>{{ vehicle_context.colour or "-" }}</strong></div>
+          </div>
+          <div class="rentway-context-card">
+            <div class="compact-heading">
+              <p class="eyebrow">Regras e cálculos</p>
+            </div>
+            <div class="task-info-grid workshop-info-grid rentway-context-grid">
+              <div><span>Categoria Rentway</span><strong>{{ vehicle_rules.source_category or "-" }}</strong></div>
+              <div><span>Categoria para regras</span><strong>{{ vehicle_rules.rule_category_label or "Por confirmar" }}</strong></div>
+              <div><span>Lugares</span><strong>{{ vehicle_rules.seats or "-" }}</strong></div>
+              <div><span>Combustível</span><strong>{{ vehicle_rules.fuel or "-" }}</strong></div>
+              <div>
+                <span>IPO Rentway</span>
+                <strong>{{ vehicle_rules.rentway_ipo.strftime("%d/%m/%Y") if vehicle_rules.rentway_ipo else "-" }}</strong>
+              </div>
+              <div>
+                <span>IPO calculada</span>
+                <strong>{{ vehicle_rules.calculated_ipo.strftime("%d/%m/%Y") if vehicle_rules.calculated_ipo else "Por confirmar" }}</strong>
+              </div>
+              <div><span>Estado IPO</span><strong>{{ vehicle_rules.ipo_status }}</strong></div>
+              <div>
+                <span>Manutenção Rentway</span>
+                <strong>{{ vehicle_rules.rentway_last_service_km or "-" }} → {{ vehicle_rules.rentway_next_service_km or "-" }} km</strong>
+              </div>
+              <div>
+                <span>Manutenção calculada</span>
+                <strong>
+                  {% if vehicle_rules.calculated_service_km %}{{ vehicle_rules.calculated_service_km }} km{% else %}Por configurar{% endif %}
+                  {% if vehicle_rules.calculated_service_date %} · {{ vehicle_rules.calculated_service_date.strftime("%d/%m/%Y") }}{% endif %}
+                </strong>
+              </div>
+              <div><span>Estado manutenção</span><strong>{{ vehicle_rules.maintenance_status }}</strong></div>
+            </div>
           </div>
           <div class="rentway-context-card">
             <div class="compact-heading">
@@ -380,6 +412,38 @@
                   <label>
                     Descrição livre
                     <input type="text" name="sale_block_reason_other" maxlength="500" value="{{ carfast_management.get('sale_block_reason_other') or '' }}" placeholder="Usar quando o motivo for Outro">
+                  </label>
+                </div>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Início real da viatura
+                    <input type="date" name="real_start_date" value="{{ carfast_management.get('real_start_date') or '' }}">
+                  </label>
+                  <label>
+                    Categoria para regras
+                    <select name="rule_category">
+                      {% for code, label in vehicle_rule_categories %}
+                        <option value="{{ code }}" {% if vehicle_rules.rule_category == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                </div>
+                <div class="compact-form-grid two-col">
+                  <label>
+                    Último serviço válido - km
+                    <input type="text" name="maintenance_last_valid_km" maxlength="80" value="{{ carfast_management.get('maintenance_last_valid_km') or '' }}" placeholder="Ex.: 90357">
+                  </label>
+                  <label>
+                    Último serviço válido - data
+                    <input type="date" name="maintenance_last_valid_date" value="{{ carfast_management.get('maintenance_last_valid_date') or '' }}">
+                  </label>
+                  <label>
+                    Intervalo manutenção - km
+                    <input type="text" name="maintenance_interval_km" maxlength="80" value="{{ carfast_management.get('maintenance_interval_km') or '' }}" placeholder="Ex.: 30000">
+                  </label>
+                  <label>
+                    Intervalo manutenção - meses
+                    <input type="text" name="maintenance_interval_months" maxlength="80" value="{{ carfast_management.get('maintenance_interval_months') or '' }}" placeholder="Ex.: 24">
                   </label>
                 </div>
                 <div class="compact-form-grid two-col">

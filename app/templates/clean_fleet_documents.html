@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content clean-doc-content">
+    {% set vehicle = ctx.vehicle %}
+    <header class="clean-doc-page-header">
+      <div class="clean-doc-page-title">
+        <p class="eyebrow">Documentação da viatura</p>
+        <h2>{{ ctx.identity.plate or '-' }}</h2>
+        <p>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %} · Unit {{ ctx.identity.unit or '-' }} · Chassi: {{ ctx.identity.vin }}</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
+        <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}">Adicionar documento</a>
+        <a class="button-link secondary-link" href="/documents?plate={{ ctx.identity.plate }}">Centro atual</a>
+      </div>
+    </header>
+
+    <nav class="clean-document-type-stepper" aria-label="Tipos de documentação">
+      {% for code, label in document_groups %}
+        <a class="{% if doc_group == code %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group={{ code }}"><b>{{ document_summary.get(code, 0) }}</b><span>{{ label }}</span></a>
+      {% endfor %}
+    </nav>
+
+    <section class="clean-panel clean-card-wide clean-fleet-documents-panel">
+      <form method="get" action="/v2-clean/fleet/{{ vehicle.id }}/documents" class="clean-doc-filter-bar">
+        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Documento, fornecedor, nº..."></label>
+        <label>Grupo<select name="doc_group"><option value="">Todos</option>{% for code, label in document_groups %}<option value="{{ code }}" {% if doc_group == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Tipo<select name="document_type"><option value="">Todos</option>{% for code, label in document_types %}<option value="{{ code }}" {% if document_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Estado<select name="status"><option value="">Todos</option>{% for code, label in document_statuses %}<option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <button type="submit">Filtrar</button>
+      </form>
+
+      <nav class="clean-doc-chip-row" aria-label="Filtros rápidos">
+        <a class="{% if not doc_group and not status %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Todos</a>
+        <a class="{% if doc_group == 'work_orders' %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group=work_orders">Folhas de obra</a>
+        <a class="{% if doc_group == 'invoices' %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group=invoices">Faturas</a>
+        <a class="{% if doc_group == 'technical_reports' %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group=technical_reports">Diagnósticos</a>
+        <a class="{% if doc_group == 'missing' %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group=missing">Em falta</a>
+        <a class="{% if status == 'unclassified' %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?status=unclassified">Por validar</a>
+      </nav>
+
+      <div class="clean-doc-table-wrap">
+        <table class="clean-doc-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Subtipo</th>
+              <th>Fornecedor / origem</th>
+              <th>Km</th>
+              <th>Nº documento</th>
+              <th>Estado</th>
+              <th>Processo</th>
+              <th>Problemas</th>
+              <th>Abrir</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              {% set document = row.document %}
+              <tr>
+                <td>{{ document.document_date.strftime('%d/%m/%Y') if document.document_date else '-' }}</td>
+                <td><strong>{{ document_group_labels.get(row.group, row.group) }}</strong></td>
+                <td>{{ document_type_labels.get(document.document_type, document.document_type or '-') }}</td>
+                <td>{{ document.supplier_name or document.source or document.source_sender or '-' }}</td>
+                <td>-</td>
+                <td>{{ document.contract_number or document.reservation_number or document.id }}</td>
+                <td><span class="clean-status-pill">{{ document_status_labels.get(document.status, document.status) }}</span></td>
+                <td>{{ row.linked_process }}</td>
+                <td>{{ row.problem_count }}</td>
+                <td><a class="table-link" href="/documents/{{ document.id }}">Abrir</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="10">Sem documentos para os filtros selecionados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+
+

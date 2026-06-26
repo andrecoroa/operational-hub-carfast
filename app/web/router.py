@@ -68,6 +68,7 @@ from app.models.workshop import (
     WorkshopProcessService,
     WorkshopTechnicalReading,
 )
+from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessAlert
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
@@ -107,6 +108,7 @@ from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.users import create_user
+from app.services.vehicles import normalize_identifier
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
@@ -140,13 +142,20 @@ def snapshot_value(data: dict | None, candidates: list[str]) -> str | None:
 def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
     data = snapshot.data_json if snapshot else None
     return {
+        "groupid": snapshot_value(data, ["groupid", "group_id", "categoria_grupo", "grupo"]),
+        "category": snapshot_value(data, ["category", "categoria", "tipo_categoria"]),
+        "seats": snapshot_value(data, ["seats", "lugares", "passageiros"]),
+        "colour": snapshot_value(data, ["colour", "color", "cor"]),
+        "fuel": snapshot_value(data, ["fuel", "combustivel"]),
         "plate_date": snapshot_value(data, ["plate_date", "platedate", "data_matricula", "registration_date"]),
         "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
+        "inspection_date": snapshot_value(data, ["inspection_date", "inspectiondate", "data_ipo"]),
         "last_service_done": snapshot_value(
             data,
             ["last_service_done", "lastservicedone", "last_service_date", "last_service", "ultimo_servico"],
         ),
         "next_service": snapshot_value(data, ["next_service", "nextservice", "next_service_date", "proximo_servico"]),
+        "last_service": snapshot_value(data, ["last_service", "lastservice", "ultimo_servico_km"]),
         "last_service_km": snapshot_value(data, ["last_service_km", "lastservicekm"]),
         "next_service_km": snapshot_value(data, ["next_service_km", "nextservicekm"]),
     }
@@ -180,6 +189,12 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
 
 
 CARFAST_MANAGEMENT_FIELD_CODES = {
+    "real_start_date",
+    "rule_category",
+    "maintenance_interval_km",
+    "maintenance_interval_months",
+    "maintenance_last_valid_km",
+    "maintenance_last_valid_date",
     "sale_blocked",
     "sale_block_reason",
     "sale_block_reason_other",
@@ -326,6 +341,109 @@ def current_cost_from_snapshot(snapshot: VehicleExternalSnapshot | None) -> dict
         "purchase_date": context.get("purchase_date"),
         "amortization_month": month,
         "current_cost": current_cost,
+    }
+
+
+VEHICLE_RULE_CATEGORIES = [
+    ("", "Por confirmar"),
+    ("passenger", "Passageiros"),
+    ("commercial", "Comercial"),
+]
+VEHICLE_RULE_CATEGORY_LABELS = dict(VEHICLE_RULE_CATEGORIES)
+
+
+def add_years(base_date: date, years: int) -> date:
+    try:
+        return base_date.replace(year=base_date.year + years)
+    except ValueError:
+        return base_date.replace(year=base_date.year + years, day=28)
+
+
+def add_months(base_date: date, months: int) -> date:
+    month_index = (base_date.month - 1) + months
+    year = base_date.year + month_index // 12
+    month = (month_index % 12) + 1
+    days_in_month = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return date(year, month, min(base_date.day, days_in_month[month - 1]))
+
+
+def inferred_rule_category(snapshot: VehicleExternalSnapshot | None, manual: dict[str, object]) -> str:
+    manual_category = str(manual.get("rule_category") or "").strip()
+    if manual_category and manual_category in VEHICLE_RULE_CATEGORY_LABELS:
+        return manual_category
+    context = rentway_vehicle_context(snapshot)
+    category = str(context.get("category") or "").strip().upper()
+    if "COMERC" in category:
+        return "commercial"
+    if "LIGEIRO" in category:
+        return "passenger"
+    return ""
+
+
+def calculated_next_ipo(registration_date: date | None, rule_category: str, reference: date | None = None) -> date | None:
+    if not registration_date or rule_category not in {"passenger", "commercial"}:
+        return None
+    today = reference or date.today()
+    fixed_years = [4, 6, 8] if rule_category == "passenger" else [2]
+    for years in fixed_years:
+        due = add_years(registration_date, years)
+        if due >= today:
+            return due
+    years = fixed_years[-1] + 1
+    while years < 80:
+        due = add_years(registration_date, years)
+        if due >= today:
+            return due
+        years += 1
+    return None
+
+
+def vehicle_rule_context(snapshot: VehicleExternalSnapshot | None, manual: dict[str, object]) -> dict[str, object]:
+    context = rentway_vehicle_context(snapshot)
+    rule_category = inferred_rule_category(snapshot, manual)
+    registration_date = parse_iso_or_dmy_date(context.get("plate_date"))
+    rentway_ipo = parse_iso_or_dmy_date(context.get("inspection_date"))
+    calculated_ipo = calculated_next_ipo(registration_date, rule_category)
+    ipo_status = "Por confirmar"
+    if calculated_ipo and rentway_ipo:
+        ipo_status = "OK" if calculated_ipo == rentway_ipo else "Divergente"
+    elif calculated_ipo:
+        ipo_status = "Calculada"
+
+    last_km = parse_decimal_text(manual.get("maintenance_last_valid_km"))
+    interval_km = parse_decimal_text(manual.get("maintenance_interval_km"))
+    last_date = parse_iso_or_dmy_date(str(manual.get("maintenance_last_valid_date") or ""))
+    interval_months = parse_decimal_text(manual.get("maintenance_interval_months"))
+    calculated_service_km = int(last_km + interval_km) if last_km is not None and interval_km is not None else None
+    calculated_service_date = add_months(last_date, int(interval_months)) if last_date and interval_months else None
+    rentway_next_service_km = parse_decimal_text(context.get("next_service"))
+    maintenance_status = "Por configurar"
+    if calculated_service_km is not None and rentway_next_service_km is not None:
+        maintenance_status = "OK" if int(rentway_next_service_km) == calculated_service_km else "Divergente"
+    elif calculated_service_km is not None or calculated_service_date:
+        maintenance_status = "Calculada"
+
+    return {
+        "source_category": context.get("category"),
+        "groupid": context.get("groupid"),
+        "seats": context.get("seats"),
+        "fuel": context.get("fuel"),
+        "rule_category": rule_category,
+        "rule_category_label": VEHICLE_RULE_CATEGORY_LABELS.get(rule_category, "Por confirmar"),
+        "registration_date": registration_date,
+        "rentway_ipo": rentway_ipo,
+        "calculated_ipo": calculated_ipo,
+        "ipo_status": ipo_status,
+        "maintenance_last_valid_km": manual.get("maintenance_last_valid_km") or "",
+        "maintenance_last_valid_date": manual.get("maintenance_last_valid_date") or "",
+        "maintenance_interval_km": manual.get("maintenance_interval_km") or "",
+        "maintenance_interval_months": manual.get("maintenance_interval_months") or "",
+        "rentway_last_service_km": context.get("last_service"),
+        "rentway_next_service_km": context.get("next_service"),
+        "rentway_next_service_date": context.get("last_service_done"),
+        "calculated_service_km": calculated_service_km,
+        "calculated_service_date": calculated_service_date,
+        "maintenance_status": maintenance_status,
     }
 
 
@@ -2555,6 +2673,973 @@ def dashboard(request: Request):
         )
 
 
+def clean_experience_denied(request: Request) -> RedirectResponse | None:
+    if not get_web_user_id(request):
+        return RedirectResponse("/login", status_code=303)
+    if not has_any_web_permission(
+        request,
+        "dashboard.read",
+        "vehicles.read",
+        "workshop.read",
+        "tasks.read",
+        "management_center.read",
+        "documents.read",
+        "admin.manage",
+    ):
+        return RedirectResponse("/", status_code=303)
+    return None
+
+
+def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
+    open_tasks = (
+        db.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
+        )
+        or 0
+    )
+    open_workshop = (
+        db.scalar(
+            select(func.count())
+            .select_from(WorkshopPhasedProcess)
+            .where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+        )
+        or 0
+    )
+    open_workshop_alerts = (
+        db.scalar(
+            select(func.count())
+            .select_from(WorkshopPhasedProcessAlert)
+            .where(WorkshopPhasedProcessAlert.status == "open")
+        )
+        or 0
+    )
+    open_audits = (
+        db.scalar(
+            select(func.count())
+            .select_from(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.status != "closed")
+        )
+        or 0
+    )
+    open_management = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagementProcess)
+            .where(ManagementProcess.status.notin_(("closed", "cancelled")))
+        )
+        or 0
+    )
+    document_inbox = (
+        db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.status.in_(("new", "pending", "pending_classification", "associated")))
+        )
+        or 0
+    )
+    return [
+        {
+            "code": "operational",
+            "label": "Operacional",
+            "description": "Coordenação diária, tarefas guiadas e ocorrências rápidas.",
+            "open": open_tasks,
+            "critical": open_workshop_alerts,
+            "models": ["Transferência crítica", "Verificação operacional"],
+            "href": "#process-operational",
+        },
+        {
+            "code": "fleet",
+            "label": "Frota",
+            "description": "Ciclo técnico, documentação e decisões comerciais da viatura.",
+            "open": open_audits,
+            "critical": open_audits,
+            "models": ["Auditoria técnica da viatura", "Preparação para venda", "Regularização documental da viatura"],
+            "href": "/v2-clean/fleet",
+        },
+        {
+            "code": "management",
+            "label": "Gestão",
+            "description": "Sinistros, fornecedores, discussões e validações de gestão.",
+            "open": open_management,
+            "critical": document_inbox,
+            "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
+            "href": "#process-management",
+        },
+        {
+            "code": "administration",
+            "label": "Administração",
+            "description": "Procedimentos, protocolos e organização interna.",
+            "open": document_inbox,
+            "critical": 0,
+            "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
+            "href": "#process-administration",
+        },
+    ]
+
+
+@web_router.get("/new", response_class=HTMLResponse)
+@web_router.get("/v2-clean", response_class=HTMLResponse)
+def clean_experience_home(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        area_cards = clean_process_area_cards(db)
+        quick_metrics = {
+            "vehicles": count_rows(db, Vehicle),
+            "workshop_alerts": area_cards[0]["critical"],
+            "tasks": area_cards[0]["open"],
+            "audits": area_cards[1]["open"],
+        }
+        return templates.TemplateResponse(
+            request,
+            "clean_home.html",
+            {
+                "area_cards": area_cards,
+                "quick_metrics": quick_metrics,
+            },
+        )
+
+
+@web_router.get("/v2-clean/processes", response_class=HTMLResponse)
+def clean_process_center(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        area_cards = clean_process_area_cards(db)
+        recent_workshop = db.scalars(
+            select(WorkshopPhasedProcess)
+            .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
+            .limit(8)
+        ).all()
+        recent_audits = db.scalars(
+            select(VehicleHistoryAudit)
+            .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+            .limit(8)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_process_center.html",
+            {
+                "area_cards": area_cards,
+                "recent_workshop": recent_workshop,
+                "recent_audits": recent_audits,
+            },
+        )
+
+
+
+CLEAN_WORKSHOP_CONTEXT = {
+    "process_ref": "OFI-2026-000123",
+    "plate": "AU-87-XZ",
+    "vehicle": "CITROEN JUMPER 33 L3H2 2.2 BH 140 S6",
+    "vin": "VF7YBBPFCPG030537",
+    "fuel": "Diesel",
+    "entry_date": "09/06/2026",
+    "entry_km": "143 161",
+    "expected_exit": "10/06/2026",
+    "registration_date": "31/08/2023",
+    "purchase_date": "17/11/2023",
+    "real_start_date": "Por validar",
+    "next_ipo": "31/08/2027",
+    "last_service_km": "90 357 km",
+    "next_service_km": "140 357 km",
+    "maintenance_status": "Manutenção ultrapassada em 2 804 km",
+    "history_audit_status": "Auditoria histórico: Em curso",
+    "sale_status": "Venda bloqueada",
+    "brand_rule": "Service Box aplicável",
+}
+
+CLEAN_WORKSHOP_STEP_DEFS = [
+    {"key": "entrada", "number": 1, "label": "Entrada", "path": "/v2-clean/workshop-entry"},
+    {"key": "validacao", "number": 2, "label": "Validação Administrativa", "path": "/v2-clean/workshop/validacao"},
+    {"key": "diagnostico", "number": 3, "label": "Diagnóstico Técnico", "path": "/v2-clean/workshop/diagnostico"},
+    {"key": "inspecao", "number": 4, "label": "Inspeção Técnica", "path": "/v2-clean/workshop/inspecao"},
+    {"key": "auditoria", "number": 5, "label": "Auditoria e Validação", "path": "/v2-clean/workshop/auditoria"},
+    {"key": "reparacao", "number": 6, "label": "Reparação", "path": "/v2-clean/workshop/reparacao"},
+    {"key": "fecho", "number": 7, "label": "Validação e Fecho", "path": "/v2-clean/workshop/fecho"},
+]
+
+CLEAN_WORKSHOP_ENTRY_REASONS = [
+    "Revisão / degradação óleo",
+    "Verificação de rotina",
+    "Pneus",
+    "Travões",
+    "Danos / sinistro",
+    "Avaria",
+    "IPO",
+    "Outro",
+]
+
+CLEAN_WORKSHOP_PHASE_ALIASES = {
+    "decisao": "auditoria",
+    "execucao": "reparacao",
+}
+
+CLEAN_WORKSHOP_PHASES = {
+    "validacao": {
+        "step": 2,
+        "title": "Validação Administrativa",
+        "subtitle": "Confirmar contexto administrativo, marca, histórico e coerência antes do diagnóstico técnico.",
+        "primary_action": "Avançar para Diagnóstico Técnico",
+        "sections": [],
+    },
+    "diagnostico": {
+        "step": 3,
+        "title": "Diagnóstico Técnico",
+        "subtitle": "Carregar relatórios, extrair leituras e validar dados técnicos por relatório.",
+        "primary_action": "Avançar para Inspeção Técnica",
+        "sections": [
+            {
+                "eyebrow": "Relatórios técnicos",
+                "title": "Documentos e extração",
+                "report_cards": [
+                    "Lubrificação motor",
+                    "Informações manutenção",
+                    "Programação manutenção",
+                    "Telecarregamento",
+                    "Leitura defeitos",
+                    "Teste global",
+                ],
+            },
+            {
+                "eyebrow": "Dados extraídos",
+                "title": "Leituras por validar",
+                "table": ["Campo", "Valor extraído", "Valor validado", "Estado", "Observação"],
+            },
+            {
+                "eyebrow": "Decisão da leitura",
+                "title": "Problemas e ação seguinte",
+                "fields": [
+                    "Degradação óleo",
+                    "Falta telecarregamento",
+                    "BSI sem registo",
+                    "Intervalo incoerente",
+                    "Ação seguinte",
+                    "Nota de validação",
+                ],
+            },
+            {
+                "eyebrow": "Comparação",
+                "title": "Histórico comparativo",
+                "large": True,
+                "fields": ["Relatórios anteriores do mesmo tipo", "Diferenças relevantes", "Evidência objetiva"],
+            },
+        ],
+    },
+    "inspecao": {
+        "step": 4,
+        "title": "Inspeção Técnica",
+        "subtitle": "Confirmar pontos físicos/técnicos observados e recolher evidências.",
+        "primary_action": "Avançar para Auditoria e Validação",
+        "sections": [
+            {
+                "eyebrow": "Checklist técnica",
+                "title": "Verificações principais",
+                "check_cards": [
+                    "Níveis",
+                    "Pneus",
+                    "Travões",
+                    "Luzes",
+                    "Bateria",
+                    "Fugas visíveis",
+                    "Ruídos anormais",
+                    "Estado visual técnico",
+                    "Teste de estrada",
+                ],
+            },
+            {
+                "eyebrow": "Registo de incidência",
+                "title": "Quando algo não está conforme",
+                "large": True,
+                "fields": ["Estado", "Evidência", "Observação", "Criar tarefa", "Possível cobrança cliente"],
+            },
+        ],
+    },
+    "auditoria": {
+        "step": 5,
+        "title": "Auditoria e Validação",
+        "subtitle": "Cruzar diagnóstico, histórico e inspeção para decidir a intervenção e pendências.",
+        "primary_action": "Avançar para Reparação",
+        "sections": [
+            {
+                "eyebrow": "Auditoria técnica",
+                "title": "O que ficou provado",
+                "fields": ["Serviço confirmado", "BSI vs faturas", "Telecarregamento", "Conclusão", "Bloqueia reparação?"],
+            },
+            {
+                "eyebrow": "Decisão operacional",
+                "title": "Intervenção e aprovação",
+                "fields": ["Intervenção", "Orçamento necessário?", "Estado autorização", "Valor estimado", "Próxima ação"],
+            },
+            {
+                "eyebrow": "Problemas / tarefas",
+                "title": "Pendências abertas",
+                "table": ["Problema", "Estado", "Prioridade", "Responsável"],
+            },
+            {
+                "eyebrow": "Saída da fase",
+                "title": "Condições para avançar",
+                "large": True,
+                "fields": ["Validação concluída?", "Motivo da reserva", "Auditoria histórico", "Campanhas por executar"],
+            },
+        ],
+    },
+    "reparacao": {
+        "step": 6,
+        "title": "Reparação",
+        "subtitle": "Acompanhar execução, desvios, evidências e relatórios pós-intervenção.",
+        "primary_action": "Avançar para Validação e Fecho",
+        "sections": [
+            {
+                "eyebrow": "Execução",
+                "title": "Trabalho em curso",
+                "fields": ["Tipo execução", "Estado", "Previsão conclusão", "Serviços executados", "Responsável/oficina"],
+            },
+            {
+                "eyebrow": "Evidências",
+                "title": "Documentar intervenção",
+                "uploads": ["Fotos reparação", "Folha de obra", "Relatório pós-intervenção", "Comprovativos"],
+                "fields": ["Peças/serviços aplicados", "Observação"],
+            },
+            {
+                "eyebrow": "Desvios e bloqueios",
+                "title": "Alterações ao previsto",
+                "large": True,
+                "fields": ["Alteração ao previsto?", "Novo orçamento?", "Bloqueio atual", "Pronto para fecho?"],
+            },
+        ],
+    },
+    "fecho": {
+        "step": 7,
+        "title": "Validação e Fecho",
+        "subtitle": "Confirmar resolução, documentos finais, atualização de histórico e pendências.",
+        "primary_action": "Fechar processo",
+        "sections": [
+            {
+                "eyebrow": "Validação final",
+                "title": "Estado de saída",
+                "fields": ["Viatura pronta?", "KM saída", "Foto quadrante saída", "Teste final", "Pode circular?", "Regressar à frota?"],
+                "uploads": ["Foto quadrante saída", "Fotos finais"],
+            },
+            {
+                "eyebrow": "Documentos e histórico",
+                "title": "Fechar sem perder rasto",
+                "fields": ["Folha obra fechada?", "Fatura esperada?", "Relatórios finais", "Histórico atualizado?", "Problemas abertos", "Pendências"],
+            },
+            {
+                "eyebrow": "Resultado final",
+                "title": "Decisão de fecho",
+                "large": True,
+                "fields": ["Resultado", "Observação final", "Fechar com pendências", "Responsável pela pendência", "Prazo"],
+            },
+        ],
+    },
+}
+
+
+STELLANTIS_BRANDS = {"CITROEN", "CITROËN", "PEUGEOT", "DS", "OPEL", "FIAT", "JEEP"}
+
+
+def clean_date(value: str | None) -> str:
+    if not value:
+        return "-"
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(value)[:10]
+
+
+def clean_km(value: str | None) -> str:
+    if not value:
+        return "-"
+    text = str(value).strip()
+    try:
+        return f"{int(float(text.replace(' ', '').replace(',', '.'))):,}".replace(",", " ")
+    except ValueError:
+        return text
+
+
+def clean_workshop_query_suffix(
+    vehicle_id: int | None = None,
+    plate: str | None = None,
+    historical: bool = False,
+) -> str:
+    query: dict[str, str] = {}
+    if vehicle_id:
+        query["vehicle_id"] = str(vehicle_id)
+    elif plate:
+        query["plate"] = plate
+    if historical:
+        query["historical"] = "1"
+    return f"?{urlencode(query)}" if query else ""
+
+
+def clean_workshop_steps(query_suffix: str = "") -> list[dict[str, str | int]]:
+    return [
+        {
+            "key": step["key"],
+            "number": step["number"],
+            "label": step["label"],
+            "href": f"{step['path']}{query_suffix}",
+        }
+        for step in CLEAN_WORKSHOP_STEP_DEFS
+    ]
+
+
+def clean_workshop_phase_nav(active_key: str, query_suffix: str = "") -> dict[str, str | None]:
+    step_index = next(
+        (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS) if step["key"] == active_key),
+        None,
+    )
+    if step_index is None:
+        return {"previous_phase_url": None, "next_phase_url": None}
+    previous_phase_url = (
+        f"{CLEAN_WORKSHOP_STEP_DEFS[step_index - 1]['path']}{query_suffix}" if step_index > 0 else None
+    )
+    next_phase_url = (
+        f"{CLEAN_WORKSHOP_STEP_DEFS[step_index + 1]['path']}{query_suffix}"
+        if step_index < len(CLEAN_WORKSHOP_STEP_DEFS) - 1
+        else None
+    )
+    return {"previous_phase_url": previous_phase_url, "next_phase_url": next_phase_url}
+
+
+def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, plate: str | None = None) -> dict[str, object]:
+    vehicle: Vehicle | None = None
+    if vehicle_id:
+        vehicle = db.get(Vehicle, vehicle_id)
+    if not vehicle and plate:
+        vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == normalize_identifier(plate)))
+    if not vehicle:
+        return dict(CLEAN_WORKSHOP_CONTEXT)
+
+    snapshot = db.scalar(
+        select(VehicleExternalSnapshot)
+        .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+        .order_by(VehicleExternalSnapshot.updated_at.desc())
+    )
+    data = snapshot.data_json if snapshot else {}
+    vehicle_context = rentway_vehicle_context(snapshot)
+    commercial_context = rentway_commercial_context(snapshot)
+    manual_fields = {
+        item.field_code: item.value_json
+        for item in db.scalars(select(VehicleManualField).where(VehicleManualField.vehicle_id == vehicle.id)).all()
+    }
+    rules = vehicle_rule_context(snapshot, manual_fields)
+    brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
+    model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
+    version = vehicle.version or snapshot_value(data, ["version", "versao"]) or ""
+    fuel = snapshot_value(data, ["fuel", "combustivel"]) or "-"
+    real_start_date = str(manual_fields.get("real_start_date") or "").strip() or "Por validar"
+    is_stellantis = brand.strip().upper() in STELLANTIS_BRANDS
+
+    current_km = parse_decimal_text(commercial_context.get("km") or snapshot_value(data, ["kms", "km"]))
+    rentway_next_service_km = parse_decimal_text(rules.get("rentway_next_service_km"))
+    calculated_ipo = rules.get("calculated_ipo")
+    rentway_ipo = rules.get("rentway_ipo")
+    alerts: list[dict[str, str]] = []
+    if rules.get("ipo_status") == "Divergente":
+        alerts.append(
+            {
+                "severity": "danger",
+                "title": "IPO divergente",
+                "detail": f"Rentway {clean_date(rentway_ipo.isoformat() if rentway_ipo else None)} / cálculo {clean_date(calculated_ipo.isoformat() if calculated_ipo else None)}",
+            }
+        )
+    if isinstance(calculated_ipo, date):
+        days_to_ipo = (calculated_ipo - date.today()).days
+        if days_to_ipo < 0:
+            alerts.append(
+                {
+                    "severity": "danger",
+                    "title": "IPO vencida",
+                    "detail": f"Data calculada {clean_date(calculated_ipo.isoformat())}",
+                }
+            )
+        elif days_to_ipo <= 60:
+            alerts.append(
+                {
+                    "severity": "warn",
+                    "title": "IPO próxima",
+                    "detail": f"{clean_date(calculated_ipo.isoformat())} · faltam {days_to_ipo} dias",
+                }
+            )
+    if rules.get("maintenance_status") == "Divergente":
+        alerts.append(
+            {
+                "severity": "danger",
+                "title": "Manutenção divergente",
+                "detail": "Rentway e cálculo CarFast não coincidem.",
+            }
+        )
+    if current_km is not None and rentway_next_service_km is not None:
+        km_to_service = int(rentway_next_service_km - current_km)
+        if km_to_service < 0:
+            alerts.append(
+                {
+                    "severity": "danger",
+                    "title": "Manutenção ultrapassada",
+                    "detail": f"{abs(km_to_service)} km acima do próximo serviço Rentway.",
+                }
+            )
+        elif km_to_service <= 1500:
+            alerts.append(
+                {
+                    "severity": "warn",
+                    "title": "Manutenção próxima",
+                    "detail": f"Faltam {km_to_service} km para o próximo serviço Rentway.",
+                }
+            )
+    calculated_service_date = rules.get("calculated_service_date")
+    if isinstance(calculated_service_date, date):
+        days_to_service = (calculated_service_date - date.today()).days
+        if days_to_service < 0:
+            alerts.append(
+                {
+                    "severity": "danger",
+                    "title": "Manutenção calculada vencida",
+                    "detail": f"Data calculada {clean_date(calculated_service_date.isoformat())}",
+                }
+            )
+        elif days_to_service <= 30:
+            alerts.append(
+                {
+                    "severity": "warn",
+                    "title": "Manutenção calculada próxima",
+                    "detail": f"{clean_date(calculated_service_date.isoformat())} · faltam {days_to_service} dias",
+                }
+            )
+
+    return {
+        "process_ref": CLEAN_WORKSHOP_CONTEXT["process_ref"],
+        "plate": vehicle.plate or snapshot_value(data, ["platenr", "matricula", "plate"]) or "-",
+        "vehicle": " ".join(part for part in [brand, model, version] if part).strip() or "-",
+        "vin": vehicle.vin or snapshot_value(data, ["chassinr", "vin", "chassis"]) or "-",
+        "fuel": fuel,
+        "entry_date": datetime.now().strftime("%d/%m/%Y"),
+        "entry_km": clean_km(commercial_context.get("km") or snapshot_value(data, ["kms", "km"])),
+        "expected_exit": "-",
+        "registration_date": clean_date(vehicle_context.get("plate_date")),
+        "purchase_date": clean_date(vehicle_context.get("purchase_date")),
+        "real_start_date": clean_date(real_start_date) if real_start_date != "Por validar" else real_start_date,
+        "next_ipo": clean_date((rules.get("calculated_ipo") or rules.get("rentway_ipo")).isoformat() if rules.get("calculated_ipo") or rules.get("rentway_ipo") else None),
+        "last_service_km": f"{clean_km(snapshot_value(data, ['last_service', 'lastservice']))} km",
+        "next_service_km": f"{clean_km(snapshot_value(data, ['next_service', 'nextservice']))} km",
+        "maintenance_status": f"Manutenção: {rules.get('maintenance_status')}",
+        "history_audit_status": "Auditoria histórico: por validar",
+        "sale_status": "Venda: por validar",
+        "brand_rule": "Service Box aplicável" if is_stellantis else "Service Box não aplicável",
+        "alerts": alerts,
+    }
+
+
+
+
+def latest_vehicle_snapshot(db: Session, vehicle_id: int) -> VehicleExternalSnapshot | None:
+    return db.scalar(
+        select(VehicleExternalSnapshot)
+        .where(VehicleExternalSnapshot.vehicle_id == vehicle_id)
+        .order_by(VehicleExternalSnapshot.updated_at.desc())
+    )
+
+
+def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, object]:
+    snapshot = latest_vehicle_snapshot(db, vehicle.id)
+    data = snapshot.data_json if snapshot else {}
+    vehicle_context = rentway_vehicle_context(snapshot)
+    commercial_context = rentway_commercial_context(snapshot)
+    manual_fields = vehicle_manual_values(db, vehicle.id)
+    rules = vehicle_rule_context(snapshot, manual_fields)
+    current_cost = current_cost_from_snapshot(snapshot)
+
+    brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
+    model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
+    version = vehicle.version or snapshot_value(data, ["version", "versao"]) or ""
+    real_start_date = str(manual_fields.get("real_start_date") or "").strip()
+    sale_blocked = bool(manual_fields.get("sale_blocked"))
+    debt_value = manual_fields.get("debt_value")
+    finance_entity = manual_fields.get("finance_entity") or commercial_context.get("finance_entity")
+    calculated_ipo = rules.get("calculated_ipo")
+    calculated_service_date = rules.get("calculated_service_date")
+
+    alerts: list[dict[str, str]] = []
+    if sale_blocked:
+        reason = manual_fields.get("sale_block_reason_other") or manual_fields.get("sale_block_reason") or "Sem motivo registado"
+        alerts.append({"severity": "danger", "title": "Venda bloqueada", "detail": str(reason)})
+    if not real_start_date:
+        alerts.append({"severity": "warn", "title": "Início real por validar", "detail": "Campo necessário para auditoria e manutenção."})
+    if rules.get("ipo_status") == "Divergente":
+        alerts.append({"severity": "danger", "title": "IPO divergente", "detail": "Rentway e cálculo CarFast não coincidem."})
+    elif isinstance(calculated_ipo, date):
+        days_to_ipo = (calculated_ipo - date.today()).days
+        if days_to_ipo < 0:
+            alerts.append({"severity": "danger", "title": "IPO vencida", "detail": clean_date(calculated_ipo.isoformat())})
+        elif days_to_ipo <= 60:
+            alerts.append({"severity": "warn", "title": "IPO próxima", "detail": f"{clean_date(calculated_ipo.isoformat())} · {days_to_ipo} dias"})
+    if rules.get("maintenance_status") == "Divergente":
+        alerts.append({"severity": "danger", "title": "Manutenção divergente", "detail": "Plano calculado e Rentway não coincidem."})
+    elif isinstance(calculated_service_date, date):
+        days_to_service = (calculated_service_date - date.today()).days
+        if days_to_service < 0:
+            alerts.append({"severity": "danger", "title": "Manutenção vencida", "detail": clean_date(calculated_service_date.isoformat())})
+        elif days_to_service <= 30:
+            alerts.append({"severity": "warn", "title": "Manutenção próxima", "detail": f"{clean_date(calculated_service_date.isoformat())} · {days_to_service} dias"})
+
+    return {
+        "vehicle": vehicle,
+        "snapshot": snapshot,
+        "manual": manual_fields,
+        "rules": rules,
+        "commercial": commercial_context,
+        "identity": {
+            "unit": vehicle.rentway_unit_nr or snapshot_value(data, ["unitnr", "unit_nr"]),
+            "plate": vehicle.plate or snapshot_value(data, ["platenr", "plate", "matricula"]),
+            "brand": brand or "-",
+            "model": model or "-",
+            "version": version or "-",
+            "vin": vehicle.vin or snapshot_value(data, ["chassinr", "vin", "chassis"]) or "-",
+            "groupid": vehicle_context.get("groupid") or "-",
+            "colour": vehicle_context.get("colour") or "-",
+            "fuel": vehicle_context.get("fuel") or "-",
+        },
+        "dates": {
+            "registration": clean_date(vehicle_context.get("plate_date")),
+            "purchase": clean_date(vehicle_context.get("purchase_date")),
+            "real_start": clean_date(real_start_date) if real_start_date else "Por validar",
+            "rentway_ipo": clean_date(rules["rentway_ipo"].isoformat() if rules.get("rentway_ipo") else None),
+            "calculated_ipo": clean_date(calculated_ipo.isoformat() if isinstance(calculated_ipo, date) else None),
+            "service_calculated": clean_date(calculated_service_date.isoformat() if isinstance(calculated_service_date, date) else None),
+        },
+        "maintenance": {
+            "last_rentway_km": clean_km(str(rules.get("rentway_last_service_km") or "")),
+            "next_rentway_km": clean_km(str(rules.get("rentway_next_service_km") or "")),
+            "calculated_km": clean_km(str(rules.get("calculated_service_km") or "")),
+            "status": rules.get("maintenance_status") or "Por configurar",
+        },
+        "finance": {
+            "initial_cost": format_eur(current_cost.get("initial_cost")),
+            "current_cost": format_eur(current_cost.get("current_cost")),
+            "amortization_month": current_cost.get("amortization_month") or "-",
+            "debt_value": format_eur(debt_value),
+            "finance_entity": finance_entity or "-",
+        },
+        "status": {
+            "lifecycle": vehicle.lifecycle_status or "-",
+            "operational": vehicle.operational_status or "-",
+            "rentway": commercial_context.get("current_status") or "-",
+            "location": commercial_context.get("rental_station") or "-",
+            "client": commercial_context.get("client") or "-",
+            "document": commercial_context.get("document_nr") or "-",
+        },
+        "alerts": alerts,
+    }
+
+
+
+def clean_vehicle_document_group(document: Document) -> str:
+    doc_type = (document.document_type or "").strip().lower()
+    title = " ".join(
+        part for part in [document.title, document.original_name, document.supplier_name, document.source_subject] if part
+    ).lower()
+    if doc_type == "workshop_work_order" or "folha" in title or "ordem" in title or "fo " in title:
+        return "work_orders"
+    if doc_type in {"workshop_supplier_invoice", "finance_supplier_invoice"} or "fatura" in title or "factura" in title:
+        return "invoices"
+    if doc_type in {"workshop_report", "workshop_diagnostic", "workshop_bsi"} or "relat" in title or "bsi" in title or "diagn" in title:
+        return "technical_reports"
+    if "service box" in title or "servicebox" in title:
+        return "service_box"
+    if "tsb" in title or "boletim" in title:
+        return "tsb"
+    if "telecarreg" in title or "calibra" in title or "software" in title:
+        return "telecharge"
+    if doc_type == "finance_rental_plan" or "plano" in title:
+        return "plans"
+    return "other"
+
+
+CLEAN_FLEET_DOCUMENT_GROUPS = [
+    ("work_orders", "Folhas de obra"),
+    ("invoices", "Faturas"),
+    ("technical_reports", "Diagnósticos"),
+    ("service_box", "Service Box"),
+    ("tsb", "TSB"),
+    ("telecharge", "Telecarregamentos"),
+    ("plans", "Planos"),
+    ("missing", "Em falta"),
+]
+CLEAN_FLEET_DOCUMENT_GROUP_LABELS = dict(CLEAN_FLEET_DOCUMENT_GROUPS)
+
+
+def clean_vehicle_document_summary(documents: list[Document]) -> dict[str, int]:
+    summary = {code: 0 for code, _label in CLEAN_FLEET_DOCUMENT_GROUPS}
+    for document in documents:
+        group = clean_vehicle_document_group(document)
+        summary[group] = summary.get(group, 0) + 1
+    return summary
+@web_router.get("/v2-clean/fleet", response_class=HTMLResponse)
+def clean_fleet_page(request: Request, q: str | None = None, scope: str = "active"):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    raw_query = (q or "").strip()
+    normalized_query = normalize_identifier(raw_query) if raw_query else ""
+    with SessionLocal() as db:
+        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(500)
+        sold_filter = or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
+        if scope == "active":
+            stmt = stmt.where(Vehicle.active.is_(True), ~sold_filter)
+        elif scope == "for_sale":
+            stmt = stmt.where(Vehicle.lifecycle_status == "for_sale")
+        if raw_query:
+            normalized_plate = func.replace(func.replace(func.upper(Vehicle.plate), "-", ""), " ", "")
+            stmt = stmt.where(
+                Vehicle.plate.ilike(f"%{raw_query}%")
+                | normalized_plate.ilike(f"%{normalized_query}%")
+                | Vehicle.vin.ilike(f"%{raw_query}%")
+                | Vehicle.rentway_unit_nr.ilike(f"%{raw_query}%")
+                | Vehicle.brand.ilike(f"%{raw_query}%")
+                | Vehicle.model.ilike(f"%{raw_query}%")
+            )
+        vehicles = sorted(db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True)[:120]
+        plate_suggestions = [
+            plate
+            for plate in db.scalars(
+                select(Vehicle.plate)
+                .where(Vehicle.plate.is_not(None))
+                .order_by(Vehicle.plate.asc())
+                .limit(1000)
+            ).all()
+            if plate
+        ]
+        rows = []
+        for vehicle in vehicles:
+            context = clean_vehicle_display_context(db, vehicle)
+            rows.append(
+                {
+                    "vehicle": vehicle,
+                    "context": context,
+                    "alert_count": len(context["alerts"]),
+                    "primary_alert": context["alerts"][0] if context["alerts"] else None,
+                }
+            )
+        counts = {
+            "active": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.active.is_(True), ~sold_filter)) or 0,
+            "for_sale": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")) or 0,
+            "blocked_sale": db.scalar(
+                select(func.count()).select_from(VehicleManualField).where(
+                    VehicleManualField.field_code == "sale_blocked",
+                    VehicleManualField.value_json == True,
+                )
+            ) or 0,
+            "total": db.scalar(select(func.count()).select_from(Vehicle)) or 0,
+        }
+    return templates.TemplateResponse(
+        request,
+        "clean_fleet.html",
+        {"rows": rows, "counts": counts, "q": q or "", "scope": scope, "plate_suggestions": plate_suggestions},
+    )
+
+
+
+@web_router.get("/v2-clean/fleet/{vehicle_id}/documents", response_class=HTMLResponse)
+def clean_fleet_documents(
+    request: Request,
+    vehicle_id: int,
+    q: str | None = None,
+    doc_group: str = "",
+    document_type: str = "",
+    status: str = "",
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        context = clean_vehicle_display_context(db, vehicle)
+        stmt = select(Document).where(or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate))
+        if status:
+            stmt = stmt.where(Document.status == status)
+        if document_type:
+            stmt = stmt.where(Document.document_type == document_type)
+        if q:
+            like = f"%{q}%"
+            stmt = stmt.where(
+                or_(
+                    Document.title.ilike(like),
+                    Document.original_name.ilike(like),
+                    Document.supplier_name.ilike(like),
+                    Document.source_subject.ilike(like),
+                    Document.contract_number.ilike(like),
+                    Document.reservation_number.ilike(like),
+                )
+            )
+        all_documents = db.scalars(stmt.order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())).all()
+        rows = []
+        for document in all_documents:
+            group = clean_vehicle_document_group(document)
+            if doc_group and group != doc_group:
+                continue
+            linked_process = "-"
+            if document.workshop_process_id:
+                linked_process = f"Oficina #{document.workshop_process_id}"
+            elif document.task_id:
+                linked_process = f"Tarefa #{document.task_id}"
+            elif document.incident_id:
+                linked_process = f"Problema #{document.incident_id}"
+            rows.append({"document": document, "group": group, "linked_process": linked_process, "problem_count": 0})
+        summary = clean_vehicle_document_summary(all_documents)
+    return templates.TemplateResponse(
+        request,
+        "clean_fleet_documents.html",
+        {
+            "ctx": context,
+            "rows": rows[:300],
+            "q": q or "",
+            "doc_group": doc_group,
+            "document_type": document_type,
+            "status": status,
+            "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
+            "document_groups": CLEAN_FLEET_DOCUMENT_GROUPS,
+            "document_summary": summary,
+            "document_types": DOCUMENT_TYPES,
+            "document_type_labels": DOCUMENT_TYPE_LABELS,
+            "document_statuses": DOCUMENT_STATUSES,
+            "document_status_labels": DOCUMENT_STATUS_LABELS,
+        },
+    )
+@web_router.get("/v2-clean/fleet/{vehicle_id}", response_class=HTMLResponse)
+def clean_fleet_detail(request: Request, vehicle_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        context = clean_vehicle_display_context(db, vehicle)
+        all_vehicle_documents = db.scalars(
+            select(Document)
+            .where(or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate))
+            .order_by(Document.updated_at.desc(), Document.id.desc())
+        ).all()
+        documents = all_vehicle_documents[:8]
+        document_summary = clean_vehicle_document_summary(all_vehicle_documents)
+        tasks = db.scalars(
+            select(Task)
+            .where(Task.plate == vehicle.plate, Task.status.not_in(["closed", "resolved", "cancelled"]))
+            .order_by(Task.updated_at.desc(), Task.id.desc())
+            .limit(8)
+        ).all()
+        audits = db.scalars(
+            select(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.vehicle_id == vehicle.id)
+            .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+            .limit(6)
+        ).all()
+        document_counts = {
+            row[0] or "sem_classificacao": row[1]
+            for row in db.execute(
+                select(Document.classification, func.count()).where(
+                    or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate)
+                ).group_by(Document.classification)
+            ).all()
+        }
+    return templates.TemplateResponse(
+        request,
+        "clean_fleet_detail.html",
+        {
+            "ctx": context,
+            "documents": documents,
+            "tasks": tasks,
+            "audits": audits,
+            "document_counts": document_counts,
+            "document_summary": document_summary,
+            "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
+        },
+    )
+@web_router.get("/v2-clean/workshop-entry", response_class=HTMLResponse)
+def clean_workshop_entry(
+    request: Request,
+    vehicle_id: int | None = None,
+    plate: str | None = None,
+    historical: bool = False,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_name = "Utilizador atual"
+    user_id = get_web_user_id(request)
+    if user_id:
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if user:
+                user_name = user.name or user.email
+    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical)
+    with SessionLocal() as db:
+        vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+    return templates.TemplateResponse(
+        request,
+        "clean_workshop_entry.html",
+        {
+            "entry_reasons": CLEAN_WORKSHOP_ENTRY_REASONS,
+            "current_entry_timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "current_user_name": user_name,
+            "workshop_steps": clean_workshop_steps(query_suffix),
+            "vehicle_context": vehicle_context,
+            "is_historical": historical,
+            "active_step": "entrada",
+            "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
+        },
+    )
+
+
+@web_router.get("/v2-clean/workshop/{phase}", response_class=HTMLResponse)
+def clean_workshop_phase(
+    request: Request,
+    phase: str,
+    vehicle_id: int | None = None,
+    plate: str | None = None,
+    historical: bool = False,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical)
+    if phase in {"entrada", "entry"}:
+        return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
+    phase = CLEAN_WORKSHOP_PHASE_ALIASES.get(phase, phase)
+    phase_config = CLEAN_WORKSHOP_PHASES.get(phase)
+    if not phase_config:
+        return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
+    with SessionLocal() as db:
+        vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+    return templates.TemplateResponse(
+        request,
+        "clean_workshop_phase.html",
+        {
+            "phase_key": phase,
+            "phase": phase_config,
+            "workshop_steps": clean_workshop_steps(query_suffix),
+            "vehicle_context": vehicle_context,
+            "is_historical": historical,
+            "active_step": phase,
+        },
+    )
+
+
 @web_router.get("/admin", response_class=HTMLResponse)
 def admin_page(
     request: Request,
@@ -3307,6 +4392,7 @@ def vehicle_detail(
         )
         carfast_management = vehicle_manual_values(db, vehicle.id)
         carfast_finance = current_cost_from_snapshot(snapshot)
+        vehicle_rules = vehicle_rule_context(snapshot, carfast_management)
         events = db.scalars(
             select(VehicleOperationalStatusEvent)
             .where(VehicleOperationalStatusEvent.vehicle_id == vehicle.id)
@@ -3375,6 +4461,8 @@ def vehicle_detail(
                 "rentway_context": rentway_commercial_context(snapshot),
                 "carfast_management": carfast_management,
                 "carfast_finance": carfast_finance,
+                "vehicle_rules": vehicle_rules,
+                "vehicle_rule_categories": VEHICLE_RULE_CATEGORIES,
                 "can_manage_carfast": can_manage_carfast_fleet(request),
                 "trade_list_states": TRADE_LIST_STATES,
                 "trade_decisions": TRADE_DECISIONS,
@@ -3951,6 +5039,12 @@ def update_vehicle_carfast_management(
     sale_blocked: str | None = Form(None),
     sale_block_reason: str = Form(""),
     sale_block_reason_other: str = Form(""),
+    real_start_date: str = Form(""),
+    rule_category: str = Form(""),
+    maintenance_interval_km: str = Form(""),
+    maintenance_interval_months: str = Form(""),
+    maintenance_last_valid_km: str = Form(""),
+    maintenance_last_valid_date: str = Form(""),
     finance_entity: str = Form(""),
     debt_value: str = Form(""),
     trade_list_state: str = Form("candidata"),
@@ -3974,7 +5068,14 @@ def update_vehicle_carfast_management(
         normalized_state = trade_list_state if trade_list_state in TRADE_LIST_STATE_LABELS else "candidata"
         normalized_decision = trade_decision if trade_decision in TRADE_DECISION_LABELS else ""
         normalized_reason = sale_block_reason if sale_block_reason in SALE_BLOCK_REASON_LABELS else ""
+        normalized_rule_category = rule_category if rule_category in VEHICLE_RULE_CATEGORY_LABELS else ""
         new_values = {
+            "real_start_date": real_start_date.strip()[:40],
+            "rule_category": normalized_rule_category,
+            "maintenance_interval_km": maintenance_interval_km.strip()[:80],
+            "maintenance_interval_months": maintenance_interval_months.strip()[:80],
+            "maintenance_last_valid_km": maintenance_last_valid_km.strip()[:80],
+            "maintenance_last_valid_date": maintenance_last_valid_date.strip()[:40],
             "sale_blocked": sale_blocked == "1",
             "sale_block_reason": normalized_reason,
             "sale_block_reason_other": sale_block_reason_other.strip()[:500],
@@ -11854,7 +12955,40 @@ def login_submit(
             user_id=user.id,
         )
         db.commit()
+    if clean_next_url == "/":
+        return RedirectResponse("/choose-experience", status_code=303)
     return RedirectResponse(clean_next_url, status_code=303)
+
+
+@web_router.get("/choose-experience", response_class=HTMLResponse)
+def choose_experience(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "choose_experience.html",
+            {
+                "user": user,
+                "can_use_clean": True,
+            },
+        )
+
+
+@web_router.get("/switch-experience/{experience}", response_class=HTMLResponse)
+def switch_experience(request: Request, experience: str):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if experience == "clean":
+        request.session["carfast_experience"] = "clean"
+        return RedirectResponse("/v2-clean", status_code=303)
+    request.session["carfast_experience"] = "current"
+    return RedirectResponse("/", status_code=303)
 
 
 def safe_internal_next(value: str | None) -> str:

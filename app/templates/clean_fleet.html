@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Frota / experiência nova</p>
+        <h2>Ficha simples da viatura</h2>
+        <p>Lista limpa para abrir a ficha v2-clean, ver alertas e confirmar dados base.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/fleet">Frota atual</a>
+        <a class="button-link secondary-link" href="/v2-clean">Início v2-clean</a>
+      </div>
+    </header>
+
+    <section class="clean-metric-grid clean-fleet-metrics">
+      <a href="/v2-clean/fleet?scope=active"><span>Ativas</span><strong>{{ counts.active }}</strong></a>
+      <a href="/v2-clean/fleet?scope=for_sale"><span>Para comércio</span><strong>{{ counts.for_sale }}</strong></a>
+      <a href="/v2-clean/fleet"><span>Bloqueio venda</span><strong>{{ counts.blocked_sale }}</strong></a>
+      <a href="/v2-clean/fleet?scope=all"><span>Total</span><strong>{{ counts.total }}</strong></a>
+    </section>
+
+    <section class="clean-panel clean-card-wide clean-fleet-list-panel">
+      <form method="get" action="/v2-clean/fleet" class="clean-fleet-toolbar" data-clean-fleet-search>
+        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off" list="clean-fleet-plate-suggestions" data-clean-fleet-query></label>
+        <label>Âmbito<select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para comércio</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select></label>
+        <button type="submit">Filtrar</button>
+      </form>
+      <datalist id="clean-fleet-plate-suggestions">
+        {% for plate in plate_suggestions %}
+          <option value="{{ plate }}"></option>
+        {% endfor %}
+      </datalist>
+
+      <div class="clean-fleet-list">
+        {% for row in rows %}
+          {% set ctx = row.context %}
+          {% set vehicle = row.vehicle %}
+          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ vehicle.id }}">
+            <div class="clean-fleet-row-main">
+              <strong>{{ ctx.identity.plate or '-' }}</strong>
+              <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
+              <em>Unit {{ ctx.identity.unit or '-' }} · {{ ctx.identity.vin }}</em>
+            </div>
+            <div><span>Grupo</span><b>{{ ctx.identity.groupid }}</b></div>
+            <div><span>Combustível</span><b>{{ ctx.identity.fuel }}</b></div>
+            <div><span>IPO</span><b>{{ ctx.dates.calculated_ipo }}</b></div>
+            <div><span>Manutenção</span><b>{{ ctx.maintenance.status }}</b></div>
+            <div class="clean-fleet-row-alert {% if row.primary_alert %}{{ row.primary_alert.severity }}{% endif %}">
+              {% if row.primary_alert %}<b>{{ row.primary_alert.title }}</b><span>{{ row.primary_alert.detail }}</span>{% else %}<b>Sem alertas</b><span>Dados críticos OK</span>{% endif %}
+            </div>
+          </a>
+        {% else %}
+          <p class="muted">Sem viaturas para os filtros selecionados.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  (() => {
+    const form = document.querySelector("[data-clean-fleet-search]");
+    const query = document.querySelector("[data-clean-fleet-query]");
+    if (!form || !query) return;
+    let timer;
+    let lastSubmitted = query.value.trim();
+    const submitSearch = () => {
+      const current = query.value.trim();
+      if (current === lastSubmitted) return;
+      lastSubmitted = current;
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+    };
+    query.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(submitSearch, 300);
+    });
+    query.addEventListener("search", () => {
+      clearTimeout(timer);
+      submitSearch();
+    });
+  })();
+</script>
+{% endblock %}
+

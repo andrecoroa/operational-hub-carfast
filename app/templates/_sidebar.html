@@ -5,39 +5,54 @@
     <h1>Operational Hub</h1>
   </div>
   <nav>
-    <span class="nav-section-label">Operações</span>
-    {% if "dashboard.read" in nav_perms %}
-      <a href="/" {% if active_menu == "dashboard" %}class="active"{% endif %}>Dashboard</a>
-    {% endif %}
-    {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.administration.read", "tasks.administration.write") %}
-      <a href="/task-board" {% if active_menu == "tasks" %}class="active"{% endif %}>
-        Centro de Tarefas
-        {% if nav_task_count is defined %}<span class="nav-badge">{{ nav_task_count }}</span>{% endif %}
-      </a>
-    {% endif %}
-    {% if "workshop.read" in nav_perms %}
-      <a href="/workshop" {% if active_menu == "workshop" %}class="active"{% endif %}>
-        Oficina
-        {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
-      </a>
-      <a class="sidebar-sub-link" href="/workshop/processes-ui">Processos por fases</a>
-      <a class="sidebar-sub-link" href="/workshop/new-process">Novo por fases</a>
-    {% endif %}
-    {% if "vehicles.read" in nav_perms %}
-      <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
-    {% endif %}
-    {% if nav_has_permission(request, "management_center.read", "management_center.write") %}
-      <a href="/management-center" {% if active_menu == "management_center" %}class="active"{% endif %}>Centro de Gestão</a>
-    {% endif %}
-    <span class="nav-section-label">Sistema</span>
-    {% if "imports.run" in nav_perms or "imports.approve" in nav_perms %}
-      <a href="/imports" {% if active_menu == "imports" %}class="active"{% endif %}>Importações</a>
-    {% endif %}
-    {% if "documents.read" in nav_perms or "documents.write" in nav_perms %}
-      <a href="/documents" {% if active_menu == "documents" %}class="active"{% endif %}>Documentos</a>
-    {% endif %}
-    {% if "admin.manage" in nav_perms or "users.manage" in nav_perms or "settings.manage" in nav_perms %}
-      <a href="/admin" {% if active_menu == "admin" %}class="active"{% endif %}>Administração</a>
+    {% set is_clean_experience = request.url.path.startswith('/v2-clean') %}
+    <a class="sidebar-experience-switch" href="{% if is_clean_experience %}/switch-experience/current{% else %}/switch-experience/clean{% endif %}">
+      {% if is_clean_experience %}CarFast atual{% else %}Nova experiência{% endif %}
+    </a>
+    {% if is_clean_experience %}
+      <span class="nav-section-label">Nova experiência</span>
+      <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
+      <a href="/v2-clean/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
+      <a href="/v2-clean/workshop-entry" {% if active_menu == "workshop" %}class="active"{% endif %}>Oficina</a>
+      <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+      <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
+      <span class="nav-section-label">Apoio</span>
+      <a href="/v2-clean/fleet">Documentação por viatura</a>
+    {% else %}
+      <span class="nav-section-label">Operações</span>
+      {% if "dashboard.read" in nav_perms %}
+        <a href="/" {% if active_menu == "dashboard" %}class="active"{% endif %}>Dashboard</a>
+      {% endif %}
+      {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.administration.read", "tasks.administration.write") %}
+        <a href="/task-board" {% if active_menu == "tasks" %}class="active"{% endif %}>
+          Centro de Tarefas
+          {% if nav_task_count is defined %}<span class="nav-badge">{{ nav_task_count }}</span>{% endif %}
+        </a>
+      {% endif %}
+      {% if "workshop.read" in nav_perms %}
+        <a href="/workshop" {% if active_menu == "workshop" %}class="active"{% endif %}>
+          Oficina
+          {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
+        </a>
+        <a class="sidebar-sub-link" href="/workshop/processes-ui">Processos por fases</a>
+        <a class="sidebar-sub-link" href="/workshop/new-process">Novo por fases</a>
+      {% endif %}
+      {% if "vehicles.read" in nav_perms %}
+        <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
+      {% endif %}
+      {% if nav_has_permission(request, "management_center.read", "management_center.write") %}
+        <a href="/management-center" {% if active_menu == "management_center" %}class="active"{% endif %}>Centro de Gestão</a>
+      {% endif %}
+      <span class="nav-section-label">Sistema</span>
+      {% if "imports.run" in nav_perms or "imports.approve" in nav_perms %}
+        <a href="/imports" {% if active_menu == "imports" %}class="active"{% endif %}>Importações</a>
+      {% endif %}
+      {% if "documents.read" in nav_perms or "documents.write" in nav_perms %}
+        <a href="/documents" {% if active_menu == "documents" %}class="active"{% endif %}>Documentos</a>
+      {% endif %}
+      {% if "admin.manage" in nav_perms or "users.manage" in nav_perms or "settings.manage" in nav_perms %}
+        <a href="/admin" {% if active_menu == "admin" %}class="active"{% endif %}>Administração</a>
+      {% endif %}
     {% endif %}
   </nav>
   <div class="sidebar-status">

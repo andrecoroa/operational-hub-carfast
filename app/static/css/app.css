@@ -313,6 +313,12 @@ button {
   color: var(--brand-dark);
 }
 
+.primary-link {
+  background: var(--brand);
+  color: #ffffff;
+  border-color: var(--brand);
+}
+
 .manual-link {
   background: #ffffff;
   border: 1px solid var(--line);
@@ -577,6 +583,10 @@ button:hover,
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.nav-section-label-tight {
+  margin-top: 8px;
 }
 
 .sidebar-status {

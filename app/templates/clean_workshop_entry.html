@@ -16,10 +16,15 @@
         </div>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        {% if is_historical %}
+          <a class="button-link primary-link" href="/v2-clean/workshop-entry?historical=1">Novo histórico</a>
+        {% else %}
+          <a class="button-link primary-link" href="/v2-clean/workshop-entry">Novo processo</a>
+        {% endif %}
         <button type="button" class="button-link secondary-link">Criar tarefa</button>
         <button type="button" class="button-link danger-link">Criar problema</button>
         {% if is_historical %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Nova entrada</a>
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Entrada operacional</a>
         {% else %}
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
         {% endif %}

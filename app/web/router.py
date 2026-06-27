@@ -3072,6 +3072,7 @@ def clean_workshop_query_suffix(
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
+    new_entry: bool = False,
 ) -> str:
     query: dict[str, str] = {}
     if vehicle_id:
@@ -3080,7 +3081,22 @@ def clean_workshop_query_suffix(
         query["plate"] = plate
     if historical:
         query["historical"] = "1"
+    if new_entry:
+        query["new"] = "1"
     return f"?{urlencode(query)}" if query else ""
+
+
+def clean_workshop_mark_draft_context(
+    vehicle_context: dict[str, object],
+    *,
+    historical: bool = False,
+    new_entry: bool = False,
+) -> dict[str, object]:
+    if not new_entry:
+        return vehicle_context
+    context = dict(vehicle_context)
+    context["process_ref"] = "OFI-2026-HIST-RASCUNHO" if historical else "OFI-2026-RASCUNHO"
+    return context
 
 
 def clean_workshop_steps(query_suffix: str = "") -> list[dict[str, str | int]]:
@@ -3655,6 +3671,7 @@ def clean_workshop_entry(
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
+    new: bool = False,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -3666,9 +3683,15 @@ def clean_workshop_entry(
             user = db.get(User, user_id)
             if user:
                 user_name = user.name or user.email
-    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical)
+    query_suffix = clean_workshop_query_suffix(
+        vehicle_id=vehicle_id,
+        plate=plate,
+        historical=historical,
+        new_entry=new,
+    )
     with SessionLocal() as db:
         vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+    vehicle_context = clean_workshop_mark_draft_context(vehicle_context, historical=historical, new_entry=new)
     return templates.TemplateResponse(
         request,
         "clean_workshop_entry.html",
@@ -3679,8 +3702,11 @@ def clean_workshop_entry(
             "workshop_steps": clean_workshop_steps(query_suffix),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
+            "is_new_entry": new,
             "active_step": "entrada",
             "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
+            "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, new_entry=True)}",
+            "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True, new_entry=True)}",
         },
     )
 
@@ -3692,11 +3718,12 @@ def clean_workshop_phase(
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
+    new: bool = False,
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical)
+    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=new)
     if phase in {"entrada", "entry"}:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     phase = CLEAN_WORKSHOP_PHASE_ALIASES.get(phase, phase)
@@ -3705,6 +3732,7 @@ def clean_workshop_phase(
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     with SessionLocal() as db:
         vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+    vehicle_context = clean_workshop_mark_draft_context(vehicle_context, historical=historical, new_entry=new)
     return templates.TemplateResponse(
         request,
         "clean_workshop_phase.html",

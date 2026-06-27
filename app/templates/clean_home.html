@@ -4,11 +4,11 @@
   {% set active_menu = "clean" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-hero">
+    <header class="clean-hero clean-home-hero">
       <div>
         <p class="eyebrow">Experiência nova / beta</p>
-        <h2>CarFast limpa</h2>
-        <p>Uma entrada mais simples para operar por módulos, processos e ações guiadas. A versão atual continua disponível.</p>
+        <h2>CarFast v2-clean</h2>
+        <p>Entrada simples para operar por módulos, processos guiados e dados da frota.</p>
       </div>
       <div class="button-row">
         <a class="button-link secondary-link" href="/">Versão atual</a>
@@ -16,25 +16,24 @@
       </div>
     </header>
 
-    <nav class="clean-module-nav" aria-label="Módulos principais">
-      <a href="/v2-clean/fleet"><strong>Frota</strong><span>Viaturas, histórico e comércio</span></a>
-      <a href="/v2-clean/workshop-entry"><strong>Oficina</strong><span>Fluxo limpo em 7 fases</span></a>
-      <a href="/task-board"><strong>Centro de Tarefas</strong><span>Ações e workflows</span></a>
-      <a href="/v2-clean/processes"><strong>Centro de Processos</strong><span>Área → modelo → processo</span></a>
-      <a href="/documents"><strong>Documentação</strong><span>Arquivo e evidências</span></a>
-      <a href="/management-center"><strong>Gestão</strong><span>Sinistros e auditorias</span></a>
-      <a href="/admin"><strong>Administração</strong><span>Utilizadores e parâmetros</span></a>
+    <nav class="clean-home-module-grid" aria-label="Módulos principais">
+      <a href="/v2-clean/fleet"><b>Frota</b><span>Ficha, regras e documentação</span></a>
+      <a href="/v2-clean/workshop-entry?new=1"><b>Oficina</b><span>Entrada e fases de trabalho</span></a>
+      <a href="/v2-clean/processes"><b>Processos</b><span>Área, modelo e acompanhamento</span></a>
+      <a href="/v2-clean/fleet"><b>Documentação</b><span>Arquivo por viatura</span></a>
+      <a href="/v2-clean/processes"><b>Gestão</b><span>Sinistros, auditorias e decisões</span></a>
+      <a href="/"><b>Administração</b><span>Disponível na versão atual</span></a>
     </nav>
 
-    <section class="clean-metric-grid">
-      <article><span>Viaturas</span><strong>{{ quick_metrics.vehicles }}</strong></article>
-      <article><span>Tarefas abertas</span><strong>{{ quick_metrics.tasks }}</strong></article>
-      <article><span>Alertas oficina</span><strong>{{ quick_metrics.workshop_alerts }}</strong></article>
-      <article><span>Auditorias abertas</span><strong>{{ quick_metrics.audits }}</strong></article>
+    <section class="clean-home-metrics" aria-label="Indicadores principais">
+      <article><span>Viaturas</span><strong>{{ quick_metrics.vehicles }}</strong><em>na frota</em></article>
+      <article><span>Tarefas</span><strong>{{ quick_metrics.tasks }}</strong><em>abertas</em></article>
+      <article><span>Oficina</span><strong>{{ quick_metrics.workshop_alerts }}</strong><em>alertas</em></article>
+      <article><span>Auditorias</span><strong>{{ quick_metrics.audits }}</strong><em>abertas</em></article>
     </section>
 
-    <section class="clean-page-grid">
-      <article class="clean-panel clean-panel-wide">
+    <section class="clean-home-main-grid">
+      <article class="clean-panel clean-home-process-panel">
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Centro de Processos</p>
@@ -44,32 +43,68 @@
         </div>
         <div class="clean-area-grid">
           {% for area in area_cards %}
-            <a class="clean-area-card" href="{{ area.href }}">
+            <a class="clean-home-area-card" href="{{ area.href }}">
               <span class="clean-area-code">{{ area.label[:2]|upper }}</span>
-              <strong>{{ area.label }}</strong>
-              <small>{{ area.description }}</small>
+              <div>
+                <strong>{{ area.label }}</strong>
+                <small>{{ area.description }}</small>
+              </div>
               <div class="clean-card-meta">
-                <span>{{ area.open }} abertos</span>
-                <span>{{ area.critical }} críticos</span>
+                <span><b>{{ area.open }}</b> abertos</span>
+                <span><b>{{ area.critical }}</b> críticos</span>
               </div>
             </a>
           {% endfor %}
         </div>
       </article>
 
-      <article class="clean-panel">
-        <div class="table-heading flat-heading">
+      <aside class="clean-home-side-stack">
+        <article class="clean-panel clean-home-action-panel">
           <div>
             <p class="eyebrow">Oficina</p>
             <h3>Entrada rápida</h3>
+            <p>Fluxo visual em 7 fases para entrada, validação, diagnóstico, reparação e fecho.</p>
           </div>
+          <div class="clean-action-row">
+            <a class="button-link" href="/v2-clean/workshop-entry?new=1">Nova entrada</a>
+            <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1&new=1">Processo histórico</a>
+          </div>
+        </article>
+
+        <article class="clean-panel clean-home-action-panel soft">
+          <div>
+            <p class="eyebrow">Frota</p>
+            <h3>Consultar viatura</h3>
+            <p>Abrir ficha, documentação, alertas e regras de manutenção/IPO.</p>
+          </div>
+          <div class="clean-action-row">
+            <a class="button-link secondary-link" href="/v2-clean/fleet">Abrir frota</a>
+          </div>
+        </article>
+
+        <article class="clean-panel clean-home-action-panel soft">
+          <div>
+            <p class="eyebrow">Publicação</p>
+            <h3>Em desenvolvimento</h3>
+            <p>A versão atual continua disponível. Esta área serve para testar os novos fluxos com menos ruído.</p>
+          </div>
+        </article>
+      </aside>
+    </section>
+
+    <section class="clean-panel clean-home-flow">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Caminho base</p>
+          <h3>Como usar esta versão</h3>
         </div>
-        <p class="muted">Versão A do processo: fluxo visual fechado em 7 fases, com campos protótipo e navegação estável.</p>
-        <div class="clean-action-row">
-          <a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
-        </div>
-      </article>
+      </div>
+      <div class="clean-home-flow-grid">
+        <span><b>1</b><em>Escolher módulo</em></span>
+        <span><b>2</b><em>Abrir processo ou ficha</em></span>
+        <span><b>3</b><em>Anexar documentos</em></span>
+        <span><b>4</b><em>Validar e acompanhar</em></span>
+      </div>
     </section>
   </main>
 </div>

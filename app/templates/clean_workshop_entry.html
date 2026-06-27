@@ -12,21 +12,22 @@
         <div class="clean-header-meta">
           <span><b>Registado em</b><em>{{ current_entry_timestamp }}</em></span>
           <span><b>Registado por</b><em>{{ current_user_name }}</em></span>
+          {% if is_new_entry %}<span class="clean-history-badge"><b>Estado</b><em>Rascunho novo</em></span>{% endif %}
           {% if is_historical %}<span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>{% endif %}
         </div>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         {% if is_historical %}
-          <a class="button-link primary-link" href="/v2-clean/workshop-entry?historical=1">Novo histórico</a>
+          <a class="button-link primary-link" href="{{ new_historical_url }}">Novo histórico</a>
         {% else %}
-          <a class="button-link primary-link" href="/v2-clean/workshop-entry">Novo processo</a>
+          <a class="button-link primary-link" href="{{ new_entry_url }}">Novo processo</a>
         {% endif %}
         <button type="button" class="button-link secondary-link">Criar tarefa</button>
         <button type="button" class="button-link danger-link">Criar problema</button>
         {% if is_historical %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Entrada operacional</a>
+          <a class="button-link secondary-link" href="{{ new_entry_url }}">Entrada operacional</a>
         {% else %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+          <a class="button-link secondary-link" href="{{ new_historical_url }}">Processo histórico</a>
         {% endif %}
         <a class="button-link secondary-link" href="/workshop/processes-ui">Oficina atual</a>
       </div>

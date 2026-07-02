@@ -12,24 +12,15 @@
         <div class="clean-header-meta">
           <span><b>Registado em</b><em>{{ current_entry_timestamp }}</em></span>
           <span><b>Registado por</b><em>{{ current_user_name }}</em></span>
-          {% if is_new_entry %}<span class="clean-history-badge"><b>Estado</b><em>Rascunho novo</em></span>{% endif %}
+          {% if workshop_process %}<span class="clean-history-badge"><b>Estado</b><em>Aberto</em></span>{% endif %}
           {% if is_historical %}<span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>{% endif %}
         </div>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
-        {% if is_historical %}
-          <a class="button-link primary-link" href="{{ new_historical_url }}">Novo histórico</a>
-        {% else %}
-          <a class="button-link primary-link" href="{{ new_entry_url }}">Novo processo</a>
-        {% endif %}
+        {% if not workshop_process %}<a class="button-link primary-link" href="{{ new_entry_url }}">Criar processo</a>{% endif %}
+        <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
         <button type="button" class="button-link secondary-link">Criar tarefa</button>
         <button type="button" class="button-link danger-link">Criar problema</button>
-        {% if is_historical %}
-          <a class="button-link secondary-link" href="{{ new_entry_url }}">Entrada operacional</a>
-        {% else %}
-          <a class="button-link secondary-link" href="{{ new_historical_url }}">Processo histórico</a>
-        {% endif %}
-        <a class="button-link secondary-link" href="/workshop/processes-ui">Oficina atual</a>
       </div>
     </header>
 
@@ -37,7 +28,7 @@
       <div class="clean-vehicle-identity">
         <strong>{{ vehicle_context.plate }}</strong>
         <span>{{ vehicle_context.vehicle }}</span>
-        <em>{{ vehicle_context.process_ref }} · Chassi: {{ vehicle_context.vin }}</em>
+        <em>Chassi: {{ vehicle_context.vin }}</em>
       </div>
       <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
         <div class="clean-vehicle-quick-facts">
@@ -59,20 +50,24 @@
     </section>
 
     <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
+      {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       {% if is_historical %}<input type="hidden" name="process_mode" value="historical">{% endif %}
+      {% set saved_reasons = saved_entry.entry_reasons or [] %}
+      {% set saved_physical = saved_entry.physical_checks or {} %}
+      {% set saved_minimum = saved_entry.minimum_checks or {} %}
       <section class="clean-phase-workbench clean-card-wide">
         <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
           <button class="clean-substep-card active" type="button" data-target="motivo">
             <span><b>Motivo da entrada</b><em>Pedido recebido e prioridade</em></span>
-            <strong>Obrigatório</strong>
+            <strong>{{ entry_substep_status.motivo }}</strong>
           </button>
           <button class="clean-substep-card" type="button" data-target="danos">
             <span><b>Verificações físicas</b><em>Danos, documentos e equipamento</em></span>
-            <strong>Por validar</strong>
+            <strong>{{ entry_substep_status.danos }}</strong>
           </button>
           <button class="clean-substep-card" type="button" data-target="saida">
             <span><b>Saída da entrada</b><em>Guardar ou avançar fase</em></span>
-            <strong>Rascunho</strong>
+            <strong>{{ entry_substep_status.saida }}</strong>
           </button>
         </aside>
 
@@ -87,7 +82,7 @@
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
-                <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if loop.first %}checked{% endif %}> <span>{{ reason }}</span></label>
+                <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% elif not saved_reasons and loop.first %}checked{% endif %}> <span>{{ reason }}</span></label>
               {% endfor %}
             </div>
             {% if is_historical %}
@@ -95,20 +90,36 @@
                 <strong>Reconstrução de histórico</strong>
                 <span>Usar quando a intervenção já aconteceu e estás a carregar documentos antigos para teste, auditoria e extração de dados.</span>
                 <div class="clean-phase-field-grid">
-                  <label>Data da intervenção<input type="date" name="historical_intervention_date"></label>
-                  <label>Km conhecido<input name="historical_km" inputmode="numeric" placeholder="Km, se conhecido"></label>
-                  <label>Oficina / fornecedor<input name="historical_supplier" placeholder="Fornecedor ou oficina"></label>
-                  <label>Nível de confiança<select name="historical_confidence"><option>Parcial</option><option>Completo</option><option>Só documentos</option><option>Por validar</option></select></label>
+                  <label>Data da intervenção<input type="date" name="historical_intervention_date" value="{{ saved_entry.historical_intervention_date or '' }}"></label>
+                  <label>Km conhecido<input name="historical_km" inputmode="numeric" placeholder="Km, se conhecido" value="{{ saved_entry.historical_km or '' }}"></label>
+                  <label>Oficina / fornecedor<input name="historical_supplier" placeholder="Fornecedor ou oficina" value="{{ saved_entry.historical_supplier or '' }}"></label>
+                  <label>Nível de confiança<select name="historical_confidence">
+                    {% for option in ["Parcial", "Completo", "Só documentos", "Por validar"] %}
+                      <option {% if (saved_entry.historical_confidence or "Parcial") == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                  </select></label>
                 </div>
               </div>
             {% endif %}
-            <div class="clean-phase-field-grid"><label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma..."></textarea></label>
-<label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme..."></textarea></label>
+            <div class="clean-phase-field-grid"><label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
+<label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
 
-              <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ vehicle_context.entry_km }}"></label>
-<label>Quem reportou<select name="reported_by"><option>Operador</option><option>Cliente</option><option>Oficina</option><option>Sistema</option></select></label>
-              <label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Crítica</option></select></label>
-              <label>Viatura pode circular?<select name="can_drive"><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+              <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or vehicle_context.entry_km }}"></label>
+<label>Quem reportou<select name="reported_by">
+                {% for option in ["Operador", "Cliente", "Oficina", "Sistema"] %}
+                  <option {% if (saved_entry.reported_by or "Operador") == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select></label>
+              <label>Prioridade<select name="priority">
+                {% for option in ["Normal", "Alta", "Crítica"] %}
+                  <option {% if (saved_entry.priority or "Normal") == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select></label>
+              <label>Viatura pode circular?<select name="can_drive">
+                {% for option in ["Por confirmar", "Sim", "Não"] %}
+                  <option {% if (saved_entry.can_drive or "Por confirmar") == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select></label>
             </div>
           </article>
 
@@ -123,7 +134,7 @@
             <div class="clean-physical-check-grid">
               {% set physical_checks = [
                 ("visible_damage", "Danos visíveis?"),
-                ("rentway_damage_match", "Danos coerentes com Rentway?"),
+                ("damage_matches_rentway", "Danos coerentes com Rentway?"),
                 ("dua_copy", "Cópia de DUA?"),
                 ("green_card_valid", "Carta Verde válida?"),
                 ("vv_device", "Dispositivo VV?"),
@@ -137,9 +148,9 @@
                 <div class="clean-physical-check-item">
                   <span>{{ label }}</span>
                   <div class="clean-choice-boxes" role="radiogroup" aria-label="{{ label }}">
-                    <label><input type="radio" name="{{ code }}" value="yes"><span>Sim</span></label>
-                    <label><input type="radio" name="{{ code }}" value="no"><span>Não</span></label>
-                    <label><input type="radio" name="{{ code }}" value="not_checked" checked><span>N/V</span></label>
+                    <label><input type="radio" name="{{ code }}" value="yes" {% if saved_physical.get(code, "not_checked") == "yes" %}checked{% endif %}><span>Sim</span></label>
+                    <label><input type="radio" name="{{ code }}" value="no" {% if saved_physical.get(code, "not_checked") == "no" %}checked{% endif %}><span>Não</span></label>
+                    <label><input type="radio" name="{{ code }}" value="not_checked" {% if saved_physical.get(code, "not_checked") == "not_checked" %}checked{% endif %}><span>N/V</span></label>
                   </div>
                 </div>
               {% endfor %}
@@ -187,7 +198,7 @@
                 </div>
               </div>
             </div>
-            <label class="clean-full-label">Notas / evidência física<textarea rows="3" name="physical_check_note" placeholder="Registar apenas divergências, falta de equipamento ou danos relevantes..."></textarea></label>
+            <label class="clean-full-label">Notas / evidência física<textarea rows="3" name="physical_check_note" placeholder="Registar apenas divergências, falta de equipamento ou danos relevantes...">{{ saved_entry.physical_check_note or "" }}</textarea></label>
             <div class="clean-upload-box clean-upload-inline">
               <strong>Fotos de apoio</strong>
               <span>Adicionar imagens quando existir dano, falta de equipamento ou divergência.</span>
@@ -210,29 +221,29 @@
               <div class="clean-minimum-checks">
                 <strong>Condições mínimas</strong>
                 {% set minimum_checks = [
-                  ("minimum_reason", "Pelo menos um motivo selecionado"),
-                  ("minimum_km", "KM confirmado"),
+                  ("minimum_reason_selected", "Pelo menos um motivo selecionado"),
+                  ("minimum_km_confirmed", "KM confirmado"),
                   ("minimum_dashboard_photo", "Foto do quadrante anexada" if not is_historical else "Evidência de km anexada ou justificada"),
-                  ("minimum_photos", "Danos/fotos revistos" if not is_historical else "Evidência física anexada ou N/A")
+                  ("minimum_damage_photos", "Danos/fotos revistos" if not is_historical else "Evidência física anexada ou N/A")
                 ] %}
                 {% for code, label in minimum_checks %}
                   <div class="clean-physical-check-item clean-minimum-check-item">
                     <span>{{ label }}</span>
                     <div class="clean-choice-boxes" role="radiogroup" aria-label="{{ label }}">
-                      <label><input type="radio" name="{{ code }}" value="yes"><span>Sim</span></label>
-                      <label><input type="radio" name="{{ code }}" value="no"><span>Não</span></label>
-                      <label><input type="radio" name="{{ code }}" value="not_checked" checked><span>N/V</span></label>
+                      <label><input type="radio" name="{{ code }}" value="yes" {% if saved_minimum.get(code, "not_checked") == "yes" %}checked{% endif %}><span>Sim</span></label>
+                      <label><input type="radio" name="{{ code }}" value="no" {% if saved_minimum.get(code, "not_checked") == "no" %}checked{% endif %}><span>Não</span></label>
+                      <label><input type="radio" name="{{ code }}" value="not_checked" {% if saved_minimum.get(code, "not_checked") == "not_checked" %}checked{% endif %}><span>N/V</span></label>
                     </div>
                   </div>
                 {% endfor %}
               </div>
               <div class="clean-exit-fields">
-                <label>Saída prevista<input name="expected_exit" type="datetime-local"></label>
-                <label>Notas para a validação administrativa<textarea rows="4" placeholder="Algo que quem valida deve saber antes de consultar histórico, plano ou Service Box..."></textarea></label>
+                <label>Saída prevista<input name="expected_exit" type="datetime-local" value="{{ saved_entry.expected_exit or '' }}"></label>
+                <label>Notas para a validação administrativa<textarea name="validation_notes" rows="4" placeholder="Algo que quem valida deve saber antes de consultar histórico, plano ou Service Box...">{{ saved_entry.validation_notes or "" }}</textarea></label>
               </div>
               <div class="clean-action-list">
-                <button type="button">Guardar entrada</button>
-                <button type="button" onclick="window.location.href='{{ next_phase_url }}'">Avançar para Validação Administrativa</button>
+                <button type="submit" name="action" value="save">Guardar entrada</button>
+                <button type="submit" name="action" value="advance">Avançar para Validação Administrativa</button>
               </div>
             </div>
           </article>

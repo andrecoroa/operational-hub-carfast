@@ -16,14 +16,9 @@
         {% endif %}
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
         <button type="button" class="button-link secondary-link">Criar tarefa</button>
         <button type="button" class="button-link danger-link">Criar problema</button>
-        {% if is_historical %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Nova entrada</a>
-        {% else %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
-        {% endif %}
-        <a class="button-link secondary-link" href="/workshop/processes-ui">Oficina atual</a>
       </div>
     </header>
 
@@ -31,7 +26,7 @@
       <div class="clean-vehicle-identity">
         <strong>{{ vehicle_context.plate }}</strong>
         <span>{{ vehicle_context.vehicle }}</span>
-        <em>{{ vehicle_context.process_ref }} · Chassi: {{ vehicle_context.vin }}</em>
+        <em>Chassi: {{ vehicle_context.vin }}</em>
       </div>
       <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
         <div class="clean-vehicle-quick-facts">
@@ -46,13 +41,25 @@
       </div>
     </section>
 
+    {% if workshop_process and workshop_process.status == "closed" %}
+      <section class="clean-panel clean-card-wide clean-process-closed-banner">
+        <div>
+          <p class="eyebrow">Processo fechado</p>
+          <h3>Este processo de oficina está encerrado.</h3>
+          <p>Os dados ficam disponíveis para consulta, histórico da viatura e futuras auditorias.</p>
+        </div>
+        <a class="button-link primary-link" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
+      </section>
+    {% endif %}
+
     <section class="clean-stepper clean-stepper-seven">
       {% for step in workshop_steps %}
         <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
       {% endfor %}
     </section>
 
-    <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
+    <form class="clean-workshop-final-grid" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
+      {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       {% if phase_key == "validacao" %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
@@ -62,7 +69,7 @@
             </button>
             <button class="clean-substep-card" type="button" data-target="pedido">
               <span><b>Validação do pedido</b><em>Serviço validado após histórico</em></span>
-              <strong>Por validar</strong>
+              <strong>{{ validation_substep_status.pedido }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="orientacao">
               <span><b>Orientação diagnóstico</b><em>Relatórios e próxima fase</em></span>
@@ -76,18 +83,18 @@
                 <div>
                   <p class="eyebrow">Pré-requisitos</p>
                   <h3>Condições da viatura para avançar</h3>
-                  <p>Informação permanente vem da ficha da viatura. Se faltar algo crítico, o processo gera tarefa e pode bloquear avanço.</p>
+                  <p>Informação permanente vem da ficha da viatura. Campanhas por executar geram tarefa e reserva, mas não bloqueiam o avanço.</p>
                 </div>
                 <span class="clean-status-pill warn">2 tarefas geradas</span>
               </div>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Pré-requisito</b><b>Origem</b><b>Estado / dado</b><b>Impacto</b><b>Ação</b></div>
                 <div><span>Plano de manutenção</span><em>Ficha da viatura</em><strong>Validado em 15/05/2026</strong><mark class="ok">Informativo</mark><a href="/fleet">Abrir plano</a></div>
-                <div><span>Service Box / campanhas</span><em>Stellantis</em><strong>1 campanha por executar</strong><mark class="danger">Bloqueante</mark><a href="/task-board">Tarefa #328</a></div>
+                <div><span>Service Box / campanhas</span><em>Stellantis</em><strong>1 campanha por executar</strong><mark class="warn">Aviso</mark><a href="/task-board">Tarefa #328</a></div>
                 <div><span>Data início CarFast</span><em>Ficha da viatura</em><strong>20/05/2024</strong><mark class="ok">Informativo</mark><a href="/fleet">Ver ficha</a></div>
                 <div><span>Auditoria histórico</span><em>Centro de processos</em><strong>Em curso</strong><mark class="warn">Aviso</mark><a href="/management-center/auditorias">Abrir auditoria</a></div>
               </div>
-              <p class="clean-rule-note">Regra: bloqueante impede avançar. Aviso permite avançar com reserva. Informativo acompanha o processo.</p>
+              <p class="clean-rule-note">Regra: campanhas por executar não bloqueiam; ficam como aviso/tarefa e permitem avançar com reserva. Só risco técnico crítico impede a passagem.</p>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-pedido">
@@ -112,26 +119,31 @@
                     <b>Documento</b>
                     <b>Decisão</b>
                   </div>
-                  <div class="clean-service-validation-row">
-                    <select name="service_type"><option>Revisão / degradação óleo</option><option>Revisão</option><option>Degradação óleo</option><option>Pneus</option><option>Travões</option><option>IPO</option><option>Avaria</option><option>Outro</option></select>
-                    <select name="service_already_done"><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Não aplicável</option></select>
-                    <input type="date" name="previous_service_date">
-                    <input name="previous_service_km" inputmode="numeric" placeholder="Km">
-                    <input name="previous_service_supplier" placeholder="Fornecedor">
-                    <input name="previous_service_document" placeholder="FO / fatura">
-                    <select><option>Por decidir</option><option>Seguir diagnóstico</option><option>Autorizar</option><option>Pedir confirmação</option><option>Ignorar</option></select>
-                  </div>
-                  <div class="clean-service-validation-row">
-                    <select name="service_type"><option>Pneus</option><option>Revisão / degradação óleo</option><option>Revisão</option><option>Degradação óleo</option><option>Travões</option><option>IPO</option><option>Avaria</option><option>Outro</option></select>
-                    <select name="service_already_done"><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Não aplicável</option></select>
-                    <input type="date" name="previous_service_date">
-                    <input name="previous_service_km" inputmode="numeric" placeholder="Km">
-                    <input name="previous_service_supplier" placeholder="Fornecedor">
-                    <input name="previous_service_document" placeholder="FO / fatura">
-                    <select><option>Por decidir</option><option>Seguir diagnóstico</option><option>Autorizar</option><option>Pedir confirmação</option><option>Ignorar</option></select>
-                  </div>
+                  {% for row in validation_service_rows %}
+                    <div class="clean-service-validation-row">
+                      <select name="service_type">
+                        {% for option in ["Revisão / degradação óleo", "Revisão", "Degradação óleo", "Pneus", "Travões", "IPO", "Avaria", "Outro"] %}
+                          <option{% if row.service_type == option %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                      <select name="service_already_done">
+                        {% for option in ["Por confirmar", "Sim", "Não", "Não aplicável"] %}
+                          <option{% if row.service_already_done == option %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                      <input type="date" name="previous_service_date" value="{{ row.previous_service_date }}">
+                      <input name="previous_service_km" inputmode="numeric" placeholder="Km" value="{{ row.previous_service_km }}">
+                      <input name="previous_service_supplier" placeholder="Fornecedor" value="{{ row.previous_service_supplier }}">
+                      <input name="previous_service_document" placeholder="FO / fatura" value="{{ row.previous_service_document }}">
+                      <select name="service_decision">
+                        {% for option in ["Por decidir", "Seguir diagnóstico", "Autorizar", "Pedir confirmação", "Ignorar"] %}
+                          <option{% if row.service_decision == option %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  {% endfor %}
                 </div>
-                <label>Motivo / observação da validação<textarea rows="3" placeholder="Ex.: serviço feito há pouco tempo, km incoerente, pedido recorrente..."></textarea></label>
+                <label>Motivo / observação da validação<textarea name="validation_observation" rows="3" placeholder="Ex.: serviço feito há pouco tempo, km incoerente, pedido recorrente...">{{ validation_observation }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-orientacao">
@@ -153,7 +165,7 @@
                   <strong>Relatórios necessários</strong>
                   <label><input type="checkbox"> Lubrificação motor</label><label><input type="checkbox"> Informações manutenção</label><label><input type="checkbox"> Programação manutenção</label><label><input type="checkbox"> Telecarregamento</label><label><input type="checkbox"> Leitura defeitos</label><label><input type="checkbox"> Teste global</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Motivo da reserva<textarea rows="3" placeholder="Ex.: auditoria histórica em curso ou campanhas por executar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Motivo da reserva<textarea rows="3" placeholder="Ex.: campanha por executar fica em tarefa, auditoria histórica em curso ou outra pendência operacional..."></textarea></label>
               </div>
             </article>
           </div>
@@ -164,23 +176,23 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="relatorios">
               <span><b>Relatórios técnicos</b><em>Carregar e extrair leituras</em></span>
-              <strong class="warn">Por validar</strong>
+              <strong class="warn">{{ diagnostic_form_status.relatorios }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="leituras">
               <span><b>Dados extraídos</b><em>Corrigir e validar campos</em></span>
-              <strong>Rascunho</strong>
+              <strong>{{ diagnostic_form_status.leituras }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="comparacao">
               <span><b>Comparação histórica</b><em>Relatórios anteriores e pós</em></span>
-              <strong>Por validar</strong>
+              <strong>{{ diagnostic_form_status.comparacao }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="problemas">
               <span><b>Problemas identificados</b><em>Registar evidências</em></span>
-              <strong class="warn">2 alertas</strong>
+              <strong class="warn">{{ diagnostic_form_status.problemas }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="saida-diagnostico">
               <span><b>Saída diagnóstico</b><em>Orientar inspeção técnica</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ diagnostic_form_status.saida }}</strong>
             </button>
           </aside>
 
@@ -192,53 +204,64 @@
                   <h3>Relatórios técnicos necessários</h3>
                   <p>Carregar o PDF/imagem, arquivar no processo e extrair os dados para validação.</p>
                 </div>
-                <span class="clean-status-pill warn">3 por validar</span>
+                <span class="clean-status-pill warn">{{ diagnostic_substep_status.relatorios }}</span>
               </div>
+              {% if not technical_reports %}
+                <div class="clean-rule-note">
+                  Este processo ainda não tem relatórios carregados. Começa por anexar pelo menos um relatório técnico para abrir a validação de dados.
+                </div>
+              {% endif %}
               <div class="clean-report-list">
                 <div class="clean-report-row clean-report-row-head">
                   <b>Relatório</b><b>Aplicação</b><b>Estado</b><b>Ações</b>
                 </div>
+                {% set lub_report = technical_report_summary.get("engine_lubrication") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">LUB</span>
                   <div><strong>Lubrificação motor</strong><small>Obrigatório para Diesel com suspeita de degradação óleo</small></div>
                   <mark class="danger">Obrigatório</mark>
-                  <em>Por carregar</em>
-                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                  <em>{{ lub_report.status if lub_report else "Por carregar" }}{% if lub_report %} · {{ lub_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if lub_report else "Carregar" }}<input class="clean-report-upload" data-report-code="engine_lubrication" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
+                {% set man_report = technical_report_summary.get("maintenance_information") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">MAN</span>
                   <div><strong>Informações manutenção</strong><small>Obrigatório para validar BSI, km, dias e número de manutenções</small></div>
                   <mark class="danger">Obrigatório</mark>
-                  <em>Dados extraídos</em>
-                  <div class="clean-report-actions"><label>Substituir<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                  <em>{{ man_report.status if man_report else "Por carregar" }}{% if man_report %} · {{ man_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if man_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_information" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
+                {% set prg_report = technical_report_summary.get("maintenance_programming") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">PRG</span>
                   <div><strong>Programação manutenção</strong><small>Recomendado quando há divergência de intervalos ou plano</small></div>
                   <mark class="warn">Recomendado</mark>
-                  <em>Em falta</em>
-                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Dispensar</button></div>
+                  <em>{{ prg_report.status if prg_report else "Em falta" }}{% if prg_report %} · {{ prg_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if prg_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_programming" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
+                {% set tel_report = technical_report_summary.get("remote_download") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">TEL</span>
                   <div><strong>Telecarregamento</strong><small>Obrigatório quando TSB/procedimento exigir atualização</small></div>
                   <mark class="warn">Condicional</mark>
-                  <em>Em falta</em>
-                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div>
+                  <em>{{ tel_report.status if tel_report else "Em falta" }}{% if tel_report %} · {{ tel_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if tel_report else "Carregar" }}<input class="clean-report-upload" data-report-code="remote_download" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
+                {% set def_report = technical_report_summary.get("fault_reading") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">DEF</span>
                   <div><strong>Leitura defeitos</strong><small>Obrigatório em avaria ou quando há alertas no quadrante</small></div>
                   <mark class="warn">Condicional</mark>
-                  <em>Por validar</em>
-                  <div class="clean-report-actions"><label>Substituir<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div>
+                  <em>{{ def_report.status if def_report else "Por carregar" }}{% if def_report %} · {{ def_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if def_report else "Carregar" }}<input class="clean-report-upload" data-report-code="fault_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
+                {% set tst_report = technical_report_summary.get("other_reading") %}
                 <div class="clean-report-row">
                   <span class="audit-report-icon">TST</span>
                   <div><strong>Teste global</strong><small>Opcional conforme orientação técnica da fase anterior</small></div>
                   <mark class="ok">Opcional</mark>
-                  <em>Não aplicável</em>
-                  <div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Aplicar</button></div>
+                  <em>{{ tst_report.status if tst_report else "Não aplicável" }}{% if tst_report %} · {{ tst_report.extracted_count }} campos{% endif %}</em>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if tst_report else "Carregar" }}<input class="clean-report-upload" data-report-code="other_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
                 </div>
               </div>
               <p class="clean-rule-note">Regra: ao carregar relatório, extrair dados automaticamente e deixar em estado Por validar.</p>
@@ -246,35 +269,97 @@
 
             <article class="clean-substep-panel" id="clean-substep-leituras">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Leituras</p><h3>Dados extraídos por validar</h3><p>Validar cada valor antes de usar no processo ou gerar problema.</p></div></div>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Campo</b><b>Relatório</b><b>Valor extraído</b><b>Estado</b><b>Ação</b></div>
-                <div><span>Km última reposição manutenção</span><em>Informações manutenção</em><strong>90 357 km</strong><mark class="ok">OK</mark><a href="#">Validar</a></div>
-                <div><span>Km antes próxima manutenção</span><em>Informações manutenção</em><strong>-2 804 km</strong><mark class="warn">Confirmar</mark><a href="#">Corrigir</a></div>
-                <div><span>Diluição óleo</span><em>Lubrificação motor</em><strong>25,18%</strong><mark class="danger">Alerta</mark><a href="#">Criar problema</a></div>
-                <div><span>Proteção anti-diluição</span><em>Lubrificação motor</em><strong>Inativa</strong><mark class="warn">Confirmar</mark><a href="#">Validar</a></div>
-                <div><span>Data telecarregamento</span><em>Telecarregamento</em><strong>2036-02-11</strong><mark class="danger">Inválido</mark><a href="#">Criar problema</a></div>
+              {% set first_reading = technical_reading_rows[0] if technical_reading_rows else None %}
+              {% set failed_reports = technical_reports | selectattr("status", "equalto", "unable_to_read") | list %}
+              {% if failed_reports %}
+                <div class="clean-rule-note">
+                  {{ failed_reports|length }} relatório(s) ficaram com leitura falhada. Mantêm-se no histórico do processo, mas não entram nesta tabela até existir extração útil.
+                </div>
+              {% endif %}
+              {% if not technical_reading_rows %}
+                <div class="clean-rule-note">
+                  Ainda não existem dados extraídos para validar neste processo. Carrega um relatório em "Relatórios técnicos" e depois volta aqui.
+                </div>
+              {% endif %}
+              <section class="clean-reading-document-card">
+                <div>
+                  <p class="eyebrow">Documento de origem</p>
+                  <h4>{{ first_reading.report if first_reading else "Sem relatório selecionado" }}</h4>
+                  <span>Confirma se o documento corresponde à viatura e à leitura que estás a validar.</span>
+                </div>
+                <div class="clean-reading-document-actions">
+                  {% if first_reading %}<a href="{{ first_reading.open_url }}" target="_blank" rel="noopener">Abrir documento</a>{% endif %}
+                  <button class="clean-substep-jump" data-target="relatorios" type="button">Voltar aos relatórios</button>
+                </div>
+              </section>
+              <div class="clean-reading-confirm-row">
+                <label><input type="checkbox" name="reading_document_legible"> Documento legível</label>
+                <label><input type="checkbox" name="reading_plate_confirmed"> Matrícula confirmada</label>
+                <label><input type="checkbox" name="reading_date_confirmed"> Data confirmada</label>
+                <label><input type="checkbox" name="reading_km_confirmed"> KM confirmados</label>
+              </div>
+              <div class="clean-reading-table-wrap">
+                <table class="clean-reading-table">
+                  <thead>
+                    <tr>
+                      <th>Campo</th>
+                      <th>Relatório</th>
+                      <th>Valor extraído</th>
+                      <th>Valor corrigido</th>
+                      <th>Estado</th>
+                      <th>Observação</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in technical_reading_rows %}
+                      <tr>
+                        <td><strong>{{ row.field }}</strong></td>
+                        <td>{{ row.report }}</td>
+                        <td><span class="clean-reading-extracted">{{ row.value }}</span></td>
+                        <td>
+                          <input type="hidden" name="reading_report_id" value="{{ row.report_id }}">
+                          <input type="hidden" name="reading_field_code" value="{{ row.field_code }}">
+                          <input name="reading_corrected_value" value="{{ row.corrected_value }}" placeholder="Valor corrigido">
+                        </td>
+                        <td>
+                          <select name="reading_status">
+                            {% for option in ["Por validar", "OK", "Corrigido", "Não legível", "Não aplicável"] %}
+                              <option value="{{ option }}" {% if row.status == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                          </select>
+                        </td>
+                        <td><input name="reading_observation" value="{{ row.observation }}" placeholder="Observação"></td>
+                        <td><button type="submit" formmethod="post" formaction="/v2-clean/workshop/technical-reports/{{ row.report_id }}/validate">Guardar</button></td>
+                      </tr>
+                    {% else %}
+                      <tr><td colspan="7">Sem relatórios carregados. Carrega um relatório técnico para iniciar a extração.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-comparacao">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Comparação</p><h3>Histórico e pré/pós intervenção</h3><p>Cruzar relatórios atuais com histórico da viatura, folhas de obra e faturas.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Relatório pré-intervenção<select><option>Existe</option><option>Não existe</option><option>Por confirmar</option></select></label>
-                <label>Relatório pós-intervenção<select><option>Não existe</option><option>Existe</option><option>Por confirmar</option></select></label>
-                <label>Manutenção BSI vs faturação<select><option>Divergente</option><option>OK</option><option>Por confirmar</option></select></label>
-                <label>Telecarregamento vs TSB<select><option>Por confirmar</option><option>Obrigatório executado</option><option>Obrigatório não executado</option></select></label>
-                <label>Diferenças relevantes<textarea rows="3" placeholder="Resumo das divergências encontradas..."></textarea></label>
-                <label>Evidência objetiva<textarea rows="3" placeholder="Relatório, página, campo ou documento que suporta a conclusão..."></textarea></label>
+                <label>Relatório pré-intervenção<select name="pre_report_exists">{% for option in ["Por confirmar", "Existe", "Não existe"] %}<option{% if phase_form.get("pre_report_exists", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Relatório pós-intervenção<select name="post_report_exists">{% for option in ["Por confirmar", "Existe", "Não existe"] %}<option{% if phase_form.get("post_report_exists", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Manutenção BSI vs faturação<select name="bsi_vs_billing">{% for option in ["Por confirmar", "OK", "Divergente"] %}<option{% if phase_form.get("bsi_vs_billing", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Telecarregamento vs TSB<select name="remote_download_vs_tsb">{% for option in ["Por confirmar", "Obrigatório executado", "Obrigatório não executado"] %}<option{% if phase_form.get("remote_download_vs_tsb", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Diferenças relevantes<textarea name="comparison_differences" rows="3" placeholder="Resumo das divergências encontradas...">{{ phase_form.get("comparison_differences", "") }}</textarea></label>
+                <label>Evidência objetiva<textarea name="comparison_evidence" rows="3" placeholder="Relatório, página, campo ou documento que suporta a conclusão...">{{ phase_form.get("comparison_evidence", "") }}</textarea></label>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-problemas">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Problemas</p><h3>Problemas técnicos identificados</h3><p>Registar o problema uma vez, com evidência, para acompanhar até resolução.</p></div></div>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Problema</b><b>Origem</b><b>Evidência</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Diluição óleo acima do limite</span><em>Lubrificação motor</em><strong>25,18%</strong><mark class="danger">Crítico</mark><a href="#">Abrir problema</a></div>
-                <div><span>Data telecarregamento futura</span><em>Telecarregamento</em><strong>2036-02-11</strong><mark class="danger">Inválido</mark><a href="#">Abrir problema</a></div>
-                <div><span>BSI sem registo coerente</span><em>Informações manutenção</em><strong>Por confirmar</strong><mark class="warn">Aviso</mark><a href="#">Investigar</a></div>
+              <div class="clean-phase-field-grid">
+                <label>Estado do problema<select name="diagnostic_problem_detected">{% for option in ["Por confirmar", "Nenhum", "Problema identificado", "Crítico"] %}<option{% if phase_form.get("diagnostic_problem_detected", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Título / tipo<input name="diagnostic_problem_title" value="{{ phase_form.get("diagnostic_problem_title", "") }}" placeholder="Ex.: Diluição óleo acima do limite"></label>
+                <label>Origem<input name="diagnostic_problem_origin" value="{{ phase_form.get("diagnostic_problem_origin", "") }}" placeholder="Relatório, Service Box, TSB, faturação..."></label>
+                <label>Evidência<textarea name="diagnostic_problem_evidence" rows="3" placeholder="Campo, valor, página ou documento que prova o problema...">{{ phase_form.get("diagnostic_problem_evidence", "") }}</textarea></label>
+                <label>Ação proposta<textarea name="diagnostic_problem_action" rows="3" placeholder="Abrir problema, criar tarefa, discutir com Stellantis, etc.">{{ phase_form.get("diagnostic_problem_action", "") }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-saida-diagnostico">
@@ -287,16 +372,16 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Diagnóstico fechado?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
-                  <label>Prioridade técnica<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Diagnóstico fechado?<select name="diagnostic_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("diagnostic_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Prioridade técnica<select name="diagnostic_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("diagnostic_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Inspeção Técnica" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Conclusão do diagnóstico<textarea rows="5" placeholder="O que ficou provado, o que falta confirmar e que inspeções físicas são necessárias..."></textarea></label>
+                <label class="clean-phase-exit-main">Conclusão do diagnóstico<textarea name="diagnostic_conclusion" rows="5" placeholder="O que ficou provado, o que falta confirmar e que inspeções físicas são necessárias...">{{ phase_form.get("diagnostic_conclusion", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Inspeções necessárias</strong>
-                  <label><input type="checkbox"> Óleo / lubrificação</label><label><input type="checkbox"> Manutenção BSI</label><label><input type="checkbox"> Pneus</label><label><input type="checkbox"> Travões</label><label><input type="checkbox"> Teste de estrada</label><label><input type="checkbox"> Evidência fotográfica</label>
+                  <label><input type="checkbox" name="inspection_required_oil" value="yes"{% if phase_form.get("inspection_required_oil") %} checked{% endif %}> Óleo / lubrificação</label><label><input type="checkbox" name="inspection_required_bsi" value="yes"{% if phase_form.get("inspection_required_bsi") %} checked{% endif %}> Manutenção BSI</label><label><input type="checkbox" name="inspection_required_tyres" value="yes"{% if phase_form.get("inspection_required_tyres") %} checked{% endif %}> Pneus</label><label><input type="checkbox" name="inspection_required_brakes" value="yes"{% if phase_form.get("inspection_required_brakes") %} checked{% endif %}> Travões</label><label><input type="checkbox" name="inspection_required_road_test" value="yes"{% if phase_form.get("inspection_required_road_test") %} checked{% endif %}> Teste de estrada</label><label><input type="checkbox" name="inspection_required_photos" value="yes"{% if phase_form.get("inspection_required_photos") %} checked{% endif %}> Evidência fotográfica</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="diagnostic_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("diagnostic_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
           </div>
@@ -307,19 +392,19 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="checklist">
               <span><b>Checklist técnica</b><em>Pontos físicos principais</em></span>
-              <strong class="warn">Por rever</strong>
+              <strong class="warn">{{ inspection_form_status.checklist }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="pneus-travoes">
               <span><b>Pneus e travões</b><em>Desgaste e evidências</em></span>
-              <strong>Por validar</strong>
+              <strong>{{ inspection_form_status.pneus_travoes }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="oleo-niveis">
               <span><b>Óleo e níveis</b><em>Confirmação física</em></span>
-              <strong class="warn">Alerta</strong>
+              <strong class="warn">{{ inspection_form_status.oleo_niveis }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="saida-inspecao">
               <span><b>Saída inspeção</b><em>Decisão para auditoria</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ inspection_form_status.saida }}</strong>
             </button>
           </aside>
 
@@ -331,7 +416,7 @@
                   <h3>Verificações técnicas principais</h3>
                   <p>Registar apenas o essencial. Não conforme deve ter observação e evidência.</p>
                 </div>
-                <span class="clean-status-pill warn">5 por rever</span>
+                <span class="clean-status-pill warn">{{ inspection_form_status.checklist }}</span>
               </div>
               <div class="clean-check-legend" aria-label="Legenda dos botões">
                 <span><b>OK</b> Conforme</span>
@@ -340,36 +425,35 @@
                 <span><b>P/R</b> Por rever</span>
               </div>
               <div class="clean-check-list">
-                <div class="clean-check-row"><strong>Luzes e sinalização</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Luzes e sinalização"><label><input type="radio" name="check_luzes_e_sinalização" value="ok"><span>OK</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="nc"><span>NC</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="na"><span>N/A</span></label><label><input type="radio" name="check_luzes_e_sinalização" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Bateria / arranque</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Bateria / arranque"><label><input type="radio" name="check_bateria___arranque" value="ok"><span>OK</span></label><label><input type="radio" name="check_bateria___arranque" value="nc"><span>NC</span></label><label><input type="radio" name="check_bateria___arranque" value="na"><span>N/A</span></label><label><input type="radio" name="check_bateria___arranque" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Fugas visíveis</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Fugas visíveis"><label><input type="radio" name="check_fugas_visíveis" value="ok"><span>OK</span></label><label><input type="radio" name="check_fugas_visíveis" value="nc"><span>NC</span></label><label><input type="radio" name="check_fugas_visíveis" value="na"><span>N/A</span></label><label><input type="radio" name="check_fugas_visíveis" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Ruídos anormais</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Ruídos anormais"><label><input type="radio" name="check_ruídos_anormais" value="ok"><span>OK</span></label><label><input type="radio" name="check_ruídos_anormais" value="nc"><span>NC</span></label><label><input type="radio" name="check_ruídos_anormais" value="na"><span>N/A</span></label><label><input type="radio" name="check_ruídos_anormais" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Teste de estrada</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Teste de estrada"><label><input type="radio" name="check_teste_de_estrada" value="ok"><span>OK</span></label><label><input type="radio" name="check_teste_de_estrada" value="nc"><span>NC</span></label><label><input type="radio" name="check_teste_de_estrada" value="na"><span>N/A</span></label><label><input type="radio" name="check_teste_de_estrada" value="review" checked><span>P/R</span></label></div><input placeholder="Observação"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Luzes e sinalização</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Luzes e sinalização"><label><input type="radio" name="inspection_check_lights" value="ok"{% if phase_form.get("inspection_check_lights", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_lights" value="nc"{% if phase_form.get("inspection_check_lights", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_lights" value="na"{% if phase_form.get("inspection_check_lights", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_lights" value="review"{% if phase_form.get("inspection_check_lights", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_lights_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_lights_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Bateria / arranque</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Bateria / arranque"><label><input type="radio" name="inspection_check_battery" value="ok"{% if phase_form.get("inspection_check_battery", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_battery" value="nc"{% if phase_form.get("inspection_check_battery", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_battery" value="na"{% if phase_form.get("inspection_check_battery", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_battery" value="review"{% if phase_form.get("inspection_check_battery", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_battery_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_battery_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Fugas visíveis</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Fugas visíveis"><label><input type="radio" name="inspection_check_leaks" value="ok"{% if phase_form.get("inspection_check_leaks", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_leaks" value="nc"{% if phase_form.get("inspection_check_leaks", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_leaks" value="na"{% if phase_form.get("inspection_check_leaks", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_leaks" value="review"{% if phase_form.get("inspection_check_leaks", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_leaks_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_leaks_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Ruídos anormais</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Ruídos anormais"><label><input type="radio" name="inspection_check_noises" value="ok"{% if phase_form.get("inspection_check_noises", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_noises" value="nc"{% if phase_form.get("inspection_check_noises", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_noises" value="na"{% if phase_form.get("inspection_check_noises", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_noises" value="review"{% if phase_form.get("inspection_check_noises", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_noises_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_noises_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Teste de estrada</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Teste de estrada"><label><input type="radio" name="inspection_check_road_test" value="ok"{% if phase_form.get("inspection_check_road_test", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_road_test" value="nc"{% if phase_form.get("inspection_check_road_test", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_road_test" value="na"{% if phase_form.get("inspection_check_road_test", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_road_test" value="review"{% if phase_form.get("inspection_check_road_test", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_road_test_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_road_test_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-pneus-travoes">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Desgaste</p><h3>Pneus, calços e discos</h3><p>Registar posição, estado e se deve gerar tarefa/problema.</p></div></div>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Item</b><b>Posição</b><b>Estado / medida</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Pneus</span><em>Frente</em><strong>Por medir</strong><mark class="warn">Confirmar</mark><a href="#">Adicionar foto</a></div>
-                <div><span>Pneus</span><em>Traseira</em><strong>Por medir</strong><mark class="warn">Confirmar</mark><a href="#">Adicionar foto</a></div>
-                <div><span>Calços</span><em>Frente</em><strong>Desgaste a confirmar</strong><mark class="warn">Aviso</mark><a href="#">Criar tarefa</a></div>
-                <div><span>Discos</span><em>Frente</em><strong>Por rever</strong><mark class="ok">Informativo</mark><a href="#">Registar</a></div>
-                <div><span>Travões</span><em>Traseira</em><strong>Por rever</strong><mark class="ok">Informativo</mark><a href="#">Registar</a></div>
+              <div class="clean-phase-field-grid">
+                <label>Pneus frente<input name="tyres_front_condition" placeholder="Ex.: 4 mm, desgaste irregular..." value="{{ phase_form.get('tyres_front_condition', '') }}"></label>
+                <label>Pneus traseira<input name="tyres_rear_condition" placeholder="Ex.: 5 mm, normal..." value="{{ phase_form.get('tyres_rear_condition', '') }}"></label>
+                <label>Calços frente<input name="pads_front_condition" placeholder="Ex.: 30%, trocar breve..." value="{{ phase_form.get('pads_front_condition', '') }}"></label>
+                <label>Discos frente<input name="discs_front_condition" placeholder="Ex.: sem ressalto / por medir..." value="{{ phase_form.get('discs_front_condition', '') }}"></label>
+                <label>Travões traseira<input name="brakes_rear_condition" placeholder="Ex.: conforme / por rever..." value="{{ phase_form.get('brakes_rear_condition', '') }}"></label>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-oleo-niveis">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Óleo / níveis</p><h3>Confirmação física e coerência com diagnóstico</h3><p>Usar quando o diagnóstico aponta para degradação de óleo, fugas ou manutenção.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Nível óleo<select><option>Por confirmar</option><option>OK</option><option>Baixo</option><option>Excesso</option></select></label>
-                <label>Estado visual óleo<select><option>Por confirmar</option><option>Normal</option><option>Suspeito</option></select></label>
-                <label>Líquido refrigeração<select><option>Por confirmar</option><option>OK</option><option>Baixo</option></select></label>
-                <label>Líquido travões<select><option>Por confirmar</option><option>OK</option><option>Baixo</option></select></label>
-                <label>Confirma suspeita do diagnóstico?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
+                <label>Nível óleo<select name="oil_level">{% for option in ["Por confirmar", "OK", "Baixo", "Excesso"] %}<option{% if phase_form.get("oil_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Estado visual óleo<select name="oil_visual_state">{% for option in ["Por confirmar", "Normal", "Suspeito"] %}<option{% if phase_form.get("oil_visual_state", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Líquido refrigeração<select name="coolant_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("coolant_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Líquido travões<select name="brake_fluid_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("brake_fluid_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Confirma suspeita do diagnóstico?<select name="oil_diagnosis_confirmed">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("oil_diagnosis_confirmed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Evidência/foto<label class="clean-file-button">Carregar foto<input type="file" accept="image/*" capture="environment"></label></label>
-                <label>Observação<textarea rows="3" placeholder="Registar sinais físicos, incoerências ou limitações da inspeção..."></textarea></label>
+                <label>Observação<textarea name="oil_levels_observation" rows="3" placeholder="Registar sinais físicos, incoerências ou limitações da inspeção...">{{ phase_form.get("oil_levels_observation", "") }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-saida-inspecao">
@@ -382,16 +466,16 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Inspeção fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
-                  <label>Prioridade<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Inspeção fechada?<select name="inspection_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("inspection_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Prioridade<select name="inspection_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("inspection_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Auditoria e Validação" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Resumo da inspeção<textarea rows="5" placeholder="O que foi confirmado fisicamente e que pontos continuam pendentes..."></textarea></label>
+                <label class="clean-phase-exit-main">Resumo da inspeção<textarea name="inspection_summary" rows="5" placeholder="O que foi confirmado fisicamente e que pontos continuam pendentes...">{{ phase_form.get("inspection_summary", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Resultado da inspeção</strong>
-                  <label><input type="checkbox"> Criar tarefa</label><label><input type="checkbox"> Criar problema</label><label><input type="checkbox"> Precisa orçamento</label><label><input type="checkbox"> Pode avançar com reserva</label><label><input type="checkbox"> Sem inconformidades</label>
+                  <label><input type="checkbox" name="inspection_create_task" value="yes"{% if phase_form.get("inspection_create_task") %} checked{% endif %}> Criar tarefa</label><label><input type="checkbox" name="inspection_create_problem" value="yes"{% if phase_form.get("inspection_create_problem") %} checked{% endif %}> Criar problema</label><label><input type="checkbox" name="inspection_needs_quote" value="yes"{% if phase_form.get("inspection_needs_quote") %} checked{% endif %}> Precisa orçamento</label><label><input type="checkbox" name="inspection_can_advance_with_reserve" value="yes"{% if phase_form.get("inspection_can_advance_with_reserve") %} checked{% endif %}> Pode avançar com reserva</label><label><input type="checkbox" name="inspection_no_nonconformities" value="yes"{% if phase_form.get("inspection_no_nonconformities") %} checked{% endif %}> Sem inconformidades</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="inspection_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("inspection_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
           </div>
@@ -402,23 +486,23 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="evidencias">
               <span><b>Evidências recolhidas</b><em>Diagnóstico, inspeção e histórico</em></span>
-              <strong class="warn">Por fechar</strong>
+              <strong class="warn">{{ audit_form_status.evidencias }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="coerencia">
               <span><b>Coerência técnica</b><em>BSI, óleo, TSB e faturação</em></span>
-              <strong class="warn">2 alertas</strong>
+              <strong class="warn">{{ audit_form_status.coerencia }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="problemas-auditoria">
               <span><b>Problemas e tarefas</b><em>Pendências para resolver</em></span>
-              <strong>3 abertas</strong>
+              <strong>{{ audit_form_status.problemas }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="decisao">
               <span><b>Decisão operacional</b><em>Reparar, pedir orçamento, bloquear</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ audit_form_status.decisao }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="saida-auditoria">
               <span><b>Saída auditoria</b><em>Condições para reparação</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ audit_form_status.saida }}</strong>
             </button>
           </aside>
 
@@ -432,6 +516,7 @@
                 </div>
                 <span class="clean-status-pill warn">2 por validar</span>
               </div>
+              <label>Resumo das evidências<textarea name="audit_evidence_summary" rows="4" placeholder="Sintetizar o que ficou provado no diagnóstico, inspeção e histórico...">{{ phase_form.get("audit_evidence_summary", "") }}</textarea></label>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Origem</b><b>Estado</b><b>Conclusão</b><b>Impacto</b><b>Ação</b></div>
                 <div><span>Diagnóstico técnico</span><em>Com reserva</em><strong>Diluição óleo crítica e BSI por confirmar</strong><mark class="warn">Aviso</mark><a href="/v2-clean/workshop/diagnostico">Abrir</a></div>
@@ -443,6 +528,12 @@
 
             <article class="clean-substep-panel" id="clean-substep-coerencia">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Coerência</p><h3>Validação técnica antes da decisão</h3><p>Identificar se os dados sustentam a reparação, cobrança, reclamação ou discussão com fornecedor/marca.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>BSI vs serviços faturados<select name="audit_bsi_billing_result">{% for option in ["Por confirmar", "OK", "Divergente"] %}<option{% if phase_form.get("audit_bsi_billing_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Óleo vs limite técnico<select name="audit_oil_limit_result">{% for option in ["Por confirmar", "OK", "Crítico", "Alerta"] %}<option{% if phase_form.get("audit_oil_limit_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Telecarregamento vs TSB<select name="audit_remote_download_result">{% for option in ["Por confirmar", "OK", "Divergente"] %}<option{% if phase_form.get("audit_remote_download_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Repetição do serviço<select name="audit_service_repeat_result">{% for option in ["Por confirmar", "Não", "Sim - justificada", "Sim - suspeita"] %}<option{% if phase_form.get("audit_service_repeat_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              </div>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Validação</b><b>Fonte</b><b>Resultado</b><b>Impacto</b><b>Ação</b></div>
                 <div><span>BSI vs serviços faturados</span><em>Relatório + faturas</em><strong>Divergência por confirmar</strong><mark class="warn">Investigar</mark><a href="#">Criar tarefa</a></div>
@@ -454,6 +545,7 @@
 
             <article class="clean-substep-panel" id="clean-substep-problemas-auditoria">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pendências</p><h3>Problemas e tarefas abertas</h3><p>O processo não deve perder problemas identificados durante diagnóstico ou inspeção.</p></div></div>
+              <label>Resumo de problemas / tarefas<textarea name="audit_open_items_summary" rows="4" placeholder="Registar pendências confirmadas, tarefas abertas e problemas a discutir...">{{ phase_form.get("audit_open_items_summary", "") }}</textarea></label>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Tipo</b><b>Origem</b><b>Resumo</b><b>Prioridade</b><b>Ação</b></div>
                 <div><span>Problema</span><em>Diagnóstico</em><strong>Diluição óleo acima do limite</strong><mark class="danger">Crítica</mark><a href="#">Abrir</a></div>
@@ -466,12 +558,12 @@
             <article class="clean-substep-panel" id="clean-substep-decisao">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Decisão</p><h3>Decisão operacional</h3><p>Definir o que fazer antes de passar à reparação.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Decisão principal<select><option>Por decidir</option><option>Reparar</option><option>Pedir orçamento</option><option>Reclamar fornecedor/marca</option><option>Fechar sem reparação</option><option>Bloquear viatura</option></select></label>
-                <label>Reparação autorizada?<select><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Com reserva</option></select></label>
-                <label>Responsabilidade provável<select><option>Por apurar</option><option>CarFast</option><option>Cliente</option><option>Fornecedor</option><option>Marca</option><option>Seguradora</option></select></label>
-                <label>Orçamento necessário?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
-                <label>Valor estimado<input placeholder="0,00 €"></label>
-                <label>Motivo da decisão<textarea rows="3" placeholder="Resumo claro da decisão e base técnica..."></textarea></label>
+                <label>Decisão principal<select name="audit_decision_main">{% for option in ["Por decidir", "Reparar", "Pedir orçamento", "Reclamar fornecedor/marca", "Fechar sem reparação", "Bloquear viatura"] %}<option{% if phase_form.get("audit_decision_main", "Por decidir") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Reparação autorizada?<select name="audit_repair_authorized">{% for option in ["Por confirmar", "Sim", "Não", "Com reserva"] %}<option{% if phase_form.get("audit_repair_authorized", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Responsabilidade provável<select name="audit_responsibility">{% for option in ["Por apurar", "CarFast", "Cliente", "Fornecedor", "Marca", "Seguradora"] %}<option{% if phase_form.get("audit_responsibility", "Por apurar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Orçamento necessário?<select name="audit_quote_needed">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("audit_quote_needed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Valor estimado<input name="audit_estimated_value" placeholder="0,00 €" value="{{ phase_form.get('audit_estimated_value', '') }}"></label>
+                <label>Motivo da decisão<textarea name="audit_decision_reason" rows="3" placeholder="Resumo claro da decisão e base técnica...">{{ phase_form.get("audit_decision_reason", "") }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-saida-auditoria">
@@ -484,16 +576,16 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Auditoria fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
-                  <label>Prioridade<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Auditoria fechada?<select name="audit_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("audit_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Prioridade<select name="audit_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("audit_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Reparação" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Decisão da auditoria<textarea rows="5" placeholder="Conclusão técnica, intervenção autorizada e condições para a oficina executar..."></textarea></label>
+                <label class="clean-phase-exit-main">Decisão da auditoria<textarea name="audit_summary" rows="5" placeholder="Conclusão técnica, intervenção autorizada e condições para a oficina executar...">{{ phase_form.get("audit_summary", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Condições para avançar</strong>
-                  <label><input type="checkbox"> Serviço confirmado</label><label><input type="checkbox"> Orçamento necessário tratado</label><label><input type="checkbox"> Campanhas verificadas</label><label><input type="checkbox"> Problemas registados</label><label><input type="checkbox"> Responsável definido</label>
+                  <label><input type="checkbox" name="audit_condition_service_confirmed" value="yes"{% if phase_form.get("audit_condition_service_confirmed") %} checked{% endif %}> Serviço confirmado</label><label><input type="checkbox" name="audit_condition_quote_handled" value="yes"{% if phase_form.get("audit_condition_quote_handled") %} checked{% endif %}> Orçamento necessário tratado</label><label><input type="checkbox" name="audit_condition_campaigns_checked" value="yes"{% if phase_form.get("audit_condition_campaigns_checked") %} checked{% endif %}> Campanhas verificadas</label><label><input type="checkbox" name="audit_condition_problems_logged" value="yes"{% if phase_form.get("audit_condition_problems_logged") %} checked{% endif %}> Problemas registados</label><label><input type="checkbox" name="audit_condition_owner_defined" value="yes"{% if phase_form.get("audit_condition_owner_defined") %} checked{% endif %}> Responsável definido</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="audit_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("audit_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
           </div>
@@ -504,23 +596,23 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="ordem-reparacao">
               <span><b>Ordem de reparação</b><em>O que foi autorizado executar</em></span>
-              <strong>Em curso</strong>
+              <strong>{{ repair_form_status.ordem }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="execucao">
               <span><b>Execução</b><em>Estado, prazos e responsável</em></span>
-              <strong class="warn">Por atualizar</strong>
+              <strong class="warn">{{ repair_form_status.execucao }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="evidencias-reparacao">
               <span><b>Evidências</b><em>Fotos, FO e relatórios pós</em></span>
-              <strong>2 em falta</strong>
+              <strong>{{ repair_form_status.evidencias }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="desvios">
               <span><b>Desvios</b><em>Alterações ao previsto</em></span>
-              <strong>Sem desvios</strong>
+              <strong>{{ repair_form_status.desvios }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="saida-reparacao">
               <span><b>Saída reparação</b><em>Pronto para validação final</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ repair_form_status.saida }}</strong>
             </button>
           </aside>
 
@@ -534,11 +626,12 @@
                 </div>
                 <span class="clean-status-pill warn">Com reserva</span>
               </div>
+              <label>Serviços autorizados<textarea name="repair_authorized_services" rows="4" placeholder="Resumo do que foi autorizado executar nesta reparação...">{{ phase_form.get("repair_authorized_services", "") }}</textarea></label>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Serviço</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
                 <div><span>Confirmar óleo / lubrificação</span><em>Auditoria</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir decisão</a></div>
                 <div><span>Validar BSI/manutenção</span><em>Diagnóstico</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir relatório</a></div>
-                <div><span>Executar campanha</span><em>Service Box</em><strong>Pendente</strong><mark class="danger">Bloqueante</mark><a href="/task-board">Tarefa</a></div>
+                <div><span>Executar campanha</span><em>Service Box</em><strong>Pendente</strong><mark class="warn">Pendência</mark><a href="/task-board">Tarefa</a></div>
                 <div><span>Pneus/travões</span><em>Inspeção</em><strong>Por confirmar</strong><mark class="ok">Informativo</mark><a href="#">Ver inspeção</a></div>
               </div>
             </article>
@@ -546,35 +639,41 @@
             <article class="clean-substep-panel" id="clean-substep-execucao">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Execução</p><h3>Acompanhamento da reparação</h3><p>Atualizar o estado real do trabalho e previsão de conclusão.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Estado da reparação<select><option>Em curso</option><option>A aguardar peças</option><option>A aguardar orçamento</option><option>Concluída</option><option>Bloqueada</option></select></label>
-                <label>Responsável/oficina<input value="Oficina Porto"></label>
-                <label>Início reparação<input type="date"></label>
-                <label>Previsão conclusão<input type="date"></label>
-                <label>Viatura imobilizada?<select><option>Por confirmar</option><option>Sim</option><option>Não</option></select></label>
-                <label>Observação execução<textarea rows="3" placeholder="Ponto de situação, atrasos, dependências..."></textarea></label>
+                <label>Estado da reparação<select name="repair_execution_status">{% for option in ["Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"] %}<option{% if phase_form.get("repair_execution_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Responsável/oficina<input name="repair_responsible" value="{{ phase_form.get('repair_responsible', 'Oficina Porto') }}"></label>
+                <label>Início reparação<input type="date" name="repair_started_on" value="{{ phase_form.get('repair_started_on', '') }}"></label>
+                <label>Previsão conclusão<input type="date" name="repair_eta" value="{{ phase_form.get('repair_eta', '') }}"></label>
+                <label>Viatura imobilizada?<select name="repair_vehicle_immobilized">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("repair_vehicle_immobilized", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Observação execução<textarea name="repair_execution_note" rows="3" placeholder="Ponto de situação, atrasos, dependências...">{{ phase_form.get("repair_execution_note", "") }}</textarea></label>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-evidencias-reparacao">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Evidências</p><h3>Documentos e fotos da intervenção</h3><p>Documentos carregados aqui ficam associados ao processo e à viatura.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>FO<select name="repair_fo_status">{% for option in ["Em falta", "Recebida", "Validada"] %}<option{% if phase_form.get("repair_fo_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Fotos<select name="repair_photos_status">{% for option in ["Em falta", "Parcial", "Recebidas"] %}<option{% if phase_form.get("repair_photos_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Relatório pós<select name="repair_post_report_status">{% for option in ["Em falta", "Pendente", "Recebido"] %}<option{% if phase_form.get("repair_post_report_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Campanha<select name="repair_campaign_proof_status">{% for option in ["N/A", "Pendente", "Recebido"] %}<option{% if phase_form.get("repair_campaign_proof_status", "N/A") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              </div>
               <div class="clean-report-list">
                 <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
                 <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra</strong><small>Obrigatória para fechar reparação</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
                 <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos da reparação</strong><small>Evidência visual do trabalho executado</small></div><mark class="warn">Recomendado</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="image/*" capture="environment" multiple></label><button type="button">Dispensar</button></div></div>
                 <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório quando houve diagnóstico técnico prévio</small></div><mark class="warn">Condicional</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">CMP</span><div><strong>Comprovativo campanha</strong><small>Necessário se havia campanha por executar</small></div><mark class="danger">Bloqueante</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Abrir tarefa</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">CMP</span><div><strong>Comprovativo campanha</strong><small>Necessário se havia campanha por executar</small></div><mark class="warn">Pendência</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Abrir tarefa</button></div></div>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-desvios">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Desvios</p><h3>Alterações ao previsto</h3><p>Qualquer alteração relevante deve ficar registada antes do fecho.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Houve alteração ao previsto?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
-                <label>Novo orçamento necessário?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
-                <label>Motivo do desvio<textarea rows="3" placeholder="Peças adicionais, diagnóstico diferente, atraso, indisponibilidade..."></textarea></label>
-                <label>Impacto no prazo<select><option>Sem impacto</option><option>Adia conclusão</option><option>Bloqueia reparação</option></select></label>
-                <label>Impacto financeiro<input placeholder="0,00 €"></label>
-                <label>Ação necessária<textarea rows="3" placeholder="Quem tem de validar e até quando..."></textarea></label>
+                <label>Houve alteração ao previsto?<select name="repair_deviation_exists">{% for option in ["Não", "Sim", "Por confirmar"] %}<option{% if phase_form.get("repair_deviation_exists", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Novo orçamento necessário?<select name="repair_new_quote_needed">{% for option in ["Não", "Sim", "Por confirmar"] %}<option{% if phase_form.get("repair_new_quote_needed", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Motivo do desvio<textarea name="repair_deviation_reason" rows="3" placeholder="Peças adicionais, diagnóstico diferente, atraso, indisponibilidade...">{{ phase_form.get("repair_deviation_reason", "") }}</textarea></label>
+                <label>Impacto no prazo<select name="repair_timing_impact">{% for option in ["Sem impacto", "Adia conclusão", "Bloqueia reparação"] %}<option{% if phase_form.get("repair_timing_impact", "Sem impacto") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Impacto financeiro<input name="repair_financial_impact" placeholder="0,00 €" value="{{ phase_form.get('repair_financial_impact', '') }}"></label>
+                <label>Ação necessária<textarea name="repair_action_needed" rows="3" placeholder="Quem tem de validar e até quando...">{{ phase_form.get("repair_action_needed", "") }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-saida-reparacao">
@@ -587,16 +686,16 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Reparação fechada?<select><option>Com reservas</option><option>Sim</option><option>Não</option></select></label>
-                  <label>Estado de saída<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Reparação fechada?<select name="repair_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("repair_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Estado de saída<select name="repair_exit_status">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("repair_exit_status", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Validação e Fecho" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Resumo da reparação<textarea rows="5" placeholder="O que foi executado, documentos recebidos e pendências para fecho..."></textarea></label>
+                <label class="clean-phase-exit-main">Resumo da reparação<textarea name="repair_summary" rows="5" placeholder="O que foi executado, documentos recebidos e pendências para fecho...">{{ phase_form.get("repair_summary", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Condições</strong>
-                  <label><input type="checkbox"> Reparação concluída</label><label><input type="checkbox"> FO anexada</label><label><input type="checkbox"> Fotos anexadas</label><label><input type="checkbox"> Relatório pós tratado</label><label><input type="checkbox"> Campanhas tratadas</label>
+                  <label><input type="checkbox" name="repair_done" value="yes"{% if phase_form.get("repair_done") %} checked{% endif %}> Reparação concluída</label><label><input type="checkbox" name="repair_fo_attached" value="yes"{% if phase_form.get("repair_fo_attached") %} checked{% endif %}> FO anexada</label><label><input type="checkbox" name="repair_photos_attached" value="yes"{% if phase_form.get("repair_photos_attached") %} checked{% endif %}> Fotos anexadas</label><label><input type="checkbox" name="repair_post_report_done" value="yes"{% if phase_form.get("repair_post_report_done") %} checked{% endif %}> Relatório pós tratado</label><label><input type="checkbox" name="repair_campaigns_done" value="yes"{% if phase_form.get("repair_campaigns_done") %} checked{% endif %}> Campanhas tratadas</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="repair_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("repair_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
           </div>
@@ -607,23 +706,23 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="validacao-final">
               <span><b>Validação final</b><em>Viatura pronta e segura</em></span>
-              <strong class="warn">Por validar</strong>
+              <strong class="warn">{{ closure_form_status.validacao }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="documentos-fecho">
               <span><b>Documentos finais</b><em>FO, faturas e relatórios</em></span>
-              <strong>2 em falta</strong>
+              <strong>{{ closure_form_status.documentos }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="historico-fecho">
               <span><b>Atualizar histórico</b><em>Ficha, serviço e problemas</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ closure_form_status.historico }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="pendencias-fecho">
               <span><b>Pendências</b><em>Reservas, tarefas e responsáveis</em></span>
-              <strong class="warn">Com reserva</strong>
+              <strong class="warn">{{ closure_form_status.pendencias }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="encerramento">
               <span><b>Encerramento</b><em>Resultado final do processo</em></span>
-              <strong>Pendente</strong>
+              <strong>{{ closure_form_status.encerramento }}</strong>
             </button>
           </aside>
 
@@ -638,21 +737,27 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Viatura pronta?<select><option>Por confirmar</option><option>Sim</option><option>Não</option><option>Com reserva</option></select></label>
-                  <label>Estado final<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Viatura pronta?<select name="closure_vehicle_ready">{% for option in ["Por confirmar", "Sim", "Não", "Com reserva"] %}<option{% if phase_form.get("closure_vehicle_ready", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Estado final<select name="closure_final_status">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("closure_final_status", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Encerramento" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Observação de saída<textarea rows="5" placeholder="Notas relevantes no momento de libertar a viatura..."></textarea></label>
+                <label class="clean-phase-exit-main">Observação de saída<textarea name="closure_exit_observation" rows="5" placeholder="Notas relevantes no momento de libertar a viatura...">{{ phase_form.get("closure_exit_observation", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Condições finais</strong>
-                  <label><input type="checkbox"> KM saída confirmado</label><label><input type="checkbox"> Foto quadrante saída</label><label><input type="checkbox"> Teste final OK</label><label><input type="checkbox"> Pode circular</label><label><input type="checkbox"> Regressar à frota</label>
+                  <label><input type="checkbox" name="closure_km_checked" value="yes"{% if phase_form.get("closure_km_checked") %} checked{% endif %}> KM saída confirmado</label><label><input type="checkbox" name="closure_dashboard_exit_photo" value="yes"{% if phase_form.get("closure_dashboard_exit_photo") %} checked{% endif %}> Foto quadrante saída</label><label><input type="checkbox" name="closure_final_test_ok" value="yes"{% if phase_form.get("closure_final_test_ok") %} checked{% endif %}> Teste final OK</label><label><input type="checkbox" name="closure_can_drive" value="yes"{% if phase_form.get("closure_can_drive") %} checked{% endif %}> Pode circular</label><label><input type="checkbox" name="closure_back_to_fleet" value="yes"{% if phase_form.get("closure_back_to_fleet") %} checked{% endif %}> Regressar à frota</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="closure_validation_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("closure_validation_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-documentos-fecho">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Documentos</p><h3>Documentos finais do processo</h3><p>Fechar sem perder rasto: tudo que prova a intervenção deve ficar associado.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>FO final<select name="closure_work_order_status">{% for option in ["Em falta", "Recebida", "Validada"] %}<option{% if phase_form.get("closure_work_order_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Fatura<select name="closure_invoice_status">{% for option in ["Pendente", "Recebida", "Validada"] %}<option{% if phase_form.get("closure_invoice_status", "Pendente") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Relatório pós<select name="closure_post_report_status">{% for option in ["Em falta", "Pendente", "Recebido"] %}<option{% if phase_form.get("closure_post_report_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Fotos finais<select name="closure_final_photos_status">{% for option in ["Parcial", "Recebidas", "Dispensadas"] %}<option{% if phase_form.get("closure_final_photos_status", "Parcial") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              </div>
               <div class="clean-report-list">
                 <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
                 <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra fechada</strong><small>Documento base da intervenção</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
@@ -664,6 +769,13 @@
 
             <article class="clean-substep-panel" id="clean-substep-historico-fecho">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Histórico</p><h3>Atualizações na ficha e histórico</h3><p>Garantir que o resultado do processo alimenta a ficha da viatura e futuras decisões.</p></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Serviço executado<select name="closure_service_history_status">{% for option in ["Por confirmar", "Registado", "Pendente"] %}<option{% if phase_form.get("closure_service_history_status", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Próxima manutenção<select name="closure_next_maintenance_status">{% for option in ["Por atualizar", "Atualizada", "Pendente"] %}<option{% if phase_form.get("closure_next_maintenance_status", "Por atualizar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Problemas técnicos<select name="closure_problem_history_status">{% for option in ["Acompanhar", "Fechados", "Pendentes"] %}<option{% if phase_form.get("closure_problem_history_status", "Acompanhar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Auditoria histórico<select name="closure_audit_history_status">{% for option in ["Em curso", "Fechada", "Reserva"] %}<option{% if phase_form.get("closure_audit_history_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Estado venda/frota<select name="closure_sale_state_status">{% for option in ["Aviso", "Atualizado", "Sem impacto"] %}<option{% if phase_form.get("closure_sale_state_status", "Aviso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              </div>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Atualização</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
                 <div><span>Serviço executado</span><em>FO / processo</em><strong>Por confirmar</strong><mark class="warn">Pendente</mark><a href="#">Registar</a></div>
@@ -677,12 +789,12 @@
             <article class="clean-substep-panel" id="clean-substep-pendencias-fecho">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pendências</p><h3>O que fica em aberto após fecho</h3><p>Permitir fechar com reserva, mas sem perder dono, prazo e motivo.</p></div></div>
               <div class="clean-phase-field-grid">
-                <label>Fechar com pendências?<select><option>Não</option><option>Sim</option><option>Por confirmar</option></select></label>
-                <label>Tipo de pendência<select><option>N/A</option><option>Documento</option><option>Fatura</option><option>Problema técnico</option><option>Tarefa externa</option><option>Auditoria histórico</option></select></label>
-                <label>Responsável<input placeholder="Responsável pela pendência"></label>
-                <label>Prazo<input type="date"></label>
-                <label>Bloqueia utilização?<select><option>Não</option><option>Sim</option><option>Com reserva</option></select></label>
-                <label>Descrição da pendência<textarea rows="3" placeholder="O que falta, porquê e que evidência suporta..."></textarea></label>
+                <label>Fechar com pendências?<select name="closure_pending_exists">{% for option in ["Não", "Sim", "Por confirmar"] %}<option{% if phase_form.get("closure_pending_exists", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Tipo de pendência<select name="closure_pending_type">{% for option in ["N/A", "Documento", "Fatura", "Problema técnico", "Tarefa externa", "Auditoria histórico"] %}<option{% if phase_form.get("closure_pending_type", "N/A") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Responsável<input name="closure_pending_owner" placeholder="Responsável pela pendência" value="{{ phase_form.get('closure_pending_owner', '') }}"></label>
+                <label>Prazo<input type="date" name="closure_pending_due" value="{{ phase_form.get('closure_pending_due', '') }}"></label>
+                <label>Bloqueia utilização?<select name="closure_pending_blocks_use">{% for option in ["Não", "Sim", "Com reserva"] %}<option{% if phase_form.get("closure_pending_blocks_use", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Descrição da pendência<textarea name="closure_pending_description" rows="3" placeholder="O que falta, porquê e que evidência suporta...">{{ phase_form.get("closure_pending_description", "") }}</textarea></label>
               </div>
             </article>
             <article class="clean-substep-panel" id="clean-substep-encerramento">
@@ -695,16 +807,16 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Resultado<select><option>Fechado com reparação</option><option>Fechado com reserva</option><option>Fechado sem reparação</option><option>Não fechar</option></select></label>
-                  <label>Estado de fecho<select><option>Normal</option><option>Alta</option><option>Crítica</option><option>Com reserva</option></select></label>
+                  <label>Resultado<select name="closure_result">{% for option in ["Fechado com reparação", "Fechado com reserva", "Fechado sem reparação", "Não fechar"] %}<option{% if phase_form.get("closure_result", "Fechado com reparação") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Estado de fecho<select name="closure_state">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("closure_state", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Processo fechado" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Resumo final<textarea rows="5" placeholder="Resultado objetivo: o que entrou, o que foi feito, evidência e estado de saída..."></textarea></label>
+                <label class="clean-phase-exit-main">Resumo final<textarea name="closure_summary" rows="5" placeholder="Resultado objetivo: o que entrou, o que foi feito, evidência e estado de saída...">{{ phase_form.get("closure_summary", "") }}</textarea></label>
                 <div class="clean-phase-exit-checks">
                   <strong>Condições de fecho</strong>
-                  <label><input type="checkbox"> Viatura validada</label><label><input type="checkbox"> Documentos mínimos associados</label><label><input type="checkbox"> Histórico atualizado</label><label><input type="checkbox"> Pendências atribuídas</label><label><input type="checkbox"> Estado frota definido</label>
+                  <label><input type="checkbox" name="closure_vehicle_validated" value="yes"{% if phase_form.get("closure_vehicle_validated") %} checked{% endif %}> Viatura validada</label><label><input type="checkbox" name="closure_min_docs_attached" value="yes"{% if phase_form.get("closure_min_docs_attached") %} checked{% endif %}> Documentos mínimos associados</label><label><input type="checkbox" name="closure_history_updated" value="yes"{% if phase_form.get("closure_history_updated") %} checked{% endif %}> Histórico atualizado</label><label><input type="checkbox" name="closure_pending_assigned" value="yes"{% if phase_form.get("closure_pending_assigned") %} checked{% endif %}> Pendências atribuídas</label><label><input type="checkbox" name="closure_fleet_state_defined" value="yes"{% if phase_form.get("closure_fleet_state_defined") %} checked{% endif %}> Estado frota definido</label>
                 </div>
-                <label class="clean-phase-exit-reserve">Nota final<textarea rows="3" placeholder="Notas para auditoria futura, fornecedor ou discussão técnica..."></textarea></label>
+                <label class="clean-phase-exit-reserve">Nota final<textarea name="closure_final_note" rows="3" placeholder="Notas para auditoria futura, fornecedor ou discussão técnica...">{{ phase_form.get("closure_final_note", "") }}</textarea></label>
               </div>
             </article>
           </div>
@@ -729,12 +841,17 @@
 
       <article class="clean-panel clean-panel-compact clean-card-wide">
         <div class="clean-context-action-grid">
-          <div class="clean-context-list"><span><b>Regra de modelo</b><em>Campos e cartões podem aparecer conforme motivo, marca, combustível e estado da auditoria.</em></span><span><b>Bloqueios</b><em>Auditoria histórica e campanhas por executar podem bloquear fases finais.</em></span></div>
+          <div class="clean-context-list"><span><b>Regra de modelo</b><em>Campos e cartões podem aparecer conforme motivo, marca, combustível e estado da auditoria.</em></span><span><b>Pendências</b><em>Campanhas por executar ficam em tarefa/reserva e não bloqueiam. Só risco técnico crítico deve impedir avanço.</em></span></div>
           <div class="clean-history-actions"><a href="/fleet">Ficha da viatura</a><a href="/documents">Documentos</a><a href="/task-board">Tarefas</a><a href="/management-center/auditorias">Auditoria</a></div>
           <div class="clean-action-list">
-            <button type="button">Guardar fase</button>
-            {% if previous_phase_url %}<button type="button" class="secondary-phase-action" onclick="window.location.href='{{ previous_phase_url }}'">Voltar fase</button>{% endif %}
-            {% if next_phase_url %}<button type="button" class="next-phase-action" onclick="window.location.href='{{ next_phase_url }}'">{{ phase.primary_action }}</button>{% else %}<button type="button" class="next-phase-action">{{ phase.primary_action }}</button>{% endif %}
+            {% if workshop_process and workshop_process.status == "closed" %}
+              <a class="next-phase-action" href="/v2-clean/workshop">Processo fechado</a>
+              {% if previous_phase_url %}<a class="secondary-phase-action" href="{{ previous_phase_url }}">Consultar fase anterior</a>{% endif %}
+            {% else %}
+              <button type="submit" name="action" value="save">Guardar fase</button>
+              {% if previous_phase_url %}<a class="secondary-phase-action" href="{{ previous_phase_url }}">Voltar fase</a>{% endif %}
+              <button type="submit" name="action" value="advance" class="next-phase-action">{{ phase.primary_action }}</button>
+            {% endif %}
           </div>
         </div>
       </article>
@@ -752,6 +869,19 @@
         panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
       });
     });
+    const initialTarget = window.location.hash ? window.location.hash.slice(1) : "";
+    if (initialTarget) {
+      const targetCard = workbench.querySelector(`.clean-substep-card[data-target="${initialTarget}"]`);
+      targetCard?.click();
+    }
+    workbench.querySelectorAll(".clean-substep-jump").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.target;
+        const targetCard = target ? workbench.querySelector(`.clean-substep-card[data-target="${target}"]`) : null;
+        targetCard?.click();
+        workbench.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   });
   document.querySelectorAll(".clean-service-validation-list").forEach((list) => {
     const addButton = list.querySelector(".clean-service-validation-head button");
@@ -763,6 +893,37 @@
       newRow.querySelectorAll("input, textarea").forEach((field) => { field.value = ""; });
       newRow.querySelectorAll("select").forEach((field) => { field.selectedIndex = 0; });
       list.appendChild(newRow);
+    });
+  });
+  document.querySelectorAll(".clean-report-upload").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      const processId = document.querySelector('input[name="process_id"]')?.value;
+      const reportCode = input.dataset.reportCode;
+      if (!file || !processId || !reportCode) return;
+      const formData = new FormData();
+      formData.append("report_code", reportCode);
+      formData.append("report_file", file);
+      input.closest(".clean-report-actions")?.classList.add("is-loading");
+      try {
+        const response = await fetch(`/v2-clean/workshop/${processId}/technical-reports/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) throw new Error("Falha ao carregar relatório.");
+        window.location.href = response.url || `/v2-clean/workshop/diagnostico?process_id=${processId}&report_uploaded=1#leituras`;
+      } catch (error) {
+        alert(error.message || "Falha ao carregar relatório.");
+        input.closest(".clean-report-actions")?.classList.remove("is-loading");
+      }
+    });
+  });
+  document.querySelectorAll(".clean-report-open-readings").forEach((button) => {
+    button.addEventListener("click", () => {
+      const workbench = button.closest(".clean-phase-workbench");
+      const targetCard = workbench?.querySelector('.clean-substep-card[data-target="leituras"]');
+      targetCard?.click();
+      workbench?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 </script>

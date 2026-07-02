@@ -29,12 +29,11 @@
         </div>
       </div>
       <div class="clean-vehicle-quick-facts">
-        <span><b>Estado</b><em>{{ ctx.status.operational }}</em></span>
-        <span><b>Localização</b><em>{{ ctx.status.location }}</em></span>
+        <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
         <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
         <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
+        <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
         <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
-        <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_rentway_km }} km</em></span>
       </div>
     </section>
 

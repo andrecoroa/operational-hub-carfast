@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -68,7 +68,12 @@ from app.models.workshop import (
     WorkshopProcessService,
     WorkshopTechnicalReading,
 )
-from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessAlert
+from app.models.workshop_phased import (
+    WorkshopPhasedProcess,
+    WorkshopPhasedProcessAlert,
+    WorkshopPhasedProcessPhase,
+    WorkshopPhasedTechnicalReport,
+)
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
@@ -176,6 +181,24 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
         "rental_station": snapshot_value(data, ["rental_station", "rentalstation", "station", "location"]),
         "return_date": snapshot_value(data, ["return_date", "returndate"]),
         "value_with_tax": snapshot_value(data, ["value_with_tax", "valuewithtax", "valor_com_iva", "valor_aquisicao"]),
+        "purchase_supplier": snapshot_value(
+            data,
+            [
+                "supplier",
+                "supplier_name",
+                "fornecedor",
+                "fornecedor_compra",
+                "purchase_supplier",
+                "purchasesupplier",
+                "purchase_vendor",
+                "purchasevendor",
+                "seller",
+                "vendor",
+                "dealer",
+                "entidade_vendedora",
+                "vendedor",
+            ],
+        ),
         "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
         "km": snapshot_value(data, ["km", "kms", "odometer", "odometer_km", "current_km", "quilometros"]),
         "category": snapshot_value(data, ["category", "categoria", "grupo", "vehicle_category", "fleet"]),
@@ -2105,6 +2128,8 @@ HISTORY_AUDIT_RULE_TYPES = [
     ("other", "Outro"),
 ]
 HISTORY_AUDIT_REPORT_LABELS = dict(HISTORY_AUDIT_DOCUMENT_TYPES)
+CLEAN_WORKSHOP_REPORT_LABELS = {str(report["code"]): str(report["label"]) for report in STELLANTIS_REPORTS}
+CLEAN_WORKSHOP_REPORT_CODES = set(CLEAN_WORKSHOP_REPORT_LABELS)
 HISTORY_AUDIT_EXTRACTABLE_REPORTS = {
     "maintenance_information",
     "engine_lubrication",
@@ -2815,14 +2840,14 @@ def clean_process_center(request: Request):
         return denied
     with SessionLocal() as db:
         area_cards = clean_process_area_cards(db)
-        recent_workshop = db.scalars(
-            select(WorkshopPhasedProcess)
-            .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
-            .limit(8)
-        ).all()
         recent_audits = db.scalars(
             select(VehicleHistoryAudit)
             .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+            .limit(8)
+        ).all()
+        recent_management = db.scalars(
+            select(ManagementProcess)
+            .order_by(ManagementProcess.updated_at.desc(), ManagementProcess.id.desc())
             .limit(8)
         ).all()
         return templates.TemplateResponse(
@@ -2830,8 +2855,80 @@ def clean_process_center(request: Request):
             "clean_process_center.html",
             {
                 "area_cards": area_cards,
-                "recent_workshop": recent_workshop,
                 "recent_audits": recent_audits,
+                "recent_management": recent_management,
+            },
+        )
+
+
+@web_router.get("/v2-clean/workshop", response_class=HTMLResponse)
+def clean_workshop_dashboard(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        all_processes = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+            )
+            or 0
+        )
+        open_processes = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+                .where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+            )
+            or 0
+        )
+        historical_processes = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+                .where(
+                    WorkshopPhasedProcess.creation_mode == "historical",
+                    WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+                )
+            )
+            or 0
+        )
+        open_alerts = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcessAlert)
+                .where(WorkshopPhasedProcessAlert.status == "open")
+            )
+            or 0
+        )
+        pending_validation = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+                .where(
+                    WorkshopPhasedProcess.current_phase_code.in_(("entrada", "validacao", "diagnostico")),
+                    WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+                )
+            )
+            or 0
+        )
+        recent_processes = db.scalars(
+            select(WorkshopPhasedProcess)
+            .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
+            .limit(12)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_workshop_dashboard.html",
+            {
+                "metrics": {
+                    "total": all_processes,
+                    "open": open_processes,
+                    "historical": historical_processes,
+                    "alerts": open_alerts,
+                    "pending_validation": pending_validation,
+                },
+                "recent_processes": recent_processes,
             },
         )
 
@@ -2877,6 +2974,26 @@ CLEAN_WORKSHOP_ENTRY_REASONS = [
     "Avaria",
     "IPO",
     "Outro",
+]
+
+CLEAN_WORKSHOP_ENTRY_PHYSICAL_CHECKS = [
+    "visible_damage",
+    "damage_matches_rentway",
+    "dua_copy",
+    "green_card_valid",
+    "vv_device",
+    "reflective_vest",
+    "triangle",
+    "spare_tyre",
+    "jack",
+    "inflation_kit",
+]
+
+CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS = [
+    "minimum_reason_selected",
+    "minimum_km_confirmed",
+    "minimum_dashboard_photo",
+    "minimum_damage_photos",
 ]
 
 CLEAN_WORKSHOP_PHASE_ALIASES = {
@@ -3068,14 +3185,24 @@ def clean_km(value: str | None) -> str:
         return text
 
 
+def parse_int_from_text(value: str | None) -> int | None:
+    if not value:
+        return None
+    digits = re.sub(r"[^0-9]", "", str(value))
+    return int(digits) if digits else None
+
+
 def clean_workshop_query_suffix(
+    process_id: int | None = None,
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
     new_entry: bool = False,
 ) -> str:
     query: dict[str, str] = {}
-    if vehicle_id:
+    if process_id:
+        query["process_id"] = str(process_id)
+    elif vehicle_id:
         query["vehicle_id"] = str(vehicle_id)
     elif plate:
         query["plate"] = plate
@@ -3086,17 +3213,141 @@ def clean_workshop_query_suffix(
     return f"?{urlencode(query)}" if query else ""
 
 
-def clean_workshop_mark_draft_context(
-    vehicle_context: dict[str, object],
+def clean_workshop_process_reference(process: WorkshopPhasedProcess) -> str:
+    reference_date = process.received_at or process.created_at or datetime.now(UTC)
+    return f"OFI-{reference_date.year}-{process.id:06d}"
+
+
+def clean_workshop_find_vehicle(
+    db: Session,
     *,
+    vehicle_id: int | None = None,
+    plate: str | None = None,
+) -> Vehicle | None:
+    if vehicle_id:
+        return db.get(Vehicle, vehicle_id)
+    if plate:
+        return db.scalar(select(Vehicle).where(Vehicle.plate == normalize_identifier(plate)))
+    return None
+
+
+def clean_workshop_create_process(
+    db: Session,
+    *,
+    request: Request,
+    vehicle_id: int | None = None,
+    plate: str | None = None,
     historical: bool = False,
-    new_entry: bool = False,
-) -> dict[str, object]:
-    if not new_entry:
-        return vehicle_context
-    context = dict(vehicle_context)
-    context["process_ref"] = "OFI-2026-HIST-RASCUNHO" if historical else "OFI-2026-RASCUNHO"
+) -> WorkshopPhasedProcess:
+    user_id = get_web_user_id(request)
+    vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
+    plate_snapshot = (
+        vehicle.plate
+        if vehicle and vehicle.plate
+        else normalize_identifier(plate) if plate else CLEAN_WORKSHOP_CONTEXT["plate"]
+    )
+    vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle.id if vehicle else None, plate=plate_snapshot)
+    now = datetime.now(UTC)
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title=f"Oficina {plate_snapshot}",
+        creation_mode="historical" if historical else "operational",
+        status="open",
+        vehicle_id=vehicle.id if vehicle else None,
+        plate_snapshot=plate_snapshot,
+        current_phase_code="entrada",
+        priority="normal",
+        origin="v2_clean",
+        origin_detail="Criado na experiência v2-clean.",
+        initial_km=parse_int_from_text(str(vehicle_context.get("entry_km") or "")),
+        initial_observation="Processo histórico criado para reconstrução." if historical else "Entrada criada na experiência v2-clean.",
+        responsible_user_id=user_id,
+        created_by_id=user_id,
+        received_at=now,
+        metadata_json={
+            "v2_clean": True,
+            "historical": historical,
+            "source": "v2_clean_workshop_entry",
+        },
+    )
+    db.add(process)
+    db.flush()
+    process.title = f"{clean_workshop_process_reference(process)} · {plate_snapshot}"
+    for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1):
+        db.add(
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code=str(step["key"]),
+                name=str(step["label"]),
+                status="pending_review" if step["key"] == "entrada" else "not_started",
+                sort_order=index,
+                started_at=now if step["key"] == "entrada" else None,
+                data_json={},
+            )
+        )
+    db.commit()
+    db.refresh(process)
+    return process
+
+
+def clean_workshop_context_for_process(db: Session, process: WorkshopPhasedProcess) -> dict[str, object]:
+    context = clean_workshop_vehicle_context(
+        db,
+        vehicle_id=process.vehicle_id,
+        plate=process.plate_snapshot,
+    )
+    context["process_ref"] = clean_workshop_process_reference(process)
+    context["process_id"] = process.id
+    if process.initial_km is not None:
+        context["entry_km"] = clean_km(str(process.initial_km))
     return context
+
+
+def clean_workshop_get_phase(
+    db: Session,
+    process_id: int,
+    phase_code: str,
+) -> WorkshopPhasedProcessPhase | None:
+    return db.scalar(
+        select(WorkshopPhasedProcessPhase).where(
+            WorkshopPhasedProcessPhase.process_id == process_id,
+            WorkshopPhasedProcessPhase.phase_code == phase_code,
+        )
+    )
+
+
+def clean_workshop_entry_substep_status(entry_data: dict[str, object]) -> dict[str, str]:
+    if not entry_data:
+        return {"motivo": "Obrigatório", "danos": "Por validar", "saida": "Rascunho"}
+
+    has_motivo = any(
+        [
+            entry_data.get("entry_reasons"),
+            str(entry_data.get("short_description") or "").strip(),
+            str(entry_data.get("requested_service") or "").strip(),
+            str(entry_data.get("entry_km") or "").strip(),
+        ]
+    )
+    physical_checks = entry_data.get("physical_checks")
+    has_physical_checks = False
+    if isinstance(physical_checks, dict):
+        has_physical_checks = any(str(value) != "not_checked" for value in physical_checks.values())
+    has_danos = has_physical_checks or bool(str(entry_data.get("physical_check_note") or "").strip())
+
+    minimum_checks = entry_data.get("minimum_checks")
+    has_minimum_checks = False
+    if isinstance(minimum_checks, dict):
+        has_minimum_checks = any(str(value) != "not_checked" for value in minimum_checks.values())
+    has_saida = has_minimum_checks or bool(
+        str(entry_data.get("expected_exit") or "").strip()
+        or str(entry_data.get("validation_notes") or "").strip()
+    )
+
+    return {
+        "motivo": "Guardado" if has_motivo else "Obrigatório",
+        "danos": "Guardado" if has_danos else "Por validar",
+        "saida": "Guardado" if has_saida else "Rascunho",
+    }
 
 
 def clean_workshop_steps(query_suffix: str = "") -> list[dict[str, str | int]]:
@@ -3127,6 +3378,512 @@ def clean_workshop_phase_nav(active_key: str, query_suffix: str = "") -> dict[st
         else None
     )
     return {"previous_phase_url": previous_phase_url, "next_phase_url": next_phase_url}
+
+
+def clean_workshop_next_phase_key(active_key: str) -> str | None:
+    step_index = next(
+        (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS) if step["key"] == active_key),
+        None,
+    )
+    if step_index is None or step_index >= len(CLEAN_WORKSHOP_STEP_DEFS) - 1:
+        return None
+    return str(CLEAN_WORKSHOP_STEP_DEFS[step_index + 1]["key"])
+
+
+def clean_workshop_phase_path(phase_key: str) -> str:
+    step = next((item for item in CLEAN_WORKSHOP_STEP_DEFS if item["key"] == phase_key), None)
+    return str(step["path"]) if step else "/v2-clean/workshop-entry"
+
+
+def clean_form_value(snapshot: dict[str, object], key: str, default: str = "") -> str:
+    value = snapshot.get(key)
+    if isinstance(value, list):
+        return str(value[0]) if value else default
+    if value is None:
+        return default
+    return str(value)
+
+
+def clean_form_values(snapshot: dict[str, object], key: str) -> list[str]:
+    value = snapshot.get(key)
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if value is None or value == "":
+        return []
+    return [str(value)]
+
+
+def clean_workshop_validation_rows(snapshot: dict[str, object]) -> list[dict[str, str]]:
+    defaults = [
+        {"service_type": "Revisão / degradação óleo"},
+        {"service_type": "Pneus"},
+    ]
+    fields = [
+        "service_type",
+        "service_already_done",
+        "previous_service_date",
+        "previous_service_km",
+        "previous_service_supplier",
+        "previous_service_document",
+        "service_decision",
+    ]
+    values = {field: clean_form_values(snapshot, field) for field in fields}
+    row_count = max(2, *(len(items) for items in values.values()))
+    rows: list[dict[str, str]] = []
+    for index in range(row_count):
+        default_row = defaults[index] if index < len(defaults) else {"service_type": "Outro"}
+        rows.append(
+            {
+                "service_type": values["service_type"][index]
+                if index < len(values["service_type"])
+                else default_row.get("service_type", "Outro"),
+                "service_already_done": values["service_already_done"][index]
+                if index < len(values["service_already_done"])
+                else "Por confirmar",
+                "previous_service_date": values["previous_service_date"][index]
+                if index < len(values["previous_service_date"])
+                else "",
+                "previous_service_km": values["previous_service_km"][index]
+                if index < len(values["previous_service_km"])
+                else "",
+                "previous_service_supplier": values["previous_service_supplier"][index]
+                if index < len(values["previous_service_supplier"])
+                else "",
+                "previous_service_document": values["previous_service_document"][index]
+                if index < len(values["previous_service_document"])
+                else "",
+                "service_decision": values["service_decision"][index]
+                if index < len(values["service_decision"])
+                else "Por decidir",
+            }
+        )
+    return rows
+
+
+def clean_workshop_validation_substep_status(snapshot: dict[str, object]) -> dict[str, str]:
+    has_service_data = any(
+        [
+            clean_form_values(snapshot, "service_type"),
+            clean_form_values(snapshot, "previous_service_date"),
+            clean_form_values(snapshot, "previous_service_km"),
+            clean_form_values(snapshot, "previous_service_supplier"),
+            clean_form_values(snapshot, "previous_service_document"),
+            clean_form_value(snapshot, "validation_observation").strip(),
+        ]
+    )
+    service_decisions = clean_form_values(snapshot, "service_decision")
+    has_decision = any(value and value != "Por decidir" for value in service_decisions)
+    already_done_values = clean_form_values(snapshot, "service_already_done")
+    has_history_answer = any(value and value != "Por confirmar" for value in already_done_values)
+    return {
+        "prerequisitos": "2 tarefas",
+        "pedido": "Guardado" if has_decision or has_history_answer or has_service_data else "Por validar",
+        "orientacao": "Rascunho",
+    }
+
+
+def clean_workshop_technical_report_summary(
+    reports: list[WorkshopPhasedTechnicalReport],
+) -> dict[str, dict[str, object]]:
+    status_labels = {
+        "pending_validation": "Por validar",
+        "validated": "Validado",
+        "validated_manually": "Validado manual",
+        "corrected_manually": "Corrigido",
+        "unable_to_read": "Leitura falhou",
+        "voided": "Anulado",
+    }
+    summary: dict[str, dict[str, object]] = {}
+    grouped: dict[str, list[WorkshopPhasedTechnicalReport]] = defaultdict(list)
+    for report in reports:
+        if report.status == "voided":
+            continue
+        grouped[report.report_code].append(report)
+    for code, items in grouped.items():
+        latest = sorted(items, key=lambda item: item.id, reverse=True)[0]
+        extracted_values = latest.extracted_values_json if isinstance(latest.extracted_values_json, dict) else {}
+        summary[code] = {
+            "count": len(items),
+            "latest": latest,
+            "status": status_labels.get(latest.status, latest.status or "Por validar"),
+            "file_name": Path(str(latest.original_link or "")).name or "-",
+            "extracted_count": len(extracted_values),
+        }
+    return summary
+
+
+def clean_workshop_technical_reading_rows(
+    reports: list[WorkshopPhasedTechnicalReport],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    latest_by_code: dict[str, WorkshopPhasedTechnicalReport] = {}
+    for report in sorted(
+        [item for item in reports if item.status != "voided"],
+        key=lambda item: item.id,
+        reverse=True,
+    ):
+        latest_by_code.setdefault(report.report_code, report)
+
+    sorted_reports = sorted(latest_by_code.values(), key=lambda item: item.id, reverse=True)
+    has_any_extracted = any(
+        isinstance(report.extracted_values_json, dict) and report.extracted_values_json
+        for report in sorted_reports
+    )
+    for report in sorted_reports:
+        extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+        validated_values = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
+        report_open_url = f"/v2-clean/workshop/technical-reports/{report.id}/file"
+        if extracted_values:
+            field_labels = {
+                str(field.get("code")): str(field.get("label"))
+                for field in stellantis_report_fields(report.report_code)
+            }
+            for key, value in extracted_values.items():
+                validation = validated_values.get(str(key)) if isinstance(validated_values.get(str(key)), dict) else {}
+                validation_status = str(validation.get("status") or "Por validar")
+                rows.append(
+                    {
+                        "report_id": str(report.id),
+                        "field_code": str(key),
+                        "field": field_labels.get(str(key), str(key)),
+                        "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                        "value": str(value),
+                        "corrected_value": str(validation.get("corrected_value") or ""),
+                        "observation": str(validation.get("observation") or ""),
+                        "status": validation_status,
+                        "action": "Guardar",
+                        "open_url": report_open_url,
+                    }
+                )
+            continue
+        if has_any_extracted:
+            continue
+
+        raw_values = report.raw_values_json if isinstance(report.raw_values_json, dict) else {}
+        if report.status == "unable_to_read":
+            validation = (
+                validated_values.get("manual_reading")
+                if isinstance(validated_values.get("manual_reading"), dict)
+                else {}
+            )
+            validation_status = str(validation.get("status") or "Não legível")
+            rows.append(
+                {
+                    "report_id": str(report.id),
+                    "field_code": "manual_reading",
+                    "field": "Leitura automática",
+                    "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                    "value": str(raw_values.get("extraction_error") or "Sem dados extraídos"),
+                    "corrected_value": str(validation.get("corrected_value") or ""),
+                    "observation": str(validation.get("observation") or ""),
+                    "status": validation_status if report.status in {"validated_manually", "corrected_manually"} else "Falhou",
+                    "action": "Guardar",
+                    "open_url": report_open_url,
+                }
+            )
+            continue
+
+        validation = (
+            validated_values.get("manual_reading")
+            if isinstance(validated_values.get("manual_reading"), dict)
+            else {}
+        )
+        validation_status = str(validation.get("status") or "Por validar")
+        rows.append(
+            {
+                "report_id": str(report.id),
+                "field_code": "manual_reading",
+                "field": "Relatório carregado",
+                "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                "value": str(raw_values.get("original_name") or Path(str(report.original_link or "")).name or "-"),
+                "corrected_value": str(validation.get("corrected_value") or ""),
+                "observation": str(validation.get("observation") or ""),
+                "status": validation_status,
+                "action": "Guardar",
+                "open_url": report_open_url,
+            }
+        )
+    return rows
+
+
+def clean_workshop_diagnostic_substep_status(
+    reports: list[WorkshopPhasedTechnicalReport],
+) -> dict[str, str]:
+    active_reports = [report for report in reports if report.status != "voided"]
+    pending = [report for report in active_reports if report.status in {"pending_validation", "unable_to_read"}]
+    extracted = [
+        report
+        for report in active_reports
+        if isinstance(report.extracted_values_json, dict) and report.extracted_values_json
+    ]
+    validated = [report for report in active_reports if report.status in {"validated", "validated_manually", "corrected_manually"}]
+    return {
+        "relatorios": f"{len(pending)} por validar" if pending else ("Sem relatórios" if not active_reports else "Guardado"),
+        "leituras": (
+            f"{len(extracted)} com dados"
+            if extracted
+            else ("Sem dados" if not active_reports else ("Validado" if validated and not pending else "Por rever"))
+        ),
+    }
+
+
+def clean_workshop_diagnostic_form_status(
+    snapshot: dict[str, object],
+    reports: list[WorkshopPhasedTechnicalReport],
+) -> dict[str, str]:
+    report_status = clean_workshop_diagnostic_substep_status(reports)
+    comparison_has_data = any(
+        [
+            clean_form_value(snapshot, "pre_report_exists").strip(),
+            clean_form_value(snapshot, "post_report_exists").strip(),
+            clean_form_value(snapshot, "bsi_vs_billing").strip(),
+            clean_form_value(snapshot, "remote_download_vs_tsb").strip(),
+            clean_form_value(snapshot, "comparison_differences").strip(),
+            clean_form_value(snapshot, "comparison_evidence").strip(),
+        ]
+    )
+    problem_has_data = any(
+        [
+            clean_form_value(snapshot, "diagnostic_problem_detected").strip(),
+            clean_form_value(snapshot, "diagnostic_problem_title").strip(),
+            clean_form_value(snapshot, "diagnostic_problem_origin").strip(),
+            clean_form_value(snapshot, "diagnostic_problem_evidence").strip(),
+            clean_form_value(snapshot, "diagnostic_problem_action").strip(),
+        ]
+    )
+    exit_has_data = any(
+        [
+            clean_form_value(snapshot, "diagnostic_closed").strip(),
+            clean_form_value(snapshot, "diagnostic_priority").strip(),
+            clean_form_value(snapshot, "diagnostic_conclusion").strip(),
+            clean_form_value(snapshot, "diagnostic_reserve_reason").strip(),
+            clean_form_value(snapshot, "inspection_required_oil").strip(),
+            clean_form_value(snapshot, "inspection_required_bsi").strip(),
+            clean_form_value(snapshot, "inspection_required_tyres").strip(),
+            clean_form_value(snapshot, "inspection_required_brakes").strip(),
+            clean_form_value(snapshot, "inspection_required_road_test").strip(),
+            clean_form_value(snapshot, "inspection_required_photos").strip(),
+        ]
+    )
+    return {
+        "relatorios": report_status["relatorios"],
+        "leituras": report_status["leituras"],
+        "comparacao": "Guardado" if comparison_has_data else "Por validar",
+        "problemas": "Guardado" if problem_has_data else "Por validar",
+        "saida": "Rascunho" if exit_has_data else "Pendente",
+    }
+
+
+def clean_workshop_inspection_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+    checklist_keys = [
+        "inspection_check_lights",
+        "inspection_check_battery",
+        "inspection_check_leaks",
+        "inspection_check_noises",
+        "inspection_check_road_test",
+    ]
+    checklist_answers = [clean_form_value(snapshot, key, "review") for key in checklist_keys]
+    checklist_pending = sum(1 for value in checklist_answers if value in {"", "review"})
+    checklist_has_data = any(value not in {"", "review"} for value in checklist_answers)
+
+    tyres_brakes_has_data = any(
+        [
+            clean_form_value(snapshot, "tyres_front_condition").strip(),
+            clean_form_value(snapshot, "tyres_rear_condition").strip(),
+            clean_form_value(snapshot, "pads_front_condition").strip(),
+            clean_form_value(snapshot, "discs_front_condition").strip(),
+            clean_form_value(snapshot, "brakes_rear_condition").strip(),
+        ]
+    )
+    oil_levels_has_data = any(
+        [
+            clean_form_value(snapshot, "oil_level").strip(),
+            clean_form_value(snapshot, "oil_visual_state").strip(),
+            clean_form_value(snapshot, "coolant_level").strip(),
+            clean_form_value(snapshot, "brake_fluid_level").strip(),
+            clean_form_value(snapshot, "oil_diagnosis_confirmed").strip(),
+            clean_form_value(snapshot, "oil_levels_observation").strip(),
+        ]
+    )
+    exit_has_data = any(
+        [
+            clean_form_value(snapshot, "inspection_closed").strip(),
+            clean_form_value(snapshot, "inspection_priority").strip(),
+            clean_form_value(snapshot, "inspection_summary").strip(),
+            clean_form_value(snapshot, "inspection_reserve_reason").strip(),
+            clean_form_value(snapshot, "inspection_create_task").strip(),
+            clean_form_value(snapshot, "inspection_create_problem").strip(),
+            clean_form_value(snapshot, "inspection_needs_quote").strip(),
+            clean_form_value(snapshot, "inspection_can_advance_with_reserve").strip(),
+            clean_form_value(snapshot, "inspection_no_nonconformities").strip(),
+        ]
+    )
+    checklist_status = "Por rever"
+    if checklist_has_data:
+        checklist_status = "Guardado" if checklist_pending == 0 else f"{checklist_pending} por rever"
+    return {
+        "checklist": checklist_status,
+        "pneus_travoes": "Guardado" if tyres_brakes_has_data else "Por validar",
+        "oleo_niveis": "Guardado" if oil_levels_has_data else "Por validar",
+        "saida": "Rascunho" if exit_has_data else "Pendente",
+    }
+
+
+def clean_workshop_audit_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+    evidence_has_data = bool(clean_form_value(snapshot, "audit_evidence_summary").strip())
+    coherence_has_data = any(
+        [
+            clean_form_value(snapshot, "audit_bsi_billing_result").strip(),
+            clean_form_value(snapshot, "audit_oil_limit_result").strip(),
+            clean_form_value(snapshot, "audit_remote_download_result").strip(),
+            clean_form_value(snapshot, "audit_service_repeat_result").strip(),
+        ]
+    )
+    problems_has_data = bool(clean_form_value(snapshot, "audit_open_items_summary").strip())
+    decision_has_data = any(
+        [
+            clean_form_value(snapshot, "audit_decision_main").strip(),
+            clean_form_value(snapshot, "audit_repair_authorized").strip(),
+            clean_form_value(snapshot, "audit_responsibility").strip(),
+            clean_form_value(snapshot, "audit_quote_needed").strip(),
+            clean_form_value(snapshot, "audit_estimated_value").strip(),
+            clean_form_value(snapshot, "audit_decision_reason").strip(),
+        ]
+    )
+    exit_has_data = any(
+        [
+            clean_form_value(snapshot, "audit_closed").strip(),
+            clean_form_value(snapshot, "audit_priority").strip(),
+            clean_form_value(snapshot, "audit_summary").strip(),
+            clean_form_value(snapshot, "audit_reserve_reason").strip(),
+            clean_form_value(snapshot, "audit_condition_service_confirmed").strip(),
+            clean_form_value(snapshot, "audit_condition_quote_handled").strip(),
+            clean_form_value(snapshot, "audit_condition_campaigns_checked").strip(),
+            clean_form_value(snapshot, "audit_condition_problems_logged").strip(),
+            clean_form_value(snapshot, "audit_condition_owner_defined").strip(),
+        ]
+    )
+    return {
+        "evidencias": "Guardado" if evidence_has_data else "Por fechar",
+        "coerencia": "Guardado" if coherence_has_data else "Por validar",
+        "problemas": "Guardado" if problems_has_data else "Por fechar",
+        "decisao": "Guardado" if decision_has_data else "Pendente",
+        "saida": "Rascunho" if exit_has_data else "Pendente",
+    }
+
+
+def clean_workshop_repair_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+    order_has_data = bool(clean_form_value(snapshot, "repair_authorized_services").strip())
+    execution_has_data = any(
+        [
+            clean_form_value(snapshot, "repair_execution_status").strip(),
+            clean_form_value(snapshot, "repair_responsible").strip(),
+            clean_form_value(snapshot, "repair_started_on").strip(),
+            clean_form_value(snapshot, "repair_eta").strip(),
+            clean_form_value(snapshot, "repair_vehicle_immobilized").strip(),
+            clean_form_value(snapshot, "repair_execution_note").strip(),
+        ]
+    )
+    evidence_has_data = any(
+        [
+            clean_form_value(snapshot, "repair_fo_status").strip(),
+            clean_form_value(snapshot, "repair_photos_status").strip(),
+            clean_form_value(snapshot, "repair_post_report_status").strip(),
+            clean_form_value(snapshot, "repair_campaign_proof_status").strip(),
+        ]
+    )
+    deviations_has_data = any(
+        [
+            clean_form_value(snapshot, "repair_deviation_exists").strip(),
+            clean_form_value(snapshot, "repair_new_quote_needed").strip(),
+            clean_form_value(snapshot, "repair_deviation_reason").strip(),
+            clean_form_value(snapshot, "repair_timing_impact").strip(),
+            clean_form_value(snapshot, "repair_financial_impact").strip(),
+            clean_form_value(snapshot, "repair_action_needed").strip(),
+        ]
+    )
+    exit_has_data = any(
+        [
+            clean_form_value(snapshot, "repair_closed").strip(),
+            clean_form_value(snapshot, "repair_exit_status").strip(),
+            clean_form_value(snapshot, "repair_summary").strip(),
+            clean_form_value(snapshot, "repair_reserve_reason").strip(),
+            clean_form_value(snapshot, "repair_done").strip(),
+            clean_form_value(snapshot, "repair_fo_attached").strip(),
+            clean_form_value(snapshot, "repair_photos_attached").strip(),
+            clean_form_value(snapshot, "repair_post_report_done").strip(),
+            clean_form_value(snapshot, "repair_campaigns_done").strip(),
+        ]
+    )
+    return {
+        "ordem": "Guardado" if order_has_data else "Em curso",
+        "execucao": "Guardado" if execution_has_data else "Por atualizar",
+        "evidencias": "Guardado" if evidence_has_data else "Pendente",
+        "desvios": "Guardado" if deviations_has_data else "Sem desvios",
+        "saida": "Rascunho" if exit_has_data else "Pendente",
+    }
+
+
+def clean_workshop_closure_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+    final_validation_has_data = any(
+        [
+            clean_form_value(snapshot, "closure_vehicle_ready").strip(),
+            clean_form_value(snapshot, "closure_final_status").strip(),
+            clean_form_value(snapshot, "closure_exit_observation").strip(),
+            clean_form_value(snapshot, "closure_km_checked").strip(),
+            clean_form_value(snapshot, "closure_dashboard_exit_photo").strip(),
+            clean_form_value(snapshot, "closure_final_test_ok").strip(),
+            clean_form_value(snapshot, "closure_can_drive").strip(),
+            clean_form_value(snapshot, "closure_back_to_fleet").strip(),
+        ]
+    )
+    documents_has_data = any(
+        [
+            clean_form_value(snapshot, "closure_work_order_status").strip(),
+            clean_form_value(snapshot, "closure_invoice_status").strip(),
+            clean_form_value(snapshot, "closure_post_report_status").strip(),
+            clean_form_value(snapshot, "closure_final_photos_status").strip(),
+        ]
+    )
+    history_has_data = any(
+        [
+            clean_form_value(snapshot, "closure_service_history_status").strip(),
+            clean_form_value(snapshot, "closure_next_maintenance_status").strip(),
+            clean_form_value(snapshot, "closure_problem_history_status").strip(),
+            clean_form_value(snapshot, "closure_audit_history_status").strip(),
+            clean_form_value(snapshot, "closure_sale_state_status").strip(),
+        ]
+    )
+    pending_has_data = any(
+        [
+            clean_form_value(snapshot, "closure_pending_exists").strip(),
+            clean_form_value(snapshot, "closure_pending_type").strip(),
+            clean_form_value(snapshot, "closure_pending_owner").strip(),
+            clean_form_value(snapshot, "closure_pending_due").strip(),
+            clean_form_value(snapshot, "closure_pending_blocks_use").strip(),
+            clean_form_value(snapshot, "closure_pending_description").strip(),
+        ]
+    )
+    closing_has_data = any(
+        [
+            clean_form_value(snapshot, "closure_result").strip(),
+            clean_form_value(snapshot, "closure_state").strip(),
+            clean_form_value(snapshot, "closure_summary").strip(),
+            clean_form_value(snapshot, "closure_final_note").strip(),
+            clean_form_value(snapshot, "closure_vehicle_validated").strip(),
+            clean_form_value(snapshot, "closure_min_docs_attached").strip(),
+            clean_form_value(snapshot, "closure_history_updated").strip(),
+            clean_form_value(snapshot, "closure_pending_assigned").strip(),
+            clean_form_value(snapshot, "closure_fleet_state_defined").strip(),
+        ]
+    )
+    return {
+        "validacao": "Guardado" if final_validation_has_data else "Por validar",
+        "documentos": "Guardado" if documents_has_data else "Pendente",
+        "historico": "Guardado" if history_has_data else "Pendente",
+        "pendencias": "Guardado" if pending_has_data else "Pendente",
+        "encerramento": "Rascunho" if closing_has_data else "Pendente",
+    }
 
 
 def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, plate: str | None = None) -> dict[str, object]:
@@ -3326,6 +4083,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "groupid": vehicle_context.get("groupid") or "-",
             "colour": vehicle_context.get("colour") or "-",
             "fuel": vehicle_context.get("fuel") or "-",
+            "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
         },
         "dates": {
             "registration": clean_date(vehicle_context.get("plate_date")),
@@ -3339,6 +4097,17 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "last_rentway_km": clean_km(str(rules.get("rentway_last_service_km") or "")),
             "next_rentway_km": clean_km(str(rules.get("rentway_next_service_km") or "")),
             "calculated_km": clean_km(str(rules.get("calculated_service_km") or "")),
+            "next_display": " · ".join(
+                part
+                for part in [
+                    clean_date(calculated_service_date.isoformat() if isinstance(calculated_service_date, date) else None),
+                    f"{clean_km(str(rules.get('calculated_service_km') or rules.get('rentway_next_service_km') or ''))} km"
+                    if rules.get("calculated_service_km") or rules.get("rentway_next_service_km")
+                    else "",
+                ]
+                if part and part != "-"
+            )
+            or "Por configurar",
             "status": rules.get("maintenance_status") or "Por configurar",
         },
         "finance": {
@@ -3386,6 +4155,7 @@ def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = N
             "groupid": "-",
             "colour": "-",
             "fuel": "-",
+            "purchase_supplier": "-",
         },
         "dates": {
             "registration": "-",
@@ -3399,6 +4169,7 @@ def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = N
             "last_rentway_km": "-",
             "next_rentway_km": "-",
             "calculated_km": "-",
+            "next_display": "Por configurar",
             "status": "Por validar",
         },
         "finance": {
@@ -3665,17 +4436,130 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
         },
     )
+@web_router.post("/v2-clean/workshop-entry", response_class=HTMLResponse)
+async def clean_workshop_entry_save(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    form = await request.form()
+    process_id = parse_int_from_text(str(form.get("process_id") or ""))
+    if not process_id:
+        return RedirectResponse("/v2-clean/workshop-entry?new=1", status_code=303)
+
+    action = str(form.get("action") or "save")
+    now = datetime.now(UTC)
+    user_id = get_web_user_id(request)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop-entry?new=1", status_code=303)
+
+        phase = clean_workshop_get_phase(db, process.id, "entrada")
+        if not phase:
+            phase = WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code="entrada",
+                name="Entrada",
+                status="pending_review",
+                sort_order=1,
+                started_at=now,
+                data_json={},
+            )
+            db.add(phase)
+            db.flush()
+
+        entry_reasons = [str(value) for value in form.getlist("entry_reasons") if str(value).strip()]
+        physical_checks = {
+            code: str(form.get(code) or "not_checked")
+            for code in CLEAN_WORKSHOP_ENTRY_PHYSICAL_CHECKS
+        }
+        minimum_checks = {
+            code: str(form.get(code) or "not_checked")
+            for code in CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS
+        }
+        entry_data = dict(phase.data_json or {})
+        entry_data.update(
+            {
+                "entry_reasons": entry_reasons,
+                "short_description": str(form.get("short_description") or "").strip(),
+                "requested_service": str(form.get("requested_service") or "").strip(),
+                "entry_km": str(form.get("entry_km") or "").strip(),
+                "reported_by": str(form.get("reported_by") or "").strip(),
+                "priority": str(form.get("priority") or "").strip(),
+                "can_drive": str(form.get("can_drive") or "").strip(),
+                "historical_intervention_date": str(form.get("historical_intervention_date") or "").strip(),
+                "historical_km": str(form.get("historical_km") or "").strip(),
+                "historical_supplier": str(form.get("historical_supplier") or "").strip(),
+                "historical_confidence": str(form.get("historical_confidence") or "").strip(),
+                "physical_checks": physical_checks,
+                "physical_check_note": str(form.get("physical_check_note") or "").strip(),
+                "expected_exit": str(form.get("expected_exit") or "").strip(),
+                "validation_notes": str(form.get("validation_notes") or "").strip(),
+                "minimum_checks": minimum_checks,
+                "saved_at": now.isoformat(),
+                "saved_by_id": user_id,
+            }
+        )
+        phase.data_json = entry_data
+        phase.status = "completed" if action == "advance" else "in_progress"
+        phase.started_at = phase.started_at or now
+        if action == "advance":
+            phase.completed_at = now
+            phase.completed_by_id = user_id
+            process.current_phase_code = "validacao"
+            validation_phase = clean_workshop_get_phase(db, process.id, "validacao")
+            if validation_phase and validation_phase.status == "not_started":
+                validation_phase.status = "pending_review"
+                validation_phase.started_at = now
+        else:
+            process.current_phase_code = "entrada"
+
+        entry_km = parse_int_from_text(entry_data.get("entry_km"))
+        if entry_km is not None:
+            process.initial_km = entry_km
+        process.priority = str(entry_data.get("priority") or "Normal").lower()
+        process.initial_observation = (
+            str(entry_data.get("short_description") or entry_data.get("requested_service") or "").strip()
+            or process.initial_observation
+        )
+        process.metadata_json = {
+            **(process.metadata_json or {}),
+            "entry_reasons": entry_reasons,
+            "can_drive": entry_data.get("can_drive"),
+            "expected_exit": entry_data.get("expected_exit"),
+        }
+        db.commit()
+
+    if action == "advance":
+        return RedirectResponse(f"/v2-clean/workshop/validacao?process_id={process_id}", status_code=303)
+    return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&saved=1", status_code=303)
+
+
 @web_router.get("/v2-clean/workshop-entry", response_class=HTMLResponse)
 def clean_workshop_entry(
     request: Request,
+    process_id: int | None = None,
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
     new: bool = False,
+    saved: bool = False,
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if new and not process_id:
+        with SessionLocal() as db:
+            process = clean_workshop_create_process(
+                db,
+                request=request,
+                vehicle_id=vehicle_id,
+                plate=plate,
+                historical=historical,
+            )
+        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process.id}", status_code=303)
     user_name = "Utilizador atual"
     user_id = get_web_user_id(request)
     if user_id:
@@ -3683,15 +4567,22 @@ def clean_workshop_entry(
             user = db.get(User, user_id)
             if user:
                 user_name = user.name or user.email
-    query_suffix = clean_workshop_query_suffix(
-        vehicle_id=vehicle_id,
-        plate=plate,
-        historical=historical,
-        new_entry=new,
-    )
     with SessionLocal() as db:
-        vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
-    vehicle_context = clean_workshop_mark_draft_context(vehicle_context, historical=historical, new_entry=new)
+        process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
+        saved_entry: dict[str, object] = {}
+        if process:
+            historical = process.creation_mode == "historical"
+            query_suffix = clean_workshop_query_suffix(process_id=process.id)
+            vehicle_context = clean_workshop_context_for_process(db, process)
+            entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
+            saved_entry = dict(entry_phase.data_json or {}) if entry_phase and entry_phase.data_json else {}
+        else:
+            query_suffix = clean_workshop_query_suffix(
+                vehicle_id=vehicle_id,
+                plate=plate,
+                historical=historical,
+            )
+            vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
     return templates.TemplateResponse(
         request,
         "clean_workshop_entry.html",
@@ -3702,11 +4593,15 @@ def clean_workshop_entry(
             "workshop_steps": clean_workshop_steps(query_suffix),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
-            "is_new_entry": new,
+            "is_new_entry": False,
+            "workshop_process": process,
             "active_step": "entrada",
             "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
             "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, new_entry=True)}",
             "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True, new_entry=True)}",
+            "saved_entry": saved_entry,
+            "entry_substep_status": clean_workshop_entry_substep_status(saved_entry),
+            "saved": saved,
         },
     )
 
@@ -3715,6 +4610,7 @@ def clean_workshop_entry(
 def clean_workshop_phase(
     request: Request,
     phase: str,
+    process_id: int | None = None,
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
@@ -3723,16 +4619,46 @@ def clean_workshop_phase(
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=new)
+    if new and not process_id:
+        with SessionLocal() as db:
+            process = clean_workshop_create_process(
+                db,
+                request=request,
+                vehicle_id=vehicle_id,
+                plate=plate,
+                historical=historical,
+            )
+        return RedirectResponse(f"/v2-clean/workshop/{phase}?process_id={process.id}", status_code=303)
+    query_suffix = clean_workshop_query_suffix(process_id=process_id, vehicle_id=vehicle_id, plate=plate, historical=historical)
     if phase in {"entrada", "entry"}:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     phase = CLEAN_WORKSHOP_PHASE_ALIASES.get(phase, phase)
     phase_config = CLEAN_WORKSHOP_PHASES.get(phase)
     if not phase_config:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
+    phase_data: dict[str, object] = {}
+    phase_form: dict[str, object] = {}
+    technical_reports: list[WorkshopPhasedTechnicalReport] = []
     with SessionLocal() as db:
-        vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
-    vehicle_context = clean_workshop_mark_draft_context(vehicle_context, historical=historical, new_entry=new)
+        process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
+        if process:
+            historical = process.creation_mode == "historical"
+            query_suffix = clean_workshop_query_suffix(process_id=process.id)
+            vehicle_context = clean_workshop_context_for_process(db, process)
+            technical_reports = db.scalars(
+                select(WorkshopPhasedTechnicalReport)
+                .where(WorkshopPhasedTechnicalReport.process_id == process.id)
+                .order_by(WorkshopPhasedTechnicalReport.id.desc())
+            ).all()
+            phase_row = clean_workshop_get_phase(db, process.id, phase)
+            if phase_row and isinstance(phase_row.data_json, dict):
+                phase_data = dict(phase_row.data_json)
+                raw_form = phase_data.get("form_snapshot")
+                if isinstance(raw_form, dict):
+                    phase_form = raw_form
+        else:
+            vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+    phase_nav = clean_workshop_phase_nav(phase, query_suffix)
     return templates.TemplateResponse(
         request,
         "clean_workshop_phase.html",
@@ -3742,8 +4668,273 @@ def clean_workshop_phase(
             "workshop_steps": clean_workshop_steps(query_suffix),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
+            "workshop_process": process,
             "active_step": phase,
+            "phase_data": phase_data,
+            "phase_form": phase_form,
+            "validation_service_rows": clean_workshop_validation_rows(phase_form),
+            "validation_substep_status": clean_workshop_validation_substep_status(phase_form),
+            "validation_observation": clean_form_value(phase_form, "validation_observation"),
+            "technical_reports": technical_reports,
+            "technical_report_summary": clean_workshop_technical_report_summary(technical_reports),
+            "technical_reading_rows": clean_workshop_technical_reading_rows(technical_reports),
+            "diagnostic_substep_status": clean_workshop_diagnostic_substep_status(technical_reports),
+            "diagnostic_form_status": clean_workshop_diagnostic_form_status(phase_form, technical_reports),
+            "inspection_form_status": clean_workshop_inspection_form_status(phase_form),
+            "audit_form_status": clean_workshop_audit_form_status(phase_form),
+            "repair_form_status": clean_workshop_repair_form_status(phase_form),
+            "closure_form_status": clean_workshop_closure_form_status(phase_form),
+            **phase_nav,
         },
+    )
+
+
+@web_router.post("/v2-clean/workshop/{phase}/save", response_class=HTMLResponse)
+async def clean_workshop_phase_save(request: Request, phase: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    phase = CLEAN_WORKSHOP_PHASE_ALIASES.get(phase, phase)
+    phase_config = CLEAN_WORKSHOP_PHASES.get(phase)
+    if not phase_config:
+        return RedirectResponse("/v2-clean/workshop", status_code=303)
+
+    form = await request.form()
+    process_id = parse_int_from_text(str(form.get("process_id") or ""))
+    if not process_id:
+        return RedirectResponse(f"{clean_workshop_phase_path(phase)}?new=1", status_code=303)
+
+    action = str(form.get("action") or "save")
+    now = datetime.now(UTC)
+    user_id = get_web_user_id(request)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+
+        phase_row = clean_workshop_get_phase(db, process.id, phase)
+        if not phase_row:
+            step_index = next(
+                (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1) if step["key"] == phase),
+                1,
+            )
+            phase_row = WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code=phase,
+                name=str(phase_config["title"]),
+                status="pending_review",
+                sort_order=step_index,
+                started_at=now,
+                data_json={},
+            )
+            db.add(phase_row)
+            db.flush()
+
+        form_snapshot: dict[str, object] = {}
+        for key in form.keys():
+            if key in {"action", "process_id"}:
+                continue
+            values = [str(value) for value in form.getlist(key)]
+            form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
+
+        phase_data = dict(phase_row.data_json or {})
+        phase_data.update(
+            {
+                "form_snapshot": form_snapshot,
+                "saved_at": now.isoformat(),
+                "saved_by_id": user_id,
+                "last_action": action,
+            }
+        )
+        phase_row.data_json = phase_data
+        phase_row.started_at = phase_row.started_at or now
+
+        if action == "advance":
+            phase_row.status = "completed"
+            phase_row.completed_at = now
+            phase_row.completed_by_id = user_id
+            next_phase = clean_workshop_next_phase_key(phase)
+            if next_phase:
+                process.current_phase_code = next_phase
+                next_phase_row = clean_workshop_get_phase(db, process.id, next_phase)
+                if next_phase_row and next_phase_row.status == "not_started":
+                    next_phase_row.status = "pending_review"
+                    next_phase_row.started_at = now
+                redirect_url = f"{clean_workshop_phase_path(next_phase)}?process_id={process.id}"
+            else:
+                process.status = "closed"
+                process.closed_at = now
+                redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+        else:
+            phase_row.status = "in_progress"
+            process.current_phase_code = phase
+            redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+
+        db.commit()
+
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/technical-reports/upload", response_class=HTMLResponse)
+async def clean_workshop_technical_report_upload(
+    request: Request,
+    process_id: int,
+    report_code: str = Form(...),
+    report_file: UploadFile = File(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    clean_report_code = report_code if report_code in CLEAN_WORKSHOP_REPORT_CODES else "other_reading"
+    filename = Path(report_file.filename or "relatorio.pdf").name
+    content = await report_file.read()
+    if not content:
+        return RedirectResponse(f"/v2-clean/workshop/diagnostico?process_id={process_id}&upload_error=empty", status_code=303)
+
+    digest = hashlib.sha256(content).hexdigest()
+    suffix = Path(filename).suffix or ".bin"
+    upload_dir = Path("uploads") / "workshop_reports" / str(process_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{clean_report_code}_{digest[:12]}{suffix}"
+    stored_path = upload_dir / stored_name
+    stored_path.write_bytes(content)
+
+    extracted_values: dict[str, Any] = {}
+    status = "pending_validation"
+    extraction_error: str | None = None
+    try:
+        extracted_values = extract_workshop_report_values_from_bytes(content, clean_report_code, filename)
+    except (RuntimeError, ValueError) as exc:
+        status = "unable_to_read"
+        extraction_error = str(exc)
+
+    now = datetime.now(UTC)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        phase_row = clean_workshop_get_phase(db, process.id, "diagnostico")
+        if phase_row and phase_row.status == "not_started":
+            phase_row.status = "pending_review"
+            phase_row.started_at = now
+        report = WorkshopPhasedTechnicalReport(
+            process_id=process.id,
+            phase_id=phase_row.id if phase_row else None,
+            report_code=clean_report_code,
+            report_name=CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Outra leitura"),
+            reading_origin="stellantis_machine",
+            reading_origin_detail="Upload v2-clean",
+            report_moment="initial",
+            status=status,
+            original_document_id=None,
+            original_link=str(stored_path),
+            raw_values_json={
+                "original_name": filename,
+                "stored_name": stored_name,
+                "sha256": digest,
+                "extraction_error": extraction_error,
+            },
+            extracted_values_json=extracted_values,
+            validated_values_json=None,
+            correction_json=None,
+            added_by_id=user_id,
+            observations="Carregado na experiência v2-clean.",
+        )
+        db.add(report)
+        process.current_phase_code = "diagnostico"
+        db.commit()
+
+    return RedirectResponse(f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1#leituras", status_code=303)
+
+
+@web_router.get("/v2-clean/workshop/technical-reports/{report_id}/file")
+def clean_workshop_technical_report_file(request: Request, report_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    with SessionLocal() as db:
+        report = db.get(WorkshopPhasedTechnicalReport, report_id)
+        if not report or not report.original_link:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        file_path = Path(str(report.original_link))
+        if not file_path.is_absolute():
+            file_path = Path.cwd() / file_path
+        if not file_path.exists() or not file_path.is_file():
+            return RedirectResponse(
+                f"/v2-clean/workshop/diagnostico?process_id={report.process_id}&file_missing=1#leituras",
+                status_code=303,
+            )
+        raw_values = report.raw_values_json if isinstance(report.raw_values_json, dict) else {}
+        filename = str(raw_values.get("original_name") or file_path.name)
+    return FileResponse(file_path, filename=filename)
+
+
+@web_router.post("/v2-clean/workshop/technical-reports/{report_id}/validate")
+async def clean_workshop_technical_report_validate(request: Request, report_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    form = await request.form()
+    now = datetime.now(UTC)
+    user_id = get_web_user_id(request)
+
+    with SessionLocal() as db:
+        report = db.get(WorkshopPhasedTechnicalReport, report_id)
+        if not report:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+
+        report_ids = [str(value) for value in form.getlist("reading_report_id")]
+        field_codes = [str(value) for value in form.getlist("reading_field_code")]
+        corrected_values = [str(value) for value in form.getlist("reading_corrected_value")]
+        statuses = [str(value) for value in form.getlist("reading_status")]
+        observations = [str(value) for value in form.getlist("reading_observation")]
+
+        validated_values = dict(report.validated_values_json or {}) if isinstance(report.validated_values_json, dict) else {}
+        for index, form_report_id in enumerate(report_ids):
+            if form_report_id != str(report.id):
+                continue
+            field_code = field_codes[index] if index < len(field_codes) else "manual_reading"
+            corrected_value = corrected_values[index] if index < len(corrected_values) else ""
+            status_value = statuses[index] if index < len(statuses) else "Por validar"
+            observation = observations[index] if index < len(observations) else ""
+            extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+            validated_values[field_code] = {
+                "extracted_value": extracted_values.get(field_code),
+                "corrected_value": corrected_value.strip(),
+                "status": status_value,
+                "observation": observation.strip(),
+                "validated_at": now.isoformat(),
+                "validated_by_id": user_id,
+            }
+
+        report.validated_values_json = validated_values
+        report.correction_json = {
+            "source": "v2-clean",
+            "updated_at": now.isoformat(),
+            "updated_by_id": user_id,
+        }
+        report.validated_by_id = user_id
+        report.validated_at = now
+        if any(item.get("corrected_value") for item in validated_values.values() if isinstance(item, dict)):
+            report.status = "corrected_manually"
+        else:
+            report.status = "validated_manually"
+
+        process = db.get(WorkshopPhasedProcess, report.process_id)
+        if process:
+            process.current_phase_code = "diagnostico"
+        db.commit()
+        process_id = report.process_id
+
+    return RedirectResponse(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1#leituras",
+        status_code=303,
     )
 
 

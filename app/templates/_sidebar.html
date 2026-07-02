@@ -14,8 +14,9 @@
       <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
       <a href="/v2-clean/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
       <span class="nav-section-label nav-section-label-tight">Oficina</span>
-      <a href="/v2-clean/workshop-entry?new=1" {% if active_menu == "workshop" and not request.query_params.get("historical") %}class="active"{% endif %}>Novo processo</a>
-      <a href="/v2-clean/workshop-entry?historical=1&new=1" {% if active_menu == "workshop" and request.query_params.get("historical") %}class="active"{% endif %}>Processo histórico</a>
+      <a href="/v2-clean/workshop" {% if active_menu == "workshop" and request.url.path == "/v2-clean/workshop" %}class="active"{% endif %}>Dashboard Oficina</a>
+      <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?new=1">Novo processo</a>
+      <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1&new=1">Processo histórico</a>
       <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
       <span class="nav-section-label">Apoio</span>
       <a href="/v2-clean/fleet">Documentação por viatura</a>

@@ -12,8 +12,6 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
-        <a class="button-link" href="/v2-clean/workshop-entry">Nova entrada Oficina</a>
-        <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Histórico Oficina</a>
       </div>
     </header>
 
@@ -49,10 +47,10 @@
         </div>
       </div>
       <div class="clean-process-model-grid">
-        <a href="/v2-clean/workshop-entry"><b>Entrada Oficina</b><span>Processo operacional por fases</span></a>
-        <a href="/v2-clean/workshop-entry?historical=1"><b>Histórico Oficina</b><span>Reconstruir processo antigo com menos obrigatoriedade</span></a>
         <a href="/v2-clean/fleet"><b>Auditoria técnica</b><span>Começar pela ficha/documentação da viatura</span></a>
         <a href="#process-management"><b>Sinistro acompanhado</b><span>Modelo preparado para próxima fase</span></a>
+        <a href="#process-management"><b>Reclamação fornecedor</b><span>Acompanhamento de tema crítico com evidências</span></a>
+        <a href="#process-administration"><b>Alteração de procedimento</b><span>Registo, validação e comunicação interna</span></a>
       </div>
     </section>
 
@@ -83,22 +81,21 @@
       <article class="clean-panel clean-panel-compact">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Oficina</p>
+            <p class="eyebrow">Gestão</p>
             <h3>Processos recentes</h3>
           </div>
-          <a class="table-link" href="/v2-clean/workshop-entry">Nova entrada</a>
         </div>
         <div class="event-list">
-          {% for process in recent_workshop %}
+          {% for process in recent_management %}
             <article class="event-item">
               <div>
-                <strong>{{ process.plate or "Sem matrícula" }}</strong>
+                <strong>{{ process.internal_reference or process.title or "Processo" }}</strong>
                 <span>{{ process.status }}</span>
               </div>
-              <p>{{ process.current_phase or "Processo de oficina" }}</p>
+              <p>{{ process.title or process.phase or "Processo de gestão" }}</p>
             </article>
           {% else %}
-            <p class="muted">Ainda sem processos de oficina recentes.</p>
+            <p class="muted">Ainda sem processos de gestão recentes.</p>
           {% endfor %}
         </div>
       </article>

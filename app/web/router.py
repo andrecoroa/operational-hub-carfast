@@ -2936,23 +2936,24 @@ def clean_workshop_dashboard(request: Request):
 
 CLEAN_WORKSHOP_CONTEXT = {
     "process_ref": "OFI-2026-000123",
-    "plate": "AU-87-XZ",
-    "vehicle": "CITROEN JUMPER 33 L3H2 2.2 BH 140 S6",
-    "vin": "VF7YBBPFCPG030537",
-    "fuel": "Diesel",
-    "entry_date": "09/06/2026",
-    "entry_km": "143 161",
-    "expected_exit": "10/06/2026",
-    "registration_date": "31/08/2023",
-    "purchase_date": "17/11/2023",
+    "plate": "Sem matrícula",
+    "vehicle": "Selecionar viatura",
+    "vin": "-",
+    "fuel": "-",
+    "entry_date": "-",
+    "entry_km": "",
+    "expected_exit": "-",
+    "registration_date": "-",
+    "purchase_date": "-",
     "real_start_date": "Por validar",
-    "next_ipo": "31/08/2027",
-    "last_service_km": "90 357 km",
-    "next_service_km": "140 357 km",
-    "maintenance_status": "Manutenção ultrapassada em 2 804 km",
-    "history_audit_status": "Auditoria histórico: Em curso",
-    "sale_status": "Venda bloqueada",
-    "brand_rule": "Service Box aplicável",
+    "next_ipo": "-",
+    "last_service_km": "-",
+    "next_service_km": "-",
+    "maintenance_status": "Por validar após seleção da viatura",
+    "history_audit_status": "Auditoria histórico: por validar",
+    "sale_status": "Venda: por validar",
+    "brand_rule": "Por validar",
+    "alerts": [],
 }
 
 CLEAN_WORKSHOP_STEP_DEFS = [
@@ -3241,16 +3242,13 @@ def clean_workshop_create_process(
 ) -> WorkshopPhasedProcess:
     user_id = get_web_user_id(request)
     vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
-    plate_snapshot = (
-        vehicle.plate
-        if vehicle and vehicle.plate
-        else normalize_identifier(plate) if plate else CLEAN_WORKSHOP_CONTEXT["plate"]
-    )
+    plate_snapshot = vehicle.plate if vehicle and vehicle.plate else normalize_identifier(plate) if plate else None
     vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle.id if vehicle else None, plate=plate_snapshot)
+    display_plate = plate_snapshot or "Sem matrícula"
     now = datetime.now(UTC)
     process = WorkshopPhasedProcess(
         process_type="workshop",
-        title=f"Oficina {plate_snapshot}",
+        title=f"Oficina {display_plate}",
         creation_mode="historical" if historical else "operational",
         status="open",
         vehicle_id=vehicle.id if vehicle else None,
@@ -3272,7 +3270,7 @@ def clean_workshop_create_process(
     )
     db.add(process)
     db.flush()
-    process.title = f"{clean_workshop_process_reference(process)} · {plate_snapshot}"
+    process.title = f"{clean_workshop_process_reference(process)} · {display_plate}"
     for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1):
         db.add(
             WorkshopPhasedProcessPhase(
@@ -4455,6 +4453,13 @@ async def clean_workshop_entry_save(request: Request):
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop-entry?new=1", status_code=303)
+
+        submitted_plate = normalize_identifier(str(form.get("plate") or ""))
+        if submitted_plate and submitted_plate != (process.plate_snapshot or ""):
+            vehicle = clean_workshop_find_vehicle(db, plate=submitted_plate)
+            process.vehicle_id = vehicle.id if vehicle else None
+            process.plate_snapshot = submitted_plate
+            process.title = f"{clean_workshop_process_reference(process)} · {submitted_plate}"
 
         phase = clean_workshop_get_phase(db, process.id, "entrada")
         if not phase:

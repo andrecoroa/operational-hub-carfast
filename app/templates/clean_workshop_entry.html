@@ -52,6 +52,7 @@
     <form class="clean-workshop-final-grid" method="post" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
       {% if is_historical %}<input type="hidden" name="process_mode" value="historical">{% endif %}
+      {% set has_vehicle_plate = workshop_process and workshop_process.plate_snapshot %}
       {% set saved_reasons = saved_entry.entry_reasons or [] %}
       {% set saved_physical = saved_entry.physical_checks or {} %}
       {% set saved_minimum = saved_entry.minimum_checks or {} %}
@@ -82,7 +83,7 @@
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
-                <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% elif not saved_reasons and loop.first %}checked{% endif %}> <span>{{ reason }}</span></label>
+                <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% endif %}> <span>{{ reason }}</span></label>
               {% endfor %}
             </div>
             {% if is_historical %}
@@ -101,7 +102,13 @@
                 </div>
               </div>
             {% endif %}
-            <div class="clean-phase-field-grid"><label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
+            <div class="clean-phase-field-grid">
+              {% if not has_vehicle_plate %}
+                <label>Matrícula<input name="plate" placeholder="Ex.: BB-13-PT" value=""></label>
+              {% else %}
+                <input type="hidden" name="plate" value="{{ workshop_process.plate_snapshot }}">
+              {% endif %}
+<label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
 <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
 
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or vehicle_context.entry_km }}"></label>

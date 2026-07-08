@@ -2,6 +2,7 @@ from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import select
 
+from app.models.documents import Document, DocumentLink
 from app.models.vehicles import Vehicle
 from app.models.workshop_phased import (
     WorkshopPhasedProcess,
@@ -171,6 +172,27 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     )
     assert report is not None
     assert report.status == "unable_to_read"
+    assert report.original_document_id is not None
+    assert "uploads" in str(report.original_link)
+    assert "vehicle_documents" in str(report.original_link)
+    assert "BB-13-PT" in str(report.original_link)
+
+    document = db_session.get(Document, report.original_document_id)
+    assert document is not None
+    assert document.vehicle_id == vehicle.id
+    assert document.plate == "BB-13-PT"
+    assert document.document_type == "workshop_diagnostic"
+    assert document.classification == "technical"
+    assert document.status == "unclassified"
+    assert document.storage_path == report.original_link
+    assert document.folder_path == "Documentação de Viaturas/BB-13-PT/03_Diagnosticos"
+    document_links = db_session.scalars(
+        select(DocumentLink).where(DocumentLink.document_id == document.id)
+    ).all()
+    assert {link.entity_type for link in document_links} >= {
+        "workshop_phased_process",
+        "workshop_phased_technical_report",
+    }
 
     diagnosis_page = client.get(f"/v2-clean/workshop/diagnostico?process_id={process_id}")
     assert diagnosis_page.status_code == 200

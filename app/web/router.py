@@ -5084,46 +5084,91 @@ async def clean_workshop_technical_report_upload(
 
     digest = hashlib.sha256(content).hexdigest()
     suffix = Path(filename).suffix or ".bin"
-    upload_dir = Path("uploads") / "workshop_reports" / str(process_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{clean_report_code}_{digest[:12]}{suffix}"
-    stored_path = upload_dir / stored_name
-    stored_path.write_bytes(content)
-
-    extracted_values: dict[str, Any] = {}
-    status = "pending_validation"
-    extraction_error: str | None = None
-    try:
-        extracted_values = extract_workshop_report_values_from_bytes(content, clean_report_code, filename)
-    except (RuntimeError, ValueError) as exc:
-        status = "unable_to_read"
-        extraction_error = str(exc)
-
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+
+        plate_value = (process.plate_snapshot or "").strip().upper()
+        plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
+        report_label = CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Outra leitura")
+        upload_dir = Path("uploads") / "vehicle_documents" / plate_folder / "diagnosticos"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        stored_name = f"{clean_report_code}_{digest[:12]}{suffix}"
+        stored_path = upload_dir / stored_name
+        stored_path.write_bytes(content)
+
+        extracted_values: dict[str, Any] = {}
+        status = "pending_validation"
+        extraction_error: str | None = None
+        try:
+            extracted_values = extract_workshop_report_values_from_bytes(content, clean_report_code, filename)
+        except (RuntimeError, ValueError) as exc:
+            status = "unable_to_read"
+            extraction_error = str(exc)
+
         phase_row = clean_workshop_get_phase(db, process.id, "diagnostico")
         if phase_row and phase_row.status == "not_started":
             phase_row.status = "pending_review"
             phase_row.started_at = now
+        document = db.scalar(select(Document).where(Document.storage_path == str(stored_path)))
+        if document is None:
+            document = Document(
+                title=f"Diagnóstico - {report_label} - {plate_value or process.id}",
+                document_type="workshop_diagnostic",
+                classification="technical",
+                source="workshop_v2_clean",
+                entry_channel="upload",
+                source_subject=report_label,
+                original_name=filename,
+                file_name=stored_name,
+                file_type=suffix.lstrip(".") or None,
+                file_size=len(content),
+                storage_provider="local",
+                storage_path=str(stored_path),
+                storage_key=digest,
+                folder_path=f"Documentação de Viaturas/{plate_value or process.id}/03_Diagnosticos",
+                status="unclassified",
+                vehicle_id=process.vehicle_id,
+                plate=process.plate_snapshot,
+                uploaded_by_id=user_id,
+            )
+            db.add(document)
+            db.flush()
+            db.add(
+                DocumentLink(
+                    document_id=document.id,
+                    entity_type="workshop_phased_process",
+                    entity_id=str(process.id),
+                    category=clean_report_code,
+                )
+            )
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="document.workshop_v2_upload_associated",
+                    new_value=f"process={process.id}; report={clean_report_code}",
+                    user_id=user_id,
+                )
+            )
         report = WorkshopPhasedTechnicalReport(
             process_id=process.id,
             phase_id=phase_row.id if phase_row else None,
             report_code=clean_report_code,
-            report_name=CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Outra leitura"),
+            report_name=report_label,
             reading_origin="stellantis_machine",
             reading_origin_detail="Upload v2-clean",
             report_moment="initial",
             status=status,
-            original_document_id=None,
+            original_document_id=document.id,
             original_link=str(stored_path),
             raw_values_json={
                 "original_name": filename,
                 "stored_name": stored_name,
                 "sha256": digest,
+                "document_id": document.id,
                 "extraction_error": extraction_error,
             },
             extracted_values_json=extracted_values,
@@ -5133,6 +5178,23 @@ async def clean_workshop_technical_report_upload(
             observations="Carregado na experiência v2-clean.",
         )
         db.add(report)
+        db.flush()
+        db.add(
+            DocumentLink(
+                document_id=document.id,
+                entity_type="workshop_phased_technical_report",
+                entity_id=str(report.id),
+                category=clean_report_code,
+            )
+        )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.workshop_report_uploaded",
+                new_value=status,
+                user_id=user_id,
+            )
+        )
         process.current_phase_code = "diagnostico"
         db.commit()
 

@@ -68,6 +68,14 @@
             <div><span>IPO Rentway</span><strong>{{ ctx.dates.rentway_ipo }}</strong></div>
             <div><span>IPO calculada</span><strong>{{ ctx.dates.calculated_ipo }}</strong></div>
           </div>
+          <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/real-start" class="clean-real-start-form">
+            <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}">
+            <label>
+              Definir início real da viatura
+              <input type="date" name="real_start_date" value="{{ ctx.manual.get('real_start_date', '') }}">
+            </label>
+            <button type="submit">Guardar início real</button>
+          </form>
         </article>
 
         <article class="clean-substep-panel" id="clean-substep-manutencao">

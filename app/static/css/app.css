@@ -11745,6 +11745,45 @@ a.metric:hover {
   overflow-wrap: anywhere;
 }
 
+.clean-real-start-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5eaf2;
+}
+
+.clean-real-start-form label {
+  display: grid;
+  gap: 5px;
+  color: #344054;
+  font-size: var(--clean-font-xs);
+  font-weight: 900;
+}
+
+.clean-real-start-form input {
+  min-height: 38px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 850;
+  padding: 8px 10px;
+}
+
+.clean-real-start-form button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: #a04616;
+  color: #fff;
+  font-weight: 950;
+  padding: 8px 14px;
+}
+
 .clean-linked-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

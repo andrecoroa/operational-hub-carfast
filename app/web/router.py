@@ -2275,6 +2275,7 @@ IMPLEMENTATION_ROADMAP = [
 
 DOCUMENT_AREAS = [
     ("workshop", "Oficina"),
+    ("fleet", "Frota"),
     ("finance", "Financeiro"),
 ]
 DOCUMENT_AREA_LABELS = {
@@ -2294,6 +2295,7 @@ DOCUMENT_TYPES = [
     ("workshop_evidence", "Comprovativo / evidência"),
     ("workshop_report", "Relatório técnico"),
     ("workshop_other", "Outro documento de oficina"),
+    ("maintenance_plan", "Plano de manutenção"),
     ("finance_supplier_invoice", "Fatura fornecedor"),
     ("finance_credit_note", "Nota de crédito"),
     ("finance_receipt", "Recibo"),
@@ -2319,6 +2321,7 @@ DOCUMENT_TYPE_AREAS = {
     "workshop_evidence": "workshop",
     "workshop_report": "workshop",
     "workshop_other": "workshop",
+    "maintenance_plan": "fleet",
     "finance_supplier_invoice": "finance",
     "finance_credit_note": "finance",
     "finance_receipt": "finance",
@@ -3411,11 +3414,16 @@ def clean_form_values(snapshot: dict[str, object], key: str) -> list[str]:
     return [str(value)]
 
 
-def clean_workshop_validation_rows(snapshot: dict[str, object]) -> list[dict[str, str]]:
-    defaults = [
-        {"service_type": "Revisão / degradação óleo"},
-        {"service_type": "Pneus"},
+def clean_workshop_validation_rows(
+    snapshot: dict[str, object],
+    entry_snapshot: dict[str, object] | None = None,
+) -> list[dict[str, str]]:
+    entry_reasons = [
+        item.strip()
+        for item in clean_form_values(entry_snapshot or {}, "entry_reasons")
+        if item.strip()
     ]
+    defaults = [{"service_type": item} for item in entry_reasons] or [{"service_type": "Outro"}]
     fields = [
         "service_type",
         "service_already_done",
@@ -3426,39 +3434,55 @@ def clean_workshop_validation_rows(snapshot: dict[str, object]) -> list[dict[str
         "service_decision",
     ]
     values = {field: clean_form_values(snapshot, field) for field in fields}
-    row_count = max(2, *(len(items) for items in values.values()))
+    row_count = max(len(defaults), *(len(items) for items in values.values()), 1)
     rows: list[dict[str, str]] = []
     for index in range(row_count):
         default_row = defaults[index] if index < len(defaults) else {"service_type": "Outro"}
-        rows.append(
-            {
-                "service_type": values["service_type"][index]
-                if index < len(values["service_type"])
-                else default_row.get("service_type", "Outro"),
-                "service_already_done": values["service_already_done"][index]
-                if index < len(values["service_already_done"])
-                else "Por confirmar",
-                "previous_service_date": values["previous_service_date"][index]
-                if index < len(values["previous_service_date"])
-                else "",
-                "previous_service_km": values["previous_service_km"][index]
-                if index < len(values["previous_service_km"])
-                else "",
-                "previous_service_supplier": values["previous_service_supplier"][index]
-                if index < len(values["previous_service_supplier"])
-                else "",
-                "previous_service_document": values["previous_service_document"][index]
-                if index < len(values["previous_service_document"])
-                else "",
-                "service_decision": values["service_decision"][index]
-                if index < len(values["service_decision"])
-                else "Por decidir",
-            }
+        row = {
+            "service_type": values["service_type"][index]
+            if index < len(values["service_type"])
+            else default_row.get("service_type", "Outro"),
+            "service_already_done": values["service_already_done"][index]
+            if index < len(values["service_already_done"])
+            else "Por confirmar",
+            "previous_service_date": values["previous_service_date"][index]
+            if index < len(values["previous_service_date"])
+            else "",
+            "previous_service_km": values["previous_service_km"][index]
+            if index < len(values["previous_service_km"])
+            else "",
+            "previous_service_supplier": values["previous_service_supplier"][index]
+            if index < len(values["previous_service_supplier"])
+            else "",
+            "previous_service_document": values["previous_service_document"][index]
+            if index < len(values["previous_service_document"])
+            else "",
+            "service_decision": values["service_decision"][index]
+            if index < len(values["service_decision"])
+            else "Por decidir",
+        }
+        has_non_default_data = any(
+            [
+                row["service_already_done"] != "Por confirmar",
+                row["previous_service_date"],
+                row["previous_service_km"],
+                row["previous_service_supplier"],
+                row["previous_service_document"],
+                row["service_decision"] != "Por decidir",
+            ]
         )
+        if entry_reasons and row["service_type"] not in entry_reasons and not has_non_default_data:
+            continue
+        rows.append(row)
     return rows
 
 
-def clean_workshop_validation_substep_status(snapshot: dict[str, object]) -> dict[str, str]:
+def clean_workshop_validation_substep_status(
+    snapshot: dict[str, object],
+    *,
+    phase_saved: bool = False,
+    prerequisite_warning_count: int = 0,
+) -> dict[str, str]:
     has_service_data = any(
         [
             clean_form_values(snapshot, "service_type"),
@@ -3474,10 +3498,127 @@ def clean_workshop_validation_substep_status(snapshot: dict[str, object]) -> dic
     already_done_values = clean_form_values(snapshot, "service_already_done")
     has_history_answer = any(value and value != "Por confirmar" for value in already_done_values)
     return {
-        "prerequisitos": "2 tarefas",
+        "prerequisitos": "OK" if prerequisite_warning_count == 0 else f"{prerequisite_warning_count} avisos",
         "pedido": "Guardado" if has_decision or has_history_answer or has_service_data else "Por validar",
-        "orientacao": "Rascunho",
+        "orientacao": "Guardado" if phase_saved else "Rascunho",
     }
+
+
+def clean_workshop_validation_prerequisites(
+    db: Session,
+    process: WorkshopPhasedProcess | None,
+    vehicle_context: dict[str, object],
+) -> list[dict[str, str | None]]:
+    vehicle_id = process.vehicle_id if process else None
+    plate = normalize_identifier(str(process.plate_snapshot or "")) if process and process.plate_snapshot else ""
+    vehicle_href = f"/v2-clean/fleet/{vehicle_id}" if vehicle_id else None
+    process_return_url = f"/v2-clean/workshop/validacao?process_id={process.id}" if process else "/v2-clean/workshop"
+    plan_create_href = None
+    if vehicle_id:
+        plan_create_href = "/documents/new?" + urlencode(
+            {
+                "vehicle_id": str(vehicle_id),
+                "plate": plate,
+                "classification": "fleet",
+                "document_type": "maintenance_plan",
+                "status": "associated",
+                "source": "onedrive",
+                "title": f"Plano de manutenção {plate or ''}".strip(),
+                "return_url": process_return_url,
+            }
+        )
+
+    plan_document = None
+    if vehicle_id:
+        plan_document = db.scalar(
+            select(Document)
+            .where(
+                Document.vehicle_id == vehicle_id,
+                or_(
+                    Document.document_type.in_(("maintenance_plan", "service_plan", "plano_manutencao")),
+                    Document.title.ilike("%plano%manuten%"),
+                    Document.original_name.ilike("%plano%manuten%"),
+                    Document.file_name.ilike("%plano%manuten%"),
+                ),
+            )
+            .order_by(Document.id.desc())
+        )
+
+    campaign_task = None
+    if plate:
+        campaign_task = db.scalar(
+            select(Task)
+            .where(
+                Task.plate == plate,
+                Task.closed_at.is_(None),
+                or_(
+                    Task.title.ilike("%campanha%"),
+                    Task.description.ilike("%campanha%"),
+                    Task.category.ilike("%campanha%"),
+                    Task.subcategory.ilike("%campanha%"),
+                    Task.title.ilike("%service box%"),
+                    Task.description.ilike("%service box%"),
+                ),
+            )
+            .order_by(Task.id.desc())
+        )
+
+    history_audit = None
+    if vehicle_id:
+        history_audit = db.scalar(
+            select(VehicleHistoryAudit)
+            .where(VehicleHistoryAudit.vehicle_id == vehicle_id, VehicleHistoryAudit.status != "closed")
+            .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+        )
+
+    real_start_date = str(vehicle_context.get("real_start_date") or "").strip()
+    if not real_start_date or real_start_date in {"-", "Por validar"}:
+        real_start_status = "Por definir"
+        real_start_impact = "Aviso"
+        real_start_class = "warn"
+    else:
+        real_start_status = real_start_date
+        real_start_impact = "Informativo"
+        real_start_class = "ok"
+
+    return [
+        {
+            "name": "Plano de manutenção",
+            "origin": "Ficha da viatura",
+            "status": f"Documento #{plan_document.id}" if plan_document else "Em falta / por associar",
+            "impact": "Informativo" if plan_document else "Aviso",
+            "impact_class": "ok" if plan_document else "warn",
+            "action": "Abrir plano" if plan_document else "Associar plano",
+            "href": f"/documents/{plan_document.id}" if plan_document else plan_create_href,
+        },
+        {
+            "name": "Service Box / campanhas",
+            "origin": "Stellantis",
+            "status": "Tarefa aberta" if campaign_task else "Sem tarefa aberta registada",
+            "impact": "Aviso" if campaign_task else "Informativo",
+            "impact_class": "warn" if campaign_task else "ok",
+            "action": f"Tarefa #{campaign_task.id}" if campaign_task else "Criar tarefa se existir campanha",
+            "href": f"/task-board/{campaign_task.id}" if campaign_task else None,
+        },
+        {
+            "name": "Início real da viatura",
+            "origin": "Ficha da viatura",
+            "status": real_start_status,
+            "impact": real_start_impact,
+            "impact_class": real_start_class,
+            "action": "Definir início" if real_start_class == "warn" else "Ver / alterar",
+            "href": vehicle_href,
+        },
+        {
+            "name": "Auditoria histórico",
+            "origin": "Centro de processos",
+            "status": history_audit.status if history_audit else "Sem auditoria aberta",
+            "impact": "Aviso" if history_audit else "Informativo",
+            "impact_class": "warn" if history_audit else "ok",
+            "action": "Abrir auditoria" if history_audit else "Criar auditoria se necessário",
+            "href": f"/fleet/{history_audit.vehicle_id}/history-audits/{history_audit.id}" if history_audit else None,
+        },
+    ]
 
 
 def clean_workshop_technical_report_summary(
@@ -4434,6 +4575,55 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
         },
     )
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/real-start", response_class=HTMLResponse)
+def clean_fleet_update_real_start(
+    request: Request,
+    vehicle_id: int,
+    real_start_date: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    clean_return_url = return_url.strip()
+    if not clean_return_url.startswith("/v2-clean/") or clean_return_url.startswith("//"):
+        clean_return_url = f"/v2-clean/fleet/{vehicle_id}"
+
+    clean_value = real_start_date.strip()
+    parsed_date = parse_optional_date(clean_value) if clean_value else None
+    if clean_value and not parsed_date:
+        separator = "&" if "?" in clean_return_url else "?"
+        return RedirectResponse(f"{clean_return_url}{separator}error=invalid_real_start", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        before = vehicle_manual_values(db, vehicle.id)
+        stored_value = parsed_date.isoformat() if parsed_date else ""
+        upsert_vehicle_manual_field(db, vehicle.id, "real_start_date", stored_value, user_id)
+        record_audit(
+            db,
+            action="vehicle.real_start_date.updated",
+            entity_type="vehicle",
+            entity_id=vehicle.id,
+            detail=f"Início real atualizado para {stored_value or 'por validar'}",
+            before_json={"real_start_date": before.get("real_start_date")},
+            after_json={"real_start_date": stored_value},
+            user_id=user_id,
+        )
+        db.commit()
+
+    separator = "&" if "?" in clean_return_url else "?"
+    return RedirectResponse(f"{clean_return_url}{separator}saved=real_start", status_code=303)
+
+
 @web_router.post("/v2-clean/workshop-entry", response_class=HTMLResponse)
 async def clean_workshop_entry_save(request: Request):
     denied = clean_experience_denied(request)
@@ -4491,6 +4681,7 @@ async def clean_workshop_entry_save(request: Request):
                 "short_description": str(form.get("short_description") or "").strip(),
                 "requested_service": str(form.get("requested_service") or "").strip(),
                 "entry_km": str(form.get("entry_km") or "").strip(),
+                "entry_km_source": "manual" if str(form.get("entry_km") or "").strip() else "",
                 "reported_by": str(form.get("reported_by") or "").strip(),
                 "priority": str(form.get("priority") or "").strip(),
                 "can_drive": str(form.get("can_drive") or "").strip(),
@@ -4507,6 +4698,12 @@ async def clean_workshop_entry_save(request: Request):
                 "saved_by_id": user_id,
             }
         )
+        if action == "advance" and parse_int_from_text(entry_data.get("entry_km")) is None:
+            phase.data_json = entry_data
+            phase.status = "in_progress"
+            process.current_phase_code = "entrada"
+            db.commit()
+            return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km", status_code=303)
         phase.data_json = entry_data
         phase.status = "completed" if action == "advance" else "in_progress"
         phase.started_at = phase.started_at or now
@@ -4551,6 +4748,7 @@ def clean_workshop_entry(
     historical: bool = False,
     new: bool = False,
     saved: bool = False,
+    error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4581,6 +4779,12 @@ def clean_workshop_entry(
             vehicle_context = clean_workshop_context_for_process(db, process)
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
             saved_entry = dict(entry_phase.data_json or {}) if entry_phase and entry_phase.data_json else {}
+            if (
+                saved_entry.get("entry_km")
+                and saved_entry.get("entry_km_source") != "manual"
+                and clean_km(saved_entry.get("entry_km")) == clean_km(vehicle_context.get("entry_km"))
+            ):
+                saved_entry["entry_km"] = ""
         else:
             query_suffix = clean_workshop_query_suffix(
                 vehicle_id=vehicle_id,
@@ -4607,6 +4811,7 @@ def clean_workshop_entry(
             "saved_entry": saved_entry,
             "entry_substep_status": clean_workshop_entry_substep_status(saved_entry),
             "saved": saved,
+            "error": error,
         },
     )
 
@@ -4643,6 +4848,8 @@ def clean_workshop_phase(
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     phase_data: dict[str, object] = {}
     phase_form: dict[str, object] = {}
+    entry_form: dict[str, object] = {}
+    validation_prerequisites: list[dict[str, str | None]] = []
     technical_reports: list[WorkshopPhasedTechnicalReport] = []
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
@@ -4661,9 +4868,15 @@ def clean_workshop_phase(
                 raw_form = phase_data.get("form_snapshot")
                 if isinstance(raw_form, dict):
                     phase_form = raw_form
+            entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
+            if entry_phase and isinstance(entry_phase.data_json, dict):
+                entry_form = dict(entry_phase.data_json)
+            validation_prerequisites = clean_workshop_validation_prerequisites(db, process, vehicle_context)
         else:
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+            validation_prerequisites = clean_workshop_validation_prerequisites(db, None, vehicle_context)
     phase_nav = clean_workshop_phase_nav(phase, query_suffix)
+    prerequisite_warning_count = sum(1 for item in validation_prerequisites if item.get("impact_class") == "warn")
     return templates.TemplateResponse(
         request,
         "clean_workshop_phase.html",
@@ -4677,8 +4890,13 @@ def clean_workshop_phase(
             "active_step": phase,
             "phase_data": phase_data,
             "phase_form": phase_form,
-            "validation_service_rows": clean_workshop_validation_rows(phase_form),
-            "validation_substep_status": clean_workshop_validation_substep_status(phase_form),
+            "validation_service_rows": clean_workshop_validation_rows(phase_form, entry_form),
+            "validation_substep_status": clean_workshop_validation_substep_status(
+                phase_form,
+                phase_saved=bool(phase_data.get("saved_at")),
+                prerequisite_warning_count=prerequisite_warning_count,
+            ),
+            "validation_prerequisites": validation_prerequisites,
             "validation_observation": clean_form_value(phase_form, "validation_observation"),
             "technical_reports": technical_reports,
             "technical_report_summary": clean_workshop_technical_report_summary(technical_reports),
@@ -11452,9 +11670,35 @@ def documents_center_page(
 
 
 @web_router.get("/documents/new", response_class=HTMLResponse)
-def documents_new_page(request: Request, error: str | None = None):
+def documents_new_page(
+    request: Request,
+    error: str | None = None,
+    vehicle_id: int | None = None,
+    plate: str = "",
+    classification: str = "",
+    document_type: str = "",
+    status: str = "",
+    source: str = "",
+    title: str = "",
+    notes: str = "",
+    return_url: str = "",
+):
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
+    clean_plate = plate.strip().upper()
+    selected_vehicle_id = vehicle_id
+    if selected_vehicle_id and not clean_plate:
+        with SessionLocal() as db:
+            vehicle = db.get(Vehicle, selected_vehicle_id)
+            if vehicle:
+                clean_plate = vehicle.plate or ""
+    clean_classification = classification if classification in DOCUMENT_AREA_LABELS else "workshop"
+    clean_document_type = normalize_document_type_for_area(document_type, clean_classification)
+    clean_status = status if status in DOCUMENT_STATUS_LABELS else "received"
+    clean_source = source if source in dict(DOCUMENT_SOURCES) else "manual"
+    clean_return_url = return_url.strip()
+    if clean_return_url and (not clean_return_url.startswith("/v2-clean/") or clean_return_url.startswith("//")):
+        clean_return_url = ""
     return templates.TemplateResponse(
         request,
         "documents_new.html",
@@ -11465,6 +11709,17 @@ def documents_new_page(request: Request, error: str | None = None):
             "statuses": DOCUMENT_STATUSES,
             "sources": DOCUMENT_SOURCES,
             "error": error,
+            "prefill": {
+                "vehicle_id": selected_vehicle_id or "",
+                "plate": clean_plate,
+                "classification": clean_classification,
+                "document_type": clean_document_type,
+                "status": clean_status,
+                "source": clean_source,
+                "title": title.strip(),
+                "notes": notes.strip(),
+                "return_url": clean_return_url,
+            },
         },
     )
 
@@ -11573,22 +11828,43 @@ def document_create(
     plate: str = Form(""),
     supplier_name: str = Form(""),
     customer_name: str = Form(""),
+    vehicle_id: str = Form(""),
     task_id: str = Form(""),
     workshop_process_id: str = Form(""),
     import_batch_id: str = Form(""),
     notes: str = Form(""),
+    return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
+    clean_return_url = return_url.strip()
+    if clean_return_url and (not clean_return_url.startswith("/v2-clean/") or clean_return_url.startswith("//")):
+        clean_return_url = ""
+
+    def document_error_redirect(message: str) -> RedirectResponse:
+        params = {
+            "error": message,
+            "vehicle_id": vehicle_id.strip(),
+            "plate": plate.strip().upper(),
+            "classification": classification,
+            "document_type": document_type,
+            "status": status,
+            "source": source,
+            "title": title.strip(),
+            "notes": notes.strip(),
+            "return_url": clean_return_url,
+        }
+        return RedirectResponse(f"/documents/new?{urlencode({k: v for k, v in params.items() if v})}", status_code=303)
+
     clean_title = title.strip()
     clean_original_url = url_original.strip()
     clean_archive_url = url_archive.strip()
     if not clean_title:
-        return RedirectResponse("/documents/new?error=Indica%20um%20título.", status_code=303)
+        return document_error_redirect("Indica um título.")
     if not clean_original_url and not clean_archive_url:
-        return RedirectResponse("/documents/new?error=Indica%20pelo%20menos%20um%20link.", status_code=303)
+        return document_error_redirect("Indica pelo menos um link ou caminho.")
     if classification not in DOCUMENT_AREA_LABELS:
         classification = "workshop"
     document_type = normalize_document_type_for_area(document_type, classification)
@@ -11612,10 +11888,14 @@ def document_create(
         if not user:
             return RedirectResponse("/login", status_code=303)
 
-        vehicle_id = None
-        if clean_plate:
+        linked_vehicle_id = None
+        parsed_vehicle_id = parse_optional_int(vehicle_id)
+        vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
+        if not vehicle and clean_plate:
             vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == clean_plate))
-            vehicle_id = vehicle.id if vehicle else None
+        if vehicle:
+            linked_vehicle_id = vehicle.id
+            clean_plate = clean_plate or (vehicle.plate or "")
         parsed_task_id = parse_optional_int(task_id)
         if parsed_task_id and not db.get(Task, parsed_task_id):
             parsed_task_id = None
@@ -11641,7 +11921,7 @@ def document_create(
             storage_key=clean_original_url or None,
             external_url=clean_archive_url or clean_original_url,
             folder_path=folder_path,
-            vehicle_id=vehicle_id,
+            vehicle_id=linked_vehicle_id,
             task_id=parsed_task_id,
             workshop_process_id=parsed_workshop_process_id,
             plate=clean_plate or None,
@@ -11700,6 +11980,9 @@ def document_create(
         )
         db.commit()
 
+    if clean_return_url:
+        separator = "&" if "?" in clean_return_url else "?"
+        return RedirectResponse(f"{clean_return_url}{separator}document_created=1", status_code=303)
     return RedirectResponse("/documents/manage?created=1", status_code=303)
 
 
@@ -14558,7 +14841,7 @@ def build_external_portal_description(*, message: str, category: str, station: s
 def default_document_type_for_area(area: str) -> str:
     return {
         "workshop": "workshop_evidence",
-        "fleet": "workshop_other",
+        "fleet": "maintenance_plan",
         "finance": "finance_other",
         "rentway_imports": "general_rentway",
         "general_archive": "general_archive",
@@ -14585,6 +14868,7 @@ def document_folder_label(document_type: str | None) -> str:
         "workshop_evidence": "Evidências",
         "workshop_report": "Relatórios técnicos",
         "workshop_other": "Outros documentos de oficina",
+        "maintenance_plan": "Planos de manutenção",
         "finance_supplier_invoice": "Faturas fornecedor",
         "finance_credit_note": "Notas de crédito",
         "finance_receipt": "Recibos",

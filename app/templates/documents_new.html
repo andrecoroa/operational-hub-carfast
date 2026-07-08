@@ -11,7 +11,7 @@
         <p class="breadcrumb">Documentos &gt; <strong>Novo documento</strong></p>
       </div>
       <div class="topbar-tools">
-        <a class="button-link secondary-link" href="/documents">Voltar</a>
+        <a class="button-link secondary-link" href="{{ prefill.return_url or '/documents' }}">Voltar</a>
         <a class="button-link secondary-link" href="/documents/manage">Gestão</a>
         {% set feedback_source_area = "documents" %}
         {% set feedback_return_url = "/documents/new" %}
@@ -25,20 +25,22 @@
 
     <section class="compact-create-layout">
       <form method="post" action="/documents/new" class="form-panel form-stack task-form compact-create-page">
+        <input type="hidden" name="vehicle_id" value="{{ prefill.vehicle_id }}">
+        <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
         <div class="panel-heading">
           <p class="eyebrow">Entrada documental</p>
           <h3>Registo rápido</h3>
         </div>
         <label>
           Título
-          <input type="text" name="title" maxlength="200" required>
+          <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" required>
         </label>
         <div class="compact-form-grid">
           <label>
             Área
             <select name="classification" data-document-area>
               {% for code, label in areas %}
-                <option value="{{ code }}" {% if code == "workshop" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ code }}" {% if code == prefill.classification %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -46,7 +48,7 @@
             Tipologia
             <select name="document_type" data-document-type>
               {% for code, label in document_types %}
-                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if code == "workshop_other" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if code == prefill.document_type %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -54,7 +56,7 @@
             Estado
             <select name="status">
               {% for code, label in statuses %}
-                <option value="{{ code }}" {% if code == "received" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ code }}" {% if code == prefill.status %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -72,7 +74,7 @@
         <div class="compact-form-grid">
           <label>
             Matrícula
-            <input type="text" name="plate" maxlength="40">
+            <input type="text" name="plate" maxlength="40" value="{{ prefill.plate }}">
           </label>
           <label>
             Fornecedor
@@ -86,7 +88,7 @@
             Origem
             <select name="source">
               {% for code, label in sources %}
-                <option value="{{ code }}">{{ label }}</option>
+                <option value="{{ code }}" {% if code == prefill.source %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -126,7 +128,7 @@
           </div>
           <label>
             Notas
-            <textarea name="notes" rows="3"></textarea>
+            <textarea name="notes" rows="3">{{ prefill.notes }}</textarea>
           </label>
         </details>
         <button type="submit">Registar documento</button>

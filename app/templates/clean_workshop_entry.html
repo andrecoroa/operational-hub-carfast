@@ -81,6 +81,13 @@
                 <p>Selecionar um ou mais motivos prováveis. A validação administrativa confirma quais seguem e quando foram executados anteriormente.</p>
               </div>
             </div>
+            {% if error == "missing_km" %}
+              <p class="clean-rule-note">KM de entrada é obrigatório para avançar para validação administrativa.</p>
+            {% endif %}
+            <div class="clean-phase-field-grid">
+              <label>Matrícula<input name="plate" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}" {% if has_vehicle_plate %}readonly{% endif %}></label>
+              <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
+            </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
                 <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% endif %}> <span>{{ reason }}</span></label>
@@ -103,15 +110,9 @@
               </div>
             {% endif %}
             <div class="clean-phase-field-grid">
-              {% if not has_vehicle_plate %}
-                <label>Matrícula<input name="plate" placeholder="Ex.: BB-13-PT" value=""></label>
-              {% else %}
-                <input type="hidden" name="plate" value="{{ workshop_process.plate_snapshot }}">
-              {% endif %}
 <label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
 <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
 
-              <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or vehicle_context.entry_km }}"></label>
 <label>Quem reportou<select name="reported_by">
                 {% for option in ["Operador", "Cliente", "Oficina", "Sistema"] %}
                   <option {% if (saved_entry.reported_by or "Operador") == option %}selected{% endif %}>{{ option }}</option>

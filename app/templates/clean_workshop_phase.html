@@ -65,7 +65,7 @@
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="prerequisitos">
               <span><b>Pré-requisitos da viatura</b><em>Ficha, campanhas e dados base</em></span>
-              <strong class="warn">2 tarefas</strong>
+              <strong class="{% if validation_substep_status.prerequisitos == 'OK' %}ok{% else %}warn{% endif %}">{{ validation_substep_status.prerequisitos }}</strong>
             </button>
             <button class="clean-substep-card" type="button" data-target="pedido">
               <span><b>Validação do pedido</b><em>Serviço validado após histórico</em></span>
@@ -85,14 +85,23 @@
                   <h3>Condições da viatura para avançar</h3>
                   <p>Informação permanente vem da ficha da viatura. Campanhas por executar geram tarefa e reserva, mas não bloqueiam o avanço.</p>
                 </div>
-                <span class="clean-status-pill warn">2 tarefas geradas</span>
+                <span class="clean-status-pill {% if validation_substep_status.prerequisitos == 'OK' %}ok{% else %}warn{% endif %}">{{ validation_substep_status.prerequisitos }}</span>
               </div>
               <div class="clean-prereq-table">
                 <div class="clean-prereq-head"><b>Pré-requisito</b><b>Origem</b><b>Estado / dado</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Plano de manutenção</span><em>Ficha da viatura</em><strong>Validado em 15/05/2026</strong><mark class="ok">Informativo</mark><a href="/fleet">Abrir plano</a></div>
-                <div><span>Service Box / campanhas</span><em>Stellantis</em><strong>1 campanha por executar</strong><mark class="warn">Aviso</mark><a href="/task-board">Tarefa #328</a></div>
-                <div><span>Data início CarFast</span><em>Ficha da viatura</em><strong>20/05/2024</strong><mark class="ok">Informativo</mark><a href="/fleet">Ver ficha</a></div>
-                <div><span>Auditoria histórico</span><em>Centro de processos</em><strong>Em curso</strong><mark class="warn">Aviso</mark><a href="/management-center/auditorias">Abrir auditoria</a></div>
+                {% for item in validation_prerequisites %}
+                  <div>
+                    <span>{{ item.name }}</span>
+                    <em>{{ item.origin }}</em>
+                    <strong>{{ item.status }}</strong>
+                    <mark class="{{ item.impact_class }}">{{ item.impact }}</mark>
+                    {% if item.href %}
+                      <a href="{{ item.href }}">{{ item.action }}</a>
+                    {% else %}
+                      <span class="clean-muted-action">{{ item.action }}</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
               </div>
               <p class="clean-rule-note">Regra: campanhas por executar não bloqueiam; ficam como aviso/tarefa e permitem avançar com reserva. Só risco técnico crítico impede a passagem.</p>
             </article>

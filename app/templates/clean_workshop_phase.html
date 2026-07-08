@@ -32,6 +32,8 @@
         <div class="clean-vehicle-quick-facts">
           <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
           <span><b>Data matrícula</b><em>{{ vehicle_context.registration_date }}</em></span>
+          <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
+          <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
         </div>
         {% for alert in vehicle_context.alerts %}
           <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -846,6 +848,13 @@
             {% if section.uploads %}<div class="clean-upload-row">{% for upload in section.uploads %}<label class="clean-file-button">{{ upload }}<input type="file" accept="image/*,application/pdf" capture="environment"></label>{% endfor %}</div>{% endif %}
           </article>
         {% endfor %}
+      {% endif %}
+
+      {% if workshop_process and workshop_process.status != "closed" %}
+        <div class="clean-substep-savebar clean-substep-savebar-global">
+          <button type="submit" name="action" value="save">Guardar subfase</button>
+          <button type="submit" name="action" value="advance">Guardar e avançar</button>
+        </div>
       {% endif %}
 
       <article class="clean-panel clean-panel-compact clean-card-wide">

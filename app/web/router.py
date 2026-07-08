@@ -164,6 +164,16 @@ def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[st
             data,
             ["last_service_done", "lastservicedone", "last_service_date", "last_service", "ultimo_servico"],
         ),
+        "next_service_date": snapshot_value(
+            data,
+            [
+                "next_service_date",
+                "nextservicedate",
+                "next_maintenance_date",
+                "proxima_manutencao_data",
+                "proxima_revisao_data",
+            ],
+        ),
         "next_service": snapshot_value(data, ["next_service", "nextservice", "next_service_date", "proximo_servico"]),
         "last_service": snapshot_value(data, ["last_service", "lastservice", "ultimo_servico_km"]),
         "last_service_km": snapshot_value(data, ["last_service_km", "lastservicekm"]),
@@ -468,7 +478,7 @@ def vehicle_rule_context(snapshot: VehicleExternalSnapshot | None, manual: dict[
         "maintenance_interval_months": manual.get("maintenance_interval_months") or "",
         "rentway_last_service_km": context.get("last_service"),
         "rentway_next_service_km": context.get("next_service"),
-        "rentway_next_service_date": context.get("last_service_done"),
+        "rentway_next_service_date": context.get("next_service_date") or context.get("last_service_done"),
         "calculated_service_km": calculated_service_km,
         "calculated_service_date": calculated_service_date,
         "maintenance_status": maintenance_status,
@@ -3317,6 +3327,55 @@ def clean_workshop_get_phase(
     )
 
 
+async def clean_workshop_store_entry_uploads(
+    process_id: int,
+    form,
+) -> list[dict[str, str]]:
+    field_map = {
+        "dashboard_photo": ("dashboard", "Foto do quadrante"),
+        "dashboard_photo_camera": ("dashboard", "Foto do quadrante"),
+        "vehicle_front_photo": ("front", "Foto frente"),
+        "vehicle_front_photo_camera": ("front", "Foto frente"),
+        "vehicle_rear_photo": ("rear", "Foto traseira"),
+        "vehicle_rear_photo_camera": ("rear", "Foto traseira"),
+        "vehicle_left_photo": ("left", "Foto lateral esquerda"),
+        "vehicle_left_photo_camera": ("left", "Foto lateral esquerda"),
+        "vehicle_right_photo": ("right", "Foto lateral direita"),
+        "vehicle_right_photo_camera": ("right", "Foto lateral direita"),
+        "entry_photos": ("support", "Foto de apoio"),
+        "entry_photos_camera": ("support", "Foto de apoio"),
+    }
+    stored: list[dict[str, str]] = []
+    upload_root = Path("uploads") / "workshop_entry" / str(process_id)
+    for form_field, (slot, label) in field_map.items():
+        for upload in form.getlist(form_field):
+            if not hasattr(upload, "filename") or not hasattr(upload, "read") or not upload.filename:
+                continue
+            content = await upload.read()
+            if not content:
+                continue
+            original_name = Path(upload.filename).name
+            digest = hashlib.sha256(content).hexdigest()
+            suffix = Path(original_name).suffix or ".bin"
+            upload_root.mkdir(parents=True, exist_ok=True)
+            stored_name = f"{slot}_{digest[:12]}{suffix}"
+            stored_path = upload_root / stored_name
+            if not stored_path.exists():
+                stored_path.write_bytes(content)
+            stored.append(
+                {
+                    "field": form_field,
+                    "slot": slot,
+                    "label": label,
+                    "original_name": original_name,
+                    "stored_name": stored_name,
+                    "path": str(stored_path),
+                    "sha256": digest,
+                }
+            )
+    return stored
+
+
 def clean_workshop_entry_substep_status(entry_data: dict[str, object]) -> dict[str, str]:
     if not entry_data:
         return {"motivo": "Obrigatório", "danos": "Por validar", "saida": "Rascunho"}
@@ -4146,6 +4205,7 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
         "next_ipo": clean_date((rules.get("calculated_ipo") or rules.get("rentway_ipo")).isoformat() if rules.get("calculated_ipo") or rules.get("rentway_ipo") else None),
         "last_service_km": f"{clean_km(snapshot_value(data, ['last_service', 'lastservice']))} km",
         "next_service_km": f"{clean_km(snapshot_value(data, ['next_service', 'nextservice']))} km",
+        "next_service_date": clean_date(str(rules.get("rentway_next_service_date") or "")),
         "maintenance_status": f"Manutenção: {rules.get('maintenance_status')}",
         "history_audit_status": "Auditoria histórico: por validar",
         "sale_status": "Venda: por validar",
@@ -4674,7 +4734,11 @@ async def clean_workshop_entry_save(request: Request):
             code: str(form.get(code) or "not_checked")
             for code in CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS
         }
+        stored_uploads = await clean_workshop_store_entry_uploads(process.id, form)
         entry_data = dict(phase.data_json or {})
+        existing_uploads = entry_data.get("uploads")
+        if not isinstance(existing_uploads, list):
+            existing_uploads = []
         entry_data.update(
             {
                 "entry_reasons": entry_reasons,
@@ -4694,6 +4758,7 @@ async def clean_workshop_entry_save(request: Request):
                 "expected_exit": str(form.get("expected_exit") or "").strip(),
                 "validation_notes": str(form.get("validation_notes") or "").strip(),
                 "minimum_checks": minimum_checks,
+                "uploads": [*existing_uploads, *stored_uploads],
                 "saved_at": now.isoformat(),
                 "saved_by_id": user_id,
             }
@@ -13017,6 +13082,12 @@ def task_vehicle_search(request: Request):
                 )
             )
         vehicles = db.scalars(statement.order_by(Vehicle.plate).limit(12)).all()
+        workshop_contexts: dict[int, dict[str, object]] = {}
+        if context == "workshop":
+            workshop_contexts = {
+                vehicle.id: clean_workshop_vehicle_context(db, vehicle_id=vehicle.id)
+                for vehicle in vehicles
+            }
         return {
             "items": [
                 {
@@ -13029,6 +13100,7 @@ def task_vehicle_search(request: Request):
                     "rentway_unit_nr": vehicle.rentway_unit_nr,
                     "lifecycle_status": vehicle.lifecycle_status,
                     "operational_status": vehicle.operational_status,
+                    "workshop_context": workshop_contexts.get(vehicle.id, {}),
                     "label": " · ".join(
                         item
                         for item in [

@@ -26,14 +26,16 @@
 
     <section class="clean-vehicle-header-card">
       <div class="clean-vehicle-identity">
-        <strong>{{ vehicle_context.plate }}</strong>
-        <span>{{ vehicle_context.vehicle }}</span>
-        <em>Chassi: {{ vehicle_context.vin }}</em>
+        <strong data-clean-vehicle-field="plate">{{ vehicle_context.plate }}</strong>
+        <span data-clean-vehicle-field="vehicle">{{ vehicle_context.vehicle }}</span>
+        <em data-clean-vehicle-field="vin">Chassi: {{ vehicle_context.vin }}</em>
       </div>
       <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
         <div class="clean-vehicle-quick-facts">
-          <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
-          <span><b>Data matrícula</b><em>{{ vehicle_context.registration_date }}</em></span>
+          <span><b>Combustível</b><em data-clean-vehicle-field="fuel">{{ vehicle_context.fuel }}</em></span>
+          <span><b>Data matrícula</b><em data-clean-vehicle-field="registration_date">{{ vehicle_context.registration_date }}</em></span>
+          <span><b>Compra</b><em data-clean-vehicle-field="purchase_date">{{ vehicle_context.purchase_date }}</em></span>
+          <span><b>Próx. manutenção</b><em data-clean-vehicle-field="next_service">{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
         </div>
         {% for alert in vehicle_context.alerts %}
           <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -56,6 +58,7 @@
       {% set saved_reasons = saved_entry.entry_reasons or [] %}
       {% set saved_physical = saved_entry.physical_checks or {} %}
       {% set saved_minimum = saved_entry.minimum_checks or {} %}
+      {% set saved_uploads = saved_entry.uploads or [] %}
       <section class="clean-phase-workbench clean-card-wide">
         <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
           <button class="clean-substep-card active" type="button" data-target="motivo">
@@ -85,7 +88,7 @@
               <p class="clean-rule-note">KM de entrada é obrigatório para avançar para validação administrativa.</p>
             {% endif %}
             <div class="clean-phase-field-grid">
-              <label>Matrícula<input name="plate" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}" {% if has_vehicle_plate %}readonly{% endif %}></label>
+              <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
@@ -128,6 +131,10 @@
                   <option {% if (saved_entry.can_drive or "Por confirmar") == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select></label>
+            </div>
+            <div class="clean-substep-savebar">
+              <button type="submit" name="action" value="save">Guardar motivo</button>
+              <button type="submit" name="action" value="advance">Guardar e avançar</button>
             </div>
           </article>
 
@@ -207,6 +214,14 @@
               </div>
             </div>
             <label class="clean-full-label">Notas / evidência física<textarea rows="3" name="physical_check_note" placeholder="Registar apenas divergências, falta de equipamento ou danos relevantes...">{{ saved_entry.physical_check_note or "" }}</textarea></label>
+            {% if saved_uploads %}
+              <div class="clean-upload-summary">
+                <strong>Imagens gravadas</strong>
+                {% for upload in saved_uploads %}
+                  <span>{{ upload.label }} · {{ upload.original_name }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
             <div class="clean-upload-box clean-upload-inline">
               <strong>Fotos de apoio</strong>
               <span>Adicionar imagens quando existir dano, falta de equipamento ou divergência.</span>
@@ -214,6 +229,10 @@
                 <label class="clean-file-button">Carregar imagem<input name="entry_photos" type="file" accept="image/*" multiple></label>
                 <label class="clean-file-button">Tirar foto<input name="entry_photos_camera" type="file" accept="image/*" capture="environment" multiple></label>
               </div>
+            </div>
+            <div class="clean-substep-savebar">
+              <button type="submit" name="action" value="save">Guardar verificações</button>
+              <button type="submit" name="action" value="advance">Guardar e avançar</button>
             </div>
           </article>
 
@@ -272,6 +291,63 @@
       });
     });
   });
+
+  const plateInput = document.getElementById("clean-entry-plate-input");
+  const plateSuggestions = document.getElementById("clean-entry-plate-suggestions");
+  const vehicleSuggestionCache = new Map();
+  let vehicleSearchTimer = null;
+  const setVehicleField = (field, value) => {
+    document.querySelectorAll(`[data-clean-vehicle-field="${field}"]`).forEach((node) => {
+      node.textContent = value || "-";
+    });
+  };
+  const updateHeaderFromSuggestion = (item) => {
+    const ctx = item.workshop_context || {};
+    const vehicleText = ctx.vehicle || [item.brand, item.model, item.version].filter(Boolean).join(" ") || "-";
+    setVehicleField("plate", item.plate || "-");
+    setVehicleField("vehicle", vehicleText);
+    setVehicleField("vin", `Chassi: ${item.vin || ctx.vin || "-"}`);
+    setVehicleField("fuel", ctx.fuel || "-");
+    setVehicleField("registration_date", ctx.registration_date || "-");
+    setVehicleField("purchase_date", ctx.purchase_date || "-");
+    setVehicleField("next_service", `${ctx.next_service_date || "-"} · ${ctx.next_service_km || "-"}`);
+  };
+  const selectPlateIfExact = () => {
+    const key = (plateInput?.value || "").trim().toUpperCase();
+    const item = vehicleSuggestionCache.get(key);
+    if (item) updateHeaderFromSuggestion(item);
+  };
+  if (plateInput && plateSuggestions) {
+    plateInput.addEventListener("input", () => {
+      clearTimeout(vehicleSearchTimer);
+      const query = plateInput.value.trim();
+      if (query.length < 2) {
+        plateSuggestions.innerHTML = "";
+        return;
+      }
+      vehicleSearchTimer = setTimeout(async () => {
+        try {
+          const response = await fetch(`/task-board/vehicle-search?context=workshop&q=${encodeURIComponent(query)}`);
+          if (!response.ok) return;
+          const payload = await response.json();
+          vehicleSuggestionCache.clear();
+          plateSuggestions.innerHTML = "";
+          (payload.items || []).forEach((item) => {
+            if (!item.plate) return;
+            vehicleSuggestionCache.set(String(item.plate).toUpperCase(), item);
+            const option = document.createElement("option");
+            option.value = item.plate;
+            option.label = item.label || item.plate;
+            plateSuggestions.appendChild(option);
+          });
+          selectPlateIfExact();
+        } catch (error) {
+          // Sugestões são auxiliares; a gravação do processo continua a funcionar sem elas.
+        }
+      }, 180);
+    });
+    plateInput.addEventListener("change", selectPlateIfExact);
+  }
 </script>
 {% endblock %}
 

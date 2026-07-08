@@ -9226,6 +9226,73 @@ a.metric:hover {
   margin-top: 0;
 }
 
+.clean-upload-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.clean-upload-summary strong {
+  width: 100%;
+  color: #111827;
+  font-size: 12px;
+}
+
+.clean-upload-summary span {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clean-substep-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e5eaf2;
+}
+
+.clean-substep-savebar button {
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #d1d9e6;
+  background: #fff;
+  color: #0f2a5f;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.clean-substep-savebar button:first-child {
+  border-color: #92400e;
+  background: #92400e;
+  color: #fff;
+}
+
+.clean-substep-savebar button:last-child {
+  border-color: #2563eb;
+}
+
+.clean-substep-savebar-global {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .clean-side-photo-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

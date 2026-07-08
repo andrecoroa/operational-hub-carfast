@@ -79,6 +79,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     saved_entry = client.post(
         "/v2-clean/workshop-entry",
         data={**entry_payload, "action": "save"},
+        files={
+            "dashboard_photo": ("quadrante.jpg", b"fake dashboard image", "image/jpeg"),
+            "vehicle_front_photo": ("frente.jpg", b"fake front image", "image/jpeg"),
+        },
         follow_redirects=False,
     )
     assert saved_entry.status_code == 303
@@ -105,6 +109,8 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     )
     assert entry_phase is not None
     assert entry_phase.status == "completed"
+    assert len(entry_phase.data_json["uploads"]) == 2
+    assert {item["slot"] for item in entry_phase.data_json["uploads"]} == {"dashboard", "front"}
     assert entry_phase.data_json["physical_checks"]["damage_matches_rentway"] == "not_checked"
     assert entry_phase.data_json["minimum_checks"]["minimum_reason_selected"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_km_confirmed"] == "yes"

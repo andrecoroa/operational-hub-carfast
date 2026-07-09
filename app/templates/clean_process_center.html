@@ -4,53 +4,62 @@
   {% set active_menu = "clean_processes" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-hero clean-process-center-hero">
+    <header class="clean-process-topbar">
       <div>
-        <p class="eyebrow">Nova experiência</p>
+        <p class="eyebrow">Nova experiencia / processos</p>
         <h2>Centro de Processos</h2>
-        <p>Escolher área, abrir um modelo e acompanhar processos longos sem misturar com tarefas simples.</p>
+        <p>Processos longos por area. A Oficina continua no modulo proprio.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
-        <a class="button-link secondary-link" href="/v2-clean">Início</a>
+        <a class="button-link secondary-link" href="/v2-clean">Inicio</a>
+        <a class="button-link secondary-link" href="/v2-clean/workshop">Oficina</a>
       </div>
     </header>
 
-    <section class="clean-process-area-grid">
-      {% for area in area_cards %}
-        <article class="clean-process-area-card" id="process-{{ area.code }}">
-          <div class="clean-process-area-head">
-            <span class="clean-area-code">{{ area.label[:2]|upper }}</span>
-            <div>
-              <strong>{{ area.label }}</strong>
-              <small>{{ area.description }}</small>
-            </div>
-          </div>
-          <div class="clean-process-area-metrics">
-            <span><b>{{ area.open }}</b><em>Abertos</em></span>
-            <span><b>{{ area.critical }}</b><em>Críticos</em></span>
-          </div>
-          <div class="clean-model-list">
-            {% for model in area.models %}
-              <a href="{{ area.href }}">{{ model }}</a>
-            {% endfor %}
-          </div>
-        </article>
-      {% endfor %}
+    <section class="clean-process-kpi-row" aria-label="Indicadores do centro de processos">
+      <article><span>Areas</span><strong>{{ process_metrics.areas }}</strong><em>ativas</em></article>
+      <article><span>Abertos</span><strong>{{ process_metrics.open }}</strong><em>em acompanhamento</em></article>
+      <article><span>Criticos</span><strong>{{ process_metrics.critical }}</strong><em>a rever</em></article>
+      <article><span>Modelos</span><strong>{{ process_metrics.models }}</strong><em>previstos</em></article>
     </section>
 
-    <section class="clean-process-model-panel clean-card-wide">
+    <section class="clean-panel clean-card-wide clean-process-area-panel">
       <div class="table-heading flat-heading">
         <div>
-          <p class="eyebrow">Modelos rápidos</p>
-          <h3>Começar processo</h3>
-          <p>Primeiro escolhemos o modelo. As fases e campos vêm depois, sem sobrecarregar a entrada.</p>
+          <p class="eyebrow">Areas</p>
+          <h3>Escolher onde tratar o processo</h3>
+          <p>Cada area limita modelos, responsaveis e visibilidade. O detalhe do modelo vem no passo seguinte.</p>
         </div>
       </div>
-      <div class="clean-process-model-grid">
-        <a href="/v2-clean/fleet"><b>Auditoria técnica</b><span>Começar pela ficha/documentação da viatura</span></a>
-        <a href="#process-management"><b>Sinistro acompanhado</b><span>Modelo preparado para próxima fase</span></a>
-        <a href="#process-management"><b>Reclamação fornecedor</b><span>Acompanhamento de tema crítico com evidências</span></a>
-        <a href="#process-administration"><b>Alteração de procedimento</b><span>Registo, validação e comunicação interna</span></a>
+
+      <div class="clean-process-area-grid clean-process-area-grid-compact">
+        {% for area in area_cards %}
+          <article class="clean-process-area-card clean-process-area-card-compact" id="process-{{ area.code }}">
+            <div class="clean-process-area-head">
+              <span class="clean-area-code">{{ area.short }}</span>
+              <div>
+                <strong>{{ area.label }}</strong>
+                <small>{{ area.description }}</small>
+              </div>
+            </div>
+
+            <div class="clean-process-area-metrics">
+              <span><b>{{ area.open }}</b><em>Abertos</em></span>
+              <span><b>{{ area.critical }}</b><em>Criticos</em></span>
+            </div>
+
+            <div class="clean-model-chip-row" aria-label="Modelos previstos em {{ area.label }}">
+              {% for model in area.models %}
+                <span>{{ model }}</span>
+              {% endfor %}
+            </div>
+
+            <div class="clean-process-card-footer">
+              <em>{{ area.state }}</em>
+              <a href="{{ area.href }}">{{ area.action }}</a>
+            </div>
+          </article>
+        {% endfor %}
       </div>
     </section>
 
@@ -63,17 +72,15 @@
           </div>
           <a class="table-link" href="/v2-clean/fleet">Abrir Frota</a>
         </div>
-        <div class="event-list">
+        <div class="clean-process-list">
           {% for audit in recent_audits %}
-            <article class="event-item">
-              <div>
-                <strong>{{ audit.plate or "Sem matrícula" }}</strong>
-                <span>{{ audit.status }}</span>
-              </div>
-              <p>{{ audit.objective or "Auditoria técnica da viatura" }}</p>
-            </article>
+            <a href="/v2-clean/fleet">
+              <strong>{{ audit.plate or "Sem matricula" }}</strong>
+              <span>{{ audit.status }}</span>
+              <em>{{ audit.objective or "Auditoria tecnica da viatura" }}</em>
+            </a>
           {% else %}
-            <p class="muted">Ainda sem auditorias técnicas recentes.</p>
+            <p class="muted">Ainda sem auditorias tecnicas recentes.</p>
           {% endfor %}
         </div>
       </article>
@@ -81,24 +88,31 @@
       <article class="clean-panel clean-panel-compact">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Gestão</p>
+            <p class="eyebrow">Gestao</p>
             <h3>Processos recentes</h3>
           </div>
         </div>
-        <div class="event-list">
+        <div class="clean-process-list">
           {% for process in recent_management %}
-            <article class="event-item">
-              <div>
-                <strong>{{ process.internal_reference or process.title or "Processo" }}</strong>
-                <span>{{ process.status }}</span>
-              </div>
-              <p>{{ process.title or process.phase or "Processo de gestão" }}</p>
-            </article>
+            <a href="/v2-clean/processes#process-management">
+              <strong>{{ process.internal_reference or process.title or "Processo" }}</strong>
+              <span>{{ process.status }}</span>
+              <em>{{ process.title or process.phase or "Processo de gestao" }}</em>
+            </a>
           {% else %}
-            <p class="muted">Ainda sem processos de gestão recentes.</p>
+            <p class="muted">Ainda sem processos de gestao recentes.</p>
           {% endfor %}
         </div>
       </article>
+    </section>
+
+    <section class="clean-panel clean-process-next-step">
+      <div>
+        <p class="eyebrow">Proximo passo</p>
+        <h3>Criar processo por modelo</h3>
+        <p>Depois desta base, ligamos um botao simples: area -> modelo -> processo. Sem misturar com Oficina.</p>
+      </div>
+      <a class="button-link secondary-link" href="/v2-clean/processes">Em preparacao</a>
     </section>
   </main>
 </div>

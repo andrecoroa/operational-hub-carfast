@@ -2785,39 +2785,51 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
     return [
         {
             "code": "operational",
+            "short": "OP",
             "label": "Operacional",
             "description": "Coordenação diária, tarefas guiadas e ocorrências rápidas.",
             "open": open_tasks,
             "critical": open_workshop_alerts,
             "models": ["Transferência crítica", "Verificação operacional"],
             "href": "#process-operational",
+            "action": "Ver tarefas",
+            "state": "Pronto a ligar",
         },
         {
             "code": "fleet",
+            "short": "FR",
             "label": "Frota",
             "description": "Ciclo técnico, documentação e decisões comerciais da viatura.",
             "open": open_audits,
             "critical": open_audits,
             "models": ["Auditoria técnica da viatura", "Preparação para venda", "Regularização documental da viatura"],
             "href": "/v2-clean/fleet",
+            "action": "Abrir frota",
+            "state": "Base ativa",
         },
         {
             "code": "management",
+            "short": "GE",
             "label": "Gestão",
             "description": "Sinistros, fornecedores, discussões e validações de gestão.",
             "open": open_management,
             "critical": document_inbox,
             "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
             "href": "#process-management",
+            "action": "Ver gestão",
+            "state": "A organizar",
         },
         {
             "code": "administration",
+            "short": "AD",
             "label": "Administração",
             "description": "Procedimentos, protocolos e organização interna.",
             "open": document_inbox,
             "critical": 0,
             "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
             "href": "#process-administration",
+            "action": "Ver modelos",
+            "state": "Preparado",
         },
     ]
 
@@ -2863,6 +2875,12 @@ def clean_process_center(request: Request):
             .order_by(ManagementProcess.updated_at.desc(), ManagementProcess.id.desc())
             .limit(8)
         ).all()
+        process_metrics = {
+            "areas": len(area_cards),
+            "open": sum(int(area["open"]) for area in area_cards),
+            "critical": sum(int(area["critical"]) for area in area_cards),
+            "models": sum(len(area["models"]) for area in area_cards),
+        }
         return templates.TemplateResponse(
             request,
             "clean_process_center.html",
@@ -2870,6 +2888,7 @@ def clean_process_center(request: Request):
                 "area_cards": area_cards,
                 "recent_audits": recent_audits,
                 "recent_management": recent_management,
+                "process_metrics": process_metrics,
             },
         )
 

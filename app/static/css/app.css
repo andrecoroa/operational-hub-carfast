@@ -8863,10 +8863,75 @@ a.metric:hover {
   align-items: center;
 }
 
+.clean-process-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.clean-process-topbar h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.clean-process-topbar p:not(.eyebrow) {
+  margin: 5px 0 0;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.clean-process-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.clean-process-kpi-row article {
+  display: grid;
+  gap: 3px;
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.clean-process-kpi-row span,
+.clean-process-kpi-row em {
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.clean-process-kpi-row strong {
+  color: #0f2a5f;
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.clean-process-area-panel {
+  display: grid;
+  gap: 14px;
+}
+
 .clean-process-area-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.clean-process-area-grid-compact {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
 }
 
 .clean-process-area-card {
@@ -8877,6 +8942,12 @@ a.metric:hover {
   border-radius: 8px;
   background: #fff;
   padding: 14px;
+}
+
+.clean-process-area-card-compact {
+  min-height: 0;
+  align-content: start;
+  padding: 12px;
 }
 
 .clean-process-area-head {
@@ -8950,6 +9021,47 @@ a.metric:hover {
   gap: 6px;
 }
 
+.clean-model-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.clean-model-chip-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid #d9e2ef;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #0f2a5f;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.clean-process-card-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.clean-process-card-footer em {
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.clean-process-card-footer a {
+  color: #a4491f;
+  font-size: 12px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
 .clean-model-list a,
 .clean-process-model-grid a {
   border: 1px solid #d9e2ef;
@@ -9008,6 +9120,72 @@ a.metric:hover {
 
 .clean-process-recent-grid .clean-panel {
   min-height: 260px;
+}
+
+.clean-process-list {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-process-list a {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #e5ebf2;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f2a5f;
+  text-decoration: none;
+}
+
+.clean-process-list a:hover {
+  border-color: #b7c8e6;
+  background: #f8fbff;
+}
+
+.clean-process-list strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.clean-process-list span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #344054;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.clean-process-list em {
+  grid-column: 1 / -1;
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.clean-process-next-step {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.clean-process-next-step h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.clean-process-next-step p:not(.eyebrow) {
+  margin: 5px 0 0;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .clean-header-actions {
@@ -9771,6 +9949,7 @@ a.metric:hover {
   }
 
   .clean-process-area-grid,
+  .clean-process-kpi-row,
   .clean-process-model-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -9786,12 +9965,15 @@ a.metric:hover {
 
 @media (max-width: 620px) {
   .clean-workshop-header,
-  .clean-hero {
+  .clean-hero,
+  .clean-process-topbar,
+  .clean-process-next-step {
     display: grid;
   }
 
   .clean-process-summary,
   .clean-process-area-grid,
+  .clean-process-kpi-row,
   .clean-process-model-grid,
   .clean-form-grid,
   .clean-auto-meta,

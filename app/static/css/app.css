@@ -9421,7 +9421,8 @@ a.metric:hover {
   font-size: 12px;
 }
 
-.clean-upload-summary span {
+.clean-upload-summary span,
+.clean-upload-summary a {
   display: inline-flex;
   padding: 4px 8px;
   border-radius: 999px;
@@ -9429,6 +9430,12 @@ a.metric:hover {
   color: #1e3a8a;
   font-size: 11px;
   font-weight: 800;
+  text-decoration: none;
+}
+
+.clean-upload-summary a:hover {
+  background: #dbeafe;
+  color: #0f2a5f;
 }
 
 .clean-substep-savebar {

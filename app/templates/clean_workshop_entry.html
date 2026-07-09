@@ -218,7 +218,7 @@
               <div class="clean-upload-summary">
                 <strong>Imagens gravadas</strong>
                 {% for upload in saved_uploads %}
-                  <span>{{ upload.label }} · {{ upload.original_name }}</span>
+                  <a href="/v2-clean/workshop-entry/{{ workshop_process.id }}/uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">{{ upload.label }} · {{ upload.original_name }}</a>
                 {% endfor %}
               </div>
             {% endif %}

@@ -3395,6 +3395,47 @@ async def clean_workshop_store_entry_uploads(
     return stored
 
 
+@web_router.get("/v2-clean/workshop-entry/{process_id}/uploads/{stored_name}")
+def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_name: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    safe_name = Path(stored_name).name
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
+        entry_data = entry_phase.data_json if entry_phase and isinstance(entry_phase.data_json, dict) else {}
+        uploads = entry_data.get("uploads")
+        if not isinstance(uploads, list):
+            uploads = []
+        upload = next(
+            (
+                item
+                for item in uploads
+                if isinstance(item, dict) and Path(str(item.get("stored_name") or "")).name == safe_name
+            ),
+            None,
+        )
+        if not upload:
+            return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process.id}&file_missing=1", status_code=303)
+        original_name = str(upload.get("original_name") or safe_name)
+        raw_path = Path(str(upload.get("path") or ""))
+
+    file_path = raw_path if raw_path.is_absolute() else Path.cwd() / raw_path
+    root_path = (Path.cwd() / "uploads" / "workshop_entry" / str(process_id)).resolve()
+    try:
+        resolved_path = file_path.resolve()
+        resolved_path.relative_to(root_path)
+    except (OSError, ValueError):
+        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
+    if not resolved_path.exists() or not resolved_path.is_file():
+        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
+    return FileResponse(resolved_path, filename=original_name)
+
+
 def clean_workshop_entry_substep_status(entry_data: dict[str, object]) -> dict[str, str]:
     if not entry_data:
         return {"motivo": "Obrigatório", "danos": "Por validar", "saida": "Rascunho"}

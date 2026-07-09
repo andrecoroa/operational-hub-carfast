@@ -116,6 +116,15 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert entry_phase.data_json["minimum_checks"]["minimum_reason_selected"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_km_confirmed"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_damage_photos"] == "yes"
+    dashboard_upload = next(item for item in entry_phase.data_json["uploads"] if item["slot"] == "dashboard")
+    image_response = client.get(
+        f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}"
+    )
+    assert image_response.status_code == 200
+    assert image_response.content == b"fake dashboard image"
+    entry_page = client.get(f"/v2-clean/workshop-entry?process_id={process_id}")
+    assert entry_page.status_code == 200
+    assert f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}" in entry_page.text
 
     validation_payload = {
         "process_id": str(process_id),

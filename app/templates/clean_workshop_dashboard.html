@@ -30,9 +30,22 @@
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Acompanhamento</p>
-            <h3>Todos os processos de Oficina</h3>
+            <h3>
+              {% if scope == "closed" %}
+                Processos fechados de Oficina
+              {% elif scope == "all" %}
+                Todos os processos de Oficina
+              {% else %}
+                Processos abertos de Oficina
+              {% endif %}
+            </h3>
           </div>
         </div>
+        <form method="get" action="/v2-clean/workshop" class="clean-fleet-toolbar">
+          <label>Visualização<select name="scope"><option value="open" {% if scope == 'open' %}selected{% endif %}>Só abertos</option><option value="closed" {% if scope == 'closed' %}selected{% endif %}>Só fechados</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todos</option></select></label>
+          <div></div>
+          <button type="submit">Aplicar</button>
+        </form>
         <div class="clean-workshop-process-list">
           {% for process in recent_processes %}
             {% set phase = process.current_phase_code or "entrada" %}
@@ -47,7 +60,15 @@
               <b>{{ process.status or "open" }}</b>
             </a>
           {% else %}
-            <p class="muted">Ainda sem processos de Oficina nesta experiência.</p>
+            <p class="muted">
+              {% if scope == "closed" %}
+                Ainda sem processos de Oficina fechados nesta experiência.
+              {% elif scope == "all" %}
+                Ainda sem processos de Oficina nesta experiência.
+              {% else %}
+                Ainda sem processos de Oficina abertos nesta experiência.
+              {% endif %}
+            </p>
           {% endfor %}
         </div>
       </article>

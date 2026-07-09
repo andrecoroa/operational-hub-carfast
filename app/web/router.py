@@ -2894,10 +2894,12 @@ def clean_process_center(request: Request):
 
 
 @web_router.get("/v2-clean/workshop", response_class=HTMLResponse)
-def clean_workshop_dashboard(request: Request):
+def clean_workshop_dashboard(request: Request, scope: str = "open"):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if scope not in {"open", "closed", "all"}:
+        scope = "open"
     with SessionLocal() as db:
         all_processes = (
             db.scalar(
@@ -2944,10 +2946,15 @@ def clean_workshop_dashboard(request: Request):
             )
             or 0
         )
+        recent_query = select(WorkshopPhasedProcess)
+        if scope == "open":
+            recent_query = recent_query.where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+        elif scope == "closed":
+            recent_query = recent_query.where(WorkshopPhasedProcess.status.in_(("closed", "cancelled")))
         recent_processes = db.scalars(
-            select(WorkshopPhasedProcess)
+            recent_query
             .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
-            .limit(12)
+            .limit(40)
         ).all()
         return templates.TemplateResponse(
             request,
@@ -2961,6 +2968,7 @@ def clean_workshop_dashboard(request: Request):
                     "pending_validation": pending_validation,
                 },
                 "recent_processes": recent_processes,
+                "scope": scope,
             },
         )
 

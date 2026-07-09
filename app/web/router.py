@@ -4752,19 +4752,33 @@ async def clean_workshop_entry_save(request: Request):
 
     form = await request.form()
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
-    if not process_id:
-        return RedirectResponse("/v2-clean/workshop-entry?new=1", status_code=303)
-
     action = str(form.get("action") or "save")
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
+    is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
+    submitted_plate = normalize_identifier(str(form.get("plate") or ""))
+
+    if not process_id and not submitted_plate:
+        suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
+        separator = "&" if suffix else "?"
+        return RedirectResponse(f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate", status_code=303)
 
     with SessionLocal() as db:
-        process = db.get(WorkshopPhasedProcess, process_id)
-        if not process:
-            return RedirectResponse("/v2-clean/workshop-entry?new=1", status_code=303)
+        process: WorkshopPhasedProcess | None = None
+        if process_id:
+            process = db.get(WorkshopPhasedProcess, process_id)
+            if not process:
+                suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
+                return RedirectResponse(f"/v2-clean/workshop-entry{suffix}", status_code=303)
+        else:
+            process = clean_workshop_create_process(
+                db,
+                request=request,
+                plate=submitted_plate,
+                historical=is_historical,
+            )
+            process_id = process.id
 
-        submitted_plate = normalize_identifier(str(form.get("plate") or ""))
         if submitted_plate and submitted_plate != (process.plate_snapshot or ""):
             vehicle = clean_workshop_find_vehicle(db, plate=submitted_plate)
             process.vehicle_id = vehicle.id if vehicle else None
@@ -4878,16 +4892,6 @@ def clean_workshop_entry(
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    if new and not process_id:
-        with SessionLocal() as db:
-            process = clean_workshop_create_process(
-                db,
-                request=request,
-                vehicle_id=vehicle_id,
-                plate=plate,
-                historical=historical,
-            )
-        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process.id}", status_code=303)
     user_name = "Utilizador atual"
     user_id = get_web_user_id(request)
     if user_id:
@@ -4955,15 +4959,8 @@ def clean_workshop_phase(
     if denied:
         return denied
     if new and not process_id:
-        with SessionLocal() as db:
-            process = clean_workshop_create_process(
-                db,
-                request=request,
-                vehicle_id=vehicle_id,
-                plate=plate,
-                historical=historical,
-            )
-        return RedirectResponse(f"/v2-clean/workshop/{phase}?process_id={process.id}", status_code=303)
+        query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=True)
+        return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     query_suffix = clean_workshop_query_suffix(process_id=process_id, vehicle_id=vehicle_id, plate=plate, historical=historical)
     if phase in {"entrada", "entry"}:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)

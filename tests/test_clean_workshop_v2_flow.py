@@ -1,5 +1,3 @@
-from urllib.parse import parse_qs, urlparse
-
 from sqlalchemy import select
 
 from app.models.documents import Document, DocumentLink
@@ -10,11 +8,6 @@ from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport,
 )
 from app.web.router import clean_workshop_technical_reading_rows
-
-
-def _created_process_id(location: str) -> int:
-    return int(parse_qs(urlparse(location).query)["process_id"][0])
-
 
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
     vehicle = Vehicle(
@@ -46,11 +39,11 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         f"/v2-clean/workshop-entry?vehicle_id={vehicle.id}&new=1",
         follow_redirects=False,
     )
-    assert created.status_code == 303
-    process_id = _created_process_id(created.headers["location"])
+    assert created.status_code == 200
+    assert "Entrada" in created.text
+    assert db_session.scalars(select(WorkshopPhasedProcess)).all() == []
 
     entry_payload = {
-        "process_id": str(process_id),
         "entry_reasons": ["Revisão / degradação óleo", "Pneus"],
         "short_description": "Teste entrada",
         "requested_service": "Confirmar manutenção e pneus",
@@ -79,7 +72,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
 
     saved_entry = client.post(
         "/v2-clean/workshop-entry",
-        data={**entry_payload, "action": "save"},
+        data={**entry_payload, "plate": vehicle.plate, "action": "save"},
         files={
             "dashboard_photo": ("quadrante.jpg", b"fake dashboard image", "image/jpeg"),
             "vehicle_front_photo": ("frente.jpg", b"fake front image", "image/jpeg"),
@@ -87,11 +80,12 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert saved_entry.status_code == 303
+    process_id = int(saved_entry.headers["location"].split("process_id=")[1].split("&")[0])
     assert saved_entry.headers["location"] == f"/v2-clean/workshop-entry?process_id={process_id}&saved=1"
 
     advanced_entry = client.post(
         "/v2-clean/workshop-entry",
-        data={**entry_payload, "action": "advance"},
+        data={**entry_payload, "process_id": str(process_id), "plate": vehicle.plate, "action": "advance"},
         follow_redirects=False,
     )
     assert advanced_entry.status_code == 303

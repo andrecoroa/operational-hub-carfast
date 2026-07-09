@@ -17,10 +17,11 @@
         </div>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
-        {% if not workshop_process %}<a class="button-link primary-link" href="{{ new_entry_url }}">Criar processo</a>{% endif %}
         <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
-        <button type="button" class="button-link secondary-link">Criar tarefa</button>
-        <button type="button" class="button-link danger-link">Criar problema</button>
+        {% if workshop_process %}
+          <button type="button" class="button-link secondary-link">Criar tarefa</button>
+          <button type="button" class="button-link danger-link">Criar problema</button>
+        {% endif %}
       </div>
     </header>
 
@@ -86,6 +87,9 @@
             </div>
             {% if error == "missing_km" %}
               <p class="clean-rule-note">KM de entrada é obrigatório para avançar para validação administrativa.</p>
+            {% endif %}
+            {% if error == "missing_plate" %}
+              <p class="clean-rule-note">Matrícula é obrigatória para criar o processo de oficina.</p>
             {% endif %}
             <div class="clean-phase-field-grid">
               <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>

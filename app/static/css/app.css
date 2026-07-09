@@ -12974,6 +12974,50 @@ a.metric:hover {
   gap: 8px;
 }
 
+.clean-workshop-scope-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 180px));
+  gap: 8px;
+}
+
+.clean-workshop-scope-row a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  min-height: 56px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f2a5f;
+  text-decoration: none;
+  padding: 10px 12px;
+}
+
+.clean-workshop-scope-row a:hover {
+  border-color: #2f6fed;
+  background: #f8fbff;
+}
+
+.clean-workshop-scope-row a.active {
+  border-color: #2f6fed;
+  background: #eef5ff;
+}
+
+.clean-workshop-scope-row span {
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-workshop-scope-row strong {
+  color: #0f2a5f;
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+}
+
 .clean-workshop-process-item {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto auto;
@@ -13031,6 +13075,10 @@ a.metric:hover {
   }
 
   .clean-workshop-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-workshop-scope-row {
     grid-template-columns: 1fr;
   }
 

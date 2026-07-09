@@ -2916,6 +2916,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             )
             or 0
         )
+        closed_processes = max(int(all_processes) - int(open_processes), 0)
         historical_processes = (
             db.scalar(
                 select(func.count())
@@ -2963,6 +2964,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 "metrics": {
                     "total": all_processes,
                     "open": open_processes,
+                    "closed": closed_processes,
                     "historical": historical_processes,
                     "alerts": open_alerts,
                     "pending_validation": pending_validation,

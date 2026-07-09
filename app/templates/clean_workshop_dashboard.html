@@ -39,13 +39,23 @@
                 Processos abertos de Oficina
               {% endif %}
             </h3>
+            <p>Filtro rápido para ver só o conjunto relevante sem misturar históricos fechados e processos em curso.</p>
           </div>
         </div>
-        <form method="get" action="/v2-clean/workshop" class="clean-fleet-toolbar">
-          <label>Visualização<select name="scope"><option value="open" {% if scope == 'open' %}selected{% endif %}>Só abertos</option><option value="closed" {% if scope == 'closed' %}selected{% endif %}>Só fechados</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todos</option></select></label>
-          <div></div>
-          <button type="submit">Aplicar</button>
-        </form>
+        <nav class="clean-workshop-scope-row" aria-label="Filtro de processos de oficina">
+          <a class="{% if scope == 'open' %}active{% endif %}" href="/v2-clean/workshop?scope=open">
+            <span>Abertos</span>
+            <strong>{{ metrics.open }}</strong>
+          </a>
+          <a class="{% if scope == 'closed' %}active{% endif %}" href="/v2-clean/workshop?scope=closed">
+            <span>Fechados</span>
+            <strong>{{ metrics.closed }}</strong>
+          </a>
+          <a class="{% if scope == 'all' %}active{% endif %}" href="/v2-clean/workshop?scope=all">
+            <span>Todos</span>
+            <strong>{{ metrics.total }}</strong>
+          </a>
+        </nav>
         <div class="clean-workshop-process-list">
           {% for process in recent_processes %}
             {% set phase = process.current_phase_code or "entrada" %}

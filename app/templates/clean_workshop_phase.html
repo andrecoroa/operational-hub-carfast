@@ -62,6 +62,7 @@
 
     <form class="clean-workshop-final-grid" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
+      <input type="hidden" name="form_state_json" value="">
       {% if phase_key == "validacao" %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
@@ -871,7 +872,7 @@
       <article class="clean-panel clean-panel-compact clean-card-wide">
         <div class="clean-context-action-grid">
           <div class="clean-context-list"><span><b>Regra de modelo</b><em>Campos e cartões podem aparecer conforme motivo, marca, combustível e estado da auditoria.</em></span><span><b>Pendências</b><em>Campanhas por executar ficam em tarefa/reserva e não bloqueiam. Só risco técnico crítico deve impedir avanço.</em></span></div>
-          <div class="clean-history-actions"><a href="/fleet">Ficha da viatura</a><a href="/documents">Documentos</a><a href="/task-board">Tarefas</a><a href="/management-center/auditorias">Auditoria</a></div>
+          <div class="clean-history-actions"><a href="{{ vehicle_detail_href }}">Ficha da viatura</a><a href="{{ vehicle_documents_href }}">Documentos</a><a href="{{ task_board_href }}">Tarefas</a><a href="{{ audit_href }}">Auditoria</a></div>
           <div class="clean-action-list">
             {% if workshop_process and workshop_process.status == "closed" %}
               <a class="next-phase-action" href="/v2-clean/workshop">Processo fechado</a>
@@ -888,6 +889,36 @@
   </main>
 </div>
 <script>
+  document.querySelectorAll(".clean-workshop-final-grid").forEach((form) => {
+    form.addEventListener("submit", () => {
+      const snapshot = {};
+      Array.from(form.elements).forEach((field) => {
+        if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)) {
+          return;
+        }
+        if (!field.name || field.name === "action" || field.name === "process_id" || field.name === "form_state_json") {
+          return;
+        }
+        if (field.disabled || field.type === "file" || field.type === "submit" || field.type === "button") {
+          return;
+        }
+        if ((field.type === "checkbox" || field.type === "radio") && !field.checked) {
+          return;
+        }
+        const value = field.type === "checkbox" ? (field.value || "yes") : field.value;
+        if (Object.prototype.hasOwnProperty.call(snapshot, field.name)) {
+          const existing = snapshot[field.name];
+          snapshot[field.name] = Array.isArray(existing) ? existing.concat(value) : [existing, value];
+        } else {
+          snapshot[field.name] = value;
+        }
+      });
+      const target = form.querySelector('input[name="form_state_json"]');
+      if (target) {
+        target.value = JSON.stringify(snapshot);
+      }
+    });
+  });
   document.querySelectorAll(".clean-phase-workbench").forEach((workbench) => {
     const cards = Array.from(workbench.querySelectorAll(".clean-substep-card"));
     const panels = Array.from(workbench.querySelectorAll(".clean-substep-panel"));

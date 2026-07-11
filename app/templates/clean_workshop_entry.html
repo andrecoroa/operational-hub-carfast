@@ -94,6 +94,8 @@
             <div class="clean-phase-field-grid">
               <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
+              <label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
+              <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
@@ -117,10 +119,7 @@
               </div>
             {% endif %}
             <div class="clean-phase-field-grid">
-<label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
-<label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
-
-<label>Quem reportou<select name="reported_by">
+              <label>Quem reportou<select name="reported_by">
                 {% for option in ["Operador", "Cliente", "Oficina", "Sistema"] %}
                   <option {% if (saved_entry.reported_by or "Operador") == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}

@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 import hashlib
 import io
+import json
 from pathlib import Path
 import re
 from tempfile import TemporaryDirectory
@@ -108,7 +109,10 @@ from app.services.workshop_history_importer import (
     import_workshop_technical_history_file,
     technical_history_template_csv,
 )
-from app.services.workshop_report_extractor import extract_workshop_report_values_from_bytes
+from app.services.workshop_report_extractor import (
+    classify_workshop_report_from_bytes,
+    extract_workshop_report_values_from_bytes,
+)
 from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
@@ -117,6 +121,7 @@ from app.services.vehicles import normalize_identifier
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
+APP_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
@@ -2138,7 +2143,15 @@ HISTORY_AUDIT_RULE_TYPES = [
     ("other", "Outro"),
 ]
 HISTORY_AUDIT_REPORT_LABELS = dict(HISTORY_AUDIT_DOCUMENT_TYPES)
-CLEAN_WORKSHOP_REPORT_LABELS = {str(report["code"]): str(report["label"]) for report in STELLANTIS_REPORTS}
+CLEAN_WORKSHOP_REPORT_LABELS = {
+    "engine_lubrication": "Informações lubrificação motor",
+    "maintenance_information": "Informações de manutenção",
+    "maintenance_programming": "Programação de manutenção",
+    "fault_reading": "Leitura de defeitos",
+    "remote_download": "Telecarregamento",
+    "global_test": "Teste global",
+    "other_reading": "Relatório de diagnóstico do veículo",
+}
 CLEAN_WORKSHOP_REPORT_CODES = set(CLEAN_WORKSHOP_REPORT_LABELS)
 HISTORY_AUDIT_EXTRACTABLE_REPORTS = {
     "maintenance_information",
@@ -2977,7 +2990,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
 
 
 CLEAN_WORKSHOP_CONTEXT = {
-    "process_ref": "OFI-2026-000123",
+    "process_ref": "Novo processo",
     "plate": "Sem matrícula",
     "vehicle": "Selecionar viatura",
     "vin": "-",
@@ -3285,7 +3298,6 @@ def clean_workshop_create_process(
     user_id = get_web_user_id(request)
     vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
     plate_snapshot = vehicle.plate if vehicle and vehicle.plate else normalize_identifier(plate) if plate else None
-    vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle.id if vehicle else None, plate=plate_snapshot)
     display_plate = plate_snapshot or "Sem matrícula"
     now = datetime.now(UTC)
     process = WorkshopPhasedProcess(
@@ -3299,7 +3311,7 @@ def clean_workshop_create_process(
         priority="normal",
         origin="v2_clean",
         origin_detail="Criado na experiência v2-clean.",
-        initial_km=parse_int_from_text(str(vehicle_context.get("entry_km") or "")),
+        initial_km=None,
         initial_observation="Processo histórico criado para reconstrução." if historical else "Entrada criada na experiência v2-clean.",
         responsible_user_id=user_id,
         created_by_id=user_id,
@@ -3338,8 +3350,6 @@ def clean_workshop_context_for_process(db: Session, process: WorkshopPhasedProce
     )
     context["process_ref"] = clean_workshop_process_reference(process)
     context["process_id"] = process.id
-    if process.initial_km is not None:
-        context["entry_km"] = clean_km(str(process.initial_km))
     return context
 
 
@@ -3375,7 +3385,7 @@ async def clean_workshop_store_entry_uploads(
         "entry_photos_camera": ("support", "Foto de apoio"),
     }
     stored: list[dict[str, str]] = []
-    upload_root = Path("uploads") / "workshop_entry" / str(process_id)
+    upload_root = APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)
     for form_field, (slot, label) in field_map.items():
         for upload in form.getlist(form_field):
             if not hasattr(upload, "filename") or not hasattr(upload, "read") or not upload.filename:
@@ -3434,8 +3444,8 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
         original_name = str(upload.get("original_name") or safe_name)
         raw_path = Path(str(upload.get("path") or ""))
 
-    file_path = raw_path if raw_path.is_absolute() else Path.cwd() / raw_path
-    root_path = (Path.cwd() / "uploads" / "workshop_entry" / str(process_id)).resolve()
+    file_path = raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path
+    root_path = (APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)).resolve()
     try:
         resolved_path = file_path.resolve()
         resolved_path.relative_to(root_path)
@@ -3552,7 +3562,6 @@ def clean_workshop_validation_rows(
         for item in clean_form_values(entry_snapshot or {}, "entry_reasons")
         if item.strip()
     ]
-    defaults = [{"service_type": item} for item in entry_reasons] or [{"service_type": "Outro"}]
     fields = [
         "service_type",
         "service_already_done",
@@ -3563,14 +3572,17 @@ def clean_workshop_validation_rows(
         "service_decision",
     ]
     values = {field: clean_form_values(snapshot, field) for field in fields}
-    row_count = max(len(defaults), *(len(items) for items in values.values()), 1)
+
+    requested_services = entry_reasons[:]
+    value_lengths = [len(items) for items in values.values()]
+    row_count = max([len(requested_services), *value_lengths, 1])
     rows: list[dict[str, str]] = []
-    for index in range(row_count):
-        default_row = defaults[index] if index < len(defaults) else {"service_type": "Outro"}
+
+    def build_row(index: int, default_service: str = "Outro") -> dict[str, str]:
         row = {
             "service_type": values["service_type"][index]
             if index < len(values["service_type"])
-            else default_row.get("service_type", "Outro"),
+            else default_service,
             "service_already_done": values["service_already_done"][index]
             if index < len(values["service_already_done"])
             else "Por confirmar",
@@ -3590,6 +3602,32 @@ def clean_workshop_validation_rows(
             if index < len(values["service_decision"])
             else "Por decidir",
         }
+        return row
+
+    def has_non_default_data(row: dict[str, str]) -> bool:
+        return any(
+            [
+                row["service_already_done"] != "Por confirmar",
+                row["previous_service_date"],
+                row["previous_service_km"],
+                row["previous_service_supplier"],
+                row["previous_service_document"],
+                row["service_decision"] != "Por decidir",
+            ]
+        )
+
+    if requested_services:
+        for index, requested_service in enumerate(requested_services):
+            rows.append(build_row(index, requested_service))
+
+        for index in range(len(requested_services), row_count):
+            row = build_row(index, "Outro")
+            if has_non_default_data(row):
+                rows.append(row)
+        return rows
+
+    for index in range(row_count):
+        row = build_row(index, "Outro")
         has_non_default_data = any(
             [
                 row["service_already_done"] != "Por confirmar",
@@ -3600,9 +3638,8 @@ def clean_workshop_validation_rows(
                 row["service_decision"] != "Por decidir",
             ]
         )
-        if entry_reasons and row["service_type"] not in entry_reasons and not has_non_default_data:
-            continue
-        rows.append(row)
+        if has_non_default_data or index == 0:
+            rows.append(row)
     return rows
 
 
@@ -3656,20 +3693,7 @@ def clean_workshop_validation_prerequisites(
     plate = normalize_identifier(str(process.plate_snapshot or "")) if process and process.plate_snapshot else ""
     vehicle_href = f"/v2-clean/fleet/{vehicle_id}" if vehicle_id else None
     process_return_url = f"/v2-clean/workshop/validacao?process_id={process.id}" if process else "/v2-clean/workshop"
-    plan_create_href = None
-    if vehicle_id:
-        plan_create_href = "/documents/new?" + urlencode(
-            {
-                "vehicle_id": str(vehicle_id),
-                "plate": plate,
-                "classification": "fleet",
-                "document_type": "maintenance_plan",
-                "status": "associated",
-                "source": "onedrive",
-                "title": f"Plano de manutenção {plate or ''}".strip(),
-                "return_url": process_return_url,
-            }
-        )
+    plan_create_href = f"/v2-clean/fleet/{vehicle_id}/documents?doc_group=plans" if vehicle_id else None
 
     plan_document = None
     if vehicle_id:
@@ -3829,6 +3853,7 @@ def clean_workshop_technical_reading_rows(
                         "field_code": str(key),
                         "field": field_labels.get(str(key), str(key)),
                         "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                        "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
                         "value": str(value),
                         "corrected_value": str(validation.get("corrected_value") or ""),
                         "observation": str(validation.get("observation") or ""),
@@ -3855,6 +3880,7 @@ def clean_workshop_technical_reading_rows(
                     "field_code": "manual_reading",
                     "field": "Leitura automática",
                     "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                    "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
                     "value": str(raw_values.get("extraction_error") or "Sem dados extraídos"),
                     "corrected_value": str(validation.get("corrected_value") or ""),
                     "observation": str(validation.get("observation") or ""),
@@ -3877,6 +3903,7 @@ def clean_workshop_technical_reading_rows(
                 "field_code": "manual_reading",
                 "field": "Relatório carregado",
                 "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
                 "value": str(raw_values.get("original_name") or Path(str(report.original_link or "")).name or "-"),
                 "corrected_value": str(validation.get("corrected_value") or ""),
                 "observation": str(validation.get("observation") or ""),
@@ -3901,6 +3928,7 @@ def clean_workshop_technical_reading_groups(
                 "report_id": report_id,
                 "report": row["report"],
                 "open_url": row["open_url"],
+                "report_name": row["report_name"],
                 "rows": [],
             }
             by_report_id[report_id] = group
@@ -4989,8 +5017,8 @@ def clean_workshop_entry(
             "workshop_process": process,
             "active_step": "entrada",
             "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
-            "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, new_entry=True)}",
-            "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True, new_entry=True)}",
+            "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate)}",
+            "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True)}",
             "saved_entry": saved_entry,
             "entry_substep_status": clean_workshop_entry_substep_status(saved_entry),
             "saved": saved,
@@ -5029,12 +5057,26 @@ def clean_workshop_phase(
     validation_prerequisites: list[dict[str, str | None]] = []
     technical_reports: list[WorkshopPhasedTechnicalReport] = []
     technical_reading_groups: list[dict[str, object]] = []
+    vehicle_detail_href = "/v2-clean/fleet"
+    vehicle_documents_href = "/v2-clean/fleet"
+    task_board_href = "/task-board/manage"
+    audit_href = "/v2-clean/processes"
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
             historical = process.creation_mode == "historical"
             query_suffix = clean_workshop_query_suffix(process_id=process.id)
             vehicle_context = clean_workshop_context_for_process(db, process)
+            if process.vehicle_id:
+                vehicle_detail_href = f"/v2-clean/fleet/{process.vehicle_id}"
+                vehicle_documents_href = f"/v2-clean/fleet/{process.vehicle_id}/documents"
+                history_audit = db.scalar(
+                    select(VehicleHistoryAudit)
+                    .where(VehicleHistoryAudit.vehicle_id == process.vehicle_id, VehicleHistoryAudit.status != "closed")
+                    .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
+                )
+                if history_audit:
+                    audit_href = f"/fleet/{history_audit.vehicle_id}/history-audits/{history_audit.id}"
             technical_reports = db.scalars(
                 select(WorkshopPhasedTechnicalReport)
                 .where(WorkshopPhasedTechnicalReport.process_id == process.id)
@@ -5095,6 +5137,10 @@ def clean_workshop_phase(
             "audit_form_status": clean_workshop_audit_form_status(phase_form),
             "repair_form_status": clean_workshop_repair_form_status(phase_form),
             "closure_form_status": clean_workshop_closure_form_status(phase_form),
+            "vehicle_detail_href": vehicle_detail_href,
+            "vehicle_documents_href": vehicle_documents_href,
+            "task_board_href": task_board_href,
+            "audit_href": audit_href,
             **phase_nav,
         },
     )
@@ -5114,7 +5160,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
     form = await request.form()
     process_id = parse_int_from_text(str(form.get("process_id") or ""))
     if not process_id:
-        return RedirectResponse(f"{clean_workshop_phase_path(phase)}?new=1", status_code=303)
+        return RedirectResponse(clean_workshop_phase_path(phase), status_code=303)
 
     action = str(form.get("action") or "save")
     now = datetime.now(UTC)
@@ -5144,11 +5190,28 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             db.flush()
 
         form_snapshot: dict[str, object] = {}
-        for key in form.keys():
-            if key in {"action", "process_id"}:
-                continue
-            values = [str(value) for value in form.getlist(key)]
-            form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
+        raw_form_state = form.get("form_state_json")
+        if isinstance(raw_form_state, str) and raw_form_state.strip():
+            try:
+                decoded_state = json.loads(raw_form_state)
+            except json.JSONDecodeError:
+                decoded_state = None
+            if isinstance(decoded_state, dict):
+                for key, value in decoded_state.items():
+                    if key in {"action", "process_id", "form_state_json"}:
+                        continue
+                    if isinstance(value, list):
+                        form_snapshot[key] = [str(item) for item in value if item is not None]
+                    elif value is None:
+                        form_snapshot[key] = ""
+                    else:
+                        form_snapshot[key] = str(value)
+        if not form_snapshot:
+            for key in form.keys():
+                if key in {"action", "process_id", "form_state_json"}:
+                    continue
+                values = [str(value) for value in form.getlist(key)]
+                form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
 
         phase_data = dict(phase_row.data_json or {})
         phase_data.update(
@@ -5199,16 +5262,35 @@ async def clean_workshop_technical_report_upload(
     if denied:
         return denied
 
-    clean_report_code = report_code if report_code in CLEAN_WORKSHOP_REPORT_CODES else "other_reading"
+    selected_report_code = report_code if report_code in CLEAN_WORKSHOP_REPORT_CODES else "other_reading"
     filename = Path(report_file.filename or "relatorio.pdf").name
     content = await report_file.read()
     if not content:
         return RedirectResponse(f"/v2-clean/workshop/diagnostico?process_id={process_id}&upload_error=empty", status_code=303)
 
     digest = hashlib.sha256(content).hexdigest()
-    suffix = Path(filename).suffix or ".bin"
+    suffix = Path(filename).suffix or ".pdf"
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
+    classification_error: str | None = None
+    report_meta: dict[str, Any] = {}
+    try:
+        report_meta = classify_workshop_report_from_bytes(content, filename)
+    except (RuntimeError, ValueError) as exc:
+        classification_error = str(exc)
+
+    detected_report_code = str(report_meta.get("report_code") or "").strip()
+    clean_report_code = (
+        detected_report_code
+        if selected_report_code == "other_reading" and detected_report_code in CLEAN_WORKSHOP_REPORT_CODES
+        else selected_report_code
+    )
+    report_label = str(report_meta.get("report_name") or CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Relatório de diagnóstico do veículo"))
+    reading_origin = str(report_meta.get("machine_origin") or "unknown_machine")
+    reading_origin_detail = str(report_meta.get("machine_label") or "Origem por rever")
+    suggested_file_name = str(report_meta.get("suggested_file_name") or "")
+    stored_name = suggested_file_name or f"{clean_report_code}_{digest[:12]}{suffix}"
+
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
@@ -5216,11 +5298,14 @@ async def clean_workshop_technical_report_upload(
 
         plate_value = (process.plate_snapshot or "").strip().upper()
         plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
-        report_label = CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Outra leitura")
-        upload_dir = Path("uploads") / "vehicle_documents" / plate_folder / "diagnosticos"
+        upload_dir = APP_PROJECT_ROOT / "uploads" / "vehicle_documents" / plate_folder / "diagnosticos"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        stored_name = f"{clean_report_code}_{digest[:12]}{suffix}"
+        stored_name = Path(stored_name).name
         stored_path = upload_dir / stored_name
+        if stored_path.exists():
+            safe_stem = stored_path.stem
+            stored_name = f"{safe_stem}_{digest[:8]}{stored_path.suffix or suffix}"
+            stored_path = upload_dir / stored_name
         stored_path.write_bytes(content)
 
         extracted_values: dict[str, Any] = {}
@@ -5238,8 +5323,13 @@ async def clean_workshop_technical_report_upload(
             phase_row.started_at = now
         document = db.scalar(select(Document).where(Document.storage_path == str(stored_path)))
         if document is None:
+            document_identifier = (
+                str(report_meta.get("vehicle_identifier") or "").strip()
+                or plate_value
+                or str(process.id)
+            )
             document = Document(
-                title=f"Diagnóstico - {report_label} - {plate_value or process.id}",
+                title=f"Diagnóstico - {report_label} - {document_identifier}",
                 document_type="workshop_diagnostic",
                 classification="technical",
                 source="workshop_v2_clean",
@@ -5281,17 +5371,37 @@ async def clean_workshop_technical_report_upload(
             phase_id=phase_row.id if phase_row else None,
             report_code=clean_report_code,
             report_name=report_label,
-            reading_origin="stellantis_machine",
-            reading_origin_detail="Upload v2-clean",
+            reading_origin=reading_origin,
+            reading_origin_detail=reading_origin_detail,
             report_moment="initial",
             status=status,
             original_document_id=document.id,
             original_link=str(stored_path),
             raw_values_json={
+                "selected_report_code": selected_report_code,
+                "detected_report_code": detected_report_code or None,
+                "canonical_report_code": report_meta.get("canonical_report_code"),
+                "detected_report_name": report_meta.get("report_name"),
+                "machine_origin": report_meta.get("machine_origin"),
+                "machine_prefix": report_meta.get("machine_prefix"),
+                "machine_label": report_meta.get("machine_label"),
+                "vehicle_identifier": report_meta.get("vehicle_identifier"),
+                "vin_candidates": report_meta.get("vin_candidates"),
+                "plate_candidates": report_meta.get("plate_candidates"),
+                "report_date": report_meta.get("report_date"),
+                "report_time": report_meta.get("report_time"),
+                "path_hint": report_meta.get("path_hint"),
+                "review_bucket": report_meta.get("review_bucket"),
+                "storage_group": report_meta.get("storage_group"),
+                "duplicate_key": report_meta.get("duplicate_key"),
+                "possible_duplicate_key": report_meta.get("possible_duplicate_key"),
+                "text_source": report_meta.get("text_source"),
+                "suggested_file_name": suggested_file_name or None,
                 "original_name": filename,
                 "stored_name": stored_name,
                 "sha256": digest,
                 "document_id": document.id,
+                "classification_error": classification_error,
                 "extraction_error": extraction_error,
             },
             extracted_values_json=extracted_values,
@@ -5339,7 +5449,7 @@ def clean_workshop_technical_report_file(request: Request, report_id: int):
             return RedirectResponse("/v2-clean/workshop", status_code=303)
         file_path = Path(str(report.original_link))
         if not file_path.is_absolute():
-            file_path = Path.cwd() / file_path
+            file_path = APP_PROJECT_ROOT / file_path
         if not file_path.exists() or not file_path.is_file():
             return RedirectResponse(
                 f"/v2-clean/workshop/diagnostico?process_id={report.process_id}&file_missing=1#leituras",

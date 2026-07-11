@@ -10,6 +10,48 @@ from urllib.parse import urlparse
 
 from app.services.workshop_templates import STELLANTIS_REPORTS
 
+VIN_PATTERN = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
+PLATE_PATTERNS = [
+    re.compile(r"\b[A-Z]{2}-\d{2}-[A-Z]{2}\b", flags=re.I),
+    re.compile(r"\b\d{2}-[A-Z]{2}-\d{2}\b", flags=re.I),
+    re.compile(r"\b[A-Z]{2}-\d{2}-\d{2}\b", flags=re.I),
+    re.compile(r"\b\d{2}-\d{2}-[A-Z]{2}\b", flags=re.I),
+]
+DATE_TIME_PATTERN = re.compile(
+    r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:\s+|[T_])(\d{1,2}[:h]\d{2}(?::\d{2})?)\b"
+)
+DATE_PATTERN = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
+TIME_PATTERN = re.compile(r"\b\d{1,2}[:h]\d{2}(?::\d{2})?\b")
+
+WORKSHOP_REPORT_NORMALIZED_NAMES: dict[str, str] = {
+    "engine_lubrication": "Informações lubrificação motor",
+    "maintenance_information": "Informações de manutenção",
+    "maintenance_programming": "Programação de manutenção",
+    "fault_reading": "Leitura de defeitos",
+    "remote_download": "Telecarregamento",
+    "global_test": "Teste global",
+    "other_reading": "Relatório de diagnóstico do veículo",
+}
+
+WORKSHOP_REPORT_CANONICAL_CODES: dict[str, str] = {
+    "maintenance_information": "maintenance_information",
+    "engine_lubrication": "engine_lubrication_information",
+    "maintenance_programming": "maintenance_programming",
+    "fault_reading": "fault_reading",
+    "remote_download": "download_calibration",
+    "global_test": "global_test",
+    "other_reading": "generic_vehicle_diagnostic_report",
+}
+
+GENERIC_HEADINGS = {
+    "informacoes do cliente",
+    "informacoes do dispositivo",
+    "informacoes do veiculo",
+    "informacoes cliente",
+    "informacoes dispositivo",
+    "informacoes veiculo",
+}
+
 
 FIELD_ALIASES: dict[str, list[str]] = {
     "engine_speed": ["Regime motor"],
@@ -42,6 +84,33 @@ FIELD_ALIASES: dict[str, list[str]] = {
     "remote_download_date": ["Data de telecarregamento"],
     "remote_download_count": ["Numero de telecarregamentos", "Número de telecarregamentos", "Number of fetches"],
 }
+
+
+def classify_workshop_report_from_bytes(content: bytes, filename: str | None = None) -> dict[str, Any]:
+    if not content:
+        raise ValueError("O ficheiro PDF está vazio.")
+
+    effective_name = filename or "relatorio.pdf"
+    text_source = "pdf_text"
+    text = ""
+    last_error: Exception | None = None
+    try:
+        text = _extract_pdf_text_from_bytes(content, effective_name)
+    except Exception as exc:  # noqa: BLE001
+        last_error = exc
+
+    if not text.strip():
+        ocr_text = _extract_pdf_text_from_bytes_via_ocr(content, effective_name)
+        if ocr_text.strip():
+            text = ocr_text
+            text_source = "ocr"
+
+    if not text.strip():
+        if last_error is not None:
+            raise last_error
+        raise ValueError("Não foi possível ler conteúdo útil do PDF.")
+
+    return _classify_workshop_report_text(text, filename=effective_name, text_source=text_source)
 
 
 def extract_workshop_report_values(source: str, report_code: str) -> dict[str, Any]:
@@ -93,6 +162,78 @@ def _extract_values_from_text(
     return values
 
 
+def _classify_workshop_report_text(text: str, *, filename: str, text_source: str) -> dict[str, Any]:
+    lines = [_normalize(line) for line in text.splitlines() if _normalize(line)]
+    text_simple = _simplify(text)
+    machine = _detect_machine_origin(lines, text_simple)
+    vin_candidates = _unique_preserving_order(_extract_vin_candidates(lines))
+    plate_candidates = _unique_preserving_order(_extract_plate_candidates(lines))
+    report_code = _detect_report_code(lines, text_simple)
+    report_name = WORKSHOP_REPORT_NORMALIZED_NAMES.get(report_code, WORKSHOP_REPORT_NORMALIZED_NAMES["other_reading"])
+    canonical_report_code = WORKSHOP_REPORT_CANONICAL_CODES.get(report_code, report_code)
+    report_date, report_time = _extract_report_date_time(text, lines)
+    path_hint = _detect_path_hint(lines)
+
+    review_bucket = ""
+    if len(vin_candidates) > 1:
+        review_bucket = "_rever_multiplos_chassis"
+    elif len(plate_candidates) > 1 and not vin_candidates:
+        review_bucket = "_rever_multiplas_matriculas"
+    elif not vin_candidates and not plate_candidates:
+        review_bucket = "_rever_sem_chassi_ou_matricula"
+
+    vehicle_identifier = vin_candidates[0] if vin_candidates else (plate_candidates[0] if plate_candidates else "")
+    suggested_file_name = build_workshop_report_suggested_filename(
+        machine_prefix=machine["prefix"],
+        report_name=report_name,
+        vehicle_identifier=vehicle_identifier,
+        report_date=report_date,
+        report_time=report_time,
+        suffix=Path(filename).suffix or ".pdf",
+    )
+
+    return {
+        "machine_origin": machine["origin"],
+        "machine_prefix": machine["prefix"],
+        "machine_label": machine["label"],
+        "report_code": report_code,
+        "canonical_report_code": canonical_report_code,
+        "report_name": report_name,
+        "vin_candidates": vin_candidates,
+        "plate_candidates": plate_candidates,
+        "vehicle_identifier": vehicle_identifier,
+        "report_date": report_date,
+        "report_time": report_time,
+        "path_hint": path_hint,
+        "review_bucket": review_bucket,
+        "storage_group": "por_chassi" if vin_candidates else ("por_matricula" if plate_candidates else ""),
+        "duplicate_key": _build_duplicate_key(vehicle_identifier, canonical_report_code, report_date, report_time),
+        "possible_duplicate_key": _build_possible_duplicate_key(vehicle_identifier, canonical_report_code),
+        "text_source": text_source,
+        "suggested_file_name": suggested_file_name,
+    }
+
+
+def build_workshop_report_suggested_filename(
+    *,
+    machine_prefix: str,
+    report_name: str,
+    vehicle_identifier: str,
+    report_date: str,
+    report_time: str,
+    suffix: str,
+) -> str:
+    pieces = [
+        machine_prefix or "Rel",
+        _file_name_piece(report_name) or "Relatório de diagnóstico do veículo",
+        _file_name_piece(vehicle_identifier) or "SemIdentificador",
+    ]
+    pieces.append(report_date.replace("/", "-") if report_date else "sem-data")
+    pieces.append(report_time.replace(":", "-").replace("h", "-") if report_time else "sem-hora")
+    clean_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    return "_".join(piece for piece in pieces if piece) + clean_suffix
+
+
 def _extract_psa_values(lines: list[str], report_code: str) -> dict[str, Any]:
     if report_code == "engine_lubrication":
         return _extract_psa_engine_lubrication(lines)
@@ -105,6 +246,184 @@ def _extract_psa_values(lines: list[str], report_code: str) -> dict[str, Any]:
     if report_code == "remote_download":
         return _extract_psa_remote_download(lines)
     return {}
+
+
+def _detect_machine_origin(lines: list[str], text_simple: str) -> dict[str, str]:
+    joined = " ".join(_simplify(line) for line in lines[:60])
+    haystack = f"{text_simple} {joined}"
+    if any(token in haystack for token in ("autel", "maxidas", "maxisys", "maxi das", "maxi sys")):
+        return {"origin": "autel_machine", "prefix": "Aut", "label": "Autel / MaxiDAS / MaxiSys"}
+    if any(
+        token in haystack
+        for token in (
+            "psa diag",
+            "diagbox",
+            "stellantis",
+            "service box",
+            "cmm md1cs003",
+            "bsi2010",
+        )
+    ):
+        return {"origin": "psa_machine", "prefix": "Psa", "label": "PSA-DIAG / Diagbox / Stellantis"}
+    return {"origin": "unknown_machine", "prefix": "Rel", "label": "Origem por rever"}
+
+
+def _detect_report_code(lines: list[str], text_simple: str) -> str:
+    path_hint = _simplify(_detect_path_hint(lines))
+    module_title = _simplify(_detect_module_title(lines))
+    haystack = " ".join(part for part in (path_hint, module_title, text_simple) if part)
+
+    if any(
+        token in haystack
+        for token in (
+            "referencia do software",
+            "fetching date",
+            "numero de telecarregamentos",
+            "number of fetches",
+            "data de telecarregamento",
+        )
+    ):
+        return "remote_download"
+    if any(
+        token in haystack
+        for token in (
+            "limiar manutencao",
+            "duracao total antes da manutencao",
+            "inicio da primeira manutencao",
+            "duracao antes da primeira manutencao",
+            "selecao da manutencao gerida pela motorizacao",
+            "funcoes de manutencao",
+            "restauracao do oleo",
+            "escolha de plano de manutencao",
+            "parametros de manutencao recuperados do veiculo",
+        )
+    ):
+        return "maintenance_programming"
+    if any(
+        token in haystack
+        for token in (
+            "caracterizacao do defeito",
+            "leitura de defeitos",
+            "lista de defeitos",
+            "descricao",
+            "estado",
+            "dtc",
+        )
+    ) or any(_looks_like_fault_code(line) for line in lines):
+        return "fault_reading"
+    if any(
+        token in haystack
+        for token in (
+            "km antes proxima manutencao",
+            "dias restantes antes manutencao",
+            "chave de manutencao",
+            "n manutencoes efetuadas",
+            "informacoes manutencao",
+            "bsi2010 ev informacoes manutencao",
+        )
+    ):
+        return "maintenance_information"
+    if any(
+        token in haystack
+        for token in (
+            "taxa de diluicao",
+            "taxa de carbono",
+            "protecao anti diluicao",
+            "informacoes lubrificacao motor",
+            "lubrificacao motor",
+            "oleo referencia",
+        )
+    ):
+        return "engine_lubrication"
+    if "teste global" in haystack:
+        return "global_test"
+    return "other_reading"
+
+
+def _detect_module_title(lines: list[str]) -> str:
+    for line in lines[:40]:
+        simple = _simplify(line)
+        if not simple or simple in GENERIC_HEADINGS:
+            continue
+        if any(
+            token in simple
+            for token in (
+                "leitura de defeitos",
+                "informacoes manutencao",
+                "informacoes lubrificacao motor",
+                "teste global",
+                "telecarregamento",
+                "programacao manutencao",
+            )
+        ):
+            return _clean_value(line)
+    return ""
+
+
+def _detect_path_hint(lines: list[str]) -> str:
+    for line in lines:
+        simple = _simplify(line)
+        if "caminho" not in simple and "path" not in simple:
+            continue
+        candidate = ""
+        if ":" in line:
+            candidate = line.split(":", 1)[1].strip()
+        if not candidate:
+            continue
+        segments = [
+            _clean_value(part)
+            for part in re.split(r"[>/\\\\]", candidate)
+            if _clean_value(part)
+        ]
+        for segment in reversed(segments):
+            segment_simple = _simplify(segment)
+            if segment_simple and segment_simple not in GENERIC_HEADINGS:
+                return segment
+    return ""
+
+
+def _extract_vin_candidates(lines: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for line in lines:
+        candidates.extend(match.group(0).upper() for match in VIN_PATTERN.finditer(line.upper()))
+    return candidates
+
+
+def _extract_plate_candidates(lines: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for line in lines:
+        upper_line = line.upper()
+        for pattern in PLATE_PATTERNS:
+            candidates.extend(match.group(0).replace(" ", "").upper() for match in pattern.finditer(upper_line))
+    return candidates
+
+
+def _extract_report_date_time(text: str, lines: list[str]) -> tuple[str, str]:
+    for match in DATE_TIME_PATTERN.finditer(text):
+        date_value = _normalize_date_piece(match.group(1))
+        time_value = _normalize_time_piece(match.group(2))
+        if date_value:
+            return date_value, time_value
+
+    prioritized_anchors = (
+        "fetching date",
+        "data de telecarregamento",
+        "date",
+        "data",
+    )
+    for anchor in prioritized_anchors:
+        anchored_text = _text_after_anchor(lines, anchor, stop_after=4)
+        date_value = _normalize_date_piece(anchored_text)
+        time_value = _normalize_time_piece(anchored_text)
+        if date_value:
+            return date_value, time_value
+
+    date_match = DATE_PATTERN.search(text)
+    time_match = TIME_PATTERN.search(text)
+    return (
+        _normalize_date_piece(date_match.group(0)) if date_match else "",
+        _normalize_time_piece(time_match.group(0)) if time_match else "",
+    )
 
 
 def _extract_psa_engine_lubrication(lines: list[str]) -> dict[str, Any]:
@@ -631,6 +950,67 @@ def _normalize_maintenance_programming_type(line: str) -> str:
     if "dinam" in _simplify(folded):
         return "Dinâmico"
     return _normalize_maintenance_programming_value(_after_colon_or_number(line))
+
+
+def _normalize_date_piece(value: str) -> str:
+    clean = _clean_value(value).replace(".", "/").replace("-", "/")
+    match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", clean)
+    if not match:
+        return ""
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year = int(match.group(3))
+    if year < 100:
+        year += 2000
+    return f"{day:02d}/{month:02d}/{year:04d}"
+
+
+def _normalize_time_piece(value: str) -> str:
+    clean = _clean_value(value).lower().replace("h", ":")
+    match = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", clean)
+    if not match:
+        return ""
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    second = match.group(3)
+    if second is not None:
+        return f"{hour:02d}:{minute:02d}:{int(second):02d}"
+    return f"{hour:02d}:{minute:02d}:00"
+
+
+def _file_name_piece(value: str) -> str:
+    clean = _normalize(value or "")
+    clean = re.sub(r'[\\/:*?"<>|]+', "-", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
+def _unique_preserving_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def _build_duplicate_key(
+    vehicle_identifier: str,
+    canonical_report_code: str,
+    report_date: str,
+    report_time: str,
+) -> str:
+    if not vehicle_identifier or not canonical_report_code or not report_date or not report_time:
+        return ""
+    return " | ".join((vehicle_identifier, canonical_report_code, report_date, report_time))
+
+
+def _build_possible_duplicate_key(vehicle_identifier: str, canonical_report_code: str) -> str:
+    if not vehicle_identifier or not canonical_report_code:
+        return ""
+    return " | ".join((vehicle_identifier, canonical_report_code))
 
 
 def _postprocess_maintenance_programming_values(values: dict[str, Any]) -> dict[str, Any]:

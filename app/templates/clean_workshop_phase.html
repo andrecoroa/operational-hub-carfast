@@ -62,6 +62,7 @@
 
     <form class="clean-workshop-final-grid" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
+      <input type="hidden" name="current_substep" value="">
       <input type="hidden" name="form_state_json" value="">
       {% if phase_key == "validacao" %}
         <section class="clean-phase-workbench clean-card-wide">
@@ -173,10 +174,6 @@
                   <label>Próxima fase<input value="Diagnóstico Técnico" readonly></label>
                 </div>
                 <label class="clean-phase-exit-main">O que o técnico deve despistar<textarea name="validation_diagnostic_focus" rows="5" placeholder="Ex.: confirmar degradação do óleo, histórico BSI, telecarregamento e divergência de manutenção...">{{ phase_form.get("validation_diagnostic_focus", "") }}</textarea></label>
-                <div class="clean-phase-exit-checks">
-                  <strong>Relatórios necessários</strong>
-                  <label><input type="checkbox" name="validation_report_lubrication" value="yes"{% if phase_form.get("validation_report_lubrication") %} checked{% endif %}> Lubrificação motor</label><label><input type="checkbox" name="validation_report_maintenance_info" value="yes"{% if phase_form.get("validation_report_maintenance_info") %} checked{% endif %}> Informações manutenção</label><label><input type="checkbox" name="validation_report_maintenance_programming" value="yes"{% if phase_form.get("validation_report_maintenance_programming") %} checked{% endif %}> Programação manutenção</label><label><input type="checkbox" name="validation_report_remote_download" value="yes"{% if phase_form.get("validation_report_remote_download") %} checked{% endif %}> Telecarregamento</label><label><input type="checkbox" name="validation_report_fault_read" value="yes"{% if phase_form.get("validation_report_fault_read") %} checked{% endif %}> Leitura defeitos</label><label><input type="checkbox" name="validation_report_global_test" value="yes"{% if phase_form.get("validation_report_global_test") %} checked{% endif %}> Teste global</label>
-                </div>
                 <label class="clean-phase-exit-reserve">Motivo da reserva<textarea name="validation_reserve_reason" rows="3" placeholder="Ex.: campanha por executar fica em tarefa, auditoria histórica em curso ou outra pendência operacional...">{{ phase_form.get("validation_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
@@ -864,8 +861,8 @@
 
       {% if workshop_process and workshop_process.status != "closed" %}
         <div class="clean-substep-savebar clean-substep-savebar-global">
-          <button type="submit" name="action" value="save">Guardar subfase</button>
-          <button type="submit" name="action" value="advance">Guardar e avançar</button>
+          <button type="submit" name="action" value="save_substep">Guardar subfase</button>
+          <button type="submit" name="action" value="advance_substep">Guardar e avançar</button>
         </div>
       {% endif %}
 
@@ -896,7 +893,7 @@
         if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)) {
           return;
         }
-        if (!field.name || field.name === "action" || field.name === "process_id" || field.name === "form_state_json") {
+        if (!field.name || field.name === "action" || field.name === "process_id" || field.name === "form_state_json" || field.name === "current_substep") {
           return;
         }
         if (field.disabled || field.type === "file" || field.type === "submit" || field.type === "button") {
@@ -922,23 +919,31 @@
   document.querySelectorAll(".clean-phase-workbench").forEach((workbench) => {
     const cards = Array.from(workbench.querySelectorAll(".clean-substep-card"));
     const panels = Array.from(workbench.querySelectorAll(".clean-substep-panel"));
+    const form = workbench.closest("form");
+    const currentSubstepField = form?.querySelector('input[name="current_substep"]');
+    const activateTarget = (target) => {
+      if (!target) return;
+      cards.forEach((item) => item.classList.toggle("active", item.dataset.target === target));
+      panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+      if (currentSubstepField) {
+        currentSubstepField.value = target;
+      }
+      if (window.location.hash.slice(1) !== target) {
+        history.replaceState(null, "", `#${target}`);
+      }
+    };
     cards.forEach((card) => {
       card.addEventListener("click", () => {
-        const target = card.dataset.target;
-        cards.forEach((item) => item.classList.toggle("active", item === card));
-        panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+        activateTarget(card.dataset.target);
       });
     });
     const initialTarget = window.location.hash ? window.location.hash.slice(1) : "";
-    if (initialTarget) {
-      const targetCard = workbench.querySelector(`.clean-substep-card[data-target="${initialTarget}"]`);
-      targetCard?.click();
-    }
+    const fallbackTarget = cards[0]?.dataset.target || "";
+    activateTarget(initialTarget || fallbackTarget);
     workbench.querySelectorAll(".clean-substep-jump").forEach((button) => {
       button.addEventListener("click", () => {
         const target = button.dataset.target;
-        const targetCard = target ? workbench.querySelector(`.clean-substep-card[data-target="${target}"]`) : null;
-        targetCard?.click();
+        activateTarget(target);
         workbench.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });

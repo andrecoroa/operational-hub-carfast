@@ -3063,6 +3063,15 @@ CLEAN_WORKSHOP_PHASE_ALIASES = {
     "execucao": "reparacao",
 }
 
+CLEAN_WORKSHOP_SUBSTEP_FLOW = {
+    "validacao": ("prerequisitos", "pedido", "orientacao"),
+    "diagnostico": ("relatorios", "leituras", "comparacao", "problemas", "saida-diagnostico"),
+    "inspecao": ("checklist", "pneus-travoes", "oleo-niveis", "saida-inspecao"),
+    "auditoria": ("evidencias", "coerencia", "problemas-auditoria", "decisao", "saida-auditoria"),
+    "reparacao": ("ordem-reparacao", "execucao", "evidencias-reparacao", "desvios", "saida-reparacao"),
+    "fecho": ("validacao-final", "documentos-fecho", "historico-fecho", "pendencias-fecho", "encerramento"),
+}
+
 CLEAN_WORKSHOP_PHASES = {
     "validacao": {
         "step": 2,
@@ -3536,6 +3545,23 @@ def clean_workshop_next_phase_key(active_key: str) -> str | None:
     return str(CLEAN_WORKSHOP_STEP_DEFS[step_index + 1]["key"])
 
 
+def clean_workshop_substeps(phase_key: str) -> tuple[str, ...]:
+    return tuple(CLEAN_WORKSHOP_SUBSTEP_FLOW.get(phase_key, ()))
+
+
+def clean_workshop_next_substep_key(phase_key: str, current_substep: str) -> str | None:
+    substeps = clean_workshop_substeps(phase_key)
+    if not substeps:
+        return None
+    try:
+        step_index = substeps.index(current_substep)
+    except ValueError:
+        return substeps[0]
+    if step_index >= len(substeps) - 1:
+        return substeps[step_index]
+    return substeps[step_index + 1]
+
+
 def clean_workshop_phase_path(phase_key: str) -> str:
     step = next((item for item in CLEAN_WORKSHOP_STEP_DEFS if item["key"] == phase_key), None)
     return str(step["path"]) if step else "/v2-clean/workshop-entry"
@@ -3675,12 +3701,6 @@ def clean_workshop_validation_substep_status(
             clean_form_value(snapshot, "validation_priority").strip(),
             clean_form_value(snapshot, "validation_diagnostic_focus").strip(),
             clean_form_value(snapshot, "validation_reserve_reason").strip(),
-            clean_form_value(snapshot, "validation_report_lubrication").strip(),
-            clean_form_value(snapshot, "validation_report_maintenance_info").strip(),
-            clean_form_value(snapshot, "validation_report_maintenance_programming").strip(),
-            clean_form_value(snapshot, "validation_report_remote_download").strip(),
-            clean_form_value(snapshot, "validation_report_fault_read").strip(),
-            clean_form_value(snapshot, "validation_report_global_test").strip(),
         ]
     )
     return {
@@ -5182,6 +5202,10 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         return RedirectResponse(clean_workshop_phase_path(phase), status_code=303)
 
     action = str(form.get("action") or "save")
+    current_substep = str(form.get("current_substep") or "").strip()
+    known_substeps = clean_workshop_substeps(phase)
+    if current_substep not in known_substeps:
+        current_substep = known_substeps[0] if known_substeps else ""
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
 
@@ -5217,7 +5241,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 decoded_state = None
             if isinstance(decoded_state, dict):
                 for key, value in decoded_state.items():
-                    if key in {"action", "process_id", "form_state_json"}:
+                    if key in {"action", "process_id", "form_state_json", "current_substep"}:
                         continue
                     if isinstance(value, list):
                         form_snapshot[key] = [str(item) for item in value if item is not None]
@@ -5227,7 +5251,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                         form_snapshot[key] = str(value)
         if not form_snapshot:
             for key in form.keys():
-                if key in {"action", "process_id", "form_state_json"}:
+                if key in {"action", "process_id", "form_state_json", "current_substep"}:
                     continue
                 values = [str(value) for value in form.getlist(key)]
                 form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
@@ -5260,10 +5284,19 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 process.status = "closed"
                 process.closed_at = now
                 redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+        elif action == "advance_substep":
+            phase_row.status = "in_progress"
+            process.current_phase_code = phase
+            target_substep = clean_workshop_next_substep_key(phase, current_substep) or current_substep
+            redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+            if target_substep:
+                redirect_url = f"{redirect_url}#{target_substep}"
         else:
             phase_row.status = "in_progress"
             process.current_phase_code = phase
             redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+            if current_substep:
+                redirect_url = f"{redirect_url}#{current_substep}"
 
         db.commit()
 

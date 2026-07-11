@@ -3840,11 +3840,23 @@ def clean_workshop_technical_reading_rows(
         validated_values = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
         report_open_url = f"/v2-clean/workshop/technical-reports/{report.id}/file"
         if extracted_values:
+            report_fields = stellantis_report_fields(report.report_code)
             field_labels = {
                 str(field.get("code")): str(field.get("label"))
-                for field in stellantis_report_fields(report.report_code)
+                for field in report_fields
             }
-            for key, value in extracted_values.items():
+            ordered_codes = [
+                str(field.get("code"))
+                for field in report_fields
+                if str(field.get("code") or "") in extracted_values
+            ]
+            extra_codes = [
+                str(key)
+                for key in extracted_values.keys()
+                if str(key) not in ordered_codes
+            ]
+            for key in ordered_codes + extra_codes:
+                value = extracted_values.get(key)
                 validation = validated_values.get(str(key)) if isinstance(validated_values.get(str(key)), dict) else {}
                 validation_status = str(validation.get("status") or "Por validar")
                 rows.append(

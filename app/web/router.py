@@ -5274,6 +5274,7 @@ async def clean_workshop_technical_report_upload(
     user_id = get_web_user_id(request)
     classification_error: str | None = None
     report_meta: dict[str, Any] = {}
+    uploaded_report_id: int | None = None
     try:
         report_meta = classify_workshop_report_from_bytes(content, filename)
     except (RuntimeError, ValueError) as exc:
@@ -5412,6 +5413,7 @@ async def clean_workshop_technical_report_upload(
         )
         db.add(report)
         db.flush()
+        uploaded_report_id = report.id
         db.add(
             DocumentLink(
                 document_id=document.id,
@@ -5432,7 +5434,7 @@ async def clean_workshop_technical_report_upload(
         db.commit()
 
     return RedirectResponse(
-        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id={report.id}#leituras",
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id={uploaded_report_id or ''}#leituras",
         status_code=303,
     )
 
@@ -5469,11 +5471,14 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
     form = await request.form()
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
+    process_id: int | None = None
+    selected_report_id: int | None = None
 
     with SessionLocal() as db:
         report = db.get(WorkshopPhasedTechnicalReport, report_id)
         if not report:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        selected_report_id = report.id
 
         report_ids = [str(value) for value in form.getlist("reading_report_id")]
         field_codes = [str(value) for value in form.getlist("reading_field_code")]
@@ -5519,7 +5524,7 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
         process_id = report.process_id
 
     return RedirectResponse(
-        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={report.id}#leituras",
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={selected_report_id or ''}#leituras",
         status_code=303,
     )
 

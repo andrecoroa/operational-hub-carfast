@@ -302,18 +302,6 @@ def _detect_report_code(lines: list[str], text_simple: str) -> str:
     if any(
         token in haystack
         for token in (
-            "caracterizacao do defeito",
-            "leitura de defeitos",
-            "lista de defeitos",
-            "descricao",
-            "estado",
-            "dtc",
-        )
-    ) or any(_looks_like_fault_code(line) for line in lines):
-        return "fault_reading"
-    if any(
-        token in haystack
-        for token in (
             "km antes proxima manutencao",
             "dias restantes antes manutencao",
             "chave de manutencao",
@@ -337,6 +325,16 @@ def _detect_report_code(lines: list[str], text_simple: str) -> str:
         return "engine_lubrication"
     if "teste global" in haystack:
         return "global_test"
+    if any(
+        token in haystack
+        for token in (
+            "caracterizacao do defeito",
+            "leitura de defeitos",
+            "lista de defeitos",
+            "dtc",
+        )
+    ) or any(_looks_like_fault_code(line) for line in lines):
+        return "fault_reading"
     return "other_reading"
 
 

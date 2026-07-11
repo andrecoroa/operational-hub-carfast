@@ -3626,10 +3626,24 @@ def clean_workshop_validation_substep_status(
     has_decision = any(value and value != "Por decidir" for value in service_decisions)
     already_done_values = clean_form_values(snapshot, "service_already_done")
     has_history_answer = any(value and value != "Por confirmar" for value in already_done_values)
+    orientation_has_data = any(
+        [
+            clean_form_value(snapshot, "validation_closed").strip(),
+            clean_form_value(snapshot, "validation_priority").strip(),
+            clean_form_value(snapshot, "validation_diagnostic_focus").strip(),
+            clean_form_value(snapshot, "validation_reserve_reason").strip(),
+            clean_form_value(snapshot, "validation_report_lubrication").strip(),
+            clean_form_value(snapshot, "validation_report_maintenance_info").strip(),
+            clean_form_value(snapshot, "validation_report_maintenance_programming").strip(),
+            clean_form_value(snapshot, "validation_report_remote_download").strip(),
+            clean_form_value(snapshot, "validation_report_fault_read").strip(),
+            clean_form_value(snapshot, "validation_report_global_test").strip(),
+        ]
+    )
     return {
         "prerequisitos": "OK" if prerequisite_warning_count == 0 else f"{prerequisite_warning_count} avisos",
         "pedido": "Guardado" if has_decision or has_history_answer or has_service_data else "Por validar",
-        "orientacao": "Guardado" if phase_saved else "Rascunho",
+        "orientacao": "Guardado" if orientation_has_data else "Rascunho",
     }
 
 

@@ -3817,6 +3817,19 @@ def clean_workshop_validation_prerequisites(
 def clean_workshop_technical_report_summary(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> dict[str, dict[str, object]]:
+    terminal_statuses = {"OK", "Corrigido", "Não legível", "Não aplicável"}
+
+    def is_complete(report: WorkshopPhasedTechnicalReport) -> bool:
+        extracted = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+        validated = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
+        if extracted:
+            return all(
+                str((validated.get(str(code)) or {}).get("status") or "Por validar") in terminal_statuses
+                for code in extracted
+            )
+        manual = validated.get("manual_reading") if isinstance(validated.get("manual_reading"), dict) else {}
+        return str(manual.get("status") or "Por validar") in terminal_statuses
+
     status_labels = {
         "pending_validation": "Por validar",
         "validated": "Validado",
@@ -3828,16 +3841,25 @@ def clean_workshop_technical_report_summary(
     summary: dict[str, dict[str, object]] = {}
     grouped: dict[str, list[WorkshopPhasedTechnicalReport]] = defaultdict(list)
     for report in reports:
-        if report.status == "voided":
+        if report.status in {"voided", "superseded"}:
             continue
         grouped[report.report_code].append(report)
     for code, items in grouped.items():
         latest = sorted(items, key=lambda item: item.id, reverse=True)[0]
         extracted_values = latest.extracted_values_json if isinstance(latest.extracted_values_json, dict) else {}
+        complete = is_complete(latest)
+        if complete:
+            display_status = (
+                "Validado manual"
+                if latest.status in {"pending_validation", "unable_to_read"}
+                else status_labels.get(latest.status, latest.status or "Validado manual")
+            )
+        else:
+            display_status = "Por validar"
         summary[code] = {
             "count": len(items),
             "latest": latest,
-            "status": status_labels.get(latest.status, latest.status or "Por validar"),
+            "status": display_status,
             "file_name": Path(str(latest.original_link or "")).name or "-",
             "extracted_count": len(extracted_values),
         }
@@ -3848,18 +3870,10 @@ def clean_workshop_technical_reading_rows(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    latest_by_code: dict[str, WorkshopPhasedTechnicalReport] = {}
-    for report in sorted(
-        [item for item in reports if item.status != "voided"],
+    sorted_reports = sorted(
+        [item for item in reports if item.status not in {"voided", "superseded"}],
         key=lambda item: item.id,
         reverse=True,
-    ):
-        latest_by_code.setdefault(report.report_code, report)
-
-    sorted_reports = sorted(latest_by_code.values(), key=lambda item: item.id, reverse=True)
-    has_any_extracted = any(
-        isinstance(report.extracted_values_json, dict) and report.extracted_values_json
-        for report in sorted_reports
     )
     for report in sorted_reports:
         extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
@@ -3902,9 +3916,6 @@ def clean_workshop_technical_reading_rows(
                     }
                 )
             continue
-        if has_any_extracted:
-            continue
-
         raw_values = report.raw_values_json if isinstance(report.raw_values_json, dict) else {}
         if report.status == "unable_to_read":
             validation = (
@@ -3912,7 +3923,7 @@ def clean_workshop_technical_reading_rows(
                 if isinstance(validated_values.get("manual_reading"), dict)
                 else {}
             )
-            validation_status = str(validation.get("status") or "Não legível")
+            validation_status = str(validation.get("status") or "Por validar")
             rows.append(
                 {
                     "report_id": str(report.id),
@@ -3923,7 +3934,7 @@ def clean_workshop_technical_reading_rows(
                     "value": str(raw_values.get("extraction_error") or "Sem dados extraídos"),
                     "corrected_value": str(validation.get("corrected_value") or ""),
                     "observation": str(validation.get("observation") or ""),
-                    "status": validation_status if report.status in {"validated_manually", "corrected_manually"} else "Falhou",
+                    "status": validation_status,
                     "action": "Guardar",
                     "open_url": report_open_url,
                 }
@@ -3980,7 +3991,7 @@ def clean_workshop_technical_reading_groups(
         group["validated_count"] = sum(
             1
             for row in rows
-            if str(row.get("status") or "Por validar") in {"OK", "Corrigido", "Não aplicável"}
+            if str(row.get("status") or "Por validar") in {"OK", "Corrigido", "Não legível", "Não aplicável"}
         )
     return grouped
 
@@ -3988,8 +3999,21 @@ def clean_workshop_technical_reading_groups(
 def clean_workshop_diagnostic_substep_status(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> dict[str, str]:
-    active_reports = [report for report in reports if report.status != "voided"]
-    pending = [report for report in active_reports if report.status in {"pending_validation", "unable_to_read"}]
+    terminal_statuses = {"OK", "Corrigido", "Não legível", "Não aplicável"}
+
+    def is_complete(report: WorkshopPhasedTechnicalReport) -> bool:
+        extracted = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+        validated = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
+        if extracted:
+            return bool(extracted) and all(
+                str((validated.get(str(code)) or {}).get("status") or "Por validar") in terminal_statuses
+                for code in extracted
+            )
+        manual = validated.get("manual_reading") if isinstance(validated.get("manual_reading"), dict) else {}
+        return str(manual.get("status") or "Por validar") in terminal_statuses
+
+    active_reports = [report for report in reports if report.status not in {"voided", "superseded"}]
+    pending = [report for report in active_reports if not is_complete(report)]
     extracted = [
         report
         for report in active_reports
@@ -5309,6 +5333,7 @@ async def clean_workshop_technical_report_upload(
     process_id: int,
     report_code: str = Form(...),
     report_file: UploadFile = File(...),
+    replace_report_id: int | None = Form(None),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5423,6 +5448,24 @@ async def clean_workshop_technical_report_upload(
                     user_id=user_id,
                 )
             )
+        replacement_report = None
+        if replace_report_id:
+            replacement_report = db.get(WorkshopPhasedTechnicalReport, replace_report_id)
+            if (
+                not replacement_report
+                or replacement_report.process_id != process.id
+                or replacement_report.report_code != clean_report_code
+                or replacement_report.status in {"voided", "superseded"}
+            ):
+                replacement_report = None
+            else:
+                replacement_report.status = "superseded"
+                replacement_report.correction_json = {
+                    "source": "v2-clean-replaced",
+                    "replaced_at": now.isoformat(),
+                    "replaced_by_id": user_id,
+                }
+
         report = WorkshopPhasedTechnicalReport(
             process_id=process.id,
             phase_id=phase_row.id if phase_row else None,
@@ -5469,6 +5512,11 @@ async def clean_workshop_technical_report_upload(
         )
         db.add(report)
         db.flush()
+        if replacement_report:
+            replacement_report.correction_json = {
+                **(replacement_report.correction_json or {}),
+                "replaced_by_report_id": report.id,
+            }
         uploaded_report_id = report.id
         db.add(
             DocumentLink(
@@ -5567,8 +5615,21 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
             "updated_by_id": user_id,
         }
         report.validated_by_id = user_id
-        report.validated_at = now
-        if any(item.get("corrected_value") for item in validated_values.values() if isinstance(item, dict)):
+        extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+        terminal_statuses = {"OK", "Corrigido", "Não legível", "Não aplicável"}
+        field_statuses = [
+            str((validated_values.get(str(field_code)) or {}).get("status") or "Por validar")
+            for field_code in extracted_values
+        ]
+        if not field_statuses:
+            field_statuses = [
+                str((validated_values.get("manual_reading") or {}).get("status") or "Por validar")
+            ]
+        report_is_complete = bool(field_statuses) and all(status in terminal_statuses for status in field_statuses)
+        report.validated_at = now if report_is_complete else None
+        if not report_is_complete:
+            report.status = "pending_validation"
+        elif any(item.get("corrected_value") for item in validated_values.values() if isinstance(item, dict)):
             report.status = "corrected_manually"
         else:
             report.status = "validated_manually"

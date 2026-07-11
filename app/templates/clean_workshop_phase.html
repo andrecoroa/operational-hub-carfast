@@ -230,7 +230,7 @@
                   <div><strong>Lubrificação motor</strong><small>Obrigatório para Diesel com suspeita de degradação óleo</small></div>
                   <mark class="danger">Obrigatório</mark>
                   <em>{{ lub_report.status if lub_report else "Por carregar" }}{% if lub_report %} · {{ lub_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if lub_report else "Carregar" }}<input class="clean-report-upload" data-report-code="engine_lubrication" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ lub_report.latest.id if lub_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ lub_report.latest.id if lub_report else "Carregar" }}<input class="clean-report-upload" data-report-code="engine_lubrication" data-replace-report="{{ lub_report.latest.id if lub_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ lub_report.latest.id if lub_report else '' }}" type="button" {% if not lub_report %}disabled{% endif %}>Validar</button></div>
                 </div>
                 {% set man_report = technical_report_summary.get("maintenance_information") %}
                 <div class="clean-report-row">
@@ -238,7 +238,7 @@
                   <div><strong>Informações manutenção</strong><small>Obrigatório para validar BSI, km, dias e número de manutenções</small></div>
                   <mark class="danger">Obrigatório</mark>
                   <em>{{ man_report.status if man_report else "Por carregar" }}{% if man_report %} · {{ man_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if man_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_information" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ man_report.latest.id if man_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ man_report.latest.id if man_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_information" data-replace-report="{{ man_report.latest.id if man_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ man_report.latest.id if man_report else '' }}" type="button" {% if not man_report %}disabled{% endif %}>Validar</button></div>
                 </div>
                 {% set prg_report = technical_report_summary.get("maintenance_programming") %}
                 <div class="clean-report-row">
@@ -246,7 +246,7 @@
                   <div><strong>Programação manutenção</strong><small>Recomendado quando há divergência de intervalos ou plano</small></div>
                   <mark class="warn">Recomendado</mark>
                   <em>{{ prg_report.status if prg_report else "Em falta" }}{% if prg_report %} · {{ prg_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if prg_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_programming" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ prg_report.latest.id if prg_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ prg_report.latest.id if prg_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_programming" data-replace-report="{{ prg_report.latest.id if prg_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ prg_report.latest.id if prg_report else '' }}" type="button" {% if not prg_report %}disabled{% endif %}>Validar</button></div>
                 </div>
                 {% set tel_report = technical_report_summary.get("remote_download") %}
                 <div class="clean-report-row">
@@ -254,7 +254,7 @@
                   <div><strong>Telecarregamento</strong><small>Obrigatório quando TSB/procedimento exigir atualização</small></div>
                   <mark class="warn">Condicional</mark>
                   <em>{{ tel_report.status if tel_report else "Em falta" }}{% if tel_report %} · {{ tel_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if tel_report else "Carregar" }}<input class="clean-report-upload" data-report-code="remote_download" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tel_report.latest.id if tel_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ tel_report.latest.id if tel_report else "Carregar" }}<input class="clean-report-upload" data-report-code="remote_download" data-replace-report="{{ tel_report.latest.id if tel_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tel_report.latest.id if tel_report else '' }}" type="button" {% if not tel_report %}disabled{% endif %}>Validar</button></div>
                 </div>
                 {% set def_report = technical_report_summary.get("fault_reading") %}
                 <div class="clean-report-row">
@@ -262,7 +262,7 @@
                   <div><strong>Leitura defeitos</strong><small>Obrigatório em avaria ou quando há alertas no quadrante</small></div>
                   <mark class="warn">Condicional</mark>
                   <em>{{ def_report.status if def_report else "Por carregar" }}{% if def_report %} · {{ def_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if def_report else "Carregar" }}<input class="clean-report-upload" data-report-code="fault_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ def_report.latest.id if def_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ def_report.latest.id if def_report else "Carregar" }}<input class="clean-report-upload" data-report-code="fault_reading" data-replace-report="{{ def_report.latest.id if def_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ def_report.latest.id if def_report else '' }}" type="button" {% if not def_report %}disabled{% endif %}>Validar</button></div>
                 </div>
                 {% set tst_report = technical_report_summary.get("other_reading") %}
                 <div class="clean-report-row">
@@ -270,7 +270,7 @@
                   <div><strong>Teste global</strong><small>Opcional conforme orientação técnica da fase anterior</small></div>
                   <mark class="ok">Opcional</mark>
                   <em>{{ tst_report.status if tst_report else "Não aplicável" }}{% if tst_report %} · {{ tst_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if tst_report else "Carregar" }}<input class="clean-report-upload" data-report-code="other_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tst_report.latest.id if tst_report else '' }}" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir #" ~ tst_report.latest.id if tst_report else "Carregar" }}<input class="clean-report-upload" data-report-code="other_reading" data-replace-report="{{ tst_report.latest.id if tst_report else '' }}" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tst_report.latest.id if tst_report else '' }}" type="button" {% if not tst_report %}disabled{% endif %}>Validar</button></div>
                 </div>
               </div>
               <p class="clean-rule-note">Regra: ao carregar relatório, extrair dados automaticamente e deixar em estado Por validar.</p>
@@ -304,8 +304,8 @@
                   <section class="clean-reading-document-card">
                     <div>
                       <p class="eyebrow">Documento de origem</p>
-                      <h4>{{ reading_group.report }}</h4>
-                      <span>Confirma se o documento corresponde à viatura e valida apenas este relatório.</span>
+                      <h4>{{ reading_group.report }} · Relatório #{{ reading_group.report_id }}</h4>
+                      <span>Relatório selecionado: {{ reading_group.validated_count }}/{{ reading_group.count }} campos com estado final. Escolhe o estado em cada linha e guarda; “Por validar” mantém o relatório pendente.</span>
                     </div>
                     <div class="clean-reading-document-actions">
                       <a href="{{ reading_group.open_url }}" target="_blank" rel="noopener">Abrir documento</a>
@@ -350,7 +350,7 @@
                               </select>
                             </td>
                             <td><input name="reading_observation" value="{{ row.observation }}" placeholder="Observação"></td>
-                            <td><button type="submit" formmethod="post" formaction="/v2-clean/workshop/technical-reports/{{ row.report_id }}/validate">Guardar</button></td>
+                            <td><button type="submit" formmethod="post" formaction="/v2-clean/workshop/technical-reports/{{ row.report_id }}/validate">Guardar campo</button></td>
                           </tr>
                         {% endfor %}
                       </tbody>
@@ -969,6 +969,9 @@
       const formData = new FormData();
       formData.append("report_code", reportCode);
       formData.append("report_file", file);
+      if (input.dataset.replaceReport) {
+        formData.append("replace_report_id", input.dataset.replaceReport);
+      }
       input.closest(".clean-report-actions")?.classList.add("is-loading");
       try {
         const response = await fetch(`/v2-clean/workshop/${processId}/technical-reports/upload`, {

@@ -2153,6 +2153,12 @@ CLEAN_WORKSHOP_REPORT_LABELS = {
     "other_reading": "Relatório de diagnóstico do veículo",
 }
 CLEAN_WORKSHOP_REPORT_CODES = set(CLEAN_WORKSHOP_REPORT_LABELS)
+
+
+def clean_workshop_report_display_label(report_code: str, fallback: str | None = None) -> str:
+    return CLEAN_WORKSHOP_REPORT_LABELS.get(report_code, (fallback or report_code))
+
+
 HISTORY_AUDIT_EXTRACTABLE_REPORTS = {
     "maintenance_information",
     "engine_lubrication",
@@ -3839,6 +3845,7 @@ def clean_workshop_technical_reading_rows(
         extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
         validated_values = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
         report_open_url = f"/v2-clean/workshop/technical-reports/{report.id}/file"
+        report_display_name = clean_workshop_report_display_label(report.report_code, report.report_name)
         if extracted_values:
             report_fields = stellantis_report_fields(report.report_code)
             field_labels = {
@@ -3864,8 +3871,8 @@ def clean_workshop_technical_reading_rows(
                         "report_id": str(report.id),
                         "field_code": str(key),
                         "field": field_labels.get(str(key), str(key)),
-                        "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
-                        "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                        "report": report_display_name,
+                        "report_name": report_display_name,
                         "value": str(value),
                         "corrected_value": str(validation.get("corrected_value") or ""),
                         "observation": str(validation.get("observation") or ""),
@@ -3891,8 +3898,8 @@ def clean_workshop_technical_reading_rows(
                     "report_id": str(report.id),
                     "field_code": "manual_reading",
                     "field": "Leitura automática",
-                    "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
-                    "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                    "report": report_display_name,
+                    "report_name": report_display_name,
                     "value": str(raw_values.get("extraction_error") or "Sem dados extraídos"),
                     "corrected_value": str(validation.get("corrected_value") or ""),
                     "observation": str(validation.get("observation") or ""),
@@ -3914,8 +3921,8 @@ def clean_workshop_technical_reading_rows(
                 "report_id": str(report.id),
                 "field_code": "manual_reading",
                 "field": "Relatório carregado",
-                "report": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
-                "report_name": report.report_name or CLEAN_WORKSHOP_REPORT_LABELS.get(report.report_code, report.report_code),
+                "report": report_display_name,
+                "report_name": report_display_name,
                 "value": str(raw_values.get("original_name") or Path(str(report.original_link or "")).name or "-"),
                 "corrected_value": str(validation.get("corrected_value") or ""),
                 "observation": str(validation.get("observation") or ""),
@@ -5298,7 +5305,11 @@ async def clean_workshop_technical_report_upload(
         if selected_report_code == "other_reading" and detected_report_code in CLEAN_WORKSHOP_REPORT_CODES
         else selected_report_code
     )
-    report_label = str(report_meta.get("report_name") or CLEAN_WORKSHOP_REPORT_LABELS.get(clean_report_code, "Relatório de diagnóstico do veículo"))
+    report_label = (
+        clean_workshop_report_display_label(clean_report_code, "Relatório de diagnóstico do veículo")
+        if selected_report_code != "other_reading"
+        else str(report_meta.get("report_name") or clean_workshop_report_display_label(clean_report_code, "Relatório de diagnóstico do veículo"))
+    )
     reading_origin = str(report_meta.get("machine_origin") or "unknown_machine")
     reading_origin_detail = str(report_meta.get("machine_label") or "Origem por rever")
     suggested_file_name = str(report_meta.get("suggested_file_name") or "")

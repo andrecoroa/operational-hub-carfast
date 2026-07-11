@@ -74,7 +74,7 @@ def authenticated_client(client: TestClient) -> TestClient:
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.headers["location"] == "/choose-experience"
     notice = client.post("/change-notice", data={"next_url": "/"}, follow_redirects=False)
     assert notice.status_code == 303
     assert notice.headers["location"] == "/"

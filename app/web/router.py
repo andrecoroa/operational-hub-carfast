@@ -3058,6 +3058,40 @@ CLEAN_WORKSHOP_ENTRY_MINIMUM_CHECKS = [
     "minimum_damage_photos",
 ]
 
+CLEAN_WORKSHOP_PHASE_UPLOADS = {
+    "inspecao": {
+        "inspection_lights_photo": ("inspection_lights", "Foto inspeção - luzes"),
+        "inspection_battery_photo": ("inspection_battery", "Foto inspeção - bateria"),
+        "inspection_leaks_photo": ("inspection_leaks", "Foto inspeção - fugas"),
+        "inspection_noises_photo": ("inspection_noises", "Foto inspeção - ruídos"),
+        "inspection_road_test_photo": ("inspection_road_test", "Foto inspeção - teste de estrada"),
+        "inspection_tyres_brakes_photo": ("inspection_tyres_brakes", "Foto inspeção - pneus e travões"),
+    },
+    "reparacao": {
+        "repair_work_order_file": ("repair_work_order", "Folha de obra da reparação"),
+        "repair_photos_files": ("repair_photos", "Fotos da reparação"),
+        "repair_post_report_file": ("repair_post_report", "Relatório pós-intervenção"),
+        "repair_campaign_proof_file": ("repair_campaign_proof", "Comprovativo de campanha"),
+    },
+    "fecho": {
+        "closure_work_order_file": ("closure_work_order", "Folha de obra final"),
+        "closure_invoice_file": ("closure_invoice", "Fatura da intervenção"),
+        "closure_post_report_file": ("closure_post_report", "Relatório pós-intervenção final"),
+        "closure_final_photos_files": ("closure_final_photos", "Fotos finais da viatura"),
+    },
+}
+
+CLEAN_WORKSHOP_UPLOAD_STATUS_UPDATES = {
+    "repair_work_order_file": ("repair_fo_status", "Recebida"),
+    "repair_photos_files": ("repair_photos_status", "Recebidas"),
+    "repair_post_report_file": ("repair_post_report_status", "Recebido"),
+    "repair_campaign_proof_file": ("repair_campaign_proof_status", "Recebido"),
+    "closure_work_order_file": ("closure_work_order_status", "Recebida"),
+    "closure_invoice_file": ("closure_invoice_status", "Recebida"),
+    "closure_post_report_file": ("closure_post_report_status", "Recebido"),
+    "closure_final_photos_files": ("closure_final_photos_status", "Recebidas"),
+}
+
 CLEAN_WORKSHOP_PHASE_ALIASES = {
     "decisao": "auditoria",
     "execucao": "reparacao",
@@ -3430,6 +3464,104 @@ async def clean_workshop_store_entry_uploads(
     return stored
 
 
+async def clean_workshop_store_phase_uploads(
+    db: Session,
+    process: WorkshopPhasedProcess,
+    phase: str,
+    form,
+    user_id: int | None,
+) -> list[dict[str, object]]:
+    field_map = CLEAN_WORKSHOP_PHASE_UPLOADS.get(phase, {})
+    if not field_map:
+        return []
+
+    plate_value = normalize_identifier(str(process.plate_snapshot or ""))
+    plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
+    upload_root = APP_PROJECT_ROOT / "uploads" / "vehicle_documents" / plate_folder / phase
+    stored: list[dict[str, object]] = []
+
+    for form_field, (category, label) in field_map.items():
+        for upload in form.getlist(form_field):
+            if not hasattr(upload, "filename") or not hasattr(upload, "read") or not upload.filename:
+                continue
+            content = await upload.read()
+            if not content:
+                continue
+            original_name = Path(upload.filename).name
+            digest = hashlib.sha256(content).hexdigest()
+            suffix = Path(original_name).suffix or ".bin"
+            upload_root.mkdir(parents=True, exist_ok=True)
+            stored_name = f"{category}_{digest[:12]}{suffix}"
+            stored_path = upload_root / stored_name
+            if not stored_path.exists():
+                stored_path.write_bytes(content)
+
+            document = db.scalar(select(Document).where(Document.storage_path == str(stored_path)))
+            if document is None:
+                document = Document(
+                    title=f"{label} - {plate_value or process.id}",
+                    document_type=category,
+                    classification="workshop",
+                    source="workshop_v2_clean",
+                    entry_channel="upload",
+                    source_subject=label,
+                    original_name=original_name,
+                    file_name=stored_name,
+                    file_type=suffix.lstrip(".") or None,
+                    file_size=len(content),
+                    storage_provider="local",
+                    storage_path=str(stored_path),
+                    storage_key=digest,
+                    file_hash=digest,
+                    folder_path=f"Documentação de Viaturas/{plate_value or process.id}/{phase}",
+                    status="received",
+                    vehicle_id=process.vehicle_id,
+                    plate=process.plate_snapshot,
+                    uploaded_by_id=user_id,
+                )
+                db.add(document)
+                db.flush()
+
+            existing_link = db.scalar(
+                select(DocumentLink).where(
+                    DocumentLink.document_id == document.id,
+                    DocumentLink.entity_type == "workshop_phased_process",
+                    DocumentLink.entity_id == str(process.id),
+                    DocumentLink.category == category,
+                )
+            )
+            if existing_link is None:
+                db.add(
+                    DocumentLink(
+                        document_id=document.id,
+                        entity_type="workshop_phased_process",
+                        entity_id=str(process.id),
+                        category=category,
+                    )
+                )
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="document.workshop_v2_phase_upload",
+                    new_value=f"process={process.id}; phase={phase}; category={category}",
+                    user_id=user_id,
+                )
+            )
+            stored.append(
+                {
+                    "field": form_field,
+                    "category": category,
+                    "label": label,
+                    "original_name": original_name,
+                    "stored_name": stored_name,
+                    "path": str(stored_path),
+                    "sha256": digest,
+                    "document_id": document.id,
+                }
+            )
+    return stored
+
+
 @web_router.get("/v2-clean/workshop-entry/{process_id}/uploads/{stored_name}")
 def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_name: str):
     denied = clean_experience_denied(request)
@@ -3468,6 +3600,56 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
         return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
     if not resolved_path.exists() or not resolved_path.is_file():
         return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
+    return FileResponse(resolved_path, filename=original_name)
+
+
+@web_router.get("/v2-clean/workshop/{process_id}/phase-uploads/{stored_name}")
+def clean_workshop_phase_upload_file(request: Request, process_id: int, stored_name: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    safe_name = Path(stored_name).name
+    upload: dict[str, object] | None = None
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        phase_rows = db.scalars(
+            select(WorkshopPhasedProcessPhase).where(
+                WorkshopPhasedProcessPhase.process_id == process.id
+            )
+        ).all()
+        for phase_row in phase_rows:
+            phase_data = phase_row.data_json if isinstance(phase_row.data_json, dict) else {}
+            uploads = phase_data.get("uploads")
+            if not isinstance(uploads, list):
+                continue
+            upload = next(
+                (
+                    item
+                    for item in uploads
+                    if isinstance(item, dict)
+                    and Path(str(item.get("stored_name") or "")).name == safe_name
+                ),
+                None,
+            )
+            if upload:
+                break
+
+    if not upload:
+        return RedirectResponse(f"/v2-clean/workshop?file_missing=1", status_code=303)
+    raw_path = Path(str(upload.get("path") or ""))
+    file_path = raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path
+    root_path = (APP_PROJECT_ROOT / "uploads" / "vehicle_documents").resolve()
+    try:
+        resolved_path = file_path.resolve()
+        resolved_path.relative_to(root_path)
+    except (OSError, ValueError):
+        return RedirectResponse("/v2-clean/workshop?file_missing=1", status_code=303)
+    if not resolved_path.exists() or not resolved_path.is_file():
+        return RedirectResponse("/v2-clean/workshop?file_missing=1", status_code=303)
+    original_name = str(upload.get("original_name") or safe_name)
     return FileResponse(resolved_path, filename=original_name)
 
 
@@ -3567,6 +3749,112 @@ def clean_workshop_phase_path(phase_key: str) -> str:
     return str(step["path"]) if step else "/v2-clean/workshop-entry"
 
 
+CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES = {
+    "validation_incomplete": "Conclui a decisão dos serviços e fecha a validação administrativa antes de avançar.",
+    "reports_pending": "Existem relatórios por validar. Valida-os ou fecha o diagnóstico com reserva e motivo.",
+    "inspection_incomplete": "Conclui a checklist técnica ou fecha a inspeção com reserva e respetivo motivo.",
+    "audit_incomplete": "Regista a decisão da auditoria e fecha a fase antes de avançar.",
+    "repair_incomplete": "A reparação deve estar concluída ou fechada com reserva devidamente justificada.",
+    "closure_incomplete": "Confirma as condições mínimas de fecho e o tratamento das pendências.",
+}
+
+
+def clean_workshop_phase_advance_error(
+    phase: str,
+    snapshot: dict[str, object],
+    reports: list[WorkshopPhasedTechnicalReport] | None = None,
+) -> str | None:
+    if phase == "validacao":
+        decisions = clean_form_values(snapshot, "service_decision")
+        closed = clean_form_value(snapshot, "validation_closed", "Por confirmar")
+        if not decisions or any(value in {"", "Por decidir"} for value in decisions):
+            return "validation_incomplete"
+        if closed not in {"Sim", "Com reservas"}:
+            return "validation_incomplete"
+        if closed == "Com reservas" and not clean_form_value(snapshot, "validation_reserve_reason").strip():
+            return "validation_incomplete"
+        return None
+
+    if phase == "diagnostico":
+        closed = clean_form_value(snapshot, "diagnostic_closed", "Por confirmar")
+        pending_reports = [
+            report
+            for report in (reports or [])
+            if report.status not in {"voided", "superseded"}
+            and not clean_workshop_report_is_complete(report)
+        ]
+        if closed not in {"Sim", "Com reservas"}:
+            return "reports_pending"
+        if pending_reports and (
+            closed != "Com reservas"
+            or not clean_form_value(snapshot, "diagnostic_reserve_reason").strip()
+        ):
+            return "reports_pending"
+        return None
+
+    if phase == "inspecao":
+        closed = clean_form_value(snapshot, "inspection_closed", "Por confirmar")
+        checklist_values = [
+            clean_form_value(snapshot, key, "review")
+            for key in (
+                "inspection_check_lights",
+                "inspection_check_battery",
+                "inspection_check_leaks",
+                "inspection_check_noises",
+                "inspection_check_road_test",
+            )
+        ]
+        checklist_pending = any(value in {"", "review"} for value in checklist_values)
+        if closed not in {"Sim", "Com reservas"}:
+            return "inspection_incomplete"
+        if checklist_pending and (
+            closed != "Com reservas"
+            or not clean_form_value(snapshot, "inspection_reserve_reason").strip()
+        ):
+            return "inspection_incomplete"
+        return None
+
+    if phase == "auditoria":
+        closed = clean_form_value(snapshot, "audit_closed", "Por confirmar")
+        decision = clean_form_value(snapshot, "audit_decision_main", "Por decidir")
+        if decision in {"", "Por decidir"}:
+            return "audit_incomplete"
+        if closed not in {"Sim", "Com reservas"}:
+            return "audit_incomplete"
+        if closed == "Com reservas" and not clean_form_value(snapshot, "audit_reserve_reason").strip():
+            return "audit_incomplete"
+        return None
+
+    if phase == "reparacao":
+        closed = clean_form_value(snapshot, "repair_closed", "Por confirmar")
+        execution_status = clean_form_value(snapshot, "repair_execution_status")
+        if closed not in {"Sim", "Com reservas"}:
+            return "repair_incomplete"
+        if closed == "Sim" and execution_status != "Concluída":
+            return "repair_incomplete"
+        if closed == "Com reservas" and not clean_form_value(snapshot, "repair_reserve_reason").strip():
+            return "repair_incomplete"
+        return None
+
+    if phase == "fecho":
+        result = clean_form_value(snapshot, "closure_result", "Não fechar")
+        required_checks = (
+            "closure_vehicle_validated",
+            "closure_history_updated",
+            "closure_fleet_state_defined",
+        )
+        if result == "Não fechar" or any(clean_form_value(snapshot, key) != "yes" for key in required_checks):
+            return "closure_incomplete"
+        if result != "Fechado com reserva" and clean_form_value(snapshot, "closure_min_docs_attached") != "yes":
+            return "closure_incomplete"
+        if result == "Fechado com reserva" and (
+            clean_form_value(snapshot, "closure_pending_assigned") != "yes"
+            or not clean_form_value(snapshot, "closure_pending_description").strip()
+        ):
+            return "closure_incomplete"
+    return None
+
+
 def clean_form_value(snapshot: dict[str, object], key: str, default: str = "") -> str:
     value = snapshot.get(key)
     if isinstance(value, list):
@@ -3583,6 +3871,23 @@ def clean_form_values(snapshot: dict[str, object], key: str) -> list[str]:
     if value is None or value == "":
         return []
     return [str(value)]
+
+
+def clean_workshop_saved_substeps(phase_data: dict[str, object]) -> set[str]:
+    raw_value = phase_data.get("saved_substeps")
+    if not isinstance(raw_value, list):
+        return set()
+    return {str(item) for item in raw_value if str(item).strip()}
+
+
+def clean_workshop_substep_is_saved(
+    saved_substeps: set[str] | None,
+    substep: str,
+    *,
+    legacy_has_data: bool = False,
+) -> bool:
+    saved = saved_substeps or set()
+    return substep in saved or (not saved and legacy_has_data)
 
 
 def clean_workshop_validation_rows(
@@ -3680,6 +3985,7 @@ def clean_workshop_validation_substep_status(
     *,
     phase_saved: bool = False,
     prerequisite_warning_count: int = 0,
+    saved_substeps: set[str] | None = None,
 ) -> dict[str, str]:
     has_service_data = any(
         [
@@ -3705,8 +4011,20 @@ def clean_workshop_validation_substep_status(
     )
     return {
         "prerequisitos": "OK" if prerequisite_warning_count == 0 else f"{prerequisite_warning_count} avisos",
-        "pedido": "Guardado" if has_decision or has_history_answer or has_service_data else "Por validar",
-        "orientacao": "Guardado" if orientation_has_data else "Rascunho",
+        "pedido": "Guardado"
+        if clean_workshop_substep_is_saved(
+            saved_substeps,
+            "pedido",
+            legacy_has_data=has_decision or has_history_answer or has_service_data,
+        )
+        else "Por validar",
+        "orientacao": "Guardado"
+        if clean_workshop_substep_is_saved(
+            saved_substeps,
+            "orientacao",
+            legacy_has_data=orientation_has_data,
+        )
+        else "Rascunho",
     }
 
 
@@ -3814,21 +4132,25 @@ def clean_workshop_validation_prerequisites(
     ]
 
 
+CLEAN_WORKSHOP_REPORT_TERMINAL_STATUSES = {"OK", "Corrigido", "Não legível", "Não aplicável"}
+
+
+def clean_workshop_report_is_complete(report: WorkshopPhasedTechnicalReport) -> bool:
+    extracted = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+    validated = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
+    if extracted:
+        return all(
+            str((validated.get(str(code)) or {}).get("status") or "Por validar")
+            in CLEAN_WORKSHOP_REPORT_TERMINAL_STATUSES
+            for code in extracted
+        )
+    manual = validated.get("manual_reading") if isinstance(validated.get("manual_reading"), dict) else {}
+    return str(manual.get("status") or "Por validar") in CLEAN_WORKSHOP_REPORT_TERMINAL_STATUSES
+
+
 def clean_workshop_technical_report_summary(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> dict[str, dict[str, object]]:
-    terminal_statuses = {"OK", "Corrigido", "Não legível", "Não aplicável"}
-
-    def is_complete(report: WorkshopPhasedTechnicalReport) -> bool:
-        extracted = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
-        validated = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
-        if extracted:
-            return all(
-                str((validated.get(str(code)) or {}).get("status") or "Por validar") in terminal_statuses
-                for code in extracted
-            )
-        manual = validated.get("manual_reading") if isinstance(validated.get("manual_reading"), dict) else {}
-        return str(manual.get("status") or "Por validar") in terminal_statuses
 
     status_labels = {
         "pending_validation": "Por validar",
@@ -3847,7 +4169,7 @@ def clean_workshop_technical_report_summary(
     for code, items in grouped.items():
         latest = sorted(items, key=lambda item: item.id, reverse=True)[0]
         extracted_values = latest.extracted_values_json if isinstance(latest.extracted_values_json, dict) else {}
-        complete = is_complete(latest)
+        complete = clean_workshop_report_is_complete(latest)
         if complete:
             display_status = (
                 "Validado manual"
@@ -3999,21 +4321,8 @@ def clean_workshop_technical_reading_groups(
 def clean_workshop_diagnostic_substep_status(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> dict[str, str]:
-    terminal_statuses = {"OK", "Corrigido", "Não legível", "Não aplicável"}
-
-    def is_complete(report: WorkshopPhasedTechnicalReport) -> bool:
-        extracted = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
-        validated = report.validated_values_json if isinstance(report.validated_values_json, dict) else {}
-        if extracted:
-            return bool(extracted) and all(
-                str((validated.get(str(code)) or {}).get("status") or "Por validar") in terminal_statuses
-                for code in extracted
-            )
-        manual = validated.get("manual_reading") if isinstance(validated.get("manual_reading"), dict) else {}
-        return str(manual.get("status") or "Por validar") in terminal_statuses
-
     active_reports = [report for report in reports if report.status not in {"voided", "superseded"}]
-    pending = [report for report in active_reports if not is_complete(report)]
+    pending = [report for report in active_reports if not clean_workshop_report_is_complete(report)]
     extracted = [
         report
         for report in active_reports
@@ -4033,6 +4342,7 @@ def clean_workshop_diagnostic_substep_status(
 def clean_workshop_diagnostic_form_status(
     snapshot: dict[str, object],
     reports: list[WorkshopPhasedTechnicalReport],
+    saved_substeps: set[str] | None = None,
 ) -> dict[str, str]:
     report_status = clean_workshop_diagnostic_substep_status(reports)
     comparison_has_data = any(
@@ -4071,13 +4381,22 @@ def clean_workshop_diagnostic_form_status(
     return {
         "relatorios": report_status["relatorios"],
         "leituras": report_status["leituras"],
-        "comparacao": "Guardado" if comparison_has_data else "Por validar",
-        "problemas": "Guardado" if problem_has_data else "Por validar",
-        "saida": "Rascunho" if exit_has_data else "Pendente",
+        "comparacao": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "comparacao", legacy_has_data=comparison_has_data)
+        else "Por validar",
+        "problemas": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "problemas", legacy_has_data=problem_has_data)
+        else "Por validar",
+        "saida": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "saida-diagnostico", legacy_has_data=exit_has_data)
+        else "Pendente",
     }
 
 
-def clean_workshop_inspection_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+def clean_workshop_inspection_form_status(
+    snapshot: dict[str, object],
+    saved_substeps: set[str] | None = None,
+) -> dict[str, str]:
     checklist_keys = [
         "inspection_check_lights",
         "inspection_check_battery",
@@ -4125,14 +4444,25 @@ def clean_workshop_inspection_form_status(snapshot: dict[str, object]) -> dict[s
     if checklist_has_data:
         checklist_status = "Guardado" if checklist_pending == 0 else f"{checklist_pending} por rever"
     return {
-        "checklist": checklist_status,
-        "pneus_travoes": "Guardado" if tyres_brakes_has_data else "Por validar",
-        "oleo_niveis": "Guardado" if oil_levels_has_data else "Por validar",
-        "saida": "Rascunho" if exit_has_data else "Pendente",
+        "checklist": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "checklist", legacy_has_data=checklist_pending == 0 and checklist_has_data)
+        else checklist_status,
+        "pneus_travoes": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "pneus-travoes", legacy_has_data=tyres_brakes_has_data)
+        else "Por validar",
+        "oleo_niveis": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "oleo-niveis", legacy_has_data=oil_levels_has_data)
+        else "Por validar",
+        "saida": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "saida-inspecao", legacy_has_data=exit_has_data)
+        else "Pendente",
     }
 
 
-def clean_workshop_audit_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+def clean_workshop_audit_form_status(
+    snapshot: dict[str, object],
+    saved_substeps: set[str] | None = None,
+) -> dict[str, str]:
     evidence_has_data = bool(clean_form_value(snapshot, "audit_evidence_summary").strip())
     coherence_has_data = any(
         [
@@ -4167,15 +4497,28 @@ def clean_workshop_audit_form_status(snapshot: dict[str, object]) -> dict[str, s
         ]
     )
     return {
-        "evidencias": "Guardado" if evidence_has_data else "Por fechar",
-        "coerencia": "Guardado" if coherence_has_data else "Por validar",
-        "problemas": "Guardado" if problems_has_data else "Por fechar",
-        "decisao": "Guardado" if decision_has_data else "Pendente",
-        "saida": "Rascunho" if exit_has_data else "Pendente",
+        "evidencias": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "evidencias", legacy_has_data=evidence_has_data)
+        else "Por fechar",
+        "coerencia": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "coerencia", legacy_has_data=coherence_has_data)
+        else "Por validar",
+        "problemas": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "problemas-auditoria", legacy_has_data=problems_has_data)
+        else "Por fechar",
+        "decisao": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "decisao", legacy_has_data=decision_has_data)
+        else "Pendente",
+        "saida": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "saida-auditoria", legacy_has_data=exit_has_data)
+        else "Pendente",
     }
 
 
-def clean_workshop_repair_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+def clean_workshop_repair_form_status(
+    snapshot: dict[str, object],
+    saved_substeps: set[str] | None = None,
+) -> dict[str, str]:
     order_has_data = bool(clean_form_value(snapshot, "repair_authorized_services").strip())
     execution_has_data = any(
         [
@@ -4219,15 +4562,28 @@ def clean_workshop_repair_form_status(snapshot: dict[str, object]) -> dict[str, 
         ]
     )
     return {
-        "ordem": "Guardado" if order_has_data else "Em curso",
-        "execucao": "Guardado" if execution_has_data else "Por atualizar",
-        "evidencias": "Guardado" if evidence_has_data else "Pendente",
-        "desvios": "Guardado" if deviations_has_data else "Sem desvios",
-        "saida": "Rascunho" if exit_has_data else "Pendente",
+        "ordem": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "ordem-reparacao", legacy_has_data=order_has_data)
+        else "Em curso",
+        "execucao": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "execucao", legacy_has_data=execution_has_data)
+        else "Por atualizar",
+        "evidencias": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "evidencias-reparacao", legacy_has_data=evidence_has_data)
+        else "Pendente",
+        "desvios": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "desvios", legacy_has_data=deviations_has_data)
+        else "Sem desvios",
+        "saida": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "saida-reparacao", legacy_has_data=exit_has_data)
+        else "Pendente",
     }
 
 
-def clean_workshop_closure_form_status(snapshot: dict[str, object]) -> dict[str, str]:
+def clean_workshop_closure_form_status(
+    snapshot: dict[str, object],
+    saved_substeps: set[str] | None = None,
+) -> dict[str, str]:
     final_validation_has_data = any(
         [
             clean_form_value(snapshot, "closure_vehicle_ready").strip(),
@@ -4281,11 +4637,21 @@ def clean_workshop_closure_form_status(snapshot: dict[str, object]) -> dict[str,
         ]
     )
     return {
-        "validacao": "Guardado" if final_validation_has_data else "Por validar",
-        "documentos": "Guardado" if documents_has_data else "Pendente",
-        "historico": "Guardado" if history_has_data else "Pendente",
-        "pendencias": "Guardado" if pending_has_data else "Pendente",
-        "encerramento": "Rascunho" if closing_has_data else "Pendente",
+        "validacao": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "validacao-final", legacy_has_data=final_validation_has_data)
+        else "Por validar",
+        "documentos": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "documentos-fecho", legacy_has_data=documents_has_data)
+        else "Pendente",
+        "historico": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "historico-fecho", legacy_has_data=history_has_data)
+        else "Pendente",
+        "pendencias": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "pendencias-fecho", legacy_has_data=pending_has_data)
+        else "Pendente",
+        "encerramento": "Guardado"
+        if clean_workshop_substep_is_saved(saved_substeps, "encerramento", legacy_has_data=closing_has_data)
+        else "Pendente",
     }
 
 
@@ -5100,6 +5466,7 @@ def clean_workshop_phase(
     selected_report_id: int | None = None,
     historical: bool = False,
     new: bool = False,
+    error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5159,6 +5526,8 @@ def clean_workshop_phase(
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             validation_prerequisites = clean_workshop_validation_prerequisites(db, None, vehicle_context)
     technical_reading_groups = clean_workshop_technical_reading_groups(technical_reports)
+    saved_substeps = clean_workshop_saved_substeps(phase_data)
+    phase_uploads = phase_data.get("uploads") if isinstance(phase_data.get("uploads"), list) else []
     selected_reading_report_id = str(selected_report_id) if selected_report_id else ""
     if selected_reading_report_id and not any(
         str(group.get("report_id")) == selected_reading_report_id for group in technical_reading_groups
@@ -5181,11 +5550,13 @@ def clean_workshop_phase(
             "active_step": phase,
             "phase_data": phase_data,
             "phase_form": phase_form,
+            "phase_uploads": phase_uploads,
             "validation_service_rows": clean_workshop_validation_rows(phase_form, entry_form),
             "validation_substep_status": clean_workshop_validation_substep_status(
                 phase_form,
                 phase_saved=bool(phase_data.get("saved_at")),
                 prerequisite_warning_count=prerequisite_warning_count,
+                saved_substeps=saved_substeps,
             ),
             "validation_prerequisites": validation_prerequisites,
             "validation_observation": clean_form_value(phase_form, "validation_observation"),
@@ -5195,18 +5566,88 @@ def clean_workshop_phase(
             "technical_reading_groups": technical_reading_groups,
             "selected_reading_report_id": selected_reading_report_id,
             "diagnostic_substep_status": clean_workshop_diagnostic_substep_status(technical_reports),
-            "diagnostic_form_status": clean_workshop_diagnostic_form_status(phase_form, technical_reports),
-            "inspection_form_status": clean_workshop_inspection_form_status(phase_form),
-            "audit_form_status": clean_workshop_audit_form_status(phase_form),
-            "repair_form_status": clean_workshop_repair_form_status(phase_form),
-            "closure_form_status": clean_workshop_closure_form_status(phase_form),
+            "diagnostic_form_status": clean_workshop_diagnostic_form_status(
+                phase_form,
+                technical_reports,
+                saved_substeps,
+            ),
+            "inspection_form_status": clean_workshop_inspection_form_status(phase_form, saved_substeps),
+            "audit_form_status": clean_workshop_audit_form_status(phase_form, saved_substeps),
+            "repair_form_status": clean_workshop_repair_form_status(phase_form, saved_substeps),
+            "closure_form_status": clean_workshop_closure_form_status(phase_form, saved_substeps),
             "vehicle_detail_href": vehicle_detail_href,
             "vehicle_documents_href": vehicle_documents_href,
             "task_board_href": task_board_href,
             "audit_href": audit_href,
+            "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
             **phase_nav,
         },
     )
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/records", response_class=HTMLResponse)
+def clean_workshop_create_record(
+    request: Request,
+    process_id: int,
+    record_type: str = Form("task"),
+    phase: str = Form("entrada"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    is_problem = record_type == "problem"
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+
+        phase_label = CLEAN_WORKSHOP_PHASES.get(phase, {}).get("title", phase.title())
+        process_ref = f"OFI-{process.created_at.year if process.created_at else datetime.now().year}-{process.id:06d}"
+        plate = process.plate_snapshot or "Sem matrícula"
+        kind_label = "Problema" if is_problem else "Tarefa"
+        task = Task(
+            title=f"{kind_label} oficina · {plate} · {phase_label}",
+            description=(
+                f"Criado a partir do processo {process_ref}, fase {phase_label}. "
+                "Completar descrição, responsável e prazo no Centro de Tarefas."
+            ),
+            task_type="workshop_problem" if is_problem else "workshop_task",
+            source="workshop_v2_clean",
+            category="workshop",
+            subcategory="problem" if is_problem else "workshop_process",
+            status="new",
+            priority="high" if is_problem else "normal",
+            plate=process.plate_snapshot,
+            external_source_id=f"workshop:{process.id}:{phase}:{record_type}:{datetime.now(UTC).timestamp()}",
+            entity_type="workshop_phased_process",
+            entity_id=str(process.id),
+            team_id=default_team_id(db, "workshop"),
+            created_by_id=user_id,
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=None,
+                new_value="new",
+            )
+        )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"{kind_label} criado a partir de {process_ref} ({phase_label})",
+            user_id=user_id,
+        )
+        db.commit()
+        task_id = task.id
+
+    return RedirectResponse(f"/task-board/{task_id}", status_code=303)
 
 
 @web_router.post("/v2-clean/workshop/{phase}/save", response_class=HTMLResponse)
@@ -5281,9 +5722,38 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
 
         phase_data = dict(phase_row.data_json or {})
+        stored_uploads = await clean_workshop_store_phase_uploads(
+            db,
+            process,
+            phase,
+            form,
+            user_id,
+        )
+        for upload in stored_uploads:
+            status_update = CLEAN_WORKSHOP_UPLOAD_STATUS_UPDATES.get(str(upload.get("field") or ""))
+            if status_update:
+                form_snapshot[status_update[0]] = status_update[1]
+        existing_uploads = phase_data.get("uploads")
+        if not isinstance(existing_uploads, list):
+            existing_uploads = []
+        if stored_uploads:
+            phase_data["uploads"] = [*existing_uploads, *stored_uploads]
+        existing_snapshot = (
+            dict(phase_data.get("form_snapshot") or {})
+            if isinstance(phase_data.get("form_snapshot"), dict)
+            else {}
+        )
+        if action in {"save_substep", "advance_substep"}:
+            existing_snapshot.update(form_snapshot)
+            form_snapshot = existing_snapshot
+
+        saved_substeps = clean_workshop_saved_substeps(phase_data)
+        if current_substep and action in {"save", "save_substep", "advance_substep", "advance"}:
+            saved_substeps.add(current_substep)
         phase_data.update(
             {
                 "form_snapshot": form_snapshot,
+                "saved_substeps": sorted(saved_substeps),
                 "saved_at": now.isoformat(),
                 "saved_by_id": user_id,
                 "last_action": action,
@@ -5293,6 +5763,31 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         phase_row.started_at = phase_row.started_at or now
 
         if action == "advance":
+            phase_reports = (
+                db.scalars(
+                    select(WorkshopPhasedTechnicalReport).where(
+                        WorkshopPhasedTechnicalReport.process_id == process.id
+                    )
+                ).all()
+                if phase == "diagnostico"
+                else []
+            )
+            advance_error = clean_workshop_phase_advance_error(phase, form_snapshot, phase_reports)
+            if advance_error:
+                phase_row.status = "in_progress"
+                process.current_phase_code = phase
+                db.commit()
+                redirect_url = (
+                    f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+                    f"&error={advance_error}"
+                )
+                if current_substep:
+                    redirect_url = f"{redirect_url}#{current_substep}"
+                return RedirectResponse(redirect_url, status_code=303)
+
+            saved_substeps.update(known_substeps)
+            phase_data["saved_substeps"] = sorted(saved_substeps)
+            phase_row.data_json = phase_data
             phase_row.status = "completed"
             phase_row.completed_at = now
             phase_row.completed_by_id = user_id

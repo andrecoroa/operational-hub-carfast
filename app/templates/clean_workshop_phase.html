@@ -17,8 +17,18 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
-        <button type="button" class="button-link secondary-link">Criar tarefa</button>
-        <button type="button" class="button-link danger-link">Criar problema</button>
+        {% if workshop_process %}
+          <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
+            <input type="hidden" name="record_type" value="task">
+            <input type="hidden" name="phase" value="{{ phase_key }}">
+            <button type="submit" class="button-link secondary-link">Criar tarefa</button>
+          </form>
+          <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
+            <input type="hidden" name="record_type" value="problem">
+            <input type="hidden" name="phase" value="{{ phase_key }}">
+            <button type="submit" class="button-link danger-link">Criar problema</button>
+          </form>
+        {% endif %}
       </div>
     </header>
 
@@ -51,6 +61,13 @@
           <p>Os dados ficam disponíveis para consulta, histórico da viatura e futuras auditorias.</p>
         </div>
         <a class="button-link primary-link" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
+      </section>
+    {% endif %}
+
+    {% if phase_error %}
+      <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
+        <strong>Não é possível avançar.</strong>
+        <span>{{ phase_error }}</span>
       </section>
     {% endif %}
 
@@ -114,9 +131,9 @@
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pedido</p><h3>Validação do serviço pedido</h3><p>Depois de consultar histórico, confirmas que serviço ou serviços devem seguir para diagnóstico/decisão. O pedido de entrada não é alterado.</p></div></div>
               <div class="clean-phase-field-grid">
                 <div class="clean-history-quick-actions">
-                  <a href="/documents">Consultar folhas de obra</a>
-                  <a href="/documents">Consultar faturas</a>
-                  <a href="/documents">Consultar relatórios anteriores</a>
+                  <a href="{{ vehicle_documents_href }}?doc_group=work_orders">Consultar folhas de obra</a>
+                  <a href="{{ vehicle_documents_href }}?doc_group=invoices">Consultar faturas</a>
+                  <a href="{{ vehicle_documents_href }}?doc_group=technical_reports">Consultar relatórios anteriores</a>
                 </div>
                 <div class="clean-service-validation-list">
                   <div class="clean-service-validation-head">
@@ -169,7 +186,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Validação administrativa fechada?<select name="validation_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("validation_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Validação administrativa fechada?<select name="validation_closed">{% for option in ["Por confirmar", "Sim", "Com reservas", "Não"] %}<option{% if phase_form.get("validation_closed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Prioridade técnica<select name="validation_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("validation_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Diagnóstico Técnico" readonly></label>
                 </div>
@@ -392,7 +409,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Diagnóstico fechado?<select name="diagnostic_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("diagnostic_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Diagnóstico fechado?<select name="diagnostic_closed">{% for option in ["Por confirmar", "Sim", "Com reservas", "Não"] %}<option{% if phase_form.get("diagnostic_closed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Prioridade técnica<select name="diagnostic_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("diagnostic_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Inspeção Técnica" readonly></label>
                 </div>
@@ -445,11 +462,11 @@
                 <span><b>P/R</b> Por rever</span>
               </div>
               <div class="clean-check-list">
-                <div class="clean-check-row"><strong>Luzes e sinalização</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Luzes e sinalização"><label><input type="radio" name="inspection_check_lights" value="ok"{% if phase_form.get("inspection_check_lights", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_lights" value="nc"{% if phase_form.get("inspection_check_lights", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_lights" value="na"{% if phase_form.get("inspection_check_lights", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_lights" value="review"{% if phase_form.get("inspection_check_lights", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_lights_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_lights_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Bateria / arranque</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Bateria / arranque"><label><input type="radio" name="inspection_check_battery" value="ok"{% if phase_form.get("inspection_check_battery", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_battery" value="nc"{% if phase_form.get("inspection_check_battery", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_battery" value="na"{% if phase_form.get("inspection_check_battery", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_battery" value="review"{% if phase_form.get("inspection_check_battery", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_battery_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_battery_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Fugas visíveis</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Fugas visíveis"><label><input type="radio" name="inspection_check_leaks" value="ok"{% if phase_form.get("inspection_check_leaks", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_leaks" value="nc"{% if phase_form.get("inspection_check_leaks", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_leaks" value="na"{% if phase_form.get("inspection_check_leaks", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_leaks" value="review"{% if phase_form.get("inspection_check_leaks", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_leaks_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_leaks_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Ruídos anormais</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Ruídos anormais"><label><input type="radio" name="inspection_check_noises" value="ok"{% if phase_form.get("inspection_check_noises", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_noises" value="nc"{% if phase_form.get("inspection_check_noises", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_noises" value="na"{% if phase_form.get("inspection_check_noises", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_noises" value="review"{% if phase_form.get("inspection_check_noises", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_noises_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_noises_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
-                <div class="clean-check-row"><strong>Teste de estrada</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Teste de estrada"><label><input type="radio" name="inspection_check_road_test" value="ok"{% if phase_form.get("inspection_check_road_test", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_road_test" value="nc"{% if phase_form.get("inspection_check_road_test", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_road_test" value="na"{% if phase_form.get("inspection_check_road_test", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_road_test" value="review"{% if phase_form.get("inspection_check_road_test", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_road_test_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_road_test_note', '') }}"><label>Foto<input type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Luzes e sinalização</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Luzes e sinalização"><label><input type="radio" name="inspection_check_lights" value="ok"{% if phase_form.get("inspection_check_lights", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_lights" value="nc"{% if phase_form.get("inspection_check_lights", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_lights" value="na"{% if phase_form.get("inspection_check_lights", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_lights" value="review"{% if phase_form.get("inspection_check_lights", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_lights_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_lights_note', '') }}"><label>Foto<input name="inspection_lights_photo" type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Bateria / arranque</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Bateria / arranque"><label><input type="radio" name="inspection_check_battery" value="ok"{% if phase_form.get("inspection_check_battery", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_battery" value="nc"{% if phase_form.get("inspection_check_battery", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_battery" value="na"{% if phase_form.get("inspection_check_battery", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_battery" value="review"{% if phase_form.get("inspection_check_battery", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_battery_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_battery_note', '') }}"><label>Foto<input name="inspection_battery_photo" type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Fugas visíveis</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Fugas visíveis"><label><input type="radio" name="inspection_check_leaks" value="ok"{% if phase_form.get("inspection_check_leaks", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_leaks" value="nc"{% if phase_form.get("inspection_check_leaks", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_leaks" value="na"{% if phase_form.get("inspection_check_leaks", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_leaks" value="review"{% if phase_form.get("inspection_check_leaks", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_leaks_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_leaks_note', '') }}"><label>Foto<input name="inspection_leaks_photo" type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Ruídos anormais</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Ruídos anormais"><label><input type="radio" name="inspection_check_noises" value="ok"{% if phase_form.get("inspection_check_noises", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_noises" value="nc"{% if phase_form.get("inspection_check_noises", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_noises" value="na"{% if phase_form.get("inspection_check_noises", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_noises" value="review"{% if phase_form.get("inspection_check_noises", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_noises_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_noises_note', '') }}"><label>Foto<input name="inspection_noises_photo" type="file" accept="image/*" capture="environment"></label></div>
+                <div class="clean-check-row"><strong>Teste de estrada</strong><div class="clean-check-choice-boxes" role="radiogroup" aria-label="Teste de estrada"><label><input type="radio" name="inspection_check_road_test" value="ok"{% if phase_form.get("inspection_check_road_test", "review") == "ok" %} checked{% endif %}><span>OK</span></label><label><input type="radio" name="inspection_check_road_test" value="nc"{% if phase_form.get("inspection_check_road_test", "review") == "nc" %} checked{% endif %}><span>NC</span></label><label><input type="radio" name="inspection_check_road_test" value="na"{% if phase_form.get("inspection_check_road_test", "review") == "na" %} checked{% endif %}><span>N/A</span></label><label><input type="radio" name="inspection_check_road_test" value="review"{% if phase_form.get("inspection_check_road_test", "review") == "review" %} checked{% endif %}><span>P/R</span></label></div><input name="inspection_check_road_test_note" placeholder="Observação" value="{{ phase_form.get('inspection_check_road_test_note', '') }}"><label>Foto<input name="inspection_road_test_photo" type="file" accept="image/*" capture="environment"></label></div>
               </div>
             </article>
 
@@ -472,7 +489,7 @@
                 <label>Líquido refrigeração<select name="coolant_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("coolant_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Líquido travões<select name="brake_fluid_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("brake_fluid_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Confirma suspeita do diagnóstico?<select name="oil_diagnosis_confirmed">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("oil_diagnosis_confirmed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Evidência/foto<label class="clean-file-button">Carregar foto<input type="file" accept="image/*" capture="environment"></label></label>
+                <label>Evidência/foto<label class="clean-file-button">Carregar foto<input name="inspection_tyres_brakes_photo" type="file" accept="image/*" capture="environment"></label></label>
                 <label>Observação<textarea name="oil_levels_observation" rows="3" placeholder="Registar sinais físicos, incoerências ou limitações da inspeção...">{{ phase_form.get("oil_levels_observation", "") }}</textarea></label>
               </div>
             </article>
@@ -486,7 +503,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Inspeção fechada?<select name="inspection_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("inspection_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Inspeção fechada?<select name="inspection_closed">{% for option in ["Por confirmar", "Sim", "Com reservas", "Não"] %}<option{% if phase_form.get("inspection_closed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Prioridade<select name="inspection_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("inspection_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Auditoria e Validação" readonly></label>
                 </div>
@@ -537,12 +554,11 @@
                 <span class="clean-status-pill warn">2 por validar</span>
               </div>
               <label>Resumo das evidências<textarea name="audit_evidence_summary" rows="4" placeholder="Sintetizar o que ficou provado no diagnóstico, inspeção e histórico...">{{ phase_form.get("audit_evidence_summary", "") }}</textarea></label>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Origem</b><b>Estado</b><b>Conclusão</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Diagnóstico técnico</span><em>Com reserva</em><strong>Diluição óleo crítica e BSI por confirmar</strong><mark class="warn">Aviso</mark><a href="/v2-clean/workshop/diagnostico">Abrir</a></div>
-                <div><span>Inspeção técnica</span><em>Por fechar</em><strong>Falta validar pneus/travões</strong><mark class="warn">Aviso</mark><a href="/v2-clean/workshop/inspecao">Abrir</a></div>
-                <div><span>Histórico viatura</span><em>Em curso</em><strong>Auditoria histórica ainda não concluída</strong><mark class="warn">Reserva</mark><a href="/management-center/auditorias">Abrir</a></div>
-                <div><span>Documentação</span><em>Parcial</em><strong>FO existe; fatura por confirmar</strong><mark class="ok">Informativo</mark><a href="/documents">Ver</a></div>
+              <div class="clean-phase-source-links">
+                <a href="/v2-clean/workshop/diagnostico?process_id={{ workshop_process.id }}">Consultar diagnóstico</a>
+                <a href="/v2-clean/workshop/inspecao?process_id={{ workshop_process.id }}">Consultar inspeção</a>
+                <a href="{{ audit_href }}">Consultar auditoria histórica</a>
+                <a href="{{ vehicle_documents_href }}">Consultar documentação</a>
               </div>
             </article>
 
@@ -554,25 +570,13 @@
                 <label>Telecarregamento vs TSB<select name="audit_remote_download_result">{% for option in ["Por confirmar", "OK", "Divergente"] %}<option{% if phase_form.get("audit_remote_download_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Repetição do serviço<select name="audit_service_repeat_result">{% for option in ["Por confirmar", "Não", "Sim - justificada", "Sim - suspeita"] %}<option{% if phase_form.get("audit_service_repeat_result", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
               </div>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Validação</b><b>Fonte</b><b>Resultado</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>BSI vs serviços faturados</span><em>Relatório + faturas</em><strong>Divergência por confirmar</strong><mark class="warn">Investigar</mark><a href="#">Criar tarefa</a></div>
-                <div><span>Óleo vs limite técnico</span><em>Lubrificação motor</em><strong>25,18% diluição</strong><mark class="danger">Crítico</mark><a href="#">Problema</a></div>
-                <div><span>Telecarregamento obrigatório</span><em>TSB / relatório</em><strong>Por confirmar</strong><mark class="warn">Aviso</mark><a href="#">Validar</a></div>
-                <div><span>Repetição do serviço</span><em>FO / histórico</em><strong>Serviço recente: 12/02/2026</strong><mark class="warn">Aviso</mark><a href="#">Analisar</a></div>
-              </div>
+              <p class="clean-data-note">Os resultados apresentados nesta subfase são exclusivamente os valores registados acima. Não são introduzidos valores de exemplo.</p>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-problemas-auditoria">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pendências</p><h3>Problemas e tarefas abertas</h3><p>O processo não deve perder problemas identificados durante diagnóstico ou inspeção.</p></div></div>
               <label>Resumo de problemas / tarefas<textarea name="audit_open_items_summary" rows="4" placeholder="Registar pendências confirmadas, tarefas abertas e problemas a discutir...">{{ phase_form.get("audit_open_items_summary", "") }}</textarea></label>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Tipo</b><b>Origem</b><b>Resumo</b><b>Prioridade</b><b>Ação</b></div>
-                <div><span>Problema</span><em>Diagnóstico</em><strong>Diluição óleo acima do limite</strong><mark class="danger">Crítica</mark><a href="#">Abrir</a></div>
-                <div><span>Problema</span><em>Telecarregamento</em><strong>Data futura no relatório</strong><mark class="danger">Alta</mark><a href="#">Abrir</a></div>
-                <div><span>Tarefa</span><em>Campanhas</em><strong>Executar campanha Service Box</strong><mark class="warn">Alta</mark><a href="/task-board">Abrir</a></div>
-                <div><span>Tarefa</span><em>Documentação</em><strong>Confirmar fatura do serviço</strong><mark class="warn">Normal</mark><a href="/task-board">Abrir</a></div>
-              </div>
+              <div class="clean-phase-source-links"><a href="{{ task_board_href }}">Consultar tarefas e problemas reais deste processo</a></div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-decisao">
@@ -596,7 +600,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Auditoria fechada?<select name="audit_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("audit_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Auditoria fechada?<select name="audit_closed">{% for option in ["Por confirmar", "Sim", "Com reservas", "Não"] %}<option{% if phase_form.get("audit_closed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Prioridade<select name="audit_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("audit_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Reparação" readonly></label>
                 </div>
@@ -647,12 +651,11 @@
                 <span class="clean-status-pill warn">Com reserva</span>
               </div>
               <label>Serviços autorizados<textarea name="repair_authorized_services" rows="4" placeholder="Resumo do que foi autorizado executar nesta reparação...">{{ phase_form.get("repair_authorized_services", "") }}</textarea></label>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Serviço</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Confirmar óleo / lubrificação</span><em>Auditoria</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir decisão</a></div>
-                <div><span>Validar BSI/manutenção</span><em>Diagnóstico</em><strong>Autorizado</strong><mark class="warn">Prioritário</mark><a href="#">Abrir relatório</a></div>
-                <div><span>Executar campanha</span><em>Service Box</em><strong>Pendente</strong><mark class="warn">Pendência</mark><a href="/task-board">Tarefa</a></div>
-                <div><span>Pneus/travões</span><em>Inspeção</em><strong>Por confirmar</strong><mark class="ok">Informativo</mark><a href="#">Ver inspeção</a></div>
+              <div class="clean-phase-source-links">
+                <a href="/v2-clean/workshop/auditoria?process_id={{ workshop_process.id }}">Consultar decisão</a>
+                <a href="/v2-clean/workshop/diagnostico?process_id={{ workshop_process.id }}">Consultar diagnóstico</a>
+                <a href="/v2-clean/workshop/inspecao?process_id={{ workshop_process.id }}">Consultar inspeção</a>
+                <a href="{{ task_board_href }}">Consultar tarefas</a>
               </div>
             </article>
 
@@ -660,7 +663,7 @@
               <div class="table-heading flat-heading"><div><p class="eyebrow">Execução</p><h3>Acompanhamento da reparação</h3><p>Atualizar o estado real do trabalho e previsão de conclusão.</p></div></div>
               <div class="clean-phase-field-grid">
                 <label>Estado da reparação<select name="repair_execution_status">{% for option in ["Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"] %}<option{% if phase_form.get("repair_execution_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Responsável/oficina<input name="repair_responsible" value="{{ phase_form.get('repair_responsible', 'Oficina Porto') }}"></label>
+                <label>Responsável/oficina<input name="repair_responsible" placeholder="Responsável ou oficina" value="{{ phase_form.get('repair_responsible', '') }}"></label>
                 <label>Início reparação<input type="date" name="repair_started_on" value="{{ phase_form.get('repair_started_on', '') }}"></label>
                 <label>Previsão conclusão<input type="date" name="repair_eta" value="{{ phase_form.get('repair_eta', '') }}"></label>
                 <label>Viatura imobilizada?<select name="repair_vehicle_immobilized">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("repair_vehicle_immobilized", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
@@ -678,10 +681,10 @@
               </div>
               <div class="clean-report-list">
                 <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
-                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra</strong><small>Obrigatória para fechar reparação</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos da reparação</strong><small>Evidência visual do trabalho executado</small></div><mark class="warn">Recomendado</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="image/*" capture="environment" multiple></label><button type="button">Dispensar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório quando houve diagnóstico técnico prévio</small></div><mark class="warn">Condicional</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">CMP</span><div><strong>Comprovativo campanha</strong><small>Necessário se havia campanha por executar</small></div><mark class="warn">Pendência</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Abrir tarefa</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra</strong><small>Obrigatória para fechar reparação</small></div><mark class="danger">Obrigatório</mark><em>{{ phase_form.get("repair_fo_status", "Em falta") }}</em><div class="clean-report-actions"><label>Carregar<input name="repair_work_order_file" type="file" accept="application/pdf,image/*"></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos da reparação</strong><small>Evidência visual do trabalho executado</small></div><mark class="warn">Recomendado</mark><em>{{ phase_form.get("repair_photos_status", "Em falta") }}</em><div class="clean-report-actions"><label>Carregar<input name="repair_photos_files" type="file" accept="image/*" capture="environment" multiple></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório quando houve diagnóstico técnico prévio</small></div><mark class="warn">Condicional</mark><em>{{ phase_form.get("repair_post_report_status", "Em falta") }}</em><div class="clean-report-actions"><label>Carregar<input name="repair_post_report_file" type="file" accept="application/pdf,image/*"></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">CMP</span><div><strong>Comprovativo campanha</strong><small>Necessário se havia campanha por executar</small></div><mark class="warn">Pendência</mark><em>{{ phase_form.get("repair_campaign_proof_status", "N/A") }}</em><div class="clean-report-actions"><label>Carregar<input name="repair_campaign_proof_file" type="file" accept="application/pdf,image/*"></label></div></div>
               </div>
             </article>
 
@@ -706,7 +709,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Reparação fechada?<select name="repair_closed">{% for option in ["Com reservas", "Sim", "Não"] %}<option{% if phase_form.get("repair_closed", "Com reservas") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Reparação fechada?<select name="repair_closed">{% for option in ["Por confirmar", "Sim", "Com reservas", "Não"] %}<option{% if phase_form.get("repair_closed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Estado de saída<select name="repair_exit_status">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("repair_exit_status", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Validação e Fecho" readonly></label>
                 </div>
@@ -780,10 +783,10 @@
               </div>
               <div class="clean-report-list">
                 <div class="clean-report-row clean-report-row-head"><b>Documento</b><b>Aplicação</b><b>Estado</b><b>Ações</b></div>
-                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra fechada</strong><small>Documento base da intervenção</small></div><mark class="danger">Obrigatório</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Validar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">FAT</span><div><strong>Fatura esperada</strong><small>Pode ficar como pendência se ainda não emitida</small></div><mark class="warn">Condicional</mark><em>Pendente</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Criar pendência</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório se diagnóstico exigiu prova pós</small></div><mark class="warn">Condicional</mark><em>Em falta</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="application/pdf,image/*"></label><button type="button">Justificar</button></div></div>
-                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos finais</strong><small>Quadrante e evidência visual de saída</small></div><mark class="warn">Recomendado</mark><em>Parcial</em><div class="clean-report-actions"><label>Carregar<input type="file" accept="image/*" capture="environment" multiple></label><button type="button">Validar</button></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FO</span><div><strong>Folha de obra fechada</strong><small>Documento base da intervenção</small></div><mark class="danger">Obrigatório</mark><em>{{ phase_form.get("closure_work_order_status", "Em falta") }}</em><div class="clean-report-actions"><label>Carregar<input name="closure_work_order_file" type="file" accept="application/pdf,image/*"></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FAT</span><div><strong>Fatura esperada</strong><small>Pode ficar como pendência se ainda não emitida</small></div><mark class="warn">Condicional</mark><em>{{ phase_form.get("closure_invoice_status", "Pendente") }}</em><div class="clean-report-actions"><label>Carregar<input name="closure_invoice_file" type="file" accept="application/pdf,image/*"></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">POS</span><div><strong>Relatório pós-intervenção</strong><small>Obrigatório se diagnóstico exigiu prova pós</small></div><mark class="warn">Condicional</mark><em>{{ phase_form.get("closure_post_report_status", "Em falta") }}</em><div class="clean-report-actions"><label>Carregar<input name="closure_post_report_file" type="file" accept="application/pdf,image/*"></label></div></div>
+                <div class="clean-report-row"><span class="audit-report-icon">FOT</span><div><strong>Fotos finais</strong><small>Quadrante e evidência visual de saída</small></div><mark class="warn">Recomendado</mark><em>{{ phase_form.get("closure_final_photos_status", "Parcial") }}</em><div class="clean-report-actions"><label>Carregar<input name="closure_final_photos_files" type="file" accept="image/*" capture="environment" multiple></label></div></div>
               </div>
             </article>
 
@@ -796,13 +799,11 @@
                 <label>Auditoria histórico<select name="closure_audit_history_status">{% for option in ["Em curso", "Fechada", "Reserva"] %}<option{% if phase_form.get("closure_audit_history_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Estado venda/frota<select name="closure_sale_state_status">{% for option in ["Aviso", "Atualizado", "Sem impacto"] %}<option{% if phase_form.get("closure_sale_state_status", "Aviso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
               </div>
-              <div class="clean-prereq-table">
-                <div class="clean-prereq-head"><b>Atualização</b><b>Origem</b><b>Estado</b><b>Impacto</b><b>Ação</b></div>
-                <div><span>Serviço executado</span><em>FO / processo</em><strong>Por confirmar</strong><mark class="warn">Pendente</mark><a href="#">Registar</a></div>
-                <div><span>Próxima manutenção</span><em>Relatório / cálculo</em><strong>Por atualizar</strong><mark class="warn">Pendente</mark><a href="#">Atualizar</a></div>
-                <div><span>Problemas técnicos</span><em>Diagnóstico</em><strong>2 abertos</strong><mark class="danger">Acompanhar</mark><a href="#">Abrir lista</a></div>
-                <div><span>Auditoria histórico</span><em>Centro processos</em><strong>Em curso</strong><mark class="warn">Reserva</mark><a href="/management-center/auditorias">Abrir</a></div>
-                <div><span>Estado venda/frota</span><em>Ficha viatura</em><strong>Venda bloqueada</strong><mark class="warn">Aviso</mark><a href="/fleet">Ver ficha</a></div>
+              <div class="clean-phase-source-links">
+                <a href="{{ vehicle_detail_href }}">Abrir ficha da viatura</a>
+                <a href="{{ vehicle_documents_href }}">Abrir documentação</a>
+                <a href="{{ task_board_href }}">Abrir tarefas e problemas</a>
+                <a href="{{ audit_href }}">Abrir auditoria histórica</a>
               </div>
             </article>
 
@@ -827,7 +828,7 @@
               </div>
               <div class="clean-phase-exit-standard">
                 <div class="clean-phase-exit-status">
-                  <label>Resultado<select name="closure_result">{% for option in ["Fechado com reparação", "Fechado com reserva", "Fechado sem reparação", "Não fechar"] %}<option{% if phase_form.get("closure_result", "Fechado com reparação") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                  <label>Resultado<select name="closure_result">{% for option in ["Não fechar", "Fechado com reparação", "Fechado com reserva", "Fechado sem reparação"] %}<option{% if phase_form.get("closure_result", "Não fechar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Estado de fecho<select name="closure_state">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("closure_state", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Processo fechado" readonly></label>
                 </div>
@@ -859,6 +860,19 @@
         {% endfor %}
       {% endif %}
 
+      {% if phase_uploads %}
+        <section class="clean-panel clean-card-wide clean-phase-upload-summary">
+          <strong>Documentos e imagens guardados nesta fase</strong>
+          <div>
+            {% for upload in phase_uploads %}
+              <a href="/v2-clean/workshop/{{ workshop_process.id }}/phase-uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">
+                {{ upload.label }} · {{ upload.original_name }}
+              </a>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
       {% if workshop_process and workshop_process.status != "closed" %}
         <div class="clean-substep-savebar clean-substep-savebar-global">
           <button type="submit" name="action" value="save_substep">Guardar subfase</button>
@@ -887,9 +901,14 @@
 </div>
 <script>
   document.querySelectorAll(".clean-workshop-final-grid").forEach((form) => {
-    form.addEventListener("submit", () => {
+    form.addEventListener("submit", (event) => {
       const snapshot = {};
-      Array.from(form.elements).forEach((field) => {
+      const action = event.submitter?.value || "save";
+      const activePanel = form.querySelector(".clean-substep-panel.active");
+      const fields = ["save_substep", "advance_substep"].includes(action) && activePanel
+        ? activePanel.querySelectorAll("input, select, textarea")
+        : form.elements;
+      Array.from(fields).forEach((field) => {
         if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)) {
           return;
         }

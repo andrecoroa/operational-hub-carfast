@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from app.models.documents import Document, DocumentLink
+from app.models.tasks import Task
 from app.models.vehicles import Vehicle
 from app.models.workshop_phased import (
     WorkshopPhasedProcess,
@@ -120,6 +121,23 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert entry_page.status_code == 200
     assert f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}" in entry_page.text
 
+    created_problem = client.post(
+        f"/v2-clean/workshop/{process_id}/records",
+        data={"record_type": "problem", "phase": "entrada"},
+        follow_redirects=False,
+    )
+    assert created_problem.status_code == 303
+    problem = db_session.scalar(
+        select(Task).where(
+            Task.entity_type == "workshop_phased_process",
+            Task.entity_id == str(process_id),
+            Task.task_type == "workshop_problem",
+        )
+    )
+    assert problem is not None
+    assert created_problem.headers["location"] == f"/task-board/{problem.id}"
+    assert problem.plate == vehicle.plate
+
     validation_payload = {
         "process_id": str(process_id),
         "service_type": ["Revisão / degradação óleo", "Pneus"],
@@ -130,6 +148,8 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         "previous_service_document": ["FO 1", "FT 2"],
         "service_decision": ["Seguir diagnóstico", "Pedir confirmação"],
         "validation_observation": "teste validacao",
+        "validation_closed": "Com reservas",
+        "validation_reserve_reason": "Pneu requer confirmação adicional.",
     }
 
     saved_validation = client.post(
@@ -138,7 +158,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert saved_validation.status_code == 303
-    assert saved_validation.headers["location"] == f"/v2-clean/workshop/validacao?process_id={process_id}&saved=1"
+    assert saved_validation.headers["location"].startswith(
+        f"/v2-clean/workshop/validacao?process_id={process_id}&saved=1"
+    )
 
     advanced_validation = client.post(
         "/v2-clean/workshop/validacao/save",
@@ -168,7 +190,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert upload.status_code == 303
-    assert upload.headers["location"] == f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1#leituras"
+    assert upload.headers["location"].startswith(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id="
+    )
+    assert upload.headers["location"].endswith("#leituras")
 
     report = db_session.scalar(
         select(WorkshopPhasedTechnicalReport).where(WorkshopPhasedTechnicalReport.process_id == process_id)
@@ -231,7 +256,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert saved_diagnosis.status_code == 303
-    assert saved_diagnosis.headers["location"] == f"/v2-clean/workshop/diagnostico?process_id={process_id}&saved=1"
+    assert saved_diagnosis.headers["location"].startswith(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&saved=1"
+    )
 
     advanced_diagnosis = client.post(
         "/v2-clean/workshop/diagnostico/save",
@@ -282,10 +309,15 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     saved_inspection = client.post(
         "/v2-clean/workshop/inspecao/save",
         data={**inspection_payload, "action": "save"},
+        files={
+            "inspection_leaks_photo": ("fuga.jpg", b"inspection evidence", "image/jpeg"),
+        },
         follow_redirects=False,
     )
     assert saved_inspection.status_code == 303
-    assert saved_inspection.headers["location"] == f"/v2-clean/workshop/inspecao?process_id={process_id}&saved=1"
+    assert saved_inspection.headers["location"].startswith(
+        f"/v2-clean/workshop/inspecao?process_id={process_id}&saved=1"
+    )
 
     advanced_inspection = client.post(
         "/v2-clean/workshop/inspecao/save",
@@ -305,6 +337,13 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert inspection_phase.status == "completed"
     assert inspection_phase.data_json["form_snapshot"]["inspection_check_leaks"] == "nc"
     assert inspection_phase.data_json["form_snapshot"]["inspection_summary"] == "Inspeção pronta para auditoria."
+    assert inspection_phase.data_json["uploads"][0]["category"] == "inspection_leaks"
+    inspection_file = client.get(
+        f"/v2-clean/workshop/{process_id}/phase-uploads/"
+        f"{inspection_phase.data_json['uploads'][0]['stored_name']}"
+    )
+    assert inspection_file.status_code == 200
+    assert inspection_file.content == b"inspection evidence"
 
     audit_payload = {
         "process_id": str(process_id),
@@ -334,7 +373,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert saved_audit.status_code == 303
-    assert saved_audit.headers["location"] == f"/v2-clean/workshop/auditoria?process_id={process_id}&saved=1"
+    assert saved_audit.headers["location"].startswith(
+        f"/v2-clean/workshop/auditoria?process_id={process_id}&saved=1"
+    )
 
     advanced_audit = client.post(
         "/v2-clean/workshop/auditoria/save",
@@ -357,7 +398,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     repair_payload = {
         "process_id": str(process_id),
         "repair_authorized_services": "Confirmar óleo e validar BSI.",
-        "repair_execution_status": "Em curso",
+        "repair_execution_status": "Concluída",
         "repair_responsible": "Oficina Porto",
         "repair_started_on": "2026-06-30",
         "repair_eta": "2026-07-01",
@@ -384,10 +425,16 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     saved_repair = client.post(
         "/v2-clean/workshop/reparacao/save",
         data={**repair_payload, "action": "save"},
+        files={
+            "repair_work_order_file": ("fo.pdf", b"repair work order", "application/pdf"),
+            "repair_photos_files": ("repair.jpg", b"repair photo", "image/jpeg"),
+        },
         follow_redirects=False,
     )
     assert saved_repair.status_code == 303
-    assert saved_repair.headers["location"] == f"/v2-clean/workshop/reparacao?process_id={process_id}&saved=1"
+    assert saved_repair.headers["location"].startswith(
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&saved=1"
+    )
 
     advanced_repair = client.post(
         "/v2-clean/workshop/reparacao/save",
@@ -406,6 +453,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert repair_phase is not None
     assert repair_phase.status == "completed"
     assert repair_phase.data_json["form_snapshot"]["repair_authorized_services"] == "Confirmar óleo e validar BSI."
+    assert {item["category"] for item in repair_phase.data_json["uploads"]} == {
+        "repair_work_order",
+        "repair_photos",
+    }
 
     closure_payload = {
         "process_id": str(process_id),
@@ -446,10 +497,15 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     saved_closure = client.post(
         "/v2-clean/workshop/fecho/save",
         data={**closure_payload, "action": "save"},
+        files={
+            "closure_invoice_file": ("fatura.pdf", b"closure invoice", "application/pdf"),
+        },
         follow_redirects=False,
     )
     assert saved_closure.status_code == 303
-    assert saved_closure.headers["location"] == f"/v2-clean/workshop/fecho?process_id={process_id}&saved=1"
+    assert saved_closure.headers["location"].startswith(
+        f"/v2-clean/workshop/fecho?process_id={process_id}&saved=1"
+    )
 
     advanced_closure = client.post(
         "/v2-clean/workshop/fecho/save",
@@ -468,6 +524,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert closure_phase is not None
     assert closure_phase.status == "completed"
     assert closure_phase.data_json["form_snapshot"]["closure_result"] == "Fechado com reparação"
+    assert closure_phase.data_json["uploads"][0]["category"] == "closure_invoice"
 
     db_session.expire_all()
     process = db_session.get(WorkshopPhasedProcess, process_id)
@@ -492,7 +549,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert validate.status_code == 303
-    assert validate.headers["location"] == f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1#leituras"
+    assert validate.headers["location"] == (
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}"
+        f"&report_validated=1&selected_report_id={report.id}#leituras"
+    )
 
     db_session.expire_all()
     report = db_session.scalar(
@@ -503,7 +563,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert report.validated_values_json["manual_reading"]["status"] == "Corrigido"
 
 
-def test_clean_workshop_reading_rows_hide_failed_report_when_valid_data_exists():
+def test_clean_workshop_reading_rows_keep_each_report_available_for_validation():
     reports = [
         WorkshopPhasedTechnicalReport(
             id=1,
@@ -531,5 +591,9 @@ def test_clean_workshop_reading_rows_hide_failed_report_when_valid_data_exists()
 
     rows = clean_workshop_technical_reading_rows(reports)
 
-    assert [row["field_code"] for row in rows] == ["engine_speed", "oil_dilution_rate"]
-    assert all(row["report"] == "Lubrificacao motor" for row in rows)
+    assert [row["field_code"] for row in rows] == [
+        "engine_speed",
+        "oil_dilution_rate",
+        "manual_reading",
+    ]
+    assert rows[-1]["report"] == "Informações de manutenção"

@@ -3888,6 +3888,36 @@ def clean_workshop_technical_reading_rows(
     return rows
 
 
+def clean_workshop_technical_reading_groups(
+    reports: list[WorkshopPhasedTechnicalReport],
+) -> list[dict[str, object]]:
+    grouped: list[dict[str, object]] = []
+    by_report_id: dict[str, dict[str, object]] = {}
+    for row in clean_workshop_technical_reading_rows(reports):
+        report_id = str(row["report_id"])
+        group = by_report_id.get(report_id)
+        if not group:
+            group = {
+                "report_id": report_id,
+                "report": row["report"],
+                "open_url": row["open_url"],
+                "rows": [],
+            }
+            by_report_id[report_id] = group
+            grouped.append(group)
+        group["rows"].append(row)
+
+    for group in grouped:
+        rows = group["rows"] if isinstance(group["rows"], list) else []
+        group["count"] = len(rows)
+        group["validated_count"] = sum(
+            1
+            for row in rows
+            if str(row.get("status") or "Por validar") in {"OK", "Corrigido", "Não aplicável"}
+        )
+    return grouped
+
+
 def clean_workshop_diagnostic_substep_status(
     reports: list[WorkshopPhasedTechnicalReport],
 ) -> dict[str, str]:
@@ -4976,6 +5006,7 @@ def clean_workshop_phase(
     process_id: int | None = None,
     vehicle_id: int | None = None,
     plate: str | None = None,
+    selected_report_id: int | None = None,
     historical: bool = False,
     new: bool = False,
 ):
@@ -4997,6 +5028,7 @@ def clean_workshop_phase(
     entry_form: dict[str, object] = {}
     validation_prerequisites: list[dict[str, str | None]] = []
     technical_reports: list[WorkshopPhasedTechnicalReport] = []
+    technical_reading_groups: list[dict[str, object]] = []
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
@@ -5021,6 +5053,14 @@ def clean_workshop_phase(
         else:
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             validation_prerequisites = clean_workshop_validation_prerequisites(db, None, vehicle_context)
+    technical_reading_groups = clean_workshop_technical_reading_groups(technical_reports)
+    selected_reading_report_id = str(selected_report_id) if selected_report_id else ""
+    if selected_reading_report_id and not any(
+        str(group.get("report_id")) == selected_reading_report_id for group in technical_reading_groups
+    ):
+        selected_reading_report_id = ""
+    if not selected_reading_report_id and technical_reading_groups:
+        selected_reading_report_id = str(technical_reading_groups[0].get("report_id") or "")
     phase_nav = clean_workshop_phase_nav(phase, query_suffix)
     prerequisite_warning_count = sum(1 for item in validation_prerequisites if item.get("impact_class") == "warn")
     return templates.TemplateResponse(
@@ -5047,6 +5087,8 @@ def clean_workshop_phase(
             "technical_reports": technical_reports,
             "technical_report_summary": clean_workshop_technical_report_summary(technical_reports),
             "technical_reading_rows": clean_workshop_technical_reading_rows(technical_reports),
+            "technical_reading_groups": technical_reading_groups,
+            "selected_reading_report_id": selected_reading_report_id,
             "diagnostic_substep_status": clean_workshop_diagnostic_substep_status(technical_reports),
             "diagnostic_form_status": clean_workshop_diagnostic_form_status(phase_form, technical_reports),
             "inspection_form_status": clean_workshop_inspection_form_status(phase_form),
@@ -5279,7 +5321,10 @@ async def clean_workshop_technical_report_upload(
         process.current_phase_code = "diagnostico"
         db.commit()
 
-    return RedirectResponse(f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1#leituras", status_code=303)
+    return RedirectResponse(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_uploaded=1&selected_report_id={report.id}#leituras",
+        status_code=303,
+    )
 
 
 @web_router.get("/v2-clean/workshop/technical-reports/{report_id}/file")
@@ -5364,7 +5409,7 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
         process_id = report.process_id
 
     return RedirectResponse(
-        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1#leituras",
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={report.id}#leituras",
         status_code=303,
     )
 

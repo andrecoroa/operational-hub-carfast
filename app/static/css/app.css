@@ -10527,6 +10527,51 @@ a.metric:hover {
   margin-top: 12px;
 }
 
+.clean-reading-report-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.clean-reading-report-tab {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid #d9e2f1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f2a5f;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clean-reading-report-tab span {
+  font-size: var(--clean-font-sm);
+  font-weight: 900;
+}
+
+.clean-reading-report-tab em {
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.clean-reading-report-tab.active {
+  border-color: #a44917;
+  background: #fff8f4;
+}
+
+.clean-reading-report-panel {
+  display: none;
+}
+
+.clean-reading-report-panel.active {
+  display: block;
+}
+
 .clean-reading-document-card h4 {
   margin: 2px 0 4px;
   color: #071b4d;

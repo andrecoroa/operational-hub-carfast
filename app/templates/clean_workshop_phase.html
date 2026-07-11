@@ -232,7 +232,7 @@
                   <div><strong>Lubrificação motor</strong><small>Obrigatório para Diesel com suspeita de degradação óleo</small></div>
                   <mark class="danger">Obrigatório</mark>
                   <em>{{ lub_report.status if lub_report else "Por carregar" }}{% if lub_report %} · {{ lub_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if lub_report else "Carregar" }}<input class="clean-report-upload" data-report-code="engine_lubrication" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if lub_report else "Carregar" }}<input class="clean-report-upload" data-report-code="engine_lubrication" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ lub_report.latest.id if lub_report else '' }}" type="button">Validar</button></div>
                 </div>
                 {% set man_report = technical_report_summary.get("maintenance_information") %}
                 <div class="clean-report-row">
@@ -240,7 +240,7 @@
                   <div><strong>Informações manutenção</strong><small>Obrigatório para validar BSI, km, dias e número de manutenções</small></div>
                   <mark class="danger">Obrigatório</mark>
                   <em>{{ man_report.status if man_report else "Por carregar" }}{% if man_report %} · {{ man_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if man_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_information" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if man_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_information" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ man_report.latest.id if man_report else '' }}" type="button">Validar</button></div>
                 </div>
                 {% set prg_report = technical_report_summary.get("maintenance_programming") %}
                 <div class="clean-report-row">
@@ -248,7 +248,7 @@
                   <div><strong>Programação manutenção</strong><small>Recomendado quando há divergência de intervalos ou plano</small></div>
                   <mark class="warn">Recomendado</mark>
                   <em>{{ prg_report.status if prg_report else "Em falta" }}{% if prg_report %} · {{ prg_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if prg_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_programming" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if prg_report else "Carregar" }}<input class="clean-report-upload" data-report-code="maintenance_programming" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ prg_report.latest.id if prg_report else '' }}" type="button">Validar</button></div>
                 </div>
                 {% set tel_report = technical_report_summary.get("remote_download") %}
                 <div class="clean-report-row">
@@ -256,7 +256,7 @@
                   <div><strong>Telecarregamento</strong><small>Obrigatório quando TSB/procedimento exigir atualização</small></div>
                   <mark class="warn">Condicional</mark>
                   <em>{{ tel_report.status if tel_report else "Em falta" }}{% if tel_report %} · {{ tel_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if tel_report else "Carregar" }}<input class="clean-report-upload" data-report-code="remote_download" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if tel_report else "Carregar" }}<input class="clean-report-upload" data-report-code="remote_download" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tel_report.latest.id if tel_report else '' }}" type="button">Validar</button></div>
                 </div>
                 {% set def_report = technical_report_summary.get("fault_reading") %}
                 <div class="clean-report-row">
@@ -264,7 +264,7 @@
                   <div><strong>Leitura defeitos</strong><small>Obrigatório em avaria ou quando há alertas no quadrante</small></div>
                   <mark class="warn">Condicional</mark>
                   <em>{{ def_report.status if def_report else "Por carregar" }}{% if def_report %} · {{ def_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if def_report else "Carregar" }}<input class="clean-report-upload" data-report-code="fault_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if def_report else "Carregar" }}<input class="clean-report-upload" data-report-code="fault_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ def_report.latest.id if def_report else '' }}" type="button">Validar</button></div>
                 </div>
                 {% set tst_report = technical_report_summary.get("other_reading") %}
                 <div class="clean-report-row">
@@ -272,7 +272,7 @@
                   <div><strong>Teste global</strong><small>Opcional conforme orientação técnica da fase anterior</small></div>
                   <mark class="ok">Opcional</mark>
                   <em>{{ tst_report.status if tst_report else "Não aplicável" }}{% if tst_report %} · {{ tst_report.extracted_count }} campos{% endif %}</em>
-                  <div class="clean-report-actions"><label>{{ "Substituir" if tst_report else "Carregar" }}<input class="clean-report-upload" data-report-code="other_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" type="button">Validar</button></div>
+                  <div class="clean-report-actions"><label>{{ "Substituir" if tst_report else "Carregar" }}<input class="clean-report-upload" data-report-code="other_reading" type="file" accept="application/pdf,image/*"></label><button class="clean-report-open-readings" data-reading-report="{{ tst_report.latest.id if tst_report else '' }}" type="button">Validar</button></div>
                 </div>
               </div>
               <p class="clean-rule-note">Regra: ao carregar relatório, extrair dados automaticamente e deixar em estado Por validar.</p>
@@ -280,75 +280,86 @@
 
             <article class="clean-substep-panel" id="clean-substep-leituras">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Leituras</p><h3>Dados extraídos por validar</h3><p>Validar cada valor antes de usar no processo ou gerar problema.</p></div></div>
-              {% set first_reading = technical_reading_rows[0] if technical_reading_rows else None %}
               {% set failed_reports = technical_reports | selectattr("status", "equalto", "unable_to_read") | list %}
               {% if failed_reports %}
                 <div class="clean-rule-note">
                   {{ failed_reports|length }} relatório(s) ficaram com leitura falhada. Mantêm-se no histórico do processo, mas não entram nesta tabela até existir extração útil.
                 </div>
               {% endif %}
-              {% if not technical_reading_rows %}
+              {% if not technical_reading_groups %}
                 <div class="clean-rule-note">
                   Ainda não existem dados extraídos para validar neste processo. Carrega um relatório em "Relatórios técnicos" e depois volta aqui.
                 </div>
               {% endif %}
-              <section class="clean-reading-document-card">
-                <div>
-                  <p class="eyebrow">Documento de origem</p>
-                  <h4>{{ first_reading.report if first_reading else "Sem relatório selecionado" }}</h4>
-                  <span>Confirma se o documento corresponde à viatura e à leitura que estás a validar.</span>
-                </div>
-                <div class="clean-reading-document-actions">
-                  {% if first_reading %}<a href="{{ first_reading.open_url }}" target="_blank" rel="noopener">Abrir documento</a>{% endif %}
-                  <button class="clean-substep-jump" data-target="relatorios" type="button">Voltar aos relatórios</button>
-                </div>
-              </section>
-              <div class="clean-reading-confirm-row">
-                <label><input type="checkbox" name="reading_document_legible"> Documento legível</label>
-                <label><input type="checkbox" name="reading_plate_confirmed"> Matrícula confirmada</label>
-                <label><input type="checkbox" name="reading_date_confirmed"> Data confirmada</label>
-                <label><input type="checkbox" name="reading_km_confirmed"> KM confirmados</label>
-              </div>
-              <div class="clean-reading-table-wrap">
-                <table class="clean-reading-table">
-                  <thead>
-                    <tr>
-                      <th>Campo</th>
-                      <th>Relatório</th>
-                      <th>Valor extraído</th>
-                      <th>Valor corrigido</th>
-                      <th>Estado</th>
-                      <th>Observação</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for row in technical_reading_rows %}
-                      <tr>
-                        <td><strong>{{ row.field }}</strong></td>
-                        <td>{{ row.report }}</td>
-                        <td><span class="clean-reading-extracted">{{ row.value }}</span></td>
-                        <td>
-                          <input type="hidden" name="reading_report_id" value="{{ row.report_id }}">
-                          <input type="hidden" name="reading_field_code" value="{{ row.field_code }}">
-                          <input name="reading_corrected_value" value="{{ row.corrected_value }}" placeholder="Valor corrigido">
-                        </td>
-                        <td>
-                          <select name="reading_status">
-                            {% for option in ["Por validar", "OK", "Corrigido", "Não legível", "Não aplicável"] %}
-                              <option value="{{ option }}" {% if row.status == option %}selected{% endif %}>{{ option }}</option>
-                            {% endfor %}
-                          </select>
-                        </td>
-                        <td><input name="reading_observation" value="{{ row.observation }}" placeholder="Observação"></td>
-                        <td><button type="submit" formmethod="post" formaction="/v2-clean/workshop/technical-reports/{{ row.report_id }}/validate">Guardar</button></td>
-                      </tr>
-                    {% else %}
-                      <tr><td colspan="7">Sem relatórios carregados. Carrega um relatório técnico para iniciar a extração.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
+              {% if technical_reading_groups|length > 1 %}
+                <nav class="clean-reading-report-strip" aria-label="Relatórios com dados extraídos">
+                  {% for reading_group in technical_reading_groups %}
+                    <button class="clean-reading-report-tab {% if reading_group.report_id == selected_reading_report_id %}active{% endif %}" data-reading-target="report-{{ reading_group.report_id }}" type="button">
+                      <span>{{ reading_group.report }}</span>
+                      <em>{{ reading_group.count }} campos · {{ reading_group.validated_count }} validados</em>
+                    </button>
+                  {% endfor %}
+                </nav>
+              {% endif %}
+              {% for reading_group in technical_reading_groups %}
+                <section class="clean-reading-report-panel {% if reading_group.report_id == selected_reading_report_id %}active{% endif %}" id="clean-reading-report-{{ reading_group.report_id }}">
+                  <section class="clean-reading-document-card">
+                    <div>
+                      <p class="eyebrow">Documento de origem</p>
+                      <h4>{{ reading_group.report }}</h4>
+                      <span>Confirma se o documento corresponde à viatura e valida apenas este relatório.</span>
+                    </div>
+                    <div class="clean-reading-document-actions">
+                      <a href="{{ reading_group.open_url }}" target="_blank" rel="noopener">Abrir documento</a>
+                      <button class="clean-substep-jump" data-target="relatorios" type="button">Voltar aos relatórios</button>
+                    </div>
+                  </section>
+                  <div class="clean-reading-confirm-row">
+                    <label><input type="checkbox" name="reading_document_legible"> Documento legível</label>
+                    <label><input type="checkbox" name="reading_plate_confirmed"> Matrícula confirmada</label>
+                    <label><input type="checkbox" name="reading_date_confirmed"> Data confirmada</label>
+                    <label><input type="checkbox" name="reading_km_confirmed"> KM confirmados</label>
+                  </div>
+                  <div class="clean-reading-table-wrap">
+                    <table class="clean-reading-table">
+                      <thead>
+                        <tr>
+                          <th>Campo</th>
+                          <th>Relatório</th>
+                          <th>Valor extraído</th>
+                          <th>Valor corrigido</th>
+                          <th>Estado</th>
+                          <th>Observação</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in reading_group.rows %}
+                          <tr>
+                            <td><strong>{{ row.field }}</strong></td>
+                            <td>{{ row.report }}</td>
+                            <td><span class="clean-reading-extracted">{{ row.value }}</span></td>
+                            <td>
+                              <input type="hidden" name="reading_report_id" value="{{ row.report_id }}">
+                              <input type="hidden" name="reading_field_code" value="{{ row.field_code }}">
+                              <input name="reading_corrected_value" value="{{ row.corrected_value }}" placeholder="Valor corrigido">
+                            </td>
+                            <td>
+                              <select name="reading_status">
+                                {% for option in ["Por validar", "OK", "Corrigido", "Não legível", "Não aplicável"] %}
+                                  <option value="{{ option }}" {% if row.status == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                              </select>
+                            </td>
+                            <td><input name="reading_observation" value="{{ row.observation }}" placeholder="Observação"></td>
+                            <td><button type="submit" formmethod="post" formaction="/v2-clean/workshop/technical-reports/{{ row.report_id }}/validate">Guardar</button></td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              {% endfor %}
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-comparacao">
@@ -941,7 +952,27 @@
       const workbench = button.closest(".clean-phase-workbench");
       const targetCard = workbench?.querySelector('.clean-substep-card[data-target="leituras"]');
       targetCard?.click();
+      const reportId = button.dataset.readingReport;
+      if (reportId) {
+        const reportTabs = Array.from(workbench?.querySelectorAll(".clean-reading-report-tab") || []);
+        const reportPanels = Array.from(workbench?.querySelectorAll(".clean-reading-report-panel") || []);
+        const targetTab = workbench?.querySelector(`.clean-reading-report-tab[data-reading-target="report-${reportId}"]`);
+        reportTabs.forEach((item) => item.classList.toggle("active", item === targetTab));
+        reportPanels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-reading-report-${reportId}`));
+      }
       workbench?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  document.querySelectorAll(".clean-reading-report-strip").forEach((strip) => {
+    const tabs = Array.from(strip.querySelectorAll(".clean-reading-report-tab"));
+    const workbench = strip.closest(".clean-substep-panel");
+    const panels = Array.from(workbench?.querySelectorAll(".clean-reading-report-panel") || []);
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.dataset.readingTarget;
+        tabs.forEach((item) => item.classList.toggle("active", item === tab));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-reading-${target}`));
+      });
     });
   });
 </script>

@@ -4292,6 +4292,7 @@ def clean_workshop_technical_reading_groups(
 ) -> list[dict[str, object]]:
     grouped: list[dict[str, object]] = []
     by_report_id: dict[str, dict[str, object]] = {}
+    report_statuses = {str(report.id): report.status for report in reports}
     for row in clean_workshop_technical_reading_rows(reports):
         report_id = str(row["report_id"])
         group = by_report_id.get(report_id)
@@ -4301,6 +4302,7 @@ def clean_workshop_technical_reading_groups(
                 "report": row["report"],
                 "open_url": row["open_url"],
                 "report_name": row["report_name"],
+                "report_status": report_statuses.get(report_id, "pending_validation"),
                 "rows": [],
             }
             by_report_id[report_id] = group
@@ -6068,6 +6070,7 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
         return denied
 
     form = await request.form()
+    validation_mode = str(form.get("validation_mode") or "save_all")
     now = datetime.now(UTC)
     user_id = get_web_user_id(request)
     process_id: int | None = None
@@ -6099,6 +6102,31 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
                 "corrected_value": corrected_value.strip(),
                 "status": status_value,
                 "observation": observation.strip(),
+                "validated_at": now.isoformat(),
+                "validated_by_id": user_id,
+            }
+
+        if validation_mode == "accept_all":
+            extracted_values = report.extracted_values_json if isinstance(report.extracted_values_json, dict) else {}
+            field_codes_to_confirm = list(extracted_values) or ["manual_reading"]
+            for field_code in field_codes_to_confirm:
+                existing = validated_values.get(str(field_code))
+                existing = dict(existing) if isinstance(existing, dict) else {}
+                corrected_value = str(existing.get("corrected_value") or "").strip()
+                validated_values[str(field_code)] = {
+                    "extracted_value": extracted_values.get(str(field_code)),
+                    "corrected_value": corrected_value,
+                    "status": "Corrigido" if corrected_value else "OK",
+                    "observation": str(existing.get("observation") or "").strip(),
+                    "validated_at": now.isoformat(),
+                    "validated_by_id": user_id,
+                }
+        elif validation_mode == "mark_unreadable":
+            validated_values["manual_reading"] = {
+                "extracted_value": None,
+                "corrected_value": "",
+                "status": "Não legível",
+                "observation": "Leitura automática sem dados utilizáveis.",
                 "validated_at": now.isoformat(),
                 "validated_by_id": user_id,
             }
@@ -6137,6 +6165,54 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
 
     return RedirectResponse(
         f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_validated=1&selected_report_id={selected_report_id or ''}#leituras",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/workshop/technical-reports/{report_id}/void")
+def clean_workshop_technical_report_void(request: Request, report_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+
+    now = datetime.now(UTC)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        report = db.get(WorkshopPhasedTechnicalReport, report_id)
+        if not report:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process_id = report.process_id
+        if report.status not in {"voided", "superseded"}:
+            report.status = "voided"
+            report.validated_at = None
+            report.correction_json = {
+                **(report.correction_json or {}),
+                "source": "v2-clean-removed",
+                "removed_at": now.isoformat(),
+                "removed_by_id": user_id,
+            }
+            if report.original_document_id:
+                db.add(
+                    DocumentEvent(
+                        document_id=report.original_document_id,
+                        action="document.workshop_report_removed_from_process",
+                        old_value=f"report={report.id}; status=active",
+                        new_value=f"report={report.id}; status=voided",
+                        user_id=user_id,
+                    )
+                )
+            record_audit(
+                db,
+                action="workshop.report.void",
+                entity_type="workshop_phased_technical_report",
+                entity_id=report.id,
+                detail=f"Relatório removido do processo {process_id}; documento preservado no arquivo.",
+                user_id=user_id,
+            )
+            db.commit()
+
+    return RedirectResponse(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_removed=1#relatorios",
         status_code=303,
     )
 

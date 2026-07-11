@@ -228,6 +228,26 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Leitura automática" in diagnosis_page.text
     assert "Abrir documento" in diagnosis_page.text
 
+    report.extracted_values_json = {
+        "km_before_next_maintenance": "40000",
+        "days_before_next_maintenance": "730",
+    }
+    report.status = "pending_validation"
+    db_session.commit()
+    accepted_report = client.post(
+        f"/v2-clean/workshop/technical-reports/{report.id}/validate",
+        data={"validation_mode": "accept_all"},
+        follow_redirects=False,
+    )
+    assert accepted_report.status_code == 303
+    db_session.expire_all()
+    report = db_session.get(WorkshopPhasedTechnicalReport, report.id)
+    assert report is not None
+    assert report.status == "validated_manually"
+    assert {
+        item["status"] for item in report.validated_values_json.values()
+    } == {"OK"}
+
     diagnosis_payload = {
         "process_id": str(process_id),
         "pre_report_exists": "Existe",
@@ -561,6 +581,20 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert report is not None
     assert report.status == "corrected_manually"
     assert report.validated_values_json["manual_reading"]["status"] == "Corrigido"
+
+    removed = client.post(
+        f"/v2-clean/workshop/technical-reports/{report.id}/void",
+        follow_redirects=False,
+    )
+    assert removed.status_code == 303
+    assert removed.headers["location"] == (
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&report_removed=1#relatorios"
+    )
+    db_session.expire_all()
+    report = db_session.get(WorkshopPhasedTechnicalReport, report.id)
+    assert report is not None
+    assert report.status == "voided"
+    assert db_session.get(Document, report.original_document_id) is not None
 
 
 def test_clean_workshop_reading_rows_keep_each_report_available_for_validation():

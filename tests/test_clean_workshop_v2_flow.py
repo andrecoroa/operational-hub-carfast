@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from app.models.documents import Document, DocumentLink
+from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle
 from app.models.workshop_phased import (
@@ -10,6 +11,128 @@ from app.models.workshop_phased import (
 )
 from app.web.router import clean_workshop_phase_advance_error
 from app.web.router import clean_workshop_technical_reading_rows
+from app.services.users import create_user
+
+
+def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="AA-00-AA",
+        vin="VINAA00AA123456789",
+        brand="PEUGEOT",
+        model="208",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina AA-00-AA",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="entrada",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    task = Task(
+        title="Tarefa associada",
+        task_type="workshop_task",
+        source="workshop_v2_clean",
+        status="new",
+        entity_type="workshop_phased_process",
+        entity_id=str(process.id),
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/cancel",
+        data={
+            "reason": "Processo duplicado",
+            "observation": "Criado durante teste",
+            "task_action": "cancel",
+        },
+        follow_redirects=False,
+    )
+
+    assert cancelled.status_code == 303
+    db_session.refresh(process)
+    db_session.refresh(task)
+    assert process.status == "cancelled"
+    assert process.closed_at is not None
+    assert process.metadata_json["cancellation"]["reason"] == "Processo duplicado"
+    assert task.status == "cancelled"
+    assert task.closed_at is not None
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.process.cancelled",
+        )
+    )
+
+    cancelled_page = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
+    assert cancelled_page.status_code == 200
+    assert "Processo cancelado" in cancelled_page.text
+    assert "Processo duplicado" in cancelled_page.text
+    assert "Reabrir processo" in cancelled_page.text
+
+    cancelled_dashboard = authenticated_client.get("/v2-clean/workshop?scope=cancelled")
+    assert cancelled_dashboard.status_code == 200
+    assert "Processos cancelados de Oficina" in cancelled_dashboard.text
+    assert "AA-00-AA" in cancelled_dashboard.text
+
+    reopened = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/reopen",
+        data={"justification": "Continuar tratamento"},
+        follow_redirects=False,
+    )
+
+    assert reopened.status_code == 303
+    db_session.refresh(process)
+    assert process.status == "open"
+    assert process.closed_at is None
+    assert process.metadata_json["cancellation"]["active"] is False
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_type == "workshop_phased_process",
+            AuditLog.entity_id == str(process.id),
+            AuditLog.action == "workshop.process.reopened",
+        )
+    )
+
+    create_user(
+        db_session,
+        name="Operador Oficina",
+        email="operador.oficina@carfast.local",
+        password="Secret123!",
+        role_codes=["operator"],
+        organizational_unit_codes=["carfast"],
+    )
+    db_session.commit()
+    authenticated_client.post("/logout", follow_redirects=False)
+    operator_login = authenticated_client.post(
+        "/login",
+        data={"email": "operador.oficina@carfast.local", "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert operator_login.status_code == 303
+    authenticated_client.post("/change-notice", data={"next_url": "/"}, follow_redirects=False)
+
+    operator_page = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
+    assert "clean-workshop-admin-menu" not in operator_page.text
+    forbidden_cancel = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/cancel",
+        data={"reason": "Outro", "task_action": "keep"},
+        follow_redirects=False,
+    )
+    assert forbidden_cancel.status_code == 303
+    assert "admin_error=forbidden" in forbidden_cancel.headers["location"]
+    db_session.refresh(process)
+    assert process.status == "open"
 
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
     vehicle = Vehicle(
@@ -567,6 +690,18 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Processo fechado" in closed_page.text
     assert "Este processo de oficina está encerrado." in closed_page.text
     assert 'name="action" value="advance"' not in closed_page.text
+
+    reopened_closed = client.post(
+        f"/v2-clean/workshop/{process_id}/reopen",
+        data={"justification": "Corrigir validação documental após fecho"},
+        follow_redirects=False,
+    )
+    assert reopened_closed.status_code == 303
+    db_session.expire_all()
+    process = db_session.get(WorkshopPhasedProcess, process_id)
+    assert process is not None
+    assert process.status == "open"
+    assert process.closed_at is None
 
     validate = client.post(
         f"/v2-clean/workshop/technical-reports/{report.id}/validate",

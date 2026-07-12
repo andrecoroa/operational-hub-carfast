@@ -10897,6 +10897,89 @@ a.metric:hover {
   margin: 0;
 }
 
+.clean-process-cancelled-banner {
+  align-items: center;
+  background: #fff7f6;
+  border-color: #f3b5b0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--clean-gap);
+  padding: var(--clean-pad);
+}
+
+.clean-process-cancelled-banner h3 {
+  color: #7a271a;
+  font-size: var(--clean-font-title);
+  margin: 0 0 4px;
+}
+
+.clean-process-cancelled-banner p,
+.clean-process-cancelled-banner small {
+  color: #7a443c;
+  display: block;
+  margin: 0;
+}
+
+.clean-workshop-admin-menu {
+  position: relative;
+}
+
+.clean-workshop-admin-menu > summary {
+  background: #fff7f6;
+  border: 1px solid #f3d0cb;
+  border-radius: 8px;
+  color: #8f2d23;
+  cursor: pointer;
+  font-size: var(--clean-font-sm);
+  font-weight: 900;
+  list-style: none;
+  padding: 9px 12px;
+}
+
+.clean-workshop-admin-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.clean-workshop-admin-panel {
+  background: #fff;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(15, 42, 95, .16);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(380px, 82vw);
+  z-index: 30;
+}
+
+.clean-workshop-admin-panel p {
+  color: #667085;
+  font-size: var(--clean-font-sm);
+  margin: 0;
+}
+
+.clean-workshop-admin-panel form,
+.clean-workshop-admin-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.clean-workshop-admin-panel form {
+  gap: 10px;
+}
+
+.clean-workshop-admin-panel textarea {
+  min-height: 72px;
+}
+
+.clean-workshop-final-grid :disabled {
+  cursor: not-allowed;
+  opacity: .72;
+}
+
 .clean-vehicle-identity strong {
   font-size: 18px;
   line-height: 1.1;
@@ -13172,7 +13255,7 @@ a.metric:hover {
 
 .clean-workshop-scope-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 180px));
+  grid-template-columns: repeat(4, minmax(0, 180px));
   gap: 8px;
 }
 

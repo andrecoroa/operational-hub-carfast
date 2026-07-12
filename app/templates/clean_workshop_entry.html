@@ -18,7 +18,7 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
-        {% if workshop_process %}
+        {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
           <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
             <input type="hidden" name="record_type" value="task">
             <input type="hidden" name="phase" value="entrada">
@@ -30,6 +30,7 @@
             <button type="submit" class="button-link danger-link">Criar problema</button>
           </form>
         {% endif %}
+        {% include "_clean_workshop_admin_actions.html" %}
       </div>
     </header>
 
@@ -53,6 +54,8 @@
         {% endfor %}
       </div>
     </section>
+
+    {% include "_clean_workshop_status_banner.html" %}
 
     <section class="clean-stepper clean-stepper-seven">
       {% for step in workshop_steps %}
@@ -360,6 +363,13 @@
     plateInput.addEventListener("change", selectPlateIfExact);
   }
 </script>
+{% if workshop_admin.is_cancelled or workshop_admin.is_closed %}
+<script>
+  document.querySelectorAll(".clean-workshop-final-grid input, .clean-workshop-final-grid select, .clean-workshop-final-grid textarea, .clean-workshop-final-grid button").forEach((control) => {
+    control.disabled = true;
+  });
+</script>
+{% endif %}
 {% endblock %}
 
 

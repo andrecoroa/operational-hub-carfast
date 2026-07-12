@@ -2923,7 +2923,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    if scope not in {"open", "closed", "all"}:
+    if scope not in {"open", "closed", "cancelled", "all"}:
         scope = "open"
     with SessionLocal() as db:
         all_processes = (
@@ -2941,7 +2941,22 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             )
             or 0
         )
-        closed_processes = max(int(all_processes) - int(open_processes), 0)
+        closed_processes = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+                .where(WorkshopPhasedProcess.status == "closed")
+            )
+            or 0
+        )
+        cancelled_processes = (
+            db.scalar(
+                select(func.count())
+                .select_from(WorkshopPhasedProcess)
+                .where(WorkshopPhasedProcess.status == "cancelled")
+            )
+            or 0
+        )
         historical_processes = (
             db.scalar(
                 select(func.count())
@@ -2976,7 +2991,9 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
         if scope == "open":
             recent_query = recent_query.where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
         elif scope == "closed":
-            recent_query = recent_query.where(WorkshopPhasedProcess.status.in_(("closed", "cancelled")))
+            recent_query = recent_query.where(WorkshopPhasedProcess.status == "closed")
+        elif scope == "cancelled":
+            recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
         recent_processes = db.scalars(
             recent_query
             .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
@@ -2990,6 +3007,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                     "total": all_processes,
                     "open": open_processes,
                     "closed": closed_processes,
+                    "cancelled": cancelled_processes,
                     "historical": historical_processes,
                     "alerts": open_alerts,
                     "pending_validation": pending_validation,
@@ -3327,6 +3345,50 @@ def clean_workshop_query_suffix(
 def clean_workshop_process_reference(process: WorkshopPhasedProcess) -> str:
     reference_date = process.received_at or process.created_at or datetime.now(UTC)
     return f"OFI-{reference_date.year}-{process.id:06d}"
+
+
+def clean_workshop_process_url(process: WorkshopPhasedProcess) -> str:
+    phase = process.current_phase_code or "entrada"
+    if phase == "entrada":
+        return f"/v2-clean/workshop-entry?process_id={process.id}"
+    return f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+
+
+def clean_workshop_admin_context(
+    db: Session,
+    request: Request,
+    process: WorkshopPhasedProcess | None,
+) -> dict[str, object]:
+    user_id = get_web_user_id(request)
+    current_user = db.get(User, user_id) if user_id else None
+    metadata = dict(process.metadata_json or {}) if process and isinstance(process.metadata_json, dict) else {}
+    cancellation = metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
+    open_task_count = 0
+    if process:
+        open_task_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.entity_type == "workshop_phased_process",
+                    Task.entity_id == str(process.id),
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            )
+            or 0
+        )
+    return {
+        "can_manage": can_manage_admin(db, current_user),
+        "is_cancelled": bool(process and process.status == "cancelled"),
+        "is_closed": bool(process and process.status == "closed"),
+        "cancellation": cancellation,
+        "open_task_count": int(open_task_count),
+    }
+
+
+def clean_workshop_process_is_readonly(process: WorkshopPhasedProcess | None) -> bool:
+    return bool(process and process.status in {"closed", "cancelled"})
 
 
 def clean_workshop_find_vehicle(
@@ -5288,6 +5350,8 @@ async def clean_workshop_entry_save(request: Request):
             if not process:
                 suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
                 return RedirectResponse(f"/v2-clean/workshop-entry{suffix}", status_code=303)
+            if clean_workshop_process_is_readonly(process):
+                return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
         else:
             process = clean_workshop_create_process(
                 db,
@@ -5439,6 +5503,7 @@ def clean_workshop_entry(
                 historical=historical,
             )
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+        workshop_admin = clean_workshop_admin_context(db, request, process)
     return templates.TemplateResponse(
         request,
         "clean_workshop_entry.html",
@@ -5451,6 +5516,7 @@ def clean_workshop_entry(
             "is_historical": historical,
             "is_new_entry": False,
             "workshop_process": process,
+            "workshop_admin": workshop_admin,
             "active_step": "entrada",
             "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
             "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate)}",
@@ -5532,6 +5598,7 @@ def clean_workshop_phase(
         else:
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             validation_prerequisites = clean_workshop_validation_prerequisites(db, None, vehicle_context)
+        workshop_admin = clean_workshop_admin_context(db, request, process)
     technical_reading_groups = clean_workshop_technical_reading_groups(technical_reports)
     saved_substeps = clean_workshop_saved_substeps(phase_data)
     phase_uploads = phase_data.get("uploads") if isinstance(phase_data.get("uploads"), list) else []
@@ -5554,6 +5621,7 @@ def clean_workshop_phase(
             "vehicle_context": vehicle_context,
             "is_historical": historical,
             "workshop_process": process,
+            "workshop_admin": workshop_admin,
             "active_step": phase,
             "phase_data": phase_data,
             "phase_form": phase_form,
@@ -5592,6 +5660,168 @@ def clean_workshop_phase(
     )
 
 
+@web_router.post("/v2-clean/workshop/{process_id}/cancel", response_class=HTMLResponse)
+def clean_workshop_cancel_process(
+    request: Request,
+    process_id: int,
+    reason: str = Form(""),
+    observation: str = Form(""),
+    task_action: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    clean_reason = reason.strip()
+    clean_observation = observation.strip()
+
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process_url = clean_workshop_process_url(process)
+        if not clean_reason or task_action not in {"keep", "cancel"}:
+            return RedirectResponse(f"{process_url}&admin_error=cancel_required", status_code=303)
+        if not can_manage_admin(db, user):
+            return RedirectResponse(f"{process_url}&admin_error=forbidden", status_code=303)
+        if process.status == "closed":
+            return RedirectResponse(f"{process_url}&admin_error=reopen_closed_first", status_code=303)
+        if process.status == "cancelled":
+            return RedirectResponse(f"{process_url}&cancelled=1", status_code=303)
+
+        prior_status = process.status
+        metadata = dict(process.metadata_json or {})
+        status_history = list(metadata.get("status_history") or [])
+        cancellation = {
+            "active": True,
+            "reason": clean_reason,
+            "observation": clean_observation,
+            "cancelled_at": now.isoformat(),
+            "cancelled_by_id": user_id,
+            "cancelled_by": (user.name or user.email) if user else f"Utilizador #{user_id}",
+            "prior_status": prior_status,
+            "prior_phase": process.current_phase_code or "entrada",
+            "task_action": task_action,
+        }
+        status_history.append({"from": prior_status, "to": "cancelled", **cancellation})
+        metadata["cancellation"] = cancellation
+        metadata["status_history"] = status_history
+        process.metadata_json = metadata
+        process.status = "cancelled"
+        process.closed_at = now
+
+        open_tasks = db.scalars(
+            select(Task).where(
+                Task.entity_type == "workshop_phased_process",
+                Task.entity_id == str(process.id),
+                Task.closed_at.is_(None),
+                ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            )
+        ).all()
+        if task_action == "cancel":
+            for task in open_tasks:
+                old_status = task.status
+                task.status = "cancelled"
+                task.closed_at = now
+                db.add(
+                    TaskHistory(
+                        task_id=task.id,
+                        user_id=user_id,
+                        field_name="status",
+                        old_value=old_status,
+                        new_value="cancelled",
+                    )
+                )
+
+        open_alerts = db.scalars(
+            select(WorkshopPhasedProcessAlert).where(
+                WorkshopPhasedProcessAlert.process_id == process.id,
+                WorkshopPhasedProcessAlert.status == "open",
+            )
+        ).all()
+        for alert in open_alerts:
+            alert.status = "resolved"
+            alert.resolved_at = now
+            alert.resolved_by_id = user_id
+
+        record_audit(
+            db,
+            action="workshop.process.cancelled",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail=f"Processo cancelado: {clean_reason}",
+            user_id=user_id,
+            before_json={"status": prior_status, "open_tasks": len(open_tasks)},
+            after_json={"status": "cancelled", "task_action": task_action, "observation": clean_observation},
+        )
+        db.commit()
+        return RedirectResponse(f"{process_url}&cancelled=1", status_code=303)
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/reopen", response_class=HTMLResponse)
+def clean_workshop_reopen_process(
+    request: Request,
+    process_id: int,
+    justification: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    clean_justification = justification.strip()
+
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process_url = clean_workshop_process_url(process)
+        if not clean_justification:
+            return RedirectResponse(f"{process_url}&admin_error=reopen_required", status_code=303)
+        if not can_manage_admin(db, user):
+            return RedirectResponse(f"{process_url}&admin_error=forbidden", status_code=303)
+        if process.status not in {"closed", "cancelled"}:
+            return RedirectResponse(f"{process_url}&admin_error=not_final", status_code=303)
+
+        old_status = process.status
+        metadata = dict(process.metadata_json or {})
+        cancellation = dict(metadata.get("cancellation") or {})
+        restored_status = str(cancellation.get("prior_status") or "open") if old_status == "cancelled" else "open"
+        if restored_status in {"closed", "cancelled"}:
+            restored_status = "open"
+        status_history = list(metadata.get("status_history") or [])
+        reopening = {
+            "from": old_status,
+            "to": restored_status,
+            "justification": clean_justification,
+            "reopened_at": now.isoformat(),
+            "reopened_by_id": user_id,
+            "reopened_by": (user.name or user.email) if user else f"Utilizador #{user_id}",
+        }
+        status_history.append(reopening)
+        if cancellation:
+            cancellation.update({"active": False, **reopening})
+            metadata["cancellation"] = cancellation
+        metadata["status_history"] = status_history
+        process.metadata_json = metadata
+        process.status = restored_status
+        process.closed_at = None
+
+        record_audit(
+            db,
+            action="workshop.process.reopened",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail=f"Processo reaberto: {clean_justification}",
+            user_id=user_id,
+            before_json={"status": old_status},
+            after_json={"status": restored_status},
+        )
+        db.commit()
+        return RedirectResponse(f"{process_url}&reopened=1", status_code=303)
+
+
 @web_router.post("/v2-clean/workshop/{process_id}/records", response_class=HTMLResponse)
 def clean_workshop_create_record(
     request: Request,
@@ -5608,6 +5838,8 @@ def clean_workshop_create_record(
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
 
         phase_label = CLEAN_WORKSHOP_PHASES.get(phase, {}).get("title", phase.title())
         process_ref = f"OFI-{process.created_at.year if process.created_at else datetime.now().year}-{process.id:06d}"
@@ -5685,6 +5917,8 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
 
         phase_row = clean_workshop_get_phase(db, process.id, phase)
         if not phase_row:
@@ -5879,6 +6113,8 @@ async def clean_workshop_technical_report_upload(
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
 
         plate_value = (process.plate_snapshot or "").strip().upper()
         plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
@@ -6085,6 +6321,9 @@ async def clean_workshop_technical_report_validate(request: Request, report_id: 
         report = db.get(WorkshopPhasedTechnicalReport, report_id)
         if not report:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process = db.get(WorkshopPhasedProcess, report.process_id)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
         selected_report_id = report.id
 
         report_ids = [str(value) for value in form.getlist("reading_report_id")]
@@ -6186,6 +6425,9 @@ def clean_workshop_technical_report_void(request: Request, report_id: int):
         report = db.get(WorkshopPhasedTechnicalReport, report_id)
         if not report:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process = db.get(WorkshopPhasedProcess, report.process_id)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
         process_id = report.process_id
         if report.status not in {"voided", "superseded"}:
             report.status = "voided"

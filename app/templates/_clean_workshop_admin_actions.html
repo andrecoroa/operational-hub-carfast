@@ -1,0 +1,44 @@
+{% if workshop_process and workshop_admin.can_manage %}
+  <details class="clean-workshop-admin-menu">
+    <summary>Administração</summary>
+    <div class="clean-workshop-admin-panel">
+      {% if workshop_process.status in ["closed", "cancelled"] %}
+        <strong>Reabrir processo</strong>
+        <p>Reativa a edição. As tarefas anteriormente canceladas não são reabertas automaticamente.</p>
+        <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/reopen">
+          <label>Justificação obrigatória
+            <textarea name="justification" required placeholder="Indicar porque é necessário reabrir o processo..."></textarea>
+          </label>
+          <button class="button-link secondary-link" type="submit" onclick="return confirm('Confirmar a reabertura deste processo?')">Reabrir processo</button>
+        </form>
+      {% else %}
+        <strong>Cancelar processo</strong>
+        <p>O processo fica apenas para consulta. Documentos, dados e histórico são preservados.</p>
+        <form method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/cancel">
+          <label>Motivo obrigatório
+            <select name="reason" required>
+              <option value="">Selecionar motivo</option>
+              <option value="Criado por engano">Criado por engano</option>
+              <option value="Processo duplicado">Processo duplicado</option>
+              <option value="Viatura não entrou em oficina">Viatura não entrou em oficina</option>
+              <option value="Intervenção cancelada">Intervenção cancelada</option>
+              <option value="Transferido para outro processo">Transferido para outro processo</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </label>
+          <label>Observação
+            <textarea name="observation" placeholder="Contexto adicional, processo relacionado ou decisão tomada..."></textarea>
+          </label>
+          <label>Tarefas abertas associadas ({{ workshop_admin.open_task_count }})
+            <select name="task_action" required>
+              <option value="">Escolher ação</option>
+              <option value="keep">Manter tarefas abertas</option>
+              <option value="cancel">Cancelar tarefas abertas</option>
+            </select>
+          </label>
+          <button class="button-link danger-link" type="submit" onclick="return confirm('Cancelar este processo? Esta ação ficará registada no histórico.')">Cancelar processo</button>
+        </form>
+      {% endif %}
+    </div>
+  </details>
+{% endif %}

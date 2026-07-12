@@ -1,0 +1,46 @@
+{% if workshop_process and workshop_process.status == "cancelled" %}
+  <section class="clean-panel clean-card-wide clean-process-cancelled-banner" role="status">
+    <div>
+      <p class="eyebrow">Processo cancelado</p>
+      <h3>Este processo está disponível apenas para consulta.</h3>
+      <p>
+        <b>{{ workshop_admin.cancellation.reason or "Motivo não registado" }}</b>
+        {% if workshop_admin.cancellation.observation %} · {{ workshop_admin.cancellation.observation }}{% endif %}
+      </p>
+      <small>
+        {{ workshop_admin.cancellation.cancelled_by or "Utilizador não identificado" }}
+        {% if workshop_admin.cancellation.cancelled_at %} · {{ workshop_admin.cancellation.cancelled_at|replace("T", " ")|truncate(17, True, "") }}{% endif %}
+      </small>
+    </div>
+    <a class="button-link secondary-link" href="/v2-clean/workshop?scope=cancelled">Ver cancelados</a>
+  </section>
+{% elif workshop_process and workshop_process.status == "closed" %}
+  <section class="clean-panel clean-card-wide clean-process-closed-banner">
+    <div>
+      <p class="eyebrow">Processo fechado</p>
+      <h3>Este processo de oficina está encerrado.</h3>
+      <p>Os dados ficam disponíveis para consulta, histórico da viatura e futuras auditorias.</p>
+    </div>
+    <a class="button-link primary-link" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
+  </section>
+{% endif %}
+
+{% if request.query_params.get("admin_error") %}
+  <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
+    <strong>Ação administrativa não concluída.</strong>
+    <span>
+      {% if request.query_params.get("admin_error") == "reopen_closed_first" %}Reabre primeiro o processo fechado antes de o cancelar.
+      {% elif request.query_params.get("admin_error") == "cancel_required" %}Indica o motivo e a ação a aplicar às tarefas associadas.
+      {% elif request.query_params.get("admin_error") == "reopen_required" %}A justificação da reabertura é obrigatória.
+      {% elif request.query_params.get("admin_error") == "forbidden" %}Esta ação está reservada à Administração.
+      {% else %}O estado atual do processo não permite esta ação.{% endif %}
+    </span>
+  </section>
+{% endif %}
+
+{% if request.query_params.get("readonly") %}
+  <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
+    <strong>Processo em modo de consulta.</strong>
+    <span>Reabre o processo através do menu Administração para voltar a editar.</span>
+  </section>
+{% endif %}

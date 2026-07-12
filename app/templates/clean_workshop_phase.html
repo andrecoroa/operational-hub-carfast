@@ -17,7 +17,7 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
-        {% if workshop_process %}
+        {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
           <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
             <input type="hidden" name="record_type" value="task">
             <input type="hidden" name="phase" value="{{ phase_key }}">
@@ -29,6 +29,7 @@
             <button type="submit" class="button-link danger-link">Criar problema</button>
           </form>
         {% endif %}
+        {% include "_clean_workshop_admin_actions.html" %}
       </div>
     </header>
 
@@ -53,16 +54,7 @@
       </div>
     </section>
 
-    {% if workshop_process and workshop_process.status == "closed" %}
-      <section class="clean-panel clean-card-wide clean-process-closed-banner">
-        <div>
-          <p class="eyebrow">Processo fechado</p>
-          <h3>Este processo de oficina está encerrado.</h3>
-          <p>Os dados ficam disponíveis para consulta, histórico da viatura e futuras auditorias.</p>
-        </div>
-        <a class="button-link primary-link" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
-      </section>
-    {% endif %}
+    {% include "_clean_workshop_status_banner.html" %}
 
     {% if phase_error %}
       <section class="clean-panel clean-card-wide clean-phase-error" role="alert">
@@ -1027,6 +1019,13 @@
     });
   });
 </script>
+{% if workshop_admin.is_cancelled or workshop_admin.is_closed %}
+<script>
+  document.querySelectorAll(".clean-workshop-final-grid input, .clean-workshop-final-grid select, .clean-workshop-final-grid textarea, .clean-workshop-final-grid button").forEach((control) => {
+    control.disabled = true;
+  });
+</script>
+{% endif %}
 {% endblock %}
 
 

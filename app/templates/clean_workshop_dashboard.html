@@ -33,6 +33,8 @@
             <h3>
               {% if scope == "closed" %}
                 Processos fechados de Oficina
+              {% elif scope == "cancelled" %}
+                Processos cancelados de Oficina
               {% elif scope == "all" %}
                 Todos os processos de Oficina
               {% else %}
@@ -51,6 +53,10 @@
             <span>Fechados</span>
             <strong>{{ metrics.closed }}</strong>
           </a>
+          <a class="{% if scope == 'cancelled' %}active{% endif %}" href="/v2-clean/workshop?scope=cancelled">
+            <span>Cancelados</span>
+            <strong>{{ metrics.cancelled }}</strong>
+          </a>
           <a class="{% if scope == 'all' %}active{% endif %}" href="/v2-clean/workshop?scope=all">
             <span>Todos</span>
             <strong>{{ metrics.total }}</strong>
@@ -67,12 +73,14 @@
               </div>
               <em>{{ "Histórico" if process.creation_mode == "historical" else "Operacional" }}</em>
               <em>{{ phase|replace("_", " ")|title }}</em>
-              <b>{{ process.status or "open" }}</b>
+              <b>{% if process.status == "cancelled" %}Cancelado{% elif process.status == "closed" %}Fechado{% else %}Em curso{% endif %}</b>
             </a>
           {% else %}
             <p class="muted">
               {% if scope == "closed" %}
                 Ainda sem processos de Oficina fechados nesta experiência.
+              {% elif scope == "cancelled" %}
+                Ainda sem processos de Oficina cancelados nesta experiência.
               {% elif scope == "all" %}
                 Ainda sem processos de Oficina nesta experiência.
               {% else %}

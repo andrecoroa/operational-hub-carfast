@@ -4208,6 +4208,7 @@ def clean_workshop_technical_reading_rows(
                 str(field.get("code")): str(field.get("label"))
                 for field in report_fields
             }
+            field_labels["machine_path_only"] = "Caminho registado pela maquina (sem valores tecnicos)"
             ordered_codes = [
                 str(field.get("code"))
                 for field in report_fields

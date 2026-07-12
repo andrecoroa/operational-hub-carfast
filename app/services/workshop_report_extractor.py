@@ -159,6 +159,10 @@ def _extract_values_from_text(
             values.update(_extract_psa_maintenance_programming(ocr_lines))
     if report_code == "maintenance_programming":
         values = _postprocess_maintenance_programming_values(values)
+    if not values:
+        machine_path = _machine_path_only(lines)
+        if machine_path:
+            values["machine_path_only"] = machine_path
     return values
 
 
@@ -597,12 +601,36 @@ def _extract_psa_remote_download(lines: list[str]) -> dict[str, Any]:
         remote_date = ""
     return _clean_empty(
         {
+            "iso_reference": _value_after_anchor(lines, "referencia iso", stop_after=4),
+            "hardware_reference": _value_after_anchor(lines, "referencia do material", stop_after=4),
+            "hardware_version": _value_after_anchor(lines, "versao de material", stop_after=4),
             "software_reference": _value_after_anchor(lines, "referencia do software", stop_after=4),
+            "part_serial_number": _value_after_anchor(lines, "numero de serie da peca", stop_after=4),
+            "software_edition": _value_after_anchor(lines, "edicao do software", stop_after=4),
+            "eobd_approval_reference": _value_after_anchor(lines, "referencia homologacao eobd", stop_after=4),
             "remote_download_date": remote_date,
             "remote_download_count": _value_after_anchor(lines, "number of fetches", stop_after=4)
             or _value_after_anchor(lines, "numero de telecarregamentos", stop_after=4),
         }
     )
+
+
+def _machine_path_only(lines: list[str]) -> str:
+    for index, line in enumerate(lines):
+        if not _simplify(line).startswith("caminho"):
+            continue
+        parts = [line.split(":", 1)[1].strip() if ":" in line else line]
+        for next_line in lines[index + 1 : index + 5]:
+            simple = _simplify(next_line)
+            if simple.startswith(("submodelo", "informacoes do cliente", "informacoes do dispositivo")):
+                break
+            parts.append(next_line.strip())
+            if ">" not in next_line:
+                break
+        path = " ".join(part for part in parts if part).strip()
+        if path:
+            return f"{path} (o PDF nao contem valores tecnicos)"
+    return ""
 
 
 def _fields_for_report(report_code: str) -> list[dict[str, Any]]:
@@ -885,13 +913,11 @@ def _number_in_text(value: str) -> str:
 
 
 def _looks_like_fault_code(value: str) -> bool:
-    return bool(
-        re.fullmatch(r"[A-Z][A-Z0-9]{3,5}:[0-9A-F]{2}", value.strip(), flags=re.I)
-    )
+    return bool(re.fullmatch(r"[PBCU][0-9A-F]{4}(?::[0-9A-F]{2})?", value.strip(), flags=re.I))
 
 
 def _split_fault_code_line(line: str) -> tuple[str, str]:
-    match = re.match(r"^\s*([A-Z][A-Z0-9]{3,5}:[0-9A-F]{2})\s*(.*)$", line or "", flags=re.I)
+    match = re.match(r"^\s*([PBCU][0-9A-F]{4}(?::[0-9A-F]{2})?)\s*(.*)$", line or "", flags=re.I)
     if not match:
         return "", ""
     return match.group(1).strip(), match.group(2).strip()

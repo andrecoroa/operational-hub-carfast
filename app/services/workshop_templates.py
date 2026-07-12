@@ -296,9 +296,15 @@ STELLANTIS_REPORTS = [
     {
         "code": "remote_download",
         "label": "Telecarregamento",
-        "description": "Software, data e numero de telecarregamentos.",
+        "description": "Identificacao da ECU, software, data e numero de telecarregamentos.",
         "fields": [
+            {"code": "iso_reference", "label": "Referencia ISO", "unit": None},
+            {"code": "hardware_reference", "label": "Referencia do material", "unit": None},
+            {"code": "hardware_version", "label": "Versao do material", "unit": None},
             {"code": "software_reference", "label": "Referencia do software", "unit": None},
+            {"code": "part_serial_number", "label": "Numero de serie da peca", "unit": None},
+            {"code": "software_edition", "label": "Edicao do software", "unit": None},
+            {"code": "eobd_approval_reference", "label": "Referencia homologacao EOBD", "unit": None},
             {"code": "remote_download_date", "label": "Data de telecarregamento", "unit": None},
             {"code": "remote_download_count", "label": "Numero de telecarregamentos", "unit": None},
         ],

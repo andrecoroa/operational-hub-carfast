@@ -208,10 +208,6 @@
               <span><b>Dados extraídos</b><em>Corrigir e validar campos</em></span>
               <strong>{{ diagnostic_form_status.leituras }}</strong>
             </button>
-            <button class="clean-substep-card" type="button" data-target="comparacao">
-              <span><b>Comparação histórica</b><em>Relatórios anteriores e pós</em></span>
-              <strong>{{ diagnostic_form_status.comparacao }}</strong>
-            </button>
             <button class="clean-substep-card" type="button" data-target="problemas">
               <span><b>Problemas identificados</b><em>Registar evidências</em></span>
               <strong class="warn">{{ diagnostic_form_status.problemas }}</strong>
@@ -376,18 +372,6 @@
               {% endfor %}
             </article>
 
-            <article class="clean-substep-panel" id="clean-substep-comparacao">
-              <div class="table-heading flat-heading"><div><p class="eyebrow">Comparação</p><h3>Histórico e pré/pós intervenção</h3><p>Cruzar relatórios atuais com histórico da viatura, folhas de obra e faturas.</p></div></div>
-              <div class="clean-phase-field-grid">
-                <label>Relatório pré-intervenção<select name="pre_report_exists">{% for option in ["Por confirmar", "Existe", "Não existe"] %}<option{% if phase_form.get("pre_report_exists", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Relatório pós-intervenção<select name="post_report_exists">{% for option in ["Por confirmar", "Existe", "Não existe"] %}<option{% if phase_form.get("post_report_exists", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Manutenção BSI vs faturação<select name="bsi_vs_billing">{% for option in ["Por confirmar", "OK", "Divergente"] %}<option{% if phase_form.get("bsi_vs_billing", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Telecarregamento vs TSB<select name="remote_download_vs_tsb">{% for option in ["Por confirmar", "Obrigatório executado", "Obrigatório não executado"] %}<option{% if phase_form.get("remote_download_vs_tsb", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Diferenças relevantes<textarea name="comparison_differences" rows="3" placeholder="Resumo das divergências encontradas...">{{ phase_form.get("comparison_differences", "") }}</textarea></label>
-                <label>Evidência objetiva<textarea name="comparison_evidence" rows="3" placeholder="Relatório, página, campo ou documento que suporta a conclusão...">{{ phase_form.get("comparison_evidence", "") }}</textarea></label>
-              </div>
-            </article>
-
             <article class="clean-substep-panel" id="clean-substep-problemas">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Problemas</p><h3>Problemas técnicos identificados</h3><p>Registar o problema uma vez, com evidência, para acompanhar até resolução.</p></div></div>
               <div class="clean-phase-field-grid">
@@ -412,11 +396,7 @@
                   <label>Prioridade técnica<select name="diagnostic_priority">{% for option in ["Normal", "Alta", "Crítica", "Com reserva"] %}<option{% if phase_form.get("diagnostic_priority", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Próxima fase<input value="Inspeção Técnica" readonly></label>
                 </div>
-                <label class="clean-phase-exit-main">Conclusão do diagnóstico<textarea name="diagnostic_conclusion" rows="5" placeholder="O que ficou provado, o que falta confirmar e que inspeções físicas são necessárias...">{{ phase_form.get("diagnostic_conclusion", "") }}</textarea></label>
-                <div class="clean-phase-exit-checks">
-                  <strong>Inspeções necessárias</strong>
-                  <label><input type="checkbox" name="inspection_required_oil" value="yes"{% if phase_form.get("inspection_required_oil") %} checked{% endif %}> Óleo / lubrificação</label><label><input type="checkbox" name="inspection_required_bsi" value="yes"{% if phase_form.get("inspection_required_bsi") %} checked{% endif %}> Manutenção BSI</label><label><input type="checkbox" name="inspection_required_tyres" value="yes"{% if phase_form.get("inspection_required_tyres") %} checked{% endif %}> Pneus</label><label><input type="checkbox" name="inspection_required_brakes" value="yes"{% if phase_form.get("inspection_required_brakes") %} checked{% endif %}> Travões</label><label><input type="checkbox" name="inspection_required_road_test" value="yes"{% if phase_form.get("inspection_required_road_test") %} checked{% endif %}> Teste de estrada</label><label><input type="checkbox" name="inspection_required_photos" value="yes"{% if phase_form.get("inspection_required_photos") %} checked{% endif %}> Evidência fotográfica</label>
-                </div>
+                <label class="clean-phase-exit-reserve">Conclusão do diagnóstico<textarea name="diagnostic_conclusion" rows="4" placeholder="O que ficou provado, o que falta confirmar e quais os pontos que devem seguir para inspeção...">{{ phase_form.get("diagnostic_conclusion", "") }}</textarea></label>
                 <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="diagnostic_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("diagnostic_reserve_reason", "") }}</textarea></label>
               </div>
             </article>
@@ -482,12 +462,23 @@
 
             <article class="clean-substep-panel" id="clean-substep-oleo-niveis">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Óleo / níveis</p><h3>Confirmação física e coerência com diagnóstico</h3><p>Usar quando o diagnóstico aponta para degradação de óleo, fugas ou manutenção.</p></div></div>
-              <div class="clean-phase-field-grid">
-                <label>Nível óleo<select name="oil_level">{% for option in ["Por confirmar", "OK", "Baixo", "Excesso"] %}<option{% if phase_form.get("oil_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Estado visual óleo<select name="oil_visual_state">{% for option in ["Por confirmar", "Normal", "Suspeito"] %}<option{% if phase_form.get("oil_visual_state", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Líquido refrigeração<select name="coolant_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("coolant_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Líquido travões<select name="brake_fluid_level">{% for option in ["Por confirmar", "OK", "Baixo"] %}<option{% if phase_form.get("brake_fluid_level", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>Confirma suspeita do diagnóstico?<select name="oil_diagnosis_confirmed">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("oil_diagnosis_confirmed", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              <div class="clean-check-list clean-oil-check-list">
+                {% for field_name, field_label, options, default_value in [
+                  ("oil_level", "Nível óleo", ["Por confirmar", "OK", "Baixo", "Excesso"], "Por confirmar"),
+                  ("oil_visual_state", "Estado visual óleo", ["Por confirmar", "Normal", "Suspeito"], "Por confirmar"),
+                  ("coolant_level", "Líquido refrigeração", ["Por confirmar", "OK", "Baixo"], "Por confirmar"),
+                  ("brake_fluid_level", "Líquido travões", ["Por confirmar", "OK", "Baixo"], "Por confirmar"),
+                  ("oil_diagnosis_confirmed", "Confirma suspeita do diagnóstico?", ["Por confirmar", "Sim", "Não"], "Por confirmar")
+                ] %}
+                  <div class="clean-check-row">
+                    <strong>{{ field_label }}</strong>
+                    <div class="clean-check-choice-boxes" role="radiogroup" aria-label="{{ field_label }}">
+                      {% for option in options %}<label><input type="radio" name="{{ field_name }}" value="{{ option }}"{% if phase_form.get(field_name, default_value) == option %} checked{% endif %}><span>{{ option }}</span></label>{% endfor %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+              <div class="clean-phase-field-grid clean-oil-support-grid">
                 <label>Evidência/foto<label class="clean-file-button">Carregar foto<input name="inspection_tyres_brakes_photo" type="file" accept="image/*" capture="environment"></label></label>
                 <label>Observação<textarea name="oil_levels_observation" rows="3" placeholder="Registar sinais físicos, incoerências ou limitações da inspeção...">{{ phase_form.get("oil_levels_observation", "") }}</textarea></label>
               </div>
@@ -940,14 +931,17 @@
     const form = workbench.closest("form");
     const currentSubstepField = form?.querySelector('input[name="current_substep"]');
     const activateTarget = (target) => {
-      if (!target) return;
-      cards.forEach((item) => item.classList.toggle("active", item.dataset.target === target));
-      panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
+      const resolvedTarget = cards.some((item) => item.dataset.target === target)
+        ? target
+        : (cards[0]?.dataset.target || "");
+      if (!resolvedTarget) return;
+      cards.forEach((item) => item.classList.toggle("active", item.dataset.target === resolvedTarget));
+      panels.forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${resolvedTarget}`));
       if (currentSubstepField) {
-        currentSubstepField.value = target;
+        currentSubstepField.value = resolvedTarget;
       }
-      if (window.location.hash.slice(1) !== target) {
-        history.replaceState(null, "", `#${target}`);
+      if (window.location.hash.slice(1) !== resolvedTarget) {
+        history.replaceState(null, "", `#${resolvedTarget}`);
       }
     };
     cards.forEach((card) => {

@@ -3099,7 +3099,7 @@ CLEAN_WORKSHOP_PHASE_ALIASES = {
 
 CLEAN_WORKSHOP_SUBSTEP_FLOW = {
     "validacao": ("prerequisitos", "pedido", "orientacao"),
-    "diagnostico": ("relatorios", "leituras", "comparacao", "problemas", "saida-diagnostico"),
+    "diagnostico": ("relatorios", "leituras", "problemas", "saida-diagnostico"),
     "inspecao": ("checklist", "pneus-travoes", "oleo-niveis", "saida-inspecao"),
     "auditoria": ("evidencias", "coerencia", "problemas-auditoria", "decisao", "saida-auditoria"),
     "reparacao": ("ordem-reparacao", "execucao", "evidencias-reparacao", "desvios", "saida-reparacao"),
@@ -4377,12 +4377,6 @@ def clean_workshop_diagnostic_form_status(
             clean_form_value(snapshot, "diagnostic_priority").strip(),
             clean_form_value(snapshot, "diagnostic_conclusion").strip(),
             clean_form_value(snapshot, "diagnostic_reserve_reason").strip(),
-            clean_form_value(snapshot, "inspection_required_oil").strip(),
-            clean_form_value(snapshot, "inspection_required_bsi").strip(),
-            clean_form_value(snapshot, "inspection_required_tyres").strip(),
-            clean_form_value(snapshot, "inspection_required_brakes").strip(),
-            clean_form_value(snapshot, "inspection_required_road_test").strip(),
-            clean_form_value(snapshot, "inspection_required_photos").strip(),
         ]
     )
     return {

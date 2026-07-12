@@ -228,6 +228,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Dados extraídos por validar" in diagnosis_page.text
     assert "Leitura automática" in diagnosis_page.text
     assert "Abrir documento" in diagnosis_page.text
+    assert 'data-target="comparacao"' not in diagnosis_page.text
+    assert 'name="inspection_required_oil"' not in diagnosis_page.text
+    assert 'class="clean-phase-exit-reserve">Conclusão do diagnóstico' in diagnosis_page.text
 
     report.extracted_values_json = {
         "km_before_next_maintenance": "40000",
@@ -265,9 +268,6 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         "diagnostic_closed": "Com reservas",
         "diagnostic_priority": "Alta",
         "diagnostic_conclusion": "Diagnóstico pronto para inspeção.",
-        "inspection_required_oil": "yes",
-        "inspection_required_bsi": "yes",
-        "inspection_required_road_test": "yes",
         "diagnostic_reserve_reason": "Falta confirmar histórico completo.",
     }
 
@@ -298,7 +298,17 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert diagnosis_phase is not None
     assert diagnosis_phase.status == "completed"
     assert diagnosis_phase.data_json["form_snapshot"]["diagnostic_problem_title"] == "BSI incoerente"
-    assert diagnosis_phase.data_json["form_snapshot"]["inspection_required_oil"] == "yes"
+
+    inspection_page = client.get(
+        f"/v2-clean/workshop/inspecao?process_id={process_id}",
+        follow_redirects=False,
+    )
+    assert inspection_page.status_code == 200
+    assert 'type="radio" name="oil_level"' in inspection_page.text
+    assert 'type="radio" name="oil_visual_state"' in inspection_page.text
+    assert 'type="radio" name="coolant_level"' in inspection_page.text
+    assert 'type="radio" name="brake_fluid_level"' in inspection_page.text
+    assert 'type="radio" name="oil_diagnosis_confirmed"' in inspection_page.text
 
     inspection_payload = {
         "process_id": str(process_id),

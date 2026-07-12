@@ -11780,6 +11780,40 @@ a.metric:hover {
   grid-template-columns: minmax(150px, 1fr) auto minmax(180px, 1fr) auto;
 }
 
+.clean-oil-check-list {
+  margin-bottom: 12px;
+}
+
+.clean-oil-check-list .clean-check-row {
+  grid-template-columns: minmax(190px, 1fr) minmax(320px, auto);
+}
+
+.clean-oil-check-list .clean-check-choice-boxes span {
+  width: auto;
+  min-width: 64px;
+  padding: 0 9px;
+}
+
+.clean-oil-check-list .clean-check-choice-boxes input[value="OK"]:checked + span,
+.clean-oil-check-list .clean-check-choice-boxes input[value="Normal"]:checked + span,
+.clean-oil-check-list .clean-check-choice-boxes input[value="Sim"]:checked + span {
+  border-color: #15803d;
+  background: #ecfdf3;
+  color: #087443;
+}
+
+.clean-oil-check-list .clean-check-choice-boxes input[value="Baixo"]:checked + span,
+.clean-oil-check-list .clean-check-choice-boxes input[value="Excesso"]:checked + span,
+.clean-oil-check-list .clean-check-choice-boxes input[value="Suspeito"]:checked + span {
+  border-color: #dc2626;
+  background: #feecec;
+  color: #b42318;
+}
+
+.clean-oil-support-grid textarea {
+  min-height: 82px;
+}
+
 .clean-check-legend {
   display: flex;
   flex-wrap: wrap;
@@ -13287,6 +13321,15 @@ a.metric:hover {
 
   .clean-reading-review-form {
     grid-template-columns: 1fr;
+  }
+
+  .clean-oil-check-list .clean-check-row {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-oil-check-list .clean-check-choice-boxes {
+    flex-wrap: wrap;
+    white-space: normal;
   }
 
   .clean-reading-review-actions {

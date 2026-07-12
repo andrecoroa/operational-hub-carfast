@@ -8,6 +8,7 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
 )
+from app.web.router import clean_workshop_phase_advance_error
 from app.web.router import clean_workshop_technical_reading_rows
 
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
@@ -631,3 +632,32 @@ def test_clean_workshop_reading_rows_keep_each_report_available_for_validation()
         "manual_reading",
     ]
     assert rows[-1]["report"] == "Informações de manutenção"
+
+
+def test_closure_accepts_assigned_reserve_and_defined_fleet_state_from_phase_data():
+    snapshot = {
+        "closure_result": "Fechado com reserva",
+        "closure_vehicle_validated": "yes",
+        "closure_history_updated": "yes",
+        "closure_final_status": "Normal",
+        "closure_back_to_fleet": "yes",
+        "closure_pending_exists": "Sim",
+        "closure_pending_owner": "Andre",
+        "closure_pending_description": "Acompanhar problema tecnico.",
+    }
+
+    assert clean_workshop_phase_advance_error("fecho", snapshot, []) is None
+
+
+def test_closure_reserve_still_requires_an_identified_pending_owner():
+    snapshot = {
+        "closure_result": "Fechado com reserva",
+        "closure_vehicle_validated": "yes",
+        "closure_history_updated": "yes",
+        "closure_final_status": "Normal",
+        "closure_back_to_fleet": "yes",
+        "closure_pending_exists": "Sim",
+        "closure_pending_description": "Acompanhar problema tecnico.",
+    }
+
+    assert clean_workshop_phase_advance_error("fecho", snapshot, []) == "closure_incomplete"

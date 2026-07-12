@@ -3838,20 +3838,24 @@ def clean_workshop_phase_advance_error(
 
     if phase == "fecho":
         result = clean_form_value(snapshot, "closure_result", "Não fechar")
-        required_checks = (
-            "closure_vehicle_validated",
-            "closure_history_updated",
-            "closure_fleet_state_defined",
-        )
+        required_checks = ("closure_vehicle_validated", "closure_history_updated")
         if result == "Não fechar" or any(clean_form_value(snapshot, key) != "yes" for key in required_checks):
+            return "closure_incomplete"
+        fleet_state_defined = clean_form_value(snapshot, "closure_fleet_state_defined") == "yes" or (
+            clean_form_value(snapshot, "closure_back_to_fleet") == "yes"
+            and clean_form_value(snapshot, "closure_final_status").strip() not in {"", "Por confirmar"}
+        )
+        if not fleet_state_defined:
             return "closure_incomplete"
         if result != "Fechado com reserva" and clean_form_value(snapshot, "closure_min_docs_attached") != "yes":
             return "closure_incomplete"
-        if result == "Fechado com reserva" and (
-            clean_form_value(snapshot, "closure_pending_assigned") != "yes"
-            or not clean_form_value(snapshot, "closure_pending_description").strip()
-        ):
-            return "closure_incomplete"
+        if result == "Fechado com reserva":
+            pending_description = clean_form_value(snapshot, "closure_pending_description").strip()
+            pending_assigned = clean_form_value(snapshot, "closure_pending_assigned") == "yes" or (
+                bool(clean_form_value(snapshot, "closure_pending_owner").strip()) and bool(pending_description)
+            )
+            if not pending_assigned or not pending_description:
+                return "closure_incomplete"
     return None
 
 

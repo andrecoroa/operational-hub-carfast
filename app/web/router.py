@@ -441,6 +441,12 @@ def calculated_next_ipo(registration_date: date | None, rule_category: str, refe
     return None
 
 
+def ipo_dates_compatible(calculated_ipo: date, rentway_ipo: date) -> bool:
+    """Accept Rentway dates up to seven days before the calculated due date."""
+    days_early = (calculated_ipo - rentway_ipo).days
+    return 0 <= days_early <= 7
+
+
 def vehicle_rule_context(snapshot: VehicleExternalSnapshot | None, manual: dict[str, object]) -> dict[str, object]:
     context = rentway_vehicle_context(snapshot)
     rule_category = inferred_rule_category(snapshot, manual)
@@ -449,7 +455,7 @@ def vehicle_rule_context(snapshot: VehicleExternalSnapshot | None, manual: dict[
     calculated_ipo = calculated_next_ipo(registration_date, rule_category)
     ipo_status = "Por confirmar"
     if calculated_ipo and rentway_ipo:
-        ipo_status = "OK" if calculated_ipo == rentway_ipo else "Divergente"
+        ipo_status = "OK" if ipo_dates_compatible(calculated_ipo, rentway_ipo) else "Divergente"
     elif calculated_ipo:
         ipo_status = "Calculada"
 

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet" if vehicle_ctx else ("documents_center" if is_clean_mode else "documents") %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-doc-page-header clean-card-wide">
+      <div class="clean-doc-header-main">
+        <p class="eyebrow">Arquivo operacional</p>
+        <h1>Novo documento</h1>
+        <p>
+          {% if vehicle_ctx %}
+            Entrada documental já associada à viatura. Escolhe a tipologia e anexa o ficheiro ou indica o link.
+          {% else %}
+            Registo rápido de documento real ou evidência documental.
+          {% endif %}
+        </p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="{{ prefill.return_url or ('/v2-clean/documents' if is_clean_mode else '/documents') }}">Voltar</a>
+        {% if vehicle_ctx %}
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
+        {% elif is_clean_mode %}
+          <a class="button-link secondary-link" href="/v2-clean/documents">Importação estruturada</a>
+        {% else %}
+          <a class="button-link secondary-link" href="/documents/manage">Gestão</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if vehicle_ctx %}
+      <section class="clean-doc-page-header clean-card-wide">
+        <div class="clean-doc-header-main">
+          <p class="eyebrow">Viatura identificada</p>
+          <h1>{{ vehicle_ctx.identity.plate or "-" }}</h1>
+          <p>
+            {{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}
+            · Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}
+          </p>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if error %}
+      <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <section class="clean-doc-filter-panel clean-card-wide">
+      <form method="post" action="/documents/new" enctype="multipart/form-data" class="clean-doc-quick-form">
+        <input type="hidden" name="vehicle_id" value="{{ prefill.vehicle_id }}">
+        <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
+
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Entrada documental</p>
+            <h3>Registo rápido</h3>
+            <p>Documentos reais por viatura. As listagens estruturadas entram no importador global.</p>
+          </div>
+        </div>
+
+        <div class="clean-doc-import-grid">
+          <label>
+            Título
+            <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Ex.: Fatura Gamobar abril 2026">
+          </label>
+          <label>
+            Anexo
+            <input type="file" name="document_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.doc,.docx">
+          </label>
+        </div>
+
+        <div class="clean-doc-filter-grid">
+          <label>
+            Área
+            <select name="classification" data-document-area>
+              {% for code, label in areas %}
+                <option value="{{ code }}" {% if code == prefill.classification %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Tipologia
+            <select name="document_type" data-document-type>
+              {% for code, label in document_types %}
+                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if code == prefill.document_type %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in statuses %}
+                <option value="{{ code }}" {% if code == prefill.status %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Origem
+            <select name="source">
+              {% for code, label in sources %}
+                <option value="{{ code }}" {% if code == prefill.source %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div class="clean-doc-import-grid">
+          {% if vehicle_ctx %}
+            <label>
+              Matrícula
+              <input type="text" value="{{ prefill.plate }}" disabled>
+              <input type="hidden" name="plate" value="{{ prefill.plate }}">
+            </label>
+          {% else %}
+            <label>
+              Matrícula
+              <input type="text" name="plate" maxlength="40" value="{{ prefill.plate }}" placeholder="AA-00-AA">
+            </label>
+          {% endif %}
+          <label>
+            Fornecedor
+            <input type="text" name="supplier_name" maxlength="200" value="{{ prefill.supplier_name }}" placeholder="Fornecedor / origem">
+          </label>
+          <label>
+            Data do documento
+            <input type="date" name="document_date" value="{{ prefill.document_date }}">
+          </label>
+          <label>
+            Cliente
+            <input type="text" name="customer_name" maxlength="200" value="{{ prefill.customer_name }}">
+          </label>
+        </div>
+
+        <div class="clean-doc-import-grid">
+          <label>
+            Link ou caminho original
+            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="https://... ou C:\...">
+          </label>
+          <label>
+            Link ou caminho arquivado
+            <input type="text" name="url_archive" value="{{ prefill.url_archive }}" placeholder="https://... ou C:\...">
+          </label>
+        </div>
+
+        <details class="clean-doc-collapsible">
+          <summary>
+            <span>
+              <b>Dados adicionais</b>
+              <small>Metadados e ligação operacional</small>
+            </span>
+            <em>Opcional</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-import-grid">
+              <label>
+                Canal de entrada
+                <input type="text" name="entry_channel" maxlength="120" value="{{ prefill.entry_channel }}" placeholder="documentos@carfast.pt">
+              </label>
+              <label>
+                Remetente
+                <input type="text" name="source_sender" maxlength="255" value="{{ prefill.source_sender }}">
+              </label>
+              <label>
+                Assunto original
+                <input type="text" name="source_subject" maxlength="255" value="{{ prefill.source_subject }}">
+              </label>
+              <label>
+                Tarefa associada
+                <input type="number" name="task_id" min="1" value="{{ prefill.task_id }}">
+              </label>
+              <label>
+                Processo oficina
+                <input type="number" name="workshop_process_id" min="1" value="{{ prefill.workshop_process_id }}">
+              </label>
+              <label>
+                Lote importação
+                <input type="number" name="import_batch_id" min="1" value="{{ prefill.import_batch_id }}">
+              </label>
+            </div>
+            <label>
+              Notas
+              <textarea name="notes" rows="3">{{ prefill.notes }}</textarea>
+            </label>
+          </div>
+        </details>
+
+        <button type="submit">Registar documento</button>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+  const documentArea = document.querySelector("[data-document-area]");
+  const documentType = document.querySelector("[data-document-type]");
+  function filterDocumentTypes() {
+    if (!documentArea || !documentType) return;
+    const area = documentArea.value;
+    let firstVisible = "";
+    documentType.querySelectorAll("option").forEach((option) => {
+      const optionArea = option.dataset.area;
+      const visible = !optionArea || optionArea === area;
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option.value;
+    });
+    const selected = documentType.selectedOptions[0];
+    if (selected && selected.hidden && firstVisible) {
+      documentType.value = firstVisible;
+    }
+  }
+  documentArea?.addEventListener("change", filterDocumentTypes);
+  filterDocumentTypes();
+</script>
+{% endblock %}

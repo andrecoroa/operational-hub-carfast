@@ -17,7 +17,7 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
-        <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}">Adicionar documento</a>
+        <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Adicionar documento</a>
         <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
         <a class="button-link secondary-link" href="#audit-real-start-date">Início real</a>
         <a class="button-link secondary-link" href="#audit-effective-maintenance-count">Nº manutenções</a>
@@ -90,36 +90,21 @@
 
         <div class="clean-doc-overview-grid">
           <section class="clean-doc-overview-block">
-            <strong>Atalhos</strong>
-            <div class="clean-doc-quick-imports">
-              <a class="button-link secondary-link" href="#manual-pending">Criar pendente manual</a>
-              <a class="button-link secondary-link" href="#audit-real-start-date">Auditar início real</a>
-              <a class="button-link secondary-link" href="#audit-effective-maintenance-count">Auditar nº manutenções</a>
-              <a class="button-link secondary-link" href="/v2-clean/documents">Abrir importação global</a>
-            </div>
-          </section>
-
-          <section class="clean-doc-overview-block">
-            <strong>Leitura rápida</strong>
+            <strong>Resumo da página</strong>
             <ul class="clean-doc-path-list">
               <li>{{ archive_rows|length }} linhas de arquivo visíveis</li>
               <li>{{ structured_rows|length }} linhas estruturadas visíveis</li>
               <li>{{ comparison_rows|length }} pares FO x Fatura nos filtros atuais</li>
-            </ul>
-          </section>
-
-          <section class="clean-doc-overview-block clean-doc-overview-note">
-            <strong>Estrutura alvo</strong>
-            <ul class="clean-doc-path-list">
-              <li><code>Frota/[MATRICULA]_[CHASSIS]</code></li>
-              <li><code>01_Documentacao_Financeira</code> → faturas, notas de crédito, comprovativos</li>
-              <li><code>02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code> → diagnósticos, Service Box / TSB, fotos, outros</li>
-              <li><code>03_Documentacao_Base_Viatura</code> → documentação base, plano de manutenção, outros</li>
-              <li><code>99_Pendentes_Classificar</code> → documento real ainda sem classificação final</li>
+              <li>Importações estruturadas vivem fora da viatura e entram pelo centro global.</li>
             </ul>
             <details class="clean-doc-inline-details">
-              <summary>Ver enquadramento completo</summary>
+              <summary>Ver estrutura e regras fechadas</summary>
               <div class="clean-doc-inline-details-body">
+                <p><code>Frota/[MATRICULA]_[CHASSIS]</code></p>
+                <p><code>01_Documentacao_Financeira</code> → faturas, notas de crédito, comprovativos</p>
+                <p><code>02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code> → diagnósticos, Service Box / TSB, fotos, outros</p>
+                <p><code>03_Documentacao_Base_Viatura</code> → documentação base, plano de manutenção, outros</p>
+                <p><code>99_Pendentes_Classificar</code> → documento real ainda sem classificação final</p>
                 <p><strong>Arquivo documental por viatura:</strong> faturas, notas de crédito, comprovativos, diagnósticos, relatórios técnicos, Service Box / TSB, fotos/evidências e documentação base.</p>
                 <p><strong>Listagem estruturada global:</strong> folhas de obra, AR's, sinistros, contratos e impros. Estes ficheiros não são arquivados por viatura um a um.</p>
                 <p><code>Importacoes_Estruturadas/Folhas_Obra | ARs | Sinistros | Contratos | Impros | Arquivo_Original_Importacoes</code></p>
@@ -271,7 +256,7 @@
       </article>
 
       <section class="clean-doc-dual-grid">
-        <details class="clean-doc-collapsible clean-card-wide" open>
+        <details class="clean-doc-collapsible clean-card-wide">
           <summary>
             <span>
               <b>Comparação FO vs Fatura</b>

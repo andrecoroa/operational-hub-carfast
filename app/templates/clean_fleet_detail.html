@@ -105,7 +105,7 @@
           <div class="clean-document-summary-grid">
             {% for code, label in document_group_labels.items() %}
               {% if code != 'other' %}
-                <a class="{% if code == 'missing' and document_summary.get(code, 0) %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?doc_group={{ code }}">
+                <a class="{% if code == 'missing' and document_summary.get(code, 0) %}warn{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}">
                   <span>{{ label }}</span>
                   <strong>{{ document_summary.get(code, 0) }}</strong>
                 </a>
@@ -114,7 +114,7 @@
           </div>
           <div class="clean-fleet-doc-actions">
             <a class="button-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ver documentação</a>
-            <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}">Adicionar documento</a>
+            <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Adicionar documento</a>
             <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Ver tarefas</a>
           </div>
           <div class="clean-document-strip">

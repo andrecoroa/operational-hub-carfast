@@ -125,6 +125,7 @@ from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+    DOCUMENT_HISTORY_STRUCTURED_GROUPS,
     add_quick_classification,
     attach_document_to_record,
     create_archive_placeholder,
@@ -5186,6 +5187,7 @@ def clean_fleet_documents(
     vehicle_id: int,
     q: str | None = None,
     main_group: str = "",
+    doc_group: str = "",
     archive_group: str = "",
     status: str = "",
 ):
@@ -5195,6 +5197,10 @@ def clean_fleet_documents(
     if not can_view_fleet(request):
         return RedirectResponse("/", status_code=303)
     search = (q or "").strip().lower()
+    clean_main_group = (main_group or doc_group or "").strip()
+    clean_main_group = {
+        "technical_reports": "diagnostics",
+    }.get(clean_main_group, clean_main_group)
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -5212,7 +5218,7 @@ def clean_fleet_documents(
         for row in module_ctx["archive_rows"]:
             if archive_group and row["archive_group"] != archive_group:
                 continue
-            if main_group and row.get("main_group") != main_group:
+            if clean_main_group and row.get("main_group") != clean_main_group:
                 continue
             if status and row["status"] != status and row.get("comparison_state") != status:
                 continue
@@ -5230,7 +5236,7 @@ def clean_fleet_documents(
 
         structured_rows = []
         for row in module_ctx["structured_rows"]:
-            if main_group and row["main_group"] != main_group:
+            if clean_main_group and row["main_group"] != clean_main_group:
                 continue
             if status and row["status"] != status and row["comparison_state"] != status:
                 continue
@@ -5285,7 +5291,7 @@ def clean_fleet_documents(
             "structured_rows": structured_rows,
             "comparison_rows": comparison_rows,
             "q": q or "",
-            "main_group": main_group,
+            "main_group": clean_main_group,
             "archive_group": archive_group,
             "status": status,
             "main_groups": DOCUMENT_HISTORY_MAIN_GROUPS,
@@ -9339,6 +9345,17 @@ def sanitize_archive_component(value: str | None, fallback: str) -> str:
 
 def vehicle_archive_base_folder(plate: str | None, vin: str | None) -> str:
     return f"Frota/{canonical_vehicle_archive_name(plate, vin)}"
+
+
+def local_document_storage_folder(
+    folder_path: str | None,
+    *,
+    plate: str | None,
+    vin: str | None,
+) -> Path:
+    canonical_path = (folder_path or vehicle_archive_base_folder(plate, vin)).strip().strip("/")
+    parts = [sanitize_archive_component(part, "_") for part in canonical_path.split("/") if part.strip()]
+    return APP_PROJECT_ROOT.joinpath("uploads", "documents", *parts)
 
 
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
@@ -13498,6 +13515,17 @@ def documents_new_page(
     status: str = "",
     source: str = "",
     title: str = "",
+    supplier_name: str = "",
+    customer_name: str = "",
+    document_date: str = "",
+    url_original: str = "",
+    url_archive: str = "",
+    entry_channel: str = "",
+    source_sender: str = "",
+    source_subject: str = "",
+    task_id: str = "",
+    workshop_process_id: str = "",
+    import_batch_id: str = "",
     notes: str = "",
     return_url: str = "",
 ):
@@ -13505,11 +13533,13 @@ def documents_new_page(
         return RedirectResponse("/login", status_code=303)
     clean_plate = plate.strip().upper()
     selected_vehicle_id = vehicle_id
-    if selected_vehicle_id and not clean_plate:
-        with SessionLocal() as db:
+    vehicle_ctx = None
+    with SessionLocal() as db:
+        if selected_vehicle_id:
             vehicle = db.get(Vehicle, selected_vehicle_id)
             if vehicle:
-                clean_plate = vehicle.plate or ""
+                clean_plate = clean_plate or (vehicle.plate or "")
+                vehicle_ctx = clean_vehicle_display_context(db, vehicle)
     clean_classification = classification if classification in DOCUMENT_AREA_LABELS else "workshop"
     clean_document_type = normalize_document_type_for_area(document_type, clean_classification)
     clean_status = status if status in DOCUMENT_STATUS_LABELS else "received"
@@ -13517,9 +13547,12 @@ def documents_new_page(
     clean_return_url = return_url.strip()
     if clean_return_url and (not clean_return_url.startswith("/v2-clean/") or clean_return_url.startswith("//")):
         clean_return_url = ""
+    if not clean_return_url and selected_vehicle_id:
+        clean_return_url = f"/v2-clean/fleet/{selected_vehicle_id}/documents"
+    is_clean_mode = bool(clean_return_url.startswith("/v2-clean/") or selected_vehicle_id)
     return templates.TemplateResponse(
         request,
-        "documents_new.html",
+        "clean_document_new.html" if is_clean_mode else "documents_new.html",
         {
             "areas": DOCUMENT_AREAS,
             "document_types": DOCUMENT_TYPES,
@@ -13527,6 +13560,8 @@ def documents_new_page(
             "statuses": DOCUMENT_STATUSES,
             "sources": DOCUMENT_SOURCES,
             "error": error,
+            "is_clean_mode": is_clean_mode,
+            "vehicle_ctx": vehicle_ctx,
             "prefill": {
                 "vehicle_id": selected_vehicle_id or "",
                 "plate": clean_plate,
@@ -13536,6 +13571,17 @@ def documents_new_page(
                 "source": clean_source,
                 "title": title.strip(),
                 "notes": notes.strip(),
+                "url_original": url_original.strip(),
+                "url_archive": url_archive.strip(),
+                "supplier_name": supplier_name.strip(),
+                "customer_name": customer_name.strip(),
+                "document_date": document_date.strip(),
+                "entry_channel": entry_channel.strip(),
+                "source_sender": source_sender.strip(),
+                "source_subject": source_subject.strip(),
+                "task_id": task_id.strip(),
+                "workshop_process_id": workshop_process_id.strip(),
+                "import_batch_id": import_batch_id.strip(),
                 "return_url": clean_return_url,
             },
         },
@@ -13652,6 +13698,7 @@ def document_create(
     import_batch_id: str = Form(""),
     notes: str = Form(""),
     return_url: str = Form(""),
+    document_file: UploadFile | None = File(None),
 ):
     user_id = get_web_user_id(request)
     if not user_id:
@@ -13671,18 +13718,30 @@ def document_create(
             "status": status,
             "source": source,
             "title": title.strip(),
+            "supplier_name": supplier_name.strip(),
+            "customer_name": customer_name.strip(),
+            "document_date": document_date.strip(),
+            "url_original": url_original.strip(),
+            "url_archive": url_archive.strip(),
+            "entry_channel": entry_channel.strip(),
+            "source_sender": source_sender.strip(),
+            "source_subject": source_subject.strip(),
+            "task_id": task_id.strip(),
+            "workshop_process_id": workshop_process_id.strip(),
+            "import_batch_id": import_batch_id.strip(),
             "notes": notes.strip(),
             "return_url": clean_return_url,
         }
         return RedirectResponse(f"/documents/new?{urlencode({k: v for k, v in params.items() if v})}", status_code=303)
 
-    clean_title = title.strip()
+    uploaded_original_name = Path(document_file.filename).name if document_file and document_file.filename else ""
+    clean_title = title.strip() or sanitize_archive_component(Path(uploaded_original_name).stem, "Documento")
     clean_original_url = url_original.strip()
     clean_archive_url = url_archive.strip()
     if not clean_title:
         return document_error_redirect("Indica um título.")
-    if not clean_original_url and not clean_archive_url:
-        return document_error_redirect("Indica pelo menos um link ou caminho.")
+    if not clean_original_url and not clean_archive_url and not uploaded_original_name:
+        return document_error_redirect("Indica pelo menos um link/caminho ou anexa um ficheiro.")
     if classification not in DOCUMENT_AREA_LABELS:
         classification = "workshop"
     document_type = normalize_document_type_for_area(document_type, classification)
@@ -13724,6 +13783,42 @@ def document_create(
             vin=vehicle.vin if vehicle else None,
             workshop_process_ref=process_folder_ref,
         )
+        storage_provider = "sharepoint"
+        storage_path = clean_original_url or clean_archive_url
+        storage_key = clean_original_url or None
+        external_url = clean_archive_url or clean_original_url
+        original_name = clean_title[:255]
+        file_name = clean_title[:255]
+        file_type = None
+        file_size = None
+        file_hash = None
+
+        if uploaded_original_name:
+            content = document_file.file.read()
+            if not content and not clean_original_url and not clean_archive_url:
+                return document_error_redirect("O ficheiro anexado está vazio.")
+            if content:
+                suffix = Path(uploaded_original_name).suffix or ".bin"
+                digest = hashlib.sha256(content).hexdigest()
+                stem = sanitize_archive_component(Path(uploaded_original_name).stem or clean_title, "documento")
+                storage_dir = local_document_storage_folder(
+                    folder_path,
+                    plate=clean_plate or (vehicle.plate if vehicle else None),
+                    vin=vehicle.vin if vehicle else None,
+                )
+                storage_dir.mkdir(parents=True, exist_ok=True)
+                file_name = f"{stem}_{digest[:12]}{suffix.lower()}"
+                stored_path = storage_dir / file_name
+                if not stored_path.exists():
+                    stored_path.write_bytes(content)
+                storage_provider = "local"
+                storage_path = str(stored_path)
+                storage_key = digest
+                external_url = clean_archive_url or None
+                original_name = uploaded_original_name[:255]
+                file_type = suffix.lstrip(".").lower() or None
+                file_size = len(content)
+                file_hash = digest
 
         document = Document(
             title=clean_title,
@@ -13734,14 +13829,15 @@ def document_create(
             entry_channel=entry_channel.strip() or None,
             source_sender=source_sender.strip() or None,
             source_subject=source_subject.strip() or None,
-            original_name=clean_title[:255],
-            file_name=clean_title[:255],
-            file_type=None,
-            file_size=None,
-            storage_provider="sharepoint",
-            storage_path=clean_original_url or clean_archive_url,
-            storage_key=clean_original_url or None,
-            external_url=clean_archive_url or clean_original_url,
+            original_name=original_name,
+            file_name=file_name,
+            file_type=file_type,
+            file_size=file_size,
+            storage_provider=storage_provider,
+            storage_path=storage_path,
+            storage_key=storage_key,
+            external_url=external_url,
+            file_hash=file_hash,
             folder_path=folder_path,
             vehicle_id=linked_vehicle_id,
             task_id=parsed_task_id,
@@ -13797,6 +13893,7 @@ def document_create(
                 "document_type": document_type,
                 "status": status,
                 "folder_path": folder_path,
+                "storage_provider": storage_provider,
             },
             user_id=user_id,
         )

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-hero clean-home-hero">
+      <div>
+        <p class="eyebrow">{{ eyebrow }}</p>
+        <h2>{{ title }}</h2>
+        <p>{{ description }}</p>
+      </div>
+      {% if actions %}
+        <div class="button-row">
+          {% for action in actions %}
+            <a class="button-link{% if action.secondary %} secondary-link{% endif %}" href="{{ action.href }}">{{ action.label }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </header>
+
+    <section class="clean-home-main-grid">
+      <article class="clean-panel clean-home-process-panel">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Estado</p>
+            <h3>{{ panel_title }}</h3>
+          </div>
+        </div>
+        <div class="clean-area-grid">
+          {% for card in cards %}
+            <article class="clean-home-area-card">
+              <span class="clean-area-code">{{ card.code }}</span>
+              <div>
+                <strong>{{ card.title }}</strong>
+                <small>{{ card.text }}</small>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      </article>
+
+      <aside class="clean-home-side-stack">
+        <article class="clean-panel clean-home-action-panel soft">
+          <div>
+            <p class="eyebrow">Próximo passo</p>
+            <h3>{{ next_title }}</h3>
+            <p>{{ next_text }}</p>
+          </div>
+        </article>
+      </aside>
+    </section>
+  </main>
+</div>
+{% endblock %}

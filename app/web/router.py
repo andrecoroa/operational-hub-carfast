@@ -2887,6 +2887,111 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
     ]
 
 
+def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
+    today = date.today()
+    cards: list[dict[str, object]] = []
+    division_specs = [
+        (
+            "operational",
+            "OP",
+            "Operacional",
+            "Pedidos, execucao diaria e ocorrencias rapidas.",
+            ["Pedido", "Incidente", "Reclamacao"],
+            "Base ativa",
+        ),
+        (
+            "workshop",
+            "OF",
+            "Oficina",
+            "Tarefas tecnicas e seguimento de apoio a oficina.",
+            ["Diagnostico", "Reserva", "Apoio tecnico"],
+            "Ligado ao modulo",
+        ),
+        (
+            "management",
+            "GE",
+            "Gestão",
+            "Discussões de negocio, fornecedores e decisões de supervisão.",
+            ["Fornecedor", "Sinistro", "Discussao"],
+            "A abrir",
+        ),
+        (
+            "administration",
+            "AD",
+            "Administração",
+            "Assuntos reservados, sensiveis ou internos.",
+            ["Procedimento", "Acesso", "Validacao"],
+            "Restrito",
+        ),
+    ]
+    management_open = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagementProcess)
+            .where(ManagementProcess.status.notin_(("closed", "cancelled")))
+        )
+        or 0
+    )
+    for workspace_code, short, label, description, chips, state in division_specs:
+        if workspace_code in TASK_WORKSPACE_TASK_TYPES:
+            workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
+            open_count = (
+                db.scalar(
+                    select(func.count()).select_from(Task).where(
+                        workspace_task_filter,
+                        Task.closed_at.is_(None),
+                        ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                    )
+                )
+                or 0
+            )
+            quick_count = (
+                db.scalar(
+                    select(func.count()).select_from(QuickRecord).where(
+                        QuickRecord.workspace == workspace_code,
+                        QuickRecord.closed_at.is_(None),
+                        ~QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES),
+                    )
+                )
+                or 0
+            )
+            due_today = (
+                db.scalar(
+                    select(func.count()).select_from(Task).where(
+                        workspace_task_filter,
+                        Task.closed_at.is_(None),
+                        ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                        Task.due_on == today,
+                    )
+                )
+                or 0
+            )
+        elif workspace_code == "management":
+            open_count = int(management_open)
+            quick_count = 0
+            due_today = 0
+        else:
+            open_count = 0
+            quick_count = 0
+            due_today = 0
+        cards.append(
+            {
+                "code": workspace_code,
+                "short": short,
+                "label": label,
+                "description": description,
+                "open": int(open_count),
+                "quick": int(quick_count),
+                "due_today": int(due_today),
+                "chips": chips,
+                "state": state,
+                "href": None,
+                "action": "Base limpa",
+            }
+        )
+    return cards
+
+
 @web_router.get("/new", response_class=HTMLResponse)
 @web_router.get("/v2-clean", response_class=HTMLResponse)
 def clean_experience_home(request: Request):
@@ -2944,6 +3049,94 @@ def clean_process_center(request: Request):
                 "process_metrics": process_metrics,
             },
         )
+
+
+@web_router.get("/v2-clean/tasks", response_class=HTMLResponse)
+def clean_tasks_center(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        task_divisions = clean_task_division_cards(db)
+        urgent_query = (
+            select(Task)
+            .where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
+            .order_by(Task.due_on.asc().nullslast(), Task.updated_at.desc(), Task.id.desc())
+            .limit(6)
+        )
+        urgent_tasks = [
+            {
+                "title": task.title,
+                "status": task.status or "open",
+                "detail": f"{task.plate or 'Sem matrícula'} · {task.due_on or 'Sem prazo'}",
+                "href": None,
+            }
+            for task in db.scalars(urgent_query).all()
+        ]
+        recent_task_entries = [
+            {
+                "title": task.title,
+                "status": task.status or "open",
+                "detail": f"Tarefa · {task.plate or 'Sem matrícula'}",
+                "href": None,
+            }
+            for task in db.scalars(select(Task).order_by(Task.updated_at.desc(), Task.id.desc()).limit(4)).all()
+        ]
+        recent_quick_entries = [
+            {
+                "title": record.title,
+                "status": record.status or "new",
+                "detail": f"Registo rápido · {record.workspace}",
+                "href": None,
+            }
+            for record in db.scalars(select(QuickRecord).order_by(QuickRecord.updated_at.desc(), QuickRecord.id.desc()).limit(4)).all()
+        ]
+        recent_entries = [*recent_task_entries, *recent_quick_entries]
+        recent_entries.sort(key=lambda item: item["detail"])
+        task_metrics = {
+            "divisions": len(task_divisions),
+            "open": sum(int(item["open"]) for item in task_divisions),
+            "quick": sum(int(item["quick"]) for item in task_divisions),
+            "due_today": sum(int(item["due_today"]) for item in task_divisions),
+        }
+        return templates.TemplateResponse(
+            request,
+            "clean_task_center.html",
+            {
+                "task_divisions": task_divisions,
+                "task_metrics": task_metrics,
+                "urgent_tasks": urgent_tasks,
+                "recent_entries": recent_entries[:6],
+            },
+        )
+
+
+@web_router.get("/v2-clean/admin", response_class=HTMLResponse)
+def clean_admin_center(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    return templates.TemplateResponse(
+        request,
+        "clean_module_placeholder.html",
+        {
+            "active_menu": "clean_admin",
+            "eyebrow": "Nova experiência / administração",
+            "title": "Administração",
+            "description": "Zona reservada para regras, permissões e controlos próprios da nova experiência.",
+            "panel_title": "Preparação segura",
+            "cards": [
+                {"code": "AC", "title": "Acessos", "text": "Perfis e permissões da v2-clean devem ser separados antes de uso real."},
+                {"code": "RG", "title": "Regras", "text": "Aqui vamos consolidar configurações sem contaminar a base operacional antiga."},
+                {"code": "LG", "title": "Auditoria", "text": "As ações sensíveis, como cancelar e reabrir processos, ficam melhor centralizadas aqui."},
+            ],
+            "next_title": "Sem risco operacional",
+            "next_text": "Por agora deixamos a área preparada e visível, mas sem ligar nenhum fluxo crítico à administração antiga.",
+            "actions": [
+                {"href": "/v2-clean", "label": "Voltar ao início", "secondary": False},
+            ],
+        },
+    )
 
 
 @web_router.get("/v2-clean/workshop", response_class=HTMLResponse)
@@ -5306,6 +5499,136 @@ def clean_fleet_documents(
     )
 
 
+@web_router.get("/v2-clean/fleet/{vehicle_id}/documents/new", response_class=HTMLResponse)
+def clean_fleet_documents_new(request: Request, vehicle_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        plate = normalize_identifier(vehicle.plate or vehicle.license_plate or "")
+    return documents_new_page(
+        request,
+        vehicle_id=vehicle_id,
+        plate=plate,
+        return_url=f"/v2-clean/fleet/{vehicle_id}/documents",
+    )
+
+
+@web_router.get("/v2-clean/documents/new", response_class=HTMLResponse)
+def clean_documents_new_page(
+    request: Request,
+    vehicle_id: int | None = None,
+    plate: str = "",
+    classification: str = "",
+    document_type: str = "",
+    status: str = "",
+    source: str = "",
+    title: str = "",
+    supplier_name: str = "",
+    customer_name: str = "",
+    document_date: str = "",
+    url_original: str = "",
+    url_archive: str = "",
+    entry_channel: str = "",
+    source_sender: str = "",
+    source_subject: str = "",
+    task_id: str = "",
+    workshop_process_id: str = "",
+    import_batch_id: str = "",
+    notes: str = "",
+    return_url: str = "",
+    error: str | None = None,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    return documents_new_page(
+        request,
+        error=error,
+        vehicle_id=vehicle_id,
+        plate=plate,
+        classification=classification,
+        document_type=document_type,
+        status=status,
+        source=source,
+        title=title,
+        supplier_name=supplier_name,
+        customer_name=customer_name,
+        document_date=document_date,
+        url_original=url_original,
+        url_archive=url_archive,
+        entry_channel=entry_channel,
+        source_sender=source_sender,
+        source_subject=source_subject,
+        task_id=task_id,
+        workshop_process_id=workshop_process_id,
+        import_batch_id=import_batch_id,
+        notes=notes,
+        return_url=return_url or "/v2-clean/documents",
+    )
+
+
+@web_router.post("/v2-clean/documents/new", response_class=HTMLResponse)
+def clean_documents_create(
+    request: Request,
+    title: str = Form(""),
+    classification: str = Form("workshop"),
+    document_type: str = Form("workshop_other"),
+    status: str = Form("received"),
+    document_date: str = Form(""),
+    source: str = Form("email"),
+    entry_channel: str = Form(""),
+    source_sender: str = Form(""),
+    source_subject: str = Form(""),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    plate: str = Form(""),
+    supplier_name: str = Form(""),
+    customer_name: str = Form(""),
+    vehicle_id: str = Form(""),
+    task_id: str = Form(""),
+    workshop_process_id: str = Form(""),
+    import_batch_id: str = Form(""),
+    notes: str = Form(""),
+    return_url: str = Form(""),
+    document_file: UploadFile | None = File(None),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    return document_create(
+        request,
+        title=title,
+        classification=classification,
+        document_type=document_type,
+        status=status,
+        document_date=document_date,
+        source=source,
+        entry_channel=entry_channel,
+        source_sender=source_sender,
+        source_subject=source_subject,
+        url_original=url_original,
+        url_archive=url_archive,
+        plate=plate,
+        supplier_name=supplier_name,
+        customer_name=customer_name,
+        vehicle_id=vehicle_id,
+        task_id=task_id,
+        workshop_process_id=workshop_process_id,
+        import_batch_id=import_batch_id,
+        notes=notes,
+        return_url=return_url,
+        document_file=document_file,
+    )
+
+
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(request: Request):
     denied = clean_experience_denied(request)
@@ -5385,16 +5708,13 @@ def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, 
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
-        vehicle = db.get(Vehicle, vehicle_id)
-        if not vehicle:
-            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_work_orders_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
+            import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=work_orders", status_code=303)
+    return RedirectResponse("/v2-clean/documents?imported=work_orders", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/impros")
@@ -5404,16 +5724,13 @@ def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file:
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
-        vehicle = db.get(Vehicle, vehicle_id)
-        if not vehicle:
-            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_impros_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
+            import_impros_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=impros", status_code=303)
+    return RedirectResponse("/v2-clean/documents?imported=impros", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/contracts")
@@ -5423,16 +5740,13 @@ def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, fi
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
-        vehicle = db.get(Vehicle, vehicle_id)
-        if not vehicle:
-            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_contracts_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
+            import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=contracts", status_code=303)
+    return RedirectResponse("/v2-clean/documents?imported=contracts", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/pending")
@@ -13707,6 +14021,12 @@ def document_create(
     clean_return_url = return_url.strip()
     if clean_return_url and (not clean_return_url.startswith("/v2-clean/") or clean_return_url.startswith("//")):
         clean_return_url = ""
+    is_clean_target = bool(
+        clean_return_url.startswith("/v2-clean/")
+        or request.url.path.startswith("/v2-clean/")
+        or vehicle_id.strip()
+    )
+    new_document_form_path = "/v2-clean/documents/new" if is_clean_target else "/documents/new"
 
     def document_error_redirect(message: str) -> RedirectResponse:
         params = {
@@ -13732,7 +14052,7 @@ def document_create(
             "notes": notes.strip(),
             "return_url": clean_return_url,
         }
-        return RedirectResponse(f"/documents/new?{urlencode({k: v for k, v in params.items() if v})}", status_code=303)
+        return RedirectResponse(f"{new_document_form_path}?{urlencode({k: v for k, v in params.items() if v})}", status_code=303)
 
     uploaded_original_name = Path(document_file.filename).name if document_file and document_file.filename else ""
     clean_title = title.strip() or sanitize_archive_component(Path(uploaded_original_name).stem, "Documento")

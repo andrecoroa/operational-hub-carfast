@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-process-topbar">
+      <div>
+        <p class="eyebrow">Nova experiencia / tarefas</p>
+        <h2>Centro de Tarefas</h2>
+        <p>Fila limpa da nova experiencia. Atribuicoes, prioridades e visibilidade por divisao.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean">Inicio</a>
+        <a class="button-link secondary-link" href="/v2-clean/processes">Centro de Processos</a>
+      </div>
+    </header>
+
+    <section class="clean-process-kpi-row" aria-label="Indicadores do centro de tarefas">
+      <article><span>Divisoes</span><strong>{{ task_metrics.divisions }}</strong><em>ativas no modelo</em></article>
+      <article><span>Tarefas abertas</span><strong>{{ task_metrics.open }}</strong><em>em curso</em></article>
+      <article><span>Rapidos</span><strong>{{ task_metrics.quick }}</strong><em>registos por tratar</em></article>
+      <article><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></article>
+    </section>
+
+    <section class="clean-panel clean-card-wide clean-process-area-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Divisoes</p>
+          <h3>Escolher a fila de trabalho</h3>
+          <p>Aqui fica a estrutura final. Para ja mostramos a base limpa, sem arrastar a navegação antiga para dentro da nova experiencia.</p>
+        </div>
+      </div>
+
+      <div class="clean-process-area-grid clean-process-area-grid-compact">
+        {% for division in task_divisions %}
+          <article class="clean-process-area-card clean-process-area-card-compact">
+            <div class="clean-process-area-head">
+              <span class="clean-area-code">{{ division.short }}</span>
+              <div>
+                <strong>{{ division.label }}</strong>
+                <small>{{ division.description }}</small>
+              </div>
+            </div>
+
+            <div class="clean-process-area-metrics">
+              <span><b>{{ division.open }}</b><em>Abertas</em></span>
+              <span><b>{{ division.quick }}</b><em>Rápidas</em></span>
+            </div>
+
+            <div class="clean-model-chip-row">
+              {% for chip in division.chips %}
+                <span>{{ chip }}</span>
+              {% endfor %}
+            </div>
+
+            <div class="clean-process-card-footer">
+              <em>{{ division.state }}</em>
+              {% if division.href %}
+                <a href="{{ division.href }}">{{ division.action }}</a>
+              {% else %}
+                <span>{{ division.action }}</span>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-page-grid clean-process-recent-grid">
+      <article class="clean-panel clean-panel-compact">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Prioridade</p>
+            <h3>Mais urgentes</h3>
+          </div>
+        </div>
+        <div class="clean-process-list">
+          {% for item in urgent_tasks %}
+            <a href="{{ item.href or '/v2-clean/tasks' }}">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.status }}</span>
+              <em>{{ item.detail }}</em>
+            </a>
+          {% else %}
+            <p class="muted">Ainda sem tarefas urgentes nesta base limpa.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="clean-panel clean-panel-compact">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Recente</p>
+            <h3>Últimos registos</h3>
+          </div>
+        </div>
+        <div class="clean-process-list">
+          {% for item in recent_entries %}
+            <a href="{{ item.href or '/v2-clean/tasks' }}">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.status }}</span>
+              <em>{{ item.detail }}</em>
+            </a>
+          {% else %}
+            <p class="muted">Ainda sem movimento recente para mostrar.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="clean-panel clean-process-next-step">
+      <div>
+        <p class="eyebrow">Próximo corte</p>
+        <h3>Sem dependência do centro antigo</h3>
+        <p>O passo seguinte é ligar cada divisão a listas novas, com filtros, criação rápida e permissões próprias da v2-clean.</p>
+      </div>
+      <a class="button-link secondary-link" href="/v2-clean/workshop">Ver Oficina</a>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -15,9 +15,8 @@
       <div class="clean-fleet-header-right">
         <div class="clean-header-actions clean-header-actions-strong">
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
-          <a class="button-link secondary-link" href="/management-center/auditorias">Auditoria</a>
+          <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
-          <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Ficha atual</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
         </div>
         <div class="clean-vehicle-alerts {% if not ctx.alerts %}is-empty{% endif %}">
@@ -114,7 +113,7 @@
           </div>
           <div class="clean-fleet-doc-actions">
             <a class="button-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ver documentação</a>
-            <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Adicionar documento</a>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
             <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Ver tarefas</a>
           </div>
           <div class="clean-document-strip">

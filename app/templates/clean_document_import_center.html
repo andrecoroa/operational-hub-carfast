@@ -1,18 +1,19 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell clean-shell">
-  {% set active_menu = "documents_center" %}
+  {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
     <header class="clean-doc-page-header clean-card-wide">
       <div class="clean-doc-header-main">
-        <p class="eyebrow">Documentação / importação global</p>
-        <h1>Importadores estruturados</h1>
-        <p>Zona única para listagens estruturadas. O Excel/CSV fica global; a app importa linhas e associa à viatura sem duplicar ficheiros por pasta.</p>
+        <p class="eyebrow">Documentação / módulo global</p>
+        <h1>Importação estruturada</h1>
+        <p>Este ecrã serve só para listagens globais. Documentos reais, PDFs e evidências continuam a entrar na página documental da própria viatura.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean">Início</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
-        <a class="button-link secondary-link" href="/v2-clean/workshop">Oficina</a>
+        <a class="button-link secondary-link" href="/v2-clean/documents">Atualizar</a>
       </div>
     </header>
 
@@ -20,7 +21,7 @@
       <div class="clean-doc-import-hero">
         <div class="clean-doc-import-hero-stat">
           <strong>{{ vehicle_count }}</strong>
-          <span>viaturas disponíveis para associação</span>
+          <span>viaturas disponíveis</span>
         </div>
         {% for code, label in structured_groups %}
           <div class="clean-doc-import-hero-stat">
@@ -31,74 +32,107 @@
       </div>
     </section>
 
-    <section class="clean-doc-import-center-grid">
-      <article class="clean-doc-structure-card clean-card-wide">
+    <section class="clean-doc-context-grid">
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Importação</p>
-            <h3>Folhas de obra</h3>
-            <p>Excel global com número, data, matrícula, fornecedor e observações.</p>
+            <p class="eyebrow">Âmbito</p>
+            <h3>O que entra aqui</h3>
+            <p>Listagens estruturadas para todas as viaturas: folhas de obra, impros e contratos. Nada disto deve ser importado dentro da página individual da viatura.</p>
           </div>
+          <strong class="clean-doc-pill">Global</strong>
         </div>
-        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-quick-form">
-          <label>
-            Ficheiro
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-          </label>
-          <button type="submit">Importar FO</button>
-        </form>
       </article>
 
-      <article class="clean-doc-structure-card clean-card-wide">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Importação</p>
-            <h3>Impros</h3>
-            <p>Excel global com matrícula, datas, quilómetros, tipo e garagem.</p>
+      <section class="clean-doc-import-center-grid">
+        <article class="clean-doc-structure-card clean-card-wide">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Importação</p>
+              <h3>Folhas de obra</h3>
+              <p>Excel global com número, data, matrícula, fornecedor e observações.</p>
+            </div>
           </div>
-        </div>
-        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-quick-form">
-          <label>
-            Ficheiro
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-          </label>
-          <button type="submit">Importar impros</button>
-        </form>
-      </article>
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-quick-form">
+            <label>
+              Ficheiro
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar FO</button>
+          </form>
+        </article>
 
-      <article class="clean-doc-structure-card clean-card-wide">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Importação</p>
-            <h3>Contratos</h3>
-            <p>Excel de contratos para timeline, contexto histórico e cruzamento documental.</p>
+        <article class="clean-doc-structure-card clean-card-wide">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Importação</p>
+              <h3>Impros</h3>
+              <p>Excel global com matrícula, datas, quilómetros, tipo e garagem.</p>
+            </div>
           </div>
-        </div>
-        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-quick-form">
-          <label>
-            Ficheiro
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-          </label>
-          <button type="submit">Importar contratos</button>
-        </form>
-      </article>
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-quick-form">
+            <label>
+              Ficheiro
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar impros</button>
+          </form>
+        </article>
 
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-note">
+        <article class="clean-doc-structure-card clean-card-wide">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Importação</p>
+              <h3>Contratos</h3>
+              <p>Excel de contratos para timeline, contexto histórico e cruzamento documental.</p>
+            </div>
+          </div>
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-quick-form">
+            <label>
+              Ficheiro
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar contratos</button>
+          </form>
+        </article>
+
+        <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-note">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Regras</p>
+              <h3>Estrutura fechada</h3>
+            </div>
+          </div>
+          <ul class="clean-doc-path-list">
+            <li><strong>Arquivo por viatura:</strong> <code>Frota/[MATRICULA]_[CHASSIS]/...</code></li>
+            <li><strong>Listagens estruturadas:</strong> <code>Importacoes_Estruturadas/...</code></li>
+            <li>FO e impros associam principalmente por matrícula.</li>
+            <li>Contratos podem associar por matrícula, chassi ou unit Rentway.</li>
+            <li>Linhas sem correspondência ficam fora da viatura até revisão.</li>
+            <li>A validação fina continua depois na ficha documental da viatura.</li>
+          </ul>
+        </article>
+      </section>
+
+      <article class="clean-doc-table-card clean-card-wide">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Regras</p>
-            <h3>Estrutura fechada</h3>
+            <p class="eyebrow">Seguinte</p>
+            <h3>Importadores seguintes</h3>
+            <p>AR's e sinistros entram neste mesmo módulo quando fecharmos o formato final desses ficheiros.</p>
+          </div>
+          <strong class="clean-doc-pill">Em preparação</strong>
+        </div>
+        <div class="clean-doc-import-hero">
+          <div class="clean-doc-import-hero-stat">
+            <strong>AR</strong>
+            <span>Listagem estruturada global</span>
+          </div>
+          <div class="clean-doc-import-hero-stat">
+            <strong>SI</strong>
+            <span>Sinistros e ocorrências</span>
           </div>
         </div>
-        <ul class="clean-doc-path-list">
-          <li><strong>Arquivo documental por viatura:</strong> fica em <code>Frota/[MATRICULA]_[CHASSIS]/...</code>.</li>
-          <li><strong>Listagens estruturadas:</strong> ficam em <code>Importacoes_Estruturadas/...</code>.</li>
-          <li>FO e impros: associação principal por matrícula.</li>
-          <li>Contratos: matrícula, chassi ou unit Rentway.</li>
-          <li>ARs e sinistros seguem a mesma lógica de listagem estruturada quando o importador dedicado entrar.</li>
-          <li>Linhas sem correspondência não entram em nenhuma viatura.</li>
-          <li>A auditoria fina continua depois dentro da ficha documental da viatura.</li>
-        </ul>
       </article>
     </section>
   </main>

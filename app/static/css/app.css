@@ -13410,6 +13410,35 @@ a.metric:hover {
   padding: 16px 18px;
 }
 
+.clean-doc-vehicle-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 18px;
+}
+
+.clean-doc-vehicle-summary div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.clean-doc-vehicle-summary span {
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  font-weight: 800;
+}
+
+.clean-doc-vehicle-summary strong {
+  color: #0f2a5f;
+  font-size: var(--clean-font-md);
+  font-weight: 950;
+}
+
 .clean-doc-page-header {
   display: flex;
   justify-content: space-between;
@@ -14015,6 +14044,7 @@ a.metric:hover {
   }
 
   .clean-doc-group-strip,
+  .clean-doc-vehicle-summary,
   .clean-doc-overview-grid,
   .clean-doc-import-center-grid,
   .clean-doc-import-hero,

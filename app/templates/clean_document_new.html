@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell clean-shell">
-  {% set active_menu = "fleet" if vehicle_ctx else ("documents_center" if is_clean_mode else "documents") %}
+  {% set active_menu = "documents" if is_clean_mode else "documents" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
     <style>
@@ -62,9 +62,9 @@
         <h1>Novo documento</h1>
         <p>
           {% if vehicle_ctx %}
-            Entrada documental já associada à viatura. Escolhe o tipo, anexa o ficheiro ou indica o caminho, e seguimos com o mínimo necessário.
+            Viatura já identificada. Escolhe o tipo documental, anexa o ficheiro ou indica a origem e preenche só o mínimo necessário.
           {% else %}
-            Registo rápido de documento real ou evidência documental.
+            Registo rápido de documento real ou evidência documental. As listagens estruturadas entram no importador global.
           {% endif %}
         </p>
       </div>
@@ -73,7 +73,7 @@
         {% if vehicle_ctx %}
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
         {% elif is_clean_mode %}
-          <a class="button-link secondary-link" href="/v2-clean/documents">Importação estruturada</a>
+          <a class="button-link secondary-link" href="/v2-clean/documents">Documentação global</a>
         {% else %}
           <a class="button-link secondary-link" href="/documents/manage">Gestão</a>
         {% endif %}
@@ -98,22 +98,23 @@
     {% endif %}
 
     <section class="clean-doc-filter-panel clean-card-wide">
-      <form method="post" action="/documents/new" enctype="multipart/form-data" class="clean-doc-quick-form">
+      <form method="post" action="/v2-clean/documents/new" enctype="multipart/form-data" class="clean-doc-quick-form">
         <input type="hidden" name="vehicle_id" value="{{ prefill.vehicle_id }}">
         <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
         <input type="hidden" name="classification" value="{{ prefill.classification or 'workshop' }}" data-document-area>
         <input type="hidden" name="status" value="{{ prefill.status or 'received' }}">
         <input type="hidden" name="document_type" value="{{ prefill.document_type or 'workshop_diagnostic' }}" data-document-type>
+        <input type="hidden" name="source" value="{{ prefill.source or 'manual' }}">
 
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Entrada documental</p>
             <h3>Registo rápido</h3>
-            <p>Documentos reais por viatura. As listagens estruturadas entram no importador global.</p>
+            <p>Documentos reais por viatura. Primeiro escolhes o tipo, depois anexas o ficheiro e só no fim completas os dados úteis.</p>
           </div>
         </div>
 
-        <p class="clean-doc-form-note">Seleciona primeiro o tipo documental. O resto do formulário adapta-se.</p>
+        <p class="clean-doc-form-note">Seleciona primeiro o tipo documental. O formulário adapta os campos e tenta reaproveitar o nome do ficheiro sempre que fizer sentido.</p>
 
         <div class="clean-doc-type-picker" data-doc-picker>
           <button type="button" class="clean-doc-type-card" data-area="finance" data-type="finance_supplier_invoice" data-title="Ex.: Fatura fornecedor abril 2026">
@@ -152,20 +153,28 @@
             <input type="file" name="document_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.doc,.docx">
           </label>
           <label>
-            Link ou caminho para arquivar
-            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="https://... ou C:\...">
+            Origem / link / caminho
+            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="Opcional: https://... ou C:\...">
           </label>
         </div>
 
         <div class="clean-doc-compact-grid">
           <label>
             Título / referência
-            <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Ex.: Fatura Gamobar abril 2026" data-title-input>
+            <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Opcional: ex. Fatura Gamobar abril 2026" data-title-input>
           </label>
           <label>
             Data do documento
             <input type="date" name="document_date" value="{{ prefill.document_date }}">
           </label>
+          {% if not vehicle_ctx %}
+            <label>
+              Matrícula
+              <input type="text" name="plate" maxlength="40" value="{{ prefill.plate }}" placeholder="AA-00-AA">
+            </label>
+          {% else %}
+            <input type="hidden" name="plate" value="{{ prefill.plate }}">
+          {% endif %}
           <label class="doc-field-supplier">
             Fornecedor / origem
             <input type="text" name="supplier_name" maxlength="200" value="{{ prefill.supplier_name }}" placeholder="Fornecedor / origem">
@@ -174,29 +183,13 @@
             Cliente
             <input type="text" name="customer_name" maxlength="200" value="{{ prefill.customer_name }}">
           </label>
-          <label class="doc-field-origin">
-            Origem
-            <select name="source">
-              {% for code, label in sources %}
-                <option value="{{ code }}" {% if code == prefill.source %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          {% if vehicle_ctx %}
-            <input type="hidden" name="plate" value="{{ prefill.plate }}">
-          {% else %}
-            <label>
-              Matrícula
-              <input type="text" name="plate" maxlength="40" value="{{ prefill.plate }}" placeholder="AA-00-AA">
-            </label>
-          {% endif %}
         </div>
 
         <details class="clean-doc-collapsible">
           <summary>
             <span>
               <b>Dados adicionais</b>
-              <small>Metadados e ligação operacional</small>
+              <small>Metadados e ligações internas</small>
             </span>
             <em>Opcional</em>
           </summary>
@@ -213,10 +206,6 @@
               <label>
                 Assunto original
                 <input type="text" name="source_subject" maxlength="255" value="{{ prefill.source_subject }}">
-              </label>
-              <label>
-                Link já arquivado
-                <input type="text" name="url_archive" value="{{ prefill.url_archive }}" placeholder="Se já existir destino final">
               </label>
               <label>
                 Tarefa associada

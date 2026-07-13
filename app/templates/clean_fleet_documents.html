@@ -18,6 +18,10 @@
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
         <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}">Adicionar documento</a>
+        <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
+        <a class="button-link secondary-link" href="#audit-real-start-date">Início real</a>
+        <a class="button-link secondary-link" href="#audit-effective-maintenance-count">Nº manutenções</a>
+        <a class="button-link secondary-link" href="/v2-clean/documents">Importação global</a>
         <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Centro atual</a>
       </div>
     </header>
@@ -73,77 +77,52 @@
     </section>
 
     <section class="clean-doc-context-grid">
-      <article class="clean-doc-structure-card clean-card-wide">
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Estrutura</p>
-            <h3>Enquadramento documental</h3>
-            <p>Separação entre arquivo físico da viatura e listagem estruturada para auditoria, comparação e histórico.</p>
-          </div>
-        </div>
-        <div class="clean-doc-structure-grid">
-          <div class="clean-doc-structure-box">
-            <strong>Arquivo documental</strong>
-            <ul>
-              <li>Faturas</li>
-              <li>Diagnósticos</li>
-              <li>Service Box / TSB</li>
-              <li>Fotos / evidências</li>
-              <li>Documentação base</li>
-            </ul>
-          </div>
-          <div class="clean-doc-structure-box">
-            <strong>Listagem estruturada</strong>
-            <ul>
-              <li>Folhas de obra</li>
-              <li>AR's</li>
-              <li>Sinistros</li>
-              <li>Contratos</li>
-              <li>Impros</li>
-            </ul>
-          </div>
-          <div class="clean-doc-structure-box clean-doc-structure-note">
-            <strong>Estrutura física alvo</strong>
-            <p><code>Frota/[MATRICULA]_[CHASSIS]/01_Documentacao_Financeira</code></p>
-            <p><code>Frota/[MATRICULA]_[CHASSIS]/02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code></p>
-            <p><code>Frota/[MATRICULA]_[CHASSIS]/03_Documentacao_Base_Viatura</code></p>
-            <p><code>Frota/[MATRICULA]_[CHASSIS]/99_Pendentes_Classificar</code></p>
+            <p class="eyebrow">Visão rápida</p>
+            <h3>Enquadramento documental da viatura</h3>
+            <p>Esta página fica centrada na consulta, auditoria manual e pendentes da viatura. As importações globais ficam num ponto próprio.</p>
           </div>
         </div>
 
-        <div class="clean-doc-import-grid">
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/work-orders" class="clean-doc-action-box">
-            <strong>Importar folhas de obra</strong>
-            <p>Excel de FO com Número, Data, Matrícula, Fornecedor e Observações.</p>
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            <button type="submit">Importar FO</button>
-          </form>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/impros" class="clean-doc-action-box">
-            <strong>Importar impros</strong>
-            <p>Excel de impros com matrícula, datas, kms, tipo e garage.</p>
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            <button type="submit">Importar impros</button>
-          </form>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/contracts" class="clean-doc-action-box">
-            <strong>Importar contratos</strong>
-            <p>Excel de contratos para timeline e contexto histórico da viatura.</p>
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            <button type="submit">Importar contratos</button>
-          </form>
-          <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-action-box">
-            <strong>Criar pendente documental</strong>
-            <p>Usar quando já existe evidência listada mas falta PDF real.</p>
-            <select name="main_group">
-              <option value="invoices">Fatura</option>
-              <option value="diagnostics">Diagnóstico</option>
-            </select>
-            <input type="text" name="title" placeholder="Título / nº documento" required>
-            <input type="text" name="supplier_name" placeholder="Fornecedor">
-            <input type="text" name="document_date" placeholder="dd/mm/aaaa">
-            <input type="text" name="process_reference" placeholder="Processo / referência">
-            <textarea name="raw_description" rows="3" placeholder="Nota curta do pendente..."></textarea>
-            <button type="submit">Criar pendente</button>
-          </form>
+        <div class="clean-doc-overview-grid">
+          <section class="clean-doc-overview-block">
+            <strong>Atalhos</strong>
+            <div class="clean-doc-quick-imports">
+              <a class="button-link secondary-link" href="#manual-pending">Criar pendente manual</a>
+              <a class="button-link secondary-link" href="#audit-real-start-date">Auditar início real</a>
+              <a class="button-link secondary-link" href="#audit-effective-maintenance-count">Auditar nº manutenções</a>
+              <a class="button-link secondary-link" href="/v2-clean/documents">Abrir importação global</a>
+            </div>
+          </section>
+
+          <section class="clean-doc-overview-block">
+            <strong>Leitura rápida</strong>
+            <ul class="clean-doc-path-list">
+              <li>{{ archive_rows|length }} linhas de arquivo visíveis</li>
+              <li>{{ structured_rows|length }} linhas estruturadas visíveis</li>
+              <li>{{ comparison_rows|length }} pares FO x Fatura nos filtros atuais</li>
+            </ul>
+          </section>
+
+          <section class="clean-doc-overview-block clean-doc-overview-note">
+            <strong>Estrutura alvo</strong>
+            <ul class="clean-doc-path-list">
+              <li><code>01_Documentacao_Financeira</code></li>
+              <li><code>02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code></li>
+              <li><code>03_Documentacao_Base_Viatura</code></li>
+              <li><code>99_Pendentes_Classificar</code></li>
+            </ul>
+            <details class="clean-doc-inline-details">
+              <summary>Ver enquadramento completo</summary>
+              <div class="clean-doc-inline-details-body">
+                <p><strong>Arquivo documental:</strong> Faturas, Diagnósticos, Service Box / TSB, Fotos / evidências, Documentação base.</p>
+                <p><strong>Listagem estruturada:</strong> Folhas de obra, AR's, Sinistros, Contratos, Impros.</p>
+                <p><code>Frota/[MATRICULA]_[CHASSIS]/...</code></p>
+              </div>
+            </details>
+          </section>
         </div>
       </article>
 
@@ -152,7 +131,7 @@
           <div>
             <p class="eyebrow">Arquivo</p>
             <h3>Documentação de arquivo</h3>
-            <p>Documentos físicos ou pendentes por associar. Aqui ficam as faturas, diagnósticos e evidências reais.</p>
+            <p>Faturas, diagnósticos, evidências e pendentes por associar.</p>
           </div>
           <strong class="clean-doc-pill">{{ archive_rows|length }} linhas</strong>
         </div>
@@ -241,8 +220,8 @@
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Listagem</p>
-            <h3>Documentação de listagem</h3>
-            <p>Registos estruturados que suportam a auditoria documental, cruzamentos e comparação com faturas.</p>
+            <h3>Documentação estruturada</h3>
+            <p>Registos para auditoria, histórico e cruzamentos com documentação financeira.</p>
           </div>
           <strong class="clean-doc-pill">{{ structured_rows|length }} linhas</strong>
         </div>
@@ -289,131 +268,151 @@
       </article>
 
       <section class="clean-doc-dual-grid">
-        <article class="clean-doc-table-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Comparação</p>
-              <h3>FO vs Fatura</h3>
-              <p>Leitura rápida da coerência entre folha de obra e documentação financeira.</p>
-            </div>
-          </div>
-          <div class="clean-doc-table-wrap">
-            <table class="clean-doc-table">
-              <thead>
-                <tr>
-                  <th>Folha de obra</th>
-                  <th>Fatura associada</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in comparison_rows %}
+        <details class="clean-doc-collapsible clean-card-wide" open>
+          <summary>
+            <span>
+              <b>Comparação FO vs Fatura</b>
+              <small>Coerência financeira</small>
+            </span>
+            <em>{{ comparison_rows|length }} pares</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-table-wrap">
+              <table class="clean-doc-table">
+                <thead>
                   <tr>
-                    <td>{{ row.work_order.title }}</td>
-                    <td>{{ row.invoice.title if row.invoice else "Sem fatura associada" }}</td>
-                    <td>{{ row.state_label }}</td>
+                    <th>Folha de obra</th>
+                    <th>Fatura associada</th>
+                    <th>Estado</th>
                   </tr>
-                {% else %}
-                  <tr><td colspan="3" class="clean-empty-cell">Sem pares FO x Fatura para comparar.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="clean-doc-table-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Campos auditados</p>
-              <h3>Validação manual</h3>
-              <p>Campos estruturais que devem ficar auditados com valor, data, observação e base documental.</p>
+                </thead>
+                <tbody>
+                  {% for row in comparison_rows %}
+                    <tr>
+                      <td>{{ row.work_order.title }}</td>
+                      <td>{{ row.invoice.title if row.invoice else "Sem fatura associada" }}</td>
+                      <td>{{ row.state_label }}</td>
+                    </tr>
+                  {% else %}
+                    <tr><td colspan="3" class="clean-empty-cell">Sem pares FO x Fatura para comparar.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
             </div>
           </div>
-          <div class="clean-doc-audit-grid">
-            {% for field_code, label in audit_fields %}
-              {% set saved = module_ctx.audit_fields.get(field_code) %}
-              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/audit-field" class="clean-doc-audit-form">
-                <input type="hidden" name="field_code" value="{{ field_code }}">
-                <strong>{{ label }}</strong>
-                <input type="{% if field_code == 'real_start_date' %}date{% else %}text{% endif %}" name="value" value="{{ saved.value_json if saved and saved.value_json is not none else '' }}" placeholder="{% if field_code == 'real_start_date' %}aaaa-mm-dd{% else %}Valor{% endif %}">
-                <input type="date" name="audited_on" value="{{ saved.audited_on.isoformat() if saved and saved.audited_on else '' }}">
-                <input type="text" name="document_basis" value="{{ saved.document_basis if saved else '' }}" placeholder="Base documental">
-                <textarea name="observation" rows="3" placeholder="Observação">{{ saved.observation if saved else '' }}</textarea>
-                <button type="submit">Guardar campo</button>
-              </form>
-            {% endfor %}
+        </details>
+
+        <details class="clean-doc-collapsible clean-card-wide">
+          <summary>
+            <span>
+              <b>Campos auditados</b>
+              <small>Validação manual</small>
+            </span>
+            <em>{{ audit_fields|length }} campos</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-audit-grid">
+              {% for field_code, label in audit_fields %}
+                {% set saved = module_ctx.audit_fields.get(field_code) %}
+                <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/audit-field" class="clean-doc-audit-form" id="audit-{{ field_code|replace('_', '-') }}">
+                  <input type="hidden" name="field_code" value="{{ field_code }}">
+                  <strong>{{ label }}</strong>
+                  <input type="{% if field_code == 'real_start_date' %}date{% else %}text{% endif %}" name="value" value="{{ saved.value_json if saved and saved.value_json is not none else '' }}" placeholder="{% if field_code == 'real_start_date' %}aaaa-mm-dd{% else %}Valor{% endif %}">
+                  <input type="date" name="audited_on" value="{{ saved.audited_on.isoformat() if saved and saved.audited_on else '' }}">
+                  <input type="text" name="document_basis" value="{{ saved.document_basis if saved else '' }}" placeholder="Base documental">
+                  <textarea name="observation" rows="3" placeholder="Observação">{{ saved.observation if saved else '' }}</textarea>
+                  <button type="submit">Guardar campo</button>
+                </form>
+              {% endfor %}
+            </div>
           </div>
-        </article>
+        </details>
       </section>
 
       <section class="clean-doc-dual-grid">
-        <article class="clean-doc-table-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Timeline</p>
-              <h3>Timeline horizontal documental</h3>
-              <p>Ordem cronológica única para folhas, impros, contratos, faturas e diagnósticos.</p>
+        <details class="clean-doc-collapsible clean-card-wide">
+          <summary>
+            <span>
+              <b>Timeline documental</b>
+              <small>Ordem cronológica</small>
+            </span>
+            <em>{{ module_ctx.timeline_events|length }} eventos</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-timeline">
+              <div class="clean-doc-timeline-bar">
+                {% for segment in module_ctx.timeline_segments %}
+                  <span class="clean-doc-timeline-segment {{ segment.css }}" style="left: {{ segment.left }}%; width: {{ segment.width }}%;">{{ segment.label }}</span>
+                {% endfor %}
+              </div>
+              <div class="clean-doc-timeline-events">
+                {% for event in module_ctx.timeline_events %}
+                  <article class="clean-doc-timeline-event {{ event.lane }} {% if event.km_regressive %}danger{% endif %}" style="left: {{ event.position_pct }}%;">
+                    <strong>{{ event.title }}</strong>
+                    <span>{{ event.group_label }} · {{ event.date }}</span>
+                    <em>{{ event.secondary }} · KM {{ event.km }}</em>
+                  </article>
+                {% else %}
+                  <p class="muted">Sem eventos suficientes para timeline.</p>
+                {% endfor %}
+              </div>
             </div>
           </div>
-          <div class="clean-doc-timeline">
-            <div class="clean-doc-timeline-bar">
-              {% for segment in module_ctx.timeline_segments %}
-                <span class="clean-doc-timeline-segment {{ segment.css }}" style="left: {{ segment.left }}%; width: {{ segment.width }}%;">{{ segment.label }}</span>
-              {% endfor %}
-            </div>
-            <div class="clean-doc-timeline-events">
-              {% for event in module_ctx.timeline_events %}
-                <article class="clean-doc-timeline-event {{ event.lane }} {% if event.km_regressive %}danger{% endif %}" style="left: {{ event.position_pct }}%;">
-                  <strong>{{ event.title }}</strong>
-                  <span>{{ event.group_label }} · {{ event.date }}</span>
-                  <em>{{ event.secondary }} · KM {{ event.km }}</em>
-                </article>
-              {% else %}
-                <p class="muted">Sem eventos suficientes para timeline.</p>
-              {% endfor %}
-            </div>
-          </div>
-        </article>
+        </details>
 
-        <article class="clean-doc-table-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Alertas</p>
-              <h3>Alertas e pendentes</h3>
-              <p>Incoerências documentais, anexos em falta e ações a concluir.</p>
-            </div>
-          </div>
-          <div class="clean-doc-alerts-grid">
-            <div>
-              <h4>Alertas</h4>
-              <div class="clean-doc-alert-list">
-                {% for alert in module_ctx.alerts %}
-                  <article class="clean-doc-alert-item {{ alert.severity }}">
-                    <strong>{{ alert.title }}</strong>
-                    <p>{{ alert.detail }}</p>
-                    <span>{{ alert.severity_label }}</span>
-                  </article>
-                {% else %}
-                  <p class="muted">Sem alertas registados.</p>
-                {% endfor %}
+        <details class="clean-doc-collapsible clean-card-wide" open>
+          <summary>
+            <span>
+              <b>Alertas e pendentes</b>
+              <small>O que falta resolver</small>
+            </span>
+            <em>{{ module_ctx.alerts|length + module_ctx.pendings|length }} itens</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-alerts-grid">
+              <div>
+                <h4>Alertas</h4>
+                <div class="clean-doc-alert-list">
+                  {% for alert in module_ctx.alerts %}
+                    <article class="clean-doc-alert-item {{ alert.severity }}">
+                      <strong>{{ alert.title }}</strong>
+                      <p>{{ alert.detail }}</p>
+                      <span>{{ alert.severity_label }}</span>
+                    </article>
+                  {% else %}
+                    <p class="muted">Sem alertas registados.</p>
+                  {% endfor %}
+                </div>
+              </div>
+              <div>
+                <h4>Pendentes e ações</h4>
+                <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-pending-compact" id="manual-pending">
+                  <select name="main_group">
+                    <option value="invoices">Fatura</option>
+                    <option value="diagnostics">Diagnóstico</option>
+                  </select>
+                  <input type="text" name="title" placeholder="Título / nº documento" required>
+                  <input type="text" name="supplier_name" placeholder="Fornecedor">
+                  <input type="text" name="document_date" placeholder="dd/mm/aaaa">
+                  <input type="text" name="process_reference" placeholder="Processo / referência">
+                  <textarea name="raw_description" rows="2" placeholder="Nota curta do pendente..."></textarea>
+                  <button type="submit">Criar pendente</button>
+                </form>
+                <div class="clean-doc-alert-list">
+                  {% for pending in module_ctx.pendings %}
+                    <article class="clean-doc-alert-item info">
+                      <strong>{{ pending.title }}</strong>
+                      <p>{{ pending.detail }}</p>
+                      <span>{{ pending.action_type or pending.status }}</span>
+                    </article>
+                  {% else %}
+                    <p class="muted">Sem pendentes registados.</p>
+                  {% endfor %}
+                </div>
               </div>
             </div>
-            <div>
-              <h4>Pendentes e ações</h4>
-              <div class="clean-doc-alert-list">
-                {% for pending in module_ctx.pendings %}
-                  <article class="clean-doc-alert-item info">
-                    <strong>{{ pending.title }}</strong>
-                    <p>{{ pending.detail }}</p>
-                    <span>{{ pending.action_type or pending.status }}</span>
-                  </article>
-                {% else %}
-                  <p class="muted">Sem pendentes registados.</p>
-                {% endfor %}
-              </div>
-            </div>
           </div>
-        </article>
+        </details>
       </section>
     </section>
   </main>

@@ -128,6 +128,63 @@ def _normalize_text(value: Any) -> str:
     return clean_text(value) or ""
 
 
+def _vehicle_lookup_maps(db: Session) -> tuple[dict[str, Vehicle], dict[str, Vehicle], dict[str, Vehicle]]:
+    vehicles = db.scalars(select(Vehicle)).all()
+    by_plate: dict[str, Vehicle] = {}
+    by_vin: dict[str, Vehicle] = {}
+    by_unit: dict[str, Vehicle] = {}
+    for vehicle in vehicles:
+        plate_key = normalize_header(vehicle.plate or "")
+        vin_key = normalize_header(vehicle.vin or "")
+        unit_key = normalize_header(vehicle.rentway_unit_nr or "")
+        if plate_key and plate_key not in by_plate:
+            by_plate[plate_key] = vehicle
+        if vin_key and vin_key not in by_vin:
+            by_vin[vin_key] = vehicle
+        if unit_key and unit_key not in by_unit:
+            by_unit[unit_key] = vehicle
+    return by_plate, by_vin, by_unit
+
+
+def _resolve_vehicle_for_import_row(
+    *,
+    fallback_vehicle: Vehicle | None,
+    by_plate: dict[str, Vehicle],
+    by_vin: dict[str, Vehicle],
+    by_unit: dict[str, Vehicle],
+    plate: str | None = None,
+    vin: str | None = None,
+    unit: str | None = None,
+) -> Vehicle | None:
+    if fallback_vehicle is not None:
+        fallback_plate = normalize_header(fallback_vehicle.plate or "")
+        fallback_vin = normalize_header(fallback_vehicle.vin or "")
+        fallback_unit = normalize_header(fallback_vehicle.rentway_unit_nr or "")
+        row_plate = normalize_header(plate or "")
+        row_vin = normalize_header(vin or "")
+        row_unit = normalize_header(unit or "")
+        if any([row_plate, row_vin, row_unit]) and not any(
+            [
+                row_plate and row_plate == fallback_plate,
+                row_vin and row_vin == fallback_vin,
+                row_unit and row_unit == fallback_unit,
+            ]
+        ):
+            return None
+        return fallback_vehicle
+
+    row_plate = normalize_header(plate or "")
+    row_vin = normalize_header(vin or "")
+    row_unit = normalize_header(unit or "")
+    if row_plate and row_plate in by_plate:
+        return by_plate[row_plate]
+    if row_vin and row_vin in by_vin:
+        return by_vin[row_vin]
+    if row_unit and row_unit in by_unit:
+        return by_unit[row_unit]
+    return None
+
+
 def _document_archive_group(document: Document) -> str:
     doc_type = normalize_header(document.document_type or "")
     title_blob = " ".join(
@@ -373,12 +430,20 @@ def sync_real_start_manual_field(db: Session, vehicle_id: int, value: str | None
     )
 
 
-def import_work_orders_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: int | None = None) -> int:
+def import_work_orders_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
     imported = 0
+    by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
         plate = _normalize_text(first_row_value(row, cols, ["Matrícula", "Matricula", "PlateNr"]))
-        if plate and normalize_header(plate) != normalize_header(vehicle.plate or ""):
+        row_vehicle = _resolve_vehicle_for_import_row(
+            fallback_vehicle=vehicle,
+            by_plate=by_plate,
+            by_vin=by_vin,
+            by_unit=by_unit,
+            plate=plate,
+        )
+        if not row_vehicle:
             continue
         title = _normalize_text(first_row_value(row, cols, ["Número", "Numero", "FO", "Folha de obra"]))
         external_reference = title or None
@@ -387,7 +452,7 @@ def import_work_orders_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_i
         raw_description = _normalize_text(first_row_value(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao"]))
         upsert_structured_record(
             db,
-            vehicle_id=vehicle.id,
+            vehicle_id=row_vehicle.id,
             main_group="work_orders",
             title=title or "Folha de obra",
             external_reference=external_reference,
@@ -396,8 +461,8 @@ def import_work_orders_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_i
             raw_description=raw_description or None,
             km=None,
             source_system="work_order_import",
-            plate=vehicle.plate,
-            vin=vehicle.vin,
+            plate=row_vehicle.plate,
+            vin=row_vehicle.vin,
             metadata_json=raw,
             user_id=user_id,
         )
@@ -405,12 +470,20 @@ def import_work_orders_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_i
     return imported
 
 
-def import_impros_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: int | None = None) -> int:
+def import_impros_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
     imported = 0
+    by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
         plate = _normalize_text(first_row_value(row, cols, ["PlateNr", "Matrícula", "Matricula"]))
-        if plate and normalize_header(plate) != normalize_header(vehicle.plate or ""):
+        row_vehicle = _resolve_vehicle_for_import_row(
+            fallback_vehicle=vehicle,
+            by_plate=by_plate,
+            by_vin=by_vin,
+            by_unit=by_unit,
+            plate=plate,
+        )
+        if not row_vehicle:
             continue
         impro_number = _normalize_text(first_row_value(row, cols, ["Impro", "impro_number"]))
         status = _normalize_text(first_row_value(row, cols, ["Status"]))
@@ -426,7 +499,7 @@ def import_impros_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: in
         raw_description = " | ".join(part for part in description_parts if part) or None
         upsert_structured_record(
             db,
-            vehicle_id=vehicle.id,
+            vehicle_id=row_vehicle.id,
             main_group="impros",
             title=title,
             external_reference=impro_number,
@@ -435,8 +508,8 @@ def import_impros_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: in
             raw_description=raw_description,
             km=driven_kms,
             source_system="impro_import",
-            plate=vehicle.plate,
-            vin=vehicle.vin,
+            plate=row_vehicle.plate,
+            vin=row_vehicle.vin,
             subtype=_normalize_text(first_row_value(row, cols, ["Impro_Type_Code"])) or None,
             metadata_json={**raw, "_status": status, "_date_out": date_out.isoformat() if date_out else None},
             user_id=user_id,
@@ -445,27 +518,24 @@ def import_impros_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: in
     return imported
 
 
-def import_contracts_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id: int | None = None) -> int:
+def import_contracts_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
     imported = 0
-    vehicle_plate = normalize_header(vehicle.plate or "")
-    vehicle_vin = normalize_header(vehicle.vin or "")
-    vehicle_unit = normalize_header(vehicle.rentway_unit_nr or "")
+    by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
         plate = _normalize_text(first_row_value(row, cols, ["Matrícula", "Matricula", "PlateNr", "Plate"]))
         vin = _normalize_text(first_row_value(row, cols, ["Chassi", "VIN", "Vin", "Chassis"]))
         unit = _normalize_text(first_row_value(row, cols, ["Unit", "UnitNr", "Unit Nr", "Unit Rentway"]))
-
-        row_plate = normalize_header(plate)
-        row_vin = normalize_header(vin)
-        row_unit = normalize_header(unit)
-        if any([row_plate, row_vin, row_unit]) and not any(
-            [
-                row_plate and row_plate == vehicle_plate,
-                row_vin and row_vin == vehicle_vin,
-                row_unit and row_unit == vehicle_unit,
-            ]
-        ):
+        row_vehicle = _resolve_vehicle_for_import_row(
+            fallback_vehicle=vehicle,
+            by_plate=by_plate,
+            by_vin=by_vin,
+            by_unit=by_unit,
+            plate=plate,
+            vin=vin,
+            unit=unit,
+        )
+        if not row_vehicle:
             continue
 
         contract_number = _normalize_text(
@@ -527,7 +597,7 @@ def import_contracts_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id:
 
         upsert_structured_record(
             db,
-            vehicle_id=vehicle.id,
+            vehicle_id=row_vehicle.id,
             main_group="contracts",
             title=(f"RA {contract_number}" if ra_reference and contract_number and not contract_number.upper().startswith("RA") else contract_number)
             or supplier_name
@@ -538,8 +608,8 @@ def import_contracts_xlsx(db: Session, *, vehicle: Vehicle, path: Path, user_id:
             raw_description=" | ".join(part for part in description_parts if part) or None,
             km=None,
             source_system="contract_import",
-            plate=vehicle.plate,
-            vin=vehicle.vin,
+            plate=row_vehicle.plate,
+            vin=row_vehicle.vin,
             subtype=status or None,
             metadata_json={
                 **raw,

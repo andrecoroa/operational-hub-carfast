@@ -20,6 +20,7 @@
       <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
       <span class="nav-section-label">Apoio</span>
       <a href="/v2-clean/fleet">Documentação por viatura</a>
+      <a class="sidebar-sub-link" href="/v2-clean/documents" {% if active_menu == "documents_center" %}class="active"{% endif %}>Importação estruturada</a>
     {% else %}
       <span class="nav-section-label">Operações</span>
       {% if "dashboard.read" in nav_perms %}

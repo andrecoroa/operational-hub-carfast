@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-doc-page-header clean-card-wide">
+      <div class="clean-doc-header-main">
+        <p class="eyebrow">Documentação / importação global</p>
+        <h1>Importadores estruturados</h1>
+        <p>Carregamento em massa de folhas de obra, impros e contratos para todas as viaturas, com associação automática por matrícula, chassi ou unit.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
+        <a class="button-link secondary-link" href="/v2-clean/workshop">Oficina</a>
+      </div>
+    </header>
+
+    <section class="clean-doc-filter-panel clean-card-wide">
+      <div class="clean-doc-import-hero">
+        <div class="clean-doc-import-hero-stat">
+          <strong>{{ vehicle_count }}</strong>
+          <span>viaturas disponíveis para associação</span>
+        </div>
+        {% for code, label in structured_groups %}
+          <div class="clean-doc-import-hero-stat">
+            <strong>{{ structured_counts.get(code, 0) }}</strong>
+            <span>{{ label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-doc-import-center-grid">
+      <article class="clean-doc-structure-card clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Importação</p>
+            <h3>Folhas de obra</h3>
+            <p>Excel global com número, data, matrícula, fornecedor e observações.</p>
+          </div>
+        </div>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-quick-form">
+          <label>
+            Ficheiro
+            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+          </label>
+          <button type="submit">Importar FO</button>
+        </form>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Importação</p>
+            <h3>Impros</h3>
+            <p>Excel global com matrícula, datas, quilómetros, tipo e garagem.</p>
+          </div>
+        </div>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-quick-form">
+          <label>
+            Ficheiro
+            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+          </label>
+          <button type="submit">Importar impros</button>
+        </form>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Importação</p>
+            <h3>Contratos</h3>
+            <p>Excel de contratos para timeline, contexto histórico e cruzamento documental.</p>
+          </div>
+        </div>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-quick-form">
+          <label>
+            Ficheiro
+            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+          </label>
+          <button type="submit">Importar contratos</button>
+        </form>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-note">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Regras</p>
+            <h3>Como a associação funciona</h3>
+          </div>
+        </div>
+        <ul class="clean-doc-path-list">
+          <li>FO e impros: associação principal por matrícula.</li>
+          <li>Contratos: matrícula, chassi ou unit Rentway.</li>
+          <li>Linhas sem correspondência não entram em nenhuma viatura.</li>
+          <li>A auditoria fina continua depois dentro da ficha documental da viatura.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

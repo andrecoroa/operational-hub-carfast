@@ -58,6 +58,8 @@
           <select name="archive_group">
             <option value="">Todos</option>
             <option value="invoices" {% if archive_group == "invoices" %}selected{% endif %}>Faturas</option>
+            <option value="credit_notes" {% if archive_group == "credit_notes" %}selected{% endif %}>Notas de crédito</option>
+            <option value="payment_proofs" {% if archive_group == "payment_proofs" %}selected{% endif %}>Comprovativos</option>
             <option value="diagnostics" {% if archive_group == "diagnostics" %}selected{% endif %}>Diagnósticos</option>
             <option value="servicebox_tsb" {% if archive_group == "servicebox_tsb" %}selected{% endif %}>Service Box / TSB</option>
             <option value="evidence" {% if archive_group == "evidence" %}selected{% endif %}>Fotos / evidências</option>
@@ -109,17 +111,18 @@
           <section class="clean-doc-overview-block clean-doc-overview-note">
             <strong>Estrutura alvo</strong>
             <ul class="clean-doc-path-list">
-              <li><code>01_Documentacao_Financeira</code></li>
-              <li><code>02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code></li>
-              <li><code>03_Documentacao_Base_Viatura</code></li>
-              <li><code>99_Pendentes_Classificar</code></li>
+              <li><code>Frota/[MATRICULA]_[CHASSIS]</code></li>
+              <li><code>01_Documentacao_Financeira</code> → faturas, notas de crédito, comprovativos</li>
+              <li><code>02_Documentacao_Tecnica/Processos/[NUMERO_PROCESSO]</code> → diagnósticos, Service Box / TSB, fotos, outros</li>
+              <li><code>03_Documentacao_Base_Viatura</code> → documentação base, plano de manutenção, outros</li>
+              <li><code>99_Pendentes_Classificar</code> → documento real ainda sem classificação final</li>
             </ul>
             <details class="clean-doc-inline-details">
               <summary>Ver enquadramento completo</summary>
               <div class="clean-doc-inline-details-body">
-                <p><strong>Arquivo documental:</strong> Faturas, Diagnósticos, Service Box / TSB, Fotos / evidências, Documentação base.</p>
-                <p><strong>Listagem estruturada:</strong> Folhas de obra, AR's, Sinistros, Contratos, Impros.</p>
-                <p><code>Frota/[MATRICULA]_[CHASSIS]/...</code></p>
+                <p><strong>Arquivo documental por viatura:</strong> faturas, notas de crédito, comprovativos, diagnósticos, relatórios técnicos, Service Box / TSB, fotos/evidências e documentação base.</p>
+                <p><strong>Listagem estruturada global:</strong> folhas de obra, AR's, sinistros, contratos e impros. Estes ficheiros não são arquivados por viatura um a um.</p>
+                <p><code>Importacoes_Estruturadas/Folhas_Obra | ARs | Sinistros | Contratos | Impros | Arquivo_Original_Importacoes</code></p>
               </div>
             </details>
           </section>

@@ -3608,7 +3608,7 @@ async def clean_workshop_store_phase_uploads(
                     storage_path=str(stored_path),
                     storage_key=digest,
                     file_hash=digest,
-                    folder_path=f"Documentação de Viaturas/{plate_value or process.id}/{phase}",
+                    folder_path=suggest_workshop_process_document_folder(process, vehicle, "03_Fotos_Evidencias"),
                     status="received",
                     vehicle_id=process.vehicle_id,
                     plate=process.plate_snapshot,
@@ -6629,7 +6629,7 @@ async def clean_workshop_technical_report_upload(
                 storage_provider="local",
                 storage_path=str(stored_path),
                 storage_key=digest,
-                folder_path=f"Documentação de Viaturas/{plate_value or process.id}/03_Diagnosticos",
+                folder_path=suggest_workshop_process_document_folder(process, vehicle, "01_Diagnosticos"),
                 status="unclassified",
                 vehicle_id=process.vehicle_id,
                 plate=process.plate_snapshot,
@@ -8015,7 +8015,14 @@ def add_vehicle_history_audit_document(
                 storage_provider="external",
                 storage_path=clean_link,
                 external_url=clean_link if clean_link.startswith(("http://", "https://")) else None,
-                folder_path=f"Documentação de Viaturas/{vehicle.plate or vehicle.id}/04_Auditoria_Historico",
+                folder_path=suggest_document_folder_path(
+                    "fleet",
+                    audit.started_at.date() if audit.started_at else date.today(),
+                    vehicle.plate,
+                    document_type,
+                    vin=vehicle.vin,
+                    workshop_process_ref="Sem_Processo",
+                ),
                 status="associated",
                 vehicle_id=vehicle.id,
                 plate=vehicle.plate,
@@ -8093,7 +8100,14 @@ async def add_vehicle_history_audit_technical_report(
             storage_provider="history_audit_upload",
             storage_path=f"history-audit-upload://{audit.id}/{filename}",
             storage_key=file_hash,
-            folder_path=f"Documentação de Viaturas/{vehicle.plate or vehicle.id}/04_Auditoria_Historico",
+            folder_path=suggest_document_folder_path(
+                "fleet",
+                audit.started_at.date() if audit.started_at else date.today(),
+                vehicle.plate,
+                clean_report_code,
+                vin=vehicle.vin,
+                workshop_process_ref="Sem_Processo",
+            ),
             status="associated" if not extraction_error else "pending_manual_validation",
             vehicle_id=vehicle.id,
             plate=vehicle.plate,
@@ -9302,13 +9316,47 @@ def workshop_service_title(service_entries: list[tuple[str, str | None, str, str
     return "_".join(label for label in labels if label)[:200]
 
 
+def canonical_vehicle_archive_name(plate: str | None, vin: str | None) -> str:
+    clean_plate = ((plate or "")).strip().upper()
+    clean_vin = ((vin or "")).strip().upper()
+    if clean_plate and clean_vin:
+        return f"{clean_plate}_{clean_vin}"
+    if clean_plate:
+        return clean_plate
+    if clean_vin:
+        return clean_vin
+    return "_POR_ASSOCIAR"
+
+
+def sanitize_archive_component(value: str | None, fallback: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return fallback
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("._-")
+    return text or fallback
+
+
+def vehicle_archive_base_folder(plate: str | None, vin: str | None) -> str:
+    return f"Frota/{canonical_vehicle_archive_name(plate, vin)}"
+
+
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
     reference_year = (process.opened_on or date.today()).year
     process_ref = f"OF-{reference_year}-{process.id:05d}"
-    clean_plate = ((vehicle.plate if vehicle else "") or "").strip().upper()
-    if clean_plate:
-        return f"Oficina/Matrículas/{clean_plate}/Processos/{process_ref}"
-    return f"Oficina/Sem matrícula/{reference_year}/Processos/{process_ref}"
+    archive_name = canonical_vehicle_archive_name(vehicle.plate if vehicle else "", vehicle.vin if vehicle else "")
+    if archive_name != "_POR_ASSOCIAR":
+        return f"Frota/{archive_name}/02_Documentacao_Tecnica/Processos/{process_ref}"
+    return f"Frota/_POR_ASSOCIAR/02_Documentacao_Tecnica/Processos/{reference_year}/{process_ref}"
+
+
+def suggest_workshop_process_document_folder(
+    process: WorkshopProcess,
+    vehicle: Vehicle | None,
+    section: str,
+) -> str:
+    base_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
+    return f"{base_path}/{section}"
 
 
 def render_workshop_detail(
@@ -13643,14 +13691,6 @@ def document_create(
 
     parsed_document_date = parse_optional_date(document_date)
     clean_plate = plate.strip().upper()
-    folder_path = suggest_document_folder_path(
-        classification,
-        parsed_document_date,
-        clean_plate,
-        document_type,
-        supplier_name,
-        customer_name,
-    )
     archived = status == "archived"
 
     with SessionLocal() as db:
@@ -13670,8 +13710,20 @@ def document_create(
         if parsed_task_id and not db.get(Task, parsed_task_id):
             parsed_task_id = None
         parsed_workshop_process_id = parse_optional_int(workshop_process_id)
-        if parsed_workshop_process_id and not db.get(WorkshopProcess, parsed_workshop_process_id):
+        linked_process = db.get(WorkshopProcess, parsed_workshop_process_id) if parsed_workshop_process_id else None
+        if parsed_workshop_process_id and not linked_process:
             parsed_workshop_process_id = None
+        process_folder_ref = linked_process.document_folder_path.split("/")[-1] if linked_process and linked_process.document_folder_path else None
+        folder_path = suggest_document_folder_path(
+            classification,
+            parsed_document_date,
+            clean_plate,
+            document_type,
+            supplier_name,
+            customer_name,
+            vin=vehicle.vin if vehicle else None,
+            workshop_process_ref=process_folder_ref,
+        )
 
         document = Document(
             title=clean_title,
@@ -13928,6 +13980,8 @@ def document_update(
         document = db.get(Document, document_id)
         if not document:
             return RedirectResponse("/documents", status_code=303)
+        vehicle = db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None
+        linked_process = db.get(WorkshopProcess, document.workshop_process_id) if document.workshop_process_id else None
 
         changes = []
         if classification in DOCUMENT_AREA_LABELS and classification != document.classification:
@@ -13951,6 +14005,8 @@ def document_update(
             document.document_type,
             document.supplier_name,
             document.customer_name,
+            vin=vehicle.vin if vehicle else None,
+            workshop_process_ref=linked_process.document_folder_path.split("/")[-1] if linked_process and linked_process.document_folder_path else None,
         )
         if document.status == "archived":
             document.archived = True
@@ -16716,6 +16772,13 @@ def add_document_record(
 
     clean_plate = plate.strip().upper()
     archived = status == "archived"
+    linked_vehicle = db.get(Vehicle, vehicle_id) if vehicle_id else None
+    linked_process = db.get(WorkshopProcess, workshop_process_id) if workshop_process_id else None
+    if not linked_vehicle and linked_process and linked_process.vehicle_id:
+        linked_vehicle = db.get(Vehicle, linked_process.vehicle_id)
+    linked_vehicle_id = vehicle_id or (linked_vehicle.id if linked_vehicle else None)
+    effective_plate = clean_plate or (linked_vehicle.plate if linked_vehicle and linked_vehicle.plate else "")
+    process_folder_ref = linked_process.document_folder_path.split("/")[-1] if linked_process and linked_process.document_folder_path else None
     document = Document(
         title=clean_title,
         document_type=document_type,
@@ -16736,15 +16799,17 @@ def add_document_record(
         folder_path=folder_path_override or suggest_document_folder_path(
             classification,
             document_date,
-            clean_plate,
+            effective_plate,
             document_type,
             supplier_name,
             customer_name,
+            vin=linked_vehicle.vin if linked_vehicle else None,
+            workshop_process_ref=process_folder_ref,
         ),
-        vehicle_id=vehicle_id,
+        vehicle_id=linked_vehicle_id,
         task_id=task_id,
         workshop_process_id=workshop_process_id,
-        plate=clean_plate or None,
+        plate=effective_plate or None,
         customer_name=customer_name.strip() or None,
         supplier_name=supplier_name.strip() or None,
         document_date=document_date,
@@ -16801,25 +16866,47 @@ def suggest_document_folder_path(
     document_type: str | None = None,
     supplier_name: str | None = None,
     customer_name: str | None = None,
+    *,
+    vin: str | None = None,
+    workshop_process_ref: str | None = None,
 ) -> str:
     reference_date = document_date or date.today()
     year = f"{reference_date.year:04d}"
-    month = f"{reference_date.month:02d}"
     clean_plate = (plate or "").strip().upper()
-    type_folder = document_folder_label(document_type)
+    base_vehicle_folder = vehicle_archive_base_folder(clean_plate, vin)
+    process_ref = sanitize_archive_component(workshop_process_ref, "Sem_Processo")
+    normalized_type = (document_type or "").strip().lower()
+
+    if normalized_type in {"maintenance_plan", "service_plan", "plano_manutencao"}:
+        return f"{base_vehicle_folder}/03_Documentacao_Base_Viatura/Plano_Manutencao"
+
+    if normalized_type in {"finance_supplier_invoice", "workshop_supplier_invoice"}:
+        return f"{base_vehicle_folder}/01_Documentacao_Financeira/Faturas"
+    if normalized_type == "finance_credit_note":
+        return f"{base_vehicle_folder}/01_Documentacao_Financeira/Notas_Credito"
+    if normalized_type in {"finance_receipt", "finance_payment_proof", "workshop_evidence"}:
+        return f"{base_vehicle_folder}/01_Documentacao_Financeira/Comprovativos"
+
+    if normalized_type in {"workshop_diagnostic", "workshop_bsi", "workshop_report", "technical_report", "bsi", "lubrication", "telecharge"}:
+        return f"{base_vehicle_folder}/02_Documentacao_Tecnica/Processos/{process_ref}/01_Diagnosticos"
+    if normalized_type in {"service_box", "tsb"}:
+        return f"{base_vehicle_folder}/02_Documentacao_Tecnica/Processos/{process_ref}/02_Service_Box_TSB"
+    if normalized_type in {"workshop_photo"}:
+        return f"{base_vehicle_folder}/02_Documentacao_Tecnica/Processos/{process_ref}/03_Fotos_Evidencias"
+    if normalized_type in {"workshop_other", "workshop_quote"}:
+        return f"{base_vehicle_folder}/02_Documentacao_Tecnica/Processos/{process_ref}/04_Outros_Processo"
+
     if area in {"workshop", "fleet"}:
-        if clean_plate:
-            return f"Oficina/Matrículas/{clean_plate}/{type_folder}"
-        return f"Oficina/Sem matrícula/{year}/{month}/{type_folder}"
+        return f"{base_vehicle_folder}/03_Documentacao_Base_Viatura/Documentacao_Viatura"
     if area == "finance":
         if supplier_name and supplier_name.strip():
-            return f"Financeiro/Fornecedores/{year}/{month}"
+            return f"{base_vehicle_folder}/01_Documentacao_Financeira/Faturas"
         if customer_name and customer_name.strip():
-            return f"Financeiro/Clientes/{year}/{month}"
-        return f"Financeiro/{year}/{month}/{type_folder}"
+            return f"{base_vehicle_folder}/03_Documentacao_Base_Viatura/Documentacao_Viatura"
+        return f"{base_vehicle_folder}/01_Documentacao_Financeira/Comprovativos"
     if area == "rentway_imports":
-        return f"Rentway_Importacoes/{year}/{month}"
-    return f"Arquivo_Geral/{year}/{month}"
+        return "Importacoes_Estruturadas/Arquivo_Original_Importacoes"
+    return f"{base_vehicle_folder}/99_Pendentes_Classificar"
 
 
 def parse_optional_date(value: str | None) -> date | None:

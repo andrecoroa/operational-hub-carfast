@@ -8,7 +8,7 @@
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / importação global</p>
         <h1>Importadores estruturados</h1>
-        <p>Carregamento em massa de folhas de obra, impros e contratos para todas as viaturas, com associação automática por matrícula, chassi ou unit.</p>
+        <p>Zona única para listagens estruturadas. O Excel/CSV fica global; a app importa linhas e associa à viatura sem duplicar ficheiros por pasta.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
@@ -87,12 +87,15 @@
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Regras</p>
-            <h3>Como a associação funciona</h3>
+            <h3>Estrutura fechada</h3>
           </div>
         </div>
         <ul class="clean-doc-path-list">
+          <li><strong>Arquivo documental por viatura:</strong> fica em <code>Frota/[MATRICULA]_[CHASSIS]/...</code>.</li>
+          <li><strong>Listagens estruturadas:</strong> ficam em <code>Importacoes_Estruturadas/...</code>.</li>
           <li>FO e impros: associação principal por matrícula.</li>
           <li>Contratos: matrícula, chassi ou unit Rentway.</li>
+          <li>ARs e sinistros seguem a mesma lógica de listagem estruturada quando o importador dedicado entrar.</li>
           <li>Linhas sem correspondência não entram em nenhuma viatura.</li>
           <li>A auditoria fina continua depois dentro da ficha documental da viatura.</li>
         </ul>

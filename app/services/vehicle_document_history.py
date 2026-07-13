@@ -43,6 +43,8 @@ DOCUMENT_HISTORY_MAIN_GROUP_LABELS = dict(DOCUMENT_HISTORY_MAIN_GROUPS)
 
 DOCUMENT_HISTORY_ARCHIVE_GROUPS = [
     ("invoices", "Faturas"),
+    ("credit_notes", "Notas de crédito"),
+    ("payment_proofs", "Comprovativos"),
     ("diagnostics", "Diagnósticos"),
     ("servicebox_tsb", "Service Box / TSB"),
     ("evidence", "Fotos / evidências"),
@@ -193,6 +195,12 @@ def _document_archive_group(document: Document) -> str:
     title = normalize_header(title_blob)
     if doc_type in {"workshopsupplierinvoice", "financesupplierinvoice"} or "fatura" in title or "factura" in title:
         return "invoices"
+    if doc_type == "financecreditnote" or "nota credito" in title or "nota de credito" in title:
+        return "credit_notes"
+    if doc_type in {"financepaymentproof", "financereceipt"} or any(
+        token in title for token in ["comprovativo", "recibo", "payment proof"]
+    ):
+        return "payment_proofs"
     if doc_type in {"workshopreport", "workshopdiagnostic", "workshopbsi"} or any(
         token in title for token in ["diagn", "relatorio", "relat", "bsi", "autel", "stellantis"]
     ):

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -67,3 +67,93 @@ class DocumentEvent(Base):
     new_value: Mapped[str | None] = mapped_column(Text)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VehicleDocumentRecord(TimestampMixin, Base):
+    __tablename__ = "vehicle_document_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    source_record_type: Mapped[str] = mapped_column(String(40), default="archive", index=True)
+    main_group: Mapped[str] = mapped_column(String(40), index=True)
+    subtype: Mapped[str | None] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    comparison_state: Mapped[str | None] = mapped_column(String(40), index=True)
+    process_reference: Mapped[str | None] = mapped_column(String(80), index=True)
+    external_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    title: Mapped[str | None] = mapped_column(String(200), index=True)
+    plate: Mapped[str | None] = mapped_column(String(40), index=True)
+    vin: Mapped[str | None] = mapped_column(String(80), index=True)
+    supplier_name: Mapped[str | None] = mapped_column(String(200), index=True)
+    raw_description: Mapped[str | None] = mapped_column(Text)
+    document_date: Mapped[date | None] = mapped_column(Date, index=True)
+    end_date: Mapped[date | None] = mapped_column(Date, index=True)
+    km: Mapped[int | None] = mapped_column(Integer, index=True)
+    end_km: Mapped[int | None] = mapped_column(Integer, index=True)
+    has_physical_file: Mapped[bool] = mapped_column(Boolean, default=False)
+    storage_path: Mapped[str | None] = mapped_column(Text)
+    external_url: Mapped[str | None] = mapped_column(Text)
+    source_system: Mapped[str | None] = mapped_column(String(80), index=True)
+    metadata_json: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSON)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class VehicleDocumentRecordTag(TimestampMixin, Base):
+    __tablename__ = "vehicle_document_record_tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    record_id: Mapped[int | None] = mapped_column(ForeignKey("vehicle_document_records.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(80), index=True)
+    value: Mapped[str | None] = mapped_column(String(120), index=True)
+    free_text: Mapped[str | None] = mapped_column(Text)
+    source_kind: Mapped[str] = mapped_column(String(40), default="manual", index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class VehicleDocumentAlert(TimestampMixin, Base):
+    __tablename__ = "vehicle_document_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    record_id: Mapped[int | None] = mapped_column(ForeignKey("vehicle_document_records.id", ondelete="SET NULL"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    alert_type: Mapped[str] = mapped_column(String(80), index=True)
+    severity: Mapped[str] = mapped_column(String(40), default="warning", index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class VehicleDocumentPendingAction(TimestampMixin, Base):
+    __tablename__ = "vehicle_document_pending_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    record_id: Mapped[int | None] = mapped_column(ForeignKey("vehicle_document_records.id", ondelete="SET NULL"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), index=True)
+    action_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class VehicleDocumentAuditField(TimestampMixin, Base):
+    __tablename__ = "vehicle_document_audit_fields"
+    __table_args__ = (UniqueConstraint("vehicle_id", "field_code", name="uq_vehicle_document_audit_field"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    field_code: Mapped[str] = mapped_column(String(120), index=True)
+    value_json: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSON)
+    audited_on: Mapped[date | None] = mapped_column(Date)
+    observation: Mapped[str | None] = mapped_column(Text)
+    document_basis: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

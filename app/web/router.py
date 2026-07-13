@@ -27,7 +27,14 @@ from app.core.change_notice import (
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
-from app.models.documents import Document, DocumentEvent, DocumentLink
+from app.models.documents import (
+    Document,
+    DocumentEvent,
+    DocumentLink,
+    VehicleDocumentAuditField,
+    VehicleDocumentRecord,
+    VehicleDocumentRecordTag,
+)
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
@@ -109,6 +116,25 @@ from app.services.workshop_history_importer import (
     TECHNICAL_HISTORY_IMPORT_COLUMNS,
     import_workshop_technical_history_file,
     technical_history_template_csv,
+)
+from app.services.vehicle_document_history import (
+    DOCUMENT_HISTORY_AUDIT_FIELDS,
+    DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
+    DOCUMENT_HISTORY_COMPARISON_LABELS,
+    DOCUMENT_HISTORY_MAIN_GROUPS,
+    DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
+    DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
+    DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+    add_quick_classification,
+    attach_document_to_record,
+    create_archive_placeholder,
+    import_contracts_xlsx,
+    import_impros_xlsx,
+    import_work_orders_xlsx,
+    save_uploaded_spreadsheet,
+    sync_real_start_manual_field,
+    upsert_audit_field,
+    vehicle_document_module_context,
 )
 from app.services.workshop_report_extractor import (
     classify_workshop_report_from_bytes,
@@ -5159,8 +5185,8 @@ def clean_fleet_documents(
     request: Request,
     vehicle_id: int,
     q: str | None = None,
-    doc_group: str = "",
-    document_type: str = "",
+    main_group: str = "",
+    archive_group: str = "",
     status: str = "",
 ):
     denied = clean_experience_denied(request)
@@ -5168,62 +5194,291 @@ def clean_fleet_documents(
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/", status_code=303)
+    search = (q or "").strip().lower()
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
-        stmt = select(Document).where(or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate))
-        if status:
-            stmt = stmt.where(Document.status == status)
-        if document_type:
-            stmt = stmt.where(Document.document_type == document_type)
-        if q:
-            like = f"%{q}%"
-            stmt = stmt.where(
-                or_(
-                    Document.title.ilike(like),
-                    Document.original_name.ilike(like),
-                    Document.supplier_name.ilike(like),
-                    Document.source_subject.ilike(like),
-                    Document.contract_number.ilike(like),
-                    Document.reservation_number.ilike(like),
-                )
-            )
-        all_documents = db.scalars(stmt.order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())).all()
-        rows = []
-        for document in all_documents:
-            group = clean_vehicle_document_group(document)
-            if doc_group and group != doc_group:
+        module_ctx = vehicle_document_module_context(db, vehicle)
+
+        def matches_search(parts: list[str]) -> bool:
+            if not search:
+                return True
+            blob = " ".join(part for part in parts if part).lower()
+            return search in blob
+
+        archive_rows = []
+        for row in module_ctx["archive_rows"]:
+            if archive_group and row["archive_group"] != archive_group:
                 continue
-            linked_process = "-"
-            if document.workshop_process_id:
-                linked_process = f"Oficina #{document.workshop_process_id}"
-            elif document.task_id:
-                linked_process = f"Tarefa #{document.task_id}"
-            elif document.incident_id:
-                linked_process = f"Problema #{document.incident_id}"
-            rows.append({"document": document, "group": group, "linked_process": linked_process, "problem_count": 0})
-        summary = clean_vehicle_document_summary(all_documents)
+            if main_group and row.get("main_group") != main_group:
+                continue
+            if status and row["status"] != status and row.get("comparison_state") != status:
+                continue
+            if not matches_search(
+                [
+                    row["title"],
+                    row["supplier_name"],
+                    row["document_number"],
+                    row["document_type"],
+                    " ".join(row["tags"]),
+                ]
+            ):
+                continue
+            archive_rows.append(row)
+
+        structured_rows = []
+        for row in module_ctx["structured_rows"]:
+            if main_group and row["main_group"] != main_group:
+                continue
+            if status and row["status"] != status and row["comparison_state"] != status:
+                continue
+            if not matches_search(
+                [
+                    row["title"],
+                    row["supplier_name"],
+                    row["description"],
+                    row["external_reference"],
+                    " ".join(row["tags"]),
+                ]
+            ):
+                continue
+            structured_rows.append(row)
+
+        comparison_rows = [
+            row
+            for row in module_ctx["comparison_rows"]
+            if not status or row["state"] == status
+        ]
+        if search:
+            comparison_rows = [
+                row
+                for row in comparison_rows
+                if matches_search(
+                    [
+                        row["work_order"]["title"],
+                        row["invoice"]["title"] if row["invoice"] else "",
+                        row["state_label"],
+                    ]
+                )
+            ]
+
+        all_statuses = [
+            ("", "Todos"),
+            ("pending", "Pendente"),
+            ("associated", "Associado"),
+            ("structured", "Estruturado"),
+            ("open", "Aberto"),
+            ("coerente", "Coerente"),
+            ("complementar", "Complementar"),
+            ("divergente", "Divergente"),
+            ("por_validar", "Por validar"),
+        ]
     return templates.TemplateResponse(
         request,
         "clean_fleet_documents.html",
         {
             "ctx": context,
-            "rows": rows[:300],
+            "module_ctx": module_ctx,
+            "archive_rows": archive_rows,
+            "structured_rows": structured_rows,
+            "comparison_rows": comparison_rows,
             "q": q or "",
-            "doc_group": doc_group,
-            "document_type": document_type,
+            "main_group": main_group,
+            "archive_group": archive_group,
             "status": status,
-            "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
-            "document_groups": CLEAN_FLEET_DOCUMENT_GROUPS,
-            "document_summary": summary,
-            "document_types": DOCUMENT_TYPES,
-            "document_type_labels": DOCUMENT_TYPE_LABELS,
-            "document_statuses": DOCUMENT_STATUSES,
-            "document_status_labels": DOCUMENT_STATUS_LABELS,
+            "main_groups": DOCUMENT_HISTORY_MAIN_GROUPS,
+            "main_group_labels": DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
+            "comparison_labels": DOCUMENT_HISTORY_COMPARISON_LABELS,
+            "quick_classification_labels": DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
+            "quick_classifications": DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+            "audit_fields": DOCUMENT_HISTORY_AUDIT_FIELDS,
+            "audit_field_labels": DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
+            "status_options": all_statuses,
         },
     )
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/work-orders")
+def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        tmp_path = save_uploaded_spreadsheet(file)
+        try:
+            import_work_orders_xlsx(db, vehicle=vehicle, path=tmp_path, user_id=user_id)
+            db.commit()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=work_orders", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/impros")
+def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        tmp_path = save_uploaded_spreadsheet(file)
+        try:
+            import_impros_xlsx(db, vehicle=vehicle, path=tmp_path, user_id=user_id)
+            db.commit()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=impros", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/contracts")
+def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        tmp_path = save_uploaded_spreadsheet(file)
+        try:
+            import_contracts_xlsx(db, vehicle=vehicle, path=tmp_path, user_id=user_id)
+            db.commit()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=contracts", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/pending")
+def clean_fleet_documents_create_pending(
+    request: Request,
+    vehicle_id: int,
+    main_group: str = Form("invoices"),
+    title: str = Form(""),
+    document_date: str = Form(""),
+    supplier_name: str = Form(""),
+    raw_description: str = Form(""),
+    process_reference: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        create_archive_placeholder(
+            db,
+            vehicle_id=vehicle.id,
+            main_group=main_group,
+            title=title.strip() or ("Fatura pendente" if main_group == "invoices" else "Diagnóstico pendente"),
+            document_date=parse_iso_or_dmy_date(document_date),
+            supplier_name=supplier_name.strip() or None,
+            raw_description=raw_description.strip() or None,
+            process_reference=process_reference.strip() or None,
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?created=pending", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/attach")
+def clean_fleet_documents_attach_existing(
+    request: Request,
+    vehicle_id: int,
+    record_id: int = Form(...),
+    document_id: int = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        record = db.get(VehicleDocumentRecord, record_id)
+        if not record or record.vehicle_id != vehicle_id:
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
+        attach_document_to_record(db, record, document_id=document_id, user_id=user_id)
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?attached=1", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/classify")
+def clean_fleet_documents_add_classification(
+    request: Request,
+    vehicle_id: int,
+    category: str = Form(...),
+    value: str = Form(""),
+    free_text: str = Form(""),
+    record_id: int | None = Form(None),
+    document_id: int | None = Form(None),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        add_quick_classification(
+            db,
+            vehicle_id=vehicle_id,
+            record_id=record_id,
+            document_id=document_id,
+            category=category,
+            value=value.strip() or None,
+            free_text=free_text.strip() or None,
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?classified=1", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/audit-field")
+def clean_fleet_documents_save_audit_field(
+    request: Request,
+    vehicle_id: int,
+    field_code: str = Form(...),
+    value: str = Form(""),
+    audited_on: str = Form(""),
+    observation: str = Form(""),
+    document_basis: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+        clean_value = value.strip() or None
+        audited_value = clean_value
+        if field_code == "effective_maintenance_count":
+            try:
+                audited_value = int(clean_value) if clean_value is not None else None
+            except ValueError:
+                audited_value = clean_value
+        upsert_audit_field(
+            db,
+            vehicle_id=vehicle.id,
+            field_code=field_code,
+            value=audited_value,
+            audited_on=parse_iso_or_dmy_date(audited_on),
+            observation=observation.strip() or None,
+            document_basis=document_basis.strip() or None,
+            user_id=user_id,
+        )
+        if field_code == "real_start_date":
+            sync_real_start_manual_field(db, vehicle.id, clean_value, user_id)
+        db.commit()
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?saved=audit", status_code=303)
 @web_router.get("/v2-clean/fleet/{vehicle_id}", response_class=HTMLResponse)
 def clean_fleet_detail(request: Request, vehicle_id: int):
     denied = clean_experience_denied(request)

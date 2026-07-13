@@ -1,7 +1,16 @@
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.documents import Document, DocumentEvent, DocumentLink
+from app.models.documents import (
+    Document,
+    DocumentEvent,
+    DocumentLink,
+    VehicleDocumentAlert,
+    VehicleDocumentAuditField,
+    VehicleDocumentPendingAction,
+    VehicleDocumentRecord,
+    VehicleDocumentRecordTag,
+)
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
@@ -73,6 +82,11 @@ __all__ = [
     "Document",
     "DocumentEvent",
     "DocumentLink",
+    "VehicleDocumentAlert",
+    "VehicleDocumentAuditField",
+    "VehicleDocumentPendingAction",
+    "VehicleDocumentRecord",
+    "VehicleDocumentRecordTag",
     "EmailIntake",
     "EmailIntakeAttachment",
     "Incident",

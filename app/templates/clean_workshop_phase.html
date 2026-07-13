@@ -17,6 +17,9 @@
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
+        {% if workshop_process and phase_print_report %}
+          <a class="button-link secondary-link" href="/v2-clean/workshop/{{ workshop_process.id }}/print/{{ phase_print_report[0] }}" target="_blank" rel="noopener">{{ phase_print_report[1] }}</a>
+        {% endif %}
         {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
           <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
             <input type="hidden" name="record_type" value="task">
@@ -639,6 +642,22 @@
                 <a href="/v2-clean/workshop/inspecao?process_id={{ workshop_process.id }}">Consultar inspeção</a>
                 <a href="{{ task_board_href }}">Consultar tarefas</a>
               </div>
+              <div class="clean-repair-print-fields">
+                <h4>Material para a reparação</h4>
+                <p>O material definido anteriormente aparece preenchido. Complete ou corrija as restantes linhas.</p>
+                <div class="clean-repair-material-table">
+                  <div class="clean-repair-material-row clean-repair-material-head"><b>Material</b><b>Referência</b><b>Quantidade</b><b>Estado / origem</b></div>
+                  {% for index in range(1, 9) %}
+                    <div class="clean-repair-material-row">
+                      <input name="repair_material_{{ index }}_name" value="{{ phase_form.get('repair_material_' ~ index ~ '_name', '') }}" aria-label="Material {{ index }}">
+                      <input name="repair_material_{{ index }}_reference" value="{{ phase_form.get('repair_material_' ~ index ~ '_reference', '') }}" aria-label="Referência material {{ index }}">
+                      <input name="repair_material_{{ index }}_quantity" value="{{ phase_form.get('repair_material_' ~ index ~ '_quantity', '') }}" aria-label="Quantidade material {{ index }}">
+                      <input name="repair_material_{{ index }}_origin" value="{{ phase_form.get('repair_material_' ~ index ~ '_origin', '') }}" aria-label="Estado ou origem material {{ index }}">
+                    </div>
+                  {% endfor %}
+                </div>
+                <label>Fora da autorização / trabalhos adicionais não autorizados<textarea name="repair_outside_authorization" rows="5" placeholder="Registar exclusões, material não autorizado ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
+              </div>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-execucao">
@@ -647,7 +666,12 @@
                 <label>Estado da reparação<select name="repair_execution_status">{% for option in ["Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"] %}<option{% if phase_form.get("repair_execution_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Responsável/oficina<input name="repair_responsible" placeholder="Responsável ou oficina" value="{{ phase_form.get('repair_responsible', '') }}"></label>
                 <label>Início reparação<input type="date" name="repair_started_on" value="{{ phase_form.get('repair_started_on', '') }}"></label>
+                <label>Hora de início<input type="time" name="repair_started_time" value="{{ phase_form.get('repair_started_time', '') }}"></label>
                 <label>Previsão conclusão<input type="date" name="repair_eta" value="{{ phase_form.get('repair_eta', '') }}"></label>
+                <label>Tempo previsto<input name="repair_expected_duration" placeholder="Ex.: 2 h 30 min" value="{{ phase_form.get('repair_expected_duration', '') }}"></label>
+                <label>Fim reparação<input type="date" name="repair_finished_on" value="{{ phase_form.get('repair_finished_on', '') }}"></label>
+                <label>Hora de fim<input type="time" name="repair_finished_time" value="{{ phase_form.get('repair_finished_time', '') }}"></label>
+                <label>Tempo real<input name="repair_actual_duration" placeholder="Ex.: 3 h 10 min" value="{{ phase_form.get('repair_actual_duration', '') }}"></label>
                 <label>Viatura imobilizada?<select name="repair_vehicle_immobilized">{% for option in ["Por confirmar", "Sim", "Não"] %}<option{% if phase_form.get("repair_vehicle_immobilized", "Por confirmar") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Observação execução<textarea name="repair_execution_note" rows="3" placeholder="Ponto de situação, atrasos, dependências...">{{ phase_form.get("repair_execution_note", "") }}</textarea></label>
               </div>

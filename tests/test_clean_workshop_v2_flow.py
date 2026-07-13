@@ -74,6 +74,7 @@ def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_s
         )
     )
 
+
     cancelled_page = authenticated_client.get(f"/v2-clean/workshop-entry?process_id={process.id}")
     assert cancelled_page.status_code == 200
     assert "Processo cancelado" in cancelled_page.text
@@ -133,6 +134,94 @@ def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_s
     assert "admin_error=forbidden" in forbidden_cancel.headers["location"]
     db_session.refresh(process)
     assert process.status == "open"
+
+
+def test_workshop_print_reports_and_repair_material_fields(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="AA-11-AA",
+        vin="VINAA11AA123456789",
+        brand="PEUGEOT",
+        model="208",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina AA-11-AA",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="reparacao",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    phase_codes = ("entrada", "validacao", "diagnostico", "inspecao", "auditoria", "reparacao", "fecho")
+    for index, phase_code in enumerate(phase_codes, start=1):
+        if phase_code == "entrada":
+            phase_data = {
+                "entry_km": "123456",
+                "entry_reasons": ["Revisão / degradação óleo"],
+                "requested_service": "Confirmar manutenção",
+            }
+        elif phase_code == "reparacao":
+            phase_data = {
+                "form_snapshot": {
+                    "repair_authorized_services": "Substituir óleo e filtro",
+                    "repair_material_1_name": "Óleo motor",
+                    "repair_material_1_reference": "5W-30",
+                    "repair_material_1_quantity": "6 L",
+                    "repair_material_1_origin": "Diagnóstico",
+                    "repair_outside_authorization": "Telecarregamento não autorizado",
+                    "repair_expected_duration": "2 h 30 min",
+                    "repair_actual_duration": "3 h 10 min",
+                }
+            }
+        else:
+            phase_data = {"form_snapshot": {}}
+        db_session.add(
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code=phase_code,
+                name=phase_code.title(),
+                status="in_progress",
+                sort_order=index,
+                data_json=phase_data,
+            )
+        )
+    db_session.commit()
+
+    repair_page = authenticated_client.get(f"/v2-clean/workshop/reparacao?process_id={process.id}")
+    assert repair_page.status_code == 200
+    assert 'name="repair_material_8_name"' in repair_page.text
+    assert 'name="repair_outside_authorization"' in repair_page.text
+    assert 'name="repair_expected_duration"' in repair_page.text
+    assert 'name="repair_actual_duration"' in repair_page.text
+    assert "Imprimir ordem de reparação" in repair_page.text
+
+    expected_titles = {
+        "diagnostic-order": "Ordem de Diagnóstico Técnico",
+        "audit-validation": "Relatório para Auditoria e Validação",
+        "repair-order": "Ordem de Reparação",
+        "final-report": "Relatório Final do Processo",
+    }
+    for report_type, title in expected_titles.items():
+        response = authenticated_client.get(
+            f"/v2-clean/workshop/{process.id}/print/{report_type}"
+        )
+        assert response.status_code == 200
+        assert title in response.text
+
+    repair_report = authenticated_client.get(
+        f"/v2-clean/workshop/{process.id}/print/repair-order"
+    )
+    assert "Óleo motor" in repair_report.text
+    assert "Telecarregamento não autorizado" in repair_report.text
+    assert "2 h 30 min" in repair_report.text
+    assert "3 h 10 min" in repair_report.text
 
 def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session):
     vehicle = Vehicle(

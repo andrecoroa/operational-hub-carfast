@@ -73,6 +73,7 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcess,
     WorkshopPhasedProcessAlert,
     WorkshopPhasedProcessPhase,
+    WorkshopPhasedProcessService,
     WorkshopPhasedTechnicalReport,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
@@ -5655,9 +5656,148 @@ def clean_workshop_phase(
             "task_board_href": task_board_href,
             "audit_href": audit_href,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
+            "phase_print_report": {
+                "validacao": ("diagnostic-order", "Imprimir ordem de diagnóstico"),
+                "auditoria": ("audit-validation", "Imprimir relatório de auditoria"),
+                "reparacao": ("repair-order", "Imprimir ordem de reparação"),
+                "fecho": ("final-report", "Imprimir relatório final"),
+            }.get(phase),
             **phase_nav,
         },
     )
+
+
+CLEAN_WORKSHOP_PRINT_REPORTS = {
+    "diagnostic-order": {
+        "document_number": "1/4",
+        "title": "Ordem de Diagnóstico Técnico",
+        "stage": "Saída da Validação Administrativa",
+        "status": "Para execução",
+    },
+    "audit-validation": {
+        "document_number": "2/4",
+        "title": "Relatório para Auditoria e Validação",
+        "stage": "Saída do Diagnóstico e Inspeção",
+        "status": "Em validação",
+    },
+    "repair-order": {
+        "document_number": "3/4",
+        "title": "Ordem de Reparação",
+        "stage": "Saída da Auditoria e Validação",
+        "status": "Autorizado",
+    },
+    "final-report": {
+        "document_number": "4/4",
+        "title": "Relatório Final do Processo",
+        "stage": "Validação e Fecho",
+        "status": "Versão final",
+    },
+}
+
+
+def clean_workshop_phase_form_for_print(
+    db: Session,
+    process_id: int,
+    phase_code: str,
+) -> dict[str, object]:
+    phase = clean_workshop_get_phase(db, process_id, phase_code)
+    if not phase or not isinstance(phase.data_json, dict):
+        return {}
+    if phase_code == "entrada":
+        return dict(phase.data_json)
+    snapshot = phase.data_json.get("form_snapshot")
+    return dict(snapshot) if isinstance(snapshot, dict) else {}
+
+
+@web_router.get("/v2-clean/workshop/{process_id}/print/{report_type}", response_class=HTMLResponse)
+def clean_workshop_print_report(request: Request, process_id: int, report_type: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    report_config = CLEAN_WORKSHOP_PRINT_REPORTS.get(report_type)
+    if not report_config:
+        return Response(status_code=404)
+
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return Response(status_code=404)
+        vehicle_context = clean_workshop_context_for_process(db, process)
+        phase_forms = {
+            "entrada": clean_workshop_phase_form_for_print(db, process.id, "entrada"),
+            **{
+                phase_code: clean_workshop_phase_form_for_print(db, process.id, phase_code)
+                for phase_code in CLEAN_WORKSHOP_PHASES
+            },
+        }
+        reports = db.scalars(
+            select(WorkshopPhasedTechnicalReport)
+            .where(
+                WorkshopPhasedTechnicalReport.process_id == process.id,
+                ~WorkshopPhasedTechnicalReport.status.in_({"voided", "superseded"}),
+            )
+            .order_by(WorkshopPhasedTechnicalReport.id)
+        ).all()
+        alerts = db.scalars(
+            select(WorkshopPhasedProcessAlert)
+            .where(WorkshopPhasedProcessAlert.process_id == process.id)
+            .order_by(WorkshopPhasedProcessAlert.id)
+        ).all()
+        process_services = db.scalars(
+            select(WorkshopPhasedProcessService)
+            .where(WorkshopPhasedProcessService.process_id == process.id)
+            .order_by(WorkshopPhasedProcessService.sort_order, WorkshopPhasedProcessService.id)
+        ).all()
+        history_services: list[VehicleHistoryAuditService] = []
+        if process.vehicle_id:
+            history_services = db.scalars(
+                select(VehicleHistoryAuditService)
+                .join(VehicleHistoryAudit, VehicleHistoryAudit.id == VehicleHistoryAuditService.audit_id)
+                .where(VehicleHistoryAudit.vehicle_id == process.vehicle_id)
+                .order_by(
+                    VehicleHistoryAuditService.service_date.desc(),
+                    VehicleHistoryAuditService.id.desc(),
+                )
+                .limit(8)
+            ).all()
+
+        repair_form = phase_forms.get("reparacao", {})
+        material_rows = []
+        for index in range(1, 9):
+            material_rows.append(
+                {
+                    "material": clean_form_value(repair_form, f"repair_material_{index}_name"),
+                    "reference": clean_form_value(repair_form, f"repair_material_{index}_reference"),
+                    "quantity": clean_form_value(repair_form, f"repair_material_{index}_quantity"),
+                    "origin": clean_form_value(repair_form, f"repair_material_{index}_origin"),
+                }
+            )
+
+        return templates.TemplateResponse(
+            request,
+            "clean_workshop_print_report.html",
+            {
+                "report_type": report_type,
+                "report": report_config,
+                "process": process,
+                "vehicle_context": vehicle_context,
+                "entry": phase_forms.get("entrada", {}),
+                "validation": phase_forms.get("validacao", {}),
+                "diagnostic": phase_forms.get("diagnostico", {}),
+                "inspection": phase_forms.get("inspecao", {}),
+                "audit": phase_forms.get("auditoria", {}),
+                "repair": repair_form,
+                "closure": phase_forms.get("fecho", {}),
+                "technical_reports": reports,
+                "technical_readings": clean_workshop_technical_reading_rows(reports),
+                "process_alerts": alerts,
+                "process_services": process_services,
+                "history_services": history_services,
+                "material_rows": material_rows,
+                "printed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "return_url": clean_workshop_process_url(process),
+            },
+        )
 
 
 @web_router.post("/v2-clean/workshop/{process_id}/cancel", response_class=HTMLResponse)

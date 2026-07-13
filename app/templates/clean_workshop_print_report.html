@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.title }} · {{ vehicle_context.process_ref }}</title>
+  <style>
+    :root { --navy:#153268; --blue:#315bdb; --terra:#b94a34; --line:#d7deea; --muted:#667085; --pale:#edf3ff; --soft:#f5f7fa; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#eef1f5; color:var(--navy); font-family:Arial, sans-serif; font-size:11px; line-height:1.35; }
+    .toolbar { position:sticky; top:0; z-index:2; display:flex; justify-content:flex-end; gap:8px; padding:10px 18px; background:#fff; border-bottom:1px solid var(--line); }
+    .toolbar a,.toolbar button { border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--navy); padding:8px 12px; font-weight:700; text-decoration:none; cursor:pointer; }
+    .toolbar button { background:var(--terra); border-color:var(--terra); color:#fff; }
+    .sheet { width:210mm; min-height:297mm; margin:14px auto; padding:14mm 15mm 13mm; background:#fff; box-shadow:0 6px 28px rgba(16,42,95,.12); }
+    .topline { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--navy); color:#fff; font-weight:700; }
+    .heading { display:grid; grid-template-columns:1fr auto; gap:18px; align-items:start; padding:16px 0 12px; }
+    .eyebrow { margin:0 0 5px; color:var(--terra); font-size:9px; font-weight:800; text-transform:uppercase; }
+    h1 { margin:0; font-size:23px; line-height:1.1; letter-spacing:0; }
+    h2 { margin:0; font-size:14px; }
+    h3 { margin:0; font-size:11px; }
+    p { margin:4px 0 0; }
+    .status { min-width:118px; padding:9px 14px; background:var(--terra); color:#fff; text-align:center; font-weight:800; text-transform:uppercase; }
+    .facts { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--line); background:var(--soft); }
+    .fact { min-height:48px; padding:9px 12px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .fact:nth-child(3n) { border-right:0; }
+    .fact:nth-last-child(-n+3) { border-bottom:0; }
+    .fact span { display:block; color:var(--muted); font-size:8px; font-weight:800; text-transform:uppercase; }
+    .fact strong { display:block; margin-top:4px; font-size:11px; }
+    .alert { margin-top:8px; padding:9px 12px; border:1px solid #dc8b34; background:#fff4e8; }
+    .alert strong { display:block; color:#a65a16; font-size:8px; text-transform:uppercase; }
+    .section { margin-top:12px; break-inside:avoid; }
+    .section-head { padding:9px 12px; border-left:4px solid var(--blue); background:var(--pale); }
+    .section-head small { color:var(--muted); }
+    table { width:100%; border-collapse:collapse; margin-top:5px; table-layout:fixed; }
+    th,td { padding:6px 8px; border:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+    th { background:var(--soft); color:var(--muted); font-size:8px; text-align:left; text-transform:uppercase; }
+    .check-grid { display:grid; grid-template-columns:1fr 1fr; margin-top:5px; border:1px solid var(--line); }
+    .check-grid span { padding:8px 10px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .note { min-height:48px; padding:9px 12px; border:1px solid var(--line); white-space:pre-wrap; }
+    .ruled { min-height:92px; padding:7px 10px; border:1px solid var(--line); background:repeating-linear-gradient(#fff 0,#fff 20px,#dfe5ee 21px); white-space:pre-wrap; }
+    .footer { margin-top:14px; padding-top:7px; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--muted); font-size:8px; }
+    .muted { color:var(--muted); }
+    @page { size:A4; margin:0; }
+    @media print {
+      body { background:#fff; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+      .toolbar { display:none; }
+      .sheet { width:auto; min-height:auto; margin:0; box-shadow:none; }
+      .section,table,tr { break-inside:avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><a href="{{ return_url }}">Voltar ao processo</a><button type="button" onclick="window.print()">Imprimir / guardar PDF</button></div>
+  <main class="sheet">
+    <div class="topline"><span>CARFAST&nbsp;&nbsp;|&nbsp;&nbsp;{{ vehicle_context.process_ref }}&nbsp;&nbsp;|&nbsp;&nbsp;{{ vehicle_context.plate }}</span><span>DOC {{ report.document_number }} · {{ report.status|upper }}</span></div>
+    <header class="heading">
+      <div><p class="eyebrow">{{ report.stage }}</p><h1>{{ report.title }}</h1><p class="muted">Documento cumulativo do dossiê físico do processo.</p></div>
+      <div class="status">{{ report.status }}</div>
+    </header>
+
+    {% if report_type == "diagnostic-order" %}
+      <div class="facts">
+        <div class="fact"><span>Viatura</span><strong>{{ vehicle_context.vehicle }}</strong></div>
+        <div class="fact"><span>Combustível</span><strong>{{ vehicle_context.fuel }}</strong></div>
+        <div class="fact"><span>Entrada</span><strong>{{ vehicle_context.entry_date }} · {{ entry.get('entry_km','-') }} km</strong></div>
+        <div class="fact"><span>Data matrícula</span><strong>{{ vehicle_context.registration_date }}</strong></div>
+        <div class="fact"><span>Data compra</span><strong>{{ vehicle_context.purchase_date }}</strong></div>
+        <div class="fact"><span>Próx. manutenção Rentway</span><strong>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</strong></div>
+      </div>
+      {% for alert in vehicle_context.alerts %}<div class="alert"><strong>{{ alert.title }}</strong>{{ alert.detail }}</div>{% endfor %}
+      {% for alert in process_alerts if alert.status == "open" %}<div class="alert"><strong>{{ alert.severity }}</strong>{{ alert.message }}</div>{% endfor %}
+      <section class="section"><div class="section-head"><h2>01 Pedido recebido</h2></div><table><thead><tr><th>Motivo</th><th>Serviço solicitado</th><th>Pode circular</th><th>Prioridade</th></tr></thead><tbody><tr><td>{{ entry.get('entry_reasons',[])|join(', ') }}</td><td>{{ entry.get('requested_service','-') }}</td><td>{{ entry.get('can_drive','-') }}</td><td>{{ entry.get('priority','-') }}</td></tr></tbody></table></section>
+      <section class="section"><div class="section-head"><h2>02 Últimos serviços</h2><small>Histórico permanente da ficha da viatura.</small></div><table><thead><tr><th>Serviço</th><th>Data</th><th>KM</th><th>Fornecedor / documento</th></tr></thead><tbody>{% for item in history_services %}<tr><td>{{ item.family }}{% if item.subtype %} · {{ item.subtype }}{% endif %}</td><td>{{ item.service_date or '-' }}</td><td>{{ item.km or '-' }}</td><td>{{ item.supplier or '-' }}{% if item.document_id %} · Doc. #{{ item.document_id }}{% endif %}</td></tr>{% else %}<tr><td colspan="4">Sem serviços históricos validados na ficha.</td></tr>{% endfor %}</tbody></table></section>
+      <section class="section"><div class="section-head"><h2>03 Instruções ao técnico</h2></div><div class="note">{{ validation.get('validation_diagnostic_focus','Sem orientação registada.') }}</div></section>
+      <section class="section"><div class="section-head"><h2>04 Entregáveis do diagnóstico</h2></div><div class="check-grid"><span>□ Relatórios técnicos aplicáveis</span><span>□ Dados extraídos validados</span><span>□ Conclusão técnica</span><span>□ Evidências e reservas</span></div></section>
+
+    {% elif report_type == "audit-validation" %}
+      <div class="facts"><div class="fact"><span>Diagnóstico</span><strong>{{ diagnostic.get('diagnostic_closed','Por confirmar') }}</strong></div><div class="fact"><span>Inspeção</span><strong>{{ inspection.get('inspection_closed','Por confirmar') }}</strong></div><div class="fact"><span>Relatórios</span><strong>{{ technical_reports|length }}</strong></div><div class="fact"><span>Prioridade</span><strong>{{ diagnostic.get('diagnostic_priority','Normal') }}</strong></div><div class="fact"><span>Matrícula</span><strong>{{ vehicle_context.plate }}</strong></div><div class="fact"><span>KM entrada</span><strong>{{ entry.get('entry_km','-') }}</strong></div></div>
+      <section class="section"><div class="section-head"><h2>01 Síntese técnica</h2></div><div class="note">{{ diagnostic.get('diagnostic_conclusion','Sem conclusão registada.') }}</div></section>
+      <section class="section"><div class="section-head"><h2>02 Dados técnicos validados</h2></div><table><thead><tr><th>Relatório</th><th>Campo</th><th>Valor validado</th><th>Estado</th></tr></thead><tbody>{% for row in technical_readings[:18] %}<tr><td>{{ row.report }}</td><td>{{ row.field }}</td><td>{{ row.corrected_value or row.value }}</td><td>{{ row.status }}</td></tr>{% else %}<tr><td colspan="4">Sem dados técnicos extraídos.</td></tr>{% endfor %}</tbody></table></section>
+      <section class="section"><div class="section-head"><h2>03 Inspeção e evidências</h2></div><div class="note">{{ inspection.get('inspection_summary','Sem resumo de inspeção registado.') }}</div></section>
+      <section class="section"><div class="section-head"><h2>04 Decisão de auditoria</h2></div><table><tr><th>Decisão</th><th>Fundamento</th><th>Valor estimado</th></tr><tr><td>{{ audit.get('audit_decision_main','Por decidir') }}</td><td>{{ audit.get('audit_decision_reason','') }}</td><td>{{ audit.get('audit_estimated_value','-') }}</td></tr></table></section>
+
+    {% elif report_type == "repair-order" %}
+      <div class="facts"><div class="fact"><span>Autorização</span><strong>{{ audit.get('audit_repair_authorized','Por confirmar') }}</strong></div><div class="fact"><span>Emitida</span><strong>{{ printed_at }}</strong></div><div class="fact"><span>Limite</span><strong>{{ audit.get('audit_estimated_value','Por definir') }}</strong></div><div class="fact"><span>Prioridade</span><strong>{{ audit.get('audit_priority','Normal') }}</strong></div><div class="fact"><span>Tempo previsto</span><strong>{{ repair.get('repair_expected_duration','Por preencher') }}</strong></div><div class="fact"><span>Responsável</span><strong>{{ repair.get('repair_responsible','Por preencher') }}</strong></div></div>
+      <section class="section"><div class="section-head"><h2>01 Trabalhos autorizados</h2></div><div class="note">{{ repair.get('repair_authorized_services') or audit.get('audit_decision_reason') or 'Sem trabalhos descritos.' }}</div></section>
+      <section class="section"><div class="section-head"><h2>02 Material para a reparação</h2><small>Preenchido quando já definido; completar manualmente nas linhas livres.</small></div><table><thead><tr><th>Material</th><th>Referência</th><th>Quantidade</th><th>Estado / origem</th></tr></thead><tbody>{% for item in material_rows %}<tr><td>{{ item.material }}</td><td>{{ item.reference }}</td><td>{{ item.quantity }}</td><td>{{ item.origin }}</td></tr>{% endfor %}</tbody></table></section>
+      <section class="section"><div class="section-head"><h2>03 Fora da autorização</h2><small>Trabalhos ou material que exigem nova autorização.</small></div><div class="ruled">{{ repair.get('repair_outside_authorization','') }}</div></section>
+      <section class="section"><div class="section-head"><h2>04 Controlo durante e após reparação</h2></div><div class="check-grid"><span>□ Referências e quantidades</span><span>□ Fotografias da reparação</span><span>□ Relatório pós-intervenção</span><span>□ Controlo de qualidade</span></div></section>
+      <section class="section"><div class="section-head"><h2>05 Registo de execução</h2></div><table><tr><th>Início</th><th>Fim</th><th>Tempo real</th><th>Resultado</th></tr><tr><td>{{ repair.get('repair_started_on','') }} {{ repair.get('repair_started_time','') }}</td><td>{{ repair.get('repair_finished_on','') }} {{ repair.get('repair_finished_time','') }}</td><td>{{ repair.get('repair_actual_duration','') }}</td><td>{{ repair.get('repair_execution_status','') }}</td></tr></table></section>
+
+    {% else %}
+      <div class="facts"><div class="fact"><span>Entrada</span><strong>{{ vehicle_context.entry_date }} · {{ entry.get('entry_km','-') }} km</strong></div><div class="fact"><span>Saída</span><strong>{{ closure.get('closure_exit_km','-') }} km</strong></div><div class="fact"><span>Resultado</span><strong>{{ closure.get('closure_result','Por fechar') }}</strong></div><div class="fact"><span>Viatura</span><strong>{{ vehicle_context.vehicle }}</strong></div><div class="fact"><span>Matrícula</span><strong>{{ vehicle_context.plate }}</strong></div><div class="fact"><span>Fechado em</span><strong>{{ process.closed_at or printed_at }}</strong></div></div>
+      <section class="section"><div class="section-head"><h2>01 Resultado da intervenção</h2></div><div class="note">{{ closure.get('closure_final_summary') or repair.get('repair_summary') or 'Sem resumo final registado.' }}</div></section>
+      <section class="section"><div class="section-head"><h2>02 Autorizado versus executado</h2></div><table><tr><th>Autorizado</th><th>Executado</th><th>Desvios</th></tr><tr><td>{{ repair.get('repair_authorized_services','-') }}</td><td>{{ repair.get('repair_summary','-') }}</td><td>{{ repair.get('repair_deviation_reason','Sem desvios') }}</td></tr></table></section>
+      <section class="section"><div class="section-head"><h2>03 Controlo de qualidade e saída</h2></div><div class="note">{{ closure.get('closure_exit_observation','Sem observação de saída.') }}</div></section>
+      <section class="section"><div class="section-head"><h2>04 Pendências e arquivo</h2></div><table><tr><th>Pendência</th><th>Responsável</th><th>Prazo</th><th>Documentos</th></tr><tr><td>{{ closure.get('closure_pending_description','Nenhuma') }}</td><td>{{ closure.get('closure_pending_owner','-') }}</td><td>{{ closure.get('closure_pending_due','-') }}</td><td>{{ closure.get('closure_min_docs_attached','Por confirmar') }}</td></tr></table></section>
+    {% endif %}
+
+    <footer class="footer"><span>Dossiê Oficina · documento emitido pelo processo</span><span>Chassi {{ vehicle_context.vin }}</span><span>{{ printed_at }}</span></footer>
+  </main>
+</body>
+</html>

@@ -13344,6 +13344,65 @@ a.metric:hover {
   white-space: nowrap;
 }
 
+.clean-repair-print-fields {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.clean-repair-print-fields h4,
+.clean-repair-print-fields p {
+  margin: 0;
+}
+
+.clean-repair-print-fields p {
+  color: #667085;
+  font-size: var(--clean-font-sm);
+}
+
+.clean-repair-material-table {
+  overflow-x: auto;
+  border: 1px solid #d7deea;
+  border-radius: 6px;
+}
+
+.clean-repair-material-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.4fr) minmax(150px, 1fr) minmax(110px, .65fr) minmax(210px, 1.3fr);
+  min-width: 760px;
+  border-top: 1px solid #e5eaf2;
+}
+
+.clean-repair-material-row:first-child {
+  border-top: 0;
+}
+
+.clean-repair-material-row input {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid #e5eaf2;
+  border-radius: 0;
+  background: #fff;
+}
+
+.clean-repair-material-row input:last-child {
+  border-right: 0;
+}
+
+.clean-repair-material-head {
+  background: #f5f7fa;
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  text-transform: uppercase;
+}
+
+.clean-repair-material-head b {
+  padding: 9px 12px;
+  border-right: 1px solid #e5eaf2;
+}
+
 @media (max-width: 1300px) {
   .clean-home-module-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

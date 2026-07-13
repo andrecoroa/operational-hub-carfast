@@ -19,9 +19,6 @@
         <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
         <a class="button-link secondary-link" href="/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Adicionar documento</a>
         <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
-        <a class="button-link secondary-link" href="#audit-real-start-date">Início real</a>
-        <a class="button-link secondary-link" href="#audit-effective-maintenance-count">Nº manutenções</a>
-        <a class="button-link secondary-link" href="/v2-clean/documents">Importação global</a>
         <a class="button-link secondary-link" href="/fleet/{{ vehicle.id }}">Centro atual</a>
       </div>
     </header>
@@ -84,7 +81,7 @@
           <div>
             <p class="eyebrow">Visão rápida</p>
             <h3>Enquadramento documental da viatura</h3>
-            <p>Esta página fica centrada na consulta, auditoria manual e pendentes da viatura. As importações globais ficam num ponto próprio.</p>
+            <p>Consulta, faltas documentais e validação manual da viatura. As importações estruturadas ficam no importador global.</p>
           </div>
         </div>
 
@@ -95,7 +92,7 @@
               <li>{{ archive_rows|length }} linhas de arquivo visíveis</li>
               <li>{{ structured_rows|length }} linhas estruturadas visíveis</li>
               <li>{{ comparison_rows|length }} pares FO x Fatura nos filtros atuais</li>
-              <li>Importações estruturadas vivem fora da viatura e entram pelo centro global.</li>
+              <li>Se faltar documento real, usar o botão do cabeçalho para criar pendente manual.</li>
             </ul>
             <details class="clean-doc-inline-details">
               <summary>Ver estrutura e regras fechadas</summary>
@@ -219,10 +216,9 @@
               <tr>
                 <th>Data</th>
                 <th>Grupo</th>
-                <th>Título</th>
+                <th>Título / referência</th>
                 <th>Fornecedor / origem</th>
                 <th>KM</th>
-                <th>Ref. externa</th>
                 <th>Comparação</th>
                 <th>Etiquetas</th>
               </tr>
@@ -232,10 +228,14 @@
                 <tr>
                   <td>{{ row.date.strftime("%d/%m/%Y") if row.date else "-" }}</td>
                   <td>{{ row.group_label }}</td>
-                  <td>{{ row.title }}</td>
+                  <td>
+                    <strong>{{ row.title }}</strong>
+                    {% if row.external_reference and row.external_reference != row.title %}
+                      <div class="muted">{{ row.external_reference }}</div>
+                    {% endif %}
+                  </td>
                   <td>{{ row.supplier_name }}</td>
                   <td>{{ row.km if row.km is not none else "-" }}</td>
-                  <td>{{ row.external_reference }}</td>
                   <td>{{ row.comparison_label }}</td>
                   <td>
                     <div class="clean-doc-tag-list">
@@ -248,7 +248,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="8" class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</td></tr>
+                <tr><td colspan="7" class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -327,6 +327,11 @@
             <em>{{ module_ctx.timeline_events|length }} eventos</em>
           </summary>
           <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-inline-actions" style="margin-bottom:12px;" data-timeline-filters>
+              <button type="button" class="button-link secondary-link active" data-range="365">12 meses</button>
+              <button type="button" class="button-link secondary-link" data-range="730">24 meses</button>
+              <button type="button" class="button-link secondary-link" data-range="99999">Histórico completo</button>
+            </div>
             <div class="clean-doc-timeline">
               <div class="clean-doc-timeline-bar">
                 {% for segment in module_ctx.timeline_segments %}
@@ -335,7 +340,7 @@
               </div>
               <div class="clean-doc-timeline-events">
                 {% for event in module_ctx.timeline_events %}
-                  <article class="clean-doc-timeline-event {{ event.lane }} {% if event.km_regressive %}danger{% endif %}" style="left: {{ event.position_pct }}%;">
+                  <article class="clean-doc-timeline-event {{ event.lane }} {% if event.km_regressive %}danger{% endif %}" style="left: {{ event.position_pct }}%;" data-event-index="{{ loop.index }}" data-event-date="{{ event.date_iso }}">
                     <strong>{{ event.title }}</strong>
                     <span>{{ event.group_label }} · {{ event.date }}</span>
                     <em>{{ event.secondary }} · KM {{ event.km }}</em>
@@ -374,18 +379,6 @@
               </div>
               <div>
                 <h4>Pendentes e ações</h4>
-                <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-pending-compact" id="manual-pending">
-                  <select name="main_group">
-                    <option value="invoices">Fatura</option>
-                    <option value="diagnostics">Diagnóstico</option>
-                  </select>
-                  <input type="text" name="title" placeholder="Título / nº documento" required>
-                  <input type="text" name="supplier_name" placeholder="Fornecedor">
-                  <input type="text" name="document_date" placeholder="dd/mm/aaaa">
-                  <input type="text" name="process_reference" placeholder="Processo / referência">
-                  <textarea name="raw_description" rows="2" placeholder="Nota curta do pendente..."></textarea>
-                  <button type="submit">Criar pendente</button>
-                </form>
                 <div class="clean-doc-alert-list">
                   {% for pending in module_ctx.pendings %}
                     <article class="clean-doc-alert-item info">
@@ -401,8 +394,62 @@
             </div>
           </div>
         </details>
+
+        <details class="clean-doc-collapsible clean-card-wide" id="manual-pending">
+          <summary>
+            <span>
+              <b>Criar pendente manual</b>
+              <small>Usar só quando faltar documento real</small>
+            </span>
+            <em>Manual</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-pending-compact">
+              <select name="main_group">
+                <option value="invoices">Fatura</option>
+                <option value="diagnostics">Diagnóstico</option>
+              </select>
+              <input type="text" name="title" placeholder="Título / nº documento" required>
+              <input type="text" name="supplier_name" placeholder="Fornecedor">
+              <input type="text" name="document_date" placeholder="dd/mm/aaaa">
+              <input type="text" name="process_reference" placeholder="Processo / referência">
+              <textarea name="raw_description" rows="2" placeholder="Nota curta do pendente..."></textarea>
+              <button type="submit">Criar pendente</button>
+            </form>
+          </div>
+        </details>
       </section>
     </section>
   </main>
 </div>
+<script>
+  const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");
+  const timelineEvents = Array.from(document.querySelectorAll(".clean-doc-timeline-event[data-event-index]"));
+  function applyTimelineRange(rangeDays) {
+    const datedEvents = timelineEvents
+      .map((event) => {
+        const raw = event.dataset.eventDate || "";
+        const date = raw ? new Date(raw) : null;
+        return { event, date };
+      })
+      .filter((entry) => entry.date instanceof Date && !Number.isNaN(entry.date.valueOf()));
+    const latestDate = datedEvents.reduce((latest, entry) => (!latest || entry.date > latest ? entry.date : latest), null);
+    const threshold = latestDate ? new Date(latestDate.getTime() - rangeDays * 24 * 60 * 60 * 1000) : null;
+    timelineEvents.forEach((event) => {
+      const raw = event.dataset.eventDate || "";
+      const eventDate = raw ? new Date(raw) : null;
+      const visible = !threshold || !(eventDate instanceof Date) || Number.isNaN(eventDate.valueOf()) || eventDate >= threshold;
+      event.style.display = visible ? "" : "none";
+    });
+    timelineFilterButtons.forEach((button) => {
+      button.classList.toggle("active", Number(button.dataset.range) === rangeDays);
+    });
+  }
+  if (timelineEvents.length) {
+    applyTimelineRange(365);
+    timelineFilterButtons.forEach((button) => {
+      button.addEventListener("click", () => applyTimelineRange(Number(button.dataset.range || "365")));
+    });
+  }
+</script>
 {% endblock %}

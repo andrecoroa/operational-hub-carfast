@@ -4,13 +4,65 @@
   {% set active_menu = "fleet" if vehicle_ctx else ("documents_center" if is_clean_mode else "documents") %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
+    <style>
+      .clean-doc-type-picker {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin: 18px 0 8px;
+      }
+      .clean-doc-type-card {
+        border: 1px solid #d7deea;
+        border-radius: 10px;
+        background: #fff;
+        padding: 14px 16px;
+        text-align: left;
+        cursor: pointer;
+        color: #1f3368;
+      }
+      .clean-doc-type-card strong {
+        display: block;
+        font-size: 15px;
+      }
+      .clean-doc-type-card span {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: #6b7280;
+      }
+      .clean-doc-type-card.active {
+        border-color: #b05f2f;
+        background: #fff7ef;
+        box-shadow: inset 0 0 0 1px #e9b58a;
+      }
+      .clean-doc-form-note {
+        margin: 0 0 14px;
+        color: #6b7280;
+      }
+      .clean-doc-compact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .clean-doc-compact-grid .full-span {
+        grid-column: 1 / -1;
+      }
+      .clean-doc-field-hidden {
+        display: none;
+      }
+      @media (max-width: 900px) {
+        .clean-doc-compact-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
     <header class="clean-doc-page-header clean-card-wide">
       <div class="clean-doc-header-main">
         <p class="eyebrow">Arquivo operacional</p>
         <h1>Novo documento</h1>
         <p>
           {% if vehicle_ctx %}
-            Entrada documental já associada à viatura. Escolhe a tipologia e anexa o ficheiro ou indica o link.
+            Entrada documental já associada à viatura. Escolhe o tipo, anexa o ficheiro ou indica o caminho, e seguimos com o mínimo necessário.
           {% else %}
             Registo rápido de documento real ou evidência documental.
           {% endif %}
@@ -49,6 +101,9 @@
       <form method="post" action="/documents/new" enctype="multipart/form-data" class="clean-doc-quick-form">
         <input type="hidden" name="vehicle_id" value="{{ prefill.vehicle_id }}">
         <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
+        <input type="hidden" name="classification" value="{{ prefill.classification or 'workshop' }}" data-document-area>
+        <input type="hidden" name="status" value="{{ prefill.status or 'received' }}">
+        <input type="hidden" name="document_type" value="{{ prefill.document_type or 'workshop_diagnostic' }}" data-document-type>
 
         <div class="table-heading flat-heading">
           <div>
@@ -58,43 +113,68 @@
           </div>
         </div>
 
+        <p class="clean-doc-form-note">Seleciona primeiro o tipo documental. O resto do formulário adapta-se.</p>
+
+        <div class="clean-doc-type-picker" data-doc-picker>
+          <button type="button" class="clean-doc-type-card" data-area="finance" data-type="finance_supplier_invoice" data-title="Ex.: Fatura fornecedor abril 2026">
+            <strong>Fatura</strong>
+            <span>Documento financeiro real</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="workshop" data-type="workshop_diagnostic" data-title="Ex.: Diagnóstico Stellantis / Autel">
+            <strong>Diagnóstico</strong>
+            <span>PDF técnico por processo</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="workshop" data-type="service_box" data-title="Ex.: Service Box / campanha">
+            <strong>Service Box / TSB</strong>
+            <span>Consulta, campanha ou boletim</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="workshop" data-type="workshop_photo" data-title="Ex.: Evidência fotográfica">
+            <strong>Foto / evidência</strong>
+            <span>Imagem, print ou prova visual</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="fleet" data-type="maintenance_plan" data-title="Ex.: Plano de manutenção">
+            <strong>Plano manutenção</strong>
+            <span>Documento base da viatura</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="finance" data-type="finance_customer_document" data-title="Ex.: Contrato de aluguer">
+            <strong>Contrato</strong>
+            <span>Documento contratual da viatura</span>
+          </button>
+          <button type="button" class="clean-doc-type-card" data-area="fleet" data-type="general_fleet" data-title="Ex.: Impro / listagem associada">
+            <strong>Impro / outro</strong>
+            <span>Documento fora dos tipos principais</span>
+          </button>
+        </div>
+
         <div class="clean-doc-import-grid">
-          <label>
-            Título
-            <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Ex.: Fatura Gamobar abril 2026">
-          </label>
           <label>
             Anexo
             <input type="file" name="document_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.doc,.docx">
           </label>
+          <label>
+            Link ou caminho para arquivar
+            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="https://... ou C:\...">
+          </label>
         </div>
 
-        <div class="clean-doc-filter-grid">
+        <div class="clean-doc-compact-grid">
           <label>
-            Área
-            <select name="classification" data-document-area>
-              {% for code, label in areas %}
-                <option value="{{ code }}" {% if code == prefill.classification %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            Título / referência
+            <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Ex.: Fatura Gamobar abril 2026" data-title-input>
           </label>
           <label>
-            Tipologia
-            <select name="document_type" data-document-type>
-              {% for code, label in document_types %}
-                <option value="{{ code }}" data-area="{{ document_type_areas.get(code, '') }}" {% if code == prefill.document_type %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            Data do documento
+            <input type="date" name="document_date" value="{{ prefill.document_date }}">
           </label>
-          <label>
-            Estado
-            <select name="status">
-              {% for code, label in statuses %}
-                <option value="{{ code }}" {% if code == prefill.status %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+          <label class="doc-field-supplier">
+            Fornecedor / origem
+            <input type="text" name="supplier_name" maxlength="200" value="{{ prefill.supplier_name }}" placeholder="Fornecedor / origem">
           </label>
-          <label>
+          <label class="doc-field-customer">
+            Cliente
+            <input type="text" name="customer_name" maxlength="200" value="{{ prefill.customer_name }}">
+          </label>
+          <label class="doc-field-origin">
             Origem
             <select name="source">
               {% for code, label in sources %}
@@ -102,44 +182,14 @@
               {% endfor %}
             </select>
           </label>
-        </div>
-
-        <div class="clean-doc-import-grid">
           {% if vehicle_ctx %}
-            <label>
-              Matrícula
-              <input type="text" value="{{ prefill.plate }}" disabled>
-              <input type="hidden" name="plate" value="{{ prefill.plate }}">
-            </label>
+            <input type="hidden" name="plate" value="{{ prefill.plate }}">
           {% else %}
             <label>
               Matrícula
               <input type="text" name="plate" maxlength="40" value="{{ prefill.plate }}" placeholder="AA-00-AA">
             </label>
           {% endif %}
-          <label>
-            Fornecedor
-            <input type="text" name="supplier_name" maxlength="200" value="{{ prefill.supplier_name }}" placeholder="Fornecedor / origem">
-          </label>
-          <label>
-            Data do documento
-            <input type="date" name="document_date" value="{{ prefill.document_date }}">
-          </label>
-          <label>
-            Cliente
-            <input type="text" name="customer_name" maxlength="200" value="{{ prefill.customer_name }}">
-          </label>
-        </div>
-
-        <div class="clean-doc-import-grid">
-          <label>
-            Link ou caminho original
-            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="https://... ou C:\...">
-          </label>
-          <label>
-            Link ou caminho arquivado
-            <input type="text" name="url_archive" value="{{ prefill.url_archive }}" placeholder="https://... ou C:\...">
-          </label>
         </div>
 
         <details class="clean-doc-collapsible">
@@ -163,6 +213,10 @@
               <label>
                 Assunto original
                 <input type="text" name="source_subject" maxlength="255" value="{{ prefill.source_subject }}">
+              </label>
+              <label>
+                Link já arquivado
+                <input type="text" name="url_archive" value="{{ prefill.url_archive }}" placeholder="Se já existir destino final">
               </label>
               <label>
                 Tarefa associada
@@ -192,22 +246,43 @@
 <script>
   const documentArea = document.querySelector("[data-document-area]");
   const documentType = document.querySelector("[data-document-type]");
-  function filterDocumentTypes() {
-    if (!documentArea || !documentType) return;
-    const area = documentArea.value;
-    let firstVisible = "";
-    documentType.querySelectorAll("option").forEach((option) => {
-      const optionArea = option.dataset.area;
-      const visible = !optionArea || optionArea === area;
-      option.hidden = !visible;
-      if (visible && !firstVisible) firstVisible = option.value;
-    });
-    const selected = documentType.selectedOptions[0];
-    if (selected && selected.hidden && firstVisible) {
-      documentType.value = firstVisible;
-    }
+  const titleInput = document.querySelector("[data-title-input]");
+  const typeCards = document.querySelectorAll("[data-doc-picker] .clean-doc-type-card");
+  const supplierFields = document.querySelectorAll(".doc-field-supplier");
+  const customerFields = document.querySelectorAll(".doc-field-customer");
+  const originFields = document.querySelectorAll(".doc-field-origin");
+
+  function setFieldVisibility(type) {
+    const isContract = type === "finance_customer_document";
+    const isInvoice = type === "finance_supplier_invoice";
+    const isDiagnostic = type === "workshop_diagnostic";
+    const isEvidence = type === "workshop_photo";
+    const isPlan = type === "maintenance_plan";
+    supplierFields.forEach((field) => field.classList.toggle("clean-doc-field-hidden", isPlan));
+    customerFields.forEach((field) => field.classList.toggle("clean-doc-field-hidden", !isContract));
+    originFields.forEach((field) => field.classList.toggle("clean-doc-field-hidden", isInvoice || isDiagnostic || isEvidence));
   }
-  documentArea?.addEventListener("change", filterDocumentTypes);
-  filterDocumentTypes();
+
+  function activateCard(card) {
+    if (!card || !documentArea || !documentType) return;
+    typeCards.forEach((entry) => entry.classList.remove("active"));
+    card.classList.add("active");
+    documentArea.value = card.dataset.area || "workshop";
+    documentType.value = card.dataset.type || "workshop_other";
+    if (titleInput && !titleInput.value.trim()) {
+      titleInput.placeholder = card.dataset.title || "Título do documento";
+    }
+    setFieldVisibility(documentType.value);
+  }
+
+  typeCards.forEach((card) => {
+    card.addEventListener("click", () => activateCard(card));
+    if (card.dataset.type === documentType?.value) {
+      card.classList.add("active");
+    }
+  });
+
+  const initiallyActive = document.querySelector("[data-doc-picker] .clean-doc-type-card.active") || typeCards[0];
+  activateCard(initiallyActive);
 </script>
 {% endblock %}

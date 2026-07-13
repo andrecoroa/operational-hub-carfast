@@ -969,6 +969,7 @@ def _build_timeline(
                 "title": event.title,
                 "secondary": event.secondary,
                 "date": event.occurred_on.strftime("%d/%m/%Y") if event.occurred_on else "-",
+                "date_iso": event.occurred_on.isoformat() if event.occurred_on else "",
                 "km": f"{event.km:,}".replace(",", " ") if event.km is not None else "-",
                 "km_regressive": km_regressive,
             }

@@ -14725,6 +14725,136 @@ a.metric:hover {
   margin-top: 10px;
 }
 
+.clean-header-shell {
+  display: grid;
+  gap: 24px;
+  padding: 20px 20px 18px;
+}
+
+.clean-header-topbar {
+  align-items: start;
+  border-bottom: 1px solid #e7edf5;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-bottom: 18px;
+}
+
+.clean-header-topbar .eyebrow {
+  margin: 0;
+}
+
+.clean-header-top-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.clean-header-hero-row {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+}
+
+.clean-header-hero-row.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.clean-header-hero-main {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-header-hero-main h2 {
+  margin: 0;
+  color: #0f2a5f;
+  font-size: clamp(32px, 3.3vw, 60px);
+  line-height: 1.02;
+}
+
+.clean-header-hero-main p {
+  color: #667085;
+  margin: 0;
+  max-width: 920px;
+}
+
+.clean-header-hero-side {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  justify-items: stretch;
+}
+
+.clean-header-hero-side-stack {
+  grid-auto-rows: min-content;
+}
+
+.clean-header-primary-action {
+  justify-content: center;
+  min-height: 72px;
+}
+
+.clean-context-action-shell {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px 20px;
+}
+
+.clean-context-action-group {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.clean-context-action-group + .clean-context-action-group {
+  border-left: 1px solid #e7edf5;
+  padding-left: 18px;
+}
+
+.clean-context-action-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.clean-context-action-copy strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.clean-context-action-copy span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.clean-context-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.clean-context-action-row .button-link,
+.clean-context-action-row .clean-inline-action,
+.clean-context-action-row .clean-inline-action button {
+  width: auto;
+}
+
+.clean-context-action-empty {
+  color: #8b97a8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .clean-page-action-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -14774,19 +14904,23 @@ a.metric:hover {
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
-  padding: 18px 20px;
+  padding: 18px 20px 20px;
+}
+
+.clean-vehicle-header-card-process {
+  gap: 16px;
 }
 
 .clean-vehicle-header-main {
   display: grid;
-  grid-template-columns: minmax(300px, 0.95fr) minmax(0, 1.05fr);
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
   gap: 16px;
   align-items: start;
 }
 
 .clean-vehicle-quick-facts-unified {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
 }
@@ -14832,18 +14966,33 @@ a.metric:hover {
 
 @media (max-width: 1300px) {
   .clean-page-action-strip,
+  .clean-context-action-shell,
+  .clean-context-action-group,
   .clean-vehicle-header-main,
-  .clean-vehicle-header-footer {
+  .clean-vehicle-header-footer,
+  .clean-header-topbar,
+  .clean-header-hero-row {
     grid-template-columns: 1fr;
   }
 
   .clean-vehicle-quick-facts-unified {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .clean-context-action-group + .clean-context-action-group {
+    border-left: 0;
+    border-top: 1px solid #e7edf5;
+    padding-left: 0;
+    padding-top: 18px;
+  }
 }
 
 @media (max-width: 820px) {
   .clean-section-header {
+    padding: 16px;
+  }
+
+  .clean-header-shell {
     padding: 16px;
   }
 
@@ -14868,5 +15017,18 @@ a.metric:hover {
 
   .clean-vehicle-quick-facts-unified {
     grid-template-columns: 1fr;
+  }
+
+  .clean-header-top-actions,
+  .clean-context-action-row {
+    justify-content: stretch;
+  }
+
+  .clean-header-top-actions .button-link,
+  .clean-context-action-row .button-link,
+  .clean-context-action-row .clean-inline-action,
+  .clean-context-action-row .clean-inline-action button,
+  .clean-header-hero-side .button-link {
+    width: 100%;
   }
 }

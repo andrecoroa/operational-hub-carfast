@@ -4,72 +4,82 @@
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-section-header clean-card-wide">
-      <div>
+    <header class="clean-header-shell clean-card-wide">
+      <div class="clean-header-topbar">
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
-        <h2>{{ vehicle_context.process_ref }} | {{ phase.title }}</h2>
-        <p>{% if is_historical %}Reconstrução histórica: validar documentos e evidências antigas com flexibilidade nos campos indisponíveis.{% else %}{{ phase.subtitle }}{% endif %}</p>
-        {% if is_historical %}
-          <div class="clean-header-meta">
-            <span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>
-          </div>
-        {% endif %}
+        <div class="clean-header-top-actions">
+          <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
+          {% include "_clean_workshop_admin_actions.html" %}
+        </div>
+      </div>
+      <div class="clean-header-hero-row {% if not (workshop_process and phase_print_report) %}single{% endif %}">
+        <div class="clean-header-hero-main">
+          <h2>{{ vehicle_context.process_ref }} | {{ phase.title }}</h2>
+          <p>{% if is_historical %}Reconstrução histórica: validar documentos e evidências antigas com flexibilidade nos campos indisponíveis.{% else %}{{ phase.subtitle }}{% endif %}</p>
+          {% if is_historical %}
+            <div class="clean-header-meta">
+              <span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>
+            </div>
+          {% endif %}
+        </div>
+        <div class="clean-header-hero-side">
+          {% if workshop_process and phase_print_report %}
+            <a class="button-link secondary-link clean-header-primary-action" href="/v2-clean/workshop/{{ workshop_process.id }}/print/{{ phase_print_report[0] }}" target="_blank" rel="noopener">{{ phase_print_report[1] }}</a>
+          {% endif %}
+        </div>
       </div>
     </header>
 
-    <section class="clean-page-action-strip clean-card-wide">
-      <div class="clean-page-action-strip-title">
-        <strong>Ações da fase</strong>
-        <span>Operações rápidas ligadas a este processo e à documentação de suporte.</span>
-      </div>
-      <div class="clean-page-action-strip-row">
-        <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
-        {% if workshop_process and phase_print_report %}
-          <a class="button-link secondary-link" href="/v2-clean/workshop/{{ workshop_process.id }}/print/{{ phase_print_report[0] }}" target="_blank" rel="noopener">{{ phase_print_report[1] }}</a>
-        {% endif %}
-        {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-          <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
-            <input type="hidden" name="record_type" value="task">
-            <input type="hidden" name="phase" value="{{ phase_key }}">
-            <button type="submit" class="button-link secondary-link">Criar tarefa</button>
-          </form>
-          <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
-            <input type="hidden" name="record_type" value="problem">
-            <input type="hidden" name="phase" value="{{ phase_key }}">
-            <button type="submit" class="button-link danger-link">Criar problema</button>
-          </form>
-        {% endif %}
-        {% include "_clean_workshop_admin_actions.html" %}
-      </div>
+    <section class="clean-context-action-shell clean-card-wide">
+      <article class="clean-context-action-group">
+        <div class="clean-context-action-copy">
+          <strong>Ações da fase</strong>
+          <span>Operações rápidas ligadas a este processo e à documentação de suporte.</span>
+        </div>
+        <div class="clean-context-action-row">
+          {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
+            <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
+              <input type="hidden" name="record_type" value="task">
+              <input type="hidden" name="phase" value="{{ phase_key }}">
+              <button type="submit" class="button-link secondary-link">Criar tarefa</button>
+            </form>
+            <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
+              <input type="hidden" name="record_type" value="problem">
+              <input type="hidden" name="phase" value="{{ phase_key }}">
+              <button type="submit" class="button-link danger-link">Criar problema</button>
+            </form>
+          {% else %}
+            <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
+          {% endif %}
+        </div>
+      </article>
+      <article class="clean-context-action-group">
+        <div class="clean-context-action-copy">
+          <strong>Acessos rápidos</strong>
+          <span>Atalhos de consulta do processo, viatura e suporte documental.</span>
+        </div>
+        <div class="clean-context-action-row">
+          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
+          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
+        </div>
+      </article>
     </section>
 
-    <section class="clean-page-action-strip clean-card-wide">
-      <div class="clean-page-action-strip-title">
-        <strong>Acessos rápidos</strong>
-        <span>Atalhos de consulta do processo, viatura e suporte documental.</span>
-      </div>
-      <div class="clean-page-action-strip-row">
-        <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
-        <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
-        <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
-      </div>
-    </section>
-
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <p class="eyebrow">Viatura em processo</p>
           <strong>{{ vehicle_context.plate }}</strong>
           <span>{{ vehicle_context.vehicle }}</span>
-          <em>Chassi: {{ vehicle_context.vin }}</em>
+          <em>Fornecedor: {{ vehicle_context.purchase_supplier }}</em>
         </div>
         <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
-          <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
           <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
-          <span><b>Grupo</b><em>{{ vehicle_context.groupid }}</em></span>
           <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
           <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
           <span><b>Próxima IPO</b><em>{{ vehicle_context.next_ipo }}</em></span>
+          <span><b>Chassi</b><em>{{ vehicle_context.vin }}</em></span>
         </div>
       </div>
       <div class="clean-vehicle-header-footer clean-vehicle-header-footer-alerts">

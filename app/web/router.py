@@ -2787,108 +2787,59 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
 
 
 def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
-    open_tasks = (
-        db.scalar(
-            select(func.count())
-            .select_from(Task)
-            .where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
-        )
-        or 0
-    )
-    open_workshop = (
-        db.scalar(
-            select(func.count())
-            .select_from(WorkshopPhasedProcess)
-            .where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
-        )
-        or 0
-    )
-    open_workshop_alerts = (
-        db.scalar(
-            select(func.count())
-            .select_from(WorkshopPhasedProcessAlert)
-            .where(WorkshopPhasedProcessAlert.status == "open")
-        )
-        or 0
-    )
-    open_audits = (
-        db.scalar(
-            select(func.count())
-            .select_from(VehicleHistoryAudit)
-            .where(VehicleHistoryAudit.status != "closed")
-        )
-        or 0
-    )
-    open_management = (
-        db.scalar(
-            select(func.count())
-            .select_from(ManagementProcess)
-            .where(ManagementProcess.status.notin_(("closed", "cancelled")))
-        )
-        or 0
-    )
-    document_inbox = (
-        db.scalar(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.status.in_(("new", "pending", "pending_classification", "associated")))
-        )
-        or 0
-    )
     return [
         {
             "code": "operational",
             "short": "OP",
             "label": "Operacional",
             "description": "Coordenação diária, tarefas guiadas e ocorrências rápidas.",
-            "open": open_tasks,
-            "critical": open_workshop_alerts,
+            "open": 0,
+            "critical": 0,
             "models": ["Transferência crítica", "Verificação operacional"],
             "href": "#process-operational",
-            "action": "Ver tarefas",
-            "state": "Pronto a ligar",
+            "action": "Em preparação",
+            "state": "Base limpa",
         },
         {
             "code": "fleet",
             "short": "FR",
             "label": "Frota",
             "description": "Ciclo técnico, documentação e decisões comerciais da viatura.",
-            "open": open_audits,
-            "critical": open_audits,
+            "open": 0,
+            "critical": 0,
             "models": ["Auditoria técnica da viatura", "Preparação para venda", "Regularização documental da viatura"],
             "href": "/v2-clean/fleet",
             "action": "Abrir frota",
-            "state": "Base ativa",
+            "state": "Base limpa",
         },
         {
             "code": "management",
             "short": "GE",
             "label": "Gestão",
             "description": "Sinistros, fornecedores, discussões e validações de gestão.",
-            "open": open_management,
-            "critical": document_inbox,
+            "open": 0,
+            "critical": 0,
             "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
             "href": "#process-management",
-            "action": "Ver gestão",
-            "state": "A organizar",
+            "action": "Em preparação",
+            "state": "Base limpa",
         },
         {
             "code": "administration",
             "short": "AD",
             "label": "Administração",
             "description": "Procedimentos, protocolos e organização interna.",
-            "open": document_inbox,
+            "open": 0,
             "critical": 0,
             "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
             "href": "#process-administration",
-            "action": "Ver modelos",
-            "state": "Preparado",
+            "action": "Em preparação",
+            "state": "Base limpa",
         },
     ]
 
 
 def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
-    today = date.today()
     cards: list[dict[str, object]] = []
     division_specs = [
         (
@@ -2924,65 +2875,16 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
             "Restrito",
         ),
     ]
-    management_open = (
-        db.scalar(
-            select(func.count())
-            .select_from(ManagementProcess)
-            .where(ManagementProcess.status.notin_(("closed", "cancelled")))
-        )
-        or 0
-    )
     for workspace_code, short, label, description, chips, state in division_specs:
-        if workspace_code in TASK_WORKSPACE_TASK_TYPES:
-            workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
-            open_count = (
-                db.scalar(
-                    select(func.count()).select_from(Task).where(
-                        workspace_task_filter,
-                        Task.closed_at.is_(None),
-                        ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
-                    )
-                )
-                or 0
-            )
-            quick_count = (
-                db.scalar(
-                    select(func.count()).select_from(QuickRecord).where(
-                        QuickRecord.workspace == workspace_code,
-                        QuickRecord.closed_at.is_(None),
-                        ~QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES),
-                    )
-                )
-                or 0
-            )
-            due_today = (
-                db.scalar(
-                    select(func.count()).select_from(Task).where(
-                        workspace_task_filter,
-                        Task.closed_at.is_(None),
-                        ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
-                        Task.due_on == today,
-                    )
-                )
-                or 0
-            )
-        elif workspace_code == "management":
-            open_count = int(management_open)
-            quick_count = 0
-            due_today = 0
-        else:
-            open_count = 0
-            quick_count = 0
-            due_today = 0
         cards.append(
             {
                 "code": workspace_code,
                 "short": short,
                 "label": label,
                 "description": description,
-                "open": int(open_count),
-                "quick": int(quick_count),
-                "due_today": int(due_today),
+                "open": 0,
+                "quick": 0,
+                "due_today": 0,
                 "chips": chips,
                 "state": state,
                 "href": None,
@@ -3023,16 +2925,8 @@ def clean_process_center(request: Request):
         return denied
     with SessionLocal() as db:
         area_cards = clean_process_area_cards(db)
-        recent_audits = db.scalars(
-            select(VehicleHistoryAudit)
-            .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
-            .limit(8)
-        ).all()
-        recent_management = db.scalars(
-            select(ManagementProcess)
-            .order_by(ManagementProcess.updated_at.desc(), ManagementProcess.id.desc())
-            .limit(8)
-        ).all()
+        recent_audits: list[VehicleHistoryAudit] = []
+        recent_management: list[ManagementProcess] = []
         process_metrics = {
             "areas": len(area_cards),
             "open": sum(int(area["open"]) for area in area_cards),
@@ -3058,41 +2952,8 @@ def clean_tasks_center(request: Request):
         return denied
     with SessionLocal() as db:
         task_divisions = clean_task_division_cards(db)
-        urgent_query = (
-            select(Task)
-            .where(Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES))
-            .order_by(Task.due_on.asc().nullslast(), Task.updated_at.desc(), Task.id.desc())
-            .limit(6)
-        )
-        urgent_tasks = [
-            {
-                "title": task.title,
-                "status": task.status or "open",
-                "detail": f"{task.plate or 'Sem matrícula'} · {task.due_on or 'Sem prazo'}",
-                "href": None,
-            }
-            for task in db.scalars(urgent_query).all()
-        ]
-        recent_task_entries = [
-            {
-                "title": task.title,
-                "status": task.status or "open",
-                "detail": f"Tarefa · {task.plate or 'Sem matrícula'}",
-                "href": None,
-            }
-            for task in db.scalars(select(Task).order_by(Task.updated_at.desc(), Task.id.desc()).limit(4)).all()
-        ]
-        recent_quick_entries = [
-            {
-                "title": record.title,
-                "status": record.status or "new",
-                "detail": f"Registo rápido · {record.workspace}",
-                "href": None,
-            }
-            for record in db.scalars(select(QuickRecord).order_by(QuickRecord.updated_at.desc(), QuickRecord.id.desc()).limit(4)).all()
-        ]
-        recent_entries = [*recent_task_entries, *recent_quick_entries]
-        recent_entries.sort(key=lambda item: item["detail"])
+        urgent_tasks: list[dict[str, str | None]] = []
+        recent_entries: list[dict[str, str | None]] = []
         task_metrics = {
             "divisions": len(task_divisions),
             "open": sum(int(item["open"]) for item in task_divisions),
@@ -3106,7 +2967,7 @@ def clean_tasks_center(request: Request):
                 "task_divisions": task_divisions,
                 "task_metrics": task_metrics,
                 "urgent_tasks": urgent_tasks,
-                "recent_entries": recent_entries[:6],
+                "recent_entries": recent_entries,
             },
         )
 
@@ -3147,10 +3008,12 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
     if scope not in {"open", "closed", "cancelled", "all"}:
         scope = "open"
     with SessionLocal() as db:
+        v2_process_filter = WorkshopPhasedProcess.origin == "v2_clean"
         all_processes = (
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
+                .where(v2_process_filter)
             )
             or 0
         )
@@ -3158,7 +3021,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
-                .where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+                .where(v2_process_filter, WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
             )
             or 0
         )
@@ -3166,7 +3029,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
-                .where(WorkshopPhasedProcess.status == "closed")
+                .where(v2_process_filter, WorkshopPhasedProcess.status == "closed")
             )
             or 0
         )
@@ -3174,7 +3037,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
-                .where(WorkshopPhasedProcess.status == "cancelled")
+                .where(v2_process_filter, WorkshopPhasedProcess.status == "cancelled")
             )
             or 0
         )
@@ -3183,6 +3046,7 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
                 .where(
+                    v2_process_filter,
                     WorkshopPhasedProcess.creation_mode == "historical",
                     WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
                 )
@@ -3193,7 +3057,8 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcessAlert)
-                .where(WorkshopPhasedProcessAlert.status == "open")
+                .join(WorkshopPhasedProcess, WorkshopPhasedProcess.id == WorkshopPhasedProcessAlert.process_id)
+                .where(WorkshopPhasedProcessAlert.status == "open", v2_process_filter)
             )
             or 0
         )
@@ -3202,13 +3067,14 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
                 .where(
+                    v2_process_filter,
                     WorkshopPhasedProcess.current_phase_code.in_(("entrada", "validacao", "diagnostico")),
                     WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
                 )
             )
             or 0
         )
-        recent_query = select(WorkshopPhasedProcess)
+        recent_query = select(WorkshopPhasedProcess).where(v2_process_filter)
         if scope == "open":
             recent_query = recent_query.where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
         elif scope == "closed":

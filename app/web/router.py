@@ -5270,7 +5270,34 @@ def clean_fleet_documents(
         if not vehicle:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
-        module_ctx = vehicle_document_module_context(db, vehicle)
+        try:
+            module_ctx = vehicle_document_module_context(db, vehicle)
+        except Exception:
+            module_ctx = {
+                "group_counts": {code: 0 for code, _ in DOCUMENT_HISTORY_MAIN_GROUPS},
+                "archive_rows": [],
+                "structured_rows": [],
+                "comparison_rows": [],
+                "timeline_events": [],
+                "timeline_ticks": [],
+                "timeline_segments": [],
+                "alerts": [
+                    {
+                        "title": "Módulo documental indisponível",
+                        "detail": "A documentação desta viatura ainda não pôde ser carregada. Revê migrações ou dados importados.",
+                        "severity": "warning",
+                        "severity_label": "Aviso",
+                        "source": "fallback",
+                    }
+                ],
+                "pendings": [],
+                "audit_fields": {},
+                "document_options": [],
+                "record_tags": {},
+                "document_tags": {},
+                "archive_documents_count": 0,
+                "structured_documents_count": 0,
+            }
 
         def matches_search(parts: list[str]) -> bool:
             if not search:

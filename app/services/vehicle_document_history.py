@@ -714,6 +714,22 @@ def _format_tag(tag: VehicleDocumentRecordTag) -> str:
     return category
 
 
+def _display_date(value: Any) -> str:
+    if value in (None, ""):
+        return "-"
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    text = str(value).strip()
+    if not text:
+        return "-"
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    except ValueError:
+        return text
+
+
 def _signature_from_tags(tags: list[VehicleDocumentRecordTag]) -> set[str]:
     signature: set[str] = set()
     for tag in tags:
@@ -747,6 +763,7 @@ def _build_structured_rows(
                 "main_group": row.main_group,
                 "group_label": DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS.get(row.main_group, row.main_group),
                 "date": row.document_date,
+                "date_display": _display_date(row.document_date),
                 "title": row.title or row.external_reference or row.main_group,
                 "supplier_name": row.supplier_name or "-",
                 "km": row.km,
@@ -774,6 +791,7 @@ def _build_structured_rows(
                 "main_group": "ars",
                 "group_label": "AR's",
                 "date": ar.request_date,
+                "date_display": _display_date(ar.request_date),
                 "title": ar.ar_reference or f"AR #{ar.id}",
                 "supplier_name": ar.customer_name or ar.created_by_rental_station or "-",
                 "km": None,
@@ -800,6 +818,7 @@ def _build_structured_rows(
                 "main_group": "claims",
                 "group_label": "Sinistros",
                 "date": claim.accident_date,
+                "date_display": _display_date(claim.accident_date),
                 "title": claim.sin_reference or f"Sinistro #{claim.id}",
                 "supplier_name": claim.rentway_status or "-",
                 "km": None,
@@ -834,6 +853,7 @@ def _build_archive_rows(
                 "main_group": _document_timeline_group(document),
                 "title": _display_title(document),
                 "date": document.document_date,
+                "date_display": _display_date(document.document_date),
                 "supplier_name": document.supplier_name or document.source or "-",
                 "status": document.status,
                 "extraction_state": "validado" if archive_group == "diagnostics" and tags else "por_validar",
@@ -855,6 +875,7 @@ def _build_archive_rows(
                 "main_group": record.main_group,
                 "title": record.title or f"Pendente #{record.id}",
                 "date": record.document_date,
+                "date_display": _display_date(record.document_date),
                 "supplier_name": record.supplier_name or "-",
                 "status": record.status,
                 "extraction_state": "pendente",
@@ -1172,7 +1193,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     document_options = [
         {
             "id": document.id,
-            "label": f"{_display_title(document)} ({document.document_date.strftime('%d/%m/%Y') if document.document_date else 's/data'})",
+            "label": f"{_display_title(document)} ({_display_date(document.document_date) if document.document_date else 's/data'})",
         }
         for document in documents[:200]
     ]

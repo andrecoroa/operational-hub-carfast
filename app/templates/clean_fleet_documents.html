@@ -170,7 +170,7 @@
               <tbody>
                 {% for row in archive_rows %}
                   <tr>
-                    <td>{{ row.date.strftime("%d/%m/%Y") if row.date else "-" }}</td>
+                    <td>{{ row.date_display or "-" }}</td>
                     <td>{{ row.archive_label }}</td>
                     <td>{{ row.title }}</td>
                     <td>{{ row.supplier_name }}</td>
@@ -266,7 +266,7 @@
                     <tbody>
                     {% for row in grouped.list %}
                       <tr>
-                        <td>{{ row.date.strftime("%d/%m/%Y") if row.date else "-" }}</td>
+                        <td>{{ row.date_display or "-" }}</td>
                         <td>
                           <strong>{{ row.title }}</strong>
                           {% if row.external_reference and row.external_reference != row.title %}

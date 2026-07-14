@@ -32,6 +32,28 @@
       </div>
     </section>
 
+    {% if imported %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note">
+          <strong>
+            Importação concluída:
+            {% if imported == "work_orders" %}
+              folhas de obra
+            {% elif imported == "impros" %}
+              impros
+            {% elif imported == "contracts" %}
+              contratos
+            {% else %}
+              listagem estruturada
+            {% endif %}
+            {% if imported_count is not none %}
+              ({{ imported_count }} registos tratados)
+            {% endif %}
+          </strong>
+        </div>
+      </section>
+    {% endif %}
+
     <section class="clean-doc-context-grid">
       <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
         <div class="table-heading flat-heading">

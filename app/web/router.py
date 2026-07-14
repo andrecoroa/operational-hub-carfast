@@ -5253,6 +5253,7 @@ def clean_fleet_documents(
     doc_group: str = "",
     archive_group: str = "",
     status: str = "",
+    document_created: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5365,6 +5366,7 @@ def clean_fleet_documents(
             "audit_fields": DOCUMENT_HISTORY_AUDIT_FIELDS,
             "audit_field_labels": DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
             "status_options": all_statuses,
+            "document_created": document_created,
         },
     )
 
@@ -5500,7 +5502,11 @@ def clean_documents_create(
 
 
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
-def clean_document_import_center(request: Request):
+def clean_document_import_center(
+    request: Request,
+    imported: str | None = None,
+    imported_count: int | None = None,
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -5519,6 +5525,8 @@ def clean_document_import_center(request: Request):
             "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
             "structured_counts": structured_counts,
             "vehicle_count": vehicle_count,
+            "imported": imported,
+            "imported_count": imported_count,
         },
     )
 
@@ -5532,11 +5540,11 @@ def clean_document_import_center_work_orders(request: Request, file: UploadFile 
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=work_orders", status_code=303)
+    return RedirectResponse(f"/v2-clean/documents?imported=work_orders&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/impros")
@@ -5548,11 +5556,11 @@ def clean_document_import_center_impros(request: Request, file: UploadFile = Fil
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_impros_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_impros_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=impros", status_code=303)
+    return RedirectResponse(f"/v2-clean/documents?imported=impros&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/contracts")
@@ -5564,11 +5572,11 @@ def clean_document_import_center_contracts(request: Request, file: UploadFile = 
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=contracts", status_code=303)
+    return RedirectResponse(f"/v2-clean/documents?imported=contracts&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/work-orders")

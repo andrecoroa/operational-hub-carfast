@@ -14399,9 +14399,29 @@ a.metric:hover {
 
 .clean-doc-timeline-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) 210px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.clean-doc-timeline-side {
+  display: grid;
   gap: 10px;
+}
+
+.clean-doc-timeline-side-left {
+  justify-items: end;
+}
+
+.clean-doc-timeline-side-right {
+  justify-items: start;
+}
+
+.clean-doc-timeline-mid {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
 }
 
 .clean-doc-timeline-card {
@@ -14412,6 +14432,35 @@ a.metric:hover {
   border-radius: 10px;
   background: #fff;
   padding: 10px 12px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.clean-doc-timeline-card-center {
+  border-left-color: #8ba9d8;
+  background: #f7fbff;
+  text-align: center;
+}
+
+.clean-doc-timeline-card-grouped {
+  gap: 8px;
+}
+
+.clean-doc-timeline-group-list {
+  display: grid;
+  gap: 6px;
+}
+
+.clean-doc-timeline-group-item {
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid #e7edf5;
+}
+
+.clean-doc-timeline-group-item:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .clean-doc-timeline-entry.danger .clean-doc-timeline-card {
@@ -14423,8 +14472,11 @@ a.metric:hover {
 .clean-doc-timeline-marker {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  min-height: 44px;
 }
 
 .clean-doc-timeline-marker::before {
@@ -14450,6 +14502,20 @@ a.metric:hover {
 .clean-doc-timeline-entry.danger .clean-doc-timeline-marker span {
   background: #c64545;
   box-shadow: 0 0 0 2px #f2c7c7;
+}
+
+.clean-doc-timeline-marker em {
+  position: relative;
+  z-index: 1;
+  border-radius: 999px;
+  background: #fff;
+  padding: 2px 8px;
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+  box-shadow: 0 0 0 1px #dce4ef;
 }
 
 .clean-doc-timeline-card strong {
@@ -14489,34 +14555,35 @@ a.metric:hover {
     grid-template-columns: 32px minmax(0, 1fr);
   }
 
-  .clean-doc-timeline-entry > :first-child,
-  .clean-doc-timeline-entry > :last-child {
-    grid-column: auto;
+  .clean-doc-timeline-side {
+    display: contents;
   }
 
-  .clean-doc-timeline-entry.side-left,
-  .clean-doc-timeline-entry.side-right {
+  .clean-doc-timeline-mid {
+    grid-column: 1 / -1;
     grid-template-columns: 32px minmax(0, 1fr);
+    justify-items: stretch;
+    align-items: start;
   }
 
-  .clean-doc-timeline-entry.side-left > div:first-child:not(.clean-doc-timeline-marker),
-  .clean-doc-timeline-entry.side-right > div:first-child:not(.clean-doc-timeline-marker) {
-    display: none;
-  }
-
-  .clean-doc-timeline-entry.side-left .clean-doc-timeline-marker,
-  .clean-doc-timeline-entry.side-right .clean-doc-timeline-marker {
+  .clean-doc-timeline-marker {
     grid-column: 1;
+    justify-self: center;
   }
 
-  .clean-doc-timeline-entry.side-left .clean-doc-timeline-card,
-  .clean-doc-timeline-entry.side-right .clean-doc-timeline-card {
+  .clean-doc-timeline-card-center {
     grid-column: 2;
   }
 
-  .clean-doc-timeline-entry.side-left > div:last-child,
-  .clean-doc-timeline-entry.side-right > div:last-child {
-    display: none;
+  .clean-doc-timeline-side-left,
+  .clean-doc-timeline-side-right {
+    display: grid;
+    grid-column: 2;
+    justify-items: stretch;
+  }
+
+  .clean-doc-timeline-marker em {
+    margin-top: 2px;
   }
 }
 

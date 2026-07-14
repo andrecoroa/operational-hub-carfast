@@ -918,9 +918,69 @@ def _build_timeline(
     structured_rows: list[dict[str, Any]],
     archive_rows: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    def timeline_side(group: str) -> str | None:
+        if group in {"contracts", "impros"}:
+            return "center"
+        if group in {"invoices", "claims"}:
+            return "left"
+        if group in {"work_orders", "ars", "diagnostics"}:
+            return "right"
+        return None
+
+    def side_rank(group: str) -> int:
+        order = {
+            "invoices": 10,
+            "claims": 20,
+            "contracts": 10,
+            "impros": 20,
+            "work_orders": 10,
+            "ars": 20,
+            "diagnostics": 30,
+        }
+        return order.get(group, 999)
+
+    def format_km(value: int | None) -> str:
+        return f"{value:,}".replace(",", " ") if value is not None else "-"
+
+    def make_card(event: TimelineEvent) -> dict[str, Any]:
+        return {
+            "group": event.group,
+            "group_label": event.label,
+            "title": event.title,
+            "secondary": event.secondary or "-",
+            "km": format_km(event.km) if event.km is not None else "",
+            "state": event.state,
+            "is_grouped": False,
+            "items": [],
+        }
+
+    def make_grouped_diagnostics(events_for_day: list[TimelineEvent]) -> dict[str, Any]:
+        count = len(events_for_day)
+        suffix = "relatório" if count == 1 else "relatórios"
+        ordered_items = sorted(events_for_day, key=lambda item: (item.title or "", item.secondary or ""))
+        return {
+            "group": "diagnostics",
+            "group_label": DOCUMENT_HISTORY_MAIN_GROUP_LABELS["diagnostics"],
+            "title": f"Diagnósticos - {count} {suffix}",
+            "secondary": "Grupo diário",
+            "km": "",
+            "state": "grouped",
+            "is_grouped": True,
+            "items": [
+                {
+                    "title": item.title,
+                    "secondary": item.secondary or "-",
+                    "km": format_km(item.km) if item.km is not None else "",
+                }
+                for item in ordered_items
+            ],
+        }
+
     events: list[TimelineEvent] = []
     for row in structured_rows:
         if row["main_group"] not in DOCUMENT_HISTORY_MAIN_GROUP_LABELS:
+            continue
+        if timeline_side(row["main_group"]) is None:
             continue
         events.append(
             TimelineEvent(
@@ -940,6 +1000,8 @@ def _build_timeline(
             continue
         if row["main_group"] not in {"invoices", "diagnostics"}:
             continue
+        if timeline_side(row["main_group"]) is None:
+            continue
         events.append(
             TimelineEvent(
                 group=row["main_group"],
@@ -953,36 +1015,86 @@ def _build_timeline(
                 source_kind="document",
             )
         )
+
     events.sort(key=lambda event: (event.occurred_on or date.min, event.km or -1, event.title))
-    rendered = []
     last_km = None
-    for idx, event in enumerate(events):
+    rows_by_date: dict[date | None, dict[str, Any]] = {}
+    has_center_content = False
+    for event in events:
         km_regressive = bool(last_km is not None and event.km is not None and event.km < last_km)
         if event.km is not None:
             last_km = event.km
-        rendered.append(
+        bucket = rows_by_date.setdefault(
+            event.occurred_on,
             {
-                "position_pct": 5 if len(events) == 1 else round((idx / max(len(events) - 1, 1)) * 90 + 5, 2),
-                "lane": "top" if idx % 2 == 0 else "bottom",
-                "group": event.group,
-                "group_label": event.label,
-                "title": event.title,
-                "secondary": event.secondary,
+                "occurred_on": event.occurred_on,
                 "date": event.occurred_on.strftime("%d/%m/%Y") if event.occurred_on else "-",
                 "date_iso": event.occurred_on.isoformat() if event.occurred_on else "",
-                "km": f"{event.km:,}".replace(",", " ") if event.km is not None else "-",
-                "km_regressive": km_regressive,
+                "left": [],
+                "center": [],
+                "right": [],
+                "diagnostics_raw": [],
+                "km_regressive": False,
+            },
+        )
+        bucket["km_regressive"] = bucket["km_regressive"] or km_regressive
+        side = timeline_side(event.group)
+        if side == "right" and event.group == "diagnostics":
+            bucket["diagnostics_raw"].append(event)
+        elif side:
+            bucket[side].append(make_card(event))
+            if side == "center":
+                has_center_content = True
+
+    rendered: list[dict[str, Any]] = []
+    sorted_dates = sorted(rows_by_date.keys(), key=lambda value: (value is not None, value or date.min), reverse=True)
+    for occurred_on in sorted_dates:
+        bucket = rows_by_date[occurred_on]
+        if bucket["diagnostics_raw"]:
+            bucket["right"].append(make_grouped_diagnostics(bucket["diagnostics_raw"]))
+        bucket["left"].sort(key=lambda item: side_rank(item["group"]))
+        bucket["center"].sort(key=lambda item: side_rank(item["group"]))
+        bucket["right"].sort(key=lambda item: side_rank(item["group"]))
+        rendered.append(
+            {
+                "date": bucket["date"],
+                "date_iso": bucket["date_iso"],
+                "left": bucket["left"],
+                "center": bucket["center"],
+                "right": bucket["right"],
+                "km_regressive": bucket["km_regressive"],
             }
         )
-    segments = []
-    has_contract = any(event.group == "contracts" for event in events)
-    has_impro = any(event.group == "impros" for event in events)
-    if has_contract:
-        segments.append({"css": "contract", "label": "Contrato", "left": 0, "width": 34})
-    if has_impro:
-        segments.append({"css": "impro", "label": "Impro", "left": 34 if has_contract else 0, "width": 22})
-    used = sum(segment["width"] for segment in segments)
-    segments.append({"css": "free", "label": "Livre", "left": used, "width": max(100 - used, 1)})
+
+    if not has_center_content:
+        rendered.insert(
+            0,
+            {
+                "date": "-",
+                "date_iso": "",
+                "left": [],
+                "center": [
+                    {
+                        "group": "free",
+                        "group_label": "Sem utilização",
+                        "title": "Sem utilização",
+                        "secondary": "Sem contratos ou impros associados nesta timeline.",
+                        "km": "",
+                        "state": "info",
+                        "is_grouped": False,
+                        "items": [],
+                    }
+                ],
+                "right": [],
+                "km_regressive": False,
+            },
+        )
+
+    segments = [
+        {"css": "contract", "label": "Contrato", "left": 0, "width": 33},
+        {"css": "impro", "label": "Impro", "left": 33, "width": 33},
+        {"css": "free", "label": "Sem utilização", "left": 66, "width": 34},
+    ]
     ticks = rendered
     return rendered, ticks, segments
 

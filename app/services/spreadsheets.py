@@ -87,6 +87,13 @@ def _non_empty_header_score(row: tuple[Any, ...]) -> int:
     return score
 
 
+def _row_is_empty(row: tuple[Any, ...]) -> bool:
+    for value in row:
+        if str(value or "").strip():
+            return False
+    return True
+
+
 def _detect_header_row(ws, search_rows: int = 25) -> tuple[int, list[str]]:
     best_row_idx = 1
     best_headers: list[str] = []
@@ -107,6 +114,8 @@ def iter_xlsx_rows(path: str | Path, preferred_sheet: str | None = None):
         ws = wb[preferred_sheet] if preferred_sheet and preferred_sheet in wb.sheetnames else wb[wb.sheetnames[0]]
         header_row, headers = _detect_header_row(ws)
         for row_number, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+            if _row_is_empty(row):
+                continue
             raw = {
                 headers[idx] or f"coluna_{idx + 1}": json_safe_value(value)
                 for idx, value in enumerate(row)

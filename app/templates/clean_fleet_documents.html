@@ -16,6 +16,10 @@
       </div>
     </header>
 
+    {% if document_created %}
+      <div class="alert success">Documento registado com sucesso e associado a esta viatura.</div>
+    {% endif %}
+
     <section class="clean-page-action-strip clean-card-wide">
       <div class="clean-page-action-strip-title">
         <strong>Ações documentais</strong>
@@ -346,27 +350,57 @@
                 <button type="button" class="button-link secondary-link active" data-range="365">12 meses</button>
                 <button type="button" class="button-link secondary-link" data-range="730">24 meses</button>
                 <button type="button" class="button-link secondary-link" data-range="99999">Histórico completo</button>
+                <button type="button" class="button-link secondary-link active" data-diagnostics-toggle="on">Mostrar diagnósticos</button>
+                <button type="button" class="button-link secondary-link" data-diagnostics-toggle="off">Ocultar diagnósticos</button>
               </div>
               <div class="clean-doc-timeline-vertical">
                 {% for event in module_ctx.timeline_events %}
-                  <article class="clean-doc-timeline-entry side-{% if loop.index0 is even %}left{% else %}right{% endif %} {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
-                    {% if loop.index0 is even %}
-                      <div class="clean-doc-timeline-card">
-                        <strong>{{ event.title }}</strong>
-                        <span>{{ event.group_label }} · {{ event.date }}</span>
-                        <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
+                  <article class="clean-doc-timeline-entry {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
+                    <div class="clean-doc-timeline-side clean-doc-timeline-side-left">
+                      {% for card in event.left %}
+                        <div class="clean-doc-timeline-card" data-timeline-group="{{ card.group }}">
+                          <strong>{{ card.title }}</strong>
+                          <span>{{ card.group_label }} · {{ event.date }}</span>
+                          <em>{{ card.secondary }}{% if card.km %} · KM {{ card.km }}{% endif %}</em>
+                        </div>
+                      {% endfor %}
+                    </div>
+                    <div class="clean-doc-timeline-mid">
+                      <div class="clean-doc-timeline-marker" aria-hidden="true">
+                        <span></span>
+                        <em>{{ event.date }}</em>
                       </div>
-                      <div class="clean-doc-timeline-marker" aria-hidden="true"><span></span></div>
-                      <div></div>
-                    {% else %}
-                      <div></div>
-                      <div class="clean-doc-timeline-marker" aria-hidden="true"><span></span></div>
-                      <div class="clean-doc-timeline-card">
-                        <strong>{{ event.title }}</strong>
-                        <span>{{ event.group_label }} · {{ event.date }}</span>
-                        <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
-                      </div>
-                    {% endif %}
+                      {% for card in event.center %}
+                        <div class="clean-doc-timeline-card clean-doc-timeline-card-center" data-timeline-group="{{ card.group }}">
+                          <strong>{{ card.title }}</strong>
+                          <span>{{ card.group_label }}</span>
+                          <em>{{ card.secondary }}</em>
+                        </div>
+                      {% endfor %}
+                    </div>
+                    <div class="clean-doc-timeline-side clean-doc-timeline-side-right">
+                      {% for card in event.right %}
+                        <div class="clean-doc-timeline-card {% if card.is_grouped %}clean-doc-timeline-card-grouped{% endif %}" data-timeline-group="{{ card.group }}">
+                          <strong>{{ card.title }}</strong>
+                          <span>{{ card.group_label }} · {{ event.date }}</span>
+                          {% if card.is_grouped %}
+                            <div class="clean-doc-timeline-group-list">
+                              {% for item in card.items %}
+                                <div class="clean-doc-timeline-group-item">
+                                  <strong>{{ item.title }}</strong>
+                                  <span>{{ item.secondary }}</span>
+                                  {% if item.km %}
+                                    <em>KM {{ item.km }}</em>
+                                  {% endif %}
+                                </div>
+                              {% endfor %}
+                            </div>
+                          {% else %}
+                            <em>{{ card.secondary }}{% if card.km %} · KM {{ card.km }}{% endif %}</em>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    </div>
                   </article>
                 {% endfor %}
               </div>
@@ -464,6 +498,22 @@
 <script>
   const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");
   const timelineEvents = Array.from(document.querySelectorAll(".clean-doc-timeline-entry[data-event-date]"));
+  const diagnosticsToggleButtons = document.querySelectorAll("[data-timeline-filters] [data-diagnostics-toggle]");
+  let diagnosticsVisible = true;
+  function applyDiagnosticsVisibility() {
+    document.querySelectorAll('[data-timeline-group="diagnostics"]').forEach((card) => {
+      card.style.display = diagnosticsVisible ? "" : "none";
+    });
+    timelineEvents.forEach((event) => {
+      const visibleCards = Array.from(event.querySelectorAll(".clean-doc-timeline-card")).filter((card) => card.style.display !== "none");
+      const rangeHidden = event.dataset.rangeHidden === "1";
+      event.style.display = !rangeHidden && visibleCards.length ? "" : "none";
+    });
+    diagnosticsToggleButtons.forEach((button) => {
+      const wantsVisible = (button.dataset.diagnosticsToggle || "on") === "on";
+      button.classList.toggle("active", wantsVisible === diagnosticsVisible);
+    });
+  }
   function applyTimelineRange(rangeDays) {
     const datedEvents = timelineEvents
       .map((event) => {
@@ -478,16 +528,23 @@
       const raw = event.dataset.eventDate || "";
       const eventDate = raw ? new Date(raw) : null;
       const visible = !threshold || !(eventDate instanceof Date) || Number.isNaN(eventDate.valueOf()) || eventDate >= threshold;
-      event.style.display = visible ? "" : "none";
+      event.dataset.rangeHidden = visible ? "0" : "1";
     });
     timelineFilterButtons.forEach((button) => {
       button.classList.toggle("active", Number(button.dataset.range) === rangeDays);
     });
+    applyDiagnosticsVisibility();
   }
   if (timelineEvents.length) {
     applyTimelineRange(365);
     timelineFilterButtons.forEach((button) => {
       button.addEventListener("click", () => applyTimelineRange(Number(button.dataset.range || "365")));
+    });
+    diagnosticsToggleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        diagnosticsVisible = (button.dataset.diagnosticsToggle || "on") === "on";
+        applyDiagnosticsVisibility();
+      });
     });
   }
 </script>

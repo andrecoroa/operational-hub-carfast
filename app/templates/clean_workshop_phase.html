@@ -4,7 +4,7 @@
   {% set active_menu = "workshop" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-workshop-header clean-workshop-header-final">
+    <header class="clean-section-header clean-card-wide">
       <div>
         <p class="eyebrow">Oficina / experiência nova{% if is_historical %} · processo histórico{% endif %}</p>
         <h2>{{ vehicle_context.process_ref }} | {{ phase.title }}</h2>
@@ -15,8 +15,14 @@
           </div>
         {% endif %}
       </div>
-      <div class="clean-header-actions clean-header-actions-strong">
-        <div class="clean-action-block-title">Ações da fase</div>
+    </header>
+
+    <section class="clean-page-action-strip clean-card-wide">
+      <div class="clean-page-action-strip-title">
+        <strong>Ações da fase</strong>
+        <span>Operações rápidas ligadas a este processo e à documentação de suporte.</span>
+      </div>
+      <div class="clean-page-action-strip-row">
         <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
         {% if workshop_process and phase_print_report %}
           <a class="button-link secondary-link" href="/v2-clean/workshop/{{ workshop_process.id }}/print/{{ phase_print_report[0] }}" target="_blank" rel="noopener">{{ phase_print_report[1] }}</a>
@@ -35,22 +41,26 @@
         {% endif %}
         {% include "_clean_workshop_admin_actions.html" %}
       </div>
-    </header>
+    </section>
 
-    <section class="clean-vehicle-header-card">
-      <div class="clean-vehicle-identity">
-        <p class="eyebrow">Viatura em processo</p>
-        <strong>{{ vehicle_context.plate }}</strong>
-        <span>{{ vehicle_context.vehicle }}</span>
-        <em>Chassi: {{ vehicle_context.vin }}</em>
-      </div>
-      <div class="clean-fleet-header-right">
-        <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
-          <div class="clean-action-block-title">Acessos rápidos</div>
-          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
-          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
-          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
+      <div class="clean-vehicle-header-main">
+        <div class="clean-vehicle-identity">
+          <p class="eyebrow">Viatura em processo</p>
+          <strong>{{ vehicle_context.plate }}</strong>
+          <span>{{ vehicle_context.vehicle }}</span>
+          <em>Chassi: {{ vehicle_context.vin }}</em>
         </div>
+        <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+          <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
+          <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
+          <span><b>Grupo</b><em>{{ vehicle_context.groupid }}</em></span>
+          <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
+          <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+          <span><b>Próxima IPO</b><em>{{ vehicle_context.next_ipo }}</em></span>
+        </div>
+      </div>
+      <div class="clean-vehicle-header-footer">
         <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
           {% for alert in vehicle_context.alerts %}
             <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -63,14 +73,12 @@
             <strong class="ok"><b>Sem pendências abertas</b><em>Não existem tarefas abertas ligadas a este processo.</em></strong>
           {% endif %}
         </div>
-      </div>
-      <div class="clean-vehicle-quick-facts">
-        <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
-        <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
-        <span><b>Grupo</b><em>{{ vehicle_context.groupid }}</em></span>
-        <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
-        <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
-        <span><b>Próxima IPO</b><em>{{ vehicle_context.next_ipo }}</em></span>
+        <div class="clean-quick-link-row">
+          <span class="clean-quick-link-title">Acessos rápidos</span>
+          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
+          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
+        </div>
       </div>
     </section>
 

@@ -5,21 +5,45 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content">
     {% set vehicle = ctx.vehicle %}
-    <section class="clean-vehicle-header-card clean-fleet-single-header">
-      <div class="clean-vehicle-identity">
-        <p class="eyebrow">Frota / viatura</p>
-        <strong>{{ ctx.identity.plate or '-' }}</strong>
-        <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
-        <em>Unit {{ ctx.identity.unit or '-' }} · Chassi: {{ ctx.identity.vin }}{% if ctx.identity.colour and ctx.identity.colour != '-' %} · {{ ctx.identity.colour }}{% endif %}</em>
+    <header class="clean-section-header clean-card-wide">
+      <div>
+        <p class="eyebrow">Frota / ficha v2-clean</p>
+        <h2>{{ ctx.identity.plate or '-' }}</h2>
+        <p>Base da viatura para regras, manutenção, decisões comerciais e histórico documental.</p>
       </div>
-      <div class="clean-fleet-header-right">
-        <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
-          <div class="clean-action-block-title">Acessos rápidos</div>
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
-          <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
+    </header>
+
+    <section class="clean-page-action-strip clean-card-wide">
+      <div class="clean-page-action-strip-title">
+        <strong>Ações rápidas</strong>
+        <span>Acessos imediatos aos fluxos ligados a esta viatura.</span>
+      </div>
+      <div class="clean-page-action-strip-row">
+        <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+        <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
+      </div>
+    </section>
+
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
+      <div class="clean-vehicle-header-main">
+        <div class="clean-vehicle-identity">
+          <p class="eyebrow">Viatura</p>
+          <strong>{{ ctx.identity.plate or '-' }}</strong>
+          <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
+          <em>Unit {{ ctx.identity.unit or '-' }} · Chassi: {{ ctx.identity.vin }}{% if ctx.identity.colour and ctx.identity.colour != '-' %} · {{ ctx.identity.colour }}{% endif %}</em>
         </div>
+        <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+          <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
+          <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
+          <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
+          <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
+          <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
+          <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
+        </div>
+      </div>
+      <div class="clean-vehicle-header-footer">
         <div class="clean-vehicle-alerts {% if not ctx.alerts %}is-empty{% endif %}">
           {% for alert in ctx.alerts %}
             <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -32,14 +56,12 @@
             <strong class="ok"><b>Sem pendências associadas</b><em>A viatura ainda não tem documentos, tarefas ou auditorias ligadas nesta experiência.</em></strong>
           {% endif %}
         </div>
-      </div>
-      <div class="clean-vehicle-quick-facts">
-        <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
-        <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
-        <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
-        <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
-        <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
-        <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
+        <div class="clean-quick-link-row">
+          <span class="clean-quick-link-title">Acessos rápidos</span>
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+          <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
+        </div>
       </div>
     </section>
 

@@ -56,10 +56,10 @@
         }
       }
     </style>
-    <header class="clean-doc-page-header clean-card-wide">
-      <div class="clean-doc-header-main">
+    <header class="clean-section-header clean-card-wide">
+      <div>
         <p class="eyebrow">Arquivo operacional</p>
-        <h1>Novo documento</h1>
+        <h2>Novo documento</h2>
         <p>
           {% if vehicle_ctx %}
             Viatura já identificada. Escolhe o tipo documental, anexa o ficheiro ou indica a origem e preenche só o mínimo necessário.
@@ -68,33 +68,46 @@
           {% endif %}
         </p>
       </div>
-      <div class="clean-header-actions clean-header-actions-strong">
+    </header>
+
+    <section class="clean-page-action-strip clean-card-wide">
+      <div class="clean-page-action-strip-title">
+        <strong>Ações rápidas</strong>
+        <span>Entrada manual focada no essencial, com ligação imediata à viatura quando ela já estiver identificada.</span>
+      </div>
+      <div class="clean-page-action-strip-row">
         <a class="button-link secondary-link" href="{{ prefill.return_url or ('/v2-clean/documents' if is_clean_mode else '/documents') }}">Voltar</a>
         {% if vehicle_ctx %}
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}">Ficha v2-clean</a>
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle_ctx.vehicle.id }}">Oficina</a>
         {% elif is_clean_mode %}
           <a class="button-link secondary-link" href="/v2-clean/documents">Documentação global</a>
         {% else %}
           <a class="button-link secondary-link" href="/documents/manage">Gestão</a>
         {% endif %}
       </div>
-    </header>
+    </section>
 
     {% if vehicle_ctx %}
-      <section class="clean-vehicle-header-card clean-fleet-single-header clean-doc-header-unified">
-        <div class="clean-vehicle-identity">
-          <p class="eyebrow">Viatura identificada</p>
-          <strong>{{ vehicle_ctx.identity.plate or "-" }}</strong>
-          <span>{{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}</span>
-          <em>Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}{% if vehicle_ctx.identity.colour and vehicle_ctx.identity.colour != "-" %} · {{ vehicle_ctx.identity.colour }}{% endif %}</em>
-        </div>
-        <div class="clean-fleet-header-right">
-          <div class="clean-header-actions clean-header-actions-strong clean-doc-header-actions">
-            <div class="clean-action-block-title">Ações rápidas</div>
-            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}">Ficha v2-clean</a>
-            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
-            <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle_ctx.vehicle.id }}">Oficina</a>
+      <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
+        <div class="clean-vehicle-header-main">
+          <div class="clean-vehicle-identity">
+            <p class="eyebrow">Viatura identificada</p>
+            <strong>{{ vehicle_ctx.identity.plate or "-" }}</strong>
+            <span>{{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}</span>
+            <em>Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}{% if vehicle_ctx.identity.colour and vehicle_ctx.identity.colour != "-" %} · {{ vehicle_ctx.identity.colour }}{% endif %}</em>
           </div>
+          <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+            <span><b>Fornecedor</b><em>{{ vehicle_ctx.identity.purchase_supplier }}</em></span>
+            <span><b>Combustível</b><em>{{ vehicle_ctx.identity.fuel }}</em></span>
+            <span><b>Grupo</b><em>{{ vehicle_ctx.identity.groupid }}</em></span>
+            <span><b>Compra</b><em>{{ vehicle_ctx.dates.purchase }}</em></span>
+            <span><b>Próx. manutenção</b><em>{{ vehicle_ctx.maintenance.next_display }}</em></span>
+            <span><b>Próxima IPO</b><em>{{ vehicle_ctx.dates.calculated_ipo }}</em></span>
+          </div>
+        </div>
+        <div class="clean-vehicle-header-footer">
           <div class="clean-vehicle-alerts {% if not vehicle_ctx.alerts %}is-empty{% endif %}">
             {% for alert in vehicle_ctx.alerts[:2] %}
               <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -102,14 +115,12 @@
               <span>Sem alertas de divergência ou datas próximas.</span>
             {% endfor %}
           </div>
-        </div>
-        <div class="clean-vehicle-quick-facts">
-          <span><b>Fornecedor</b><em>{{ vehicle_ctx.identity.purchase_supplier }}</em></span>
-          <span><b>Combustível</b><em>{{ vehicle_ctx.identity.fuel }}</em></span>
-          <span><b>Grupo</b><em>{{ vehicle_ctx.identity.groupid }}</em></span>
-          <span><b>Compra</b><em>{{ vehicle_ctx.dates.purchase }}</em></span>
-          <span><b>Próx. manutenção</b><em>{{ vehicle_ctx.maintenance.next_display }}</em></span>
-          <span><b>Próxima IPO</b><em>{{ vehicle_ctx.dates.calculated_ipo }}</em></span>
+          <div class="clean-quick-link-row">
+            <span class="clean-quick-link-title">Acessos rápidos</span>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}">Ficha v2-clean</a>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
+            <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle_ctx.vehicle.id }}">Oficina</a>
+          </div>
         </div>
       </section>
     {% endif %}

@@ -6,3 +6,4 @@ carfast_v2_tmp.db
 *.sqlite
 *.db
 uploads/
+*.log

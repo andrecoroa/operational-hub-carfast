@@ -7,13 +7,14 @@
     {% set vehicle = ctx.vehicle %}
     <section class="clean-vehicle-header-card clean-fleet-single-header">
       <div class="clean-vehicle-identity">
-        <p class="eyebrow">Frota / ficha v2-clean</p>
+        <p class="eyebrow">Frota / viatura</p>
         <strong>{{ ctx.identity.plate or '-' }}</strong>
         <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
         <em>Unit {{ ctx.identity.unit or '-' }} · Chassi: {{ ctx.identity.vin }}{% if ctx.identity.colour and ctx.identity.colour != '-' %} · {{ ctx.identity.colour }}{% endif %}</em>
       </div>
       <div class="clean-fleet-header-right">
-        <div class="clean-header-actions clean-header-actions-strong">
+        <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
+          <div class="clean-action-block-title">Acessos rápidos</div>
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
@@ -25,12 +26,18 @@
           {% else %}
             <span>Sem alertas de divergência ou datas próximas.</span>
           {% endfor %}
+          {% if documents|length or tasks|length or audits|length %}
+            <strong class="warn"><b>{{ documents|length }} docs · {{ tasks|length }} tarefas · {{ audits|length }} auditorias</b><em>Histórico e pendências disponíveis para consulta nesta viatura.</em></strong>
+          {% else %}
+            <strong class="ok"><b>Sem pendências associadas</b><em>A viatura ainda não tem documentos, tarefas ou auditorias ligadas nesta experiência.</em></strong>
+          {% endif %}
         </div>
       </div>
       <div class="clean-vehicle-quick-facts">
         <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
         <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
         <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
+        <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
         <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
         <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
       </div>

@@ -5,36 +5,57 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content">
     {% set vehicle = ctx.vehicle %}
+    {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
+    {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
 
-    <section class="clean-vehicle-header-card clean-fleet-single-header">
+    <section class="clean-vehicle-header-card clean-fleet-single-header clean-doc-header-unified">
       <div class="clean-vehicle-identity">
-        <p class="eyebrow">Documentação da viatura</p>
+        <p class="eyebrow">Frota / documentação da viatura</p>
         <strong>{{ ctx.identity.plate or "-" }}</strong>
         <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != "-" %} · {{ ctx.identity.version }}{% endif %}</span>
-        <em>Unit {{ ctx.identity.unit or "-" }} · Chassi: {{ ctx.identity.vin }}</em>
+        <em>Unit {{ ctx.identity.unit or "-" }} · Chassi: {{ ctx.identity.vin }}{% if ctx.identity.colour and ctx.identity.colour != "-" %} · {{ ctx.identity.colour }}{% endif %}</em>
       </div>
       <div class="clean-fleet-header-right">
-        <div class="clean-header-actions clean-header-actions-strong">
+        <div class="clean-header-actions clean-header-actions-strong clean-doc-header-actions">
+          <div class="clean-action-block-title">Ações documentais</div>
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+          <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
           <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
+          {% if real_start_field and not real_start_field.value_json %}
+            <a class="button-link secondary-link" href="#audit-real-start">Definir início real</a>
+          {% endif %}
+          {% if maintenance_count_field and not maintenance_count_field.value_json %}
+            <a class="button-link secondary-link" href="#audit-maintenance-count">Definir nº manutenções</a>
+          {% endif %}
           <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar à frota</a>
         </div>
-        <div class="clean-vehicle-alerts {% if not module_ctx.alerts %}is-empty{% endif %}">
-          {% for alert in module_ctx.alerts[:3] %}
+        <div class="clean-vehicle-alerts {% if not module_ctx.alerts and not module_ctx.pendings %}is-empty{% endif %}">
+          {% for alert in module_ctx.alerts[:2] %}
             <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
-          {% else %}
-            <span>Sem alertas documentais relevantes nesta viatura.</span>
           {% endfor %}
+          {% if module_ctx.pendings %}
+            <strong class="warn"><b>{{ module_ctx.pendings|length }} pendentes</b><em>Documentos ou validações ainda por resolver.</em></strong>
+          {% endif %}
+          {% if real_start_field and not real_start_field.value_json %}
+            <strong class="warn"><b>Início real por validar</b><em>Campo auditado ainda sem fecho documental.</em></strong>
+          {% endif %}
+          {% if maintenance_count_field and not maintenance_count_field.value_json %}
+            <strong class="warn"><b>Nº manutenções por validar</b><em>Campo auditado ainda sem valor confirmado.</em></strong>
+          {% endif %}
+          {% if not module_ctx.alerts and not module_ctx.pendings %}
+            <span>Sem alertas documentais relevantes nesta viatura.</span>
+          {% endif %}
         </div>
       </div>
       <div class="clean-vehicle-quick-facts">
         <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
         <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
         <span><b>Grupo</b><em>{{ ctx.identity.groupid }}</em></span>
-        <span><b>Arquivo visível</b><em>{{ archive_rows|length }}</em></span>
-        <span><b>Estruturados</b><em>{{ structured_rows|length }}</em></span>
-        <span><b>Pendentes / alertas</b><em>{{ module_ctx.pendings|length + module_ctx.alerts|length }}</em></span>
+        <span><b>Compra</b><em>{{ ctx.identity.purchase_date }}</em></span>
+        <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
+        <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
       </div>
     </section>
 
@@ -88,20 +109,10 @@
         </label>
         <button type="submit">Filtrar</button>
       </form>
+      <p class="clean-doc-filter-note">A documentação real fica separada da documentação estruturada. Os pendentes manuais e campos auditados ficam acessíveis pelas ações do cabeçalho.</p>
     </section>
 
     <section class="clean-doc-context-grid">
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Âmbito</p>
-            <h3>Consulta documental da viatura</h3>
-            <p>Arquivo físico, histórico estruturado, pendentes e campos auditados da viatura. As importações globais ficam fora desta página.</p>
-          </div>
-          <strong class="clean-doc-pill">{{ comparison_rows|length }} pares FO x Fatura</strong>
-        </div>
-      </article>
-
       <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
           <span>
@@ -193,61 +204,70 @@
         </div>
       </details>
 
-      <details class="clean-doc-collapsible clean-card-wide">
+      <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
           <span>
-            <b>Documentação estruturada</b>
-            <small>Registos globais usados para auditoria e cruzamentos</small>
-          </span>
-          <em>{{ structured_rows|length }} linhas</em>
-        </summary>
-        <div class="clean-doc-collapsible-body">
-          <div class="clean-doc-table-wrap">
-            <table class="clean-doc-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Grupo</th>
-                  <th>Título / ref.</th>
-                  <th>Fornecedor / origem</th>
-                  <th>KM</th>
-                  <th>Comparação</th>
-                  <th>Etiquetas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in structured_rows %}
-                  <tr>
-                    <td>{{ row.date.strftime("%d/%m/%Y") if row.date else "-" }}</td>
-                    <td>{{ row.group_label }}</td>
-                    <td>
-                      <strong>{{ row.title }}</strong>
-                      {% if row.external_reference and row.external_reference != row.title %}
-                        <div class="muted">{{ row.external_reference }}</div>
-                      {% endif %}
-                    </td>
-                    <td>{{ row.supplier_name }}</td>
-                    <td>{{ row.km if row.km is not none else "-" }}</td>
-                    <td>{{ row.comparison_label }}</td>
-                    <td>
-                      <div class="clean-doc-tag-list">
-                        {% for tag in row.tags %}
-                          <span>{{ tag }}</span>
-                        {% else %}
-                          <em>-</em>
-                        {% endfor %}
-                      </div>
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="7" class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+              <b>Documentação estruturada</b>
+              <small>Tabelas separadas por tipo documental para leitura e cruzamento</small>
+            </span>
+            <em>{{ structured_rows|length }} linhas</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+          {% for grouped in structured_rows|groupby("group_label") %}
+            <section class="clean-doc-structured-block">
+              <div class="table-heading flat-heading">
+                <div>
+                  <h4>{{ grouped.grouper }}</h4>
+                  <p>{{ grouped.list|length }} registos neste tipo documental.</p>
+                </div>
+              </div>
+              <div class="clean-doc-table-wrap">
+                <table class="clean-doc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                        <th>Título</th>
+                        <th>Fornecedor / origem</th>
+                        <th>KM</th>
+                        <th>Comparação</th>
+                        <th>Etiquetas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in grouped.list %}
+                      <tr>
+                        <td>{{ row.date.strftime("%d/%m/%Y") if row.date else "-" }}</td>
+                        <td>
+                          <strong>{{ row.title }}</strong>
+                          {% if row.external_reference and row.external_reference != row.title %}
+                            <small>{{ row.external_reference }}</small>
+                          {% endif %}
+                        </td>
+                        <td>{{ row.supplier_name }}</td>
+                        <td>{{ row.km if row.km is not none else "-" }}</td>
+                        <td>{{ row.comparison_label }}</td>
+                        <td>
+                          <div class="clean-doc-tag-list">
+                            {% for tag in row.tags %}
+                              <span>{{ tag }}</span>
+                            {% else %}
+                              <em>-</em>
+                            {% endfor %}
+                          </div>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          {% else %}
+            <p class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</p>
+          {% endfor %}
         </div>
       </details>
 
+      {% if comparison_rows %}
       <section class="clean-doc-dual-grid">
         <details class="clean-doc-collapsible clean-card-wide">
           <summary>
@@ -282,144 +302,128 @@
             </div>
           </div>
         </details>
-
-        <details class="clean-doc-collapsible clean-card-wide">
-          <summary>
-            <span>
-              <b>Campos auditados</b>
-              <small>Validação manual</small>
-            </span>
-            <em>{{ audit_fields|length }} campos</em>
-          </summary>
-          <div class="clean-doc-collapsible-body">
-            <p class="muted" style="margin: 0 0 12px;">Preencher só quando existir base documental clara. O objetivo aqui não é repetir o arquivo, é fixar campos estruturais que a ficha da viatura precisa de guardar.</p>
-            <div class="clean-doc-audit-grid">
-              {% for field_code, label in audit_fields %}
-                {% set saved = module_ctx.audit_fields.get(field_code) %}
-                <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/audit-field" class="clean-doc-audit-form" id="audit-{{ field_code|replace('_', '-') }}">
-                  <input type="hidden" name="field_code" value="{{ field_code }}">
-                  <strong>{{ label }}</strong>
-                  <input type="{% if field_code == 'real_start_date' %}date{% else %}text{% endif %}" name="value" value="{{ saved.value_json if saved and saved.value_json is not none else '' }}" placeholder="{% if field_code == 'real_start_date' %}aaaa-mm-dd{% else %}Valor{% endif %}">
-                  <input type="date" name="audited_on" value="{{ saved.audited_on.isoformat() if saved and saved.audited_on else '' }}">
-                  <input type="text" name="document_basis" value="{{ saved.document_basis if saved else '' }}" placeholder="Base documental">
-                  <textarea name="observation" rows="3" placeholder="Observação">{{ saved.observation if saved else '' }}</textarea>
-                  <button type="submit">Guardar campo</button>
-                </form>
-              {% endfor %}
-            </div>
-          </div>
-        </details>
       </section>
+      {% endif %}
 
-      <section class="clean-doc-dual-grid">
-        <details class="clean-doc-collapsible clean-card-wide">
+      <section class="clean-doc-dual-grid clean-doc-dual-grid-focus">
+        <details class="clean-doc-collapsible clean-card-wide" {% if module_ctx.timeline_events %}open{% endif %}>
           <summary>
             <span>
               <b>Timeline documental</b>
-              <small>Ordem cronológica</small>
+              <small>Leitura cronológica por janelas temporais</small>
             </span>
             <em>{{ module_ctx.timeline_events|length }} eventos</em>
           </summary>
           <div class="clean-doc-collapsible-body">
-            <div class="clean-doc-inline-actions" style="margin-bottom:12px;" data-timeline-filters>
-              <button type="button" class="button-link secondary-link active" data-range="365">12 meses</button>
-              <button type="button" class="button-link secondary-link" data-range="730">24 meses</button>
-              <button type="button" class="button-link secondary-link" data-range="99999">Histórico completo</button>
-            </div>
-            <div class="clean-doc-timeline">
-              <div class="clean-doc-timeline-bar">
-                {% for segment in module_ctx.timeline_segments %}
-                  <span class="clean-doc-timeline-segment {{ segment.css }}" style="left: {{ segment.left }}%; width: {{ segment.width }}%;">{{ segment.label }}</span>
-                {% endfor %}
+            {% if module_ctx.timeline_events %}
+              <div class="clean-doc-inline-actions clean-doc-timeline-filters" data-timeline-filters>
+                <button type="button" class="button-link secondary-link active" data-range="365">12 meses</button>
+                <button type="button" class="button-link secondary-link" data-range="730">24 meses</button>
+                <button type="button" class="button-link secondary-link" data-range="99999">Histórico completo</button>
               </div>
-              <div class="clean-doc-timeline-events">
+              <div class="clean-doc-timeline-vertical">
                 {% for event in module_ctx.timeline_events %}
-                  <article class="clean-doc-timeline-event {{ event.lane }} {% if event.km_regressive %}danger{% endif %}" style="left: {{ event.position_pct }}%;" data-event-index="{{ loop.index }}" data-event-date="{{ event.date_iso }}">
+                  <article class="clean-doc-timeline-entry {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
                     <strong>{{ event.title }}</strong>
                     <span>{{ event.group_label }} · {{ event.date }}</span>
-                    <em>{{ event.secondary }} · KM {{ event.km }}</em>
+                    <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
                   </article>
-                {% else %}
-                  <p class="muted">Sem eventos suficientes para timeline.</p>
                 {% endfor %}
               </div>
-            </div>
-          </div>
-        </details>
-
-        <details class="clean-doc-collapsible clean-card-wide">
-          <summary>
-            <span>
-              <b>Alertas e pendentes</b>
-              <small>O que falta resolver</small>
-            </span>
-            <em>{{ module_ctx.alerts|length + module_ctx.pendings|length }} itens</em>
-          </summary>
-          <div class="clean-doc-collapsible-body">
-            <div class="clean-doc-alerts-grid">
-              <div>
-                <h4>Alertas</h4>
-                <div class="clean-doc-alert-list">
-                  {% for alert in module_ctx.alerts %}
-                    <article class="clean-doc-alert-item {{ alert.severity }}">
-                      <strong>{{ alert.title }}</strong>
-                      <p>{{ alert.detail }}</p>
-                      <span>{{ alert.severity_label }}</span>
-                    </article>
-                  {% else %}
-                    <p class="muted">Sem alertas registados.</p>
-                  {% endfor %}
-                </div>
-              </div>
-              <div>
-                <h4>Pendentes e ações</h4>
-                <div class="clean-doc-alert-list">
-                  {% for pending in module_ctx.pendings %}
-                    <article class="clean-doc-alert-item info">
-                      <strong>{{ pending.title }}</strong>
-                      <p>{{ pending.detail }}</p>
-                      <span>{{ pending.action_type or pending.status }}</span>
-                    </article>
-                  {% else %}
-                    <p class="muted">Sem pendentes registados.</p>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <details class="clean-doc-collapsible clean-card-wide" id="manual-pending">
-          <summary>
-            <span>
-              <b>Criar pendente manual</b>
-              <small>Usar só quando faltar documento real</small>
-            </span>
-            <em>Manual</em>
-          </summary>
-          <div class="clean-doc-collapsible-body">
-            <p class="muted" style="margin: 0 0 12px;">Criar pendente só quando já sabemos que o documento existe, mas o PDF ou imagem ainda não foi obtido. Não usar para lançar listagens estruturadas globais.</p>
-            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-pending-compact">
-              <select name="main_group">
-                <option value="invoices">Fatura</option>
-                <option value="diagnostics">Diagnóstico</option>
-              </select>
-              <input type="text" name="title" placeholder="Título / nº documento" required>
-              <input type="text" name="supplier_name" placeholder="Fornecedor">
-              <input type="text" name="document_date" placeholder="dd/mm/aaaa">
-              <input type="text" name="process_reference" placeholder="Processo / referência">
-              <textarea name="raw_description" rows="2" placeholder="Nota curta do pendente..."></textarea>
-              <button type="submit">Criar pendente</button>
-            </form>
+            {% else %}
+              <p class="clean-empty-cell">Ainda não existem eventos suficientes para montar a timeline desta viatura.</p>
+            {% endif %}
           </div>
         </details>
       </section>
+
+      <details class="clean-doc-collapsible clean-card-wide" id="manual-pending">
+        <summary>
+          <span>
+            <b>Ferramentas manuais</b>
+            <small>Usar só quando faltar documento real ou houver fecho manual de campo</small>
+          </span>
+          <em>{{ module_ctx.pendings|length + (1 if real_start_field and not real_start_field.value_json else 0) + (1 if maintenance_count_field and not maintenance_count_field.value_json else 0) }}</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-inline-workbench-note">
+            <strong>Usar só quando faltar documento real ou quando um campo estrutural já puder ser fechado com base documental.</strong>
+          </div>
+        <div class="clean-doc-inline-workbench-grid">
+          <details class="clean-doc-collapsible">
+            <summary>
+              <span>
+                <b>Criar pendente manual</b>
+                <small>Falta PDF, imagem ou prova documental</small>
+              </span>
+              <em>Manual</em>
+            </summary>
+            <div class="clean-doc-collapsible-body">
+              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/pending" class="clean-doc-audit-form">
+                <select name="main_group">
+                  <option value="invoices">Fatura</option>
+                  <option value="diagnostics">Diagnóstico</option>
+                  <option value="contracts">Contrato</option>
+                  <option value="claims">Sinistro / AR</option>
+                </select>
+                <input type="text" name="title" placeholder="Título / nº documento" required>
+                <input type="text" name="supplier_name" placeholder="Fornecedor">
+                <input type="text" name="document_date" placeholder="dd/mm/aaaa">
+                <input type="text" name="process_reference" placeholder="Processo / referência">
+                <textarea name="raw_description" rows="3" placeholder="Nota curta do pendente..."></textarea>
+                <button type="submit">Criar pendente</button>
+              </form>
+            </div>
+          </details>
+
+          <details class="clean-doc-collapsible" id="audit-real-start">
+            <summary>
+              <span>
+                <b>Início real</b>
+                <small>Campo auditado da viatura</small>
+              </span>
+              <em>{{ "Definido" if real_start_field and real_start_field.value_json else "Por validar" }}</em>
+            </summary>
+            <div class="clean-doc-collapsible-body">
+              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/audit-field" class="clean-doc-audit-form">
+                <input type="hidden" name="field_code" value="real_start_date">
+                <input type="date" name="value" value="{{ real_start_field.value_json if real_start_field and real_start_field.value_json is not none else '' }}">
+                <input type="date" name="audited_on" value="{{ real_start_field.audited_on.isoformat() if real_start_field and real_start_field.audited_on else '' }}">
+                <input type="text" name="document_basis" value="{{ real_start_field.document_basis if real_start_field else '' }}" placeholder="Base documental">
+                <textarea name="observation" rows="3" placeholder="Observação">{{ real_start_field.observation if real_start_field else '' }}</textarea>
+                <button type="submit">Guardar início real</button>
+              </form>
+            </div>
+          </details>
+
+          <details class="clean-doc-collapsible" id="audit-maintenance-count">
+            <summary>
+              <span>
+                <b>Nº de manutenções</b>
+                <small>Campo auditado para histórico</small>
+              </span>
+              <em>{{ "Definido" if maintenance_count_field and maintenance_count_field.value_json else "Por validar" }}</em>
+            </summary>
+            <div class="clean-doc-collapsible-body">
+              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/audit-field" class="clean-doc-audit-form">
+                <input type="hidden" name="field_code" value="effective_maintenance_count">
+                <input type="text" name="value" value="{{ maintenance_count_field.value_json if maintenance_count_field and maintenance_count_field.value_json is not none else '' }}" placeholder="Valor">
+                <input type="date" name="audited_on" value="{{ maintenance_count_field.audited_on.isoformat() if maintenance_count_field and maintenance_count_field.audited_on else '' }}">
+                <input type="text" name="document_basis" value="{{ maintenance_count_field.document_basis if maintenance_count_field else '' }}" placeholder="Base documental">
+                <textarea name="observation" rows="3" placeholder="Observação">{{ maintenance_count_field.observation if maintenance_count_field else '' }}</textarea>
+                <button type="submit">Guardar campo</button>
+              </form>
+            </div>
+          </details>
+        </div>
+        </div>
+      </details>
     </section>
   </main>
 </div>
 <script>
   const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");
-  const timelineEvents = Array.from(document.querySelectorAll(".clean-doc-timeline-event[data-event-index]"));
+  const timelineEvents = Array.from(document.querySelectorAll(".clean-doc-timeline-entry[data-event-date]"));
   function applyTimelineRange(rangeDays) {
     const datedEvents = timelineEvents
       .map((event) => {

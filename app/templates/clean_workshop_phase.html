@@ -16,7 +16,8 @@
         {% endif %}
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
-        <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
+        <div class="clean-action-block-title">Ações da fase</div>
+        <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
         {% if workshop_process and phase_print_report %}
           <a class="button-link secondary-link" href="/v2-clean/workshop/{{ workshop_process.id }}/print/{{ phase_print_report[0] }}" target="_blank" rel="noopener">{{ phase_print_report[1] }}</a>
         {% endif %}
@@ -38,22 +39,38 @@
 
     <section class="clean-vehicle-header-card">
       <div class="clean-vehicle-identity">
+        <p class="eyebrow">Viatura em processo</p>
         <strong>{{ vehicle_context.plate }}</strong>
         <span>{{ vehicle_context.vehicle }}</span>
         <em>Chassi: {{ vehicle_context.vin }}</em>
       </div>
-      <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
-        <div class="clean-vehicle-quick-facts">
-          <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
-          <span><b>Data matrícula</b><em>{{ vehicle_context.registration_date }}</em></span>
-          <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
-          <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+      <div class="clean-fleet-header-right">
+        <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
+          <div class="clean-action-block-title">Acessos rápidos</div>
+          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
+          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
         </div>
-        {% for alert in vehicle_context.alerts %}
-          <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
-        {% else %}
-          <span>Sem alertas de divergência ou datas próximas.</span>
-        {% endfor %}
+        <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
+          {% for alert in vehicle_context.alerts %}
+            <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+          {% else %}
+            <span>Sem alertas de divergência ou datas próximas.</span>
+          {% endfor %}
+          {% if workshop_admin.open_task_count %}
+            <strong class="warn"><b>{{ workshop_admin.open_task_count }} pendências abertas</b><em>Tarefas associadas ao processo ainda por fechar.</em></strong>
+          {% else %}
+            <strong class="ok"><b>Sem pendências abertas</b><em>Não existem tarefas abertas ligadas a este processo.</em></strong>
+          {% endif %}
+        </div>
+      </div>
+      <div class="clean-vehicle-quick-facts">
+        <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
+        <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
+        <span><b>Grupo</b><em>{{ vehicle_context.groupid }}</em></span>
+        <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
+        <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+        <span><b>Próxima IPO</b><em>{{ vehicle_context.next_ipo }}</em></span>
       </div>
     </section>
 
@@ -133,7 +150,6 @@
                 <div class="clean-service-validation-list">
                   <div class="clean-service-validation-head">
                     <strong>Serviços a validar</strong>
-                    <button type="button">Adicionar serviço</button>
                   </div>
                   <div class="clean-service-validation-row clean-service-validation-row-head">
                     <b>Serviço</b>
@@ -805,12 +821,7 @@
                 <label>Auditoria histórico<select name="closure_audit_history_status">{% for option in ["Em curso", "Fechada", "Reserva"] %}<option{% if phase_form.get("closure_audit_history_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                 <label>Estado venda/frota<select name="closure_sale_state_status">{% for option in ["Aviso", "Atualizado", "Sem impacto"] %}<option{% if phase_form.get("closure_sale_state_status", "Aviso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
               </div>
-              <div class="clean-phase-source-links">
-                <a href="{{ vehicle_detail_href }}">Abrir ficha da viatura</a>
-                <a href="{{ vehicle_documents_href }}">Abrir documentação</a>
-                <a href="{{ task_board_href }}">Abrir tarefas e problemas</a>
-                <a href="{{ audit_href }}">Abrir auditoria histórica</a>
-              </div>
+              <p class="clean-rule-note">Ao fechar esta subfase, o resultado deve refletir-se na ficha, na documentação e nas pendências reais da viatura.</p>
             </article>
 
             <article class="clean-substep-panel" id="clean-substep-pendencias-fecho">
@@ -879,25 +890,19 @@
         </section>
       {% endif %}
 
-      {% if workshop_process and workshop_process.status != "closed" %}
-        <div class="clean-substep-savebar clean-substep-savebar-global">
-          <button type="submit" name="action" value="save_substep">Guardar subfase</button>
-          <button type="submit" name="action" value="advance_substep">Guardar e avançar</button>
-        </div>
-      {% endif %}
-
       <article class="clean-panel clean-panel-compact clean-card-wide">
         <div class="clean-context-action-grid">
-          <div class="clean-context-list"><span><b>Regra de modelo</b><em>Campos e cartões podem aparecer conforme motivo, marca, combustível e estado da auditoria.</em></span><span><b>Pendências</b><em>Campanhas por executar ficam em tarefa/reserva e não bloqueiam. Só risco técnico crítico deve impedir avanço.</em></span></div>
-          <div class="clean-history-actions"><a href="{{ vehicle_detail_href }}">Ficha da viatura</a><a href="{{ vehicle_documents_href }}">Documentos</a><a href="{{ task_board_href }}">Tarefas</a><a href="{{ audit_href }}">Auditoria</a></div>
+          <div class="clean-context-summary clean-context-summary-compact">
+            <div class="clean-context-summary-card">
+              <strong>Regra da fase</strong>
+              <span>Guardar subfase passa para a seguinte. Quando a última subfase estiver completa, a fase avança automaticamente.</span>
+            </div>
+          </div>
           <div class="clean-action-list">
             {% if workshop_process and workshop_process.status == "closed" %}
-              <a class="next-phase-action" href="/v2-clean/workshop">Processo fechado</a>
-              {% if previous_phase_url %}<a class="secondary-phase-action" href="{{ previous_phase_url }}">Consultar fase anterior</a>{% endif %}
+              <a class="next-phase-action" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
             {% else %}
-              <button type="submit" name="action" value="save">Guardar fase</button>
-              {% if previous_phase_url %}<a class="secondary-phase-action" href="{{ previous_phase_url }}">Voltar fase</a>{% endif %}
-              <button type="submit" name="action" value="advance" class="next-phase-action">{{ phase.primary_action }}</button>
+              <button type="submit" name="action" value="save_substep">Guardar e seguir</button>
             {% endif %}
           </div>
         </div>
@@ -911,7 +916,7 @@
       const snapshot = {};
       const action = event.submitter?.value || "save";
       const activePanel = form.querySelector(".clean-substep-panel.active");
-      const fields = ["save_substep", "advance_substep"].includes(action) && activePanel
+      const fields = ["save_substep"].includes(action) && activePanel
         ? activePanel.querySelectorAll("input, select, textarea")
         : form.elements;
       Array.from(fields).forEach((field) => {
@@ -977,16 +982,6 @@
     });
   });
   document.querySelectorAll(".clean-service-validation-list").forEach((list) => {
-    const addButton = list.querySelector(".clean-service-validation-head button");
-    addButton?.addEventListener("click", () => {
-      const rows = Array.from(list.querySelectorAll(".clean-service-validation-row:not(.clean-service-validation-row-head)"));
-      const sourceRow = rows.at(-1);
-      if (!sourceRow) return;
-      const newRow = sourceRow.cloneNode(true);
-      newRow.querySelectorAll("input, textarea").forEach((field) => { field.value = ""; });
-      newRow.querySelectorAll("select").forEach((field) => { field.selectedIndex = 0; });
-      list.appendChild(newRow);
-    });
   });
   document.querySelectorAll(".clean-report-upload").forEach((input) => {
     input.addEventListener("change", async () => {

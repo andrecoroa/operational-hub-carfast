@@ -81,14 +81,35 @@
     </header>
 
     {% if vehicle_ctx %}
-      <section class="clean-doc-page-header clean-card-wide">
-        <div class="clean-doc-header-main">
+      <section class="clean-vehicle-header-card clean-fleet-single-header clean-doc-header-unified">
+        <div class="clean-vehicle-identity">
           <p class="eyebrow">Viatura identificada</p>
-          <h1>{{ vehicle_ctx.identity.plate or "-" }}</h1>
-          <p>
-            {{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}
-            · Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}
-          </p>
+          <strong>{{ vehicle_ctx.identity.plate or "-" }}</strong>
+          <span>{{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}</span>
+          <em>Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}{% if vehicle_ctx.identity.colour and vehicle_ctx.identity.colour != "-" %} · {{ vehicle_ctx.identity.colour }}{% endif %}</em>
+        </div>
+        <div class="clean-fleet-header-right">
+          <div class="clean-header-actions clean-header-actions-strong clean-doc-header-actions">
+            <div class="clean-action-block-title">Ações rápidas</div>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}">Ficha v2-clean</a>
+            <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
+            <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle_ctx.vehicle.id }}">Oficina</a>
+          </div>
+          <div class="clean-vehicle-alerts {% if not vehicle_ctx.alerts %}is-empty{% endif %}">
+            {% for alert in vehicle_ctx.alerts[:2] %}
+              <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+            {% else %}
+              <span>Sem alertas de divergência ou datas próximas.</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="clean-vehicle-quick-facts">
+          <span><b>Fornecedor</b><em>{{ vehicle_ctx.identity.purchase_supplier }}</em></span>
+          <span><b>Combustível</b><em>{{ vehicle_ctx.identity.fuel }}</em></span>
+          <span><b>Grupo</b><em>{{ vehicle_ctx.identity.groupid }}</em></span>
+          <span><b>Compra</b><em>{{ vehicle_ctx.dates.purchase }}</em></span>
+          <span><b>Próx. manutenção</b><em>{{ vehicle_ctx.maintenance.next_display }}</em></span>
+          <span><b>Próxima IPO</b><em>{{ vehicle_ctx.dates.calculated_ipo }}</em></span>
         </div>
       </section>
     {% endif %}
@@ -114,7 +135,7 @@
           </div>
         </div>
 
-        <p class="clean-doc-form-note">Seleciona primeiro o tipo documental. O formulário adapta os campos e tenta reaproveitar o nome do ficheiro sempre que fizer sentido.</p>
+        <p class="clean-doc-form-note">Seleciona primeiro o tipo documental. O formulário adapta os campos, tenta reduzir o preenchimento manual e deixa as listagens estruturadas fora desta página.</p>
 
         <div class="clean-doc-type-picker" data-doc-picker>
           <button type="button" class="clean-doc-type-card" data-area="finance" data-type="finance_supplier_invoice" data-title="Ex.: Fatura fornecedor abril 2026">
@@ -152,15 +173,14 @@
             Anexo
             <input type="file" name="document_file" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.doc,.docx">
           </label>
-          <label>
-            Origem / link / caminho
-            <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="Opcional: https://... ou C:\...">
-          </label>
+          <div class="clean-doc-inline-workbench-note">
+            <strong>Se existir ficheiro, o sistema usa este anexo como origem principal, arquiva no local certo e prepara o nome documental para classificação.</strong>
+          </div>
         </div>
 
         <div class="clean-doc-compact-grid">
           <label>
-            Título / referência
+            Título / referência interna
             <input type="text" name="title" maxlength="200" value="{{ prefill.title }}" placeholder="Opcional: ex. Fatura Gamobar abril 2026" data-title-input>
           </label>
           <label>
@@ -195,6 +215,10 @@
           </summary>
           <div class="clean-doc-collapsible-body">
             <div class="clean-doc-import-grid">
+              <label>
+                Origem / link / caminho
+                <input type="text" name="url_original" value="{{ prefill.url_original }}" placeholder="Opcional: https://... ou C:\...">
+              </label>
               <label>
                 Canal de entrada
                 <input type="text" name="entry_channel" maxlength="120" value="{{ prefill.entry_channel }}" placeholder="documentos@carfast.pt">

@@ -16,8 +16,9 @@
           {% if is_historical %}<span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>{% endif %}
         </div>
       </div>
-      <div class="clean-header-actions clean-header-actions-strong">
-        <a class="button-link secondary-link" href="/v2-clean">Voltar</a>
+      <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
+        <div class="clean-action-block-title">Ações da fase</div>
+        <a class="button-link secondary-link" href="/v2-clean/workshop">Voltar</a>
         {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
           <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
             <input type="hidden" name="record_type" value="task">
@@ -36,22 +37,38 @@
 
     <section class="clean-vehicle-header-card">
       <div class="clean-vehicle-identity">
+        <p class="eyebrow">Viatura em processo</p>
         <strong data-clean-vehicle-field="plate">{{ vehicle_context.plate }}</strong>
         <span data-clean-vehicle-field="vehicle">{{ vehicle_context.vehicle }}</span>
         <em data-clean-vehicle-field="vin">Chassi: {{ vehicle_context.vin }}</em>
       </div>
-      <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
-        <div class="clean-vehicle-quick-facts">
-          <span><b>Combustível</b><em data-clean-vehicle-field="fuel">{{ vehicle_context.fuel }}</em></span>
-          <span><b>Data matrícula</b><em data-clean-vehicle-field="registration_date">{{ vehicle_context.registration_date }}</em></span>
-          <span><b>Compra</b><em data-clean-vehicle-field="purchase_date">{{ vehicle_context.purchase_date }}</em></span>
-          <span><b>Próx. manutenção</b><em data-clean-vehicle-field="next_service">{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+      <div class="clean-fleet-header-right">
+        <div class="clean-header-actions clean-header-actions-strong clean-phase-header-actions">
+          <div class="clean-action-block-title">Acessos rápidos</div>
+          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
+          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
         </div>
-        {% for alert in vehicle_context.alerts %}
-          <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
-        {% else %}
-          <span>Sem alertas de divergência ou datas próximas.</span>
-        {% endfor %}
+        <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
+          {% for alert in vehicle_context.alerts %}
+            <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
+          {% else %}
+            <span>Sem alertas de divergência ou datas próximas.</span>
+          {% endfor %}
+          {% if workshop_admin.open_task_count %}
+            <strong class="warn"><b>{{ workshop_admin.open_task_count }} pendências abertas</b><em>Tarefas associadas ao processo ainda por fechar.</em></strong>
+          {% else %}
+            <strong class="ok"><b>Sem pendências abertas</b><em>Não existem tarefas abertas ligadas a este processo.</em></strong>
+          {% endif %}
+        </div>
+      </div>
+      <div class="clean-vehicle-quick-facts">
+        <span><b>Fornecedor</b><em data-clean-vehicle-field="purchase_supplier">{{ vehicle_context.purchase_supplier }}</em></span>
+        <span><b>Combustível</b><em data-clean-vehicle-field="fuel">{{ vehicle_context.fuel }}</em></span>
+        <span><b>Grupo</b><em data-clean-vehicle-field="groupid">{{ vehicle_context.groupid }}</em></span>
+        <span><b>Compra</b><em data-clean-vehicle-field="purchase_date">{{ vehicle_context.purchase_date }}</em></span>
+        <span><b>Próx. manutenção</b><em data-clean-vehicle-field="next_service">{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+        <span><b>Próxima IPO</b><em data-clean-vehicle-field="next_ipo">{{ vehicle_context.next_ipo }}</em></span>
       </div>
     </section>
 
@@ -105,13 +122,15 @@
             <div class="clean-phase-field-grid">
               <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
-              <label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
-              <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
                 <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% endif %}> <span>{{ reason }}</span></label>
               {% endfor %}
+            </div>
+            <div class="clean-phase-field-grid">
+              <label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
+              <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
             </div>
             {% if is_historical %}
               <div class="clean-history-mode-panel">
@@ -147,8 +166,7 @@
               </select></label>
             </div>
             <div class="clean-substep-savebar">
-              <button type="submit" name="action" value="save">Guardar motivo</button>
-              <button type="submit" name="action" value="advance">Guardar e avançar</button>
+              <button type="submit" name="action" value="advance">Guardar e seguir</button>
             </div>
           </article>
 
@@ -245,8 +263,7 @@
               </div>
             </div>
             <div class="clean-substep-savebar">
-              <button type="submit" name="action" value="save">Guardar verificações</button>
-              <button type="submit" name="action" value="advance">Guardar e avançar</button>
+              <button type="submit" name="action" value="advance">Guardar e seguir</button>
             </div>
           </article>
 
@@ -321,10 +338,13 @@
     setVehicleField("plate", item.plate || "-");
     setVehicleField("vehicle", vehicleText);
     setVehicleField("vin", `Chassi: ${item.vin || ctx.vin || "-"}`);
+    setVehicleField("purchase_supplier", ctx.purchase_supplier || "-");
     setVehicleField("fuel", ctx.fuel || "-");
+    setVehicleField("groupid", ctx.groupid || "-");
     setVehicleField("registration_date", ctx.registration_date || "-");
     setVehicleField("purchase_date", ctx.purchase_date || "-");
     setVehicleField("next_service", `${ctx.next_service_date || "-"} · ${ctx.next_service_km || "-"}`);
+    setVehicleField("next_ipo", ctx.next_ipo || "-");
   };
   const selectPlateIfExact = () => {
     const key = (plateInput?.value || "").trim().toUpperCase();

@@ -5,25 +5,18 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content">
     <header class="clean-hero clean-workshop-dashboard-hero">
-      <div>
+      <div class="clean-workshop-dashboard-hero-main">
         <p class="eyebrow">Oficina / experiência nova</p>
         <h2>Oficina</h2>
         <p>Gerir entradas, processos históricos e trabalhos por fases, mostrando só processos criados na v2-clean.</p>
       </div>
-      <div class="clean-header-actions clean-header-actions-strong">
+      <div class="clean-workshop-dashboard-actions">
+        <div class="clean-action-block-title">Ações rápidas</div>
         <a class="button-link" href="/v2-clean/workshop-entry">Criar novo processo</a>
         <a class="button-link secondary-link" href="/v2-clean/workshop-entry?historical=1">Criar processo histórico</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Consultar frota</a>
       </div>
     </header>
-
-    <section class="clean-home-metrics" aria-label="Indicadores oficina">
-      <article><span>Todos</span><strong>{{ metrics.total }}</strong><em>processos</em></article>
-      <article><span>Em curso</span><strong>{{ metrics.open }}</strong><em>processos</em></article>
-      <article><span>Histórico</span><strong>{{ metrics.historical }}</strong><em>em reconstrução</em></article>
-      <article><span>Alertas</span><strong>{{ metrics.alerts }}</strong><em>abertos</em></article>
-      <article><span>Validação</span><strong>{{ metrics.pending_validation }}</strong><em>a orientar</em></article>
-    </section>
 
     <section class="clean-workshop-dashboard-grid">
       <article class="clean-panel clean-workshop-recent-panel">
@@ -44,24 +37,34 @@
             <p>Filtro rápido para ver só o conjunto relevante sem misturar históricos fechados e processos em curso.</p>
           </div>
         </div>
+        <div class="clean-workshop-filter-title">
+          <strong>Âmbito apresentado</strong>
+          <span>Cada contador mostra o total disponível nesse conjunto. A tabela abaixo apresenta classificação, fase atual e situação do processo.</span>
+        </div>
         <nav class="clean-workshop-scope-row" aria-label="Filtro de processos de oficina">
           <a class="{% if scope == 'open' %}active{% endif %}" href="/v2-clean/workshop?scope=open">
-            <span>Abertos</span>
+            <span>Processos abertos</span>
             <strong>{{ metrics.open }}</strong>
           </a>
           <a class="{% if scope == 'closed' %}active{% endif %}" href="/v2-clean/workshop?scope=closed">
-            <span>Fechados</span>
+            <span>Processos fechados</span>
             <strong>{{ metrics.closed }}</strong>
           </a>
           <a class="{% if scope == 'cancelled' %}active{% endif %}" href="/v2-clean/workshop?scope=cancelled">
-            <span>Cancelados</span>
+            <span>Processos cancelados</span>
             <strong>{{ metrics.cancelled }}</strong>
           </a>
           <a class="{% if scope == 'all' %}active{% endif %}" href="/v2-clean/workshop?scope=all">
-            <span>Todos</span>
+            <span>Todos os processos</span>
             <strong>{{ metrics.total }}</strong>
           </a>
         </nav>
+        <div class="clean-workshop-list-head">
+          <span>Viatura / processo</span>
+          <span>Classificação</span>
+          <span>Fase atual</span>
+          <span>Situação</span>
+        </div>
         <div class="clean-workshop-process-list">
           {% for process in recent_processes %}
             {% set phase = process.current_phase_code or "entrada" %}

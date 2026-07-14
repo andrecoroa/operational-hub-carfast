@@ -14107,3 +14107,436 @@ a.metric:hover {
     margin-left: -75px;
   }
 }
+
+/* v2 cleanup overrides: workshop + documentation priority */
+.clean-workshop-dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 16px;
+  align-items: start;
+}
+
+.clean-workshop-dashboard-hero-main {
+  display: grid;
+  gap: 6px;
+}
+
+.clean-workshop-dashboard-actions {
+  display: grid;
+  gap: 8px;
+  align-self: stretch;
+}
+
+.clean-workshop-dashboard-actions .button-link {
+  width: 100%;
+  justify-content: center;
+}
+
+.clean-workshop-list-head {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 110px 140px 110px;
+  gap: 10px;
+  align-items: center;
+  padding: 0 12px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-workshop-process-list {
+  gap: 10px;
+}
+
+.clean-workshop-process-item {
+  min-height: 58px;
+}
+
+.clean-workshop-process-item em,
+.clean-workshop-process-item b {
+  text-align: center;
+  justify-self: stretch;
+}
+
+.clean-workshop-header-final {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 16px;
+  align-items: start;
+}
+
+.clean-workshop-header-final .clean-header-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.clean-workshop-header-final .button-link,
+.clean-workshop-header-final .clean-inline-action,
+.clean-workshop-header-final .clean-inline-action button {
+  width: 100%;
+}
+
+.clean-workshop-header-final .button-link,
+.clean-workshop-header-final .clean-inline-action button {
+  justify-content: center;
+}
+
+.clean-context-action-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  align-items: start;
+}
+
+.clean-context-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.clean-context-summary-compact {
+  grid-template-columns: 1fr;
+}
+
+.clean-context-summary-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 12px 14px;
+}
+
+.clean-context-summary-card strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.clean-context-summary-card span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.clean-workshop-list-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.clean-workshop-list-legend span {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.clean-action-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.clean-action-list > * {
+  width: 100%;
+  justify-content: center;
+}
+
+.clean-action-list .secondary-action {
+  background: #fff;
+  border: 1px solid #d7deea;
+  color: #1f3368;
+}
+
+.clean-action-block-title {
+  color: #7b8798;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.clean-doc-header-unified {
+  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.05fr);
+  gap: 16px 18px;
+  align-items: start;
+}
+
+.clean-doc-header-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.clean-doc-header-actions .button-link {
+  min-width: 0;
+  justify-content: center;
+}
+
+.clean-phase-header-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 10px;
+}
+
+.clean-phase-header-actions > * {
+  width: 100%;
+}
+
+.clean-workshop-dashboard-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 10px;
+  min-width: 240px;
+}
+
+.clean-workshop-dashboard-actions > * {
+  width: 100%;
+}
+
+.clean-doc-overview-card {
+  padding: 14px 16px;
+}
+
+.clean-doc-overview-card .table-heading {
+  align-items: start;
+}
+
+.clean-doc-overview-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.clean-doc-group-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.clean-doc-group-card {
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.clean-doc-filter-panel {
+  padding: 14px 16px;
+}
+
+.clean-doc-filter-note {
+  margin: 10px 2px 0;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.clean-doc-structured-block {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #dce4ef;
+}
+
+.clean-doc-structured-block:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.clean-doc-structured-block td strong,
+.clean-doc-structured-block td small {
+  display: block;
+}
+
+.clean-doc-structured-block td small {
+  margin-top: 3px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.clean-doc-timeline-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.clean-doc-dual-grid-focus {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.clean-doc-timeline-vertical {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.clean-doc-timeline-entry {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #dce4ef;
+  border-left: 4px solid #b8c7df;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.clean-doc-timeline-entry.danger {
+  border-color: #f2c7c7;
+  border-left-color: #d14b4b;
+  background: #fff7f7;
+}
+
+.clean-doc-timeline-entry strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.clean-doc-timeline-entry span,
+.clean-doc-timeline-entry em {
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.clean-doc-audit-grid {
+  gap: 12px;
+}
+
+.clean-doc-audit-form {
+  gap: 8px;
+}
+
+.clean-doc-pending-compact {
+  gap: 10px;
+}
+
+.clean-doc-table-card,
+.clean-doc-structure-card {
+  padding: 14px 16px;
+}
+
+.clean-doc-inline-workbench-note {
+  margin-bottom: 12px;
+  border: 1px dashed #d7e1ef;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fbff;
+}
+
+.clean-doc-inline-workbench-note strong {
+  color: #38517e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.clean-doc-inline-workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.clean-doc-context-grid {
+  gap: 14px;
+}
+
+.clean-doc-collapsible > summary {
+  padding: 14px 16px;
+}
+
+.clean-doc-collapsible-body {
+  padding-top: 0;
+}
+
+.clean-doc-page-header .clean-header-actions,
+.clean-fleet-header-right .clean-header-actions,
+.clean-workshop-header-final .clean-header-actions,
+.clean-phase-header-actions,
+.clean-doc-header-actions,
+.clean-workshop-dashboard-actions {
+  justify-content: stretch;
+}
+
+.clean-doc-page-header .clean-header-actions .button-link,
+.clean-fleet-header-right .clean-header-actions .button-link,
+.clean-workshop-header-final .clean-header-actions .button-link,
+.clean-phase-header-actions .button-link,
+.clean-doc-header-actions .button-link,
+.clean-workshop-dashboard-actions .button-link {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 1300px) {
+  .clean-workshop-dashboard-hero,
+  .clean-workshop-header-final,
+  .clean-doc-header-unified,
+  .clean-context-action-grid,
+  .clean-doc-dual-grid-focus {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-workshop-dashboard-actions,
+  .clean-workshop-header-final .clean-header-actions,
+  .clean-phase-header-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-workshop-list-head {
+    display: none;
+  }
+
+  .clean-doc-header-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-inline-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .clean-workshop-dashboard-actions,
+  .clean-workshop-header-final .clean-header-actions,
+  .clean-phase-header-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-substep-savebar-global,
+  .clean-action-list {
+    justify-content: stretch;
+  }
+
+  .clean-substep-savebar-global button,
+  .clean-action-list > * {
+    width: 100%;
+  }
+
+  .clean-doc-overview-pills,
+  .clean-doc-header-actions {
+    justify-content: stretch;
+  }
+
+  .clean-doc-header-actions .button-link {
+    width: 100%;
+  }
+}

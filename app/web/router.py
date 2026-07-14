@@ -3895,7 +3895,7 @@ def clean_workshop_next_substep_key(phase_key: str, current_substep: str) -> str
     except ValueError:
         return substeps[0]
     if step_index >= len(substeps) - 1:
-        return substeps[step_index]
+        return None
     return substeps[step_index + 1]
 
 
@@ -4115,11 +4115,6 @@ def clean_workshop_validation_rows(
     if requested_services:
         for index, requested_service in enumerate(requested_services):
             rows.append(build_row(index, requested_service))
-
-        for index in range(len(requested_services), row_count):
-            row = build_row(index, "Outro")
-            if has_non_default_data(row):
-                rows.append(row)
         return rows
 
     for index in range(row_count):
@@ -4259,7 +4254,7 @@ def clean_workshop_validation_prerequisites(
             "impact": "Informativo" if plan_document else "Aviso",
             "impact_class": "ok" if plan_document else "warn",
             "action": "Abrir plano" if plan_document else "Associar plano",
-            "href": f"/documents/{plan_document.id}" if plan_document else plan_create_href,
+            "href": f"/v2-clean/fleet/{vehicle_id}/documents?main_group=plans" if vehicle_id else plan_create_href,
         },
         {
             "name": "Service Box / campanhas",
@@ -4268,7 +4263,7 @@ def clean_workshop_validation_prerequisites(
             "impact": "Aviso" if campaign_task else "Informativo",
             "impact_class": "warn" if campaign_task else "ok",
             "action": f"Tarefa #{campaign_task.id}" if campaign_task else "Criar tarefa se existir campanha",
-            "href": f"/task-board/{campaign_task.id}" if campaign_task else None,
+            "href": f"/v2-clean/tasks?plate={plate}" if campaign_task and plate else None,
         },
         {
             "name": "Início real da viatura",
@@ -4286,7 +4281,7 @@ def clean_workshop_validation_prerequisites(
             "impact": "Aviso" if history_audit else "Informativo",
             "impact_class": "warn" if history_audit else "ok",
             "action": "Abrir auditoria" if history_audit else "Criar auditoria se necessário",
-            "href": f"/fleet/{history_audit.vehicle_id}/history-audits/{history_audit.id}" if history_audit else None,
+            "href": f"/v2-clean/processes?vehicle_id={history_audit.vehicle_id}" if history_audit else (f"/v2-clean/processes?vehicle_id={vehicle_id}" if vehicle_id else None),
         },
     ]
 
@@ -4844,8 +4839,11 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
     rentway_next_service_km = parse_decimal_text(rules.get("rentway_next_service_km"))
     calculated_ipo = rules.get("calculated_ipo")
     rentway_ipo = rules.get("rentway_ipo")
+    ipo_diff_days = None
+    if isinstance(calculated_ipo, date) and isinstance(rentway_ipo, date):
+        ipo_diff_days = abs((calculated_ipo - rentway_ipo).days)
     alerts: list[dict[str, str]] = []
-    if rules.get("ipo_status") == "Divergente":
+    if rules.get("ipo_status") == "Divergente" and (ipo_diff_days is None or ipo_diff_days > 7):
         alerts.append(
             {
                 "severity": "danger",
@@ -4922,7 +4920,9 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
         "plate": vehicle.plate or snapshot_value(data, ["platenr", "matricula", "plate"]) or "-",
         "vehicle": " ".join(part for part in [brand, model, version] if part).strip() or "-",
         "vin": vehicle.vin or snapshot_value(data, ["chassinr", "vin", "chassis"]) or "-",
+        "groupid": vehicle_context.get("groupid") or "-",
         "fuel": fuel,
+        "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
         "entry_date": datetime.now().strftime("%d/%m/%Y"),
         "entry_km": clean_km(commercial_context.get("km") or snapshot_value(data, ["kms", "km"])),
         "expected_exit": "-",
@@ -4968,7 +4968,11 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     debt_value = manual_fields.get("debt_value")
     finance_entity = manual_fields.get("finance_entity") or commercial_context.get("finance_entity")
     calculated_ipo = rules.get("calculated_ipo")
+    rentway_ipo = rules.get("rentway_ipo")
     calculated_service_date = rules.get("calculated_service_date")
+    ipo_diff_days = None
+    if isinstance(calculated_ipo, date) and isinstance(rentway_ipo, date):
+        ipo_diff_days = abs((calculated_ipo - rentway_ipo).days)
 
     alerts: list[dict[str, str]] = []
     if sale_blocked:
@@ -4976,7 +4980,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         alerts.append({"severity": "danger", "title": "Venda bloqueada", "detail": str(reason)})
     if not real_start_date:
         alerts.append({"severity": "warn", "title": "Início real por validar", "detail": "Campo necessário para auditoria e manutenção."})
-    if rules.get("ipo_status") == "Divergente":
+    if rules.get("ipo_status") == "Divergente" and (ipo_diff_days is None or ipo_diff_days > 7):
         alerts.append({"severity": "danger", "title": "IPO divergente", "detail": "Rentway e cálculo CarFast não coincidem."})
     elif isinstance(calculated_ipo, date):
         days_to_ipo = (calculated_ipo - date.today()).days
@@ -6697,13 +6701,53 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 process.status = "closed"
                 process.closed_at = now
                 redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
-        elif action == "advance_substep":
-            phase_row.status = "in_progress"
-            process.current_phase_code = phase
-            target_substep = clean_workshop_next_substep_key(phase, current_substep) or current_substep
-            redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+        elif action in {"save_substep", "advance_substep"}:
+            target_substep = clean_workshop_next_substep_key(phase, current_substep) if current_substep else None
             if target_substep:
-                redirect_url = f"{redirect_url}#{target_substep}"
+                phase_row.status = "in_progress"
+                process.current_phase_code = phase
+                redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1#{target_substep}"
+            else:
+                phase_reports = (
+                    db.scalars(
+                        select(WorkshopPhasedTechnicalReport).where(
+                            WorkshopPhasedTechnicalReport.process_id == process.id
+                        )
+                    ).all()
+                    if phase == "diagnostico"
+                    else []
+                )
+                advance_error = clean_workshop_phase_advance_error(phase, form_snapshot, phase_reports)
+                if advance_error:
+                    phase_row.status = "in_progress"
+                    process.current_phase_code = phase
+                    db.commit()
+                    redirect_url = (
+                        f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+                        f"&error={advance_error}"
+                    )
+                    if current_substep:
+                        redirect_url = f"{redirect_url}#{current_substep}"
+                    return RedirectResponse(redirect_url, status_code=303)
+
+                saved_substeps.update(known_substeps)
+                phase_data["saved_substeps"] = sorted(saved_substeps)
+                phase_row.data_json = phase_data
+                phase_row.status = "completed"
+                phase_row.completed_at = now
+                phase_row.completed_by_id = user_id
+                next_phase = clean_workshop_next_phase_key(phase)
+                if next_phase:
+                    process.current_phase_code = next_phase
+                    next_phase_row = clean_workshop_get_phase(db, process.id, next_phase)
+                    if next_phase_row and next_phase_row.status == "not_started":
+                        next_phase_row.status = "pending_review"
+                        next_phase_row.started_at = now
+                    redirect_url = f"{clean_workshop_phase_path(next_phase)}?process_id={process.id}"
+                else:
+                    process.status = "closed"
+                    process.closed_at = now
+                    redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
         else:
             phase_row.status = "in_progress"
             process.current_phase_code = phase

@@ -78,12 +78,35 @@ def json_safe_value(value: Any) -> Any:
     return value
 
 
+def _non_empty_header_score(row: tuple[Any, ...]) -> int:
+    score = 0
+    for value in row:
+        text = str(value or "").strip()
+        if text:
+            score += 1
+    return score
+
+
+def _detect_header_row(ws, search_rows: int = 25) -> tuple[int, list[str]]:
+    best_row_idx = 1
+    best_headers: list[str] = []
+    best_score = -1
+    max_row = min(ws.max_row or 1, search_rows)
+    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=max_row, values_only=True), start=1):
+        score = _non_empty_header_score(row)
+        if score > best_score:
+            best_score = score
+            best_row_idx = row_idx
+            best_headers = [str(value).strip() if value is not None else "" for value in row]
+    return best_row_idx, best_headers
+
+
 def iter_xlsx_rows(path: str | Path, preferred_sheet: str | None = None):
     wb = load_workbook(path, data_only=True, read_only=True)
     try:
         ws = wb[preferred_sheet] if preferred_sheet and preferred_sheet in wb.sheetnames else wb[wb.sheetnames[0]]
-        headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
-        for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        header_row, headers = _detect_header_row(ws)
+        for row_number, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
             raw = {
                 headers[idx] or f"coluna_{idx + 1}": json_safe_value(value)
                 for idx, value in enumerate(row)

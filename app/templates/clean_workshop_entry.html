@@ -41,6 +41,18 @@
       </div>
     </section>
 
+    <section class="clean-page-action-strip clean-card-wide">
+      <div class="clean-page-action-strip-title">
+        <strong>Acessos rápidos</strong>
+        <span>Consulta imediata do contexto da viatura e dos registos associados.</span>
+      </div>
+      <div class="clean-page-action-strip-row">
+        <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
+        <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
+        <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
+      </div>
+    </section>
+
     <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
@@ -58,7 +70,7 @@
           <span><b>Próxima IPO</b><em data-clean-vehicle-field="next_ipo">{{ vehicle_context.next_ipo }}</em></span>
         </div>
       </div>
-      <div class="clean-vehicle-header-footer">
+      <div class="clean-vehicle-header-footer clean-vehicle-header-footer-alerts">
         <div class="clean-vehicle-alerts {% if not vehicle_context.alerts %}is-empty{% endif %}">
           {% for alert in vehicle_context.alerts %}
             <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -70,12 +82,6 @@
           {% else %}
             <strong class="ok"><b>Sem pendências abertas</b><em>Não existem tarefas abertas ligadas a este processo.</em></strong>
           {% endif %}
-        </div>
-        <div class="clean-quick-link-row">
-          <span class="clean-quick-link-title">Acessos rápidos</span>
-          <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
-          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
-          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
         </div>
       </div>
     </section>

@@ -35,6 +35,18 @@
       </div>
     </section>
 
+    <section class="clean-page-action-strip clean-card-wide">
+      <div class="clean-page-action-strip-title">
+        <strong>Acessos rápidos</strong>
+        <span>Navegação entre os fluxos ligados a esta viatura.</span>
+      </div>
+      <div class="clean-page-action-strip-row">
+        <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+        <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
+        <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
+      </div>
+    </section>
+
     <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
@@ -52,7 +64,7 @@
           <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
         </div>
       </div>
-      <div class="clean-vehicle-header-footer">
+      <div class="clean-vehicle-header-footer clean-vehicle-header-footer-alerts">
         <div class="clean-vehicle-alerts {% if not module_ctx.alerts and not module_ctx.pendings %}is-empty{% endif %}">
           {% for alert in module_ctx.alerts[:2] %}
             <strong class="{{ alert.severity }}"><b>{{ alert.title }}</b><em>{{ alert.detail }}</em></strong>
@@ -69,12 +81,6 @@
           {% if not module_ctx.alerts and not module_ctx.pendings %}
             <span>Sem alertas documentais relevantes nesta viatura.</span>
           {% endif %}
-        </div>
-        <div class="clean-quick-link-row">
-          <span class="clean-quick-link-title">Acessos rápidos</span>
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
-          <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
-          <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
         </div>
       </div>
     </section>
@@ -343,10 +349,24 @@
               </div>
               <div class="clean-doc-timeline-vertical">
                 {% for event in module_ctx.timeline_events %}
-                  <article class="clean-doc-timeline-entry {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
-                    <strong>{{ event.title }}</strong>
-                    <span>{{ event.group_label }} · {{ event.date }}</span>
-                    <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
+                  <article class="clean-doc-timeline-entry side-{% if loop.index0 is even %}left{% else %}right{% endif %} {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
+                    {% if loop.index0 is even %}
+                      <div class="clean-doc-timeline-card">
+                        <strong>{{ event.title }}</strong>
+                        <span>{{ event.group_label }} · {{ event.date }}</span>
+                        <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
+                      </div>
+                      <div class="clean-doc-timeline-marker" aria-hidden="true"><span></span></div>
+                      <div></div>
+                    {% else %}
+                      <div></div>
+                      <div class="clean-doc-timeline-marker" aria-hidden="true"><span></span></div>
+                      <div class="clean-doc-timeline-card">
+                        <strong>{{ event.title }}</strong>
+                        <span>{{ event.group_label }} · {{ event.date }}</span>
+                        <em>{{ event.secondary }}{% if event.km %} · KM {{ event.km }}{% endif %}</em>
+                      </div>
+                    {% endif %}
                   </article>
                 {% endfor %}
               </div>

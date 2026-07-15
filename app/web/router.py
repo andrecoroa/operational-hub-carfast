@@ -5259,6 +5259,8 @@ def clean_fleet_documents(
     archive_group: str = "",
     status: str = "",
     document_created: str | None = None,
+    imported: str | None = None,
+    imported_count: int | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5413,6 +5415,8 @@ def clean_fleet_documents(
             "audit_field_labels": DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
             "status_options": all_statuses,
             "document_created": document_created,
+            "imported": imported,
+            "imported_count": imported_count,
         },
     )
 

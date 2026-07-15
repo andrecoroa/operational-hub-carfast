@@ -27,6 +27,24 @@
     {% if document_created %}
       <div class="alert success">Documento registado com sucesso e associado a esta viatura.</div>
     {% endif %}
+    {% if imported %}
+      <div class="alert {% if imported_count and imported_count > 0 %}success{% else %}warning{% endif %}">
+        {% if imported == "work_orders" %}
+          Importação de folhas de obra
+        {% elif imported == "impros" %}
+          Importação de impros
+        {% elif imported == "contracts" %}
+          Importação de contratos
+        {% else %}
+          Importação documental
+        {% endif %}
+        concluída para {{ ctx.identity.plate or "esta viatura" }}:
+        <strong>{{ imported_count or 0 }} registos associados.</strong>
+        {% if not imported_count %}
+          Confirma se o ficheiro tem matrícula/chassi/unit compatível ou importa novamente nesta ficha.
+        {% endif %}
+      </div>
+    {% endif %}
 
     <section class="clean-context-action-shell clean-card-wide">
       <article class="clean-context-action-group">
@@ -142,6 +160,41 @@
       </form>
       <p class="clean-doc-filter-note">A documentação real fica separada da documentação estruturada. Os pendentes manuais e campos auditados ficam acessíveis pelas ações do cabeçalho.</p>
     </section>
+
+    <details class="clean-doc-collapsible clean-card-wide">
+      <summary>
+        <span>
+          <b>Importar listagem para esta viatura</b>
+          <small>Usar quando estás a testar ficheiros já separados por matrícula. A associação fica forçada a {{ ctx.identity.plate or "esta viatura" }}.</small>
+        </span>
+        <em>FO / Impros / Contratos</em>
+      </summary>
+      <div class="clean-doc-collapsible-body">
+        <div class="clean-doc-import-center-grid compact">
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/work-orders" class="clean-doc-quick-form">
+            <label>
+              Folhas de obra
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar FO nesta viatura</button>
+          </form>
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/impros" class="clean-doc-quick-form">
+            <label>
+              Impros
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar impros nesta viatura</button>
+          </form>
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/fleet/{{ vehicle.id }}/documents/import/contracts" class="clean-doc-quick-form">
+            <label>
+              Contratos
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <button type="submit">Importar contratos nesta viatura</button>
+          </form>
+        </div>
+      </div>
+    </details>
 
     <section class="clean-doc-context-grid">
       <details class="clean-doc-collapsible clean-card-wide" open>

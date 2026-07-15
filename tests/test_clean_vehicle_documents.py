@@ -1,3 +1,4 @@
+from datetime import date
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -62,6 +63,38 @@ def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
     assert "Documentação de arquivo" in response.text
     assert "Documentação estruturada" in response.text
     assert "Timeline documental" in response.text
+
+
+def test_clean_vehicle_documents_page_renders_with_regressive_km_alert(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    db_session.add_all(
+        [
+            VehicleDocumentRecord(
+                vehicle_id=vehicle.id,
+                source_record_type="structured",
+                main_group="work_orders",
+                title="FO 1",
+                plate=vehicle.plate,
+                document_date=date(2026, 1, 1),
+                km=1000,
+            ),
+            VehicleDocumentRecord(
+                vehicle_id=vehicle.id,
+                source_record_type="structured",
+                main_group="work_orders",
+                title="FO 2",
+                plate=vehicle.plate,
+                document_date=date(2026, 1, 2),
+                km=900,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+
+    assert response.status_code == 200
+    assert "KM regressivo" in response.text
 
 
 def test_clean_vehicle_summary_hides_legacy_documents(authenticated_client, db_session):

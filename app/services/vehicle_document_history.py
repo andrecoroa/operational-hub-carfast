@@ -1183,10 +1183,15 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
             )
     for event in timeline_events:
         if event["km_regressive"]:
+            event_title = "-"
+            for side in ("left", "center", "right"):
+                if event.get(side):
+                    event_title = event[side][0].get("title") or event[side][0].get("group_label") or "-"
+                    break
             alerts.append(
                 {
                     "title": "KM regressivo",
-                    "detail": f"{event['title']} apresenta km inferior ao documento anterior.",
+                    "detail": f"{event_title} apresenta km inferior ao documento anterior.",
                     "severity": "critical",
                     "severity_label": "Crítico",
                     "source": "computed",

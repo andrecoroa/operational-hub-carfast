@@ -894,7 +894,7 @@ def _build_archive_rows(
                 "document_type": document.document_type or "-",
                 "process_reference": f"Oficina #{document.workshop_process_id}" if document.workshop_process_id else "-",
                 "document_number": document.contract_number or document.reservation_number or str(document.id),
-                "open_href": f"/documents/{document.id}",
+                "open_href": f"/v2-clean/documents/{document.id}",
                 "tags": [_format_tag(tag) for tag in tags],
             }
         )

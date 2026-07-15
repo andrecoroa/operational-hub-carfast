@@ -5551,6 +5551,46 @@ def clean_documents_create(
     )
 
 
+@web_router.get("/v2-clean/documents/{document_id}", response_class=HTMLResponse)
+def clean_document_detail(request: Request, document_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse("/v2-clean/documents", status_code=303)
+        vehicle = db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None
+        vehicle_ctx = clean_vehicle_display_context(db, vehicle) if vehicle else None
+        events = db.scalars(
+            select(DocumentEvent)
+            .where(DocumentEvent.document_id == document.id)
+            .order_by(DocumentEvent.id.desc())
+        ).all()
+        file_size = "-"
+        if document.file_size:
+            if document.file_size >= 1024 * 1024:
+                file_size = f"{document.file_size / (1024 * 1024):.1f} MB"
+            elif document.file_size >= 1024:
+                file_size = f"{document.file_size / 1024:.1f} KB"
+            else:
+                file_size = f"{document.file_size} B"
+        return templates.TemplateResponse(
+            request,
+            "clean_document_detail.html",
+            {
+                "document": document,
+                "vehicle": vehicle,
+                "vehicle_ctx": vehicle_ctx,
+                "events": events,
+                "file_size": file_size,
+                "document_date": clean_date(document.document_date.isoformat() if document.document_date else None),
+            },
+        )
+
+
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(
     request: Request,
@@ -5989,7 +6029,13 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             .order_by(Document.updated_at.desc(), Document.id.desc())
         ).all()
         documents = all_vehicle_documents[:8]
-        document_summary = clean_vehicle_document_summary(all_vehicle_documents)
+        try:
+            document_module_ctx = vehicle_document_module_context(db, vehicle)
+            document_summary = document_module_ctx["group_counts"]
+            document_group_labels = DOCUMENT_HISTORY_MAIN_GROUP_LABELS
+        except Exception:
+            document_summary = clean_vehicle_document_summary(all_vehicle_documents)
+            document_group_labels = CLEAN_FLEET_DOCUMENT_GROUP_LABELS
         tasks = db.scalars(
             select(Task)
             .where(Task.plate == vehicle.plate, Task.status.not_in(["closed", "resolved", "cancelled"]))
@@ -6021,7 +6067,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             "audits": audits,
             "document_counts": document_counts,
             "document_summary": document_summary,
-            "document_group_labels": CLEAN_FLEET_DOCUMENT_GROUP_LABELS,
+            "document_group_labels": document_group_labels,
         },
     )
 

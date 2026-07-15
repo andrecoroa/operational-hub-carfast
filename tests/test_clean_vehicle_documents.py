@@ -208,6 +208,41 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert "Folhas de obra" in page.text
     assert "FO-1576" in page.text
 
+    fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
+    assert fleet_page.status_code == 200
+    assert "Folhas de obra" in fleet_page.text
+    assert f"/v2-clean/fleet/{vehicle.id}/documents?main_group=work_orders" in fleet_page.text
+    assert "<strong>1</strong>" in fleet_page.text
+
+
+def test_clean_document_detail_page_renders_in_v2(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    document = Document(
+        title="Fatura oficina",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean",
+        original_name="fatura.pdf",
+        file_name="fatura.pdf",
+        file_type="pdf",
+        file_size=2048,
+        storage_provider="local",
+        storage_path="/tmp/fatura.pdf",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        status="archived",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/documents/{document.id}")
+
+    assert response.status_code == 200
+    assert "Fatura oficina" in response.text
+    assert vehicle.plate in response.text
+    assert "Voltar à documentação" in response.text
+
 
 def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(authenticated_client, db_session):
     current_vehicle = _create_vehicle(db_session)

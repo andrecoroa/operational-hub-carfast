@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-page-hero clean-card-wide">
+      <div>
+        <p class="eyebrow">Documentação / detalhe v2</p>
+        <h1>{{ document.title or document.original_name or ("Documento #" ~ document.id) }}</h1>
+        <p>Consulta e validação do documento dentro da nova experiência.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        {% if vehicle %}
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Voltar à documentação</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
+        {% else %}
+          <a class="button-link secondary-link" href="/v2-clean/documents">Centro de documentação</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if vehicle_ctx %}
+      <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
+        <div class="clean-vehicle-header-main">
+          <div class="clean-vehicle-identity">
+            <p class="eyebrow">Viatura associada</p>
+            <strong>{{ vehicle_ctx.identity.plate or "-" }}</strong>
+            <span>{{ vehicle_ctx.identity.brand }} {{ vehicle_ctx.identity.model }}{% if vehicle_ctx.identity.version and vehicle_ctx.identity.version != "-" %} · {{ vehicle_ctx.identity.version }}{% endif %}</span>
+            <em>Unit {{ vehicle_ctx.identity.unit or "-" }} · Chassi: {{ vehicle_ctx.identity.vin }}</em>
+          </div>
+          <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+            <span><b>Fornecedor</b><em>{{ vehicle_ctx.identity.purchase_supplier }}</em></span>
+            <span><b>Combustível</b><em>{{ vehicle_ctx.identity.fuel }}</em></span>
+            <span><b>Grupo</b><em>{{ vehicle_ctx.identity.groupid }}</em></span>
+            <span><b>Compra</b><em>{{ vehicle_ctx.dates.purchase }}</em></span>
+            <span><b>Próx. manutenção</b><em>{{ vehicle_ctx.maintenance.next_display }}</em></span>
+            <span><b>Próxima IPO</b><em>{{ vehicle_ctx.dates.calculated_ipo }}</em></span>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="clean-doc-context-grid">
+      <article class="clean-card-wide clean-panel">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Resumo</p>
+            <h3>Dados documentais</h3>
+            <p>Informação mínima para classificar, auditar e localizar o documento.</p>
+          </div>
+          <span class="status-pill">{{ document.status or "-" }}</span>
+        </div>
+        <div class="clean-detail-facts">
+          <div><span>Tipo</span><strong>{{ document.document_type or "-" }}</strong></div>
+          <div><span>Área</span><strong>{{ document.classification or "-" }}</strong></div>
+          <div><span>Data</span><strong>{{ document_date }}</strong></div>
+          <div><span>Matrícula</span><strong>{{ document.plate or "-" }}</strong></div>
+          <div><span>Fornecedor / origem</span><strong>{{ document.supplier_name or document.source or "-" }}</strong></div>
+          <div><span>Nº documento</span><strong>{{ document.contract_number or document.reservation_number or document.id }}</strong></div>
+          <div><span>Processo oficina</span><strong>{% if document.workshop_process_id %}#{{ document.workshop_process_id }}{% else %}-{% endif %}</strong></div>
+          <div><span>Canal</span><strong>{{ document.entry_channel or "-" }}</strong></div>
+        </div>
+      </article>
+
+      <article class="clean-card-wide clean-panel">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Arquivo</p>
+            <h3>Localização e origem</h3>
+            <p>O ficheiro fica preservado; aqui mostramos a referência para consulta e auditoria.</p>
+          </div>
+        </div>
+        <div class="clean-detail-facts">
+          <div><span>Nome original</span><strong>{{ document.original_name or "-" }}</strong></div>
+          <div><span>Ficheiro</span><strong>{{ document.file_name or "-" }}</strong></div>
+          <div><span>Armazenamento</span><strong>{{ document.storage_provider or "-" }}</strong></div>
+          <div><span>Tamanho</span><strong>{{ file_size }}</strong></div>
+        </div>
+        <label class="full-width">
+          Caminho / referência
+          <input type="text" value="{{ document.storage_path or document.external_url or '-' }}" readonly>
+        </label>
+      </article>
+    </section>
+
+    <section class="clean-card-wide clean-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Histórico</p>
+          <h3>Eventos do documento</h3>
+        </div>
+        <span class="status-pill">{{ events|length }} eventos</span>
+      </div>
+      <div class="clean-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Ação</th>
+              <th>Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td>{{ event.created_at.strftime("%d/%m/%Y %H:%M") if event.created_at else "-" }}</td>
+                <td>{{ event.action }}</td>
+                <td>{{ event.new_value or event.old_value or "-" }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="clean-empty-cell">Sem eventos registados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -6,14 +6,14 @@
   <main class="content clean-content">
     <header class="clean-doc-page-header clean-card-wide">
       <div class="clean-doc-header-main">
-        <p class="eyebrow">Documentação / módulo global</p>
-        <h1>Importação estruturada</h1>
-        <p>Este ecrã serve só para listagens globais. Documentos reais, PDFs e evidências continuam a entrar na página documental da própria viatura.</p>
+        <p class="eyebrow">Documentação / gestão v2</p>
+        <h1>Centro de documentação</h1>
+        <p>Área global para importar listagens estruturadas, acompanhar cobertura documental e preparar validações por viatura.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
-        <a class="button-link secondary-link" href="/v2-clean/documents">Atualizar</a>
+        <a class="button-link secondary-link" href="#imports">Importações</a>
       </div>
     </header>
 
@@ -58,15 +58,45 @@
       <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Âmbito</p>
-            <h3>O que entra aqui</h3>
-            <p>Listagens estruturadas para todas as viaturas: folhas de obra, impros e contratos. Nada disto deve ser importado dentro da página individual da viatura.</p>
+            <p class="eyebrow">Gestão documental</p>
+            <h3>Separação entre listagens e documentos reais</h3>
+            <p>As listagens estruturadas entram aqui uma vez para todas as viaturas. PDFs, imagens e evidências reais entram na página documental da própria viatura.</p>
           </div>
           <strong class="clean-doc-pill">Global</strong>
         </div>
+        <div class="clean-doc-overview-pills">
+          <span><b>Listagens</b><em>FO, impros e contratos</em></span>
+          <span><b>Documentos reais</b><em>por viatura</em></span>
+          <span><b>Pendentes</b><em>na ficha documental</em></span>
+          <span><b>Timeline</b><em>gerada por histórico</em></span>
+        </div>
       </article>
 
-      <section class="clean-doc-import-center-grid">
+      <article class="clean-doc-table-card clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Consulta</p>
+            <h3>Áreas de trabalho</h3>
+            <p>Entradas rápidas para preparar dados antes de abrir a ficha documental de uma viatura.</p>
+          </div>
+        </div>
+        <div class="clean-doc-import-hero">
+          <a class="clean-doc-import-hero-stat" href="/v2-clean/fleet">
+            <strong>Frota</strong>
+            <span>Pesquisar viatura e abrir documentação</span>
+          </a>
+          <a class="clean-doc-import-hero-stat" href="/v2-clean/documents/new">
+            <strong>Novo doc.</strong>
+            <span>Registo manual quando não vem da ficha</span>
+          </a>
+          <a class="clean-doc-import-hero-stat" href="#imports">
+            <strong>Importar</strong>
+            <span>Listagens estruturadas globais</span>
+          </a>
+        </div>
+      </article>
+
+      <section class="clean-doc-import-center-grid" id="imports">
         <article class="clean-doc-structure-card clean-card-wide">
           <div class="table-heading flat-heading">
             <div>

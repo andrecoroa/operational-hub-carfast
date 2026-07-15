@@ -5346,6 +5346,19 @@ def clean_fleet_documents(
             ):
                 continue
             structured_rows.append(row)
+        structured_order = [code for code, _label in DOCUMENT_HISTORY_MAIN_GROUPS]
+        structured_seen = {row["main_group"] for row in structured_rows}
+        structured_sections = []
+        for group_code in structured_order + sorted(structured_seen - set(structured_order)):
+            group_rows = [row for row in structured_rows if row["main_group"] == group_code]
+            if group_rows:
+                structured_sections.append(
+                    {
+                        "code": group_code,
+                        "label": DOCUMENT_HISTORY_MAIN_GROUP_LABELS.get(group_code, group_code),
+                        "rows": group_rows,
+                    }
+                )
 
         comparison_rows = [
             row
@@ -5384,6 +5397,7 @@ def clean_fleet_documents(
             "module_ctx": module_ctx,
             "archive_rows": archive_rows,
             "structured_rows": structured_rows,
+            "structured_sections": structured_sections,
             "comparison_rows": comparison_rows,
             "q": q or "",
             "main_group": clean_main_group,

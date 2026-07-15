@@ -48,7 +48,7 @@
         <div class="clean-context-action-row">
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
-          <a class="button-link secondary-link" href="/task-board?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
+          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
         </div>
       </article>
     </section>
@@ -239,53 +239,125 @@
         <summary>
           <span>
               <b>Documentação estruturada</b>
-              <small>Tabelas separadas por tipo documental para leitura e cruzamento</small>
+              <small>Listagens globais separadas por tipo, com leitura e ações próprias</small>
             </span>
             <em>{{ structured_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
-          {% for grouped in structured_rows|groupby("group_label") %}
-            <section class="clean-doc-structured-block">
+          {% for grouped in structured_sections %}
+            {% set group_code = grouped.code %}
+            {% set group_label = grouped.label %}
+            <section class="clean-doc-structured-block clean-doc-structured-block-{{ group_code }}">
               <div class="table-heading flat-heading">
                 <div>
-                  <h4>{{ grouped.grouper }}</h4>
-                  <p>{{ grouped.list|length }} registos neste tipo documental.</p>
+                  <h4>{{ group_label }}</h4>
+                  {% if group_code == "work_orders" %}
+                    <p>Serviços pedidos, fornecedor, quilómetros e classificação operacional.</p>
+                  {% elif group_code == "invoices" %}
+                    <p>Documentos financeiros e ligação futura a folhas de obra.</p>
+                  {% elif group_code == "contracts" %}
+                    <p>Contratos e períodos de utilização para compor a linha central da timeline.</p>
+                  {% elif group_code == "impros" %}
+                    <p>Impros, garagem, tipo e quilómetros para histórico de utilização.</p>
+                  {% elif group_code == "ars" %}
+                    <p>Autorizações/reparações ligadas à viatura, sempre no lado direito da timeline.</p>
+                  {% elif group_code == "claims" %}
+                    <p>Sinistros e ocorrências para leitura conjunta com faturas e AR's.</p>
+                  {% else %}
+                    <p>{{ grouped.list|length }} registos neste tipo documental.</p>
+                  {% endif %}
                 </div>
+                <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
               </div>
               <div class="clean-doc-table-wrap">
                 <table class="clean-doc-table">
                   <thead>
                     <tr>
                       <th>Data</th>
+                      {% if group_code in ["work_orders", "ars", "claims"] %}
+                        <th>Nº / referência</th>
+                        <th>Fornecedor / origem</th>
+                        <th>KM</th>
+                        <th>Serviço / descrição</th>
+                        <th>Estado</th>
+                        <th>Classificação</th>
+                      {% elif group_code == "contracts" %}
+                        <th>Contrato / RA</th>
+                        <th>Cliente / entidade</th>
+                        <th>Período / estado</th>
+                        <th>Ref. externa</th>
+                        <th>Notas</th>
+                      {% elif group_code == "impros" %}
+                        <th>Impro</th>
+                        <th>Garagem / origem</th>
+                        <th>KM</th>
+                        <th>Tipo / estado</th>
+                        <th>Observação</th>
+                      {% else %}
                         <th>Título</th>
                         <th>Fornecedor / origem</th>
                         <th>KM</th>
                         <th>Comparação</th>
                         <th>Etiquetas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in grouped.list %}
+                      {% endif %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in grouped.rows %}
                       <tr>
                         <td>{{ row.date_display or "-" }}</td>
-                        <td>
-                          <strong>{{ row.title }}</strong>
-                          {% if row.external_reference and row.external_reference != row.title %}
-                            <small>{{ row.external_reference }}</small>
-                          {% endif %}
-                        </td>
-                        <td>{{ row.supplier_name }}</td>
-                        <td>{{ row.km if row.km is not none else "-" }}</td>
-                        <td>{{ row.comparison_label }}</td>
-                        <td>
-                          <div class="clean-doc-tag-list">
-                            {% for tag in row.tags %}
-                              <span>{{ tag }}</span>
-                            {% else %}
-                              <em>-</em>
-                            {% endfor %}
-                          </div>
-                        </td>
+                        {% if group_code in ["work_orders", "ars", "claims"] %}
+                          <td>
+                            <strong>{{ row.title }}</strong>
+                            {% if row.external_reference and row.external_reference != row.title and row.external_reference != "-" %}
+                              <small>{{ row.external_reference }}</small>
+                            {% endif %}
+                          </td>
+                          <td>{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.description or "-" }}</td>
+                          <td>{{ row.comparison_label }}</td>
+                          <td>
+                            <div class="clean-doc-tag-list">
+                              {% for tag in row.tags %}
+                                <span>{{ tag }}</span>
+                              {% else %}
+                                <em>Por classificar</em>
+                              {% endfor %}
+                            </div>
+                          </td>
+                        {% elif group_code == "contracts" %}
+                          <td><strong>{{ row.title }}</strong></td>
+                          <td>{{ row.supplier_name }}</td>
+                          <td>{{ row.description or row.status or "-" }}</td>
+                          <td>{{ row.external_reference or "-" }}</td>
+                          <td>{{ row.process_reference or "-" }}</td>
+                        {% elif group_code == "impros" %}
+                          <td><strong>{{ row.title }}</strong></td>
+                          <td>{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.status }}</td>
+                          <td>{{ row.description or row.process_reference or "-" }}</td>
+                        {% else %}
+                          <td>
+                            <strong>{{ row.title }}</strong>
+                            {% if row.external_reference and row.external_reference != row.title %}
+                              <small>{{ row.external_reference }}</small>
+                            {% endif %}
+                          </td>
+                          <td>{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.comparison_label }}</td>
+                          <td>
+                            <div class="clean-doc-tag-list">
+                              {% for tag in row.tags %}
+                                <span>{{ tag }}</span>
+                              {% else %}
+                                <em>-</em>
+                              {% endfor %}
+                            </div>
+                          </td>
+                        {% endif %}
                       </tr>
                     {% endfor %}
                   </tbody>

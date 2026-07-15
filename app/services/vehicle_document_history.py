@@ -480,6 +480,33 @@ def import_work_orders_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None 
     return imported
 
 
+def detect_structured_import_vehicle_ids(db: Session, *, path: Path, import_kind: str) -> set[int]:
+    vehicle_ids: set[int] = set()
+    by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
+    for _sheet, headers, _row_number, row, _raw in iter_xlsx_rows(path):
+        cols = build_column_lookup(headers)
+        plate_candidates = ["Matrícula", "Matricula", "PlateNr"]
+        vin = None
+        unit = None
+        if import_kind == "contracts":
+            plate_candidates = ["Matrícula", "Matricula", "PlateNr", "Plate"]
+            vin = _normalize_text(first_row_value(row, cols, ["Chassi", "VIN", "Vin", "Chassis"]))
+            unit = _normalize_text(first_row_value(row, cols, ["Unit", "UnitNr", "Unit Nr", "Unit Rentway"]))
+        plate = _normalize_text(first_row_value(row, cols, plate_candidates))
+        row_vehicle = _resolve_vehicle_for_import_row(
+            fallback_vehicle=None,
+            by_plate=by_plate,
+            by_vin=by_vin,
+            by_unit=by_unit,
+            plate=plate,
+            vin=vin,
+            unit=unit,
+        )
+        if row_vehicle:
+            vehicle_ids.add(row_vehicle.id)
+    return vehicle_ids
+
+
 def import_impros_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
     imported = 0
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)

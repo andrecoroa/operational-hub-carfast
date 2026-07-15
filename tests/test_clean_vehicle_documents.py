@@ -194,6 +194,52 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert record.supplier_name == "Oficina Porto"
 
 
+def test_clean_vehicle_documents_import_work_orders_redirects_to_detected_vehicle(authenticated_client, db_session):
+    current_vehicle = _create_vehicle(db_session)
+    target_vehicle = Vehicle(
+        plate="BB-69-TE",
+        vin="VINBB69TE123456789",
+        brand="CITROEN",
+        model="BERLINGO",
+        version="XL",
+        rentway_unit_nr="244",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(target_vehicle)
+    db_session.commit()
+    db_session.refresh(target_vehicle)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [["1682", "2026-06-22", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"]],
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{current_vehicle.id}/documents/import/work-orders",
+        files={"file": ("fo.xlsx", workbook.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(f"/v2-clean/fleet/{target_vehicle.id}/documents")
+    target_record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == target_vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+        )
+    )
+    current_record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == current_vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+        )
+    )
+    assert target_record is not None
+    assert target_record.title == "1682"
+    assert current_record is None
+
+
 def test_clean_vehicle_documents_import_impros(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

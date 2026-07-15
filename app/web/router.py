@@ -126,6 +126,7 @@ from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
     DOCUMENT_HISTORY_STRUCTURED_GROUPS,
+    V2_CLEAN_DOCUMENT_SOURCES,
     add_quick_classification,
     attach_document_to_record,
     create_archive_placeholder,
@@ -5636,13 +5637,16 @@ def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, 
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_work_orders_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=work_orders", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=work_orders&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/impros")
@@ -5652,13 +5656,16 @@ def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file:
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_impros_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_impros_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=impros", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=impros&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/contracts")
@@ -5668,13 +5675,16 @@ def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, fi
         return denied
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
+            imported_count = import_contracts_xlsx(db, path=tmp_path, vehicle=vehicle, user_id=user_id)
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    return RedirectResponse("/v2-clean/documents?imported=contracts", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=contracts&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/pending")
@@ -5813,7 +5823,10 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
         context = clean_vehicle_display_context(db, vehicle)
         all_vehicle_documents = db.scalars(
             select(Document)
-            .where(or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate))
+            .where(
+                or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
+                Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+            )
             .order_by(Document.updated_at.desc(), Document.id.desc())
         ).all()
         documents = all_vehicle_documents[:8]
@@ -5834,7 +5847,8 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             row[0] or "sem_classificacao": row[1]
             for row in db.execute(
                 select(Document.classification, func.count()).where(
-                    or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate)
+                    or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
+                    Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
                 ).group_by(Document.classification)
             ).all()
         }
@@ -14108,13 +14122,16 @@ def document_create(
                 file_size = len(content)
                 file_hash = digest
 
+        clean_document_source = "v2_clean_manual" if is_clean_target else (source.strip() or None)
+        clean_entry_channel = "v2_clean" if is_clean_target else (entry_channel.strip() or None)
+
         document = Document(
             title=clean_title,
             document_type=document_type,
             classification=classification,
             status=status,
-            source=source.strip() or None,
-            entry_channel=entry_channel.strip() or None,
+            source=clean_document_source,
+            entry_channel=clean_entry_channel,
             source_sender=source_sender.strip() or None,
             source_subject=source_subject.strip() or None,
             original_name=original_name,

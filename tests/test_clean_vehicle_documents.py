@@ -3,13 +3,29 @@ from io import BytesIO
 from openpyxl import Workbook
 from sqlalchemy import select
 
-from app.models.documents import VehicleDocumentAuditField, VehicleDocumentRecord
+from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
 from app.models.vehicles import Vehicle, VehicleManualField
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
     workbook = Workbook()
     sheet = workbook.active
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(row)
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    return stream
+
+
+def _make_rentway_export_workbook(title: str, headers: list[str], rows: list[list[object]]) -> BytesIO:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([title])
+    sheet.append([""])
+    sheet.append([f"{len(rows)} resultados"])
+    sheet.append([None for _ in headers])
     sheet.append(headers)
     for row in rows:
         sheet.append(row)
@@ -43,11 +59,47 @@ def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
     response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
 
     assert response.status_code == 200
-    assert "Enquadramento documental" in response.text
     assert "Documentação de arquivo" in response.text
-    assert "Documentação de listagem" in response.text
-    assert "Timeline horizontal documental" in response.text
-    assert "Validação manual" in response.text
+    assert "Documentação estruturada" in response.text
+    assert "Timeline documental" in response.text
+
+
+def test_clean_vehicle_summary_hides_legacy_documents(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    legacy_document = Document(
+        title="Relatório antigo",
+        document_type="workshop_report",
+        classification="technical_report",
+        source="workshop",
+        entry_channel="legacy",
+        original_name="legacy.pdf",
+        file_name="legacy.pdf",
+        storage_provider="local",
+        storage_path="/tmp/legacy.pdf",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    clean_document = Document(
+        title="Relatório v2",
+        document_type="workshop_report",
+        classification="technical_report",
+        source="v2_clean_manual",
+        entry_channel="v2_clean",
+        original_name="clean.pdf",
+        file_name="clean.pdf",
+        storage_provider="local",
+        storage_path="/tmp/clean.pdf",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add_all([legacy_document, clean_document])
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
+
+    assert response.status_code == 200
+    assert "Relatório v2" in response.text
+    assert "Relatório antigo" not in response.text
 
 
 def test_clean_vehicle_documents_audit_field_syncs_real_start(authenticated_client, db_session):
@@ -240,3 +292,111 @@ def test_clean_vehicle_documents_import_rental_agreements_format(authenticated_c
     assert record.title == "RA 15519"
     assert record.supplier_name == "NEGRELCAR"
     assert record.document_date is not None
+
+
+def test_clean_vehicle_documents_import_rentway_exports_with_preamble(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    impros = _make_rentway_export_workbook(
+        "Impros - 13/07/2026 15:20",
+        [
+            "Status",
+            "Impro",
+            "Station_In",
+            "Date_In",
+            "PlateNr",
+            "BrandID",
+            "ModelID",
+            "Driver_Name",
+            "GroupID",
+            "Station_Out",
+            "Date_Out",
+            "Garage",
+            "Driven_Kms",
+            "Impro_Type_Code",
+            "Impro_Type_Description",
+        ],
+        [[
+            "Closed",
+            6400,
+            "AEROPORTO PORTO",
+            "2026-01-12",
+            "CC-11-AA",
+            "CITROEN",
+            "BERLINGO",
+            "Filinto Mota",
+            "2",
+            "OFICINA",
+            "2026-01-06",
+            "",
+            51,
+            "0010",
+            "OFICINA",
+        ]],
+    )
+    contracts = _make_rentway_export_workbook(
+        "Informações de Contratos - 13/07/2026 15:21",
+        [
+            "ra",
+            "station",
+            "creation_date",
+            "ndays",
+            "date_out",
+            "date_in",
+            "rate_code",
+            "salesperson",
+            "origin",
+            "plate",
+            "category",
+            "category_requested",
+            "invoiced_amount",
+            "customer_name",
+            "cashier_amount",
+        ],
+        [[
+            48,
+            "AEROPORTO PORTO",
+            "2024-01-11",
+            31,
+            "2024-01-01",
+            "2024-01-31",
+            "CORP MENSAL",
+            "DIRECTOS",
+            "DIRECTOS",
+            "CC-11-AA",
+            "CITROEN BERLINGO OU SIMILAR",
+            "CITROEN BERLINGO OU SIMILAR",
+            711.91,
+            "ROTA LATINA, LDA.",
+            0,
+        ]],
+    )
+
+    impro_response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/impros",
+        files={"file": ("impros.xlsx", impros.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+    contract_response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/contracts",
+        files={"file": ("contracts.xlsx", contracts.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert impro_response.status_code == 303
+    assert "imported_count=1" in impro_response.headers["location"]
+    assert contract_response.status_code == 303
+    assert "imported_count=1" in contract_response.headers["location"]
+    assert db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "impros",
+            VehicleDocumentRecord.external_reference == "6400",
+        )
+    )
+    assert db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "contracts",
+            VehicleDocumentRecord.external_reference == "48",
+        )
+    )

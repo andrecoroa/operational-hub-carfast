@@ -61,6 +61,8 @@ DOCUMENT_HISTORY_STRUCTURED_GROUPS = [
 ]
 DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS = dict(DOCUMENT_HISTORY_STRUCTURED_GROUPS)
 
+V2_CLEAN_DOCUMENT_SOURCES = ("workshop_v2_clean", "v2_clean_manual")
+
 DOCUMENT_HISTORY_COMPARISON_STATES = [
     ("coerente", "Coerente"),
     ("complementar", "Complementar"),
@@ -640,7 +642,10 @@ def import_contracts_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = 
 def _load_vehicle_documents(db: Session, vehicle: Vehicle) -> list[Document]:
     return db.scalars(
         select(Document)
-        .where(or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate))
+        .where(
+            or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
+            Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+        )
         .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
     ).all()
 

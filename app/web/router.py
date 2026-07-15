@@ -14185,6 +14185,8 @@ def document_create(
     if clean_return_url:
         separator = "&" if "?" in clean_return_url else "?"
         return RedirectResponse(f"{clean_return_url}{separator}document_created=1", status_code=303)
+    if is_clean_target:
+        return RedirectResponse("/v2-clean/documents?document_created=1", status_code=303)
     return RedirectResponse("/documents/manage?created=1", status_code=303)
 
 

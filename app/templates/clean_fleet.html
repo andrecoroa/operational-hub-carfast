@@ -36,18 +36,16 @@
 
       <div class="clean-fleet-list">
         {% for row in rows %}
-          {% set ctx = row.context %}
-          {% set vehicle = row.vehicle %}
-          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ vehicle.id }}">
+          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ row.id }}">
             <div class="clean-fleet-row-main">
-              <strong>{{ ctx.identity.plate or '-' }}</strong>
-              <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != '-' %} · {{ ctx.identity.version }}{% endif %}</span>
-              <em>Unit {{ ctx.identity.unit or '-' }} · {{ ctx.identity.vin }}</em>
+              <strong>{{ row.plate }}</strong>
+              <span>{{ row.brand }} {{ row.model }}{% if row.version and row.version != '-' %} · {{ row.version }}{% endif %}</span>
+              <em>Unit {{ row.unit }} · {{ row.vin }}</em>
             </div>
-            <div><span>Grupo</span><b>{{ ctx.identity.groupid }}</b></div>
-            <div><span>Combustível</span><b>{{ ctx.identity.fuel }}</b></div>
-            <div><span>IPO</span><b>{{ ctx.dates.calculated_ipo }}</b></div>
-            <div><span>Manutenção</span><b>{{ ctx.maintenance.status }}</b></div>
+            <div><span>Grupo</span><b>{{ row.group }}</b></div>
+            <div><span>Combustível</span><b>{{ row.fuel }}</b></div>
+            <div><span>IPO</span><b>{{ row.ipo }}</b></div>
+            <div><span>Manutenção</span><b>{{ row.maintenance }}</b></div>
             <div class="clean-fleet-row-alert {% if row.primary_alert %}{{ row.primary_alert.severity }}{% endif %}">
               {% if row.primary_alert %}<b>{{ row.primary_alert.title }}</b><span>{{ row.primary_alert.detail }}</span>{% else %}<b>Sem alertas</b><span>Dados críticos OK</span>{% endif %}
             </div>

@@ -5173,7 +5173,7 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
     raw_query = (q or "").strip()
     normalized_query = normalize_identifier(raw_query) if raw_query else ""
     with SessionLocal() as db:
-        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(500)
+        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(300)
         if scope == "active":
             stmt = stmt.where(
                 Vehicle.active.is_(True),
@@ -5205,16 +5205,20 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
         ]
         rows = []
         for vehicle in vehicles:
-            try:
-                context = clean_vehicle_display_context(db, vehicle)
-            except Exception as exc:
-                context = clean_vehicle_fallback_context(vehicle, exc)
             rows.append(
                 {
-                    "vehicle": vehicle,
-                    "context": context,
-                    "alert_count": len(context["alerts"]),
-                    "primary_alert": context["alerts"][0] if context["alerts"] else None,
+                    "id": vehicle.id,
+                    "plate": vehicle.plate or "-",
+                    "brand": vehicle.brand or "-",
+                    "model": vehicle.model or "-",
+                    "version": vehicle.version or "",
+                    "unit": vehicle.rentway_unit_nr or "-",
+                    "vin": vehicle.vin or "-",
+                    "group": "-",
+                    "fuel": "-",
+                    "ipo": "-",
+                    "maintenance": vehicle.lifecycle_status or vehicle.operational_status or "Ver ficha",
+                    "primary_alert": None,
                 }
             )
         sale_block_fields = db.scalars(

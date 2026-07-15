@@ -193,8 +193,13 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert record.title == "FO-1576"
     assert record.supplier_name == "Oficina Porto"
 
+    page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+    assert page.status_code == 200
+    assert "Folhas de obra" in page.text
+    assert "FO-1576" in page.text
 
-def test_clean_vehicle_documents_import_work_orders_redirects_to_detected_vehicle(authenticated_client, db_session):
+
+def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(authenticated_client, db_session):
     current_vehicle = _create_vehicle(db_session)
     target_vehicle = Vehicle(
         plate="BB-69-TE",
@@ -222,7 +227,7 @@ def test_clean_vehicle_documents_import_work_orders_redirects_to_detected_vehicl
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith(f"/v2-clean/fleet/{target_vehicle.id}/documents")
+    assert response.headers["location"].startswith(f"/v2-clean/fleet/{current_vehicle.id}/documents")
     target_record = db_session.scalar(
         select(VehicleDocumentRecord).where(
             VehicleDocumentRecord.vehicle_id == target_vehicle.id,
@@ -235,8 +240,7 @@ def test_clean_vehicle_documents_import_work_orders_redirects_to_detected_vehicl
             VehicleDocumentRecord.main_group == "work_orders",
         )
     )
-    assert target_record is not None
-    assert target_record.title == "1682"
+    assert target_record is None
     assert current_record is None
 
 

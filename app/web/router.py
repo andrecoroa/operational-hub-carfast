@@ -130,7 +130,6 @@ from app.services.vehicle_document_history import (
     add_quick_classification,
     attach_document_to_record,
     create_archive_placeholder,
-    detect_structured_import_vehicle_ids,
     import_contracts_xlsx,
     import_impros_xlsx,
     import_work_orders_xlsx,
@@ -5647,18 +5646,16 @@ def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, 
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            detected_vehicle_ids = detect_structured_import_vehicle_ids(db, path=tmp_path, import_kind="work_orders")
             imported_count = import_work_orders_xlsx(
                 db,
                 path=tmp_path,
-                vehicle=None if detected_vehicle_ids else vehicle,
+                vehicle=vehicle,
                 user_id=user_id,
             )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    redirect_vehicle_id = next(iter(detected_vehicle_ids)) if len(detected_vehicle_ids) == 1 else vehicle_id
-    return RedirectResponse(f"/v2-clean/fleet/{redirect_vehicle_id}/documents?imported=work_orders&imported_count={imported_count}", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=work_orders&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/impros")
@@ -5673,18 +5670,16 @@ def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            detected_vehicle_ids = detect_structured_import_vehicle_ids(db, path=tmp_path, import_kind="impros")
             imported_count = import_impros_xlsx(
                 db,
                 path=tmp_path,
-                vehicle=None if detected_vehicle_ids else vehicle,
+                vehicle=vehicle,
                 user_id=user_id,
             )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    redirect_vehicle_id = next(iter(detected_vehicle_ids)) if len(detected_vehicle_ids) == 1 else vehicle_id
-    return RedirectResponse(f"/v2-clean/fleet/{redirect_vehicle_id}/documents?imported=impros&imported_count={imported_count}", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=impros&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/contracts")
@@ -5699,18 +5694,16 @@ def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, fi
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            detected_vehicle_ids = detect_structured_import_vehicle_ids(db, path=tmp_path, import_kind="contracts")
             imported_count = import_contracts_xlsx(
                 db,
                 path=tmp_path,
-                vehicle=None if detected_vehicle_ids else vehicle,
+                vehicle=vehicle,
                 user_id=user_id,
             )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
-    redirect_vehicle_id = next(iter(detected_vehicle_ids)) if len(detected_vehicle_ids) == 1 else vehicle_id
-    return RedirectResponse(f"/v2-clean/fleet/{redirect_vehicle_id}/documents?imported=contracts&imported_count={imported_count}", status_code=303)
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?imported=contracts&imported_count={imported_count}", status_code=303)
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/pending")

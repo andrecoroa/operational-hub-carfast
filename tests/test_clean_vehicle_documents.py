@@ -192,6 +192,16 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert record is not None
     assert record.title == "FO-1576"
     assert record.supplier_name == "Oficina Porto"
+    import_source = db_session.scalar(
+        select(Document).where(
+            Document.vehicle_id == vehicle.id,
+            Document.entry_channel == "structured_import",
+            Document.source_subject == "work_orders:1",
+        )
+    )
+    assert import_source is not None
+    assert import_source.file_hash
+    assert import_source.storage_path.endswith(".xlsx")
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
@@ -290,6 +300,14 @@ def test_clean_vehicle_documents_import_impros(authenticated_client, db_session)
     assert record.title == "IMP-9281"
     assert record.km == 42110
     assert record.supplier_name == "Oficina Norte"
+    import_source = db_session.scalar(
+        select(Document).where(
+            Document.vehicle_id == vehicle.id,
+            Document.entry_channel == "structured_import",
+            Document.source_subject == "impros:1",
+        )
+    )
+    assert import_source is not None
 
 
 def test_clean_vehicle_documents_import_contracts(authenticated_client, db_session):
@@ -316,6 +334,14 @@ def test_clean_vehicle_documents_import_contracts(authenticated_client, db_sessi
     assert record.title == "CTR-2026-001"
     assert record.supplier_name == "Locadora X"
     assert record.subtype == "Ativo"
+    import_source = db_session.scalar(
+        select(Document).where(
+            Document.vehicle_id == vehicle.id,
+            Document.entry_channel == "structured_import",
+            Document.source_subject == "contracts:1",
+        )
+    )
+    assert import_source is not None
 
 
 def test_clean_vehicle_documents_import_rental_agreements_format(authenticated_client, db_session):

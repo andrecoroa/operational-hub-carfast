@@ -5586,6 +5586,95 @@ def clean_document_import_center(
     )
 
 
+def archive_structured_import_file(
+    db: Session,
+    *,
+    tmp_path: Path,
+    original_filename: str | None,
+    import_kind: str,
+    imported_count: int,
+    user_id: int | None,
+    vehicle: Vehicle | None = None,
+) -> Document:
+    content = tmp_path.read_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    now = datetime.now(UTC)
+    import_labels = {
+        "work_orders": "Folhas de obra",
+        "impros": "Impros",
+        "contracts": "Contratos",
+    }
+    label = import_labels.get(import_kind, import_kind)
+    vehicle_label = vehicle.plate if vehicle and vehicle.plate else "global"
+    original_name = Path(original_filename or f"{import_kind}.xlsx").name
+    existing = db.scalar(
+        select(Document).where(
+            Document.file_hash == digest,
+            Document.source == "v2_clean_manual",
+            Document.entry_channel == "structured_import",
+            Document.vehicle_id == (vehicle.id if vehicle else None),
+        )
+    )
+    if existing:
+        return existing
+
+    folder_path = (
+        f"{vehicle_archive_base_folder(vehicle.plate, vehicle.vin)}/00_Importacoes_Estruturadas"
+        if vehicle
+        else "Frota/_Importacoes_Estruturadas"
+    )
+    storage_dir = local_document_storage_folder(
+        folder_path,
+        plate=vehicle.plate if vehicle else None,
+        vin=vehicle.vin if vehicle else None,
+    )
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = sanitize_archive_component(Path(original_name).stem, import_kind)
+    suffix = Path(original_name).suffix or ".xlsx"
+    stored_path = storage_dir / f"{now.strftime('%Y%m%d_%H%M%S')}_{safe_stem}_{digest[:12]}{suffix.lower()}"
+    if not stored_path.exists():
+        stored_path.write_bytes(content)
+
+    title = f"Importação {label} - {vehicle_label} - {now.strftime('%d/%m/%Y %H:%M')}"
+    document = Document(
+        title=title[:200],
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject=f"{import_kind}:{imported_count}",
+        original_name=original_name[:255],
+        file_name=stored_path.name[:255],
+        file_type=suffix.lstrip(".").lower() or "xlsx",
+        file_size=len(content),
+        storage_provider="local",
+        storage_path=str(stored_path),
+        storage_key=digest,
+        external_url=None,
+        folder_path=folder_path,
+        status="archived",
+        vehicle_id=vehicle.id if vehicle else None,
+        plate=vehicle.plate if vehicle else None,
+        file_hash=digest,
+        uploaded_by_id=user_id,
+        archived_by_id=user_id,
+        archived_at=now,
+        archived=True,
+    )
+    db.add(document)
+    db.flush()
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="structured_import.archived",
+            old_value=None,
+            new_value=f"{label}: {imported_count} registos importados",
+            user_id=user_id,
+        )
+    )
+    return document
+
+
 @web_router.post("/v2-clean/documents/import/work-orders")
 def clean_document_import_center_work_orders(request: Request, file: UploadFile = File(...)):
     denied = clean_experience_denied(request)
@@ -5596,6 +5685,14 @@ def clean_document_import_center_work_orders(request: Request, file: UploadFile 
         tmp_path = save_uploaded_spreadsheet(file)
         try:
             imported_count = import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="work_orders",
+                imported_count=imported_count,
+                user_id=user_id,
+            )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5612,6 +5709,14 @@ def clean_document_import_center_impros(request: Request, file: UploadFile = Fil
         tmp_path = save_uploaded_spreadsheet(file)
         try:
             imported_count = import_impros_xlsx(db, path=tmp_path, user_id=user_id)
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="impros",
+                imported_count=imported_count,
+                user_id=user_id,
+            )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5628,6 +5733,14 @@ def clean_document_import_center_contracts(request: Request, file: UploadFile = 
         tmp_path = save_uploaded_spreadsheet(file)
         try:
             imported_count = import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="contracts",
+                imported_count=imported_count,
+                user_id=user_id,
+            )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5651,6 +5764,15 @@ def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, 
                 path=tmp_path,
                 vehicle=vehicle,
                 user_id=user_id,
+            )
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="work_orders",
+                imported_count=imported_count,
+                user_id=user_id,
+                vehicle=vehicle,
             )
             db.commit()
         finally:
@@ -5676,6 +5798,15 @@ def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file:
                 vehicle=vehicle,
                 user_id=user_id,
             )
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="impros",
+                imported_count=imported_count,
+                user_id=user_id,
+                vehicle=vehicle,
+            )
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5699,6 +5830,15 @@ def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, fi
                 path=tmp_path,
                 vehicle=vehicle,
                 user_id=user_id,
+            )
+            archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="contracts",
+                imported_count=imported_count,
+                user_id=user_id,
+                vehicle=vehicle,
             )
             db.commit()
         finally:

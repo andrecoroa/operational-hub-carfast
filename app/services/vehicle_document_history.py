@@ -748,6 +748,7 @@ def _build_structured_rows(
         select(VehicleDocumentRecord)
         .where(
             VehicleDocumentRecord.vehicle_id == vehicle_id,
+            VehicleDocumentRecord.source_record_type == "structured",
             VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
         )
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
@@ -1129,6 +1130,11 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
     ).all()
     pending_archive_records = [record for record in persisted_records if record.main_group in {"invoices", "diagnostics"}]
+    pending_archive_records = [
+        record
+        for record in pending_archive_records
+        if record.source_record_type == "archive_pending"
+    ]
     structured_rows = _build_structured_rows(db, vehicle.id, record_tags)
     archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records)
     comparison_rows = _build_comparison_rows(structured_rows, archive_rows, record_tags, document_tags)

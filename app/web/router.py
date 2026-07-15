@@ -5559,7 +5559,12 @@ def clean_document_import_center(
         return RedirectResponse("/", status_code=303)
     with SessionLocal() as db:
         structured_counts = {
-            code: db.query(VehicleDocumentRecord).filter(VehicleDocumentRecord.main_group == code).count()
+            code: db.query(VehicleDocumentRecord)
+            .filter(
+                VehicleDocumentRecord.source_record_type == "structured",
+                VehicleDocumentRecord.main_group == code,
+            )
+            .count()
             for code, _label in DOCUMENT_HISTORY_STRUCTURED_GROUPS
         }
         vehicle_count = db.query(Vehicle).count()

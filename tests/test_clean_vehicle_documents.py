@@ -283,6 +283,7 @@ def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(aut
 
     assert response.status_code == 303
     assert response.headers["location"].startswith(f"/v2-clean/fleet/{current_vehicle.id}/documents")
+    assert "imported_count=1" in response.headers["location"]
     target_record = db_session.scalar(
         select(VehicleDocumentRecord).where(
             VehicleDocumentRecord.vehicle_id == target_vehicle.id,
@@ -296,7 +297,9 @@ def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(aut
         )
     )
     assert target_record is None
-    assert current_record is None
+    assert current_record is not None
+    assert current_record.title == "1682"
+    assert current_record.plate == current_vehicle.plate
 
 
 def test_clean_vehicle_documents_import_impros(authenticated_client, db_session):

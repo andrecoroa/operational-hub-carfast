@@ -162,20 +162,8 @@ def _resolve_vehicle_for_import_row(
     unit: str | None = None,
 ) -> Vehicle | None:
     if fallback_vehicle is not None:
-        fallback_plate = normalize_header(fallback_vehicle.plate or "")
-        fallback_vin = normalize_header(fallback_vehicle.vin or "")
-        fallback_unit = normalize_header(fallback_vehicle.rentway_unit_nr or "")
-        row_plate = normalize_header(plate or "")
-        row_vin = normalize_header(vin or "")
-        row_unit = normalize_header(unit or "")
-        if any([row_plate, row_vin, row_unit]) and not any(
-            [
-                row_plate and row_plate == fallback_plate,
-                row_vin and row_vin == fallback_vin,
-                row_unit and row_unit == fallback_unit,
-            ]
-        ):
-            return None
+        # Imports launched from a vehicle file are intentionally scoped to that vehicle.
+        # Global imports still resolve each row by plate, VIN or Rentway unit below.
         return fallback_vehicle
 
     row_plate = normalize_header(plate or "")

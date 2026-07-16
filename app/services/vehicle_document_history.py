@@ -105,6 +105,52 @@ def canonical_structured_import_kind(*values: Any) -> str:
                     return kind
     return ""
 
+
+def structured_import_kind_for_document(document: Document) -> str:
+    return canonical_structured_import_kind(
+        document.source_subject,
+        document.original_name,
+        document.file_name,
+        document.title,
+        document.folder_path,
+    )
+
+
+def is_structured_import_source(document: Document) -> bool:
+    if document.entry_channel == "structured_import":
+        return True
+    import_kind = structured_import_kind_for_document(document)
+    if not import_kind:
+        return False
+    subject = document.source_subject or ""
+    subject_kind = normalize_header(subject.partition(":")[0])
+    suffix = Path(document.original_name or document.file_name or "").suffix.lower()
+    blob = normalize_header(
+        " ".join(
+            str(value or "")
+            for value in (
+                document.title,
+                document.original_name,
+                document.file_name,
+                document.folder_path,
+                document.document_type,
+                document.classification,
+                subject,
+            )
+        )
+    )
+    return bool(
+        document.source == "v2_clean_manual"
+        and (
+            "importacao" in blob
+            or "importacoesestruturadas" in blob
+            or "listagem" in blob
+            or "structuredimport" in blob
+            or suffix in {".xlsx", ".xls", ".csv"}
+            or (":" in subject and subject_kind in STRUCTURED_IMPORT_KIND_ALIASES)
+        )
+    )
+
 V2_CLEAN_DOCUMENT_SOURCES = ("workshop_v2_clean", "v2_clean_manual")
 
 DOCUMENT_HISTORY_COMPARISON_STATES = [
@@ -955,7 +1001,7 @@ def _build_archive_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for document in documents:
-        if document.entry_channel == "structured_import":
+        if is_structured_import_source(document):
             continue
         archive_group = _document_archive_group(document)
         tags = document_tags.get(document.id, [])
@@ -1009,16 +1055,11 @@ def _build_archive_rows(
 def _build_import_rows(documents: list[Document]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for document in documents:
-        if document.entry_channel != "structured_import":
+        if not is_structured_import_source(document):
             continue
         subject = document.source_subject or ""
         _raw_kind, _, count_text = subject.partition(":")
-        import_kind = canonical_structured_import_kind(
-            subject,
-            document.original_name,
-            document.file_name,
-            document.title,
-        ) or "structured"
+        import_kind = structured_import_kind_for_document(document) or "structured"
         rows.append(
             {
                 "id": document.id,
@@ -1377,7 +1418,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
             "label": f"{_display_title(document)} ({_display_date(document.document_date) if document.document_date else 's/data'})",
         }
         for document in documents[:200]
-        if document.entry_channel != "structured_import"
+        if not is_structured_import_source(document)
     ]
     group_counts = {code: 0 for code, _ in DOCUMENT_HISTORY_MAIN_GROUPS}
     for row in structured_rows:

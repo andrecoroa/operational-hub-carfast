@@ -135,6 +135,7 @@ from app.services.vehicle_document_history import (
     import_contracts_xlsx,
     import_impros_xlsx,
     import_work_orders_xlsx,
+    is_structured_import_source,
     save_uploaded_spreadsheet,
     sync_real_start_manual_field,
     upsert_audit_field,
@@ -5647,20 +5648,51 @@ def archive_structured_import_file(
     label = STRUCTURED_IMPORT_KIND_LABELS.get(import_kind, import_kind)
     vehicle_label = vehicle.plate if vehicle and vehicle.plate else "global"
     original_name = Path(original_filename or f"{import_kind}.xlsx").name
+    vehicle_id = vehicle.id if vehicle else None
     existing = db.scalar(
         select(Document).where(
             Document.file_hash == digest,
             Document.source == "v2_clean_manual",
             Document.entry_channel == "structured_import",
-            Document.vehicle_id == (vehicle.id if vehicle else None),
+            Document.vehicle_id == vehicle_id,
         )
     )
+    if not existing:
+        candidates = db.scalars(
+            select(Document).where(
+                Document.file_hash == digest,
+                Document.source == "v2_clean_manual",
+                Document.vehicle_id == vehicle_id,
+            )
+        ).all()
+        existing = next(
+            (
+                candidate
+                for candidate in candidates
+                if is_structured_import_source(candidate)
+                or canonical_structured_import_kind(
+                    import_kind,
+                    candidate.source_subject,
+                    candidate.original_name,
+                    candidate.file_name,
+                    candidate.title,
+                )
+            ),
+            None,
+        )
     if existing:
+        existing.document_type = "general_fleet"
+        existing.classification = "fleet"
+        existing.entry_channel = "structured_import"
         existing.source_subject = f"{import_kind}:{imported_count}"
+        existing.original_name = original_name[:255]
+        existing.file_type = (Path(original_name).suffix or ".xlsx").lstrip(".").lower() or "xlsx"
         existing.status = "archived"
         existing.archived = True
         existing.archived_at = now
         existing.archived_by_id = user_id
+        existing.vehicle_id = vehicle_id
+        existing.plate = vehicle.plate if vehicle else existing.plate
         db.add(
             DocumentEvent(
                 document_id=existing.id,
@@ -5756,8 +5788,15 @@ def reprocess_structured_import_file(
     else:
         imported_count = 0
 
+    document.document_type = "general_fleet"
+    document.classification = "fleet"
+    document.source = "v2_clean_manual"
+    document.entry_channel = "structured_import"
     document.source_subject = f"{import_kind or 'structured'}:{imported_count}"
     document.status = "archived"
+    document.archived = True
+    document.archived_at = datetime.now(UTC)
+    document.archived_by_id = user_id
     db.add(
         DocumentEvent(
             document_id=document.id,
@@ -5854,7 +5893,7 @@ def clean_document_reprocess_structured_import(
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
-        if not document or document.entry_channel != "structured_import":
+        if not document or not is_structured_import_source(document):
             return RedirectResponse("/v2-clean/documents?reprocess_error=not_found", status_code=303)
         try:
             imported_count = reprocess_structured_import_file(db, document=document, user_id=user_id)

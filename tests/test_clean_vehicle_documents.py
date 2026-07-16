@@ -469,6 +469,37 @@ def test_clean_document_reprocess_legacy_source_kind_uses_filename(authenticated
     )
 
 
+def test_clean_vehicle_documents_treats_legacy_import_source_as_structured(db_session):
+    vehicle = _create_vehicle(db_session)
+    source = Document(
+        title="Importação Folhas de obra - CC-11-AA - 16/07/2026 00:03",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="v2_clean",
+        source_subject="Folhas de obra:18",
+        original_name="ordem_de_reparo (2).xlsx",
+        file_name="ordem_de_reparo (2).xlsx",
+        file_type="xlsx",
+        file_size=2048,
+        storage_provider="local",
+        storage_path="/tmp/ordem_de_reparo.xlsx",
+        status="archived",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert module_ctx["archive_rows"] == []
+    assert len(module_ctx["import_rows"]) == 1
+    assert module_ctx["import_rows"][0]["import_kind"] == "work_orders"
+    assert module_ctx["import_rows"][0]["imported_count"] == "18"
+
+
 def test_clean_vehicle_documents_import_real_work_order_headers_updates_context(authenticated_client, db_session):
     vehicle = Vehicle(
         plate="BB-69-TE",
@@ -776,10 +807,17 @@ def test_clean_vehicle_documents_import_rentway_exports_with_preamble(authentica
         )
     )
     module_ctx = vehicle_document_module_context(db_session, vehicle)
+    assert module_ctx["group_counts"]["impros"] == 1
+    assert module_ctx["group_counts"]["contracts"] == 1
+    assert len(module_ctx["import_rows"]) == 2
     contract_rows = [row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts"]
     assert contract_rows
     assert contract_rows[0]["period_display"] == "01/01/2024 a 31/01/2024"
     assert any(
         any(card["group"] == "contracts" and card["period"] == "01/01/2024 a 31/01/2024" for card in event["center"])
+        for event in module_ctx["timeline_events"]
+    )
+    assert any(
+        any(card["group"] == "impros" for card in event["center"])
         for event in module_ctx["timeline_events"]
     )

@@ -5,7 +5,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
-from app.models.vehicles import Vehicle, VehicleManualField
+from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import vehicle_document_module_context
 
 
@@ -300,6 +300,115 @@ def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(aut
     assert current_record is not None
     assert current_record.title == "1682"
     assert current_record.plate == current_vehicle.plate
+
+
+def test_clean_document_global_import_resolves_vehicle_identifier(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate=None,
+        vin="VINBB69TE123456789",
+        brand="CITROEN",
+        model="BERLINGO",
+        version="XL",
+        rentway_unit_nr="244",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+    db_session.add(
+        VehicleIdentifier(
+            vehicle_id=vehicle.id,
+            identifier_type="plate",
+            identifier_value="BB-69-TE",
+            source_system="test",
+            active=True,
+        )
+    )
+    db_session.commit()
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [["1682", "2026-06-22", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"]],
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/work-orders",
+        files={"file": ("fo.xlsx", workbook.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "imported_count=1" in response.headers["location"]
+    record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+        )
+    )
+    assert record is not None
+    assert record.title == "1682"
+
+    page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+    assert page.status_code == 200
+    assert "1682" in page.text
+    assert "Folhas de obra" in page.text
+
+
+def test_clean_document_reprocess_structured_source_materializes_rows(authenticated_client, db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [["1682", "2026-06-22", "CC-11-AA", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"]],
+    )
+    source_path = tmp_path / "fo.xlsx"
+    source_path.write_bytes(workbook.getvalue())
+    source = Document(
+        title="Importação Folhas de obra - CC-11-AA",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="work_orders:0",
+        original_name="fo.xlsx",
+        file_name="fo.xlsx",
+        file_type="xlsx",
+        file_size=source_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="archived",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+    db_session.refresh(source)
+
+    response = authenticated_client.post(
+        f"/v2-clean/documents/{source.id}/reprocess-structured-import",
+        data={"return_url": f"/v2-clean/fleet/{vehicle.id}/documents"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "reprocessed=1" in response.headers["location"]
+    assert "reprocessed_count=1" in response.headers["location"]
+    record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+            VehicleDocumentRecord.external_reference == "1682",
+        )
+    )
+    assert record is not None
+    db_session.refresh(source)
+    assert source.source_subject == "work_orders:1"
+
+    page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+    assert page.status_code == 200
+    assert "Reprocessar linhas" in page.text
+    assert "1682" in page.text
 
 
 def test_clean_vehicle_documents_import_impros(authenticated_client, db_session):

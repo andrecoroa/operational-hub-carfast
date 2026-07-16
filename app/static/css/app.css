@@ -13852,6 +13852,15 @@ a.metric:hover {
   gap: 8px;
 }
 
+.clean-inline-form {
+  display: inline-block;
+  margin: 4px 0 0;
+}
+
+.clean-inline-form .button-link {
+  width: auto;
+}
+
 .clean-doc-inline-form summary {
   list-style: none;
   cursor: pointer;

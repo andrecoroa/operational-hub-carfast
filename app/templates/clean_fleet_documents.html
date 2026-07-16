@@ -329,9 +329,11 @@
                         <td>
                           {% if row.open_href %}
                             <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
-                          {% else %}
-                            -
                           {% endif %}
+                          <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-structured-import" class="clean-inline-form">
+                            <input type="hidden" name="return_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+                            <button type="submit" class="button-link secondary-link">Reprocessar linhas</button>
+                          </form>
                         </td>
                       </tr>
                     {% endfor %}

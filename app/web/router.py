@@ -5717,6 +5717,42 @@ def archive_structured_import_file(
     return document
 
 
+def reprocess_structured_import_file(
+    db: Session,
+    *,
+    document: Document,
+    user_id: int | None,
+) -> int:
+    subject = document.source_subject or ""
+    import_kind, _, _old_count = subject.partition(":")
+    source_path = Path(document.storage_path or "")
+    if not source_path.exists():
+        raise FileNotFoundError(source_path)
+
+    vehicle = db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None
+    if import_kind == "work_orders":
+        imported_count = import_work_orders_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+    elif import_kind == "impros":
+        imported_count = import_impros_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+    elif import_kind == "contracts":
+        imported_count = import_contracts_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+    else:
+        imported_count = 0
+
+    document.source_subject = f"{import_kind}:{imported_count}"
+    document.status = "archived"
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="structured_import.reprocessed",
+            old_value=subject,
+            new_value=f"{import_kind}: {imported_count} registos materializados",
+            user_id=user_id,
+        )
+    )
+    return imported_count
+
+
 @web_router.post("/v2-clean/documents/import/work-orders")
 def clean_document_import_center_work_orders(request: Request, file: UploadFile = File(...)):
     denied = clean_experience_denied(request)
@@ -5787,6 +5823,39 @@ def clean_document_import_center_contracts(request: Request, file: UploadFile = 
         finally:
             tmp_path.unlink(missing_ok=True)
     return RedirectResponse(f"/v2-clean/documents?imported=contracts&imported_count={imported_count}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/{document_id}/reprocess-structured-import")
+def clean_document_reprocess_structured_import(
+    request: Request,
+    document_id: int,
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document or document.entry_channel != "structured_import":
+            return RedirectResponse("/v2-clean/documents?reprocess_error=not_found", status_code=303)
+        try:
+            imported_count = reprocess_structured_import_file(db, document=document, user_id=user_id)
+            db.commit()
+            status = "reprocessed"
+        except FileNotFoundError:
+            db.rollback()
+            imported_count = 0
+            status = "missing_source"
+
+    target = return_url.strip() or "/v2-clean/documents"
+    if not target.startswith("/v2-clean/"):
+        target = "/v2-clean/documents"
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(
+        f"{target}{separator}{status}=1&reprocessed_count={imported_count}",
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/import/work-orders")

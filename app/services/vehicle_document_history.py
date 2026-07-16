@@ -18,7 +18,7 @@ from app.models.documents import (
     VehicleDocumentRecordTag,
 )
 from app.models.management_center import ClaimIncident, ClaimRentwayAR
-from app.models.vehicles import Vehicle, VehicleManualField
+from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.spreadsheets import (
     build_column_lookup,
     clean_int,
@@ -148,6 +148,19 @@ def _vehicle_lookup_maps(db: Session) -> tuple[dict[str, Vehicle], dict[str, Veh
             by_vin[vin_key] = vehicle
         if unit_key and unit_key not in by_unit:
             by_unit[unit_key] = vehicle
+    identifiers = db.scalars(select(VehicleIdentifier).where(VehicleIdentifier.active == True)).all()  # noqa: E712
+    vehicle_by_id = {vehicle.id: vehicle for vehicle in vehicles}
+    for identifier in identifiers:
+        vehicle = vehicle_by_id.get(identifier.vehicle_id)
+        key = normalize_header(identifier.identifier_value or "")
+        if not vehicle or not key:
+            continue
+        if identifier.identifier_type == "plate" and key not in by_plate:
+            by_plate[key] = vehicle
+        elif identifier.identifier_type == "vin" and key not in by_vin:
+            by_vin[key] = vehicle
+        elif identifier.identifier_type in {"unit", "rentway_unit_nr"} and key not in by_unit:
+            by_unit[key] = vehicle
     return by_plate, by_vin, by_unit
 
 

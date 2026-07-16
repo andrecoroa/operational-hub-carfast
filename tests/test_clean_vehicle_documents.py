@@ -411,6 +411,115 @@ def test_clean_document_reprocess_structured_source_materializes_rows(authentica
     assert "1682" in page.text
 
 
+def test_clean_document_reprocess_legacy_source_kind_uses_filename(authenticated_client, db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [["1682", "22/06/2026", "CC-11-AA", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"]],
+    )
+    source_path = tmp_path / "ordem_de_reparo (2).xlsx"
+    source_path.write_bytes(workbook.getvalue())
+    source = Document(
+        title="Importação Folhas de obra - CC-11-AA",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="Folhas de obra:0",
+        original_name="ordem_de_reparo (2).xlsx",
+        file_name="ordem_de_reparo (2).xlsx",
+        file_type="xlsx",
+        file_size=source_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="archived",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+    db_session.refresh(source)
+
+    response = authenticated_client.post(
+        f"/v2-clean/documents/{source.id}/reprocess-structured-import",
+        data={"return_url": f"/v2-clean/fleet/{vehicle.id}/documents"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "reprocessed_count=1" in response.headers["location"]
+    record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+            VehicleDocumentRecord.external_reference == "1682",
+        )
+    )
+    assert record is not None
+    db_session.refresh(source)
+    assert source.source_subject == "work_orders:1"
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    assert module_ctx["group_counts"]["work_orders"] == 1
+    assert any(row["title"] == "1682" for row in module_ctx["structured_rows"])
+    assert any(
+        any(card["group"] == "work_orders" and card["title"] == "1682" for card in event["right"])
+        for event in module_ctx["timeline_events"]
+    )
+
+
+def test_clean_vehicle_documents_import_real_work_order_headers_updates_context(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="BB-69-TE",
+        vin="VR7EFYHT2PJ697244",
+        brand="CITROEN",
+        model="BERLINGO",
+        version="XL 1.5 BH 100 S&S CVM6",
+        rentway_unit_nr="244",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [
+            ["1682", "22/06/2026", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"],
+            ["1608", "25/05/2026", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "CALÇOS ATRAS GASTOS"],
+            ["1606", "25/05/2026", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "REVISAO"],
+        ],
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/work-orders",
+        files={
+            "file": (
+                "ordem_de_reparo (2).xlsx",
+                workbook.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "imported_count=3" in response.headers["location"]
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    assert module_ctx["group_counts"]["work_orders"] == 3
+    assert [row["title"] for row in module_ctx["structured_rows"] if row["main_group"] == "work_orders"][:3] == [
+        "1682",
+        "1608",
+        "1606",
+    ]
+    assert any(
+        any(card["group"] == "work_orders" for card in event["right"])
+        for event in module_ctx["timeline_events"]
+    )
+
+
 def test_clean_vehicle_documents_import_impros(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

@@ -126,9 +126,11 @@ from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
     DOCUMENT_HISTORY_STRUCTURED_GROUPS,
+    STRUCTURED_IMPORT_KIND_LABELS,
     V2_CLEAN_DOCUMENT_SOURCES,
     add_quick_classification,
     attach_document_to_record,
+    canonical_structured_import_kind,
     create_archive_placeholder,
     import_contracts_xlsx,
     import_impros_xlsx,
@@ -5641,12 +5643,8 @@ def archive_structured_import_file(
     content = tmp_path.read_bytes()
     digest = hashlib.sha256(content).hexdigest()
     now = datetime.now(UTC)
-    import_labels = {
-        "work_orders": "Folhas de obra",
-        "impros": "Impros",
-        "contracts": "Contratos",
-    }
-    label = import_labels.get(import_kind, import_kind)
+    import_kind = canonical_structured_import_kind(import_kind, original_filename) or import_kind
+    label = STRUCTURED_IMPORT_KIND_LABELS.get(import_kind, import_kind)
     vehicle_label = vehicle.plate if vehicle and vehicle.plate else "global"
     original_name = Path(original_filename or f"{import_kind}.xlsx").name
     existing = db.scalar(
@@ -5658,6 +5656,20 @@ def archive_structured_import_file(
         )
     )
     if existing:
+        existing.source_subject = f"{import_kind}:{imported_count}"
+        existing.status = "archived"
+        existing.archived = True
+        existing.archived_at = now
+        existing.archived_by_id = user_id
+        db.add(
+            DocumentEvent(
+                document_id=existing.id,
+                action="structured_import.refreshed",
+                old_value=None,
+                new_value=f"{label}: {imported_count} registos materializados",
+                user_id=user_id,
+            )
+        )
         return existing
 
     folder_path = (
@@ -5724,7 +5736,12 @@ def reprocess_structured_import_file(
     user_id: int | None,
 ) -> int:
     subject = document.source_subject or ""
-    import_kind, _, _old_count = subject.partition(":")
+    import_kind = canonical_structured_import_kind(
+        subject,
+        document.original_name,
+        document.file_name,
+        document.title,
+    )
     source_path = Path(document.storage_path or "")
     if not source_path.exists():
         raise FileNotFoundError(source_path)
@@ -5739,7 +5756,7 @@ def reprocess_structured_import_file(
     else:
         imported_count = 0
 
-    document.source_subject = f"{import_kind}:{imported_count}"
+    document.source_subject = f"{import_kind or 'structured'}:{imported_count}"
     document.status = "archived"
     db.add(
         DocumentEvent(

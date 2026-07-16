@@ -61,6 +61,50 @@ DOCUMENT_HISTORY_STRUCTURED_GROUPS = [
 ]
 DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS = dict(DOCUMENT_HISTORY_STRUCTURED_GROUPS)
 
+STRUCTURED_IMPORT_KIND_LABELS = {
+    "work_orders": "Folhas de obra",
+    "impros": "Impros",
+    "contracts": "Contratos",
+}
+
+STRUCTURED_IMPORT_KIND_ALIASES = {
+    "workorders": "work_orders",
+    "workorder": "work_orders",
+    "folhasdeobra": "work_orders",
+    "folhadeobra": "work_orders",
+    "ordemdereparo": "work_orders",
+    "ordensdereparo": "work_orders",
+    "ordemreparo": "work_orders",
+    "fo": "work_orders",
+    "impros": "impros",
+    "impro": "impros",
+    "contracts": "contracts",
+    "contract": "contracts",
+    "contratos": "contracts",
+    "contrato": "contracts",
+    "rentalagreements": "contracts",
+    "rentalagreement": "contracts",
+    "rental": "contracts",
+    "alugueres": "contracts",
+    "aluguer": "contracts",
+}
+
+
+def canonical_structured_import_kind(*values: Any) -> str:
+    for value in values:
+        if value in (None, ""):
+            continue
+        text = str(value)
+        head = text.partition(":")[0]
+        for candidate in (head, text):
+            key = normalize_header(candidate)
+            if key in STRUCTURED_IMPORT_KIND_ALIASES:
+                return STRUCTURED_IMPORT_KIND_ALIASES[key]
+            for alias, kind in STRUCTURED_IMPORT_KIND_ALIASES.items():
+                if alias and alias in key:
+                    return kind
+    return ""
+
 V2_CLEAN_DOCUMENT_SOURCES = ("workshop_v2_clean", "v2_clean_manual")
 
 DOCUMENT_HISTORY_COMPARISON_STATES = [
@@ -963,25 +1007,26 @@ def _build_archive_rows(
 
 
 def _build_import_rows(documents: list[Document]) -> list[dict[str, Any]]:
-    labels = {
-        "work_orders": "Folhas de obra",
-        "impros": "Impros",
-        "contracts": "Contratos",
-    }
     rows: list[dict[str, Any]] = []
     for document in documents:
         if document.entry_channel != "structured_import":
             continue
         subject = document.source_subject or ""
-        import_kind, _, count_text = subject.partition(":")
+        _raw_kind, _, count_text = subject.partition(":")
+        import_kind = canonical_structured_import_kind(
+            subject,
+            document.original_name,
+            document.file_name,
+            document.title,
+        ) or "structured"
         rows.append(
             {
                 "id": document.id,
                 "title": _display_title(document),
                 "date": document.document_date,
                 "date_display": _display_date(document.document_date or document.created_at),
-                "import_kind": import_kind or "structured",
-                "import_label": labels.get(import_kind, import_kind or "Listagem"),
+                "import_kind": import_kind,
+                "import_label": STRUCTURED_IMPORT_KIND_LABELS.get(import_kind, import_kind or "Listagem"),
                 "imported_count": count_text or "-",
                 "file_name": document.original_name or document.file_name or "-",
                 "status": document.status or "-",

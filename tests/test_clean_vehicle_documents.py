@@ -215,6 +215,8 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert "FO-1576" in page.text
     assert "Fontes importadas" in page.text
     assert "fo.xlsx" in page.text
+    assert "Classificar" in page.text
+    assert f"/v2-clean/fleet/{vehicle.id}/documents/classify" in page.text
 
     fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert fleet_page.status_code == 200
@@ -551,4 +553,12 @@ def test_clean_vehicle_documents_import_rentway_exports_with_preamble(authentica
             VehicleDocumentRecord.main_group == "contracts",
             VehicleDocumentRecord.external_reference == "48",
         )
+    )
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    contract_rows = [row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts"]
+    assert contract_rows
+    assert contract_rows[0]["period_display"] == "01/01/2024 a 31/01/2024"
+    assert any(
+        any(card["group"] == "contracts" and card["period"] == "01/01/2024 a 31/01/2024" for card in event["center"])
+        for event in module_ctx["timeline_events"]
     )

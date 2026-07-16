@@ -113,6 +113,7 @@ class TimelineEvent:
     occurred_on: date | None
     km: int | None
     state: str
+    end_on: date | None = None
     record_id: int | None = None
     document_id: int | None = None
     source_kind: str = "record"
@@ -762,6 +763,30 @@ def _display_date(value: Any) -> str:
         return text
 
 
+def _metadata_date(metadata: dict[str, Any] | None, key: str) -> date | None:
+    value = (metadata or {}).get(key)
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _period_display(start: date | None, end: date | None) -> str:
+    if start and end:
+        return f"{_display_date(start)} a {_display_date(end)}"
+    if start:
+        return f"desde {_display_date(start)}"
+    if end:
+        return f"até {_display_date(end)}"
+    return "-"
+
+
 def _signature_from_tags(tags: list[VehicleDocumentRecordTag]) -> set[str]:
     signature: set[str] = set()
     for tag in tags:
@@ -806,6 +831,16 @@ def _build_structured_rows(
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
+                "period_start": row.document_date,
+                "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
+                if row.main_group == "contracts"
+                else _metadata_date(row.metadata_json or {}, "_date_out"),
+                "period_display": _period_display(
+                    row.document_date,
+                    _metadata_date(row.metadata_json or {}, "_end_date")
+                    if row.main_group == "contracts"
+                    else _metadata_date(row.metadata_json or {}, "_date_out"),
+                ),
                 "tags": [_format_tag(tag) for tag in tags],
             }
         )
@@ -1029,11 +1064,13 @@ def _build_timeline(
         return f"{value:,}".replace(",", " ") if value is not None else "-"
 
     def make_card(event: TimelineEvent) -> dict[str, Any]:
+        period = _period_display(event.occurred_on, event.end_on) if event.group in {"contracts", "impros"} else ""
         return {
             "group": event.group,
             "group_label": event.label,
             "title": event.title,
             "secondary": event.secondary or "-",
+            "period": period,
             "km": format_km(event.km) if event.km is not None else "",
             "state": event.state,
             "is_grouped": False,
@@ -1062,6 +1099,26 @@ def _build_timeline(
             ],
         }
 
+    def make_free_card() -> dict[str, Any]:
+        return {
+            "group": "free",
+            "group_label": "Sem utilização",
+            "title": "Sem utilização",
+            "secondary": "Sem contrato ou impro ativo nesta data.",
+            "period": "",
+            "km": "",
+            "state": "info",
+            "is_grouped": False,
+            "items": [],
+        }
+
+    def period_contains(event: TimelineEvent, value: date | None) -> bool:
+        if value is None or event.group not in {"contracts", "impros"} or event.occurred_on is None:
+            return False
+        if event.end_on:
+            return event.occurred_on <= value <= event.end_on
+        return event.occurred_on <= value
+
     events: list[TimelineEvent] = []
     for row in structured_rows:
         if row["main_group"] not in DOCUMENT_HISTORY_MAIN_GROUP_LABELS:
@@ -1077,6 +1134,7 @@ def _build_timeline(
                 occurred_on=row["date"],
                 km=row["km"],
                 state=row.get("status") or "structured",
+                end_on=row.get("period_end"),
                 record_id=row["id"],
                 source_kind=row["kind"],
             )
@@ -1103,9 +1161,17 @@ def _build_timeline(
         )
 
     events.sort(key=lambda event: (event.occurred_on or date.min, event.km or -1, event.title))
+    period_events = sorted(
+        [
+            event
+            for event in events
+            if event.group in {"contracts", "impros"} and event.occurred_on is not None
+        ],
+        key=lambda event: event.occurred_on or date.min,
+        reverse=True,
+    )
     last_km = None
     rows_by_date: dict[date | None, dict[str, Any]] = {}
-    has_center_content = False
     for event in events:
         km_regressive = bool(last_km is not None and event.km is not None and event.km < last_km)
         if event.km is not None:
@@ -1129,8 +1195,6 @@ def _build_timeline(
             bucket["diagnostics_raw"].append(event)
         elif side:
             bucket[side].append(make_card(event))
-            if side == "center":
-                has_center_content = True
 
     rendered: list[dict[str, Any]] = []
     sorted_dates = sorted(rows_by_date.keys(), key=lambda value: (value is not None, value or date.min), reverse=True)
@@ -1138,6 +1202,12 @@ def _build_timeline(
         bucket = rows_by_date[occurred_on]
         if bucket["diagnostics_raw"]:
             bucket["right"].append(make_grouped_diagnostics(bucket["diagnostics_raw"]))
+        if not bucket["center"]:
+            active_period = next(
+                (event for event in period_events if period_contains(event, occurred_on)),
+                None,
+            )
+            bucket["center"].append(make_card(active_period) if active_period else make_free_card())
         bucket["left"].sort(key=lambda item: side_rank(item["group"]))
         bucket["center"].sort(key=lambda item: side_rank(item["group"]))
         bucket["right"].sort(key=lambda item: side_rank(item["group"]))
@@ -1152,25 +1222,14 @@ def _build_timeline(
             }
         )
 
-    if not has_center_content:
+    if not rendered:
         rendered.insert(
             0,
             {
                 "date": "-",
                 "date_iso": "",
                 "left": [],
-                "center": [
-                    {
-                        "group": "free",
-                        "group_label": "Sem utilização",
-                        "title": "Sem utilização",
-                        "secondary": "Sem contratos ou impros associados nesta timeline.",
-                        "km": "",
-                        "state": "info",
-                        "is_grouped": False,
-                        "items": [],
-                    }
-                ],
+                "center": [make_free_card()],
                 "right": [],
                 "km_regressive": False,
             },

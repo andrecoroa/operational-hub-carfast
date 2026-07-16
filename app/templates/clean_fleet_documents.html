@@ -377,16 +377,19 @@
                         <th>Serviço / descrição</th>
                         <th>Estado</th>
                         <th>Classificação</th>
+                        <th>Ações</th>
                       {% elif group_code == "contracts" %}
                         <th>Contrato / RA</th>
                         <th>Cliente / entidade</th>
-                        <th>Período / estado</th>
+                        <th>Período</th>
+                        <th>Estado</th>
                         <th>Ref. externa</th>
                         <th>Notas</th>
                       {% elif group_code == "impros" %}
                         <th>Impro</th>
                         <th>Garagem / origem</th>
                         <th>KM</th>
+                        <th>Período</th>
                         <th>Tipo / estado</th>
                         <th>Observação</th>
                       {% else %}
@@ -422,16 +425,35 @@
                               {% endfor %}
                             </div>
                           </td>
+                          <td>
+                            <details class="clean-doc-inline-form">
+                              <summary>Classificar</summary>
+                              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify">
+                                <input type="hidden" name="record_id" value="{{ row.id }}">
+                                <select name="category" required>
+                                  <option value="">Categoria</option>
+                                  {% for code, label in quick_classification_labels.items() %}
+                                    <option value="{{ code }}">{{ label }}</option>
+                                  {% endfor %}
+                                </select>
+                                <input type="text" name="value" placeholder="Valor / opção">
+                                <input type="text" name="free_text" placeholder="Texto livre, se aplicável">
+                                <button type="submit">Guardar</button>
+                              </form>
+                            </details>
+                          </td>
                         {% elif group_code == "contracts" %}
                           <td><strong>{{ row.title }}</strong></td>
                           <td>{{ row.supplier_name }}</td>
-                          <td>{{ row.description or row.status or "-" }}</td>
+                          <td>{{ row.period_display or "-" }}</td>
+                          <td>{{ row.status or "-" }}</td>
                           <td>{{ row.external_reference or "-" }}</td>
                           <td>{{ row.process_reference or "-" }}</td>
                         {% elif group_code == "impros" %}
                           <td><strong>{{ row.title }}</strong></td>
                           <td>{{ row.supplier_name }}</td>
                           <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.period_display or "-" }}</td>
                           <td>{{ row.status }}</td>
                           <td>{{ row.description or row.process_reference or "-" }}</td>
                         {% else %}
@@ -543,7 +565,7 @@
                         <div class="clean-doc-timeline-card clean-doc-timeline-card-center" data-timeline-group="{{ card.group }}">
                           <strong>{{ card.title }}</strong>
                           <span>{{ card.group_label }}</span>
-                          <em>{{ card.secondary }}</em>
+                          <em>{% if card.period %}{{ card.period }} · {% endif %}{{ card.secondary }}</em>
                         </div>
                       {% endfor %}
                     </div>

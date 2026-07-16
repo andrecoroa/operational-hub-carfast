@@ -132,6 +132,7 @@ from app.services.vehicle_document_history import (
     attach_document_to_record,
     canonical_structured_import_kind,
     create_archive_placeholder,
+    document_center_module_context,
     import_contracts_xlsx,
     import_impros_xlsx,
     import_work_orders_xlsx,
@@ -5602,6 +5603,9 @@ def clean_document_detail(request: Request, document_id: int):
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(
     request: Request,
+    q: str | None = None,
+    main_group: str = "",
+    status: str = "",
     imported: str | None = None,
     imported_count: int | None = None,
 ):
@@ -5610,28 +5614,69 @@ def clean_document_import_center(
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/", status_code=303)
+    search = (q or "").strip().lower()
+    clean_main_group = (main_group or "").strip()
+    clean_status = (status or "").strip()
     with SessionLocal() as db:
-        structured_counts = {
-            code: db.query(VehicleDocumentRecord)
-            .filter(
-                VehicleDocumentRecord.source_record_type == "structured",
-                VehicleDocumentRecord.main_group == code,
-            )
-            .count()
-            for code, _label in DOCUMENT_HISTORY_STRUCTURED_GROUPS
-        }
-        vehicle_count = db.query(Vehicle).count()
-    return templates.TemplateResponse(
-        request,
-        "clean_document_import_center.html",
-        {
-            "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
-            "structured_counts": structured_counts,
-            "vehicle_count": vehicle_count,
-            "imported": imported,
-            "imported_count": imported_count,
-        },
-    )
+        module_ctx = document_center_module_context(db, user_id=get_web_user_id(request))
+
+        def matches_search(parts: list[str]) -> bool:
+            if not search:
+                return True
+            return search in " ".join(part for part in parts if part).lower()
+
+        structured_rows = []
+        for row in module_ctx["structured_rows"]:
+            if clean_main_group and row["main_group"] != clean_main_group:
+                continue
+            if clean_status and row["status"] != clean_status and row["comparison_state"] != clean_status:
+                continue
+            if not matches_search(
+                [
+                    row["vehicle_label"],
+                    row["title"],
+                    row["supplier_name"],
+                    row["description"],
+                    row["external_reference"],
+                ]
+            ):
+                continue
+            structured_rows.append(row)
+
+        structured_sections = []
+        for code, label in DOCUMENT_HISTORY_STRUCTURED_GROUPS:
+            rows = [row for row in structured_rows if row["main_group"] == code]
+            structured_sections.append({"code": code, "label": label, "rows": rows})
+
+        response = templates.TemplateResponse(
+            request,
+            "clean_document_import_center.html",
+            {
+                "module_ctx": module_ctx,
+                "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
+                "structured_counts": module_ctx["structured_counts"],
+                "structured_rows": structured_rows,
+                "structured_sections": structured_sections,
+                "vehicle_count": module_ctx["vehicle_count"],
+                "archive_documents_count": module_ctx["archive_documents_count"],
+                "imported": imported,
+                "imported_count": imported_count,
+                "q": q or "",
+                "main_group": clean_main_group,
+                "status": clean_status,
+                "status_options": [
+                    ("", "Todos"),
+                    ("structured", "Estruturado"),
+                    ("pending", "Pendente"),
+                    ("associated", "Associado"),
+                    ("por_validar", "Por validar"),
+                    ("coerente", "Coerente"),
+                    ("divergente", "Divergente"),
+                ],
+            },
+        )
+        db.commit()
+        return response
 
 
 def archive_structured_import_file(

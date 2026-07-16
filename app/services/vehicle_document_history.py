@@ -1569,6 +1569,147 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     }
 
 
+def _load_structured_import_sources(db: Session, vehicle: Vehicle | None = None) -> list[Document]:
+    query = select(Document).where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+    if vehicle is not None:
+        query = query.where(or_(Document.vehicle_id == vehicle.id, Document.vehicle_id.is_(None), Document.plate == vehicle.plate))
+    documents = db.scalars(query.order_by(Document.updated_at.desc(), Document.id.desc())).all()
+    return [document for document in documents if is_structured_import_source(document)]
+
+
+def ensure_structured_import_sources_materialized(
+    db: Session,
+    *,
+    vehicle: Vehicle | None = None,
+    user_id: int | None = None,
+) -> bool:
+    changed = False
+    for document in _load_structured_import_sources(db, vehicle):
+        import_kind = structured_import_kind_for_document(document)
+        if import_kind not in STRUCTURED_IMPORT_KIND_LABELS:
+            continue
+        record_query = select(VehicleDocumentRecord.id).where(
+            VehicleDocumentRecord.source_record_type == "structured",
+            VehicleDocumentRecord.main_group == import_kind,
+            VehicleDocumentRecord.document_id == document.id,
+        )
+        if vehicle is not None:
+            record_query = record_query.where(VehicleDocumentRecord.vehicle_id == vehicle.id)
+        linked_count = len(db.scalars(record_query).all())
+        expected_count = _structured_import_expected_count(document)
+        if expected_count is not None and linked_count == expected_count:
+            continue
+        if _materialize_structured_import_source(db, document=document, user_id=user_id):
+            changed = True
+    return changed
+
+
+def _build_global_structured_rows(db: Session) -> list[dict[str, Any]]:
+    persisted_rows = db.scalars(
+        select(VehicleDocumentRecord)
+        .where(
+            VehicleDocumentRecord.source_record_type == "structured",
+            VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
+        )
+        .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
+    ).all()
+    vehicles = {
+        vehicle.id: vehicle
+        for vehicle in db.scalars(
+            select(Vehicle).where(Vehicle.id.in_({row.vehicle_id for row in persisted_rows}))
+        ).all()
+    } if persisted_rows else {}
+    tags_by_record: dict[int, list[VehicleDocumentRecordTag]] = {}
+    if persisted_rows:
+        for tag in db.scalars(
+            select(VehicleDocumentRecordTag)
+            .where(VehicleDocumentRecordTag.record_id.in_([row.id for row in persisted_rows]))
+            .order_by(VehicleDocumentRecordTag.created_at.asc(), VehicleDocumentRecordTag.id.asc())
+        ).all():
+            if tag.record_id:
+                tags_by_record.setdefault(tag.record_id, []).append(tag)
+
+    rows: list[dict[str, Any]] = []
+    for row in persisted_rows:
+        vehicle = vehicles.get(row.vehicle_id)
+        rows.append(
+            {
+                "kind": "record",
+                "id": row.id,
+                "vehicle_id": row.vehicle_id,
+                "vehicle_plate": vehicle.plate if vehicle else row.plate or "-",
+                "vehicle_label": (
+                    f"{vehicle.plate} · {vehicle.brand or ''} {vehicle.model or ''}".strip()
+                    if vehicle
+                    else row.plate or "-"
+                ),
+                "vehicle_href": f"/v2-clean/fleet/{row.vehicle_id}/documents",
+                "main_group": row.main_group,
+                "group_label": DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS.get(row.main_group, row.main_group),
+                "date": row.document_date,
+                "date_display": _display_date(row.document_date),
+                "title": row.title or row.external_reference or row.main_group,
+                "supplier_name": row.supplier_name or "-",
+                "km": row.km,
+                "status": row.status,
+                "comparison_state": row.comparison_state or "por_validar",
+                "comparison_label": DOCUMENT_HISTORY_COMPARISON_LABELS.get(row.comparison_state or "por_validar", "Por validar"),
+                "process_reference": row.process_reference or "-",
+                "description": row.raw_description or "",
+                "external_reference": row.external_reference or "-",
+                "period_start": row.document_date,
+                "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
+                if row.main_group == "contracts"
+                else _metadata_date(row.metadata_json or {}, "_date_out"),
+                "period_display": _period_display(
+                    row.document_date,
+                    _metadata_date(row.metadata_json or {}, "_end_date")
+                    if row.main_group == "contracts"
+                    else _metadata_date(row.metadata_json or {}, "_date_out"),
+                ),
+                "tags": [_format_tag(tag) for tag in tags_by_record.get(row.id, [])],
+            }
+        )
+    return rows
+
+
+def document_center_module_context(db: Session, *, user_id: int | None = None) -> dict[str, Any]:
+    if ensure_structured_import_sources_materialized(db, user_id=user_id):
+        db.flush()
+
+    import_sources = _load_structured_import_sources(db)
+    structured_rows = _build_global_structured_rows(db)
+    structured_counts = {code: 0 for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS}
+    for row in structured_rows:
+        structured_counts[row["main_group"]] = structured_counts.get(row["main_group"], 0) + 1
+
+    structured_sections = []
+    for code, label in DOCUMENT_HISTORY_STRUCTURED_GROUPS:
+        rows = [row for row in structured_rows if row["main_group"] == code]
+        structured_sections.append({"code": code, "label": label, "rows": rows})
+
+    archive_documents_count = db.scalar(
+        select(Document.id)
+        .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+        .where(Document.entry_channel != "structured_import")
+        .limit(1)
+    )
+    vehicle_count = db.scalar(select(Vehicle.id).limit(1))
+    return {
+        "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
+        "structured_counts": structured_counts,
+        "structured_rows": structured_rows,
+        "structured_sections": structured_sections,
+        "import_rows": _build_import_rows(import_sources),
+        "vehicle_count": db.query(Vehicle).count() if vehicle_count is not None else 0,
+        "archive_documents_count": db.query(Document)
+        .filter(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES), Document.entry_channel != "structured_import")
+        .count()
+        if archive_documents_count is not None
+        else 0,
+    }
+
+
 def save_uploaded_spreadsheet(upload) -> Path:
     suffix = Path(upload.filename or "upload.xlsx").suffix or ".xlsx"
     with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:

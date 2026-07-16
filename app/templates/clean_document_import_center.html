@@ -8,29 +8,14 @@
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / gestão v2</p>
         <h1>Centro de documentação</h1>
-        <p>Área global para importar listagens estruturadas, acompanhar cobertura documental e preparar validações por viatura.</p>
+        <p>Área global para importar listagens estruturadas, acompanhar linhas por viatura e preparar validações documentais.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
-        <a class="button-link secondary-link" href="#imports">Importações</a>
+        <a class="button-link secondary-link" href="#imports">Importar listagens</a>
       </div>
     </header>
-
-    <section class="clean-doc-filter-panel clean-card-wide">
-      <div class="clean-doc-import-hero">
-        <div class="clean-doc-import-hero-stat">
-          <strong>{{ vehicle_count }}</strong>
-          <span>viaturas disponíveis</span>
-        </div>
-        {% for code, label in structured_groups %}
-          <div class="clean-doc-import-hero-stat">
-            <strong>{{ structured_counts.get(code, 0) }}</strong>
-            <span>{{ label }}</span>
-          </div>
-        {% endfor %}
-      </div>
-    </section>
 
     {% if imported %}
       <section class="clean-doc-filter-panel clean-card-wide">
@@ -54,45 +39,48 @@
       </section>
     {% endif %}
 
+    <section class="clean-doc-filter-panel clean-card-wide">
+      <div class="clean-doc-import-hero">
+        <div class="clean-doc-import-hero-stat">
+          <strong>{{ vehicle_count }}</strong>
+          <span>viaturas</span>
+        </div>
+        <div class="clean-doc-import-hero-stat">
+          <strong>{{ module_ctx.import_rows|length }}</strong>
+          <span>fontes Excel</span>
+        </div>
+        <div class="clean-doc-import-hero-stat">
+          <strong>{{ structured_rows|length }}</strong>
+          <span>linhas estruturadas</span>
+        </div>
+        <div class="clean-doc-import-hero-stat">
+          <strong>{{ archive_documents_count }}</strong>
+          <span>documentos reais</span>
+        </div>
+        {% for code, label in structured_groups %}
+          <a class="clean-doc-import-hero-stat" href="/v2-clean/documents?main_group={{ code }}">
+            <strong>{{ structured_counts.get(code, 0) }}</strong>
+            <span>{{ label }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="clean-doc-context-grid">
       <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Gestão documental</p>
-            <h3>Separação entre listagens e documentos reais</h3>
-            <p>As listagens estruturadas entram aqui uma vez para todas as viaturas. PDFs, imagens e evidências reais entram na página documental da própria viatura.</p>
+            <h3>Separação fechada</h3>
+            <p>As listagens estruturadas criam linhas consultáveis e classificáveis. Os ficheiros Excel ficam apenas como fonte; PDFs, imagens e faturas reais entram na ficha documental da viatura.</p>
           </div>
-          <strong class="clean-doc-pill">Global</strong>
+          <strong class="clean-doc-pill">V2</strong>
         </div>
         <div class="clean-doc-overview-pills">
-          <span><b>Listagens</b><em>FO, impros e contratos</em></span>
-          <span><b>Documentos reais</b><em>por viatura</em></span>
-          <span><b>Pendentes</b><em>na ficha documental</em></span>
-          <span><b>Timeline</b><em>gerada por histórico</em></span>
-        </div>
-      </article>
-
-      <article class="clean-doc-table-card clean-card-wide">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Consulta</p>
-            <h3>Áreas de trabalho</h3>
-            <p>Entradas rápidas para preparar dados antes de abrir a ficha documental de uma viatura.</p>
-          </div>
-        </div>
-        <div class="clean-doc-import-hero">
-          <a class="clean-doc-import-hero-stat" href="/v2-clean/fleet">
-            <strong>Frota</strong>
-            <span>Pesquisar viatura e abrir documentação</span>
-          </a>
-          <a class="clean-doc-import-hero-stat" href="/v2-clean/documents/new">
-            <strong>Novo doc.</strong>
-            <span>Registo manual quando não vem da ficha</span>
-          </a>
-          <a class="clean-doc-import-hero-stat" href="#imports">
-            <strong>Importar</strong>
-            <span>Listagens estruturadas globais</span>
-          </a>
+          <span><b>Fontes</b><em>Excel arquivado</em></span>
+          <span><b>Linhas</b><em>FO, impros, contratos</em></span>
+          <span><b>Viatura</b><em>timeline e classificação</em></span>
+          <span><b>Arquivo</b><em>documentos reais</em></span>
         </div>
       </article>
 
@@ -100,9 +88,9 @@
         <article class="clean-doc-structure-card clean-card-wide">
           <div class="table-heading flat-heading">
             <div>
-              <p class="eyebrow">Importação</p>
+              <p class="eyebrow">Importação global</p>
               <h3>Folhas de obra</h3>
-              <p>Excel global com número, data, matrícula, fornecedor e observações.</p>
+              <p>Cabeçalhos esperados: Número, Data, Matrícula, Nome fornecedor, Observações.</p>
             </div>
           </div>
           <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-quick-form">
@@ -117,9 +105,9 @@
         <article class="clean-doc-structure-card clean-card-wide">
           <div class="table-heading flat-heading">
             <div>
-              <p class="eyebrow">Importação</p>
+              <p class="eyebrow">Importação global</p>
               <h3>Impros</h3>
-              <p>Excel global com matrícula, datas, quilómetros, tipo e garagem.</p>
+              <p>Associação por matrícula, chassi ou unit quando disponível.</p>
             </div>
           </div>
           <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-quick-form">
@@ -134,9 +122,9 @@
         <article class="clean-doc-structure-card clean-card-wide">
           <div class="table-heading flat-heading">
             <div>
-              <p class="eyebrow">Importação</p>
+              <p class="eyebrow">Importação global</p>
               <h3>Contratos</h3>
-              <p>Excel de contratos para timeline, contexto histórico e cruzamento documental.</p>
+              <p>Cria períodos de utilização para a linha central da timeline documental.</p>
             </div>
           </div>
           <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-quick-form">
@@ -147,45 +135,163 @@
             <button type="submit">Importar contratos</button>
           </form>
         </article>
-
-        <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-note">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Regras</p>
-              <h3>Estrutura fechada</h3>
-            </div>
-          </div>
-          <ul class="clean-doc-path-list">
-            <li><strong>Arquivo por viatura:</strong> <code>Frota/[MATRICULA]_[CHASSIS]/...</code></li>
-            <li><strong>Listagens estruturadas:</strong> <code>Importacoes_Estruturadas/...</code></li>
-            <li>FO e impros associam principalmente por matrícula.</li>
-            <li>Contratos podem associar por matrícula, chassi ou unit Rentway.</li>
-            <li>Linhas sem correspondência ficam fora da viatura até revisão.</li>
-            <li>A validação fina continua depois na ficha documental da viatura.</li>
-          </ul>
-        </article>
       </section>
 
-      <article class="clean-doc-table-card clean-card-wide">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Seguinte</p>
-            <h3>Importadores seguintes</h3>
-            <p>AR's e sinistros entram neste mesmo módulo quando fecharmos o formato final desses ficheiros.</p>
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <form method="get" action="/v2-clean/documents" class="clean-doc-filter-grid">
+          <label>
+            Pesquisar
+            <input type="text" name="q" value="{{ q }}" placeholder="Matrícula, fornecedor, n.º, descrição...">
+          </label>
+          <label>
+            Tipo estruturado
+            <select name="main_group">
+              <option value="">Todos</option>
+              {% for code, label in structured_groups %}
+                <option value="{{ code }}" {% if main_group == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select name="status">
+              {% for code, label in status_options %}
+                <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit">Filtrar</button>
+        </form>
+      </section>
+
+      <details class="clean-doc-collapsible clean-card-wide" open>
+        <summary>
+          <span>
+            <b>Fontes importadas</b>
+            <small>Ficheiros Excel arquivados como origem das linhas estruturadas. Não contam como documentos reais.</small>
+          </span>
+          <em>{{ module_ctx.import_rows|length }} ficheiros</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-table-wrap">
+            <table class="clean-doc-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Ficheiro</th>
+                  <th>Registos fonte</th>
+                  <th>Estado</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in module_ctx.import_rows %}
+                  <tr>
+                    <td>{{ row.date_display or "-" }}</td>
+                    <td>{{ row.import_label }}</td>
+                    <td>{{ row.file_name }}</td>
+                    <td>{{ row.imported_count }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>
+                      <div class="clean-doc-inline-actions">
+                        {% if row.open_href %}
+                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
+                        {% endif %}
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-structured-import" class="clean-inline-form">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents">
+                          <button type="submit" class="button-link secondary-link">Reprocessar linhas</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="6" class="clean-empty-cell">Ainda não existem fontes Excel importadas.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <strong class="clean-doc-pill">Em preparação</strong>
         </div>
-        <div class="clean-doc-import-hero">
-          <div class="clean-doc-import-hero-stat">
-            <strong>AR</strong>
-            <span>Listagem estruturada global</span>
-          </div>
-          <div class="clean-doc-import-hero-stat">
-            <strong>SI</strong>
-            <span>Sinistros e ocorrências</span>
-          </div>
+      </details>
+
+      <details class="clean-doc-collapsible clean-card-wide" open>
+        <summary>
+          <span>
+            <b>Linhas estruturadas</b>
+            <small>Registos materializados por viatura, separados por tipo documental.</small>
+          </span>
+          <em>{{ structured_rows|length }} linhas</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          {% for grouped in structured_sections %}
+            <section class="clean-doc-structured-block clean-doc-structured-block-{{ grouped.code }}">
+              <div class="table-heading flat-heading">
+                <div>
+                  <h4>{{ grouped.label }}</h4>
+                  {% if grouped.code == "work_orders" %}
+                    <p>Uma linha por folha de obra para classificar serviço, comparar com fatura e alimentar a timeline.</p>
+                  {% elif grouped.code == "contracts" %}
+                    <p>Períodos de contrato para construir a linha central da timeline.</p>
+                  {% elif grouped.code == "impros" %}
+                    <p>Períodos e quilómetros de utilização intermédia.</p>
+                  {% elif grouped.code == "ars" %}
+                    <p>AR's ficam no lado direito da timeline, mesmo quando relacionados com sinistro.</p>
+                  {% elif grouped.code == "claims" %}
+                    <p>Sinistros ficam no lado esquerdo da timeline para cruzamento com faturas.</p>
+                  {% endif %}
+                </div>
+                <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
+              </div>
+              <div class="clean-doc-table-wrap">
+                <table class="clean-doc-table">
+                  <thead>
+                    <tr>
+                      <th>Viatura</th>
+                      <th>Data</th>
+                      <th>Referência</th>
+                      <th>Fornecedor / origem</th>
+                      <th>KM</th>
+                      <th>Descrição / período</th>
+                      <th>Estado</th>
+                      <th>Abrir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in grouped.rows %}
+                      <tr>
+                        <td>
+                          <strong>{{ row.vehicle_plate }}</strong>
+                          <small>{{ row.vehicle_label }}</small>
+                        </td>
+                        <td>{{ row.date_display or "-" }}</td>
+                        <td>
+                          <strong>{{ row.title }}</strong>
+                          {% if row.external_reference and row.external_reference != row.title and row.external_reference != "-" %}
+                            <small>{{ row.external_reference }}</small>
+                          {% endif %}
+                        </td>
+                        <td>{{ row.supplier_name }}</td>
+                        <td>{{ row.km if row.km is not none else "-" }}</td>
+                        <td>
+                          {% if row.period_display and row.period_display != "-" %}
+                            {{ row.period_display }}
+                          {% else %}
+                            {{ row.description or "-" }}
+                          {% endif %}
+                        </td>
+                        <td>{{ row.comparison_label }}</td>
+                        <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                      </tr>
+                    {% else %}
+                      <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          {% endfor %}
         </div>
-      </article>
+      </details>
     </section>
   </main>
 </div>

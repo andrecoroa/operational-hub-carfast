@@ -357,6 +357,51 @@ def test_clean_document_global_import_resolves_vehicle_identifier(authenticated_
     assert "Folhas de obra" in page.text
 
 
+def test_clean_document_center_shows_global_structured_import_rows(authenticated_client, db_session):
+    vehicle = Vehicle(
+        plate="BB-69-TE",
+        vin="VR7EFYHT2PJ697244",
+        brand="CITROEN",
+        model="BERLINGO",
+        version="XL 1.5 BH 100 S&S CVM6",
+        rentway_unit_nr="244",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [["1682", "22/06/2026", "BB-69-TE", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"]],
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/work-orders",
+        files={
+            "file": (
+                "ordem_de_reparo (2).xlsx",
+                workbook.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "imported_count=1" in response.headers["location"]
+
+    page = authenticated_client.get("/v2-clean/documents")
+
+    assert page.status_code == 200
+    assert "ordem_de_reparo (2).xlsx" in page.text
+    assert "linhas estruturadas" in page.text
+    assert "BB-69-TE" in page.text
+    assert "1682" in page.text
+    assert "CARFAST RENT-A-CAR LDA (OFICINA)" in page.text
+
+
 def test_clean_document_reprocess_structured_source_materializes_rows(authenticated_client, db_session, tmp_path):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

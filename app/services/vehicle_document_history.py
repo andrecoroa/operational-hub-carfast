@@ -359,6 +359,7 @@ def upsert_structured_record(
     vin: str | None = None,
     subtype: str | None = None,
     metadata_json: dict[str, Any] | None = None,
+    source_document_id: int | None = None,
     user_id: int | None = None,
 ) -> VehicleDocumentRecord:
     record = _match_existing_record(
@@ -381,6 +382,8 @@ def upsert_structured_record(
         record.vin = vin
         record.subtype = subtype
         record.metadata_json = metadata_json
+        if source_document_id is not None:
+            record.document_id = source_document_id
         record.updated_by_id = user_id
         return record
     record = VehicleDocumentRecord(
@@ -399,6 +402,7 @@ def upsert_structured_record(
         vin=vin,
         subtype=subtype,
         metadata_json=metadata_json,
+        document_id=source_document_id,
         status="structured",
         has_physical_file=False,
         created_by_id=user_id,
@@ -532,7 +536,14 @@ def sync_real_start_manual_field(db: Session, vehicle_id: int, value: str | None
     )
 
 
-def import_work_orders_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
+def import_work_orders_xlsx(
+    db: Session,
+    *,
+    path: Path,
+    vehicle: Vehicle | None = None,
+    source_document: Document | None = None,
+    user_id: int | None = None,
+) -> int:
     imported = 0
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
@@ -566,6 +577,7 @@ def import_work_orders_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None 
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
             metadata_json=raw,
+            source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
         imported += 1
@@ -599,7 +611,14 @@ def detect_structured_import_vehicle_ids(db: Session, *, path: Path, import_kind
     return vehicle_ids
 
 
-def import_impros_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
+def import_impros_xlsx(
+    db: Session,
+    *,
+    path: Path,
+    vehicle: Vehicle | None = None,
+    source_document: Document | None = None,
+    user_id: int | None = None,
+) -> int:
     imported = 0
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
@@ -641,13 +660,21 @@ def import_impros_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = Non
             vin=row_vehicle.vin,
             subtype=_normalize_text(first_row_value(row, cols, ["Impro_Type_Code"])) or None,
             metadata_json={**raw, "_status": status, "_date_out": date_out.isoformat() if date_out else None},
+            source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
         imported += 1
     return imported
 
 
-def import_contracts_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = None, user_id: int | None = None) -> int:
+def import_contracts_xlsx(
+    db: Session,
+    *,
+    path: Path,
+    vehicle: Vehicle | None = None,
+    source_document: Document | None = None,
+    user_id: int | None = None,
+) -> int:
     imported = 0
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
@@ -752,6 +779,7 @@ def import_contracts_xlsx(db: Session, *, path: Path, vehicle: Vehicle | None = 
                 "_monthly_value": monthly_value or None,
                 "_cashier_amount": cashier_amount or None,
             },
+            source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
         imported += 1
@@ -767,6 +795,96 @@ def _load_vehicle_documents(db: Session, vehicle: Vehicle) -> list[Document]:
         )
         .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
     ).all()
+
+
+def _structured_import_expected_count(document: Document) -> int | None:
+    subject = document.source_subject or ""
+    _kind, _separator, count_text = subject.partition(":")
+    try:
+        return int((count_text or "").strip())
+    except ValueError:
+        return None
+
+
+def _materialize_structured_import_source(
+    db: Session,
+    *,
+    document: Document,
+    user_id: int | None = None,
+) -> int:
+    import_kind = structured_import_kind_for_document(document)
+    if import_kind not in STRUCTURED_IMPORT_KIND_LABELS:
+        return 0
+    source_path = Path(document.storage_path or "")
+    if not source_path.exists():
+        return 0
+    vehicle = db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None
+    if import_kind == "work_orders":
+        imported_count = import_work_orders_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
+    elif import_kind == "impros":
+        imported_count = import_impros_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
+    elif import_kind == "contracts":
+        imported_count = import_contracts_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
+    else:
+        imported_count = 0
+
+    document.document_type = "general_fleet"
+    document.classification = "fleet"
+    document.source = "v2_clean_manual"
+    document.entry_channel = "structured_import"
+    document.source_subject = f"{import_kind}:{imported_count}"
+    document.status = "archived"
+    document.archived = True
+    return imported_count
+
+
+def _ensure_structured_sources_materialized(
+    db: Session,
+    *,
+    vehicle: Vehicle,
+    documents: list[Document],
+) -> bool:
+    changed = False
+    for document in documents:
+        if not is_structured_import_source(document):
+            continue
+        import_kind = structured_import_kind_for_document(document)
+        if import_kind not in STRUCTURED_IMPORT_KIND_LABELS:
+            continue
+        linked_count = len(
+            db.scalars(
+                select(VehicleDocumentRecord.id).where(
+                    VehicleDocumentRecord.vehicle_id == vehicle.id,
+                    VehicleDocumentRecord.source_record_type == "structured",
+                    VehicleDocumentRecord.main_group == import_kind,
+                    VehicleDocumentRecord.document_id == document.id,
+                )
+            ).all()
+        )
+        expected_count = _structured_import_expected_count(document)
+        if expected_count is not None and linked_count == expected_count:
+            continue
+        if _materialize_structured_import_source(db, document=document):
+            changed = True
+    return changed
 
 
 def _tag_maps(
@@ -1333,6 +1451,9 @@ def _build_timeline(
 
 def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, Any]:
     documents = _load_vehicle_documents(db, vehicle)
+    if _ensure_structured_sources_materialized(db, vehicle=vehicle, documents=documents):
+        db.flush()
+        documents = _load_vehicle_documents(db, vehicle)
     record_tags, document_tags = _tag_maps(db, vehicle.id)
     persisted_records = db.scalars(
         select(VehicleDocumentRecord)

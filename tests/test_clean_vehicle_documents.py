@@ -203,6 +203,8 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert import_source is not None
     assert import_source.file_hash
     assert import_source.storage_path.endswith(".xlsx")
+    db_session.refresh(record)
+    assert record.document_id == import_source.id
     module_ctx = vehicle_document_module_context(db_session, vehicle)
     assert len(module_ctx["structured_rows"]) == 1
     assert len(module_ctx["import_rows"]) == 1
@@ -402,6 +404,7 @@ def test_clean_document_reprocess_structured_source_materializes_rows(authentica
         )
     )
     assert record is not None
+    assert record.document_id == source.id
     db_session.refresh(source)
     assert source.source_subject == "work_orders:1"
 
@@ -457,6 +460,7 @@ def test_clean_document_reprocess_legacy_source_kind_uses_filename(authenticated
         )
     )
     assert record is not None
+    assert record.document_id == source.id
     db_session.refresh(source)
     assert source.source_subject == "work_orders:1"
 
@@ -498,6 +502,56 @@ def test_clean_vehicle_documents_treats_legacy_import_source_as_structured(db_se
     assert len(module_ctx["import_rows"]) == 1
     assert module_ctx["import_rows"][0]["import_kind"] == "work_orders"
     assert module_ctx["import_rows"][0]["imported_count"] == "18"
+
+
+def test_clean_vehicle_documents_materializes_existing_import_source(db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [
+            ["1682", "22/06/2026", "CC-11-AA", "CARFAST RENT-A-CAR LDA (OFICINA)", "IPO"],
+            ["1608", "25/05/2026", "CC-11-AA", "CARFAST RENT-A-CAR LDA (OFICINA)", "CALÇOS ATRAS GASTOS"],
+        ],
+    )
+    source_path = tmp_path / "ordem_de_reparo (2).xlsx"
+    source_path.write_bytes(workbook.getvalue())
+    source = Document(
+        title="Importação Folhas de obra - CC-11-AA - 16/07/2026 00:03",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="work_orders:2",
+        original_name="ordem_de_reparo (2).xlsx",
+        file_name="ordem_de_reparo (2).xlsx",
+        file_type="xlsx",
+        file_size=source_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="archived",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+    db_session.refresh(source)
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert module_ctx["group_counts"]["work_orders"] == 2
+    assert [row["title"] for row in module_ctx["structured_rows"] if row["main_group"] == "work_orders"][:2] == [
+        "1682",
+        "1608",
+    ]
+    records = db_session.scalars(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "work_orders",
+        )
+    ).all()
+    assert len(records) == 2
+    assert {record.document_id for record in records} == {source.id}
 
 
 def test_clean_vehicle_documents_import_real_work_order_headers_updates_context(authenticated_client, db_session):

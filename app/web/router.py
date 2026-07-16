@@ -5283,6 +5283,7 @@ def clean_fleet_documents(
         try:
             module_ctx = vehicle_document_module_context(db, vehicle)
         except Exception:
+            db.rollback()
             module_ctx = {
                 "group_counts": {code: 0 for code, _ in DOCUMENT_HISTORY_MAIN_GROUPS},
                 "archive_rows": [],
@@ -5397,33 +5398,35 @@ def clean_fleet_documents(
             ("divergente", "Divergente"),
             ("por_validar", "Por validar"),
         ]
-    return templates.TemplateResponse(
-        request,
-        "clean_fleet_documents.html",
-        {
-            "ctx": context,
-            "module_ctx": module_ctx,
-            "archive_rows": archive_rows,
-            "structured_rows": structured_rows,
-            "structured_sections": structured_sections,
-            "comparison_rows": comparison_rows,
-            "q": q or "",
-            "main_group": clean_main_group,
-            "archive_group": archive_group,
-            "status": status,
-            "main_groups": DOCUMENT_HISTORY_MAIN_GROUPS,
-            "main_group_labels": DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
-            "comparison_labels": DOCUMENT_HISTORY_COMPARISON_LABELS,
-            "quick_classification_labels": DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
-            "quick_classifications": DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
-            "audit_fields": DOCUMENT_HISTORY_AUDIT_FIELDS,
-            "audit_field_labels": DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
-            "status_options": all_statuses,
-            "document_created": document_created,
-            "imported": imported,
-            "imported_count": imported_count,
-        },
-    )
+        response = templates.TemplateResponse(
+            request,
+            "clean_fleet_documents.html",
+            {
+                "ctx": context,
+                "module_ctx": module_ctx,
+                "archive_rows": archive_rows,
+                "structured_rows": structured_rows,
+                "structured_sections": structured_sections,
+                "comparison_rows": comparison_rows,
+                "q": q or "",
+                "main_group": clean_main_group,
+                "archive_group": archive_group,
+                "status": status,
+                "main_groups": DOCUMENT_HISTORY_MAIN_GROUPS,
+                "main_group_labels": DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
+                "comparison_labels": DOCUMENT_HISTORY_COMPARISON_LABELS,
+                "quick_classification_labels": DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
+                "quick_classifications": DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+                "audit_fields": DOCUMENT_HISTORY_AUDIT_FIELDS,
+                "audit_field_labels": DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
+                "status_options": all_statuses,
+                "document_created": document_created,
+                "imported": imported,
+                "imported_count": imported_count,
+            },
+        )
+        db.commit()
+        return response
 
 
 @web_router.get("/v2-clean/fleet/{vehicle_id}/documents/new", response_class=HTMLResponse)
@@ -5780,11 +5783,29 @@ def reprocess_structured_import_file(
 
     vehicle = db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None
     if import_kind == "work_orders":
-        imported_count = import_work_orders_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+        imported_count = import_work_orders_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
     elif import_kind == "impros":
-        imported_count = import_impros_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+        imported_count = import_impros_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
     elif import_kind == "contracts":
-        imported_count = import_contracts_xlsx(db, path=source_path, vehicle=vehicle, user_id=user_id)
+        imported_count = import_contracts_xlsx(
+            db,
+            path=source_path,
+            vehicle=vehicle,
+            source_document=document,
+            user_id=user_id,
+        )
     else:
         imported_count = 0
 
@@ -5818,15 +5839,21 @@ def clean_document_import_center_work_orders(request: Request, file: UploadFile 
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_work_orders_xlsx(db, path=tmp_path, user_id=user_id)
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="work_orders",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
             )
+            imported_count = import_work_orders_xlsx(
+                db,
+                path=tmp_path,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"work_orders:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5842,15 +5869,21 @@ def clean_document_import_center_impros(request: Request, file: UploadFile = Fil
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_impros_xlsx(db, path=tmp_path, user_id=user_id)
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="impros",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
             )
+            imported_count = import_impros_xlsx(
+                db,
+                path=tmp_path,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"impros:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5866,15 +5899,21 @@ def clean_document_import_center_contracts(request: Request, file: UploadFile = 
     with SessionLocal() as db:
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_contracts_xlsx(db, path=tmp_path, user_id=user_id)
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="contracts",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
             )
+            imported_count = import_contracts_xlsx(
+                db,
+                path=tmp_path,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"contracts:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5926,21 +5965,23 @@ def clean_fleet_documents_import_work_orders(request: Request, vehicle_id: int, 
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_work_orders_xlsx(
-                db,
-                path=tmp_path,
-                vehicle=vehicle,
-                user_id=user_id,
-            )
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="work_orders",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
                 vehicle=vehicle,
             )
+            imported_count = import_work_orders_xlsx(
+                db,
+                path=tmp_path,
+                vehicle=vehicle,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"work_orders:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5959,21 +6000,23 @@ def clean_fleet_documents_import_impros(request: Request, vehicle_id: int, file:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_impros_xlsx(
-                db,
-                path=tmp_path,
-                vehicle=vehicle,
-                user_id=user_id,
-            )
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="impros",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
                 vehicle=vehicle,
             )
+            imported_count = import_impros_xlsx(
+                db,
+                path=tmp_path,
+                vehicle=vehicle,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"impros:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -5992,21 +6035,23 @@ def clean_fleet_documents_import_contracts(request: Request, vehicle_id: int, fi
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         tmp_path = save_uploaded_spreadsheet(file)
         try:
-            imported_count = import_contracts_xlsx(
-                db,
-                path=tmp_path,
-                vehicle=vehicle,
-                user_id=user_id,
-            )
-            archive_structured_import_file(
+            source_document = archive_structured_import_file(
                 db,
                 tmp_path=tmp_path,
                 original_filename=file.filename,
                 import_kind="contracts",
-                imported_count=imported_count,
+                imported_count=0,
                 user_id=user_id,
                 vehicle=vehicle,
             )
+            imported_count = import_contracts_xlsx(
+                db,
+                path=tmp_path,
+                vehicle=vehicle,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"contracts:{imported_count}"
             db.commit()
         finally:
             tmp_path.unlink(missing_ok=True)

@@ -875,6 +875,8 @@ def _build_archive_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for document in documents:
+        if document.entry_channel == "structured_import":
+            continue
         archive_group = _document_archive_group(document)
         tags = document_tags.get(document.id, [])
         rows.append(
@@ -921,6 +923,36 @@ def _build_archive_rows(
             }
         )
     rows.sort(key=lambda row: (row["date"] or date.min, row["title"]), reverse=True)
+    return rows
+
+
+def _build_import_rows(documents: list[Document]) -> list[dict[str, Any]]:
+    labels = {
+        "work_orders": "Folhas de obra",
+        "impros": "Impros",
+        "contracts": "Contratos",
+    }
+    rows: list[dict[str, Any]] = []
+    for document in documents:
+        if document.entry_channel != "structured_import":
+            continue
+        subject = document.source_subject or ""
+        import_kind, _, count_text = subject.partition(":")
+        rows.append(
+            {
+                "id": document.id,
+                "title": _display_title(document),
+                "date": document.document_date,
+                "date_display": _display_date(document.document_date or document.created_at),
+                "import_kind": import_kind or "structured",
+                "import_label": labels.get(import_kind, import_kind or "Listagem"),
+                "imported_count": count_text or "-",
+                "file_name": document.original_name or document.file_name or "-",
+                "status": document.status or "-",
+                "open_href": f"/v2-clean/documents/{document.id}",
+            }
+        )
+    rows.sort(key=lambda row: (row["date"] or date.min, row["id"]), reverse=True)
     return rows
 
 
@@ -1169,6 +1201,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     ]
     structured_rows = _build_structured_rows(db, vehicle.id, record_tags)
     archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records)
+    import_rows = _build_import_rows(documents)
     comparison_rows = _build_comparison_rows(structured_rows, archive_rows, record_tags, document_tags)
     timeline_events, timeline_ticks, timeline_segments = _build_timeline(structured_rows, archive_rows)
     alerts = _alert_rows(db, vehicle.id)
@@ -1239,6 +1272,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
             "label": f"{_display_title(document)} ({_display_date(document.document_date) if document.document_date else 's/data'})",
         }
         for document in documents[:200]
+        if document.entry_channel != "structured_import"
     ]
     group_counts = {code: 0 for code, _ in DOCUMENT_HISTORY_MAIN_GROUPS}
     for row in structured_rows:
@@ -1251,6 +1285,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
         "group_counts": group_counts,
         "archive_rows": archive_rows,
         "structured_rows": structured_rows,
+        "import_rows": import_rows,
         "comparison_rows": comparison_rows,
         "timeline_events": timeline_events,
         "timeline_ticks": timeline_ticks,
@@ -1263,6 +1298,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
         "document_tags": document_tags,
         "archive_documents_count": len(archive_rows),
         "structured_documents_count": len(structured_rows),
+        "structured_imports_count": len(import_rows),
     }
 
 

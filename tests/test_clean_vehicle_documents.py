@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
 from app.models.vehicles import Vehicle, VehicleManualField
+from app.services.vehicle_document_history import vehicle_document_module_context
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -202,11 +203,18 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert import_source is not None
     assert import_source.file_hash
     assert import_source.storage_path.endswith(".xlsx")
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    assert len(module_ctx["structured_rows"]) == 1
+    assert len(module_ctx["import_rows"]) == 1
+    assert module_ctx["import_rows"][0]["import_label"] == "Folhas de obra"
+    assert module_ctx["archive_rows"] == []
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
     assert "Folhas de obra" in page.text
     assert "FO-1576" in page.text
+    assert "Fontes importadas" in page.text
+    assert "fo.xlsx" in page.text
 
     fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert fleet_page.status_code == 200

@@ -5284,6 +5284,7 @@ def clean_fleet_documents(
                 "group_counts": {code: 0 for code, _ in DOCUMENT_HISTORY_MAIN_GROUPS},
                 "archive_rows": [],
                 "structured_rows": [],
+                "import_rows": [],
                 "comparison_rows": [],
                 "timeline_events": [],
                 "timeline_ticks": [],
@@ -5304,6 +5305,7 @@ def clean_fleet_documents(
                 "document_tags": {},
                 "archive_documents_count": 0,
                 "structured_documents_count": 0,
+                "structured_imports_count": 0,
             }
 
         def matches_search(parts: list[str]) -> bool:

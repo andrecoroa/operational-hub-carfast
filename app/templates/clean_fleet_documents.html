@@ -297,6 +297,49 @@
             <em>{{ structured_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
+          {% if module_ctx.import_rows %}
+            <section class="clean-doc-structured-block clean-doc-structured-imports">
+              <div class="table-heading flat-heading">
+                <div>
+                  <h4>Fontes importadas</h4>
+                  <p>Ficheiros Excel usados para criar listagens estruturadas. Não contam como documentos reais de arquivo.</p>
+                </div>
+                <strong class="clean-doc-pill">{{ module_ctx.import_rows|length }} ficheiros</strong>
+              </div>
+              <div class="clean-doc-table-wrap">
+                <table class="clean-doc-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Tipo</th>
+                      <th>Ficheiro</th>
+                      <th>Registos</th>
+                      <th>Estado</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in module_ctx.import_rows %}
+                      <tr>
+                        <td>{{ row.date_display or "-" }}</td>
+                        <td>{{ row.import_label }}</td>
+                        <td>{{ row.file_name }}</td>
+                        <td>{{ row.imported_count }}</td>
+                        <td>{{ row.status }}</td>
+                        <td>
+                          {% if row.open_href %}
+                            <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
+                          {% else %}
+                            -
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          {% endif %}
           {% for grouped in structured_sections %}
             {% set group_code = grouped.code %}
             {% set group_label = grouped.label %}

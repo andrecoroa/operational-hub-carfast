@@ -5595,9 +5595,12 @@ def clean_fleet_documents(
                         "rows": group_rows,
                     }
                 )
+        include_work_orders_for_classification = archive_group != "invoices"
+        include_invoices_for_classification = clean_main_group != "work_orders"
+
         service_classification_rows = []
         for row in structured_rows:
-            if row.get("main_group") == "work_orders":
+            if include_work_orders_for_classification and row.get("main_group") == "work_orders":
                 service_classification_rows.append(
                     {
                         **row,
@@ -5606,7 +5609,9 @@ def clean_fleet_documents(
                     }
                 )
         for row in archive_rows:
-            if row.get("main_group") == "invoices" or row.get("archive_group") == "invoices":
+            if include_invoices_for_classification and (
+                row.get("main_group") == "invoices" or row.get("archive_group") == "invoices"
+            ):
                 service_classification_rows.append(
                     {
                         **row,

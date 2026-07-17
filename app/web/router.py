@@ -2864,14 +2864,6 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
             "Ligado ao modulo",
         ),
         (
-            "management",
-            "GE",
-            "Gestão",
-            "Discussões de negocio, fornecedores e decisões de supervisão.",
-            ["Fornecedor", "Sinistro", "Discussao"],
-            "A abrir",
-        ),
-        (
             "administration",
             "AD",
             "Administração",
@@ -2881,19 +2873,61 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
         ),
     ]
     for workspace_code, short, label, description, chips, state in division_specs:
+        task_codes = TASK_WORKSPACE_TASK_TYPES.get(workspace_code, [])
+        open_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.task_type.in_(tuple(task_codes)),
+                    Task.source == "v2_clean",
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                )
+            )
+            if task_codes
+            else 0
+        ) or 0
+        quick_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(QuickRecord)
+                .where(
+                    QuickRecord.workspace == workspace_code,
+                    QuickRecord.closed_at.is_(None),
+                    ~QuickRecord.status.in_(QUICK_RECORD_ARCHIVE_STATUSES),
+                )
+            )
+            or 0
+        )
+        due_today = (
+            db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.task_type.in_(tuple(task_codes)),
+                    Task.source == "v2_clean",
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
+                    Task.due_on == date.today(),
+                )
+            )
+            if task_codes
+            else 0
+        ) or 0
         cards.append(
             {
                 "code": workspace_code,
                 "short": short,
                 "label": label,
                 "description": description,
-                "open": 0,
-                "quick": 0,
-                "due_today": 0,
+                "open": open_count,
+                "quick": quick_count,
+                "due_today": due_today,
                 "chips": chips,
                 "state": state,
-                "href": None,
-                "action": "Base limpa",
+                "href": f"/v2-clean/tasks?workspace={workspace_code}",
+                "action": "Abrir fila",
             }
         )
     return cards
@@ -2951,30 +2985,222 @@ def clean_process_center(request: Request):
 
 
 @web_router.get("/v2-clean/tasks", response_class=HTMLResponse)
-def clean_tasks_center(request: Request):
+def clean_tasks_center(
+    request: Request,
+    workspace: str = "all",
+    status: str = "open",
+    kind: str = "all",
+    plate: str = "",
+    q: str = "",
+    created: str | None = None,
+    closed: str | None = None,
+    reopened: str | None = None,
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     with SessionLocal() as db:
         task_divisions = clean_task_division_cards(db)
-        urgent_tasks: list[dict[str, str | None]] = []
-        recent_entries: list[dict[str, str | None]] = []
+        workspace_codes = set(TASK_WORKSPACE_CONFIG)
+        active_workspace = workspace if workspace in workspace_codes else "all"
+        active_status = status if status in {"open", "closed", "all"} else "open"
+        active_kind = kind if kind in {"all", "task", "problem"} else "all"
+        normalized_plate = normalize_identifier(plate) if plate else ""
+        task_type_codes = [
+            code
+            for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
+            if active_workspace == "all" or workspace_code == active_workspace
+            for code in codes
+        ]
+        filters = [Task.task_type.in_(tuple(task_type_codes)), Task.source == "v2_clean"]
+        if active_status == "open":
+            filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
+        elif active_status == "closed":
+            filters.append(or_(Task.closed_at.is_not(None), Task.status.in_(TASK_ARCHIVE_STATUSES)))
+        if active_kind == "problem":
+            filters.append(or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")))
+        elif active_kind == "task":
+            filters.append(~or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")))
+        if normalized_plate:
+            filters.append(Task.plate == normalized_plate)
+        if q.strip():
+            search = f"%{q.strip()}%"
+            filters.append(
+                or_(
+                    Task.title.ilike(search),
+                    Task.description.ilike(search),
+                    Task.category.ilike(search),
+                    Task.subcategory.ilike(search),
+                    Task.external_source_id.ilike(search),
+                )
+            )
+        tasks = db.scalars(
+            select(Task)
+            .where(*filters)
+            .order_by(Task.closed_at.is_not(None), Task.priority.desc(), Task.due_on.is_(None), Task.due_on, Task.id.desc())
+            .limit(120)
+        ).all()
+        open_filter = [
+            Task.task_type.in_(tuple([code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes])),
+            Task.source == "v2_clean",
+        ]
         task_metrics = {
             "divisions": len(task_divisions),
             "open": sum(int(item["open"]) for item in task_divisions),
             "quick": sum(int(item["quick"]) for item in task_divisions),
             "due_today": sum(int(item["due_today"]) for item in task_divisions),
+            "problems": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    *open_filter,
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")),
+                )
+            )
+            or 0,
         }
+        task_workspace_options = [("all", "Todas"), *TASK_WORKSPACES]
+        task_status_options = [("open", "Abertas"), ("closed", "Fechadas"), ("all", "Todas")]
+        task_kind_options = [("all", "Tarefas e problemas"), ("task", "Só tarefas"), ("problem", "Só problemas")]
+        task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
+        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
+        task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
             {
                 "task_divisions": task_divisions,
                 "task_metrics": task_metrics,
-                "urgent_tasks": urgent_tasks,
-                "recent_entries": recent_entries,
+                "tasks": tasks,
+                "task_workspace_options": task_workspace_options,
+                "task_status_options": task_status_options,
+                "task_kind_options": task_kind_options,
+                "task_workspace_labels": task_workspace_labels,
+                "task_status_labels": task_status_labels,
+                "task_priority_labels": task_priority_labels,
+                "filters": {
+                    "workspace": active_workspace,
+                    "status": active_status,
+                    "kind": active_kind,
+                    "plate": normalized_plate,
+                    "q": q.strip(),
+                },
+                "created": created,
+                "closed": closed,
+                "reopened": reopened,
             },
         )
+
+
+@web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
+def clean_tasks_create(
+    request: Request,
+    title: str = Form(""),
+    description: str = Form(""),
+    workspace: str = Form("workshop"),
+    record_type: str = Form("task"),
+    priority: str = Form("normal"),
+    plate: str = Form(""),
+    due_on: str = Form(""),
+    category: str = Form(""),
+    entity_type: str = Form(""),
+    entity_id: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    clean_title = title.strip()
+    if not clean_title:
+        return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
+    clean_workspace = normalize_task_workspace(workspace)
+    workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
+    is_problem = record_type == "problem"
+    parsed_due = parse_iso_or_dmy_date(due_on)
+    normalized_plate = normalize_identifier(plate) if plate else None
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        task = Task(
+            title=clean_title[:200],
+            description=description.strip() or None,
+            task_type=workspace_config["default_task_type"],
+            source="v2_clean",
+            category=(category.strip() or workspace_config["default_category"])[:80],
+            subcategory="problem" if is_problem else (category.strip() or "task")[:120],
+            status="new",
+            priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
+            plate=normalized_plate,
+            due_on=parsed_due,
+            entity_type=entity_type.strip()[:120] or None,
+            entity_id=entity_id.strip()[:120] or None,
+            external_source_id=f"v2_clean:{clean_workspace}:{record_type}:{now.timestamp()}",
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                field_name="created",
+                old_value=None,
+                new_value=f"Criada na v2-clean como {'problema' if is_problem else 'tarefa'}",
+            )
+        )
+        db.commit()
+    target = return_url.strip() or f"/v2-clean/tasks?workspace={clean_workspace}&created=1"
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}task_id={task.id}", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/close", response_class=HTMLResponse)
+def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if task:
+            prior_status = task.status
+            task.status = "closed"
+            task.closed_at = datetime.now(UTC)
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    field_name="status",
+                    old_value=prior_status,
+                    new_value="closed",
+                )
+            )
+            db.commit()
+    target = return_url.strip() or "/v2-clean/tasks?closed=1"
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}closed=1", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/reopen", response_class=HTMLResponse)
+def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form("")):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if task:
+            prior_status = task.status
+            task.status = "new"
+            task.closed_at = None
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    field_name="status",
+                    old_value=prior_status,
+                    new_value="new",
+                )
+            )
+            db.commit()
+    target = return_url.strip() or "/v2-clean/tasks?reopened=1"
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}reopened=1", status_code=303)
 
 
 @web_router.get("/v2-clean/admin", response_class=HTMLResponse)

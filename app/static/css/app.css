@@ -15104,6 +15104,228 @@ a.metric:hover {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.clean-module-hero {
+  background: #fff;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+}
+
+.clean-module-hero h2 {
+  color: #07142f;
+  font-size: 28px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.clean-module-hero p:not(.eyebrow) {
+  color: #667085;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 6px 0 0;
+}
+
+.clean-module-hero-actions {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  min-width: 190px;
+}
+
+.clean-alert-success {
+  background: #effaf3;
+  border: 1px solid #c7eed4;
+  border-radius: 8px;
+  color: #25623f;
+  font-size: 14px;
+  font-weight: 900;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+}
+
+.clean-task-command-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.clean-task-create-form {
+  border-top: 1px solid #e6edf5;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.clean-task-create-form label,
+.clean-task-filter-row label {
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 6px;
+}
+
+.clean-task-create-form input,
+.clean-task-create-form select,
+.clean-task-create-form textarea,
+.clean-task-filter-row input,
+.clean-task-filter-row select {
+  background: #fff;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  color: #07142f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.clean-task-create-form textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+
+.clean-task-create-form .span-2 {
+  grid-column: 1 / -1;
+}
+
+.clean-task-create-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clean-task-create-actions button,
+.clean-task-filter-row button {
+  background: #9f470f;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  min-height: 42px;
+  padding: 10px 18px;
+}
+
+.clean-task-division-list {
+  display: grid;
+  gap: 10px;
+}
+
+.clean-task-division-list a {
+  align-items: center;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  color: #0f2a5f;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 42px 1fr;
+  padding: 12px;
+  text-decoration: none;
+}
+
+.clean-task-division-list a.active {
+  background: #fff9ec;
+  border-color: #c95e16;
+}
+
+.clean-task-division-list a strong {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.clean-task-division-list a em {
+  color: #667085;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  grid-column: 2;
+}
+
+.clean-area-code {
+  align-items: center;
+  background: #edf4ff;
+  border-radius: 8px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.clean-task-filter-row {
+  border-top: 1px solid #e6edf5;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 14px;
+}
+
+.clean-task-filter-row button {
+  align-self: end;
+}
+
+.clean-task-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.clean-task-table td {
+  vertical-align: top;
+}
+
+.clean-task-table td strong {
+  display: block;
+}
+
+.clean-task-table td small {
+  color: #667085;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.clean-task-table form {
+  margin: 0;
+}
+
+.clean-task-table .button-link {
+  width: auto;
+}
+
+.clean-task-status {
+  background: #eef4fb;
+  border-radius: 999px;
+  color: #344054;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.clean-task-status.problem {
+  background: #fff2e4;
+  color: #9f470f;
+}
+
+.clean-task-status.closed {
+  background: #effaf3;
+  color: #25623f;
+}
+
 @media (max-width: 1300px) {
   .clean-page-action-strip,
   .clean-context-action-shell,
@@ -15111,7 +15333,10 @@ a.metric:hover {
   .clean-vehicle-header-main,
   .clean-vehicle-header-footer,
   .clean-header-topbar,
-  .clean-header-hero-row {
+  .clean-header-hero-row,
+  .clean-module-hero,
+  .clean-task-command-grid,
+  .clean-task-filter-row {
     grid-template-columns: 1fr;
   }
 

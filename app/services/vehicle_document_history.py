@@ -169,22 +169,26 @@ DOCUMENT_HISTORY_ALERT_SEVERITIES = [
 DOCUMENT_HISTORY_ALERT_LABELS = dict(DOCUMENT_HISTORY_ALERT_SEVERITIES)
 
 DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS: dict[str, list[tuple[str, str]]] = {
-    "maintenance": [("revision", "Revisão"), ("degradation", "Degradação"), ("other", "Outro")],
-    "pads": [("front", "Frente"), ("rear", "Trás"), ("other", "Outro")],
-    "discs": [("front", "Frente"), ("rear", "Trás"), ("other", "Outro")],
-    "tyres": [("front", "Frente"), ("rear", "Trás"), ("other", "Outro")],
+    "maintenance": [("revision", "Revisão"), ("degradation", "Degradação"), ("undefined", "Por definir")],
+    "pads": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
+    "discs": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
+    "tyres": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
+    "ipo": [("yes", "IPO"), ("undefined", "Por definir")],
     "fault": [("free_text", "Texto livre")],
     "services": [("telecharge", "Telecarregamento"), ("other", "Outro")],
     "repair": [("free_text", "Texto livre")],
+    "other": [("free_text", "Texto livre")],
 }
 DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS = {
     "maintenance": "Manutenção",
     "pads": "Calços",
     "discs": "Discos",
     "tyres": "Pneus",
+    "ipo": "IPO",
     "fault": "Avaria",
     "services": "Serviços",
     "repair": "Reparação",
+    "other": "Outro",
 }
 
 DOCUMENT_HISTORY_AUDIT_FIELDS = [
@@ -956,6 +960,86 @@ def _format_tag(tag: VehicleDocumentRecordTag) -> str:
     return category
 
 
+def _service_value_label(category: str, value: str | None, free_text: str | None = None) -> str:
+    if free_text:
+        return free_text
+    if not value:
+        return "Por definir"
+    option_labels = dict(DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS.get(category, []))
+    return option_labels.get(value, value)
+
+
+def _service_matrix_from_text_and_tags(
+    text: str,
+    tags: list[VehicleDocumentRecordTag],
+) -> dict[str, str]:
+    matrix = {
+        "maintenance": "-",
+        "pads": "-",
+        "discs": "-",
+        "tyres": "-",
+        "ipo": "-",
+        "other": "-",
+    }
+    for tag in tags:
+        if tag.category in matrix:
+            matrix[tag.category] = _service_value_label(tag.category, tag.value, tag.free_text)
+        elif tag.category in {"fault", "services", "repair"}:
+            matrix["other"] = _service_value_label(tag.category, tag.value, tag.free_text)
+
+    normalized = normalize_header(text or "")
+    if matrix["maintenance"] == "-":
+        if "degrad" in normalized and ("oleo" in normalized or "oil" in normalized):
+            matrix["maintenance"] = "Degradação"
+        elif "revis" in normalized or "manutenc" in normalized:
+            matrix["maintenance"] = "Revisão"
+    if matrix["pads"] == "-" and ("calco" in normalized or "pastilha" in normalized or "travo" in normalized):
+        matrix["pads"] = "Por definir"
+    if matrix["discs"] == "-" and "disco" in normalized:
+        matrix["discs"] = "Por definir"
+    if matrix["tyres"] == "-" and ("pneu" in normalized or "roda" in normalized):
+        matrix["tyres"] = "Por definir"
+    if matrix["ipo"] == "-" and ("ipo" in normalized or "inspec" in normalized):
+        matrix["ipo"] = "IPO"
+    return matrix
+
+
+def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bool | None) -> list[dict[str, Any]]:
+    if not isinstance(metadata, dict):
+        return []
+    candidates = (
+        metadata.get("invoice_lines")
+        or metadata.get("line_items")
+        or metadata.get("lines")
+        or metadata.get("items")
+        or metadata.get("linhas")
+    )
+    if not isinstance(candidates, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(candidates, start=1):
+        if isinstance(item, dict):
+            description = item.get("description") or item.get("descricao") or item.get("text") or item.get("linha") or ""
+            quantity = item.get("quantity") or item.get("qty") or item.get("quantidade") or ""
+            amount = item.get("amount") or item.get("value") or item.get("valor") or ""
+            service = item.get("service") or item.get("servico") or item.get("classification") or "Por classificar"
+        else:
+            description = str(item)
+            quantity = ""
+            amount = ""
+            service = "Por classificar"
+        rows.append(
+            {
+                "index": index,
+                "description": description or "-",
+                "quantity": quantity or "-",
+                "amount": amount or "-",
+                "service": service or "Por classificar",
+            }
+        )
+    return rows
+
+
 def _display_date(value: Any) -> str:
     if value in (None, ""):
         return "-"
@@ -1023,6 +1107,7 @@ def _build_structured_rows(
     rows = []
     for row in persisted_rows:
         tags = record_tags.get(row.id, [])
+        service_text = " ".join(part for part in [row.title, row.raw_description, row.external_reference] if part)
         rows.append(
             {
                 "kind": "record",
@@ -1040,6 +1125,8 @@ def _build_structured_rows(
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
+                "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "invoice_lines": _invoice_line_items(row.metadata_json),
                 "period_start": row.document_date,
                 "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
                 if row.main_group == "contracts"
@@ -1123,6 +1210,11 @@ def _build_archive_rows(
             continue
         archive_group = _document_archive_group(document)
         tags = document_tags.get(document.id, [])
+        service_text = " ".join(
+            part
+            for part in [document.title, document.original_name, document.supplier_name, document.contract_number, document.reservation_number]
+            if part
+        )
         rows.append(
             {
                 "kind": "document",
@@ -1142,6 +1234,8 @@ def _build_archive_rows(
                 "document_number": document.contract_number or document.reservation_number or str(document.id),
                 "open_href": f"/v2-clean/documents/{document.id}",
                 "tags": [_format_tag(tag) for tag in tags],
+                "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "invoice_lines": [],
             }
         )
     for record in pending_records:

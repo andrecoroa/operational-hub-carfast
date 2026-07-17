@@ -5369,6 +5369,32 @@ def clean_fleet_documents(
                         "rows": group_rows,
                     }
                 )
+        service_classification_rows = []
+        for row in structured_rows:
+            if row.get("main_group") == "work_orders":
+                service_classification_rows.append(
+                    {
+                        **row,
+                        "source_label": "FO",
+                        "detail_label": "Folha de obra",
+                    }
+                )
+        for row in archive_rows:
+            if row.get("main_group") == "invoices" or row.get("archive_group") == "invoices":
+                service_classification_rows.append(
+                    {
+                        **row,
+                        "source_label": "Fatura",
+                        "detail_label": "Fatura",
+                        "description": row.get("title") or row.get("document_number") or "",
+                        "external_reference": row.get("document_number") or row.get("title") or "-",
+                        "comparison_label": row.get("comparison_state") or row.get("extraction_state") or "Por validar",
+                    }
+                )
+        service_classification_rows.sort(
+            key=lambda row: (row.get("date") or date.min, row.get("source_label") or "", str(row.get("title") or "")),
+            reverse=True,
+        )
 
         comparison_rows = [
             row
@@ -5408,6 +5434,7 @@ def clean_fleet_documents(
                 "archive_rows": archive_rows,
                 "structured_rows": structured_rows,
                 "structured_sections": structured_sections,
+                "service_classification_rows": service_classification_rows,
                 "comparison_rows": comparison_rows,
                 "q": q or "",
                 "main_group": clean_main_group,

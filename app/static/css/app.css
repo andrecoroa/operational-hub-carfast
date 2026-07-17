@@ -14375,6 +14375,137 @@ a.metric:hover {
   font-weight: 700;
 }
 
+.clean-doc-service-table-wrap {
+  overflow-x: auto;
+}
+
+.clean-doc-service-table {
+  min-width: 1180px;
+}
+
+.clean-doc-service-table th,
+.clean-doc-service-table td {
+  vertical-align: top;
+}
+
+.clean-doc-service-table th:nth-child(n+6):nth-child(-n+11),
+.clean-doc-service-table td:nth-child(n+6):nth-child(-n+11) {
+  min-width: 88px;
+  text-align: center;
+}
+
+.clean-doc-source-chip,
+.clean-doc-service-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: 8px;
+  border: 1px solid #dce4ef;
+  background: #f8fafc;
+  color: #0f2a5f;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.15;
+  padding: 5px 8px;
+}
+
+.clean-doc-source-chip {
+  background: #fff5ef;
+  border-color: #f0d2c1;
+  color: #9b3f20;
+}
+
+.clean-doc-service-description {
+  min-width: 190px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.clean-doc-service-detail summary {
+  white-space: nowrap;
+}
+
+.clean-doc-service-detail-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 520px;
+}
+
+.clean-doc-service-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.clean-doc-service-detail-grid span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.clean-doc-service-detail-grid b {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-doc-service-detail-grid em {
+  color: #0f2a5f;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.clean-doc-invoice-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-doc-invoice-lines strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.clean-doc-invoice-lines table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.clean-doc-invoice-lines th,
+.clean-doc-invoice-lines td {
+  border-bottom: 1px solid #edf2f7;
+  padding: 8px 10px;
+  color: #0f2a5f;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.clean-doc-invoice-lines th {
+  background: #f8fafc;
+  color: #667085;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.clean-doc-invoice-lines tr:last-child td {
+  border-bottom: 0;
+}
+
 .clean-doc-timeline-filters {
   display: flex;
   flex-wrap: wrap;

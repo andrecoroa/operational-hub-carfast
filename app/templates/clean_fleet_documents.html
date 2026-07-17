@@ -297,6 +297,118 @@
             <em>{{ structured_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
+          <section class="clean-doc-structured-block clean-doc-structured-classification">
+            <div class="table-heading flat-heading">
+              <div>
+                <h4>Classificação de serviços</h4>
+                <p>Folhas de obra e faturas numa só tabela. A linha mostra logo o serviço; o detalhe guarda OCR, notas e linhas faturadas.</p>
+              </div>
+              <strong class="clean-doc-pill">{{ service_classification_rows|length }} linhas</strong>
+            </div>
+            <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
+              <table class="clean-doc-table clean-doc-service-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Nº</th>
+                    <th>Fornecedor</th>
+                    <th>Observação / descrição</th>
+                    <th>Manutenção</th>
+                    <th>Calços</th>
+                    <th>Discos</th>
+                    <th>Pneus</th>
+                    <th>IPO</th>
+                    <th>Outro</th>
+                    <th>Estado</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in service_classification_rows %}
+                    <tr>
+                      <td>{{ row.date_display or "-" }}</td>
+                      <td><span class="clean-doc-source-chip">{{ row.source_label }}</span></td>
+                      <td>
+                        <strong>{{ row.external_reference or row.document_number or row.title }}</strong>
+                        {% if row.title and row.title != row.external_reference and row.title != row.document_number %}
+                          <small>{{ row.title }}</small>
+                        {% endif %}
+                      </td>
+                      <td>{{ row.supplier_name }}</td>
+                      <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.maintenance }}</span></td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.pads }}</span></td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.discs }}</span></td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.tyres }}</span></td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.ipo }}</span></td>
+                      <td><span class="clean-doc-service-value">{{ row.service_matrix.other }}</span></td>
+                      <td>{{ row.comparison_label or row.extraction_state or row.status }}</td>
+                      <td>
+                        <details class="clean-doc-inline-form clean-doc-service-detail">
+                          <summary>Detalhe</summary>
+                          <div class="clean-doc-service-detail-panel">
+                            <div class="clean-doc-service-detail-grid">
+                              <span><b>Documento</b><em>{{ row.detail_label }}</em></span>
+                              <span><b>Estado</b><em>{{ row.status }}</em></span>
+                              <span><b>KM</b><em>{{ row.km if row.km is not none else "-" }}</em></span>
+                              <span><b>Referência</b><em>{{ row.external_reference or row.document_number or "-" }}</em></span>
+                            </div>
+                            {% if row.source_label == "Fatura" %}
+                              <div class="clean-doc-invoice-lines">
+                                <strong>Linhas faturadas</strong>
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>#</th>
+                                      <th>Descrição OCR</th>
+                                      <th>Qtd.</th>
+                                      <th>Valor</th>
+                                      <th>Serviço</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {% for item in row.invoice_lines %}
+                                      <tr>
+                                        <td>{{ item.index }}</td>
+                                        <td>{{ item.description }}</td>
+                                        <td>{{ item.quantity }}</td>
+                                        <td>{{ item.amount }}</td>
+                                        <td>{{ item.service }}</td>
+                                      </tr>
+                                    {% else %}
+                                      <tr>
+                                        <td colspan="5">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas faturadas aparecem aqui para validação.</td>
+                                      </tr>
+                                    {% endfor %}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {% endif %}
+                            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify">
+                              <input type="hidden" name="record_id" value="{{ row.id if row.kind == 'record' else '' }}">
+                              <input type="hidden" name="document_id" value="{{ row.id if row.kind == 'document' else '' }}">
+                              <select name="category" required>
+                                <option value="">Campo a classificar</option>
+                                {% for code, label in quick_classification_labels.items() %}
+                                  <option value="{{ code }}">{{ label }}</option>
+                                {% endfor %}
+                              </select>
+                              <input type="text" name="value" placeholder="Ex.: Revisão, FR, TR, FR + TR">
+                              <input type="text" name="free_text" placeholder="Nota / detalhe">
+                              <button type="submit">Guardar classificação</button>
+                            </form>
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  {% else %}
+                    <tr><td colspan="13" class="clean-empty-cell">Sem folhas de obra ou faturas para classificar nesta viatura.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
           {% if module_ctx.import_rows %}
             <section class="clean-doc-structured-block clean-doc-structured-imports">
               <div class="table-heading flat-heading">
@@ -345,6 +457,7 @@
           {% for grouped in structured_sections %}
             {% set group_code = grouped.code %}
             {% set group_label = grouped.label %}
+            {% if group_code not in ["work_orders", "invoices"] %}
             <section class="clean-doc-structured-block clean-doc-structured-block-{{ group_code }}">
               <div class="table-heading flat-heading">
                 <div>
@@ -484,6 +597,7 @@
                 </table>
               </div>
             </section>
+            {% endif %}
           {% else %}
             <p class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</p>
           {% endfor %}

@@ -7,6 +7,139 @@
     {% set vehicle = ctx.vehicle %}
     {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
     {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
+    {% macro render_classification_table(rows, empty_text, prefix) %}
+      <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
+        <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Data</th>
+              <th>Nº</th>
+              <th>Fornecedor</th>
+              <th>Observação / descrição</th>
+              <th>Manutenção</th>
+              <th>Calços</th>
+              <th>Discos</th>
+              <th>Pneus</th>
+              <th>IPO</th>
+              <th>Outro</th>
+              <th>Estado</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              {% set detail_id = prefix ~ "-detail-" ~ row.source_label ~ "-" ~ row.id %}
+              <tr>
+                <td><span class="clean-doc-source-chip">{{ row.source_label }}</span></td>
+                <td>{{ row.date_display or "-" }}</td>
+                <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
+                <td>{{ row.supplier_name }}</td>
+                <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.maintenance }}</span></td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.pads }}</span></td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.discs }}</span></td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.tyres }}</span></td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.ipo }}</span></td>
+                <td><span class="clean-doc-service-value">{{ row.service_matrix.other }}</span></td>
+                <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
+                <td>
+                  <div class="clean-doc-classify-actions">
+                    <a class="button-link secondary-link" href="#{{ detail_id }}">Abrir</a>
+                    <button type="submit" form="classify-form-{{ prefix }}-{{ row.source_label }}-{{ row.id }}">Guardar</button>
+                  </div>
+                </td>
+              </tr>
+              <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}">
+                <td colspan="13">
+                  <details class="clean-doc-expanded-detail" {% if row.source_label == "FA" %}open{% endif %}>
+                    <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
+                    <div class="clean-doc-expanded-detail-grid">
+                      <section class="clean-doc-detail-card">
+                        <h4>Dados do documento</h4>
+                        <dl>
+                          <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
+                          <div><dt>Data</dt><dd>{{ row.date_display or "-" }}</dd></div>
+                          <div><dt>Nº documento</dt><dd>{{ row.external_reference or row.document_number or "-" }}</dd></div>
+                          <div><dt>KM</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
+                          <div><dt>Estado</dt><dd>{{ row.status }}</dd></div>
+                        </dl>
+                      </section>
+                      <section class="clean-doc-detail-card clean-doc-detail-card-wide">
+                        <h4>Classificação por serviço</h4>
+                        <form id="classify-form-{{ prefix }}-{{ row.source_label }}-{{ row.id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify" class="clean-doc-classify-detail-form">
+                          <input type="hidden" name="record_id" value="{{ row.id if row.kind in ['record', 'pending_record'] else '' }}">
+                          <input type="hidden" name="document_id" value="{{ row.id if row.kind == 'document' else '' }}">
+                          <select name="category" required>
+                            <option value="">Campo a classificar</option>
+                            {% for code, label in quick_classification_labels.items() %}
+                              <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                          </select>
+                          <input type="text" name="value" placeholder="Ex.: Revisão, Degradação, FR, TR, FR + TR">
+                          <input type="text" name="free_text" placeholder="Nota / detalhe">
+                        </form>
+                        {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                          <div class="clean-doc-invoice-lines">
+                            <strong>Linhas faturadas</strong>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>#</th>
+                                  <th>Descrição OCR</th>
+                                  <th>Qtd.</th>
+                                  <th>Valor</th>
+                                  <th>Serviço</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for item in row.invoice_lines %}
+                                  <tr>
+                                    <td>{{ item.index }}</td>
+                                    <td>{{ item.description }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td>{{ item.amount }}</td>
+                                    <td>{{ item.service }}</td>
+                                  </tr>
+                                {% else %}
+                                  <tr><td colspan="5">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas aparecem aqui para validação.</td></tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% endif %}
+                      </section>
+                      <section class="clean-doc-detail-card clean-doc-detail-actions">
+                        <h4>Ações</h4>
+                        {% if row.kind == "pending_record" %}
+                          <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/attach" class="clean-doc-classify-detail-form">
+                            <input type="hidden" name="record_id" value="{{ row.id }}">
+                            <select name="document_id" required>
+                              <option value="">Associar PDF em falta</option>
+                              {% for document in module_ctx.document_options %}
+                                <option value="{{ document.id }}">{{ document.label }}</option>
+                              {% endfor %}
+                            </select>
+                            <button type="submit">Associar</button>
+                          </form>
+                        {% endif %}
+                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Criar tarefa</a>
+                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&type=problem">Criar problema</a>
+                        {% if row.open_href %}
+                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
+                        {% endif %}
+                      </section>
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="13" class="clean-empty-cell">{{ empty_text }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endmacro %}
 
     <header class="clean-header-shell clean-card-wide">
       <div class="clean-header-topbar">
@@ -161,243 +294,18 @@
       <p class="clean-doc-filter-note">A documentação real fica separada da documentação estruturada. Os pendentes manuais e campos auditados ficam acessíveis pelas ações do cabeçalho.</p>
     </section>
 
-    <section class="clean-doc-classify-workbench clean-card-wide" id="service-classification">
-      <div class="clean-doc-classify-toolbar">
-        <div>
-          <p class="eyebrow">Classificação operacional</p>
-          <h3>Documentos para classificar</h3>
-        </div>
-        <div class="clean-doc-classify-tabs" aria-label="Tipo de documento">
-          <a class="button-link primary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group=work_orders#service-classification">Folhas de obra</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents?archive_group=invoices#service-classification">Faturas</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents#service-classification">Todos</a>
-        </div>
-        <form method="get" action="/v2-clean/fleet/{{ vehicle.id }}/documents" class="clean-doc-classify-search">
-          <input type="hidden" name="main_group" value="{{ main_group }}">
-          <input type="hidden" name="archive_group" value="{{ archive_group }}">
-          <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar documento, fornecedor ou observação...">
-          <select name="status">
-            <option value="">Todos</option>
-            <option value="por_validar" {% if status == "por_validar" %}selected{% endif %}>Por validar</option>
-            <option value="coerente" {% if status == "coerente" %}selected{% endif %}>Validado</option>
-            <option value="divergente" {% if status == "divergente" %}selected{% endif %}>Divergente</option>
-          </select>
-          <button type="submit" class="button-link secondary-link">Filtrar</button>
-        </form>
-        <button type="button" class="button-link primary-link">Guardar alterações</button>
-      </div>
-
-      <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
-        <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Data</th>
-              <th>Nº</th>
-              <th>Fornecedor</th>
-              <th>Observação / descrição</th>
-              <th>Manutenção</th>
-              <th>Calços</th>
-              <th>Discos</th>
-              <th>Pneus</th>
-              <th>IPO</th>
-              <th>Outro</th>
-              <th>Estado</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in service_classification_rows %}
-              {% set detail_id = "doc-service-detail-" ~ row.source_label ~ "-" ~ row.id %}
-              <tr>
-                <td><span class="clean-doc-source-chip">{{ "FA" if row.source_label == "Fatura" else "FO" }}</span></td>
-                <td>{{ row.date_display or "-" }}</td>
-                <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
-                <td>{{ row.supplier_name }}</td>
-                <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.maintenance }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.pads }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.discs }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.tyres }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.ipo }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.other }}</span></td>
-                <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
-                <td>
-                  <div class="clean-doc-classify-actions">
-                    <a class="button-link secondary-link" href="#{{ detail_id }}">Abrir</a>
-                    <button type="submit" form="classify-form-{{ row.source_label }}-{{ row.id }}">Guardar</button>
-                  </div>
-                </td>
-              </tr>
-              <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}">
-                <td colspan="13">
-                  <details class="clean-doc-expanded-detail" {% if row.source_label == "Fatura" %}open{% endif %}>
-                    <summary>Detalhe {{ "da fatura" if row.source_label == "Fatura" else "da folha de obra" }} {{ row.external_reference or row.document_number or row.title }}</summary>
-                    <div class="clean-doc-expanded-detail-grid">
-                      <section class="clean-doc-detail-card">
-                        <h4>Dados extraídos</h4>
-                        <dl>
-                          <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
-                          <div><dt>Data</dt><dd>{{ row.date_display or "-" }}</dd></div>
-                          <div><dt>Nº documento</dt><dd>{{ row.external_reference or row.document_number or "-" }}</dd></div>
-                          <div><dt>KM</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
-                          <div><dt>Estado</dt><dd>{{ row.status }}</dd></div>
-                        </dl>
-                      </section>
-                      <section class="clean-doc-detail-card clean-doc-detail-card-wide">
-                        <h4>Classificação por serviço</h4>
-                        <form id="classify-form-{{ row.source_label }}-{{ row.id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify" class="clean-doc-classify-detail-form">
-                          <input type="hidden" name="record_id" value="{{ row.id if row.kind == 'record' else '' }}">
-                          <input type="hidden" name="document_id" value="{{ row.id if row.kind == 'document' else '' }}">
-                          <select name="category" required>
-                            <option value="">Campo a classificar</option>
-                            {% for code, label in quick_classification_labels.items() %}
-                              <option value="{{ code }}">{{ label }}</option>
-                            {% endfor %}
-                          </select>
-                          <input type="text" name="value" placeholder="Ex.: Revisão, Degradação, FR, TR, FR + TR">
-                          <input type="text" name="free_text" placeholder="Nota / detalhe">
-                        </form>
-                        {% if row.source_label == "Fatura" %}
-                          <div class="clean-doc-invoice-lines">
-                            <strong>Linhas faturadas</strong>
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>#</th>
-                                  <th>Descrição OCR</th>
-                                  <th>Qtd.</th>
-                                  <th>Valor</th>
-                                  <th>Serviço</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {% for item in row.invoice_lines %}
-                                  <tr>
-                                    <td>{{ item.index }}</td>
-                                    <td>{{ item.description }}</td>
-                                    <td>{{ item.quantity }}</td>
-                                    <td>{{ item.amount }}</td>
-                                    <td>{{ item.service }}</td>
-                                  </tr>
-                                {% else %}
-                                  <tr><td colspan="5">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas aparecem aqui para validação.</td></tr>
-                                {% endfor %}
-                              </tbody>
-                            </table>
-                          </div>
-                        {% endif %}
-                      </section>
-                      <section class="clean-doc-detail-card clean-doc-detail-actions">
-                        <h4>Ações</h4>
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Criar tarefa</a>
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&type=problem">Criar problema</a>
-                        {% if row.open_href %}
-                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
-                        {% endif %}
-                      </section>
-                    </div>
-                  </details>
-                </td>
-              </tr>
-            {% else %}
-              <tr><td colspan="13" class="clean-empty-cell">Sem folhas de obra ou faturas para classificar nesta viatura.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <p class="clean-doc-filter-note">A lista mostra logo a classificação por serviço. OCR, linhas faturadas e ações só aparecem ao abrir a linha.</p>
-    </section>
-
     <section class="clean-doc-context-grid">
       <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
           <span>
             <b>Documentação de arquivo</b>
-            <small>Faturas, diagnósticos, evidências e pendentes por associar</small>
+            <small>Documentos reais da viatura. Abrir a linha para OCR, ações e classificação.</small>
           </span>
-          <em>{{ archive_rows|length }} linhas</em>
+          <em>{{ archive_classification_rows|length }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
-          <div class="clean-doc-table-wrap">
-            <table class="clean-doc-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Grupo</th>
-                  <th>Título</th>
-                  <th>Fornecedor</th>
-                  <th>Nº documento</th>
-                  <th>Estado</th>
-                  <th>Extração</th>
-                  <th>Etiquetas</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in archive_rows %}
-                  <tr>
-                    <td>{{ row.date_display or "-" }}</td>
-                    <td>{{ row.archive_label }}</td>
-                    <td>{{ row.title }}</td>
-                    <td>{{ row.supplier_name }}</td>
-                    <td>{{ row.document_number }}</td>
-                    <td>{{ row.status }}</td>
-                    <td>{{ row.extraction_state }}</td>
-                    <td>
-                      <div class="clean-doc-tag-list">
-                        {% for tag in row.tags %}
-                          <span>{{ tag }}</span>
-                        {% else %}
-                          <em>-</em>
-                        {% endfor %}
-                      </div>
-                    </td>
-                    <td>
-                      <div class="clean-doc-inline-actions">
-                        {% if row.open_href %}
-                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir</a>
-                        {% endif %}
-                        {% if row.kind == "pending_record" %}
-                          <details class="clean-doc-inline-form">
-                            <summary>Associar</summary>
-                            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/attach">
-                              <input type="hidden" name="record_id" value="{{ row.id }}">
-                              <select name="document_id" required>
-                                <option value="">Selecionar documento</option>
-                                {% for document in module_ctx.document_options %}
-                                  <option value="{{ document.id }}">{{ document.label }}</option>
-                                {% endfor %}
-                              </select>
-                              <button type="submit">Guardar</button>
-                            </form>
-                          </details>
-                        {% endif %}
-                        <details class="clean-doc-inline-form">
-                          <summary>Classificar</summary>
-                          <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify">
-                            <input type="hidden" name="document_id" value="{{ row.id if row.kind == 'document' else '' }}">
-                            <input type="hidden" name="record_id" value="{{ row.id if row.kind == 'pending_record' else '' }}">
-                            <select name="category" required>
-                              <option value="">Categoria</option>
-                              {% for code, label in quick_classification_labels.items() %}
-                                <option value="{{ code }}">{{ label }}</option>
-                              {% endfor %}
-                            </select>
-                            <input type="text" name="value" placeholder="Valor / opção">
-                            <input type="text" name="free_text" placeholder="Texto livre, se aplicável">
-                            <button type="submit">Guardar</button>
-                          </form>
-                        </details>
-                      </div>
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="9" class="clean-empty-cell">Sem documentação de arquivo para os filtros escolhidos.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          {{ render_classification_table(archive_classification_rows, "Sem documentação de arquivo para classificar nos filtros escolhidos.", "archive") }}
+          <p class="clean-doc-filter-note">Faturas, diagnósticos, evidências e pendentes ficam fechados por defeito. Abrir a linha mostra OCR, associação, tarefas e problemas.</p>
         </div>
       </details>
 
@@ -405,203 +313,13 @@
         <summary>
           <span>
               <b>Documentação estruturada</b>
-              <small>Listagens globais separadas por tipo, com leitura e ações próprias</small>
+              <small>Folhas de obra importadas para classificar por serviço</small>
             </span>
-            <em>{{ structured_rows|length }} linhas</em>
+            <em>{{ structured_classification_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
-          {% if module_ctx.import_rows %}
-            <section class="clean-doc-structured-block clean-doc-structured-imports">
-              <div class="table-heading flat-heading">
-                <div>
-                  <h4>Fontes importadas</h4>
-                  <p>Ficheiros Excel usados para criar listagens estruturadas. Não contam como documentos reais de arquivo.</p>
-                </div>
-                <strong class="clean-doc-pill">{{ module_ctx.import_rows|length }} ficheiros</strong>
-              </div>
-              <div class="clean-doc-table-wrap">
-                <table class="clean-doc-table">
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Tipo</th>
-                      <th>Ficheiro</th>
-                      <th>Registos</th>
-                      <th>Estado</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for row in module_ctx.import_rows %}
-                      <tr>
-                        <td>{{ row.date_display or "-" }}</td>
-                        <td>{{ row.import_label }}</td>
-                        <td>{{ row.file_name }}</td>
-                        <td>{{ row.imported_count }}</td>
-                        <td>{{ row.status }}</td>
-                        <td>
-                          {% if row.open_href %}
-                            <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
-                          {% endif %}
-                          <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-structured-import" class="clean-inline-form">
-                            <input type="hidden" name="return_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-                            <button type="submit" class="button-link secondary-link">Reprocessar linhas</button>
-                          </form>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          {% endif %}
-          {% for grouped in structured_sections %}
-            {% set group_code = grouped.code %}
-            {% set group_label = grouped.label %}
-            {% if group_code not in ["work_orders", "invoices"] %}
-            <section class="clean-doc-structured-block clean-doc-structured-block-{{ group_code }}">
-              <div class="table-heading flat-heading">
-                <div>
-                  <h4>{{ group_label }}</h4>
-                  {% if group_code == "work_orders" %}
-                    <p>Serviços pedidos, fornecedor, quilómetros e classificação operacional.</p>
-                  {% elif group_code == "invoices" %}
-                    <p>Documentos financeiros e ligação futura a folhas de obra.</p>
-                  {% elif group_code == "contracts" %}
-                    <p>Contratos e períodos de utilização para compor a linha central da timeline.</p>
-                  {% elif group_code == "impros" %}
-                    <p>Impros, garagem, tipo e quilómetros para histórico de utilização.</p>
-                  {% elif group_code == "ars" %}
-                    <p>Autorizações/reparações ligadas à viatura, sempre no lado direito da timeline.</p>
-                  {% elif group_code == "claims" %}
-                    <p>Sinistros e ocorrências para leitura conjunta com faturas e AR's.</p>
-                  {% else %}
-                    <p>{{ grouped.list|length }} registos neste tipo documental.</p>
-                  {% endif %}
-                </div>
-                <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
-              </div>
-              <div class="clean-doc-table-wrap">
-                <table class="clean-doc-table">
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      {% if group_code in ["work_orders", "ars", "claims"] %}
-                        <th>Nº / referência</th>
-                        <th>Fornecedor / origem</th>
-                        <th>KM</th>
-                        <th>Serviço / descrição</th>
-                        <th>Estado</th>
-                        <th>Classificação</th>
-                        <th>Ações</th>
-                      {% elif group_code == "contracts" %}
-                        <th>Contrato / RA</th>
-                        <th>Cliente / entidade</th>
-                        <th>Período</th>
-                        <th>Estado</th>
-                        <th>Ref. externa</th>
-                        <th>Notas</th>
-                      {% elif group_code == "impros" %}
-                        <th>Impro</th>
-                        <th>Garagem / origem</th>
-                        <th>KM</th>
-                        <th>Período</th>
-                        <th>Tipo / estado</th>
-                        <th>Observação</th>
-                      {% else %}
-                        <th>Título</th>
-                        <th>Fornecedor / origem</th>
-                        <th>KM</th>
-                        <th>Comparação</th>
-                        <th>Etiquetas</th>
-                      {% endif %}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for row in grouped.rows %}
-                      <tr>
-                        <td>{{ row.date_display or "-" }}</td>
-                        {% if group_code in ["work_orders", "ars", "claims"] %}
-                          <td>
-                            <strong>{{ row.title }}</strong>
-                            {% if row.external_reference and row.external_reference != row.title and row.external_reference != "-" %}
-                              <small>{{ row.external_reference }}</small>
-                            {% endif %}
-                          </td>
-                          <td>{{ row.supplier_name }}</td>
-                          <td>{{ row.km if row.km is not none else "-" }}</td>
-                          <td>{{ row.description or "-" }}</td>
-                          <td>{{ row.comparison_label }}</td>
-                          <td>
-                            <div class="clean-doc-tag-list">
-                              {% for tag in row.tags %}
-                                <span>{{ tag }}</span>
-                              {% else %}
-                                <em>Por classificar</em>
-                              {% endfor %}
-                            </div>
-                          </td>
-                          <td>
-                            <details class="clean-doc-inline-form">
-                              <summary>Classificar</summary>
-                              <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify">
-                                <input type="hidden" name="record_id" value="{{ row.id }}">
-                                <select name="category" required>
-                                  <option value="">Categoria</option>
-                                  {% for code, label in quick_classification_labels.items() %}
-                                    <option value="{{ code }}">{{ label }}</option>
-                                  {% endfor %}
-                                </select>
-                                <input type="text" name="value" placeholder="Valor / opção">
-                                <input type="text" name="free_text" placeholder="Texto livre, se aplicável">
-                                <button type="submit">Guardar</button>
-                              </form>
-                            </details>
-                          </td>
-                        {% elif group_code == "contracts" %}
-                          <td><strong>{{ row.title }}</strong></td>
-                          <td>{{ row.supplier_name }}</td>
-                          <td>{{ row.period_display or "-" }}</td>
-                          <td>{{ row.status or "-" }}</td>
-                          <td>{{ row.external_reference or "-" }}</td>
-                          <td>{{ row.process_reference or "-" }}</td>
-                        {% elif group_code == "impros" %}
-                          <td><strong>{{ row.title }}</strong></td>
-                          <td>{{ row.supplier_name }}</td>
-                          <td>{{ row.km if row.km is not none else "-" }}</td>
-                          <td>{{ row.period_display or "-" }}</td>
-                          <td>{{ row.status }}</td>
-                          <td>{{ row.description or row.process_reference or "-" }}</td>
-                        {% else %}
-                          <td>
-                            <strong>{{ row.title }}</strong>
-                            {% if row.external_reference and row.external_reference != row.title %}
-                              <small>{{ row.external_reference }}</small>
-                            {% endif %}
-                          </td>
-                          <td>{{ row.supplier_name }}</td>
-                          <td>{{ row.km if row.km is not none else "-" }}</td>
-                          <td>{{ row.comparison_label }}</td>
-                          <td>
-                            <div class="clean-doc-tag-list">
-                              {% for tag in row.tags %}
-                                <span>{{ tag }}</span>
-                              {% else %}
-                                <em>-</em>
-                              {% endfor %}
-                            </div>
-                          </td>
-                        {% endif %}
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-            {% endif %}
-          {% else %}
-            <p class="clean-empty-cell">Sem documentação estruturada para os filtros escolhidos.</p>
-          {% endfor %}
+          {{ render_classification_table(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.", "structured") }}
+          <p class="clean-doc-filter-note">Esta tabela mostra as folhas de obra importadas linha a linha. Contratos e impros ficam fora da classificação e alimentam a timeline.</p>
         </div>
       </details>
 

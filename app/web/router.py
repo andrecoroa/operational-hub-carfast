@@ -5595,34 +5595,61 @@ def clean_fleet_documents(
                         "rows": group_rows,
                     }
                 )
-        include_work_orders_for_classification = archive_group != "invoices"
-        include_invoices_for_classification = clean_main_group != "work_orders"
-
-        service_classification_rows = []
+        structured_classification_rows = []
         for row in structured_rows:
-            if include_work_orders_for_classification and row.get("main_group") == "work_orders":
-                service_classification_rows.append(
+            if row.get("main_group") == "work_orders":
+                structured_classification_rows.append(
                     {
                         **row,
                         "source_label": "FO",
                         "detail_label": "Folha de obra",
                     }
                 )
+        structured_classification_rows.sort(
+            key=lambda row: (row.get("date") or date.min, str(row.get("title") or "")),
+            reverse=True,
+        )
+
+        archive_classification_rows = []
         for row in archive_rows:
-            if include_invoices_for_classification and (
-                row.get("main_group") == "invoices" or row.get("archive_group") == "invoices"
-            ):
-                service_classification_rows.append(
-                    {
-                        **row,
-                        "source_label": "Fatura",
-                        "detail_label": "Fatura",
-                        "description": row.get("title") or row.get("document_number") or "",
-                        "external_reference": row.get("document_number") or row.get("title") or "-",
-                        "comparison_label": row.get("comparison_state") or row.get("extraction_state") or "Por validar",
-                    }
-                )
-        service_classification_rows.sort(
+            service_matrix = row.get("service_matrix") or {
+                "maintenance": "-",
+                "pads": "-",
+                "discs": "-",
+                "tyres": "-",
+                "ipo": "-",
+                "other": "-",
+            }
+            source_label = "Doc"
+            detail_label = row.get("archive_label") or "Documento"
+            if row.get("main_group") == "invoices" or row.get("archive_group") == "invoices":
+                source_label = "FA"
+                detail_label = "Fatura"
+            elif row.get("archive_group") == "diagnostics":
+                source_label = "DI"
+                detail_label = "Diagnóstico"
+            elif row.get("archive_group") == "evidence":
+                source_label = "EV"
+                detail_label = "Evidência"
+            elif row.get("archive_group") == "servicebox_tsb":
+                source_label = "SB"
+                detail_label = "Service Box / TSB"
+            elif row.get("kind") == "pending_record":
+                source_label = "PE"
+                detail_label = "Pendente"
+            archive_classification_rows.append(
+                {
+                    **row,
+                    "source_label": source_label,
+                    "detail_label": detail_label,
+                    "description": row.get("title") or row.get("document_number") or "",
+                    "external_reference": row.get("document_number") or row.get("title") or "-",
+                    "comparison_label": row.get("comparison_state") or row.get("extraction_state") or "Por validar",
+                    "service_matrix": service_matrix,
+                    "invoice_lines": row.get("invoice_lines") or [],
+                }
+            )
+        archive_classification_rows.sort(
             key=lambda row: (row.get("date") or date.min, row.get("source_label") or "", str(row.get("title") or "")),
             reverse=True,
         )
@@ -5665,7 +5692,8 @@ def clean_fleet_documents(
                 "archive_rows": archive_rows,
                 "structured_rows": structured_rows,
                 "structured_sections": structured_sections,
-                "service_classification_rows": service_classification_rows,
+                "structured_classification_rows": structured_classification_rows,
+                "archive_classification_rows": archive_classification_rows,
                 "comparison_rows": comparison_rows,
                 "q": q or "",
                 "main_group": clean_main_group,

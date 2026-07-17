@@ -4,16 +4,16 @@
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-doc-page-header clean-card-wide">
+    <header class="clean-doc-page-header clean-card-wide clean-doc-center-header">
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / gestão v2</p>
         <h1>Centro de documentação</h1>
-        <p>Área global para importar listagens estruturadas, acompanhar linhas por viatura e preparar validações documentais.</p>
+        <p>Área global para importar listagens estruturadas, acompanhar filas de classificação e preparar validações por viatura.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
-        <a class="button-link secondary-link" href="#imports">Importar listagens</a>
+        <a class="button-link primary-link" href="#imports">Importações</a>
       </div>
     </header>
 
@@ -39,103 +39,159 @@
       </section>
     {% endif %}
 
-    <section class="clean-doc-filter-panel clean-card-wide">
-      <div class="clean-doc-import-hero">
-        <div class="clean-doc-import-hero-stat">
-          <strong>{{ vehicle_count }}</strong>
-          <span>viaturas</span>
-        </div>
-        <div class="clean-doc-import-hero-stat">
-          <strong>{{ module_ctx.import_rows|length }}</strong>
-          <span>fontes Excel</span>
-        </div>
-        <div class="clean-doc-import-hero-stat">
-          <strong>{{ structured_rows|length }}</strong>
-          <span>linhas estruturadas</span>
-        </div>
-        <div class="clean-doc-import-hero-stat">
-          <strong>{{ archive_documents_count }}</strong>
-          <span>documentos reais</span>
-        </div>
-        {% for code, label in structured_groups %}
-          <a class="clean-doc-import-hero-stat" href="/v2-clean/documents?main_group={{ code }}">
-            <strong>{{ structured_counts.get(code, 0) }}</strong>
-            <span>{{ label }}</span>
-          </a>
-        {% endfor %}
-      </div>
+    {% set work_order_count = structured_counts.get("work_orders", 0) %}
+    {% set contract_count = structured_counts.get("contracts", 0) %}
+    {% set impro_count = structured_counts.get("impros", 0) %}
+    {% set pending_structured = structured_rows|selectattr("comparison_state", "equalto", "por_validar")|list|length %}
+
+    <section class="clean-doc-kpi-strip">
+      <a class="clean-doc-kpi-card" href="/v2-clean/fleet">
+        <strong>{{ vehicle_count }}</strong>
+        <span>Viaturas</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=work_orders">
+        <strong>{{ work_order_count }}</strong>
+        <span>Folhas de obra</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=contracts">
+        <strong>{{ contract_count }}</strong>
+        <span>Contratos</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=impros">
+        <strong>{{ impro_count }}</strong>
+        <span>Impros</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?status=por_validar">
+        <strong>{{ pending_structured }}</strong>
+        <span>Por classificar</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?status=pending">
+        <strong>{{ archive_documents_count }}</strong>
+        <span>Documentos reais</span>
+      </a>
     </section>
 
     <section class="clean-doc-context-grid">
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-overview-card">
+      <article class="clean-doc-structure-card clean-card-wide" id="imports">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Gestão documental</p>
-            <h3>Separação fechada</h3>
-            <p>As listagens estruturadas criam linhas consultáveis e classificáveis. Os ficheiros Excel ficam apenas como fonte; PDFs, imagens e faturas reais entram na ficha documental da viatura.</p>
+            <p class="eyebrow">Importação estruturada</p>
+            <h3>Listagens globais</h3>
+            <p>Excel entra aqui uma vez para todas as viaturas. PDFs, faturas reais, fotografias e evidências entram na página documental da própria viatura.</p>
           </div>
-          <strong class="clean-doc-pill">V2</strong>
+          <strong class="clean-doc-pill">Global</strong>
         </div>
-        <div class="clean-doc-overview-pills">
-          <span><b>Fontes</b><em>Excel arquivado</em></span>
-          <span><b>Linhas</b><em>FO, impros, contratos</em></span>
-          <span><b>Viatura</b><em>timeline e classificação</em></span>
-          <span><b>Arquivo</b><em>documentos reais</em></span>
+
+        <div class="clean-doc-compact-import-grid">
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">FO</span>
+            <div>
+              <h4>Folhas de obra</h4>
+              <p>Número, Data, Matrícula, Nome fornecedor, Observações.</p>
+            </div>
+            <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">CO</span>
+            <div>
+              <h4>Contratos</h4>
+              <p>Períodos de contrato para a linha central da timeline.</p>
+            </div>
+            <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">IM</span>
+            <div>
+              <h4>Impros</h4>
+              <p>Períodos de utilização e dados para timeline.</p>
+            </div>
+            <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
         </div>
       </article>
 
-      <section class="clean-doc-import-center-grid" id="imports">
-        <article class="clean-doc-structure-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Importação global</p>
-              <h3>Folhas de obra</h3>
-              <p>Cabeçalhos esperados: Número, Data, Matrícula, Nome fornecedor, Observações.</p>
-            </div>
-          </div>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-orders" class="clean-doc-quick-form">
-            <label>
-              Ficheiro
-              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            </label>
-            <button type="submit">Importar FO</button>
-          </form>
+      <section class="clean-doc-work-queue-grid">
+        <article class="clean-doc-work-queue-card clean-card-wide">
+          <p class="eyebrow">Classificação</p>
+          <h3>Filas de trabalho</h3>
+          <p>Usar estas entradas para abrir os conjuntos que precisam de tratamento antes de alimentar tarefas, problemas e timeline.</p>
         </article>
-
-        <article class="clean-doc-structure-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Importação global</p>
-              <h3>Impros</h3>
-              <p>Associação por matrícula, chassi ou unit quando disponível.</p>
-            </div>
-          </div>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/impros" class="clean-doc-quick-form">
-            <label>
-              Ficheiro
-              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            </label>
-            <button type="submit">Importar impros</button>
-          </form>
-        </article>
-
-        <article class="clean-doc-structure-card clean-card-wide">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Importação global</p>
-              <h3>Contratos</h3>
-              <p>Cria períodos de utilização para a linha central da timeline documental.</p>
-            </div>
-          </div>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/contracts" class="clean-doc-quick-form">
-            <label>
-              Ficheiro
-              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-            </label>
-            <button type="submit">Importar contratos</button>
-          </form>
-        </article>
+        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=work_orders&status=por_validar">
+          <strong>{{ work_order_count }}</strong>
+          <span>Folhas de obra</span>
+          <em>Classificar serviço e cruzar com faturas.</em>
+        </a>
+        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=contracts">
+          <strong>{{ contract_count }}</strong>
+          <span>Contratos</span>
+          <em>Validar presença na timeline.</em>
+        </a>
+        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=impros">
+          <strong>{{ impro_count }}</strong>
+          <span>Impros</span>
+          <em>Validar períodos de utilização.</em>
+        </a>
       </section>
+
+      <article class="clean-doc-structure-card clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Últimas importações</p>
+            <h3>Fontes Excel arquivadas</h3>
+            <p>Estas fontes não contam como documentos da viatura; servem apenas para criar e reprocessar linhas estruturadas.</p>
+          </div>
+          <strong class="clean-doc-pill">{{ module_ctx.import_rows|length }} ficheiros</strong>
+        </div>
+        <div class="clean-doc-table-wrap">
+          <table class="clean-doc-table clean-doc-table-compact">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Ficheiro</th>
+                <th>Registos</th>
+                <th>Estado</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in module_ctx.import_rows %}
+                <tr>
+                  <td>{{ row.date_display or "-" }}</td>
+                  <td>{{ row.import_label }}</td>
+                  <td>{{ row.file_name }}</td>
+                  <td>{{ row.imported_count }}</td>
+                  <td>{{ row.status }}</td>
+                  <td>
+                    <div class="clean-doc-inline-actions">
+                      {% if row.open_href %}
+                        <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
+                      {% endif %}
+                      <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-structured-import" class="clean-inline-form">
+                        <input type="hidden" name="return_url" value="/v2-clean/documents">
+                        <button type="submit" class="button-link secondary-link">Reprocessar</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="clean-empty-cell">Ainda não existem fontes Excel importadas.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
 
       <section class="clean-doc-filter-panel clean-card-wide">
         <form method="get" action="/v2-clean/documents" class="clean-doc-filter-grid">
@@ -164,61 +220,11 @@
         </form>
       </section>
 
-      <details class="clean-doc-collapsible clean-card-wide" open>
+      <details class="clean-doc-collapsible clean-card-wide" {% if structured_rows %}open{% endif %}>
         <summary>
           <span>
-            <b>Fontes importadas</b>
-            <small>Ficheiros Excel arquivados como origem das linhas estruturadas. Não contam como documentos reais.</small>
-          </span>
-          <em>{{ module_ctx.import_rows|length }} ficheiros</em>
-        </summary>
-        <div class="clean-doc-collapsible-body">
-          <div class="clean-doc-table-wrap">
-            <table class="clean-doc-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Tipo</th>
-                  <th>Ficheiro</th>
-                  <th>Registos fonte</th>
-                  <th>Estado</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in module_ctx.import_rows %}
-                  <tr>
-                    <td>{{ row.date_display or "-" }}</td>
-                    <td>{{ row.import_label }}</td>
-                    <td>{{ row.file_name }}</td>
-                    <td>{{ row.imported_count }}</td>
-                    <td>{{ row.status }}</td>
-                    <td>
-                      <div class="clean-doc-inline-actions">
-                        {% if row.open_href %}
-                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir fonte</a>
-                        {% endif %}
-                        <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-structured-import" class="clean-inline-form">
-                          <input type="hidden" name="return_url" value="/v2-clean/documents">
-                          <button type="submit" class="button-link secondary-link">Reprocessar linhas</button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="6" class="clean-empty-cell">Ainda não existem fontes Excel importadas.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
-      <details class="clean-doc-collapsible clean-card-wide" open>
-        <summary>
-          <span>
-            <b>Linhas estruturadas</b>
-            <small>Registos materializados por viatura, separados por tipo documental.</small>
+            <b>Linhas estruturadas por tipo</b>
+            <small>Registos por viatura, separados porque cada tipo tem tratamento diferente.</small>
           </span>
           <em>{{ structured_rows|length }} linhas</em>
         </summary>
@@ -243,7 +249,7 @@
                 <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
               </div>
               <div class="clean-doc-table-wrap">
-                <table class="clean-doc-table">
+                <table class="clean-doc-table clean-doc-table-compact">
                   <thead>
                     <tr>
                       <th>Viatura</th>

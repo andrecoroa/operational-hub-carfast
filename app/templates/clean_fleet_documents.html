@@ -7,6 +7,26 @@
     {% set vehicle = ctx.vehicle %}
     {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
     {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
+    {% macro render_service_cell(row, prefix, category, current_value, placeholder) %}
+      <td>
+        <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify" class="clean-doc-inline-classify-form">
+          {% if row.kind in ['record', 'pending_record'] %}
+            <input type="hidden" name="record_id" value="{{ row.id }}">
+          {% endif %}
+          {% if row.kind == 'document' %}
+            <input type="hidden" name="document_id" value="{{ row.id }}">
+          {% endif %}
+          <input type="hidden" name="category" value="{{ category }}">
+          <input type="hidden" name="free_text" value="">
+          <select name="value" aria-label="{{ quick_classification_labels.get(category, category) }}" onchange="this.form.submit()">
+            <option value="">{{ current_value if current_value and current_value != '-' else placeholder }}</option>
+            {% for option_code, option_label in quick_classifications.get(category, []) %}
+              <option value="{{ option_code }}">{{ option_label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+    {% endmacro %}
     {% macro render_classification_table(rows, empty_text, prefix) %}
       <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
         <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table">
@@ -36,17 +56,16 @@
                 <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
                 <td>{{ row.supplier_name }}</td>
                 <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.maintenance }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.pads }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.discs }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.tyres }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.ipo }}</span></td>
-                <td><span class="clean-doc-service-value">{{ row.service_matrix.other }}</span></td>
+                {{ render_service_cell(row, prefix, "maintenance", row.service_matrix.maintenance, "Por definir") }}
+                {{ render_service_cell(row, prefix, "pads", row.service_matrix.pads, "Por definir") }}
+                {{ render_service_cell(row, prefix, "discs", row.service_matrix.discs, "Por definir") }}
+                {{ render_service_cell(row, prefix, "tyres", row.service_matrix.tyres, "Por definir") }}
+                {{ render_service_cell(row, prefix, "ipo", row.service_matrix.ipo, "Por definir") }}
+                {{ render_service_cell(row, prefix, "other", row.service_matrix.other, "Por definir") }}
                 <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                 <td>
                   <div class="clean-doc-classify-actions">
                     <a class="button-link secondary-link" href="#{{ detail_id }}">Abrir</a>
-                    <button type="submit" form="classify-form-{{ prefix }}-{{ row.source_label }}-{{ row.id }}">Guardar</button>
                   </div>
                 </td>
               </tr>
@@ -67,18 +86,7 @@
                       </section>
                       <section class="clean-doc-detail-card clean-doc-detail-card-wide">
                         <h4>Classificação por serviço</h4>
-                        <form id="classify-form-{{ prefix }}-{{ row.source_label }}-{{ row.id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify" class="clean-doc-classify-detail-form">
-                          <input type="hidden" name="record_id" value="{{ row.id if row.kind in ['record', 'pending_record'] else '' }}">
-                          <input type="hidden" name="document_id" value="{{ row.id if row.kind == 'document' else '' }}">
-                          <select name="category" required>
-                            <option value="">Campo a classificar</option>
-                            {% for code, label in quick_classification_labels.items() %}
-                              <option value="{{ code }}">{{ label }}</option>
-                            {% endfor %}
-                          </select>
-                          <input type="text" name="value" placeholder="Ex.: Revisão, Degradação, FR, TR, FR + TR">
-                          <input type="text" name="free_text" placeholder="Nota / detalhe">
-                        </form>
+                        <p class="clean-doc-filter-note">A classificação principal é feita diretamente na linha. Usa este detalhe para validar OCR, linhas de fatura, notas e associações.</p>
                         {% if row.source_label == "FA" or row.archive_group == "invoices" %}
                           <div class="clean-doc-invoice-lines">
                             <strong>Linhas faturadas</strong>

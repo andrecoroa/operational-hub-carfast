@@ -74,6 +74,12 @@ Só executar depois de validar a auditoria:
 python scripts/reset_v2_operational_data.py --execute --yes-i-understand --snapshot-file exports/v2-reset-executed-production.json
 ```
 
+Em Postgres remoto/produção, a ferramenta exige uma confirmação adicional:
+
+```powershell
+python scripts/reset_v2_operational_data.py --execute --yes-i-understand --yes-production --snapshot-file exports/v2-reset-executed-production.json
+```
+
 ## Opções de preservação
 
 Se quisermos limpar por fases:

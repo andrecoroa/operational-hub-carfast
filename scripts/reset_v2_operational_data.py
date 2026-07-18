@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 V2_DOCUMENT_SOURCES = {"v2_clean_manual", "workshop_v2_clean"}
+V2_DOCUMENT_ENTRY_CHANNELS = {"structured_import", "v2_clean", "upload"}
 V2_TASK_SOURCES = {"v2_clean", "workshop_v2_clean"}
 V2_TASK_ENTITY_TYPES = {"workshop_phased_process", "workshop_phased_technical_report"}
 
@@ -57,6 +58,11 @@ def parse_args() -> argparse.Namespace:
         "--preserve-tasks",
         action="store_true",
         help="Nao apaga tarefas/problemas v2.",
+    )
+    parser.add_argument(
+        "--yes-production",
+        action="store_true",
+        help="Confirmacao adicional obrigatoria para executar contra Postgres remoto.",
     )
     return parser.parse_args()
 
@@ -147,13 +153,7 @@ def build_scope(db: Any, m: dict[str, Any], *, include_documents: bool, include_
     if include_workshop:
         workshop_process_ids = id_list(
             db,
-            select(WorkshopPhasedProcess.id).where(
-                or_(
-                    WorkshopPhasedProcess.origin == "v2_clean",
-                    WorkshopPhasedProcess.process_type == "workshop",
-                    WorkshopPhasedProcess.metadata_json.is_not(None),
-                )
-            ),
+            select(WorkshopPhasedProcess.id).where(WorkshopPhasedProcess.origin == "v2_clean"),
         )
 
     v2_doc_ids: set[int] = set()
@@ -163,8 +163,11 @@ def build_scope(db: Any, m: dict[str, Any], *, include_documents: bool, include_
                 db,
                 select(Document.id).where(
                     or_(
-                        Document.source.in_(V2_DOCUMENT_SOURCES),
-                        Document.entry_channel == "structured_import",
+                        Document.source == "workshop_v2_clean",
+                        (
+                            Document.source == "v2_clean_manual"
+                        )
+                        & Document.entry_channel.in_(V2_DOCUMENT_ENTRY_CHANNELS),
                     )
                 ),
             )
@@ -220,6 +223,17 @@ def build_scope(db: Any, m: dict[str, Any], *, include_documents: bool, include_
         "workshop_process_ids": workshop_process_ids,
         "document_ids": sorted(v2_doc_ids),
         "task_ids": task_ids,
+    }
+
+
+def scope_summary(scope: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "document_ids": len(scope["document_ids"]),
+        "workshop_process_ids": len(scope["workshop_process_ids"]),
+        "task_ids": len(scope["task_ids"]),
+        "document_id_sample": scope["document_ids"][:100],
+        "workshop_process_id_sample": scope["workshop_process_ids"][:100],
+        "task_id_sample": scope["task_ids"][:100],
     }
 
 
@@ -407,19 +421,6 @@ def execute_reset(db: Any, m: dict[str, Any], scope: dict[str, Any]) -> dict[str
         deleted["document_links"] = delete_by_ids(db, DocumentLink, "document_id", doc_ids)
         deleted["documents"] = delete_by_ids(db, Document, "id", doc_ids)
 
-    structured_records = db.execute(
-        delete(VehicleDocumentRecord).where(VehicleDocumentRecord.source_record_type == "structured")
-    )
-    deleted["vehicle_document_records_structured_remaining"] = int(structured_records.rowcount or 0)
-    deleted["vehicle_document_record_tags_all_remaining"] = int(db.execute(delete(VehicleDocumentRecordTag)).rowcount or 0)
-    deleted["vehicle_document_alerts_all_remaining"] = int(db.execute(delete(VehicleDocumentAlert)).rowcount or 0)
-    deleted["vehicle_document_pending_actions_all_remaining"] = int(
-        db.execute(delete(VehicleDocumentPendingAction)).rowcount or 0
-    )
-    deleted["vehicle_document_audit_fields_all_remaining"] = int(
-        db.execute(delete(VehicleDocumentAuditField)).rowcount or 0
-    )
-
     db.commit()
     return deleted
 
@@ -443,6 +444,15 @@ def main() -> None:
 
     SessionLocal = m["SessionLocal"]
     settings = m["settings"]
+    target = database_target_summary(settings)
+    is_remote_postgres = target["driver"].startswith("postgresql") and target["host"] not in {
+        "localhost:5432",
+        "127.0.0.1:5432",
+        "(local/ficheiro)",
+    }
+    if args.execute and is_remote_postgres and not args.yes_production:
+        raise SystemExit("Para executar contra Postgres remoto, usar tambem --yes-production.")
+
     include_documents = not args.preserve_documents
     include_workshop = not args.preserve_workshop
     include_tasks = not args.preserve_tasks
@@ -462,9 +472,7 @@ def main() -> None:
                 "include_documents": include_documents,
                 "include_workshop": include_workshop,
                 "include_tasks": include_tasks,
-                "document_ids": len(scope["document_ids"]),
-                "workshop_process_ids": len(scope["workshop_process_ids"]),
-                "task_ids": len(scope["task_ids"]),
+                **scope_summary(scope),
             },
             "counts": audit(db, m, scope),
         }

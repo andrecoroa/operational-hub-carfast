@@ -1,4 +1,6 @@
+import hashlib
 from datetime import date
+from pathlib import Path
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -741,6 +743,61 @@ def test_clean_vehicle_documents_import_contracts(authenticated_client, db_sessi
         )
     )
     assert import_source is not None
+
+
+def test_clean_document_center_reimport_refreshes_existing_structured_source(authenticated_client, db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Contrato", "Matrícula", "Fornecedor", "Data início", "Data fim", "Estado", "Valor mensal", "Observações"],
+        [["CTR-2026-001", "CC-11-AA", "Locadora X", "2026-01-01", "2029-01-01", "Ativo", "425.50", "Contrato de aluguer operacional"]],
+    )
+    workbook_bytes = workbook.getvalue()
+    digest = hashlib.sha256(workbook_bytes).hexdigest()
+    missing_source_path = tmp_path / "fonte-antiga-apagada.xlsx"
+    source = Document(
+        title="Importação Contratos - global",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="contracts:1",
+        original_name="contracts.xlsx",
+        file_name="contracts.xlsx",
+        file_type="xlsx",
+        file_hash=digest,
+        file_size=len(workbook_bytes),
+        storage_provider="local",
+        storage_path=str(missing_source_path),
+        status="archived",
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+    source_id = source.id
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/contracts",
+        files={"file": ("contracts.xlsx", workbook_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    refreshed_source = db_session.get(Document, source_id)
+    assert refreshed_source is not None
+    assert refreshed_source.source_subject == "contracts:1"
+    assert refreshed_source.storage_path
+    assert Path(refreshed_source.storage_path).exists()
+    assert refreshed_source.plate is None
+    record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "contracts",
+            VehicleDocumentRecord.document_id == source_id,
+        )
+    )
+    assert record is not None
+    assert record.title == "CTR-2026-001"
 
 
 def test_clean_vehicle_documents_materializes_zero_count_contract_source(db_session, tmp_path):

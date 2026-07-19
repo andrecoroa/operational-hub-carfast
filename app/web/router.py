@@ -5983,6 +5983,23 @@ def archive_structured_import_file(
     vehicle_label = vehicle.plate if vehicle and vehicle.plate else "global"
     original_name = Path(original_filename or f"{import_kind}.xlsx").name
     vehicle_id = vehicle.id if vehicle else None
+    folder_path = (
+        f"{vehicle_archive_base_folder(vehicle.plate, vehicle.vin)}/00_Importacoes_Estruturadas"
+        if vehicle
+        else "Frota/_Importacoes_Estruturadas"
+    )
+    storage_dir = local_document_storage_folder(
+        folder_path,
+        plate=vehicle.plate if vehicle else None,
+        vin=vehicle.vin if vehicle else None,
+    )
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = sanitize_archive_component(Path(original_name).stem, import_kind)
+    suffix = Path(original_name).suffix or ".xlsx"
+    stored_path = storage_dir / f"{now.strftime('%Y%m%d_%H%M%S')}_{safe_stem}_{digest[:12]}{suffix.lower()}"
+    if not stored_path.exists():
+        stored_path.write_bytes(content)
+
     existing = db.scalar(
         select(Document).where(
             Document.file_hash == digest,
@@ -6020,13 +6037,22 @@ def archive_structured_import_file(
         existing.entry_channel = "structured_import"
         existing.source_subject = f"{import_kind}:{imported_count}"
         existing.original_name = original_name[:255]
-        existing.file_type = (Path(original_name).suffix or ".xlsx").lstrip(".").lower() or "xlsx"
+        existing.file_name = stored_path.name[:255]
+        existing.file_type = suffix.lstrip(".").lower() or "xlsx"
+        existing.file_size = len(content)
+        existing.storage_provider = "local"
+        existing.storage_path = str(stored_path)
+        existing.storage_key = digest
+        existing.folder_path = folder_path
+        existing.file_hash = digest
+        existing.uploaded_by_id = user_id
         existing.status = "archived"
         existing.archived = True
         existing.archived_at = now
         existing.archived_by_id = user_id
         existing.vehicle_id = vehicle_id
-        existing.plate = vehicle.plate if vehicle else existing.plate
+        existing.plate = vehicle.plate if vehicle else None
+        existing.title = f"Importação {label} - {vehicle_label} - {now.strftime('%d/%m/%Y %H:%M')}"[:200]
         db.add(
             DocumentEvent(
                 document_id=existing.id,
@@ -6037,23 +6063,6 @@ def archive_structured_import_file(
             )
         )
         return existing
-
-    folder_path = (
-        f"{vehicle_archive_base_folder(vehicle.plate, vehicle.vin)}/00_Importacoes_Estruturadas"
-        if vehicle
-        else "Frota/_Importacoes_Estruturadas"
-    )
-    storage_dir = local_document_storage_folder(
-        folder_path,
-        plate=vehicle.plate if vehicle else None,
-        vin=vehicle.vin if vehicle else None,
-    )
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    safe_stem = sanitize_archive_component(Path(original_name).stem, import_kind)
-    suffix = Path(original_name).suffix or ".xlsx"
-    stored_path = storage_dir / f"{now.strftime('%Y%m%d_%H%M%S')}_{safe_stem}_{digest[:12]}{suffix.lower()}"
-    if not stored_path.exists():
-        stored_path.write_bytes(content)
 
     title = f"Importação {label} - {vehicle_label} - {now.strftime('%d/%m/%Y %H:%M')}"
     document = Document(

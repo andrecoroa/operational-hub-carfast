@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_secret_key: str = Field(default="change-me")
     integration_api_key: str | None = None
     database_url: str = "postgresql+psycopg://carfast:carfast@localhost:5432/carfast_v2"
+    document_archive_root: str | None = None
 
     @property
     def enable_docs(self) -> bool:

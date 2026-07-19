@@ -6,9 +6,11 @@ from io import BytesIO
 from openpyxl import Workbook
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
+from app.web.router import local_document_storage_folder
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -55,6 +57,18 @@ def _create_vehicle(db_session):
     db_session.commit()
     db_session.refresh(vehicle)
     return vehicle
+
+
+def test_clean_document_storage_uses_configured_archive_root(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "document_archive_root", str(tmp_path))
+
+    storage_folder = local_document_storage_folder(
+        "Frota/BB-69-TE_VR7EFYHT2PJ697244/00_Importacoes_Estruturadas",
+        plate="BB-69-TE",
+        vin="VR7EFYHT2PJ697244",
+    )
+
+    assert storage_folder == tmp_path / "Frota" / "BB-69-TE_VR7EFYHT2PJ697244" / "00_Importacoes_Estruturadas"
 
 
 def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):

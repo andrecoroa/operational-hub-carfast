@@ -24,6 +24,7 @@ from app.core.change_notice import (
     CHANGE_NOTICE_TITLE,
     CHANGE_NOTICE_VERSION,
 )
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
@@ -155,6 +156,16 @@ from app.services.vehicles import normalize_identifier
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
 APP_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def document_archive_root() -> Path:
+    configured_root = (settings.document_archive_root or "").strip()
+    if not configured_root:
+        return APP_PROJECT_ROOT / "uploads" / "documents"
+    root = Path(configured_root).expanduser()
+    if not root.is_absolute():
+        root = APP_PROJECT_ROOT / root
+    return root
 
 
 def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
@@ -10368,7 +10379,7 @@ def local_document_storage_folder(
 ) -> Path:
     canonical_path = (folder_path or vehicle_archive_base_folder(plate, vin)).strip().strip("/")
     parts = [sanitize_archive_component(part, "_") for part in canonical_path.split("/") if part.strip()]
-    return APP_PROJECT_ROOT.joinpath("uploads", "documents", *parts)
+    return document_archive_root().joinpath(*parts)
 
 
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:

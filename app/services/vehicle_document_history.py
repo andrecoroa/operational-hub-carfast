@@ -860,6 +860,18 @@ def _materialize_structured_import_source(
     return imported_count
 
 
+def _structured_import_is_already_materialized(
+    *,
+    expected_count: int | None,
+    linked_count: int,
+) -> bool:
+    if expected_count is None:
+        return False
+    if expected_count <= 0:
+        return linked_count > 0
+    return linked_count == expected_count
+
+
 def _ensure_structured_sources_materialized(
     db: Session,
     *,
@@ -884,7 +896,7 @@ def _ensure_structured_sources_materialized(
             ).all()
         )
         expected_count = _structured_import_expected_count(document)
-        if expected_count is not None and linked_count == expected_count:
+        if _structured_import_is_already_materialized(expected_count=expected_count, linked_count=linked_count):
             continue
         if _materialize_structured_import_source(db, document=document):
             changed = True
@@ -1691,7 +1703,7 @@ def ensure_structured_import_sources_materialized(
             record_query = record_query.where(VehicleDocumentRecord.vehicle_id == vehicle.id)
         linked_count = len(db.scalars(record_query).all())
         expected_count = _structured_import_expected_count(document)
-        if expected_count is not None and linked_count == expected_count:
+        if _structured_import_is_already_materialized(expected_count=expected_count, linked_count=linked_count):
             continue
         if _materialize_structured_import_source(db, document=document, user_id=user_id):
             changed = True

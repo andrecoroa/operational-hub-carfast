@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
-from app.services.vehicle_document_history import vehicle_document_module_context
+from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -215,9 +215,11 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert page.status_code == 200
     assert "Folhas de obra" in page.text
     assert "FO-1576" in page.text
-    assert "Fontes importadas" in page.text
-    assert "fo.xlsx" in page.text
-    assert "Classificar" in page.text
+    assert "Documentação estruturada" in page.text
+    assert "Fontes importadas" not in page.text
+    assert "Manutenção" in page.text
+    assert "Calços" in page.text
+    assert "Discos" in page.text
     assert f"/v2-clean/fleet/{vehicle.id}/documents/classify" in page.text
 
     fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
@@ -455,7 +457,8 @@ def test_clean_document_reprocess_structured_source_materializes_rows(authentica
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
-    assert "Reprocessar linhas" in page.text
+    assert "Documentação estruturada" in page.text
+    assert "Reprocessar linhas" not in page.text
     assert "1682" in page.text
 
 
@@ -738,6 +741,94 @@ def test_clean_vehicle_documents_import_contracts(authenticated_client, db_sessi
         )
     )
     assert import_source is not None
+
+
+def test_clean_vehicle_documents_materializes_zero_count_contract_source(db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Contrato", "Matrícula", "Fornecedor", "Data início", "Data fim", "Estado", "Valor mensal", "Observações"],
+        [["CTR-2026-001", "CC-11-AA", "Locadora X", "2026-01-01", "2029-01-01", "Ativo", "425.50", "Contrato de aluguer operacional"]],
+    )
+    source_path = tmp_path / "contratos.xlsx"
+    source_path.write_bytes(workbook.getvalue())
+    source = Document(
+        title="Importação Contratos - CC-11-AA",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="contracts:0",
+        original_name="contratos.xlsx",
+        file_name="contratos.xlsx",
+        file_type="xlsx",
+        file_size=source_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="archived",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert module_ctx["group_counts"]["contracts"] == 1
+    assert any(row["main_group"] == "contracts" and row["title"] == "CTR-2026-001" for row in module_ctx["structured_rows"])
+    db_session.refresh(source)
+    assert source.source_subject == "contracts:1"
+
+
+def test_clean_document_center_materializes_zero_count_global_impro_source(db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        [
+            "Status",
+            "Impro",
+            "PlateNr",
+            "Date_In",
+            "Date_Out",
+            "Garage",
+            "Driven_Kms",
+            "Impro_Type_Code",
+            "Impro_Type_Description",
+        ],
+        [["Closed", "IMP-9281", "CC-11-AA", "2026-04-12", "2026-04-18", "Oficina Norte", 42110, "MEC", "Avaria mecânica"]],
+    )
+    source_path = tmp_path / "impros.xlsx"
+    source_path.write_bytes(workbook.getvalue())
+    source = Document(
+        title="Importação Impros - global",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="impros:0",
+        original_name="impros.xlsx",
+        file_name="impros.xlsx",
+        file_type="xlsx",
+        file_size=source_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="archived",
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.commit()
+
+    center_ctx = document_center_module_context(db_session)
+    vehicle_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert center_ctx["structured_counts"]["impros"] == 1
+    assert vehicle_ctx["group_counts"]["impros"] == 1
+    assert any(row["main_group"] == "impros" and row["title"] == "IMP-9281" for row in vehicle_ctx["structured_rows"])
+    assert any(
+        any(card["group"] == "impros" for card in event["center"])
+        for event in vehicle_ctx["timeline_events"]
+    )
+    db_session.refresh(source)
+    assert source.source_subject == "impros:1"
 
 
 def test_clean_vehicle_documents_import_rental_agreements_format(authenticated_client, db_session):

@@ -67,6 +67,8 @@ STRUCTURED_IMPORT_KIND_LABELS = {
     "contracts": "Contratos",
 }
 
+STRUCTURED_RECORD_TYPES = {"structured", "legacy_structured"}
+
 STRUCTURED_IMPORT_KIND_ALIASES = {
     "workorders": "work_orders",
     "workorder": "work_orders",
@@ -889,7 +891,7 @@ def _ensure_structured_sources_materialized(
             db.scalars(
                 select(VehicleDocumentRecord.id).where(
                     VehicleDocumentRecord.vehicle_id == vehicle.id,
-                    VehicleDocumentRecord.source_record_type == "structured",
+                    VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
                     VehicleDocumentRecord.main_group == import_kind,
                     VehicleDocumentRecord.document_id == document.id,
                 )
@@ -1110,7 +1112,7 @@ def _build_structured_rows(
         select(VehicleDocumentRecord)
         .where(
             VehicleDocumentRecord.vehicle_id == vehicle_id,
-            VehicleDocumentRecord.source_record_type == "structured",
+            VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
         )
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
@@ -1695,7 +1697,7 @@ def ensure_structured_import_sources_materialized(
         if import_kind not in STRUCTURED_IMPORT_KIND_LABELS:
             continue
         record_query = select(VehicleDocumentRecord.id).where(
-            VehicleDocumentRecord.source_record_type == "structured",
+            VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group == import_kind,
             VehicleDocumentRecord.document_id == document.id,
         )
@@ -1714,7 +1716,7 @@ def _build_global_structured_rows(db: Session) -> list[dict[str, Any]]:
     persisted_rows = db.scalars(
         select(VehicleDocumentRecord)
         .where(
-            VehicleDocumentRecord.source_record_type == "structured",
+            VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
         )
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())

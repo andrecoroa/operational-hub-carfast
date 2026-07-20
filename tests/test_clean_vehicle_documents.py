@@ -902,6 +902,52 @@ def test_clean_document_center_materializes_zero_count_global_impro_source(db_se
     assert source.source_subject == "impros:1"
 
 
+def test_clean_documents_counts_legacy_structured_records(db_session):
+    vehicle = _create_vehicle(db_session)
+    source = Document(
+        title="Importação Contratos - global",
+        document_type="general_fleet",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="structured_import",
+        source_subject="contracts:1",
+        original_name="contracts.xlsx",
+        file_name="contracts.xlsx",
+        file_type="xlsx",
+        file_size=1024,
+        storage_provider="local",
+        storage_path="/tmp/contracts.xlsx",
+        status="archived",
+        archived=True,
+    )
+    db_session.add(source)
+    db_session.flush()
+    db_session.add(
+        VehicleDocumentRecord(
+            vehicle_id=vehicle.id,
+            document_id=source.id,
+            source_record_type="legacy_structured",
+            main_group="contracts",
+            status="structured",
+            comparison_state="por_validar",
+            external_reference="15394",
+            title="RA 15394",
+            plate=vehicle.plate,
+            document_date=date(2026, 7, 1),
+            source_system="contract_import",
+        )
+    )
+    db_session.commit()
+
+    center_ctx = document_center_module_context(db_session)
+    vehicle_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert center_ctx["structured_counts"]["contracts"] == 1
+    assert vehicle_ctx["group_counts"]["contracts"] == 1
+    assert any(row["main_group"] == "contracts" and row["title"] == "RA 15394" for row in center_ctx["structured_rows"])
+    assert any(row["main_group"] == "contracts" and row["title"] == "RA 15394" for row in vehicle_ctx["structured_rows"])
+
+
 def test_clean_vehicle_documents_import_rental_agreements_format(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

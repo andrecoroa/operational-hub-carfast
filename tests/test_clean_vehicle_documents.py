@@ -298,6 +298,34 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     assert '<option value="rear" selected>TR</option>' in page.text
 
 
+def test_clean_vehicle_documents_import_work_orders_deduplicates_by_number(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        ["Número", "Data", "Matrícula", "Nome fornecedor", "Observações"],
+        [
+            ["1608", "2026-05-25", "CC-11-AA", "Oficina Porto", "Calços atrás gastos"],
+            ["1608", "2026-05-25", "CC-11-AA", "Oficina Porto", "Calços atrás gastos repetido"],
+        ],
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/work-orders",
+        files={"file": ("fo.xlsx", workbook.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "imported_count=1" in response.headers["location"]
+    records = db_session.scalars(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.main_group == "work_orders",
+            VehicleDocumentRecord.external_reference == "1608",
+        )
+    ).all()
+    assert len(records) == 1
+    assert records[0].vehicle_id == vehicle.id
+
+
 def test_clean_document_detail_page_renders_in_v2(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     document = Document(

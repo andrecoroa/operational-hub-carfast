@@ -332,6 +332,15 @@ def _match_existing_record(
     document_date: date | None,
     supplier_name: str | None,
 ) -> VehicleDocumentRecord | None:
+    if main_group == "work_orders" and external_reference:
+        return db.scalar(
+            select(VehicleDocumentRecord)
+            .where(
+                VehicleDocumentRecord.main_group == main_group,
+                VehicleDocumentRecord.external_reference == external_reference,
+            )
+            .limit(1)
+        )
     stmt = select(VehicleDocumentRecord).where(
         VehicleDocumentRecord.vehicle_id == vehicle_id,
         VehicleDocumentRecord.main_group == main_group,
@@ -377,6 +386,7 @@ def upsert_structured_record(
         supplier_name=supplier_name,
     )
     if record:
+        record.vehicle_id = vehicle_id
         record.title = title
         record.document_date = document_date
         record.supplier_name = supplier_name
@@ -552,9 +562,18 @@ def import_work_orders_xlsx(
 ) -> int:
     imported = 0
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
+    seen_work_order_numbers: set[str] = set()
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
         plate = _normalize_text(first_row_value(row, cols, ["Matrícula", "Matricula", "PlateNr"]))
+        title = _normalize_text(first_row_value(row, cols, ["Número", "Numero", "FO", "Folha de obra"]))
+        external_reference = title or None
+        if not external_reference:
+            continue
+        work_order_key = normalize_header(external_reference)
+        if work_order_key in seen_work_order_numbers:
+            continue
+        seen_work_order_numbers.add(work_order_key)
         row_vehicle = _resolve_vehicle_for_import_row(
             fallback_vehicle=vehicle,
             by_plate=by_plate,
@@ -564,8 +583,6 @@ def import_work_orders_xlsx(
         )
         if not row_vehicle:
             continue
-        title = _normalize_text(first_row_value(row, cols, ["Número", "Numero", "FO", "Folha de obra"]))
-        external_reference = title or None
         document_date = _safe_date(first_row_value(row, cols, ["Data", "DocumentDate"]))
         supplier_name = _normalize_text(first_row_value(row, cols, ["Nome fornecedor", "Fornecedor", "Supplier"]))
         raw_description = _normalize_text(first_row_value(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao"]))

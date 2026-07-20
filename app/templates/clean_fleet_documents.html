@@ -387,91 +387,52 @@
                 <button type="button" class="button-link secondary-link active" data-diagnostics-toggle="on">Mostrar diagnósticos</button>
                 <button type="button" class="button-link secondary-link" data-diagnostics-toggle="off">Ocultar diagnósticos</button>
               </div>
-              {% macro render_timeline_card(card, event_date) -%}
-                <div class="clean-doc-timeline-card clean-doc-timeline-card-compact {% if card.is_grouped %}clean-doc-timeline-card-grouped{% endif %}" data-timeline-group="{{ card.group }}">
+              {% macro timeline_icon(group) -%}
+                {% if group == "invoices" %}FA{% elif group == "work_orders" %}FO{% elif group == "claims" %}SI{% elif group == "ars" %}AR{% elif group == "diagnostics" %}DI{% else %}EV{% endif %}
+              {%- endmacro %}
+              {% macro render_timeline_marker(card) -%}
+                <div class="clean-doc-timeline-card clean-doc-timeline-marker-card {% if card.is_grouped %}clean-doc-timeline-card-grouped{% endif %}" data-timeline-group="{{ card.group }}">
+                  <span class="clean-doc-timeline-icon clean-doc-timeline-icon-{{ card.group }}">{{ timeline_icon(card.group) }}</span>
                   <strong>{{ card.title }}</strong>
-                  <span>{{ card.group_label }} · {{ event_date }}</span>
+                  <em>{{ card.secondary }}{% if card.km %} · {{ card.km }} km{% endif %}</em>
                   {% if card.is_grouped %}
-                    <div class="clean-doc-timeline-group-list">
-                      {% for item in card.items %}
-                        <div class="clean-doc-timeline-group-item">
-                          <strong>{{ item.title }}</strong>
-                          <span>{{ item.secondary }}</span>
-                          {% if item.km %}
-                            <em>KM {{ item.km }}</em>
-                          {% endif %}
-                        </div>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    <em>
-                      {% if card.period %}{{ card.period }} · {% endif %}
-                      {{ card.secondary }}{% if card.km %} · KM {{ card.km }}{% endif %}
-                    </em>
+                    <small>{{ card.items|length }} relatórios no dia</small>
                   {% endif %}
                 </div>
               {%- endmacro %}
-              <div class="clean-doc-timeline-matrix-wrap">
-                <table class="clean-doc-timeline-matrix">
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Faturas</th>
-                      <th>Folhas de obra</th>
-                      <th>Utilização</th>
-                      <th>Sinistros</th>
-                      <th>AR's</th>
-                      <th>Diagnósticos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for event in module_ctx.timeline_events %}
-                      <tr class="clean-doc-timeline-entry {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
-                        <th scope="row">{{ event.date }}</th>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-invoices">
-                          {% for card in event.left %}
-                            {% if card.group == "invoices" %}
-                              {{ render_timeline_card(card, event.date) }}
-                            {% endif %}
-                          {% endfor %}
-                        </td>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-work-orders">
-                          {% for card in event.right %}
-                            {% if card.group == "work_orders" %}
-                              {{ render_timeline_card(card, event.date) }}
-                            {% endif %}
-                          {% endfor %}
-                        </td>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-center">
-                          {% for card in event.center %}
-                            {{ render_timeline_card(card, event.date) }}
-                          {% endfor %}
-                        </td>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-claims">
-                          {% for card in event.left %}
-                            {% if card.group == "claims" %}
-                              {{ render_timeline_card(card, event.date) }}
-                            {% endif %}
-                          {% endfor %}
-                        </td>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-ars">
-                          {% for card in event.right %}
-                            {% if card.group == "ars" %}
-                              {{ render_timeline_card(card, event.date) }}
-                            {% endif %}
-                          {% endfor %}
-                        </td>
-                        <td class="clean-doc-timeline-lane clean-doc-timeline-lane-diagnostics">
-                          {% for card in event.right %}
-                            {% if card.group == "diagnostics" %}
-                              {{ render_timeline_card(card, event.date) }}
-                            {% endif %}
-                          {% endfor %}
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
+              {% macro render_timeline_state(card) -%}
+                <div class="clean-doc-timeline-card clean-doc-timeline-state-card clean-doc-timeline-state-{{ card.group }}" data-timeline-group="{{ card.group }}">
+                  <strong>{{ card.group_label }}</strong>
+                  <span>{{ card.title }}</span>
+                  <em>{% if card.period %}{{ card.period }}{% else %}{{ card.secondary }}{% endif %}</em>
+                </div>
+              {%- endmacro %}
+              <div class="clean-doc-timeline-board">
+                <div class="clean-doc-timeline-board-labels" aria-hidden="true">
+                  <div>Data</div>
+                  <div>Estado da viatura</div>
+                  <div>Eventos</div>
+                </div>
+                <div class="clean-doc-timeline-board-days">
+                  {% for event in module_ctx.timeline_events|reverse %}
+                    <article class="clean-doc-timeline-entry clean-doc-timeline-day {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
+                      <div class="clean-doc-timeline-day-date">{{ event.date }}</div>
+                      <div class="clean-doc-timeline-day-state">
+                        {% for card in event.center %}
+                          {{ render_timeline_state(card) }}
+                        {% endfor %}
+                      </div>
+                      <div class="clean-doc-timeline-day-events">
+                        {% for card in event.left %}
+                          {{ render_timeline_marker(card) }}
+                        {% endfor %}
+                        {% for card in event.right %}
+                          {{ render_timeline_marker(card) }}
+                        {% endfor %}
+                      </div>
+                    </article>
+                  {% endfor %}
+                </div>
               </div>
             {% else %}
               <p class="clean-empty-cell">Ainda não existem eventos suficientes para montar a timeline desta viatura.</p>

@@ -15296,6 +15296,206 @@ a.metric:hover {
   font-size: 9px;
 }
 
+.clean-doc-timeline-board {
+  display: grid;
+  grid-template-columns: 126px minmax(0, 1fr);
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.clean-doc-timeline-board-labels {
+  display: grid;
+  grid-template-rows: 58px 82px 190px;
+  background: #f8fafc;
+  border-right: 1px solid #dce4ef;
+  color: #0f2a5f;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.clean-doc-timeline-board-labels div {
+  display: grid;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e7edf5;
+}
+
+.clean-doc-timeline-board-labels div:last-child {
+  border-bottom: 0;
+}
+
+.clean-doc-timeline-board-days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(142px, 170px);
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.clean-doc-timeline-board .clean-doc-timeline-entry {
+  display: grid;
+  grid-template-columns: none;
+  grid-template-rows: 58px 82px 190px;
+}
+
+.clean-doc-timeline-day {
+  border-right: 1px solid #e7edf5;
+  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+}
+
+.clean-doc-timeline-day:last-child {
+  border-right: 0;
+}
+
+.clean-doc-timeline-day-date,
+.clean-doc-timeline-day-state,
+.clean-doc-timeline-day-events {
+  border-bottom: 1px solid #e7edf5;
+}
+
+.clean-doc-timeline-day-date {
+  display: grid;
+  place-items: center;
+  color: #50607a;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.clean-doc-timeline-day-state {
+  display: grid;
+  align-items: center;
+  padding: 8px;
+}
+
+.clean-doc-timeline-day-events {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-bottom: 0;
+}
+
+.clean-doc-timeline-state-card {
+  min-height: 52px;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  color: #0f2a5f;
+  text-align: center;
+  box-shadow: inset 0 0 0 1px rgba(15, 42, 95, 0.08);
+}
+
+.clean-doc-timeline-state-card strong,
+.clean-doc-timeline-state-card span,
+.clean-doc-timeline-state-card em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-timeline-state-card strong {
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.clean-doc-timeline-state-card span {
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.clean-doc-timeline-state-card em {
+  color: inherit;
+  font-size: 9px;
+  opacity: 0.82;
+}
+
+.clean-doc-timeline-state-contracts {
+  background: linear-gradient(135deg, #2f9c52, #65bd72);
+  color: #fff;
+}
+
+.clean-doc-timeline-state-impros {
+  background: linear-gradient(135deg, #c97920, #efae4d);
+  color: #fff;
+}
+
+.clean-doc-timeline-state-free {
+  background: #e5e9ef;
+  color: #46546a;
+}
+
+.clean-doc-timeline-marker-card {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.clean-doc-timeline-marker-card strong,
+.clean-doc-timeline-marker-card em,
+.clean-doc-timeline-marker-card small {
+  display: block;
+  max-width: 120px;
+  overflow: hidden;
+  color: #0f2a5f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-timeline-marker-card strong {
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.clean-doc-timeline-marker-card em,
+.clean-doc-timeline-marker-card small {
+  color: #61708a;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.clean-doc-timeline-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  box-shadow: 0 8px 18px rgba(15, 42, 95, 0.12);
+}
+
+.clean-doc-timeline-icon-invoices {
+  background: #42a454;
+}
+
+.clean-doc-timeline-icon-work_orders {
+  background: #416fd2;
+}
+
+.clean-doc-timeline-icon-claims {
+  background: #d64d3e;
+}
+
+.clean-doc-timeline-icon-ars {
+  background: #7654be;
+}
+
+.clean-doc-timeline-icon-diagnostics {
+  background: #d5a727;
+}
+
 .clean-doc-audit-grid {
   gap: 12px;
 }

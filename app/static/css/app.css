@@ -14612,7 +14612,8 @@ a.metric:hover {
   margin: 0;
 }
 
-.clean-doc-inline-classify-form select {
+.clean-doc-inline-classify-form select,
+.clean-doc-classify-table select {
   min-height: 30px;
   width: 100%;
   min-width: 86px;
@@ -14629,7 +14630,9 @@ a.metric:hover {
 }
 
 .clean-doc-inline-classify-form select:hover,
-.clean-doc-inline-classify-form select:focus {
+.clean-doc-inline-classify-form select:focus,
+.clean-doc-classify-table select:hover,
+.clean-doc-classify-table select:focus {
   border-color: #b44a2f;
   background: #fff7f5;
   outline: none;

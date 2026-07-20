@@ -10,7 +10,7 @@
     {% macro render_service_cell(row, form_id, category, current_value, placeholder) %}
       <td>
         {% set current_code = row.service_matrix_codes.get(category, "") if row.service_matrix_codes else "" %}
-        <select form="{{ form_id }}" name="{{ category }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
+        <select data-classification-form="{{ form_id }}" name="{{ category }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
           <option value="" {% if not current_code %}selected{% endif %}>
             {% if current_code %}
               Sem alteração
@@ -30,7 +30,7 @@
       <div class="clean-doc-row-classification-forms" hidden>
         {% for row in rows %}
           {% set classify_form_id = prefix ~ "-classify-" ~ row.source_label ~ "-" ~ row.id %}
-          <form id="{{ classify_form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row">
+          <form id="{{ classify_form_id }}" class="clean-doc-row-classification-form" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row">
             {% if row.kind in ['record', 'pending_record'] %}
               <input type="hidden" name="record_id" value="{{ row.id }}">
             {% endif %}
@@ -550,6 +550,22 @@
   </main>
 </div>
 <script>
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form.classList || !form.classList.contains("clean-doc-row-classification-form")) {
+      return;
+    }
+    form.querySelectorAll("[data-dynamic-classification='1']").forEach((node) => node.remove());
+    document.querySelectorAll(`[data-classification-form="${form.id}"][name]`).forEach((control) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = control.name;
+      input.value = control.value;
+      input.dataset.dynamicClassification = "1";
+      form.appendChild(input);
+    });
+  }, true);
+
   const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");
   const timelineEvents = Array.from(document.querySelectorAll(".clean-doc-timeline-entry[data-event-date]"));
   const diagnosticsToggleButtons = document.querySelectorAll("[data-timeline-filters] [data-diagnostics-toggle]");

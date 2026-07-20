@@ -7,23 +7,26 @@
     {% set vehicle = ctx.vehicle %}
     {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
     {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
+    {% macro render_service_select(row, category, current_value, placeholder, form_id="") %}
+      {% set current_code = row.service_matrix_codes.get(category, "") if row.service_matrix_codes else "" %}
+      <select {% if form_id %}data-classification-form="{{ form_id }}"{% endif %} name="{{ category }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
+        <option value="" {% if not current_code %}selected{% endif %}>
+          {% if current_code %}
+            Sem alteração
+          {% elif current_value and current_value not in ['-', 'Por definir'] %}
+            Sugestão: {{ current_value }}
+          {% else %}
+            {{ placeholder }}
+          {% endif %}
+        </option>
+        {% for option_code, option_label in quick_classifications.get(category, []) %}
+          <option value="{{ option_code }}" {% if current_code == option_code %}selected{% endif %}>{{ option_label }}</option>
+        {% endfor %}
+      </select>
+    {% endmacro %}
     {% macro render_service_cell(row, form_id, category, current_value, placeholder) %}
       <td>
-        {% set current_code = row.service_matrix_codes.get(category, "") if row.service_matrix_codes else "" %}
-        <select data-classification-form="{{ form_id }}" name="{{ category }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
-          <option value="" {% if not current_code %}selected{% endif %}>
-            {% if current_code %}
-              Sem alteração
-            {% elif current_value and current_value not in ['-', 'Por definir'] %}
-              Sugestão: {{ current_value }}
-            {% else %}
-              {{ placeholder }}
-            {% endif %}
-          </option>
-          {% for option_code, option_label in quick_classifications.get(category, []) %}
-            <option value="{{ option_code }}" {% if current_code == option_code %}selected{% endif %}>{{ option_label }}</option>
-          {% endfor %}
-        </select>
+        {{ render_service_select(row, category, current_value, placeholder, form_id) }}
       </td>
     {% endmacro %}
     {% macro render_classification_table(rows, empty_text, prefix) %}
@@ -163,6 +166,61 @@
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    {% endmacro %}
+    {% macro render_structured_work_orders(rows, empty_text) %}
+      <div class="clean-doc-work-order-list">
+        {% for row in rows %}
+          <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-work-order-card">
+            {% if row.kind in ['record', 'pending_record'] %}
+              <input type="hidden" name="record_id" value="{{ row.id }}">
+            {% endif %}
+            {% if row.kind == 'document' %}
+              <input type="hidden" name="document_id" value="{{ row.id }}">
+            {% endif %}
+            <input type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
+            <div class="clean-doc-work-order-main">
+              <span class="clean-doc-source-chip">{{ row.source_label }}</span>
+              <div>
+                <strong>{{ row.date_display or "-" }} · FO {{ row.external_reference or row.document_number or row.title }}</strong>
+                <small>{{ row.supplier_name or "Fornecedor por definir" }}</small>
+              </div>
+              <p>{{ row.description or row.process_reference or "Sem observação importada." }}</p>
+            </div>
+            <div class="clean-doc-work-order-services">
+              <label>
+                <span>Manutenção</span>
+                {{ render_service_select(row, "maintenance", row.service_matrix.maintenance, "Por definir") }}
+              </label>
+              <label>
+                <span>Calços</span>
+                {{ render_service_select(row, "pads", row.service_matrix.pads, "Por definir") }}
+              </label>
+              <label>
+                <span>Discos</span>
+                {{ render_service_select(row, "discs", row.service_matrix.discs, "Por definir") }}
+              </label>
+              <label>
+                <span>Pneus</span>
+                {{ render_service_select(row, "tyres", row.service_matrix.tyres, "Por definir") }}
+              </label>
+              <label>
+                <span>IPO</span>
+                {{ render_service_select(row, "ipo", row.service_matrix.ipo, "Por definir") }}
+              </label>
+              <label>
+                <span>Outro</span>
+                {{ render_service_select(row, "other", row.service_matrix.other, "Por definir") }}
+              </label>
+            </div>
+            <div class="clean-doc-work-order-actions">
+              <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+              <button type="submit">Guardar</button>
+            </div>
+          </form>
+        {% else %}
+          <p class="clean-empty-cell">{{ empty_text }}</p>
+        {% endfor %}
       </div>
     {% endmacro %}
 
@@ -343,8 +401,8 @@
             <em>{{ structured_classification_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
-          {{ render_classification_table(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.", "structured") }}
-          <p class="clean-doc-filter-note">Esta tabela mostra as folhas de obra importadas linha a linha. Contratos e impros ficam fora da classificação e alimentam a timeline.</p>
+          {{ render_structured_work_orders(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.") }}
+          <p class="clean-doc-filter-note">Cada folha de obra é guardada diretamente na própria linha. Contratos e impros ficam fora da classificação e alimentam a timeline.</p>
         </div>
       </details>
 

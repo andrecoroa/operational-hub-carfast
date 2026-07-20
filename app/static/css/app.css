@@ -14662,6 +14662,132 @@ a.metric:hover {
   background: #fff7f5;
 }
 
+.clean-doc-work-order-list {
+  display: grid;
+  gap: 10px;
+}
+
+.clean-doc-work-order-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.05fr) minmax(420px, 1.8fr) auto;
+  gap: 12px;
+  align-items: stretch;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.clean-doc-work-order-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 10px;
+  align-content: start;
+}
+
+.clean-doc-work-order-main .clean-doc-source-chip {
+  width: 38px;
+  min-width: 38px;
+  min-height: 32px;
+  border-color: #ead7d3;
+  background: #fff7f5;
+  grid-row: span 2;
+}
+
+.clean-doc-work-order-main strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.clean-doc-work-order-main small {
+  display: block;
+  margin-top: 2px;
+  color: #5f6c82;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.clean-doc-work-order-main p {
+  grid-column: 2;
+  margin: 0;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.clean-doc-work-order-services {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.clean-doc-work-order-services label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.clean-doc-work-order-services span {
+  color: #5f6c82;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.clean-doc-work-order-services select {
+  min-height: 34px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f2a5f;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.15;
+  padding: 6px 22px 6px 8px;
+}
+
+.clean-doc-work-order-services select:hover,
+.clean-doc-work-order-services select:focus {
+  border-color: #b44a2f;
+  background: #fff7f5;
+  outline: none;
+}
+
+.clean-doc-work-order-actions {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  justify-items: stretch;
+  min-width: 118px;
+}
+
+.clean-doc-work-order-actions button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: #9b3f20;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 950;
+  padding: 8px 12px;
+}
+
+.clean-doc-work-order-actions button:hover,
+.clean-doc-work-order-actions button:focus {
+  background: #7f3118;
+  outline: none;
+}
+
 .clean-doc-status-pill {
   display: inline-flex;
   align-items: center;
@@ -14675,6 +14801,10 @@ a.metric:hover {
   font-weight: 900;
   padding: 5px 9px;
   white-space: nowrap;
+}
+
+.clean-doc-work-order-actions .clean-doc-status-pill {
+  width: 100%;
 }
 
 .clean-doc-classify-actions {

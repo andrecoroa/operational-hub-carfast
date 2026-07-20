@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord
+from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord, VehicleDocumentRecordTag
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
 from app.web.router import local_document_storage_folder
@@ -236,13 +236,66 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert "Manutenção" in page.text
     assert "Calços" in page.text
     assert "Discos" in page.text
-    assert f"/v2-clean/fleet/{vehicle.id}/documents/classify" in page.text
+    assert f"/v2-clean/fleet/{vehicle.id}/documents/classify-row" in page.text
 
     fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert fleet_page.status_code == 200
     assert "Folhas de obra" in fleet_page.text
     assert f"/v2-clean/fleet/{vehicle.id}/documents?main_group=work_orders" in fleet_page.text
     assert "<strong>1</strong>" in fleet_page.text
+
+
+def test_clean_vehicle_documents_save_row_classification(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-1608",
+        external_reference="1608",
+        plate=vehicle.plate,
+        supplier_name="Oficina Porto",
+        raw_description="Calços atrás gastos",
+        document_date=date(2026, 5, 25),
+        status="structured",
+    )
+    db_session.add(record)
+    db_session.commit()
+    db_session.refresh(record)
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "record_id": str(record.id),
+            "return_group": "work_orders",
+            "maintenance": "",
+            "pads": "rear",
+            "discs": "",
+            "tyres": "",
+            "ipo": "",
+            "other": "",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?classified=1&main_group=work_orders")
+    db_session.refresh(record)
+    assert record.status == "classified"
+    assert record.comparison_state == "validado"
+    tag = db_session.scalar(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.vehicle_id == vehicle.id,
+            VehicleDocumentRecordTag.record_id == record.id,
+            VehicleDocumentRecordTag.category == "pads",
+        )
+    )
+    assert tag is not None
+    assert tag.value == "rear"
+
+    page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+    assert page.status_code == 200
+    assert '<option value="rear" selected>TR</option>' in page.text
 
 
 def test_clean_document_detail_page_renders_in_v2(authenticated_client, db_session):

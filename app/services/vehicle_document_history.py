@@ -1028,10 +1028,11 @@ def _service_matrix_codes_from_tags(tags: list[VehicleDocumentRecordTag]) -> dic
         "other": "",
     }
     for tag in tags:
+        code = tag.value or ("free_text" if tag.free_text else "")
         if tag.category in matrix:
-            matrix[tag.category] = tag.value or "free_text" if tag.free_text else tag.value or ""
+            matrix[tag.category] = code
         elif tag.category in {"fault", "services", "repair"}:
-            matrix["other"] = tag.value or "free_text" if tag.free_text else tag.value or ""
+            matrix["other"] = code
     return matrix
 
 

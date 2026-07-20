@@ -15305,6 +15305,53 @@ a.metric:hover {
   background: #fff;
 }
 
+.clean-doc-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: #fff;
+  color: #536178;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.clean-doc-timeline-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.clean-doc-timeline-legend i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+}
+
+.clean-doc-timeline-legend .state-contracts {
+  background: #42a454;
+}
+
+.clean-doc-timeline-legend .state-impros {
+  background: #d8892b;
+}
+
+.clean-doc-timeline-legend .state-free {
+  background: #b9c0ca;
+}
+
+.clean-doc-timeline-legend .clean-doc-timeline-icon {
+  width: 22px;
+  height: 22px;
+  font-size: 8px;
+  box-shadow: none;
+}
+
 .clean-doc-timeline-board-labels {
   display: grid;
   grid-template-rows: 58px 82px 190px;
@@ -15330,7 +15377,7 @@ a.metric:hover {
 .clean-doc-timeline-board-days {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(142px, 170px);
+  grid-auto-columns: minmax(132px, 158px);
   overflow-x: auto;
   min-width: 0;
 }
@@ -15364,29 +15411,46 @@ a.metric:hover {
   font-weight: 950;
 }
 
+.clean-doc-timeline-day-date strong,
+.clean-doc-timeline-day-date span {
+  display: block;
+  line-height: 1.2;
+}
+
+.clean-doc-timeline-day-date strong {
+  color: #0f2a5f;
+}
+
+.clean-doc-timeline-day-date span {
+  margin-top: 3px;
+  font-size: 9px;
+}
+
 .clean-doc-timeline-day-state {
   display: grid;
   align-items: center;
-  padding: 8px;
+  padding: 0;
 }
 
 .clean-doc-timeline-day-events {
   display: grid;
   align-content: start;
   justify-items: center;
-  gap: 8px;
-  padding: 12px 8px;
+  gap: 10px;
+  padding: 14px 8px;
   border-bottom: 0;
 }
 
 .clean-doc-timeline-state-card {
-  min-height: 52px;
-  padding: 8px;
+  display: grid;
+  min-height: 82px;
+  align-content: center;
+  padding: 7px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 0;
   color: #0f2a5f;
   text-align: center;
-  box-shadow: inset 0 0 0 1px rgba(15, 42, 95, 0.08);
+  box-shadow: none;
 }
 
 .clean-doc-timeline-state-card strong,
@@ -15415,24 +15479,24 @@ a.metric:hover {
 }
 
 .clean-doc-timeline-state-contracts {
-  background: linear-gradient(135deg, #2f9c52, #65bd72);
+  background: linear-gradient(180deg, #3fa957, #62bb70);
   color: #fff;
 }
 
 .clean-doc-timeline-state-impros {
-  background: linear-gradient(135deg, #c97920, #efae4d);
+  background: linear-gradient(180deg, #ce7e22, #e99c38);
   color: #fff;
 }
 
 .clean-doc-timeline-state-free {
-  background: #e5e9ef;
+  background: #d7dce4;
   color: #46546a;
 }
 
 .clean-doc-timeline-marker-card {
   display: grid;
   justify-items: center;
-  gap: 3px;
+  gap: 4px;
   width: 100%;
   padding: 0;
   border: 0;
@@ -15444,7 +15508,7 @@ a.metric:hover {
 .clean-doc-timeline-marker-card em,
 .clean-doc-timeline-marker-card small {
   display: block;
-  max-width: 120px;
+  max-width: 104px;
   overflow: hidden;
   color: #0f2a5f;
   text-overflow: ellipsis;
@@ -15466,8 +15530,8 @@ a.metric:hover {
 
 .clean-doc-timeline-icon {
   display: inline-grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border-radius: 999px;
   color: #fff;

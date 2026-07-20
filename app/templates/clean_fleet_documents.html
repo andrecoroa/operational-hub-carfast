@@ -391,42 +391,49 @@
                 {% if group == "invoices" %}FA{% elif group == "work_orders" %}FO{% elif group == "claims" %}SI{% elif group == "ars" %}AR{% elif group == "diagnostics" %}DI{% else %}EV{% endif %}
               {%- endmacro %}
               {% macro render_timeline_marker(card) -%}
-                <div class="clean-doc-timeline-card clean-doc-timeline-marker-card {% if card.is_grouped %}clean-doc-timeline-card-grouped{% endif %}" data-timeline-group="{{ card.group }}">
+                <div class="clean-doc-timeline-card clean-doc-timeline-marker-card" data-timeline-group="{{ card.group }}">
                   <span class="clean-doc-timeline-icon clean-doc-timeline-icon-{{ card.group }}">{{ timeline_icon(card.group) }}</span>
                   <strong>{{ card.title }}</strong>
-                  <em>{{ card.secondary }}{% if card.km %} · {{ card.km }} km{% endif %}</em>
-                  {% if card.is_grouped %}
-                    <small>{{ card.items|length }} relatórios no dia</small>
-                  {% endif %}
+                  <em>{{ card.date }} · {{ card.secondary }}{% if card.km %} · {{ card.km }} km{% endif %}</em>
                 </div>
               {%- endmacro %}
               {% macro render_timeline_state(card) -%}
                 <div class="clean-doc-timeline-card clean-doc-timeline-state-card clean-doc-timeline-state-{{ card.group }}" data-timeline-group="{{ card.group }}">
-                  <strong>{{ card.group_label }}</strong>
-                  <span>{{ card.title }}</span>
-                  <em>{% if card.period %}{{ card.period }}{% else %}{{ card.secondary }}{% endif %}</em>
+                  {% if card.is_start %}
+                    <strong>{{ card.group_label }}</strong>
+                    <span>{{ card.title }}</span>
+                    <em>{{ card.period }}</em>
+                  {% endif %}
                 </div>
               {%- endmacro %}
-              <div class="clean-doc-timeline-board">
+              <div class="clean-doc-timeline-legend">
+                <span><i class="state-contracts"></i>Contrato</span>
+                <span><i class="state-impros"></i>Impro</span>
+                <span><i class="state-free"></i>Sem utilização</span>
+                <span><b class="clean-doc-timeline-icon clean-doc-timeline-icon-invoices">FA</b>Fatura</span>
+                <span><b class="clean-doc-timeline-icon clean-doc-timeline-icon-work_orders">FO</b>Folha de obra</span>
+                <span><b class="clean-doc-timeline-icon clean-doc-timeline-icon-claims">SI</b>Sinistro</span>
+                <span><b class="clean-doc-timeline-icon clean-doc-timeline-icon-ars">AR</b>AR</span>
+                <span><b class="clean-doc-timeline-icon clean-doc-timeline-icon-diagnostics">DI</b>Diagnóstico</span>
+              </div>
+              <div class="clean-doc-timeline-board clean-doc-timeline-board-weekly">
                 <div class="clean-doc-timeline-board-labels" aria-hidden="true">
-                  <div>Data</div>
+                  <div>Semana</div>
                   <div>Estado da viatura</div>
                   <div>Eventos</div>
                 </div>
                 <div class="clean-doc-timeline-board-days">
-                  {% for event in module_ctx.timeline_events|reverse %}
-                    <article class="clean-doc-timeline-entry clean-doc-timeline-day {% if event.km_regressive %}danger{% endif %}" data-event-date="{{ event.date_iso }}">
-                      <div class="clean-doc-timeline-day-date">{{ event.date }}</div>
+                  {% for week in module_ctx.timeline_board.weeks %}
+                    <article class="clean-doc-timeline-entry clean-doc-timeline-day" data-event-date="{{ week.date_iso }}">
+                      <div class="clean-doc-timeline-day-date">
+                        <strong>{{ week.label }}</strong>
+                        <span>{{ week.range }}</span>
+                      </div>
                       <div class="clean-doc-timeline-day-state">
-                        {% for card in event.center %}
-                          {{ render_timeline_state(card) }}
-                        {% endfor %}
+                        {{ render_timeline_state(week.state) }}
                       </div>
                       <div class="clean-doc-timeline-day-events">
-                        {% for card in event.left %}
-                          {{ render_timeline_marker(card) }}
-                        {% endfor %}
-                        {% for card in event.right %}
+                        {% for card in week.markers %}
                           {{ render_timeline_marker(card) }}
                         {% endfor %}
                       </div>

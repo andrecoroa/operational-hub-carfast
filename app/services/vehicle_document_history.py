@@ -1351,7 +1351,7 @@ def _build_comparison_rows(
 def _build_timeline(
     structured_rows: list[dict[str, Any]],
     archive_rows: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     def timeline_side(group: str) -> str | None:
         if group in {"contracts", "impros"}:
             return "center"
@@ -1431,6 +1431,82 @@ def _build_timeline(
         if event.end_on:
             return event.occurred_on <= value <= event.end_on
         return event.occurred_on <= value
+
+    def period_overlaps(event: TimelineEvent, start: date, end: date) -> bool:
+        if event.group not in {"contracts", "impros"} or event.occurred_on is None:
+            return False
+        period_end = event.end_on or event.occurred_on
+        return event.occurred_on <= end and period_end >= start
+
+    def week_start(value: date) -> date:
+        return value.fromordinal(value.toordinal() - value.weekday())
+
+    def make_marker(event: TimelineEvent) -> dict[str, Any]:
+        return {
+            "group": event.group,
+            "group_label": event.label,
+            "title": event.title,
+            "secondary": event.secondary or "-",
+            "date": event.occurred_on.strftime("%d/%m/%Y") if event.occurred_on else "-",
+            "km": format_km(event.km) if event.km is not None else "",
+        }
+
+    def make_weekly_board(raw_events: list[TimelineEvent]) -> dict[str, Any]:
+        dated = [event for event in raw_events if event.occurred_on is not None]
+        if not dated:
+            return {"weeks": [], "event_count": 0}
+        period_ends = [event.end_on for event in dated if event.end_on is not None]
+        min_date = min([event.occurred_on for event in dated if event.occurred_on] + period_ends)
+        max_date = max([event.occurred_on for event in dated if event.occurred_on] + period_ends)
+        start = week_start(min_date)
+        end = week_start(max_date)
+        period_items = sorted(
+            [event for event in dated if event.group in {"contracts", "impros"}],
+            key=lambda event: (event.occurred_on or date.min, side_rank(event.group), event.title),
+        )
+        markers = [event for event in dated if event.group not in {"contracts", "impros"}]
+        weeks: list[dict[str, Any]] = []
+        current = start
+        previous_state_key: tuple[str, str] | None = None
+        while current <= end:
+            week_end = date.fromordinal(current.toordinal() + 6)
+            active_impro = next((event for event in period_items if event.group == "impros" and period_overlaps(event, current, week_end)), None)
+            active_contract = next((event for event in period_items if event.group == "contracts" and period_overlaps(event, current, week_end)), None)
+            active = active_impro or active_contract
+            if active:
+                state = {
+                    "group": active.group,
+                    "group_label": active.label,
+                    "title": active.title,
+                    "period": _period_display(active.occurred_on, active.end_on),
+                }
+            else:
+                state = {
+                    "group": "free",
+                    "group_label": "Sem utilização",
+                    "title": "Sem utilização",
+                    "period": f"{current.strftime('%d/%m/%Y')} a {week_end.strftime('%d/%m/%Y')}",
+                }
+            state_key = (state["group"], state["title"])
+            state["is_start"] = state_key != previous_state_key
+            previous_state_key = state_key
+            week_markers = [
+                make_marker(event)
+                for event in markers
+                if event.occurred_on and current <= event.occurred_on <= week_end
+            ]
+            week_markers.sort(key=lambda item: (side_rank(item["group"]), item["date"], item["title"]))
+            weeks.append(
+                {
+                    "date_iso": current.isoformat(),
+                    "label": current.strftime("%d/%m"),
+                    "range": f"{current.strftime('%d/%m')} - {week_end.strftime('%d/%m')}",
+                    "state": state,
+                    "markers": week_markers,
+                }
+            )
+            current = date.fromordinal(current.toordinal() + 7)
+        return {"weeks": weeks, "event_count": len(markers)}
 
     events: list[TimelineEvent] = []
     for row in structured_rows:
@@ -1554,7 +1630,8 @@ def _build_timeline(
         {"css": "free", "label": "Sem utilização", "left": 66, "width": 34},
     ]
     ticks = rendered
-    return rendered, ticks, segments
+    board = make_weekly_board(events)
+    return rendered, ticks, segments, board
 
 
 def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, Any]:
@@ -1578,7 +1655,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records)
     import_rows = _build_import_rows(documents)
     comparison_rows = _build_comparison_rows(structured_rows, archive_rows, record_tags, document_tags)
-    timeline_events, timeline_ticks, timeline_segments = _build_timeline(structured_rows, archive_rows)
+    timeline_events, timeline_ticks, timeline_segments, timeline_board = _build_timeline(structured_rows, archive_rows)
     alerts = _alert_rows(db, vehicle.id)
     pendings = _pending_rows(db, vehicle.id)
 
@@ -1665,6 +1742,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
         "timeline_events": timeline_events,
         "timeline_ticks": timeline_ticks,
         "timeline_segments": timeline_segments,
+        "timeline_board": timeline_board,
         "alerts": alerts,
         "pendings": pendings,
         "audit_fields": audit_fields,

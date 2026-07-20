@@ -6492,6 +6492,99 @@ def clean_fleet_documents_add_classification(
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?classified=1", status_code=303)
 
 
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/classify-row")
+def clean_fleet_documents_save_classification_row(
+    request: Request,
+    vehicle_id: int,
+    maintenance: str = Form(""),
+    pads: str = Form(""),
+    discs: str = Form(""),
+    tyres: str = Form(""),
+    ipo: str = Form(""),
+    other: str = Form(""),
+    record_id: int | None = Form(None),
+    document_id: int | None = Form(None),
+    return_group: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    category_values = {
+        "maintenance": maintenance,
+        "pads": pads,
+        "discs": discs,
+        "tyres": tyres,
+        "ipo": ipo,
+        "other": other,
+    }
+    categories = list(category_values)
+    with SessionLocal() as db:
+        if record_id:
+            record = db.get(VehicleDocumentRecord, record_id)
+            if not record or record.vehicle_id != vehicle_id:
+                return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
+            db.execute(
+                delete(VehicleDocumentRecordTag).where(
+                    VehicleDocumentRecordTag.vehicle_id == vehicle_id,
+                    VehicleDocumentRecordTag.record_id == record_id,
+                    VehicleDocumentRecordTag.category.in_(categories),
+                )
+            )
+            has_classification = False
+            for category, value in category_values.items():
+                clean_value = value.strip()
+                if not clean_value:
+                    continue
+                has_classification = True
+                add_quick_classification(
+                    db,
+                    vehicle_id=vehicle_id,
+                    record_id=record_id,
+                    category=category,
+                    value=clean_value,
+                    free_text=None,
+                    user_id=user_id,
+                )
+            if has_classification:
+                record.status = "classified"
+                record.comparison_state = "validado"
+                record.updated_by_id = user_id
+        elif document_id:
+            document = db.get(Document, document_id)
+            if not document or document.vehicle_id != vehicle_id:
+                return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
+            db.execute(
+                delete(VehicleDocumentRecordTag).where(
+                    VehicleDocumentRecordTag.vehicle_id == vehicle_id,
+                    VehicleDocumentRecordTag.document_id == document_id,
+                    VehicleDocumentRecordTag.category.in_(categories),
+                )
+            )
+            has_classification = False
+            for category, value in category_values.items():
+                clean_value = value.strip()
+                if not clean_value:
+                    continue
+                has_classification = True
+                add_quick_classification(
+                    db,
+                    vehicle_id=vehicle_id,
+                    document_id=document_id,
+                    category=category,
+                    value=clean_value,
+                    free_text=None,
+                    user_id=user_id,
+                )
+            if has_classification:
+                document.status = "classified"
+        db.commit()
+    query = "classified=1"
+    if return_group:
+        query += f"&main_group={return_group}"
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)
+
+
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/audit-field")
 def clean_fleet_documents_save_audit_field(
     request: Request,

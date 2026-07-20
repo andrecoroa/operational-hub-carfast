@@ -7,24 +7,15 @@
     {% set vehicle = ctx.vehicle %}
     {% set real_start_field = module_ctx.audit_fields.get("real_start_date") %}
     {% set maintenance_count_field = module_ctx.audit_fields.get("effective_maintenance_count") %}
-    {% macro render_service_cell(row, prefix, category, current_value, placeholder) %}
+    {% macro render_service_cell(row, form_id, category, current_value, placeholder) %}
       <td>
-        <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify" class="clean-doc-inline-classify-form">
-          {% if row.kind in ['record', 'pending_record'] %}
-            <input type="hidden" name="record_id" value="{{ row.id }}">
-          {% endif %}
-          {% if row.kind == 'document' %}
-            <input type="hidden" name="document_id" value="{{ row.id }}">
-          {% endif %}
-          <input type="hidden" name="category" value="{{ category }}">
-          <input type="hidden" name="free_text" value="">
-          <select name="value" aria-label="{{ quick_classification_labels.get(category, category) }}" onchange="this.form.submit()">
-            <option value="">{{ current_value if current_value and current_value != '-' else placeholder }}</option>
-            {% for option_code, option_label in quick_classifications.get(category, []) %}
-              <option value="{{ option_code }}">{{ option_label }}</option>
-            {% endfor %}
-          </select>
-        </form>
+        {% set current_code = row.service_matrix_codes.get(category, "") if row.service_matrix_codes else "" %}
+        <select form="{{ form_id }}" name="{{ category }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
+          <option value="" {% if not current_code %}selected{% endif %}>{{ current_value if current_value and current_value != '-' else placeholder }}</option>
+          {% for option_code, option_label in quick_classifications.get(category, []) %}
+            <option value="{{ option_code }}" {% if current_code == option_code %}selected{% endif %}>{{ option_label }}</option>
+          {% endfor %}
+        </select>
       </td>
     {% endmacro %}
     {% macro render_classification_table(rows, empty_text, prefix) %}
@@ -50,22 +41,34 @@
           <tbody>
             {% for row in rows %}
               {% set detail_id = prefix ~ "-detail-" ~ row.source_label ~ "-" ~ row.id %}
+              {% set classify_form_id = prefix ~ "-classify-" ~ row.source_label ~ "-" ~ row.id %}
               <tr>
-                <td><span class="clean-doc-source-chip">{{ row.source_label }}</span></td>
+                <td>
+                  <form id="{{ classify_form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row"></form>
+                  {% if row.kind in ['record', 'pending_record'] %}
+                    <input form="{{ classify_form_id }}" type="hidden" name="record_id" value="{{ row.id }}">
+                  {% endif %}
+                  {% if row.kind == 'document' %}
+                    <input form="{{ classify_form_id }}" type="hidden" name="document_id" value="{{ row.id }}">
+                  {% endif %}
+                  <input form="{{ classify_form_id }}" type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
+                  <span class="clean-doc-source-chip">{{ row.source_label }}</span>
+                </td>
                 <td>{{ row.date_display or "-" }}</td>
                 <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
                 <td>{{ row.supplier_name }}</td>
                 <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
-                {{ render_service_cell(row, prefix, "maintenance", row.service_matrix.maintenance, "Por definir") }}
-                {{ render_service_cell(row, prefix, "pads", row.service_matrix.pads, "Por definir") }}
-                {{ render_service_cell(row, prefix, "discs", row.service_matrix.discs, "Por definir") }}
-                {{ render_service_cell(row, prefix, "tyres", row.service_matrix.tyres, "Por definir") }}
-                {{ render_service_cell(row, prefix, "ipo", row.service_matrix.ipo, "Por definir") }}
-                {{ render_service_cell(row, prefix, "other", row.service_matrix.other, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "maintenance", row.service_matrix.maintenance, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "pads", row.service_matrix.pads, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "discs", row.service_matrix.discs, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "tyres", row.service_matrix.tyres, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "ipo", row.service_matrix.ipo, "Por definir") }}
+                {{ render_service_cell(row, classify_form_id, "other", row.service_matrix.other, "Por definir") }}
                 <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                 <td>
                   <div class="clean-doc-classify-actions">
                     <a class="button-link secondary-link" href="#{{ detail_id }}">Abrir</a>
+                    <button form="{{ classify_form_id }}" type="submit" class="button-link primary-link">Guardar</button>
                   </div>
                 </td>
               </tr>

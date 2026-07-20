@@ -1018,6 +1018,23 @@ def _service_matrix_from_text_and_tags(
     return matrix
 
 
+def _service_matrix_codes_from_tags(tags: list[VehicleDocumentRecordTag]) -> dict[str, str]:
+    matrix = {
+        "maintenance": "",
+        "pads": "",
+        "discs": "",
+        "tyres": "",
+        "ipo": "",
+        "other": "",
+    }
+    for tag in tags:
+        if tag.category in matrix:
+            matrix[tag.category] = tag.value or "free_text" if tag.free_text else tag.value or ""
+        elif tag.category in {"fault", "services", "repair"}:
+            matrix["other"] = tag.value or "free_text" if tag.free_text else tag.value or ""
+    return matrix
+
+
 def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bool | None) -> list[dict[str, Any]]:
     if not isinstance(metadata, dict):
         return []
@@ -1140,6 +1157,7 @@ def _build_structured_rows(
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
                 "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "service_matrix_codes": _service_matrix_codes_from_tags(tags),
                 "invoice_lines": _invoice_line_items(row.metadata_json),
                 "period_start": row.document_date,
                 "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
@@ -1249,6 +1267,7 @@ def _build_archive_rows(
                 "open_href": f"/v2-clean/documents/{document.id}",
                 "tags": [_format_tag(tag) for tag in tags],
                 "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "service_matrix_codes": _service_matrix_codes_from_tags(tags),
                 "invoice_lines": [],
             }
         )
@@ -1272,6 +1291,9 @@ def _build_archive_rows(
                 "document_number": record.external_reference or f"PEND-{record.id}",
                 "open_href": "",
                 "tags": [],
+                "service_matrix": _service_matrix_from_text_and_tags(record.title or record.raw_description or "", []),
+                "service_matrix_codes": _service_matrix_codes_from_tags([]),
+                "invoice_lines": [],
             }
         )
     rows.sort(key=lambda row: (row["date"] or date.min, row["title"]), reverse=True)

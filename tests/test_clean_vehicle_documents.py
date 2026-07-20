@@ -296,6 +296,7 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
     assert '<option value="rear" selected>TR</option>' in page.text
+    assert "Validado" in page.text
 
 
 def test_clean_vehicle_documents_import_work_orders_deduplicates_by_number(authenticated_client, db_session):

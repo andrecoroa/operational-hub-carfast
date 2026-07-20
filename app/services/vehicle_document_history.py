@@ -160,6 +160,7 @@ DOCUMENT_HISTORY_COMPARISON_STATES = [
     ("complementar", "Complementar"),
     ("divergente", "Divergente"),
     ("por_validar", "Por validar"),
+    ("validado", "Validado"),
 ]
 DOCUMENT_HISTORY_COMPARISON_LABELS = dict(DOCUMENT_HISTORY_COMPARISON_STATES)
 

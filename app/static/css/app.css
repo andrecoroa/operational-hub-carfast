@@ -15063,6 +15063,157 @@ a.metric:hover {
   line-height: 1.25;
 }
 
+.clean-doc-timeline-lanes {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 180px);
+  gap: 8px;
+  overflow-x: auto;
+  padding: 34px 8px 12px 104px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, #fff 0, #fff 96px, transparent 96px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 178px, #e7edf6 178px, #e7edf6 180px);
+}
+
+.clean-doc-timeline-lane-labels {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: repeat(6, minmax(38px, auto));
+  gap: 6px;
+  align-self: start;
+  width: 92px;
+  margin-left: -96px;
+  background: #fff;
+}
+
+.clean-doc-timeline-lane-labels span {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  color: #50607a;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.clean-doc-timeline-week {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(6, minmax(38px, auto));
+  gap: 6px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.clean-doc-timeline-week::before {
+  content: "";
+  position: absolute;
+  top: 89px;
+  right: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: #123a79;
+  opacity: .65;
+}
+
+.clean-doc-timeline-week-date {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  border: 1px solid #dce4ef;
+  border-radius: 999px;
+  background: #fff;
+  padding: 3px 8px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.clean-doc-timeline-lane {
+  min-height: 38px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border-radius: 8px;
+}
+
+.clean-doc-timeline-lane-center {
+  position: relative;
+  z-index: 1;
+}
+
+.clean-doc-timeline-card-compact {
+  min-height: 34px;
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.clean-doc-timeline-card-compact strong {
+  overflow: hidden;
+  color: #0f2a5f;
+  font-size: 11px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-timeline-card-compact span,
+.clean-doc-timeline-card-compact em {
+  overflow: hidden;
+  font-size: 9.5px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-timeline-lane-invoices .clean-doc-timeline-card-compact {
+  border-left-color: #d18b22;
+  background: #fff8ef;
+}
+
+.clean-doc-timeline-lane-work-orders .clean-doc-timeline-card-compact {
+  border-left-color: #6c8ec1;
+  background: #f4f8ff;
+}
+
+.clean-doc-timeline-lane-center .clean-doc-timeline-card-compact {
+  border-left-color: #123a79;
+  background: #eef5ff;
+  text-align: center;
+}
+
+.clean-doc-timeline-lane-claims .clean-doc-timeline-card-compact {
+  border-left-color: #d14b4b;
+  background: #fff5f5;
+}
+
+.clean-doc-timeline-lane-ars .clean-doc-timeline-card-compact {
+  border-left-color: #7f6bb4;
+  background: #f7f4ff;
+}
+
+.clean-doc-timeline-lane-diagnostics .clean-doc-timeline-card-compact {
+  border-left-color: #4f9d86;
+  background: #eef8f5;
+}
+
+.clean-doc-timeline-lane-diagnostics .clean-doc-timeline-group-list {
+  max-height: 74px;
+  overflow: auto;
+}
+
 .clean-doc-audit-grid {
   gap: 12px;
 }

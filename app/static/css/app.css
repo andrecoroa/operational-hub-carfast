@@ -14697,6 +14697,15 @@ a.metric:hover {
   white-space: nowrap;
 }
 
+.clean-doc-classify-table tr.clean-doc-classify-group-row > td,
+.clean-doc-classify-table tr.clean-doc-classify-group-note-row > td {
+  background: #f6f7f9;
+}
+
+.clean-doc-classify-table tr.clean-doc-classify-group-note-row > td {
+  border-top: 0;
+}
+
 .clean-doc-classify-table .clean-doc-service-description {
   max-width: 260px;
   white-space: normal;
@@ -14725,7 +14734,6 @@ a.metric:hover {
   padding-top: 0;
   color: #5f6c82;
   font-size: 12px;
-  background: #fff;
   border-top: 0;
 }
 

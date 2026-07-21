@@ -140,7 +140,7 @@
             {% for row in rows %}
               {% set detail_id = prefix ~ "-detail-" ~ row.source_label ~ "-" ~ row.id %}
               {% set form_id = prefix ~ "-form-" ~ row.source_label ~ "-" ~ row.id %}
-              <tr>
+              <tr class="clean-doc-classify-group-row">
                 <td>
                   <span class="clean-doc-source-chip">{{ row.source_label }}</span>
                 </td>
@@ -165,7 +165,7 @@
               </tr>
               {% set note_text = row.description or row.process_reference %}
               {% if note_text %}
-                <tr class="clean-doc-classify-note-row">
+                <tr class="clean-doc-classify-note-row clean-doc-classify-group-note-row">
                   <td></td>
                   <td colspan="7"><strong>OBS:</strong> {{ note_text }}</td>
                 </tr>

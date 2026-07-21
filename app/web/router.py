@@ -6000,6 +6000,62 @@ def clean_document_import_center(
             rows = [row for row in structured_rows if row["main_group"] == code]
             structured_sections.append({"code": code, "label": label, "rows": rows})
 
+        real_documents = db.scalars(
+            select(Document)
+            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
+            .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
+        ).all()
+        vehicle_ids = {document.vehicle_id for document in real_documents if document.vehicle_id}
+        vehicles_by_id = {
+            vehicle.id: vehicle
+            for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
+        } if vehicle_ids else {}
+        invoice_documents = [
+            document for document in real_documents if clean_vehicle_document_group(document) == "invoices"
+        ]
+        invoice_rows = []
+        for document in invoice_documents:
+            if clean_main_group and clean_main_group != "invoices":
+                continue
+            vehicle = vehicles_by_id.get(document.vehicle_id)
+            search_parts = [
+                vehicle.plate if vehicle else document.plate,
+                document.title,
+                document.original_name,
+                document.supplier_name,
+                document.contract_number,
+                document.reservation_number,
+                document.status,
+            ]
+            if not matches_search(search_parts):
+                continue
+            if clean_status and document.status != clean_status:
+                continue
+            invoice_rows.append(
+                {
+                    "id": document.id,
+                    "vehicle_id": document.vehicle_id,
+                    "vehicle_plate": vehicle.plate if vehicle else document.plate or "-",
+                    "vehicle_label": (
+                        f"{vehicle.make or ''} {vehicle.model or ''}".strip()
+                        if vehicle
+                        else "Por associar"
+                    ),
+                    "date_display": clean_date(document.document_date.isoformat()) if document.document_date else "-",
+                    "title": document.title or document.original_name,
+                    "document_number": document.contract_number or document.reservation_number or str(document.id),
+                    "supplier_name": document.supplier_name or "-",
+                    "status": document.status,
+                    "document_href": f"/v2-clean/documents/{document.id}",
+                    "vehicle_href": (
+                        f"/v2-clean/fleet/{document.vehicle_id}/documents?main_group=invoices"
+                        if document.vehicle_id
+                        else f"/v2-clean/documents/{document.id}"
+                    ),
+                }
+            )
+
         response = templates.TemplateResponse(
             request,
             "clean_document_import_center.html",
@@ -6009,6 +6065,8 @@ def clean_document_import_center(
                 "structured_counts": module_ctx["structured_counts"],
                 "structured_rows": structured_rows,
                 "structured_sections": structured_sections,
+                "invoice_count": len(invoice_documents),
+                "invoice_rows": invoice_rows,
                 "vehicle_count": module_ctx["vehicle_count"],
                 "archive_documents_count": module_ctx["archive_documents_count"],
                 "imported": imported,

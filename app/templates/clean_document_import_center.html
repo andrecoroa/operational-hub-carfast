@@ -68,6 +68,10 @@
         <strong>{{ work_order_count }}</strong>
         <span>Folhas de obra</span>
       </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=invoices">
+        <strong>{{ invoice_count }}</strong>
+        <span>Faturas</span>
+      </a>
       <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=contracts">
         <strong>{{ contract_count }}</strong>
         <span>Contratos</span>
@@ -178,6 +182,11 @@
           <span>Folhas de obra</span>
           <em>Classificar serviço e cruzar com faturas.</em>
         </a>
+        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=invoices">
+          <strong>{{ invoice_count }}</strong>
+          <span>Faturas</span>
+          <em>Validar documento real, OCR e associação à FO.</em>
+        </a>
         <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=contracts">
           <strong>{{ contract_count }}</strong>
           <span>Contratos</span>
@@ -249,6 +258,7 @@
             Tipo estruturado
             <select name="main_group">
               <option value="">Todos</option>
+              <option value="invoices" {% if main_group == "invoices" %}selected{% endif %}>Faturas</option>
               {% for code, label in structured_groups %}
                 <option value="{{ code }}" {% if main_group == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
@@ -265,6 +275,56 @@
           <button type="submit">Filtrar</button>
         </form>
       </section>
+
+      <details class="clean-doc-collapsible clean-card-wide" {% if invoice_rows or main_group == "invoices" %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Faturas reais</b>
+            <small>Documentos anexados à viatura para OCR, associação à FO e classificação por serviço.</small>
+          </span>
+          <em>{{ invoice_rows|length }} linhas</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-table-wrap">
+            <table class="clean-doc-table clean-doc-table-compact">
+              <thead>
+                <tr>
+                  <th>Viatura</th>
+                  <th>Data</th>
+                  <th>Nº</th>
+                  <th>Fornecedor</th>
+                  <th>Título</th>
+                  <th>Estado</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in invoice_rows %}
+                  <tr>
+                    <td>
+                      <strong>{{ row.vehicle_plate }}</strong>
+                      <small>{{ row.vehicle_label }}</small>
+                    </td>
+                    <td>{{ row.date_display }}</td>
+                    <td>{{ row.document_number }}</td>
+                    <td>{{ row.supplier_name }}</td>
+                    <td>{{ row.title }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>
+                      <div class="clean-doc-inline-actions">
+                        <a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a>
+                        <a class="button-link secondary-link" href="{{ row.document_href }}">Documento</a>
+                      </div>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="7" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
 
       <details class="clean-doc-collapsible clean-card-wide" {% if structured_rows %}open{% endif %}>
         <summary>

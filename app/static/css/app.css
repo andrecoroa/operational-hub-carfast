@@ -14385,18 +14385,18 @@ a.metric:hover {
 .clean-doc-kpi-strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .clean-doc-kpi-card {
   display: grid;
   gap: 4px;
-  min-height: 76px;
+  min-height: 64px;
   border: 1px solid #dce4ef;
   border-radius: 12px;
   background: #fff;
-  padding: 14px 16px;
+  padding: 12px 14px;
   text-decoration: none;
 }
 
@@ -14415,91 +14415,91 @@ a.metric:hover {
 
 .clean-doc-compact-import-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .clean-doc-compact-import-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px 12px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px 10px;
   align-items: start;
   border: 1px solid #dce4ef;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f8fafc;
-  padding: 12px;
+  padding: 10px;
 }
 
 .clean-doc-compact-import-card h4 {
   margin: 0 0 3px;
   color: #0f2a5f;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 950;
 }
 
 .clean-doc-compact-import-card p {
   margin: 0;
   color: #667085;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .clean-doc-compact-form {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 6px;
   align-items: center;
 }
 
 .clean-doc-compact-form input[type="file"] {
-  min-height: 36px;
+  min-height: 32px;
   width: 100%;
   border: 1px solid #dce4ef;
   border-radius: 8px;
   background: #fff;
   color: #344054;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 7px;
+  padding: 5px 6px;
 }
 
 .clean-doc-compact-form button {
-  min-height: 36px;
+  min-height: 32px;
   border: 0;
   border-radius: 8px;
   background: #a55d2f;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 950;
-  padding: 8px 12px;
+  padding: 7px 8px;
 }
 
 .clean-doc-type-token {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: #eef4ff;
   color: #0f2a5f;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 950;
 }
 
 .clean-doc-work-queue-grid {
   display: grid;
   grid-template-columns: 1.25fr repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .clean-doc-work-queue-card {
   display: grid;
   gap: 5px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   text-decoration: none;
 }
 
@@ -14527,6 +14527,23 @@ a.metric:hover {
 .clean-doc-table-compact th,
 .clean-doc-table-compact td {
   padding: 10px 12px;
+}
+
+.clean-doc-table-scroll-8 {
+  max-height: 390px;
+  overflow: auto;
+}
+
+.clean-doc-batch-import-card {
+  padding: 14px 16px;
+}
+
+.clean-doc-batch-import-card .table-heading {
+  margin-bottom: 10px;
+}
+
+.clean-doc-batch-import-card h3 {
+  font-size: 18px;
 }
 
 .clean-doc-service-table-wrap {
@@ -16525,6 +16542,59 @@ a.metric:hover {
 
 .clean-vehicle-header-card-process {
   gap: 16px;
+}
+
+.clean-vehicle-header-card-docs-compact {
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-header-main {
+  grid-template-columns: minmax(300px, 0.65fr) minmax(520px, 1.35fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity {
+  gap: 3px;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity strong {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity span {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity em {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-quick-facts-unified {
+  gap: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-quick-facts-unified span {
+  min-height: 46px;
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  border-radius: 0;
+  padding: 8px 10px;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-quick-facts-unified span:last-child {
+  border-right: 0;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-header-footer {
+  padding-top: 8px;
 }
 
 .clean-vehicle-header-main {

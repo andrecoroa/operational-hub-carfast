@@ -14555,6 +14555,17 @@ a.metric:hover {
   overflow: auto;
 }
 
+.clean-doc-table-scroll-3 {
+  max-height: 185px;
+  overflow: auto;
+}
+
+.clean-doc-table-scroll-3 .clean-doc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .clean-doc-import-history-card {
   padding: 12px 14px;
 }
@@ -16516,6 +16527,10 @@ a.metric:hover {
   padding: 18px 20px;
 }
 
+.clean-context-action-shell-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .clean-context-action-group {
   align-items: center;
   display: grid;
@@ -16628,7 +16643,7 @@ a.metric:hover {
 }
 
 .clean-vehicle-header-card-docs-compact .clean-vehicle-header-main {
-  grid-template-columns: minmax(300px, 0.65fr) minmax(520px, 1.35fr);
+  grid-template-columns: minmax(260px, 0.55fr) minmax(0, 1.45fr);
   align-items: center;
   gap: 14px;
 }
@@ -16684,7 +16699,7 @@ a.metric:hover {
 
 .clean-vehicle-quick-facts-unified {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
   width: 100%;
 }

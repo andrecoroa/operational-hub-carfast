@@ -14413,6 +14413,27 @@ a.metric:hover {
   font-weight: 800;
 }
 
+.clean-doc-kpi-strip-compact {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.clean-doc-kpi-strip-compact .clean-doc-kpi-card {
+  min-height: 52px;
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+.clean-doc-kpi-strip-compact .clean-doc-kpi-card strong {
+  font-size: 1.18rem;
+}
+
+.clean-doc-kpi-strip-compact .clean-doc-kpi-card span {
+  font-size: 10px;
+  line-height: 1.15;
+}
+
 .clean-doc-compact-import-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -14532,6 +14553,63 @@ a.metric:hover {
 .clean-doc-table-scroll-8 {
   max-height: 390px;
   overflow: auto;
+}
+
+.clean-doc-import-history-card {
+  padding: 12px 14px;
+}
+
+.clean-doc-import-history-card .table-heading {
+  margin-bottom: 8px;
+  padding-bottom: 10px;
+}
+
+.clean-doc-import-history-card .table-heading h3 {
+  font-size: 17px;
+}
+
+.clean-doc-import-history-card .table-heading p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.clean-doc-import-history-card .clean-doc-table-scroll-8 {
+  max-height: 310px;
+}
+
+.clean-doc-import-history-card .clean-doc-table-compact th,
+.clean-doc-import-history-card .clean-doc-table-compact td {
+  padding: 7px 9px;
+  vertical-align: middle;
+}
+
+.clean-doc-import-history-card .clean-doc-table-compact td {
+  font-size: 12px;
+}
+
+.clean-doc-import-history-card .clean-doc-inline-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.clean-doc-import-history-card .clean-inline-form {
+  margin: 0;
+}
+
+.clean-doc-import-history-card .clean-doc-inline-actions .button-link,
+.clean-doc-import-history-card .clean-doc-inline-actions button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+@media (max-width: 1180px) {
+  .clean-doc-kpi-strip-compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .clean-doc-batch-import-card {

@@ -59,7 +59,7 @@
     {% set impro_count = structured_counts.get("impros", 0) %}
     {% set pending_structured = structured_rows|selectattr("comparison_state", "equalto", "por_validar")|list|length %}
 
-    <section class="clean-doc-kpi-strip">
+    <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact">
       <a class="clean-doc-kpi-card" href="/v2-clean/fleet">
         <strong>{{ vehicle_count }}</strong>
         <span>Viaturas</span>
@@ -171,35 +171,7 @@
         <p class="clean-doc-helper">Aceita PDF e imagens. O ZIP original não é movido nem apagado.</p>
       </article>
 
-      <section class="clean-doc-work-queue-grid">
-        <article class="clean-doc-work-queue-card clean-card-wide">
-          <p class="eyebrow">Classificação</p>
-          <h3>Filas de trabalho</h3>
-          <p>Usar estas entradas para abrir os conjuntos que precisam de tratamento antes de alimentar tarefas, problemas e timeline.</p>
-        </article>
-        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=work_orders&status=por_validar">
-          <strong>{{ work_order_count }}</strong>
-          <span>Folhas de obra</span>
-          <em>Classificar serviço e cruzar com faturas.</em>
-        </a>
-        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=invoices">
-          <strong>{{ invoice_count }}</strong>
-          <span>Faturas</span>
-          <em>Validar documento real, OCR e associação à FO.</em>
-        </a>
-        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=contracts">
-          <strong>{{ contract_count }}</strong>
-          <span>Contratos</span>
-          <em>Validar presença na timeline.</em>
-        </a>
-        <a class="clean-doc-work-queue-card clean-card-wide" href="/v2-clean/documents?main_group=impros">
-          <strong>{{ impro_count }}</strong>
-          <span>Impros</span>
-          <em>Validar períodos de utilização.</em>
-        </a>
-      </section>
-
-      <article class="clean-doc-structure-card clean-card-wide">
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-import-history-card">
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Últimas importações</p>

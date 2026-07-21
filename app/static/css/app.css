@@ -14642,7 +14642,7 @@ a.metric:hover {
   border: 1px solid #dce4ef;
   border-radius: 10px;
   overflow: hidden;
-  min-width: 1120px;
+  min-width: 980px;
 }
 
 .clean-doc-classify-table th {
@@ -14662,8 +14662,36 @@ a.metric:hover {
 }
 
 .clean-doc-classify-table .clean-doc-service-description {
-  max-width: 210px;
+  max-width: 280px;
   white-space: normal;
+}
+
+.clean-doc-service-summary-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.clean-doc-service-summary-inline span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #ead7d3;
+  border-radius: 7px;
+  background: #fff7f5;
+  color: #8a331b;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 7px;
+}
+
+.clean-doc-classify-note-row td {
+  padding-top: 0;
+  color: #5f6c82;
+  font-size: 12px;
+  background: #fff;
+  border-top: 0;
 }
 
 .clean-doc-classify-table .clean-doc-source-chip {
@@ -14919,6 +14947,44 @@ a.metric:hover {
 
 .clean-doc-detail-card-wide {
   min-width: 0;
+}
+
+.clean-doc-line-classification {
+  display: grid;
+  gap: 12px;
+}
+
+.clean-doc-line-classification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clean-doc-line-classification-header h4 {
+  margin: 0;
+}
+
+.clean-doc-line-classification-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.clean-doc-line-classification-grid label {
+  display: grid;
+  gap: 5px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-doc-line-classification-grid select {
+  min-height: 36px;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
 }
 
 .clean-doc-classify-detail-form {

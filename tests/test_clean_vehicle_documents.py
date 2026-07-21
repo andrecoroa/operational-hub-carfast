@@ -166,6 +166,56 @@ def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
     assert matched == vehicle
 
 
+def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    invoice_path = tmp_path / "fatura_2026-05-15.pdf"
+    invoice_path.write_bytes(
+        _make_pdf("Fatura FT-4458\nData 15/05/2026\nOleo motor 5W30 45,00\nFiltro de oleo 12,00")
+    )
+    invoice = Document(
+        title="Fatura oficina",
+        document_type="workshop_supplier_invoice",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_batch",
+        original_name=invoice_path.name,
+        file_name=invoice_path.name,
+        file_type="pdf",
+        file_size=invoice_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(invoice_path),
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        status="received",
+        archived=True,
+    )
+    db_session.add(invoice)
+    db_session.commit()
+    db_session.refresh(invoice)
+
+    response = authenticated_client.post(
+        f"/v2-clean/documents/{invoice.id}/reprocess-ocr",
+        data={"return_url": f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "ocr_reprocessed=1" in response.headers["location"]
+    events = db_session.scalars(
+        select(DocumentEvent)
+        .where(DocumentEvent.document_id == invoice.id)
+        .order_by(DocumentEvent.id)
+    ).all()
+    assert [event.action for event in events] == [
+        "invoice.ocr.extracted",
+        "invoice.ocr.reprocessed",
+    ]
+    payload = json.loads(events[0].new_value)
+    assert payload["ocr_status"] == "extracted"
+    assert payload["document_number"] == "4458"
+    assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
+
+
 def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
 

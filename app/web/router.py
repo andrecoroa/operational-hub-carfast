@@ -5947,6 +5947,81 @@ def clean_document_detail(request: Request, document_id: int):
         )
 
 
+@web_router.post("/v2-clean/documents/{document_id}/reprocess-ocr")
+def clean_document_reprocess_ocr(
+    request: Request,
+    document_id: int,
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        clean_return_url = return_url.strip()
+        target = (clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "") or (
+            f"/v2-clean/fleet/{document.vehicle_id}/documents?main_group=invoices"
+            if document and document.vehicle_id
+            else "/v2-clean/documents"
+        )
+        separator = "&" if "?" in target else "?"
+        if not document:
+            return RedirectResponse(f"{target}{separator}ocr_error=not_found", status_code=303)
+        if clean_vehicle_document_group(document) != "invoices":
+            return RedirectResponse(f"{target}{separator}ocr_error=unsupported_document", status_code=303)
+        source_path = Path(document.storage_path or "")
+        if source_path and not source_path.is_absolute():
+            source_path = APP_PROJECT_ROOT / source_path
+        try:
+            resolved_path = source_path.resolve()
+        except OSError:
+            return RedirectResponse(f"{target}{separator}ocr_error=file_missing", status_code=303)
+        if not resolved_path.exists() or not resolved_path.is_file():
+            return RedirectResponse(f"{target}{separator}ocr_error=file_missing", status_code=303)
+        suffix = resolved_path.suffix.lower()
+        if suffix not in BATCH_DOCUMENT_EXTENSIONS:
+            return RedirectResponse(f"{target}{separator}ocr_error=unsupported_type", status_code=303)
+        file_content = resolved_path.read_bytes()
+        payload = _batch_invoice_payload(
+            file_content,
+            suffix,
+            document.original_name or document.file_name or resolved_path.name,
+        )
+        if payload.get("document_number") and not document.contract_number:
+            document.contract_number = str(payload["document_number"])[:120]
+        if payload.get("document_date") and not document.document_date:
+            try:
+                document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
+            except ValueError:
+                pass
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="invoice.ocr.extracted",
+                old_value=None,
+                new_value=json.dumps(payload, ensure_ascii=False),
+                user_id=user_id,
+            )
+        )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="invoice.ocr.reprocessed",
+                old_value=None,
+                new_value=f"{len(payload.get('invoice_lines') or [])} linhas; origem={payload.get('text_source')}",
+                user_id=user_id,
+            )
+        )
+        db.commit()
+    return RedirectResponse(
+        f"{target}{separator}ocr_reprocessed=1&ocr_lines={len(payload.get('invoice_lines') or [])}",
+        status_code=303,
+    )
+
+
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(
     request: Request,

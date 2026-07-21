@@ -294,6 +294,12 @@
                         {% if row.open_href %}
                           <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
                         {% endif %}
+                        {% if row.kind == "document" and (row.source_label == "FA" or row.archive_group == "invoices") %}
+                          <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
+                            <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or 'invoices' }}">
+                            <button type="submit" class="button-link secondary-link">Reprocessar OCR</button>
+                          </form>
+                        {% endif %}
                         <button type="submit" form="{{ form_id }}" class="button-link primary-link">Guardar e validar</button>
                       </section>
                     </div>

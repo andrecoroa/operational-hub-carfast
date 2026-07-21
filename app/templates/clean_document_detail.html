@@ -17,6 +17,12 @@
         {% else %}
           <a class="button-link secondary-link" href="/v2-clean/documents">Centro de documentação</a>
         {% endif %}
+        {% if document.document_type == "workshop_supplier_invoice" %}
+          <form method="post" action="/v2-clean/documents/{{ document.id }}/reprocess-ocr" class="clean-inline-form">
+            <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
+            <button type="submit" class="button-link primary-link">Reprocessar OCR</button>
+          </form>
+        {% endif %}
       </div>
     </header>
 

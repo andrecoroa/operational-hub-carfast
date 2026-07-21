@@ -11,6 +11,18 @@
       {% set value = row.service_matrix.get(category, '-') if row.service_matrix else '-' %}
       <span class="clean-doc-service-value {% if value not in ['-', 'Por definir'] %}is-set{% endif %}">{{ value }}</span>
     {% endmacro %}
+    {% macro render_service_select(row, category, form_id) %}
+      {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
+      {% set current_code = current_codes[0] if current_codes else "" %}
+      <select name="{{ category }}" form="{{ form_id }}" aria-label="{{ quick_classification_labels.get(category, category) }}">
+        <option value="" {% if not current_code %}selected{% endif %}>Por definir</option>
+        {% for option_code, option_label in quick_classifications.get(category, []) %}
+          {% if option_code != "undefined" %}
+            <option value="{{ option_code }}" {% if option_code == current_code %}selected{% endif %}>{{ option_label }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    {% endmacro %}
     {% macro render_service_choices(row, category) %}
       {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
       <fieldset class="clean-doc-service-choice-group">
@@ -71,6 +83,7 @@
           <tbody>
             {% for row in rows %}
               {% set detail_id = prefix ~ "-detail-" ~ row.source_label ~ "-" ~ row.id %}
+              {% set form_id = prefix ~ "-form-" ~ row.source_label ~ "-" ~ row.id %}
               <tr>
                 <td>
                   <span class="clean-doc-source-chip">{{ row.source_label }}</span>
@@ -79,16 +92,22 @@
                 <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
                 <td>{{ row.supplier_name }}</td>
                 <td class="clean-doc-service-description">{{ row.description or row.process_reference or "-" }}</td>
-                <td>{{ render_service_value(row, 'maintenance') }}</td>
-                <td>{{ render_service_value(row, 'pads') }}</td>
-                <td>{{ render_service_value(row, 'discs') }}</td>
-                <td>{{ render_service_value(row, 'tyres') }}</td>
-                <td>{{ render_service_value(row, 'ipo') }}</td>
-                <td>{{ render_service_value(row, 'other') }}</td>
+                <td>{{ render_service_select(row, 'maintenance', form_id) }}</td>
+                <td>{{ render_service_select(row, 'pads', form_id) }}</td>
+                <td>{{ render_service_select(row, 'discs', form_id) }}</td>
+                <td>{{ render_service_select(row, 'tyres', form_id) }}</td>
+                <td>{{ render_service_select(row, 'ipo', form_id) }}</td>
+                <td>{{ render_service_select(row, 'other', form_id) }}</td>
                 <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                 <td>
+                  <form id="{{ form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-inline-classify-form">
+                    {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
+                    {% if row.kind == 'document' %}<input type="hidden" name="document_id" value="{{ row.id }}">{% endif %}
+                    <input type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
+                  </form>
                   <div class="clean-doc-classify-actions">
                     <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Ver detalhes</button>
+                    <button type="submit" form="{{ form_id }}" class="button-link primary-link">Guardar</button>
                   </div>
                 </td>
               </tr>
@@ -100,7 +119,7 @@
                       {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
                       {% if row.kind == 'document' %}<input type="hidden" name="document_id" value="{{ row.id }}">{% endif %}
                       <input type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
-                    <div class="clean-doc-expanded-detail-grid">
+                    <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact">
                       <section class="clean-doc-detail-card">
                         <h4>Dados do documento</h4>
                         <dl>
@@ -112,7 +131,37 @@
                         </dl>
                       </section>
                       <section class="clean-doc-detail-card clean-doc-detail-card-wide">
-                        {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                        {% if row.source_label == "FO" %}
+                          <div class="clean-doc-invoice-lines">
+                            <strong>Linhas da folha de obra</strong>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>#</th>
+                                  <th>Referência</th>
+                                  <th>Descrição</th>
+                                  <th>Qtd.</th>
+                                  <th>Un.</th>
+                                  <th>Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for item in row.work_order_lines %}
+                                  <tr>
+                                    <td>{{ item.index }}</td>
+                                    <td>{{ item.reference }}</td>
+                                    <td>{{ item.description }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td>{{ item.unit }}</td>
+                                    <td>{{ item.amount }}</td>
+                                  </tr>
+                                {% else %}
+                                  <tr><td colspan="6">Ainda não foram importadas linhas de detalhe para esta FO.</td></tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% elif row.source_label == "FA" or row.archive_group == "invoices" %}
                           <div class="clean-doc-invoice-lines">
                             <strong>Linhas faturadas</strong>
                             <table>
@@ -168,7 +217,6 @@
                           {% endif %}
                         {% endif %}
                       </section>
-                      {{ render_classification_editor(row) }}
                       <section class="clean-doc-detail-card clean-doc-detail-actions">
                         <h4>Ações</h4>
                         {% if row.kind == "pending_record" %}
@@ -188,7 +236,7 @@
                         {% if row.open_href %}
                           <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
                         {% endif %}
-                        <button type="submit" class="button-link primary-link">Guardar e validar</button>
+                        <button type="submit" form="{{ form_id }}" class="button-link primary-link">Guardar e validar</button>
                       </section>
                     </div>
                     </form>
@@ -449,7 +497,7 @@
             <em>{{ structured_classification_rows|length }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
-          {{ render_structured_work_orders(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.") }}
+          {{ render_classification_table(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.", "structured") }}
           <p class="clean-doc-filter-note">Cada folha de obra é guardada diretamente na própria linha. Contratos e impros ficam fora da classificação e alimentam a timeline.</p>
         </div>
       </details>

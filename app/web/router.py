@@ -5528,6 +5528,9 @@ def clean_fleet_documents(
     document_created: str | None = None,
     imported: str | None = None,
     imported_count: int | None = None,
+    ocr_reprocessed: str | None = None,
+    ocr_lines: int | None = None,
+    ocr_error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5795,6 +5798,9 @@ def clean_fleet_documents(
                 "document_created": document_created,
                 "imported": imported,
                 "imported_count": imported_count,
+                "ocr_reprocessed": ocr_reprocessed,
+                "ocr_lines": ocr_lines,
+                "ocr_error": ocr_error,
             },
         )
         db.commit()
@@ -5932,7 +5938,13 @@ def clean_documents_create(
 
 
 @web_router.get("/v2-clean/documents/{document_id}", response_class=HTMLResponse)
-def clean_document_detail(request: Request, document_id: int):
+def clean_document_detail(
+    request: Request,
+    document_id: int,
+    ocr_reprocessed: str | None = None,
+    ocr_lines: int | None = None,
+    ocr_error: str | None = None,
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -5967,6 +5979,9 @@ def clean_document_detail(request: Request, document_id: int):
                 "events": events,
                 "file_size": file_size,
                 "document_date": clean_date(document.document_date.isoformat() if document.document_date else None),
+                "ocr_reprocessed": ocr_reprocessed,
+                "ocr_lines": ocr_lines,
+                "ocr_error": ocr_error,
             },
         )
 
@@ -6014,6 +6029,8 @@ def clean_document_reprocess_ocr(
             suffix,
             document.original_name or document.file_name or resolved_path.name,
         )
+        extracted_lines = len(payload.get("invoice_lines") or [])
+        extracted_text = bool(str(payload.get("raw_text_preview") or "").strip())
         if payload.get("document_number") and not document.contract_number:
             document.contract_number = str(payload["document_number"])[:120]
         if payload.get("document_date") and not document.document_date:
@@ -6021,6 +6038,7 @@ def clean_document_reprocess_ocr(
                 document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
             except ValueError:
                 pass
+        document.status = "extracted" if extracted_text else "ocr_empty"
         db.add(
             DocumentEvent(
                 document_id=document.id,
@@ -6035,13 +6053,18 @@ def clean_document_reprocess_ocr(
                 document_id=document.id,
                 action="invoice.ocr.reprocessed",
                 old_value=None,
-                new_value=f"{len(payload.get('invoice_lines') or [])} linhas; origem={payload.get('text_source')}",
+                new_value=f"{extracted_lines} linhas; origem={payload.get('text_source')}",
                 user_id=user_id,
             )
         )
         db.commit()
+    if not extracted_text:
+        return RedirectResponse(
+            f"{target}{separator}ocr_error=no_text&ocr_lines={extracted_lines}",
+            status_code=303,
+        )
     return RedirectResponse(
-        f"{target}{separator}ocr_reprocessed=1&ocr_lines={len(payload.get('invoice_lines') or [])}",
+        f"{target}{separator}ocr_reprocessed=1&ocr_lines={extracted_lines}",
         status_code=303,
     )
 
@@ -6059,6 +6082,9 @@ def clean_document_import_center(
     batch_pending: int | None = None,
     batch_duplicates: int | None = None,
     batch_error: str | None = None,
+    ocr_reprocessed: str | None = None,
+    ocr_lines: int | None = None,
+    ocr_error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6175,6 +6201,9 @@ def clean_document_import_center(
                 "batch_pending": batch_pending,
                 "batch_duplicates": batch_duplicates,
                 "batch_error": batch_error,
+                "ocr_reprocessed": ocr_reprocessed,
+                "ocr_lines": ocr_lines,
+                "ocr_error": ocr_error,
                 "q": q or "",
                 "main_group": clean_main_group,
                 "status": clean_status,
@@ -6492,6 +6521,11 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                 )
                 if document_type == "workshop_supplier_invoice":
                     invoice_payload = _batch_invoice_payload(file_content, suffix, original_name, content_text)
+                    document.status = (
+                        "extracted"
+                        if str(invoice_payload.get("raw_text_preview") or "").strip()
+                        else "ocr_empty"
+                    )
                     if invoice_payload.get("document_number") and not document.contract_number:
                         document.contract_number = str(invoice_payload["document_number"])[:120]
                     if invoice_payload.get("document_date") and not document.document_date:

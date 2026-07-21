@@ -404,6 +404,23 @@
         {% endif %}
       </div>
     {% endif %}
+    {% if ocr_reprocessed or ocr_error %}
+      <div class="alert {% if ocr_error %}warning{% else %}success{% endif %}">
+        {% if ocr_error == "file_missing" %}
+          OCR não reprocessado: o ficheiro arquivado não foi encontrado. Pode ter sido perdido num deploy ou estar fora do arquivo persistente.
+        {% elif ocr_error == "unsupported_type" %}
+          OCR não reprocessado: tipo de ficheiro não suportado.
+        {% elif ocr_error == "unsupported_document" %}
+          OCR só está disponível para faturas.
+        {% elif ocr_error == "no_text" %}
+          OCR reprocessado, mas não foi possível extrair texto/linhas. Pode ser uma imagem/scanner sem motor OCR disponível no servidor.
+        {% elif ocr_error %}
+          OCR não reprocessado: {{ ocr_error }}.
+        {% else %}
+          OCR reprocessado: {{ ocr_lines or 0 }} linhas extraídas.
+        {% endif %}
+      </div>
+    {% endif %}
 
     <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-docs-compact">
       <div class="clean-vehicle-header-main">

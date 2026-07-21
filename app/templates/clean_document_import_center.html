@@ -54,6 +54,28 @@
       </section>
     {% endif %}
 
+    {% if ocr_reprocessed or ocr_error %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if ocr_error %}warning{% endif %}">
+          {% if ocr_error == "file_missing" %}
+            <strong>OCR não reprocessado: o ficheiro arquivado não foi encontrado.</strong>
+            <span>Pode ter sido perdido num deploy ou estar fora do arquivo persistente.</span>
+          {% elif ocr_error == "unsupported_type" %}
+            <strong>OCR não reprocessado: tipo de ficheiro não suportado.</strong>
+          {% elif ocr_error == "unsupported_document" %}
+            <strong>OCR só está disponível para faturas.</strong>
+          {% elif ocr_error == "no_text" %}
+            <strong>OCR reprocessado, mas não foi possível extrair texto/linhas.</strong>
+            <span>Pode ser uma imagem/scanner sem motor OCR disponível no servidor.</span>
+          {% elif ocr_error %}
+            <strong>OCR não reprocessado: {{ ocr_error }}.</strong>
+          {% else %}
+            <strong>OCR reprocessado: {{ ocr_lines or 0 }} linhas extraídas.</strong>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
     {% set work_order_count = structured_counts.get("work_orders", 0) %}
     {% set contract_count = structured_counts.get("contracts", 0) %}
     {% set impro_count = structured_counts.get("impros", 0) %}

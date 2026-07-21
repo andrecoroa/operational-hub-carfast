@@ -201,6 +201,8 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
 
     assert response.status_code == 303
     assert "ocr_reprocessed=1" in response.headers["location"]
+    db_session.refresh(invoice)
+    assert invoice.status == "extracted"
     events = db_session.scalars(
         select(DocumentEvent)
         .where(DocumentEvent.document_id == invoice.id)
@@ -214,6 +216,44 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     assert payload["ocr_status"] == "extracted"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
+
+
+def test_clean_document_reprocess_invoice_ocr_reports_empty_text(authenticated_client, db_session, tmp_path):
+    vehicle = _create_vehicle(db_session)
+    invoice_path = tmp_path / "fatura_scanner.jpg"
+    invoice_path.write_bytes(b"not an image with readable text")
+    invoice = Document(
+        title="Fatura scanner",
+        document_type="workshop_supplier_invoice",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_batch",
+        original_name=invoice_path.name,
+        file_name=invoice_path.name,
+        file_type="jpg",
+        file_size=invoice_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(invoice_path),
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        status="received",
+        archived=True,
+    )
+    db_session.add(invoice)
+    db_session.commit()
+    db_session.refresh(invoice)
+
+    response = authenticated_client.post(
+        f"/v2-clean/documents/{invoice.id}/reprocess-ocr",
+        data={"return_url": f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "ocr_error=no_text" in response.headers["location"]
+    assert "ocr_lines=0" in response.headers["location"]
+    db_session.refresh(invoice)
+    assert invoice.status == "ocr_empty"
 
 
 def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):

@@ -11,6 +11,33 @@
       {% set value = row.service_matrix.get(category, '-') if row.service_matrix else '-' %}
       <span class="clean-doc-service-value {% if value not in ['-', 'Por definir'] %}is-set{% endif %}">{{ value }}</span>
     {% endmacro %}
+    {% macro render_classified_service_summary(row) %}
+      {% set category_labels = {
+        'maintenance': 'Manutenção',
+        'pads': 'Calços',
+        'discs': 'Discos',
+        'tyres': 'Pneus',
+        'ipo': 'IPO',
+        'other': 'Outro'
+      } %}
+      {% set ns = namespace(has_services=false) %}
+      <div class="clean-doc-service-summary-inline">
+        {% for category in ['maintenance', 'pads', 'discs', 'tyres', 'ipo', 'other'] %}
+          {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
+          {% set option_labels = dict(quick_classifications.get(category, [])) %}
+          {% for code in current_codes %}
+            {% if code %}
+              {% set ns.has_services = true %}
+              {% set label = option_labels.get(code, code) %}
+              <span>{{ label if category == 'ipo' else category_labels.get(category, category) ~ ': ' ~ label }}</span>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+        {% if not ns.has_services %}
+          <em>Por classificar</em>
+        {% endif %}
+      </div>
+    {% endmacro %}
     {% macro render_service_select(row, category, form_id) %}
       {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
       {% set current_code = current_codes[0] if current_codes else "" %}
@@ -100,13 +127,13 @@
           <thead>
             <tr>
               <th></th>
-              <th>Data</th>
-              <th>Nº</th>
-              <th>Fornecedor</th>
-              <th>Km</th>
-              <th>Serviços adjudicados</th>
-              <th>Estado</th>
-              <th>Ações</th>
+              <th class="clean-doc-col-date">Data</th>
+              <th class="clean-doc-col-number">Nº</th>
+              <th class="clean-doc-col-provider">Fornecedor</th>
+              <th class="clean-doc-col-km">Km</th>
+              <th class="clean-doc-col-services">Serviços adjudicados</th>
+              <th class="clean-doc-col-status">Estado</th>
+              <th class="clean-doc-col-actions">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -117,22 +144,15 @@
                 <td>
                   <span class="clean-doc-source-chip">{{ row.source_label }}</span>
                 </td>
-                <td>{{ row.date_display or "-" }}</td>
-                <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
-                <td>{{ row.supplier_name }}</td>
-                <td>{{ row.km if row.km is not none else "-" }}</td>
+                <td class="clean-doc-col-date">{{ row.date_display or "-" }}</td>
+                <td class="clean-doc-col-number"><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
+                <td class="clean-doc-col-provider">{{ row.supplier_name }}</td>
+                <td class="clean-doc-col-km">{{ row.km if row.km is not none else "-" }}</td>
                 <td class="clean-doc-service-description">
-                  <strong>{{ row.description or row.process_reference or "-" }}</strong>
-                  {% if row.service_summary %}
-                    <div class="clean-doc-service-summary-inline">
-                      {% for service in row.service_summary %}
-                        <span>{{ service }}</span>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
+                  {{ render_classified_service_summary(row) }}
                 </td>
-                <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
-                <td>
+                <td class="clean-doc-col-status"><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
+                <td class="clean-doc-col-actions">
                   <form id="{{ form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-inline-classify-form">
                     {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
                     {% if row.kind == 'document' %}<input type="hidden" name="document_id" value="{{ row.id }}">{% endif %}
@@ -143,10 +163,11 @@
                   </div>
                 </td>
               </tr>
-              {% if row.process_reference and row.process_reference != row.description %}
+              {% set note_text = row.description or row.process_reference %}
+              {% if note_text %}
                 <tr class="clean-doc-classify-note-row">
                   <td></td>
-                  <td colspan="7"><strong>OBS:</strong> {{ row.process_reference }}</td>
+                  <td colspan="7"><strong>OBS:</strong> {{ note_text }}</td>
                 </tr>
               {% endif %}
               <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
@@ -154,7 +175,7 @@
                   <details class="clean-doc-expanded-detail">
                     <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
                     <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact">
-                      <section class="clean-doc-detail-card">
+                      <section class="clean-doc-detail-card clean-doc-detail-document-card">
                         <h4>Dados do documento</h4>
                         <dl>
                           <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
@@ -164,7 +185,7 @@
                           <div><dt>Estado</dt><dd>{{ row.status }}</dd></div>
                         </dl>
                       </section>
-                      <section class="clean-doc-detail-card clean-doc-detail-card-wide">
+                      <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-detail-lines-card">
                         {% if row.source_label == "FO" %}
                           <div class="clean-doc-invoice-lines">
                             <strong>Linhas da folha de obra</strong>
@@ -251,7 +272,7 @@
                           {% endif %}
                         {% endif %}
                       </section>
-                      <section class="clean-doc-detail-card clean-doc-detail-card-wide">
+                      <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                         {{ render_service_select_grid(row, form_id) }}
                       </section>
                       <section class="clean-doc-detail-card clean-doc-detail-actions">

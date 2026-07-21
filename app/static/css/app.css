@@ -14643,6 +14643,7 @@ a.metric:hover {
   border-radius: 10px;
   overflow: hidden;
   min-width: 980px;
+  table-layout: fixed;
 }
 
 .clean-doc-classify-table th {
@@ -14656,13 +14657,48 @@ a.metric:hover {
   vertical-align: middle;
 }
 
-.clean-doc-classify-table th:last-child,
-.clean-doc-classify-table td:last-child {
-  min-width: 178px;
+.clean-doc-classify-table .clean-doc-col-date {
+  width: 122px;
+}
+
+.clean-doc-classify-table .clean-doc-col-number {
+  width: 92px;
+}
+
+.clean-doc-classify-table .clean-doc-col-provider {
+  width: 280px;
+}
+
+.clean-doc-classify-table td.clean-doc-col-provider {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clean-doc-classify-table .clean-doc-col-km {
+  width: 78px;
+}
+
+.clean-doc-classify-table .clean-doc-col-services {
+  width: 260px;
+}
+
+.clean-doc-classify-table .clean-doc-col-status {
+  width: 116px;
+}
+
+.clean-doc-classify-table .clean-doc-col-actions {
+  width: 150px;
+}
+
+.clean-doc-classify-table td.clean-doc-col-date,
+.clean-doc-classify-table td.clean-doc-col-number,
+.clean-doc-classify-table td.clean-doc-col-km {
+  white-space: nowrap;
 }
 
 .clean-doc-classify-table .clean-doc-service-description {
-  max-width: 280px;
+  max-width: 260px;
   white-space: normal;
 }
 
@@ -14670,7 +14706,6 @@ a.metric:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 6px;
 }
 
 .clean-doc-service-summary-inline span {
@@ -14692,6 +14727,12 @@ a.metric:hover {
   font-size: 12px;
   background: #fff;
   border-top: 0;
+}
+
+.clean-doc-muted-inline {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .clean-doc-classify-table .clean-doc-source-chip {
@@ -14898,9 +14939,28 @@ a.metric:hover {
 
 .clean-doc-expanded-detail-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.85fr) minmax(360px, 2fr) minmax(180px, 0.65fr);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(460px, 1.8fr) minmax(190px, 0.55fr);
+  grid-template-areas:
+    "document lines actions"
+    "classification classification classification";
   gap: 12px;
   padding: 0 16px 16px;
+}
+
+.clean-doc-detail-document-card {
+  grid-area: document;
+}
+
+.clean-doc-detail-lines-card {
+  grid-area: lines;
+}
+
+.clean-doc-detail-actions {
+  grid-area: actions;
+}
+
+.clean-doc-line-classification-card {
+  grid-area: classification;
 }
 
 .clean-doc-detail-card {
@@ -14967,7 +15027,7 @@ a.metric:hover {
 
 .clean-doc-line-classification-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
   gap: 10px;
 }
 
@@ -15206,11 +15266,18 @@ a.metric:hover {
 
   .clean-doc-expanded-detail-grid {
     grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "document lines"
+      "classification classification"
+      "actions actions";
   }
 
   .clean-doc-detail-actions {
-    grid-column: 1 / -1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .clean-doc-line-classification-grid {
+    grid-template-columns: repeat(3, minmax(110px, 1fr));
   }
 }
 
@@ -15219,6 +15286,18 @@ a.metric:hover {
   .clean-doc-work-order-main,
   .clean-doc-expanded-detail-grid,
   .clean-doc-service-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-expanded-detail-grid {
+    grid-template-areas:
+      "document"
+      "lines"
+      "classification"
+      "actions";
+  }
+
+  .clean-doc-line-classification-grid {
     grid-template-columns: 1fr;
   }
 

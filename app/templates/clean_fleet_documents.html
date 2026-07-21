@@ -111,7 +111,7 @@
                   </div>
                 </td>
               </tr>
-              <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}">
+              <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
                 <td colspan="13">
                   <details class="clean-doc-expanded-detail">
                     <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
@@ -706,11 +706,14 @@
 <script>
   document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
     button.addEventListener("click", () => {
-      const detail = document.getElementById(button.dataset.detailTarget || "");
-      if (!detail) return;
-      detail.open = !detail.open;
-      button.textContent = detail.open ? "Fechar detalhes" : "Ver detalhes";
-      if (detail.open) detail.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const detailRow = document.getElementById(button.dataset.detailTarget || "");
+      if (!detailRow) return;
+      const detail = detailRow.querySelector("details");
+      const willOpen = detailRow.hidden;
+      detailRow.hidden = !willOpen;
+      if (detail) detail.open = willOpen;
+      button.textContent = willOpen ? "Fechar detalhes" : "Ver detalhes";
+      if (willOpen) detailRow.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
   });
 

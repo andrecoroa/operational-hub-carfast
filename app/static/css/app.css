@@ -14642,6 +14642,7 @@ a.metric:hover {
   border: 1px solid #dce4ef;
   border-radius: 10px;
   overflow: hidden;
+  min-width: 1120px;
 }
 
 .clean-doc-classify-table th {
@@ -14652,6 +14653,17 @@ a.metric:hover {
 
 .clean-doc-classify-table td {
   font-size: 13px;
+  vertical-align: middle;
+}
+
+.clean-doc-classify-table th:last-child,
+.clean-doc-classify-table td:last-child {
+  min-width: 178px;
+}
+
+.clean-doc-classify-table .clean-doc-service-description {
+  max-width: 210px;
+  white-space: normal;
 }
 
 .clean-doc-classify-table .clean-doc-source-chip {

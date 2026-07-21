@@ -14642,7 +14642,7 @@ a.metric:hover {
   border: 1px solid #dce4ef;
   border-radius: 10px;
   overflow: hidden;
-  min-width: 980px;
+  min-width: 1040px;
   table-layout: fixed;
 }
 
@@ -14657,16 +14657,25 @@ a.metric:hover {
   vertical-align: middle;
 }
 
+.clean-doc-classify-table th:first-child,
+.clean-doc-classify-table td:first-child {
+  width: 54px;
+  text-align: left;
+}
+
 .clean-doc-classify-table .clean-doc-col-date {
-  width: 122px;
+  width: 112px;
+  text-align: left;
 }
 
 .clean-doc-classify-table .clean-doc-col-number {
-  width: 92px;
+  width: 76px;
+  text-align: left;
 }
 
 .clean-doc-classify-table .clean-doc-col-provider {
-  width: 280px;
+  width: 330px;
+  text-align: left;
 }
 
 .clean-doc-classify-table td.clean-doc-col-provider {
@@ -14677,18 +14686,22 @@ a.metric:hover {
 
 .clean-doc-classify-table .clean-doc-col-km {
   width: 78px;
+  text-align: left;
 }
 
 .clean-doc-classify-table .clean-doc-col-services {
-  width: 260px;
+  width: 230px;
+  text-align: left;
 }
 
 .clean-doc-classify-table .clean-doc-col-status {
-  width: 116px;
+  width: 112px;
+  text-align: left;
 }
 
 .clean-doc-classify-table .clean-doc-col-actions {
-  width: 150px;
+  width: 116px;
+  text-align: right;
 }
 
 .clean-doc-classify-table td.clean-doc-col-date,
@@ -14707,8 +14720,14 @@ a.metric:hover {
 }
 
 .clean-doc-classify-table .clean-doc-service-description {
-  max-width: 260px;
+  max-width: 230px;
   white-space: normal;
+}
+
+.clean-doc-classify-table .clean-doc-classify-actions .button-link {
+  min-height: 32px;
+  padding: 7px 10px;
+  white-space: nowrap;
 }
 
 .clean-doc-service-summary-inline {

@@ -24,6 +24,8 @@
             Importação concluída:
             {% if imported == "work_orders" %}
               folhas de obra
+            {% elif imported == "work_order_details" %}
+              detalhes de folhas de obra
             {% elif imported == "impros" %}
               impros
             {% elif imported == "contracts" %}
@@ -35,6 +37,19 @@
               ({{ imported_count }} registos tratados)
             {% endif %}
           </strong>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if batch_imported is not none or batch_error %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if batch_error %}danger{% endif %}">
+          {% if batch_error %}
+            <strong>Não foi possível importar o lote: {{ batch_error }}.</strong>
+          {% else %}
+            <strong>{{ batch_imported }} documentos reais arquivados.</strong>
+            <span>{{ batch_matched }} associados a viaturas · {{ batch_pending }} por associar · {{ batch_duplicates }} duplicados ignorados.</span>
+          {% endif %}
         </div>
       </section>
     {% endif %}
@@ -96,6 +111,18 @@
           </article>
 
           <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">FO+</span>
+            <div>
+              <h4>Detalhes das FO</h4>
+              <p>Associa várias linhas à FO existente através do respetivo número.</p>
+            </div>
+            <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/work-order-details" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
             <span class="clean-doc-type-token">CO</span>
             <div>
               <h4>Contratos</h4>
@@ -119,6 +146,25 @@
             </form>
           </article>
         </div>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-batch-import-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Documentos reais em lote</p>
+            <h3>Importar arquivo ZIP</h3>
+            <p>As subpastas podem estar organizadas por matrícula. Cada PDF ou imagem é arquivado separadamente; duplicados são ignorados e ficheiros sem viatura ficam por associar.</p>
+          </div>
+          <strong class="clean-doc-pill">ZIP</strong>
+        </div>
+        <form method="post" action="/v2-clean/documents/import/archive-batch" enctype="multipart/form-data" class="clean-doc-batch-import-form">
+          <label>
+            Pasta compactada
+            <input type="file" name="file" accept=".zip,application/zip" required>
+          </label>
+          <button type="submit">Importar documentos</button>
+        </form>
+        <p class="clean-doc-helper">Aceita PDF e imagens. O ZIP original não é movido nem apagado.</p>
       </article>
 
       <section class="clean-doc-work-queue-grid">

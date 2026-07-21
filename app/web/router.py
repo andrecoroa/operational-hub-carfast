@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import re
+import zipfile
 from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
@@ -136,6 +137,7 @@ from app.services.vehicle_document_history import (
     document_center_module_context,
     import_contracts_xlsx,
     import_impros_xlsx,
+    import_work_order_details_xlsx,
     import_work_orders_xlsx,
     is_structured_import_source,
     save_uploaded_spreadsheet,
@@ -5622,6 +5624,52 @@ def clean_fleet_documents(
         )
 
         archive_classification_rows = []
+        work_order_records = {
+            row["id"]: row
+            for row in module_ctx["structured_rows"]
+            if row.get("main_group") == "work_orders"
+        }
+        work_order_link_options = [
+            {
+                "id": record_id,
+                "label": " · ".join(
+                    part
+                    for part in [
+                        f"FO {row.get('external_reference') or row.get('title') or record_id}",
+                        row.get("date_display") if row.get("date_display") != "-" else "",
+                        row.get("supplier_name") if row.get("supplier_name") != "-" else "",
+                    ]
+                    if part
+                ),
+            }
+            for record_id, row in work_order_records.items()
+        ]
+        work_order_link_options.sort(key=lambda item: item["label"], reverse=True)
+        archive_document_ids = [
+            row["id"] for row in archive_rows if row.get("kind") == "document"
+        ]
+        invoice_work_order_links: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        if archive_document_ids and work_order_records:
+            for link in db.scalars(
+                select(DocumentLink).where(
+                    DocumentLink.document_id.in_(archive_document_ids),
+                    DocumentLink.entity_type == "vehicle_document_record",
+                    DocumentLink.category == "invoice_work_order",
+                )
+            ).all():
+                try:
+                    linked_record_id = int(link.entity_id)
+                except (TypeError, ValueError):
+                    continue
+                linked_record = work_order_records.get(linked_record_id)
+                if not linked_record:
+                    continue
+                invoice_work_order_links[link.document_id].append(
+                    {
+                        "id": linked_record_id,
+                        "label": f"FO {linked_record.get('external_reference') or linked_record.get('title') or linked_record_id}",
+                    }
+                )
         for row in archive_rows:
             service_matrix = row.get("service_matrix") or {
                 "maintenance": "-",
@@ -5658,6 +5706,7 @@ def clean_fleet_documents(
                     "comparison_label": row.get("comparison_state") or row.get("extraction_state") or "Por validar",
                     "service_matrix": service_matrix,
                     "invoice_lines": row.get("invoice_lines") or [],
+                    "linked_work_orders": invoice_work_order_links.get(row.get("id"), []),
                 }
             )
         archive_classification_rows.sort(
@@ -5705,6 +5754,7 @@ def clean_fleet_documents(
                 "structured_sections": structured_sections,
                 "structured_classification_rows": structured_classification_rows,
                 "archive_classification_rows": archive_classification_rows,
+                "work_order_link_options": work_order_link_options,
                 "comparison_rows": comparison_rows,
                 "q": q or "",
                 "main_group": clean_main_group,
@@ -5905,6 +5955,11 @@ def clean_document_import_center(
     status: str = "",
     imported: str | None = None,
     imported_count: int | None = None,
+    batch_imported: int | None = None,
+    batch_matched: int | None = None,
+    batch_pending: int | None = None,
+    batch_duplicates: int | None = None,
+    batch_error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5958,6 +6013,11 @@ def clean_document_import_center(
                 "archive_documents_count": module_ctx["archive_documents_count"],
                 "imported": imported,
                 "imported_count": imported_count,
+                "batch_imported": batch_imported,
+                "batch_matched": batch_matched,
+                "batch_pending": batch_pending,
+                "batch_duplicates": batch_duplicates,
+                "batch_error": batch_error,
                 "q": q or "",
                 "main_group": clean_main_group,
                 "status": clean_status,
@@ -5974,6 +6034,187 @@ def clean_document_import_center(
         )
         db.commit()
         return response
+
+
+BATCH_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".tif", ".tiff"}
+BATCH_DOCUMENT_MAX_FILES = 2000
+BATCH_DOCUMENT_MAX_FILE_SIZE = 30 * 1024 * 1024
+BATCH_DOCUMENT_MAX_TOTAL_SIZE = 250 * 1024 * 1024
+
+
+def _batch_document_vehicle(path_text: str, vehicles_by_plate: dict[str, Vehicle]) -> Vehicle | None:
+    normalized_path = re.sub(r"[^A-Z0-9]", "", path_text.upper())
+    candidates = sorted(vehicles_by_plate.items(), key=lambda item: len(item[0]), reverse=True)
+    return next((vehicle for compact_plate, vehicle in candidates if compact_plate and compact_plate in normalized_path), None)
+
+
+def _batch_document_type(path_text: str) -> tuple[str, str]:
+    normalized = path_text.lower()
+    if any(token in normalized for token in ("fatura", "factura", "invoice")):
+        return "workshop_supplier_invoice", "workshop"
+    if any(token in normalized for token in ("diagnost", "autel", "stellantis", "lubrifica", "manutenc", "telecarreg")):
+        return "workshop_report", "workshop"
+    if any(token in normalized for token in ("foto", "photo", "imagem", "image", "quadrante")):
+        return "workshop_photo", "workshop"
+    if any(token in normalized for token in ("folha de obra", "folha_de_obra", "work order")):
+        return "workshop_work_order", "workshop"
+    return "workshop_other", "workshop"
+
+
+def _batch_document_date(path_text: str) -> date | None:
+    for pattern, order in (
+        (r"(?<!\d)(20\d{2})[-_.](\d{1,2})[-_.](\d{1,2})(?!\d)", "ymd"),
+        (r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2})(?!\d)", "dmy"),
+    ):
+        match = re.search(pattern, path_text)
+        if not match:
+            continue
+        try:
+            if order == "ymd":
+                return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            return date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+        except ValueError:
+            continue
+    return None
+
+
+@web_router.post("/v2-clean/documents/import/archive-batch")
+def clean_document_import_archive_batch(request: Request, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    filename = Path(file.filename or "documentos.zip").name
+    if Path(filename).suffix.lower() != ".zip":
+        return RedirectResponse("/v2-clean/documents?batch_error=O+ficheiro+tem+de+ser+ZIP", status_code=303)
+    content = file.file.read()
+    if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+        return RedirectResponse("/v2-clean/documents?batch_error=ZIP+vazio+ou+demasiado+grande", status_code=303)
+
+    counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0}
+    user_id = get_web_user_id(request)
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except (zipfile.BadZipFile, OSError):
+        return RedirectResponse("/v2-clean/documents?batch_error=ZIP+invalido", status_code=303)
+
+    with archive, SessionLocal() as db:
+        entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+        if len(entries) > BATCH_DOCUMENT_MAX_FILES:
+            return RedirectResponse("/v2-clean/documents?batch_error=O+ZIP+tem+demasiados+ficheiros", status_code=303)
+        vehicles = db.scalars(select(Vehicle).where(Vehicle.plate.is_not(None))).all()
+        vehicles_by_plate = {
+            re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
+            for vehicle in vehicles
+            if vehicle.plate
+        }
+        known_hashes = set(
+            db.scalars(
+                select(Document.file_hash).where(
+                    Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                    Document.file_hash.is_not(None),
+                )
+            ).all()
+        )
+        total_uncompressed = 0
+        for entry in entries:
+            archive_name = entry.filename.replace("\\", "/")
+            parts = [part for part in archive_name.split("/") if part]
+            suffix = Path(archive_name).suffix.lower()
+            if (
+                not parts
+                or archive_name.startswith("/")
+                or ".." in parts
+                or entry.flag_bits & 0x1
+                or suffix not in BATCH_DOCUMENT_EXTENSIONS
+                or entry.file_size > BATCH_DOCUMENT_MAX_FILE_SIZE
+            ):
+                continue
+            total_uncompressed += entry.file_size
+            if total_uncompressed > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+                db.rollback()
+                return RedirectResponse("/v2-clean/documents?batch_error=Conteúdo+extraído+demasiado+grande", status_code=303)
+            file_content = archive.read(entry)
+            digest = hashlib.sha256(file_content).hexdigest()
+            if digest in known_hashes:
+                counters["duplicates"] += 1
+                continue
+
+            vehicle = _batch_document_vehicle(archive_name, vehicles_by_plate)
+            document_type, classification = _batch_document_type(archive_name)
+            document_date = _batch_document_date(archive_name)
+            plate = vehicle.plate if vehicle else None
+            vin = vehicle.vin if vehicle else None
+            folder_path = suggest_document_folder_path(
+                classification,
+                document_date,
+                plate,
+                document_type,
+                vin=vin,
+            )
+            if not vehicle:
+                folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
+            storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            original_name = Path(archive_name).name
+            stem = sanitize_archive_component(Path(original_name).stem, "documento")
+            stored_name = f"{stem}_{digest[:12]}{suffix}"
+            stored_path = storage_dir / stored_name
+            if not stored_path.exists():
+                stored_path.write_bytes(file_content)
+
+            document = Document(
+                title=Path(original_name).stem[:200],
+                document_type=document_type,
+                classification=classification,
+                source="v2_clean_manual",
+                entry_channel="v2_clean_batch",
+                source_subject=f"ZIP {filename}: {archive_name}"[:255],
+                original_name=original_name[:255],
+                file_name=stored_name[:255],
+                file_type=suffix.lstrip("."),
+                file_size=len(file_content),
+                storage_provider="local",
+                storage_path=str(stored_path),
+                storage_key=digest,
+                folder_path=folder_path,
+                status="received",
+                file_hash=digest,
+                vehicle_id=vehicle.id if vehicle else None,
+                plate=plate,
+                document_date=document_date,
+                uploaded_by_id=user_id,
+                archived_by_id=user_id,
+                archived_at=datetime.now(UTC),
+                archived=True,
+            )
+            db.add(document)
+            db.flush()
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="batch_import.archived",
+                    old_value=None,
+                    new_value=json.dumps(
+                        {"zip": filename, "path": archive_name, "vehicle_matched": bool(vehicle)},
+                        ensure_ascii=False,
+                    ),
+                    user_id=user_id,
+                )
+            )
+            known_hashes.add(digest)
+            counters["imported"] += 1
+            counters["matched" if vehicle else "pending"] += 1
+        db.commit()
+
+    params = urlencode(
+        {
+            "batch_imported": counters["imported"],
+            "batch_matched": counters["matched"],
+            "batch_pending": counters["pending"],
+            "batch_duplicates": counters["duplicates"],
+        }
+    )
+    return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
 
 
 def archive_structured_import_file(
@@ -6141,6 +6382,13 @@ def reprocess_structured_import_file(
             source_document=document,
             user_id=user_id,
         )
+    elif import_kind == "work_order_details":
+        imported_count = import_work_order_details_xlsx(
+            db,
+            path=source_path,
+            source_document=document,
+            user_id=user_id,
+        )
     elif import_kind == "impros":
         imported_count = import_impros_xlsx(
             db,
@@ -6209,6 +6457,39 @@ def clean_document_import_center_work_orders(request: Request, file: UploadFile 
         finally:
             tmp_path.unlink(missing_ok=True)
     return RedirectResponse(f"/v2-clean/documents?imported=work_orders&imported_count={imported_count}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/import/work-order-details")
+def clean_document_import_center_work_order_details(request: Request, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        tmp_path = save_uploaded_spreadsheet(file)
+        try:
+            source_document = archive_structured_import_file(
+                db,
+                tmp_path=tmp_path,
+                original_filename=file.filename,
+                import_kind="work_order_details",
+                imported_count=0,
+                user_id=user_id,
+            )
+            imported_count = import_work_order_details_xlsx(
+                db,
+                path=tmp_path,
+                source_document=source_document,
+                user_id=user_id,
+            )
+            source_document.source_subject = f"work_order_details:{imported_count}"
+            db.commit()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(
+        f"/v2-clean/documents?imported=work_order_details&imported_count={imported_count}",
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documents/import/impros")
@@ -6496,12 +6777,13 @@ def clean_fleet_documents_add_classification(
 def clean_fleet_documents_save_classification_row(
     request: Request,
     vehicle_id: int,
-    maintenance: str = Form(""),
-    pads: str = Form(""),
-    discs: str = Form(""),
-    tyres: str = Form(""),
-    ipo: str = Form(""),
-    other: str = Form(""),
+    maintenance: list[str] = Form(default=[]),
+    pads: list[str] = Form(default=[]),
+    discs: list[str] = Form(default=[]),
+    tyres: list[str] = Form(default=[]),
+    ipo: list[str] = Form(default=[]),
+    other: list[str] = Form(default=[]),
+    other_custom: str = Form(""),
     record_id: int | None = Form(None),
     document_id: int | None = Form(None),
     return_group: str = Form(""),
@@ -6510,7 +6792,7 @@ def clean_fleet_documents_save_classification_row(
     if denied:
         return denied
     user_id = get_web_user_id(request)
-    category_values = {
+    category_values: dict[str, list[str]] = {
         "maintenance": maintenance,
         "pads": pads,
         "discs": discs,
@@ -6518,7 +6800,19 @@ def clean_fleet_documents_save_classification_row(
         "ipo": ipo,
         "other": other,
     }
+    custom_other_values = [
+        item.strip()
+        for item in re.split(r"[,;\n]+", other_custom or "")
+        if item.strip()
+    ]
     categories = list(category_values)
+
+    def normalized_values(values: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+        if len(cleaned) > 1 and "undefined" in cleaned:
+            cleaned.remove("undefined")
+        return cleaned
+
     with SessionLocal() as db:
         if record_id:
             record = db.get(VehicleDocumentRecord, record_id)
@@ -6531,25 +6825,30 @@ def clean_fleet_documents_save_classification_row(
                     VehicleDocumentRecordTag.category.in_(categories),
                 )
             )
-            has_classification = False
-            for category, value in category_values.items():
-                clean_value = value.strip()
-                if not clean_value:
-                    continue
-                has_classification = True
+            for category, values in category_values.items():
+                for clean_value in normalized_values(values):
+                    add_quick_classification(
+                        db,
+                        vehicle_id=vehicle_id,
+                        record_id=record_id,
+                        category=category,
+                        value=clean_value,
+                        free_text=None,
+                        user_id=user_id,
+                    )
+            for free_text in custom_other_values:
                 add_quick_classification(
                     db,
                     vehicle_id=vehicle_id,
                     record_id=record_id,
-                    category=category,
-                    value=clean_value,
-                    free_text=None,
+                    category="other",
+                    value=None,
+                    free_text=free_text,
                     user_id=user_id,
                 )
-            if has_classification:
-                record.status = "classified"
-                record.comparison_state = "validado"
-                record.updated_by_id = user_id
+            record.status = "classified"
+            record.comparison_state = "validado"
+            record.updated_by_id = user_id
         elif document_id:
             document = db.get(Document, document_id)
             if not document or document.vehicle_id != vehicle_id:
@@ -6561,25 +6860,88 @@ def clean_fleet_documents_save_classification_row(
                     VehicleDocumentRecordTag.category.in_(categories),
                 )
             )
-            has_classification = False
-            for category, value in category_values.items():
-                clean_value = value.strip()
-                if not clean_value:
-                    continue
-                has_classification = True
+            for category, values in category_values.items():
+                for clean_value in normalized_values(values):
+                    add_quick_classification(
+                        db,
+                        vehicle_id=vehicle_id,
+                        document_id=document_id,
+                        category=category,
+                        value=clean_value,
+                        free_text=None,
+                        user_id=user_id,
+                    )
+            for free_text in custom_other_values:
                 add_quick_classification(
                     db,
                     vehicle_id=vehicle_id,
                     document_id=document_id,
-                    category=category,
-                    value=clean_value,
-                    free_text=None,
+                    category="other",
+                    value=None,
+                    free_text=free_text,
                     user_id=user_id,
                 )
-            if has_classification:
-                document.status = "classified"
+            document.status = "classified"
         db.commit()
     query = "classified=1"
+    if return_group:
+        query += f"&main_group={return_group}"
+    return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/link-work-order")
+def clean_fleet_documents_link_work_order(
+    request: Request,
+    vehicle_id: int,
+    document_id: int = Form(...),
+    work_order_record_id: int = Form(...),
+    return_group: str = Form("invoices"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/v2-clean", status_code=303)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        work_order = db.get(VehicleDocumentRecord, work_order_record_id)
+        if (
+            not document
+            or document.vehicle_id != vehicle_id
+            or clean_vehicle_document_group(document) != "invoices"
+            or not work_order
+            or work_order.vehicle_id != vehicle_id
+            or work_order.main_group != "work_orders"
+        ):
+            return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
+        existing = db.scalar(
+            select(DocumentLink).where(
+                DocumentLink.document_id == document_id,
+                DocumentLink.entity_type == "vehicle_document_record",
+                DocumentLink.entity_id == str(work_order_record_id),
+                DocumentLink.category == "invoice_work_order",
+            )
+        )
+        if not existing:
+            db.add(
+                DocumentLink(
+                    document_id=document_id,
+                    entity_type="vehicle_document_record",
+                    entity_id=str(work_order_record_id),
+                    category="invoice_work_order",
+                )
+            )
+            db.add(
+                DocumentEvent(
+                    document_id=document_id,
+                    action="invoice.work_order_linked",
+                    new_value=f"FO {work_order.external_reference or work_order.title or work_order.id}",
+                    user_id=user_id,
+                )
+            )
+            db.commit()
+    query = "linked_work_order=1"
     if return_group:
         query += f"&main_group={return_group}"
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)

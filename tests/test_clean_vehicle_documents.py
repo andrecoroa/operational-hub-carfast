@@ -1,4 +1,6 @@
 import hashlib
+import json
+import zipfile
 from datetime import date
 from pathlib import Path
 from io import BytesIO
@@ -7,7 +9,14 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.models.documents import Document, VehicleDocumentAuditField, VehicleDocumentRecord, VehicleDocumentRecordTag
+from app.models.documents import (
+    Document,
+    DocumentEvent,
+    DocumentLink,
+    VehicleDocumentAuditField,
+    VehicleDocumentRecord,
+    VehicleDocumentRecordTag,
+)
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
 from app.web.router import local_document_storage_folder
@@ -41,6 +50,15 @@ def _make_rentway_export_workbook(title: str, headers: list[str], rows: list[lis
     return stream
 
 
+def _make_zip(files: dict[str, bytes]) -> BytesIO:
+    stream = BytesIO()
+    with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    stream.seek(0)
+    return stream
+
+
 def _create_vehicle(db_session):
     vehicle = Vehicle(
         plate="CC-11-AA",
@@ -69,6 +87,49 @@ def test_clean_document_storage_uses_configured_archive_root(monkeypatch, tmp_pa
     )
 
     assert storage_folder == tmp_path / "Frota" / "BB-69-TE_VR7EFYHT2PJ697244" / "00_Importacoes_Estruturadas"
+
+
+def test_clean_document_batch_zip_associates_pending_and_deduplicates(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "document_archive_root", str(tmp_path))
+    vehicle = _create_vehicle(db_session)
+    pdf = b"%PDF-1.4 invoice sample"
+    batch = _make_zip(
+        {
+            "CC-11-AA/Faturas/fatura_2026-05-15.pdf": pdf,
+            "CC-11-AA/Faturas/copia_fatura.pdf": pdf,
+            "Sem matricula/diagnostico.png": b"sample-image",
+            "ignorar.txt": b"not a document",
+        }
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/archive-batch",
+        files={"file": ("documentos.zip", batch.getvalue(), "application/zip")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "batch_imported=2" in response.headers["location"]
+    assert "batch_matched=1" in response.headers["location"]
+    assert "batch_pending=1" in response.headers["location"]
+    assert "batch_duplicates=1" in response.headers["location"]
+    documents = db_session.scalars(
+        select(Document).where(Document.entry_channel == "v2_clean_batch").order_by(Document.id)
+    ).all()
+    assert len(documents) == 2
+    matched = next(item for item in documents if item.vehicle_id == vehicle.id)
+    pending = next(item for item in documents if item.vehicle_id is None)
+    assert matched.document_type == "workshop_supplier_invoice"
+    assert matched.document_date == date(2026, 5, 15)
+    assert matched.folder_path.endswith("01_Documentacao_Financeira/Faturas")
+    assert Path(matched.storage_path).exists()
+    assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
+    assert Path(pending.storage_path).exists()
 
 
 def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
@@ -295,8 +356,213 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
-    assert '<option value="rear" selected>TR</option>' in page.text
+    assert '<input type="checkbox" name="pads" value="rear" checked>' in page.text
     assert "Validado" in page.text
+
+
+def test_clean_vehicle_documents_saves_multiple_services_and_custom_values(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-1700",
+        external_reference="1700",
+        plate=vehicle.plate,
+        status="structured",
+    )
+    db_session.add(record)
+    db_session.commit()
+    db_session.refresh(record)
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "record_id": str(record.id),
+            "return_group": "work_orders",
+            "maintenance": ["revision", "degradation"],
+            "pads": ["front", "rear"],
+            "discs": ["undefined"],
+            "other_custom": "Bateria; Correia auxiliar",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.refresh(record)
+    assert record.status == "classified"
+    assert record.comparison_state == "validado"
+    tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(VehicleDocumentRecordTag.record_id == record.id)
+    ).all()
+    assert {(tag.category, tag.value) for tag in tags if tag.value} >= {
+        ("maintenance", "revision"),
+        ("maintenance", "degradation"),
+        ("pads", "front"),
+        ("pads", "rear"),
+        ("discs", "undefined"),
+    }
+    assert {tag.free_text for tag in tags if tag.free_text} == {"Bateria", "Correia auxiliar"}
+
+
+def test_clean_vehicle_documents_shows_existing_invoice_ocr_lines(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    invoice = Document(
+        title="Fatura 4458",
+        document_type="workshop_supplier_invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_manual",
+        original_name="fatura-4458.pdf",
+        file_name="fatura-4458.pdf",
+        storage_provider="local",
+        storage_path="Frota/fatura-4458.pdf",
+        folder_path="Frota/Faturas",
+        status="received",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        supplier_name="Oficina Porto",
+        contract_number="4458",
+        document_date=date(2026, 6, 1),
+    )
+    db_session.add(invoice)
+    db_session.flush()
+    db_session.add(
+        DocumentEvent(
+            document_id=invoice.id,
+            action="invoice.ocr.extracted",
+            new_value=json.dumps(
+                {
+                    "invoice_lines": [
+                        {"description": "Óleo motor 5W30", "quantity": 5, "amount": "45,00", "service": "Revisão"},
+                        {"description": "Filtro de óleo", "quantity": 1, "amount": "12,00"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"
+    )
+
+    assert response.status_code == 200
+    assert "Óleo motor 5W30" in response.text
+    assert "Filtro de óleo" in response.text
+    assert "Associar FO" in response.text
+
+
+def test_clean_vehicle_documents_links_invoice_to_work_order_once(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO 1608",
+        external_reference="1608",
+        plate=vehicle.plate,
+        document_date=date(2026, 5, 25),
+        status="classified",
+    )
+    invoice = Document(
+        title="Fatura 4458",
+        document_type="workshop_supplier_invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_manual",
+        original_name="fatura-4458.pdf",
+        file_name="fatura-4458.pdf",
+        storage_provider="local",
+        storage_path="Frota/fatura-4458.pdf",
+        folder_path="Frota/Faturas",
+        status="received",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add_all([work_order, invoice])
+    db_session.commit()
+    db_session.refresh(work_order)
+    db_session.refresh(invoice)
+
+    for _ in range(2):
+        response = authenticated_client.post(
+            f"/v2-clean/fleet/{vehicle.id}/documents/link-work-order",
+            data={
+                "document_id": str(invoice.id),
+                "work_order_record_id": str(work_order.id),
+                "return_group": "invoices",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+    links = db_session.scalars(
+        select(DocumentLink).where(
+            DocumentLink.document_id == invoice.id,
+            DocumentLink.entity_type == "vehicle_document_record",
+            DocumentLink.entity_id == str(work_order.id),
+            DocumentLink.category == "invoice_work_order",
+        )
+    ).all()
+    assert len(links) == 1
+    events = db_session.scalars(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == invoice.id,
+            DocumentEvent.action == "invoice.work_order_linked",
+        )
+    ).all()
+    assert len(events) == 1
+    page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices")
+    assert page.status_code == 200
+    assert "FO 1608" in page.text
+
+
+def test_clean_vehicle_documents_imports_multiple_detail_lines_by_work_order_number(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="1608",
+        external_reference="1608",
+        plate=vehicle.plate,
+        status="structured",
+    )
+    db_session.add(record)
+    db_session.commit()
+    db_session.refresh(record)
+    workbook = _make_workbook(
+        ["Folha de obra nº", "Descrição", "Referência", "Quantidade", "Preço unitário", "Total", "Kms"],
+        [
+            ["1608", "Jogo de calços traseiros", "CAL-01", 1, 75, 75, 32100],
+            ["1608", "Mão de obra", "MO-01", 1.5, 40, 60, 32100],
+        ],
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/work-order-details",
+        files={
+            "file": (
+                "detalhe fo.xlsx",
+                workbook.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "imported_count=2" in response.headers["location"]
+    db_session.refresh(record)
+    assert record.km == 32100
+    assert len(record.metadata_json["work_order_lines"]) == 2
+    assert record.metadata_json["work_order_lines"][0]["description"] == "Jogo de calços traseiros"
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    row = next(item for item in module_ctx["structured_rows"] if item["id"] == record.id)
+    assert len(row["work_order_lines"]) == 2
 
 
 def test_clean_vehicle_documents_import_work_orders_deduplicates_by_number(authenticated_client, db_session):

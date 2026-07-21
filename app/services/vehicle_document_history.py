@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.documents import (
     Document,
+    DocumentEvent,
     VehicleDocumentAlert,
     VehicleDocumentAuditField,
     VehicleDocumentPendingAction,
@@ -63,6 +65,7 @@ DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS = dict(DOCUMENT_HISTORY_STRUCTURED_GROU
 
 STRUCTURED_IMPORT_KIND_LABELS = {
     "work_orders": "Folhas de obra",
+    "work_order_details": "Detalhes de folhas de obra",
     "impros": "Impros",
     "contracts": "Contratos",
 }
@@ -78,6 +81,12 @@ STRUCTURED_IMPORT_KIND_ALIASES = {
     "ordensdereparo": "work_orders",
     "ordemreparo": "work_orders",
     "fo": "work_orders",
+    "workorderdetails": "work_order_details",
+    "workordersdetails": "work_order_details",
+    "detalhesfolhadeobra": "work_order_details",
+    "detalhefolhadeobra": "work_order_details",
+    "detalhesfo": "work_order_details",
+    "detalhefo": "work_order_details",
     "impros": "impros",
     "impro": "impros",
     "contracts": "contracts",
@@ -398,7 +407,9 @@ def upsert_structured_record(
         record.plate = plate
         record.vin = vin
         record.subtype = subtype
-        record.metadata_json = metadata_json
+        existing_metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
+        incoming_metadata = metadata_json if isinstance(metadata_json, dict) else {}
+        record.metadata_json = {**existing_metadata, **incoming_metadata}
         if source_document_id is not None:
             record.document_id = source_document_id
         record.updated_by_id = user_id
@@ -587,6 +598,7 @@ def import_work_orders_xlsx(
         document_date = _safe_date(first_row_value(row, cols, ["Data", "DocumentDate"]))
         supplier_name = _normalize_text(first_row_value(row, cols, ["Nome fornecedor", "Fornecedor", "Supplier"]))
         raw_description = _normalize_text(first_row_value(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao"]))
+        km = clean_int(first_row_value(row, cols, ["Kms", "KM", "Km", "Quilómetros", "Quilometros"]))
         upsert_structured_record(
             db,
             vehicle_id=row_vehicle.id,
@@ -596,16 +608,147 @@ def import_work_orders_xlsx(
             document_date=document_date,
             supplier_name=supplier_name or None,
             raw_description=raw_description or None,
-            km=None,
+            km=km,
             source_system="work_order_import",
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
-            metadata_json=raw,
+            metadata_json={**raw, "work_order_header": raw},
             source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
         imported += 1
     return imported
+
+
+def _work_order_reference(row: dict[str, Any], cols: dict[str, int]) -> str:
+    return _normalize_text(
+        first_row_value(
+            row,
+            cols,
+            [
+                "Folha de obra nº",
+                "Folha de obra n.º",
+                "Folha de obra",
+                "Nº folha de obra",
+                "Número folha de obra",
+                "Numero folha de obra",
+                "Número FO",
+                "Numero FO",
+                "Nº FO",
+                "FO",
+                "Ordem de reparo",
+                "Ordem reparo",
+                "Número",
+                "Numero",
+            ],
+        )
+    )
+
+
+def _work_order_detail_item(
+    row: dict[str, Any],
+    cols: dict[str, int],
+    raw: dict[str, Any],
+    *,
+    row_number: int,
+) -> dict[str, Any]:
+    description = _normalize_text(
+        first_row_value(
+            row,
+            cols,
+            [
+                "Descrição",
+                "Descricao",
+                "Designação",
+                "Designacao",
+                "Serviço",
+                "Servico",
+                "Trabalho",
+                "Observações",
+                "Observacoes",
+                "Texto",
+            ],
+        )
+    )
+    reference = _normalize_text(
+        first_row_value(row, cols, ["Referência", "Referencia", "Código", "Codigo", "Artigo", "Item"])
+    )
+    quantity = first_row_value(row, cols, ["Quantidade", "Qtd", "Qty"])
+    unit = _normalize_text(first_row_value(row, cols, ["Unidade", "Un", "Unit"]))
+    unit_price = first_row_value(
+        row,
+        cols,
+        ["Preço unitário", "Preco unitario", "Valor unitário", "Valor unitario", "Preço", "Preco"],
+    )
+    amount = first_row_value(row, cols, ["Total", "Valor total", "Montante", "Valor"])
+    return {
+        "row_number": row_number,
+        "reference": reference or "-",
+        "description": description or "-",
+        "quantity": quantity if quantity not in (None, "") else "-",
+        "unit": unit or "-",
+        "unit_price": unit_price if unit_price not in (None, "") else "-",
+        "amount": amount if amount not in (None, "") else "-",
+        "raw": raw,
+    }
+
+
+def import_work_order_details_xlsx(
+    db: Session,
+    *,
+    path: Path,
+    source_document: Document | None = None,
+    user_id: int | None = None,
+) -> int:
+    """Attach one or more detail lines to an existing work order by FO number."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    header_updates: dict[str, dict[str, Any]] = {}
+    for _sheet, headers, row_number, row, raw in iter_xlsx_rows(path):
+        cols = build_column_lookup(headers)
+        reference = _work_order_reference(row, cols)
+        if not reference:
+            continue
+        key = normalize_header(reference)
+        if not key:
+            continue
+        grouped.setdefault(key, []).append(_work_order_detail_item(row, cols, raw, row_number=row_number))
+        header_updates[key] = {
+            "reference": reference,
+            "km": clean_int(first_row_value(row, cols, ["Kms", "KM", "Km", "Quilómetros", "Quilometros"])),
+            "document_date": _safe_date(first_row_value(row, cols, ["Data", "DocumentDate"])),
+            "supplier_name": _normalize_text(first_row_value(row, cols, ["Nome fornecedor", "Fornecedor", "Supplier"])),
+        }
+
+    candidate_records = db.scalars(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.main_group == "work_orders",
+            VehicleDocumentRecord.external_reference.is_not(None),
+        )
+    ).all()
+    records_by_reference = {
+        normalize_header(item.external_reference or ""): item
+        for item in candidate_records
+        if normalize_header(item.external_reference or "")
+    }
+    attached_lines = 0
+    for key, items in grouped.items():
+        record = records_by_reference.get(key)
+        if not record:
+            continue
+        metadata = dict(record.metadata_json) if isinstance(record.metadata_json, dict) else {}
+        metadata["work_order_lines"] = items
+        metadata["work_order_details_source_document_id"] = source_document.id if source_document else None
+        record.metadata_json = metadata
+        updates = header_updates.get(key, {})
+        if updates.get("km") is not None:
+            record.km = updates["km"]
+        if updates.get("document_date") and record.document_date is None:
+            record.document_date = updates["document_date"]
+        if updates.get("supplier_name") and not record.supplier_name:
+            record.supplier_name = updates["supplier_name"]
+        record.updated_by_id = user_id
+        attached_lines += len(items)
+    return attached_lines
 
 
 def detect_structured_import_vehicle_ids(db: Session, *, path: Path, import_kind: str) -> set[int]:
@@ -1013,12 +1156,17 @@ def _service_matrix_from_text_and_tags(
         "ipo": "-",
         "other": "-",
     }
+    values_by_category: dict[str, list[str]] = {key: [] for key in matrix}
     for tag in tags:
-        if tag.category in matrix:
-            matrix[tag.category] = _service_value_label(tag.category, tag.value, tag.free_text)
-        elif tag.category in {"fault", "services", "repair"}:
-            matrix["other"] = _service_value_label(tag.category, tag.value, tag.free_text)
-
+        target = tag.category if tag.category in matrix else "other" if tag.category in {"fault", "services", "repair"} else ""
+        if not target:
+            continue
+        label = _service_value_label(tag.category, tag.value, tag.free_text)
+        if label and label not in values_by_category[target]:
+            values_by_category[target].append(label)
+    for category, values in values_by_category.items():
+        if values:
+            matrix[category] = " · ".join(values)
     normalized = normalize_header(text or "")
     if matrix["maintenance"] == "-":
         if "degrad" in normalized and ("oleo" in normalized or "oil" in normalized):
@@ -1036,22 +1184,66 @@ def _service_matrix_from_text_and_tags(
     return matrix
 
 
-def _service_matrix_codes_from_tags(tags: list[VehicleDocumentRecordTag]) -> dict[str, str]:
-    matrix = {
-        "maintenance": "",
-        "pads": "",
-        "discs": "",
-        "tyres": "",
-        "ipo": "",
-        "other": "",
-    }
+def _service_matrix_codes_from_tags(tags: list[VehicleDocumentRecordTag]) -> dict[str, list[str]]:
+    matrix: dict[str, list[str]] = {key: [] for key in ("maintenance", "pads", "discs", "tyres", "ipo", "other")}
     for tag in tags:
         code = tag.value or ("free_text" if tag.free_text else "")
-        if tag.category in matrix:
-            matrix[tag.category] = code
-        elif tag.category in {"fault", "services", "repair"}:
-            matrix["other"] = code
+        target = tag.category if tag.category in matrix else "other" if tag.category in {"fault", "services", "repair"} else ""
+        if target and code and code not in matrix[target]:
+            matrix[target].append(code)
     return matrix
+
+
+def _work_order_line_items(metadata: dict[str, Any] | list | str | int | float | bool | None) -> list[dict[str, Any]]:
+    if not isinstance(metadata, dict):
+        return []
+    candidates = metadata.get("work_order_lines")
+    if not isinstance(candidates, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(candidates, start=1):
+        if not isinstance(item, dict):
+            rows.append({"index": index, "reference": "-", "description": str(item), "quantity": "-", "unit": "-", "unit_price": "-", "amount": "-"})
+            continue
+        rows.append(
+            {
+                "index": index,
+                "reference": item.get("reference") or "-",
+                "description": item.get("description") or "-",
+                "quantity": item.get("quantity") if item.get("quantity") not in (None, "") else "-",
+                "unit": item.get("unit") or "-",
+                "unit_price": item.get("unit_price") if item.get("unit_price") not in (None, "") else "-",
+                "amount": item.get("amount") if item.get("amount") not in (None, "") else "-",
+            }
+        )
+    return rows
+
+
+def _service_summary(matrix: dict[str, str]) -> list[str]:
+    labels = []
+    category_labels = {
+        "maintenance": "Manutenção",
+        "pads": "Calços",
+        "discs": "Discos",
+        "tyres": "Pneus",
+        "ipo": "IPO",
+        "other": "Outro",
+    }
+    for category, label in category_labels.items():
+        value = matrix.get(category, "-")
+        if value not in ("", "-", "Por definir"):
+            labels.append(f"{label}: {value}" if category != "ipo" else value)
+    return labels
+
+
+def _custom_service_values(tags: list[VehicleDocumentRecordTag]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            tag.free_text.strip()
+            for tag in tags
+            if tag.category in {"other", "services", "repair", "fault"} and tag.free_text and tag.free_text.strip()
+        )
+    )
 
 
 def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bool | None) -> list[dict[str, Any]]:
@@ -1158,6 +1350,7 @@ def _build_structured_rows(
     for row in persisted_rows:
         tags = record_tags.get(row.id, [])
         service_text = " ".join(part for part in [row.title, row.raw_description, row.external_reference] if part)
+        service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
         rows.append(
             {
                 "kind": "record",
@@ -1175,9 +1368,12 @@ def _build_structured_rows(
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
-                "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "service_matrix": service_matrix,
                 "service_matrix_codes": _service_matrix_codes_from_tags(tags),
                 "invoice_lines": _invoice_line_items(row.metadata_json),
+                "work_order_lines": _work_order_line_items(row.metadata_json),
+                "service_summary": _service_summary(service_matrix),
+                "custom_services": _custom_service_values(tags),
                 "period_start": row.document_date,
                 "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
                 if row.main_group == "contracts"
@@ -1254,7 +1450,9 @@ def _build_archive_rows(
     documents: list[Document],
     document_tags: dict[int, list[VehicleDocumentRecordTag]],
     pending_records: list[VehicleDocumentRecord],
+    extraction_metadata: dict[int, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    extraction_metadata = extraction_metadata or {}
     rows: list[dict[str, Any]] = []
     for document in documents:
         if is_structured_import_source(document):
@@ -1266,6 +1464,7 @@ def _build_archive_rows(
             for part in [document.title, document.original_name, document.supplier_name, document.contract_number, document.reservation_number]
             if part
         )
+        service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
         rows.append(
             {
                 "kind": "document",
@@ -1278,16 +1477,20 @@ def _build_archive_rows(
                 "date_display": _display_date(document.document_date),
                 "supplier_name": document.supplier_name or document.source or "-",
                 "status": document.status,
-                "extraction_state": "validado" if archive_group == "diagnostics" and tags else "por_validar",
-                "comparison_state": "por_validar",
+                "extraction_state": "validado" if tags or document.status == "classified" else "por_validar",
+                "comparison_state": "validado" if tags or document.status == "classified" else "por_validar",
+                "comparison_label": "Validado" if tags or document.status == "classified" else "Por validar",
                 "document_type": document.document_type or "-",
                 "process_reference": f"Oficina #{document.workshop_process_id}" if document.workshop_process_id else "-",
                 "document_number": document.contract_number or document.reservation_number or str(document.id),
                 "open_href": f"/v2-clean/documents/{document.id}",
                 "tags": [_format_tag(tag) for tag in tags],
-                "service_matrix": _service_matrix_from_text_and_tags(service_text, tags),
+                "service_matrix": service_matrix,
                 "service_matrix_codes": _service_matrix_codes_from_tags(tags),
-                "invoice_lines": [],
+                "invoice_lines": _invoice_line_items(extraction_metadata.get(document.id)),
+                "work_order_lines": [],
+                "service_summary": _service_summary(service_matrix),
+                "custom_services": _custom_service_values(tags),
             }
         )
     for record in pending_records:
@@ -1313,10 +1516,46 @@ def _build_archive_rows(
                 "service_matrix": _service_matrix_from_text_and_tags(record.title or record.raw_description or "", []),
                 "service_matrix_codes": _service_matrix_codes_from_tags([]),
                 "invoice_lines": [],
+                "work_order_lines": [],
+                "service_summary": _service_summary(
+                    _service_matrix_from_text_and_tags(record.title or record.raw_description or "", [])
+                ),
+                "custom_services": [],
             }
         )
     rows.sort(key=lambda row: (row["date"] or date.min, row["title"]), reverse=True)
     return rows
+
+
+def _document_extraction_metadata(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
+    if not document_ids:
+        return {}
+    supported_actions = {
+        "invoice.ocr.extracted",
+        "invoice.lines.extracted",
+        "invoice.extracted",
+        "document.ocr.extracted",
+        "ocr.extracted",
+    }
+    events = db.scalars(
+        select(DocumentEvent)
+        .where(
+            DocumentEvent.document_id.in_(document_ids),
+            DocumentEvent.action.in_(supported_actions),
+        )
+        .order_by(DocumentEvent.id)
+    ).all()
+    metadata: dict[int, dict[str, Any]] = {}
+    for event in events:
+        try:
+            parsed = json.loads(event.new_value or "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, list):
+            parsed = {"invoice_lines": parsed}
+        if isinstance(parsed, dict):
+            metadata.setdefault(event.document_id, {}).update(parsed)
+    return metadata
 
 
 def _build_import_rows(documents: list[Document]) -> list[dict[str, Any]]:
@@ -1693,7 +1932,8 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
         if record.source_record_type == "archive_pending"
     ]
     structured_rows = _build_structured_rows(db, vehicle.id, record_tags)
-    archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records)
+    extraction_metadata = _document_extraction_metadata(db, [document.id for document in documents])
+    archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records, extraction_metadata)
     import_rows = _build_import_rows(documents)
     comparison_rows = _build_comparison_rows(structured_rows, archive_rows, record_tags, document_tags)
     timeline_events, timeline_ticks, timeline_segments, timeline_board = _build_timeline(structured_rows, archive_rows)
@@ -1814,6 +2054,8 @@ def ensure_structured_import_sources_materialized(
     for document in _load_structured_import_sources(db, vehicle):
         import_kind = structured_import_kind_for_document(document)
         if import_kind not in STRUCTURED_IMPORT_KIND_LABELS:
+            continue
+        if import_kind == "work_order_details":
             continue
         record_query = select(VehicleDocumentRecord.id).where(
             VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),

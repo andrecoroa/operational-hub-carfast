@@ -6038,7 +6038,7 @@ def clean_document_import_center(
                     "vehicle_id": document.vehicle_id,
                     "vehicle_plate": vehicle.plate if vehicle else document.plate or "-",
                     "vehicle_label": (
-                        f"{vehicle.make or ''} {vehicle.model or ''}".strip()
+                        f"{vehicle.brand or ''} {vehicle.model or ''}".strip()
                         if vehicle
                         else "Por associar"
                     ),

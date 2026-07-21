@@ -2160,7 +2160,7 @@ def document_center_module_context(db: Session, *, user_id: int | None = None) -
     archive_documents_count = db.scalar(
         select(Document.id)
         .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
-        .where(Document.entry_channel != "structured_import")
+        .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
         .limit(1)
     )
     vehicle_count = db.scalar(select(Vehicle.id).limit(1))
@@ -2172,7 +2172,10 @@ def document_center_module_context(db: Session, *, user_id: int | None = None) -
         "import_rows": _build_import_rows(import_sources),
         "vehicle_count": db.query(Vehicle).count() if vehicle_count is not None else 0,
         "archive_documents_count": db.query(Document)
-        .filter(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES), Document.entry_channel != "structured_import")
+        .filter(
+            Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+            or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"),
+        )
         .count()
         if archive_documents_count is not None
         else 0,

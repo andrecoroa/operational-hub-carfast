@@ -782,6 +782,35 @@ def test_clean_document_center_shows_global_structured_import_rows(authenticated
     assert "CARFAST RENT-A-CAR LDA (OFICINA)" in page.text
 
 
+def test_clean_document_center_renders_real_invoice_for_vehicle(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    document = Document(
+        title="Fatura oficina",
+        document_type="invoice",
+        classification="fleet",
+        source="v2_clean_manual",
+        entry_channel=None,
+        original_name="fatura_11168770.pdf",
+        file_name="fatura_11168770.pdf",
+        storage_path="Frota/CC-11-AA/fatura_11168770.pdf",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        supplier_name="Filinto Mota",
+        contract_number="11168770",
+        status="received",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/documents")
+
+    assert page.status_code == 200
+    assert "Faturas" in page.text
+    assert "Filinto Mota" in page.text
+    assert "PEUGEOT 2008" in page.text
+    assert "11168770" in page.text
+
+
 def test_clean_document_reprocess_structured_source_materializes_rows(authenticated_client, db_session, tmp_path):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

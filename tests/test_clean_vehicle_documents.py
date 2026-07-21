@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 from io import BytesIO
 
+import fitz
 from openpyxl import Workbook
 from sqlalchemy import select
 
@@ -59,6 +60,15 @@ def _make_zip(files: dict[str, bytes]) -> BytesIO:
     return stream
 
 
+def _make_pdf(text: str) -> bytes:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), text)
+    content = document.tobytes()
+    document.close()
+    return content
+
+
 def _create_vehicle(db_session):
     vehicle = Vehicle(
         plate="CC-11-AA",
@@ -97,7 +107,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
 ):
     monkeypatch.setattr(settings, "document_archive_root", str(tmp_path))
     vehicle = _create_vehicle(db_session)
-    pdf = b"%PDF-1.4 invoice sample"
+    pdf = _make_pdf("Fatura FT-4458\nData 15/05/2026\nOleo motor 5W30 45,00\nFiltro de oleo 12,00")
     batch = _make_zip(
         {
             "CC-11-AA/Faturas/fatura_2026-05-15.pdf": pdf,
@@ -128,6 +138,16 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert matched.document_date == date(2026, 5, 15)
     assert matched.folder_path.endswith("01_Documentacao_Financeira/Faturas")
     assert Path(matched.storage_path).exists()
+    ocr_event = db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == matched.id,
+            DocumentEvent.action == "invoice.ocr.extracted",
+        )
+    )
+    assert ocr_event is not None
+    payload = json.loads(ocr_event.new_value)
+    assert payload["ocr_status"] == "extracted"
+    assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
 
@@ -370,7 +390,7 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
-    assert '<input type="checkbox" name="pads" value="rear" checked>' in page.text
+    assert '<option value="rear" selected>TR</option>' in page.text
     assert "Validado" in page.text
 
 

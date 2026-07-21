@@ -6162,6 +6162,104 @@ def _batch_document_pdf_text(file_content: bytes, suffix: str) -> str:
         return ""
 
 
+def _batch_document_image_text(file_content: bytes, suffix: str) -> str:
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"} or not file_content:
+        return ""
+    try:
+        import pytesseract  # type: ignore[import-not-found]
+        from PIL import Image  # type: ignore[import-not-found]
+    except Exception:
+        return ""
+    try:
+        image = Image.open(io.BytesIO(file_content))
+        return pytesseract.image_to_string(image, lang="por+eng")[:12000]
+    except Exception:
+        return ""
+
+
+def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "") -> tuple[str, str]:
+    if existing_text.strip():
+        return existing_text, "pdf_text"
+    if suffix == ".pdf":
+        text = _batch_document_pdf_text(file_content, suffix)
+        if text.strip():
+            return text, "pdf_text"
+    image_text = _batch_document_image_text(file_content, suffix)
+    if image_text.strip():
+        return image_text, "image_ocr"
+    return "", "not_extracted"
+
+
+def _batch_invoice_line_service(text: str) -> str:
+    normalized = normalize_identifier(text)
+    if "ipo" in normalized or "inspecao" in normalized:
+        return "IPO"
+    if "calco" in normalized or "pastilha" in normalized:
+        return "Calços"
+    if "disco" in normalized:
+        return "Discos"
+    if "pneu" in normalized:
+        return "Pneus"
+    if "oleo" in normalized or "filtro" in normalized or "revisao" in normalized or "manutencao" in normalized:
+        return "Manutenção"
+    return "Por classificar"
+
+
+def _batch_invoice_line_amount(text: str) -> str:
+    matches = re.findall(r"(?<!\d)(\d{1,3}(?:[ .]\d{3})*(?:,\d{2})|\d+,\d{2})(?:\s*€)?", text)
+    return matches[-1] if matches else ""
+
+
+def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, existing_text: str = "") -> dict[str, Any]:
+    text, source = _batch_invoice_text(file_content, suffix, existing_text)
+    lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
+    unique_lines = list(dict.fromkeys(lines))
+    invoice_lines = []
+    for line in unique_lines:
+        service = _batch_invoice_line_service(line)
+        amount = _batch_invoice_line_amount(line)
+        if service == "Por classificar" and not amount:
+            continue
+        invoice_lines.append(
+            {
+                "description": line[:240],
+                "quantity": "",
+                "amount": amount,
+                "service": service,
+            }
+        )
+        if len(invoice_lines) >= 40:
+            break
+    if not invoice_lines:
+        for line in unique_lines[:12]:
+            invoice_lines.append(
+                {
+                    "description": line[:240],
+                    "quantity": "",
+                    "amount": _batch_invoice_line_amount(line),
+                    "service": _batch_invoice_line_service(line),
+                }
+            )
+    document_number = ""
+    number_match = re.search(
+        r"(?:fatura|factura|invoice|documento|n[ºo])\D{0,24}([A-Z0-9][A-Z0-9./_-]{2,})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if number_match:
+        document_number = number_match.group(1).strip(" .:/_-")
+    document_date = _batch_document_date(text)
+    return {
+        "ocr_status": "extracted" if text.strip() else "not_extracted",
+        "text_source": source,
+        "document_number": document_number,
+        "document_date": document_date.isoformat() if document_date else "",
+        "raw_text_preview": text[:2500],
+        "invoice_lines": invoice_lines,
+        "original_name": filename,
+    }
+
+
 @web_router.post("/v2-clean/documents/import/archive-batch")
 def clean_document_import_archive_batch(request: Request, file: UploadFile = File(...)):
     denied = clean_experience_denied(request)
@@ -6293,6 +6391,24 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                         user_id=user_id,
                     )
                 )
+                if document_type == "workshop_supplier_invoice":
+                    invoice_payload = _batch_invoice_payload(file_content, suffix, original_name, content_text)
+                    if invoice_payload.get("document_number") and not document.contract_number:
+                        document.contract_number = str(invoice_payload["document_number"])[:120]
+                    if invoice_payload.get("document_date") and not document.document_date:
+                        try:
+                            document.document_date = date.fromisoformat(str(invoice_payload["document_date"])[:10])
+                        except ValueError:
+                            pass
+                    db.add(
+                        DocumentEvent(
+                            document_id=document.id,
+                            action="invoice.ocr.extracted",
+                            old_value=None,
+                            new_value=json.dumps(invoice_payload, ensure_ascii=False),
+                            user_id=user_id,
+                        )
+                    )
                 known_hashes.add(digest)
                 counters["imported"] += 1
                 counters["matched" if vehicle else "pending"] += 1

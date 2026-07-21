@@ -325,14 +325,25 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert entry_phase.data_json["minimum_checks"]["minimum_km_confirmed"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_damage_photos"] == "yes"
     dashboard_upload = next(item for item in entry_phase.data_json["uploads"] if item["slot"] == "dashboard")
+    assert dashboard_upload["content_type"] == "image/jpeg"
     image_response = client.get(
         f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}"
     )
     assert image_response.status_code == 200
     assert image_response.content == b"fake dashboard image"
+    missing_image = client.get(
+        f"/v2-clean/workshop-entry/{process_id}/uploads/missing.jpg",
+        follow_redirects=False,
+    )
+    assert missing_image.status_code == 303
+    assert missing_image.headers["location"] == (
+        f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1#danos"
+    )
     entry_page = client.get(f"/v2-clean/workshop-entry?process_id={process_id}")
     assert entry_page.status_code == 200
     assert f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}" in entry_page.text
+    assert "clean-upload-preview-card" in entry_page.text
+    assert "Já carregado · 1 imagem" in entry_page.text
 
     created_problem = client.post(
         f"/v2-clean/workshop/{process_id}/records",
@@ -426,7 +437,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert document.classification == "technical"
     assert document.status == "unclassified"
     assert document.storage_path == report.original_link
-    assert document.folder_path == "Documentação de Viaturas/BB-13-PT/03_Diagnosticos"
+    assert document.folder_path == (
+        "Frota/BB-13-PT_VINBB13PT123456789/02_Documentacao_Tecnica/"
+        "Processos/OF-2026-00001/01_Diagnosticos"
+    )
     document_links = db_session.scalars(
         select(DocumentLink).where(DocumentLink.document_id == document.id)
     ).all()

@@ -9374,6 +9374,19 @@ a.metric:hover {
   font-size: 12px;
 }
 
+.clean-upload-status {
+  display: inline-flex;
+  width: max-content;
+  margin-top: 2px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .clean-file-button {
   display: inline-flex;
   width: max-content;
@@ -9436,6 +9449,67 @@ a.metric:hover {
 .clean-upload-summary a:hover {
   background: #dbeafe;
   color: #0f2a5f;
+}
+
+.clean-upload-preview-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.clean-upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.clean-upload-summary .clean-upload-preview-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f2a5f;
+}
+
+.clean-upload-preview-card img,
+.clean-upload-preview-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 7px;
+  background: #eff6ff;
+  object-fit: cover;
+}
+
+.clean-upload-preview-fallback {
+  display: grid;
+  place-items: center;
+  color: #1e3a8a;
+  font-weight: 900;
+}
+
+.clean-upload-summary .clean-upload-preview-meta {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.clean-upload-preview-meta b,
+.clean-upload-preview-meta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-upload-preview-meta small {
+  color: #64748b;
+  font-size: 10px;
 }
 
 .clean-substep-savebar {

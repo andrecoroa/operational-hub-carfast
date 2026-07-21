@@ -3833,7 +3833,11 @@ async def clean_workshop_store_entry_uploads(
         "entry_photos_camera": ("support", "Foto de apoio"),
     }
     stored: list[dict[str, str]] = []
-    upload_root = APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)
+    upload_root = local_document_storage_folder(
+        f"Oficina/Entradas/{process_id}/Fotos_Evidencias",
+        plate=None,
+        vin=None,
+    )
     for form_field, (slot, label) in field_map.items():
         for upload in form.getlist(form_field):
             if not hasattr(upload, "filename") or not hasattr(upload, "read") or not upload.filename:
@@ -3858,6 +3862,7 @@ async def clean_workshop_store_entry_uploads(
                     "stored_name": stored_name,
                     "path": str(stored_path),
                     "sha256": digest,
+                    "content_type": str(getattr(upload, "content_type", "") or ""),
                 }
             )
     return stored
@@ -3874,6 +3879,7 @@ async def clean_workshop_store_phase_uploads(
     if not field_map:
         return []
 
+    vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     plate_value = normalize_identifier(str(process.plate_snapshot or ""))
     plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
     upload_root = APP_PROJECT_ROOT / "uploads" / "vehicle_documents" / plate_folder / phase
@@ -3986,19 +3992,37 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
             None,
         )
         if not upload:
-            return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process.id}&file_missing=1", status_code=303)
+            return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process.id}&file_missing=1#danos", status_code=303)
         original_name = str(upload.get("original_name") or safe_name)
         raw_path = Path(str(upload.get("path") or ""))
 
-    file_path = raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path
-    root_path = (APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)).resolve()
-    try:
-        resolved_path = file_path.resolve()
-        resolved_path.relative_to(root_path)
-    except (OSError, ValueError):
-        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
-    if not resolved_path.exists() or not resolved_path.is_file():
-        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1", status_code=303)
+    root_candidates = [
+        local_document_storage_folder(
+            f"Oficina/Entradas/{process_id}/Fotos_Evidencias",
+            plate=None,
+            vin=None,
+        ).resolve(),
+        (APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)).resolve(),
+    ]
+    possible_paths: list[Path] = []
+    if raw_path:
+        possible_paths.append(raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path)
+    possible_paths.extend(root_path / safe_name for root_path in root_candidates)
+
+    resolved_path: Path | None = None
+    for candidate in possible_paths:
+        try:
+            candidate_path = candidate.resolve()
+            if not any(candidate_path == root or root in candidate_path.parents for root in root_candidates):
+                continue
+        except (OSError, ValueError):
+            continue
+        if candidate_path.exists() and candidate_path.is_file():
+            resolved_path = candidate_path
+            break
+
+    if resolved_path is None:
+        return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1#danos", status_code=303)
     return FileResponse(resolved_path, filename=original_name)
 
 
@@ -8353,6 +8377,7 @@ async def clean_workshop_technical_report_upload(
             return RedirectResponse("/v2-clean/workshop", status_code=303)
         if clean_workshop_process_is_readonly(process):
             return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
+        vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
 
         plate_value = (process.plate_snapshot or "").strip().upper()
         plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
@@ -11124,7 +11149,8 @@ def local_document_storage_folder(
 
 
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
-    reference_year = (process.opened_on or date.today()).year
+    reference_date = getattr(process, "opened_on", None) or getattr(process, "created_at", None) or date.today()
+    reference_year = reference_date.year
     process_ref = f"OF-{reference_year}-{process.id:05d}"
     archive_name = canonical_vehicle_archive_name(vehicle.plate if vehicle else "", vehicle.vin if vehicle else "")
     if archive_name != "_POR_ASSOCIAR":
@@ -11137,7 +11163,7 @@ def suggest_workshop_process_document_folder(
     vehicle: Vehicle | None,
     section: str,
 ) -> str:
-    base_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
+    base_path = getattr(process, "document_folder_path", None) or suggest_workshop_process_folder_path(process, vehicle)
     return f"{base_path}/{section}"
 
 

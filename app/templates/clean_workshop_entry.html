@@ -111,6 +111,12 @@
       {% set saved_physical = saved_entry.physical_checks or {} %}
       {% set saved_minimum = saved_entry.minimum_checks or {} %}
       {% set saved_uploads = saved_entry.uploads or [] %}
+      {% set dashboard_uploads = saved_uploads | selectattr("slot", "equalto", "dashboard") | list %}
+      {% set front_uploads = saved_uploads | selectattr("slot", "equalto", "front") | list %}
+      {% set rear_uploads = saved_uploads | selectattr("slot", "equalto", "rear") | list %}
+      {% set left_uploads = saved_uploads | selectattr("slot", "equalto", "left") | list %}
+      {% set right_uploads = saved_uploads | selectattr("slot", "equalto", "right") | list %}
+      {% set support_uploads = saved_uploads | selectattr("slot", "equalto", "support") | list %}
       <section class="clean-phase-workbench clean-card-wide">
         <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
           <button class="clean-substep-card active" type="button" data-target="motivo">
@@ -229,6 +235,9 @@
               <div class="clean-upload-box clean-upload-prominent">
                 <strong>Foto do quadrante</strong>
               <span>{% if is_historical %}Opcional no histórico. Usar se existir evidência antiga de km, avisos ou estado.{% else %}Campo obrigatório para comprovar km, avisos e estado à entrada.{% endif %}</span>
+              {% if dashboard_uploads %}
+                <em class="clean-upload-status">Já carregado · {{ dashboard_uploads|length }} imagem{% if dashboard_uploads|length != 1 %}s{% endif %}</em>
+              {% endif %}
               <div class="clean-upload-actions">
                 <label class="clean-file-button">Carregar imagem<input name="dashboard_photo" type="file" accept="image/*"></label>
                 <label class="clean-file-button">Tirar foto<input name="dashboard_photo_camera" type="file" accept="image/*" capture="environment"></label>
@@ -240,6 +249,7 @@
               <div class="clean-side-photo-grid">
                 <div>
                   <b>Frente</b>
+                  {% if front_uploads %}<em class="clean-upload-status">Já existe</em>{% endif %}
                   <div class="clean-upload-actions">
                     <label class="clean-file-button">Carregar<input name="vehicle_front_photo" type="file" accept="image/*"></label>
                     <label class="clean-file-button">Tirar foto<input name="vehicle_front_photo_camera" type="file" accept="image/*" capture="environment"></label>
@@ -247,6 +257,7 @@
                 </div>
                 <div>
                   <b>Traseira</b>
+                  {% if rear_uploads %}<em class="clean-upload-status">Já existe</em>{% endif %}
                   <div class="clean-upload-actions">
                     <label class="clean-file-button">Carregar<input name="vehicle_rear_photo" type="file" accept="image/*"></label>
                     <label class="clean-file-button">Tirar foto<input name="vehicle_rear_photo_camera" type="file" accept="image/*" capture="environment"></label>
@@ -254,6 +265,7 @@
                 </div>
                 <div>
                   <b>Lateral esquerda</b>
+                  {% if left_uploads %}<em class="clean-upload-status">Já existe</em>{% endif %}
                   <div class="clean-upload-actions">
                     <label class="clean-file-button">Carregar<input name="vehicle_left_photo" type="file" accept="image/*"></label>
                     <label class="clean-file-button">Tirar foto<input name="vehicle_left_photo_camera" type="file" accept="image/*" capture="environment"></label>
@@ -261,6 +273,7 @@
                 </div>
                 <div>
                   <b>Lateral direita</b>
+                  {% if right_uploads %}<em class="clean-upload-status">Já existe</em>{% endif %}
                   <div class="clean-upload-actions">
                     <label class="clean-file-button">Carregar<input name="vehicle_right_photo" type="file" accept="image/*"></label>
                     <label class="clean-file-button">Tirar foto<input name="vehicle_right_photo_camera" type="file" accept="image/*" capture="environment"></label>
@@ -270,16 +283,32 @@
             </div>
             <label class="clean-full-label">Notas / evidência física<textarea rows="3" name="physical_check_note" placeholder="Registar apenas divergências, falta de equipamento ou danos relevantes...">{{ saved_entry.physical_check_note or "" }}</textarea></label>
             {% if saved_uploads %}
-              <div class="clean-upload-summary">
+              <div class="clean-upload-summary clean-upload-preview-summary">
                 <strong>Imagens gravadas</strong>
-                {% for upload in saved_uploads %}
-                  <a href="/v2-clean/workshop-entry/{{ workshop_process.id }}/uploads/{{ upload.stored_name }}" target="_blank" rel="noopener">{{ upload.label }} · {{ upload.original_name }}</a>
-                {% endfor %}
+                <div class="clean-upload-preview-grid">
+                  {% for upload in saved_uploads %}
+                    {% set upload_href = "/v2-clean/workshop-entry/" ~ workshop_process.id ~ "/uploads/" ~ upload.stored_name %}
+                    <a class="clean-upload-preview-card" href="{{ upload_href }}" target="_blank" rel="noopener">
+                      {% if upload.content_type and upload.content_type[:6] == "image/" %}
+                        <img src="{{ upload_href }}" alt="{{ upload.label }}">
+                      {% else %}
+                        <span class="clean-upload-preview-fallback">{{ upload.label[:2] }}</span>
+                      {% endif %}
+                      <span class="clean-upload-preview-meta">
+                        <b>{{ upload.label }}</b>
+                        <small>{{ upload.original_name }}</small>
+                      </span>
+                    </a>
+                  {% endfor %}
+                </div>
               </div>
             {% endif %}
             <div class="clean-upload-box clean-upload-inline">
               <strong>Fotos de apoio</strong>
               <span>Adicionar imagens quando existir dano, falta de equipamento ou divergência.</span>
+              {% if support_uploads %}
+                <em class="clean-upload-status">Já carregado · {{ support_uploads|length }} imagem{% if support_uploads|length != 1 %}s{% endif %}</em>
+              {% endif %}
               <div class="clean-upload-actions">
                 <label class="clean-file-button">Carregar imagem<input name="entry_photos" type="file" accept="image/*" multiple></label>
                 <label class="clean-file-button">Tirar foto<input name="entry_photos_camera" type="file" accept="image/*" capture="environment" multiple></label>

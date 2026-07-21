@@ -6123,6 +6123,7 @@ def _batch_document_date(path_text: str) -> date | None:
     for pattern, order in (
         (r"(?<!\d)(20\d{2})[-_.](\d{1,2})[-_.](\d{1,2})(?!\d)", "ymd"),
         (r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2})(?!\d)", "dmy"),
+        (r"(?<!\d)(\d{1,2})/(\d{1,2})/(20\d{2})(?!\d)", "dmy"),
     ):
         match = re.search(pattern, path_text)
         if not match:
@@ -6134,6 +6135,20 @@ def _batch_document_date(path_text: str) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def _batch_document_pdf_text(file_content: bytes, suffix: str) -> str:
+    if suffix != ".pdf" or not file_content:
+        return ""
+    try:
+        import fitz  # type: ignore[import-not-found]
+    except Exception:
+        return ""
+    try:
+        with fitz.open(stream=file_content, filetype="pdf") as doc:
+            return "\n".join(page.get_text("text") for page in list(doc)[:2])[:12000]
+    except Exception:
+        return ""
 
 
 @web_router.post("/v2-clean/documents/import/archive-batch")
@@ -6197,9 +6212,11 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                 counters["duplicates"] += 1
                 continue
 
-            vehicle = _batch_document_vehicle(archive_name, vehicles_by_plate)
-            document_type, classification = _batch_document_type(archive_name)
-            document_date = _batch_document_date(archive_name)
+            content_text = _batch_document_pdf_text(file_content, suffix)
+            lookup_text = f"{archive_name}\n{content_text}"
+            vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate)
+            document_type, classification = _batch_document_type(lookup_text)
+            document_date = _batch_document_date(lookup_text)
             plate = vehicle.plate if vehicle else None
             vin = vehicle.vin if vehicle else None
             folder_path = suggest_document_folder_path(

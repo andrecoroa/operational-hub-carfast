@@ -19,7 +19,7 @@ from app.models.documents import (
 )
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
-from app.web.router import local_document_storage_folder
+from app.web.router import _batch_document_vehicle, local_document_storage_folder
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -130,6 +130,20 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert Path(matched.storage_path).exists()
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
+
+
+def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
+    vehicle = _create_vehicle(db_session)
+    vehicles_by_plate = {"OTHERPLATE": vehicle}
+    vehicles_by_vin = {"VINCC11AA123456789": vehicle}
+
+    matched = _batch_document_vehicle(
+        "FACTURA\nChassis: VINCC11AA123456789\nData: 12/06/2026",
+        vehicles_by_plate,
+        vehicles_by_vin,
+    )
+
+    assert matched == vehicle
 
 
 def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):

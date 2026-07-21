@@ -6100,10 +6100,21 @@ BATCH_DOCUMENT_MAX_FILE_SIZE = 30 * 1024 * 1024
 BATCH_DOCUMENT_MAX_TOTAL_SIZE = 250 * 1024 * 1024
 
 
-def _batch_document_vehicle(path_text: str, vehicles_by_plate: dict[str, Vehicle]) -> Vehicle | None:
+def _batch_document_vehicle(
+    path_text: str,
+    vehicles_by_plate: dict[str, Vehicle],
+    vehicles_by_vin: dict[str, Vehicle] | None = None,
+) -> Vehicle | None:
     normalized_path = re.sub(r"[^A-Z0-9]", "", path_text.upper())
-    candidates = sorted(vehicles_by_plate.items(), key=lambda item: len(item[0]), reverse=True)
-    return next((vehicle for compact_plate, vehicle in candidates if compact_plate and compact_plate in normalized_path), None)
+    plate_candidates = sorted(vehicles_by_plate.items(), key=lambda item: len(item[0]), reverse=True)
+    plate_match = next(
+        (vehicle for compact_plate, vehicle in plate_candidates if compact_plate and compact_plate in normalized_path),
+        None,
+    )
+    if plate_match:
+        return plate_match
+    vin_candidates = sorted((vehicles_by_vin or {}).items(), key=lambda item: len(item[0]), reverse=True)
+    return next((vehicle for compact_vin, vehicle in vin_candidates if compact_vin and compact_vin in normalized_path), None)
 
 
 def _batch_document_type(path_text: str) -> tuple[str, str]:
@@ -6170,116 +6181,125 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
     except (zipfile.BadZipFile, OSError):
         return RedirectResponse("/v2-clean/documents?batch_error=ZIP+invalido", status_code=303)
 
-    with archive, SessionLocal() as db:
-        entries = [entry for entry in archive.infolist() if not entry.is_dir()]
-        if len(entries) > BATCH_DOCUMENT_MAX_FILES:
-            return RedirectResponse("/v2-clean/documents?batch_error=O+ZIP+tem+demasiados+ficheiros", status_code=303)
-        vehicles = db.scalars(select(Vehicle).where(Vehicle.plate.is_not(None))).all()
-        vehicles_by_plate = {
-            re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
-            for vehicle in vehicles
-            if vehicle.plate
-        }
-        known_hashes = set(
-            db.scalars(
-                select(Document.file_hash).where(
-                    Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
-                    Document.file_hash.is_not(None),
-                )
-            ).all()
-        )
-        total_uncompressed = 0
-        for entry in entries:
-            archive_name = entry.filename.replace("\\", "/")
-            parts = [part for part in archive_name.split("/") if part]
-            suffix = Path(archive_name).suffix.lower()
-            if (
-                not parts
-                or archive_name.startswith("/")
-                or ".." in parts
-                or entry.flag_bits & 0x1
-                or suffix not in BATCH_DOCUMENT_EXTENSIONS
-                or entry.file_size > BATCH_DOCUMENT_MAX_FILE_SIZE
-            ):
-                continue
-            total_uncompressed += entry.file_size
-            if total_uncompressed > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
-                db.rollback()
-                return RedirectResponse("/v2-clean/documents?batch_error=Conteúdo+extraído+demasiado+grande", status_code=303)
-            file_content = archive.read(entry)
-            digest = hashlib.sha256(file_content).hexdigest()
-            if digest in known_hashes:
-                counters["duplicates"] += 1
-                continue
+    try:
+        with archive, SessionLocal() as db:
+            entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+            if len(entries) > BATCH_DOCUMENT_MAX_FILES:
+                return RedirectResponse("/v2-clean/documents?batch_error=O+ZIP+tem+demasiados+ficheiros", status_code=303)
+            vehicles = db.scalars(select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))).all()
+            vehicles_by_plate = {
+                re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
+                for vehicle in vehicles
+                if vehicle.plate
+            }
+            vehicles_by_vin = {
+                re.sub(r"[^A-Z0-9]", "", (vehicle.vin or "").upper()): vehicle
+                for vehicle in vehicles
+                if vehicle.vin
+            }
+            known_hashes = set(
+                db.scalars(
+                    select(Document.file_hash).where(
+                        Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                        Document.file_hash.is_not(None),
+                    )
+                ).all()
+            )
+            total_uncompressed = 0
+            for entry in entries:
+                archive_name = entry.filename.replace("\\", "/")
+                parts = [part for part in archive_name.split("/") if part]
+                suffix = Path(archive_name).suffix.lower()
+                if (
+                    not parts
+                    or archive_name.startswith("/")
+                    or ".." in parts
+                    or entry.flag_bits & 0x1
+                    or suffix not in BATCH_DOCUMENT_EXTENSIONS
+                    or entry.file_size > BATCH_DOCUMENT_MAX_FILE_SIZE
+                ):
+                    continue
+                total_uncompressed += entry.file_size
+                if total_uncompressed > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+                    db.rollback()
+                    return RedirectResponse("/v2-clean/documents?batch_error=Conteúdo+extraído+demasiado+grande", status_code=303)
+                file_content = archive.read(entry)
+                digest = hashlib.sha256(file_content).hexdigest()
+                if digest in known_hashes:
+                    counters["duplicates"] += 1
+                    continue
 
-            content_text = _batch_document_pdf_text(file_content, suffix)
-            lookup_text = f"{archive_name}\n{content_text}"
-            vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate)
-            document_type, classification = _batch_document_type(lookup_text)
-            document_date = _batch_document_date(lookup_text)
-            plate = vehicle.plate if vehicle else None
-            vin = vehicle.vin if vehicle else None
-            folder_path = suggest_document_folder_path(
-                classification,
-                document_date,
-                plate,
-                document_type,
-                vin=vin,
-            )
-            if not vehicle:
-                folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
-            storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
-            storage_dir.mkdir(parents=True, exist_ok=True)
-            original_name = Path(archive_name).name
-            stem = sanitize_archive_component(Path(original_name).stem, "documento")
-            stored_name = f"{stem}_{digest[:12]}{suffix}"
-            stored_path = storage_dir / stored_name
-            if not stored_path.exists():
-                stored_path.write_bytes(file_content)
-
-            document = Document(
-                title=Path(original_name).stem[:200],
-                document_type=document_type,
-                classification=classification,
-                source="v2_clean_manual",
-                entry_channel="v2_clean_batch",
-                source_subject=f"ZIP {filename}: {archive_name}"[:255],
-                original_name=original_name[:255],
-                file_name=stored_name[:255],
-                file_type=suffix.lstrip("."),
-                file_size=len(file_content),
-                storage_provider="local",
-                storage_path=str(stored_path),
-                storage_key=digest,
-                folder_path=folder_path,
-                status="received",
-                file_hash=digest,
-                vehicle_id=vehicle.id if vehicle else None,
-                plate=plate,
-                document_date=document_date,
-                uploaded_by_id=user_id,
-                archived_by_id=user_id,
-                archived_at=datetime.now(UTC),
-                archived=True,
-            )
-            db.add(document)
-            db.flush()
-            db.add(
-                DocumentEvent(
-                    document_id=document.id,
-                    action="batch_import.archived",
-                    old_value=None,
-                    new_value=json.dumps(
-                        {"zip": filename, "path": archive_name, "vehicle_matched": bool(vehicle)},
-                        ensure_ascii=False,
-                    ),
-                    user_id=user_id,
+                content_text = _batch_document_pdf_text(file_content, suffix)
+                lookup_text = f"{archive_name}\n{content_text}"
+                vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate, vehicles_by_vin)
+                document_type, classification = _batch_document_type(lookup_text)
+                document_date = _batch_document_date(lookup_text)
+                plate = vehicle.plate if vehicle else None
+                vin = vehicle.vin if vehicle else None
+                folder_path = suggest_document_folder_path(
+                    classification,
+                    document_date,
+                    plate,
+                    document_type,
+                    vin=vin,
                 )
-            )
-            known_hashes.add(digest)
-            counters["imported"] += 1
-            counters["matched" if vehicle else "pending"] += 1
-        db.commit()
+                if not vehicle:
+                    folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
+                storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
+                storage_dir.mkdir(parents=True, exist_ok=True)
+                original_name = Path(archive_name).name
+                stem = sanitize_archive_component(Path(original_name).stem, "documento")
+                stored_name = f"{stem}_{digest[:12]}{suffix}"
+                stored_path = storage_dir / stored_name
+                if not stored_path.exists():
+                    stored_path.write_bytes(file_content)
+
+                document = Document(
+                    title=Path(original_name).stem[:200],
+                    document_type=document_type,
+                    classification=classification,
+                    source="v2_clean_manual",
+                    entry_channel="v2_clean_batch",
+                    source_subject=f"ZIP {filename}: {archive_name}"[:255],
+                    original_name=original_name[:255],
+                    file_name=stored_name[:255],
+                    file_type=suffix.lstrip("."),
+                    file_size=len(file_content),
+                    storage_provider="local",
+                    storage_path=str(stored_path),
+                    storage_key=digest,
+                    folder_path=folder_path,
+                    status="received",
+                    file_hash=digest,
+                    vehicle_id=vehicle.id if vehicle else None,
+                    plate=plate,
+                    document_date=document_date,
+                    uploaded_by_id=user_id,
+                    archived_by_id=user_id,
+                    archived_at=datetime.now(UTC),
+                    archived=True,
+                )
+                db.add(document)
+                db.flush()
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="batch_import.archived",
+                        old_value=None,
+                        new_value=json.dumps(
+                            {"zip": filename, "path": archive_name, "vehicle_matched": bool(vehicle)},
+                            ensure_ascii=False,
+                        ),
+                        user_id=user_id,
+                    )
+                )
+                known_hashes.add(digest)
+                counters["imported"] += 1
+                counters["matched" if vehicle else "pending"] += 1
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        message = f"Erro ao arquivar lote ({exc.__class__.__name__})"
+        return RedirectResponse(f"/v2-clean/documents?{urlencode({'batch_error': message})}", status_code=303)
 
     params = urlencode(
         {

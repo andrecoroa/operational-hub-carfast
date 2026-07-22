@@ -160,6 +160,25 @@
                   </form>
                   <div class="clean-doc-classify-actions">
                     <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Ver detalhes</button>
+                    {% if row.kind == "document" %}
+                      <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
+                        <summary>Remover</summary>
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                          <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
+                          <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                          <button type="submit">Confirmar</button>
+                        </form>
+                      </details>
+                    {% elif row.kind in ["record", "pending_record"] %}
+                      <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
+                        <summary>Remover</summary>
+                        <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/records/{{ row.id }}/remove">
+                          <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.main_group or row.archive_group or '' }}">
+                          <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                          <button type="submit">Confirmar</button>
+                        </form>
+                      </details>
+                    {% endif %}
                   </div>
                 </td>
               </tr>
@@ -342,6 +361,14 @@
             <div class="clean-doc-work-order-actions">
               <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
               <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="work-order-detail-{{ row.id }}">Ver detalhes</button>
+              <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
+                <summary>Remover</summary>
+                <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/records/{{ row.id }}/remove">
+                  <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group=work_orders">
+                  <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                  <button type="submit">Confirmar</button>
+                </form>
+              </details>
             </div>
             <details id="work-order-detail-{{ row.id }}" class="clean-doc-expanded-detail clean-doc-work-order-detail">
               <summary>Detalhes da FO {{ row.external_reference or row.title }}</summary>
@@ -426,6 +453,17 @@
           OCR não reprocessado: {{ ocr_error }}.
         {% else %}
           OCR reprocessado: {{ ocr_lines or 0 }} linhas extraídas.
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if request.query_params.get("removed") == "1" or request.query_params.get("remove_error") %}
+      <div class="alert {% if request.query_params.get('remove_error') %}warning{% else %}success{% endif %}">
+        {% if request.query_params.get("remove_error") == "missing_reason" %}
+          Não removido: indica um motivo para remover o documento ou linha.
+        {% elif request.query_params.get("remove_error") %}
+          Não foi possível remover o documento ou linha selecionada.
+        {% else %}
+          Removido da v2-clean. O histórico fica preservado para auditoria.
         {% endif %}
       </div>
     {% endif %}

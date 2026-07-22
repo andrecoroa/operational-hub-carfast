@@ -163,6 +163,19 @@ def is_structured_import_source(document: Document) -> bool:
     )
 
 V2_CLEAN_DOCUMENT_SOURCES = ("workshop_v2_clean", "v2_clean_manual")
+V2_CLEAN_REMOVED_STATUSES = {"removed", "deleted"}
+
+
+def is_removed_document_status(status: str | None) -> bool:
+    return (status or "").strip().lower() in V2_CLEAN_REMOVED_STATUSES
+
+
+def v2_clean_document_visible_condition():
+    return or_(Document.status.is_(None), ~Document.status.in_(V2_CLEAN_REMOVED_STATUSES))
+
+
+def v2_clean_record_visible_condition():
+    return or_(VehicleDocumentRecord.status.is_(None), ~VehicleDocumentRecord.status.in_(V2_CLEAN_REMOVED_STATUSES))
 
 DOCUMENT_HISTORY_COMPARISON_STATES = [
     ("coerente", "Coerente"),
@@ -959,6 +972,7 @@ def _load_vehicle_documents(db: Session, vehicle: Vehicle) -> list[Document]:
         .where(
             or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
             Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+            v2_clean_document_visible_condition(),
         )
         .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
     ).all()
@@ -1055,6 +1069,7 @@ def _ensure_structured_sources_materialized(
                     VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
                     VehicleDocumentRecord.main_group == import_kind,
                     VehicleDocumentRecord.document_id == document.id,
+                    v2_clean_record_visible_condition(),
                 )
             ).all()
         )
@@ -1354,6 +1369,7 @@ def _build_structured_rows(
             VehicleDocumentRecord.vehicle_id == vehicle_id,
             VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
+            v2_clean_record_visible_condition(),
         )
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
     ).all()
@@ -1935,6 +1951,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     persisted_records = db.scalars(
         select(VehicleDocumentRecord)
         .where(VehicleDocumentRecord.vehicle_id == vehicle.id)
+        .where(v2_clean_record_visible_condition())
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
     ).all()
     pending_archive_records = [record for record in persisted_records if record.main_group in {"invoices", "diagnostics"}]
@@ -2050,6 +2067,7 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
 
 def _load_structured_import_sources(db: Session, vehicle: Vehicle | None = None) -> list[Document]:
     query = select(Document).where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+    query = query.where(v2_clean_document_visible_condition())
     if vehicle is not None:
         query = query.where(or_(Document.vehicle_id == vehicle.id, Document.vehicle_id.is_(None), Document.plate == vehicle.plate))
     documents = db.scalars(query.order_by(Document.updated_at.desc(), Document.id.desc())).all()
@@ -2073,6 +2091,7 @@ def ensure_structured_import_sources_materialized(
             VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group == import_kind,
             VehicleDocumentRecord.document_id == document.id,
+            v2_clean_record_visible_condition(),
         )
         if vehicle is not None:
             record_query = record_query.where(VehicleDocumentRecord.vehicle_id == vehicle.id)
@@ -2091,6 +2110,7 @@ def _build_global_structured_rows(db: Session) -> list[dict[str, Any]]:
         .where(
             VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
             VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
+            v2_clean_record_visible_condition(),
         )
         .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
     ).all()
@@ -2172,6 +2192,7 @@ def document_center_module_context(db: Session, *, user_id: int | None = None) -
     archive_documents_count = db.scalar(
         select(Document.id)
         .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+        .where(v2_clean_document_visible_condition())
         .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
         .limit(1)
     )
@@ -2186,6 +2207,7 @@ def document_center_module_context(db: Session, *, user_id: int | None = None) -
         "archive_documents_count": db.query(Document)
         .filter(
             Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+            v2_clean_document_visible_condition(),
             or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"),
         )
         .count()

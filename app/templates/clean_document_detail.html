@@ -23,8 +23,24 @@
             <button type="submit" class="button-link primary-link">Reprocessar OCR</button>
           </form>
         {% endif %}
+        {% if document.status != "removed" %}
+          <details class="clean-doc-remove-menu">
+            <summary>Remover</summary>
+            <form method="post" action="/v2-clean/documents/{{ document.id }}/remove">
+              <input type="hidden" name="return_url" value="{% if vehicle %}/v2-clean/fleet/{{ vehicle.id }}/documents{% else %}/v2-clean/documents{% endif %}">
+              <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+              <button type="submit">Confirmar remoção</button>
+            </form>
+          </details>
+        {% endif %}
       </div>
     </header>
+
+    {% if document.status == "removed" %}
+      <div class="alert warning">
+        Este documento foi removido da experiência v2-clean. O ficheiro e o histórico continuam preservados para auditoria.
+      </div>
+    {% endif %}
 
     {% if ocr_reprocessed or ocr_error %}
       <div class="alert {% if ocr_error %}warning{% else %}success{% endif %}">

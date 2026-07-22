@@ -55,6 +55,21 @@
       </section>
     {% endif %}
 
+    {% if request.query_params.get("removed") == "1" or request.query_params.get("remove_error") %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if request.query_params.get('remove_error') %}warning{% endif %}">
+          {% if request.query_params.get("remove_error") == "missing_reason" %}
+            <strong>Não removido: indica um motivo para remover o documento.</strong>
+          {% elif request.query_params.get("remove_error") %}
+            <strong>Não foi possível remover o documento.</strong>
+          {% else %}
+            <strong>Documento removido da v2-clean.</strong>
+            <span>O ficheiro continua preservado no arquivo e a ação ficou no histórico.</span>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
     {% if ocr_reprocessed or ocr_error %}
       <section class="clean-doc-filter-panel clean-card-wide">
         <div class="clean-doc-inline-workbench-note {% if ocr_error %}warning{% endif %}">
@@ -260,6 +275,14 @@
                         <input type="hidden" name="return_url" value="/v2-clean/documents">
                         <button type="submit" class="button-link secondary-link">Reprocessar</button>
                       </form>
+                      <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
+                        <summary>Remover</summary>
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents">
+                          <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                          <button type="submit">Confirmar</button>
+                        </form>
+                      </details>
                     </div>
                   </td>
                 </tr>

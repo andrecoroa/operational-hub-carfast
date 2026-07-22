@@ -130,6 +130,7 @@ from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_STRUCTURED_GROUPS,
     STRUCTURED_IMPORT_KIND_LABELS,
     V2_CLEAN_DOCUMENT_SOURCES,
+    V2_CLEAN_REMOVED_STATUSES,
     add_quick_classification,
     attach_document_to_record,
     canonical_structured_import_kind,
@@ -143,6 +144,7 @@ from app.services.vehicle_document_history import (
     save_uploaded_spreadsheet,
     sync_real_start_manual_field,
     upsert_audit_field,
+    v2_clean_document_visible_condition,
     vehicle_document_module_context,
 )
 from app.services.workshop_report_extractor import (
@@ -5962,6 +5964,7 @@ def clean_document_ocr_validation(
         documents = db.scalars(
             select(Document)
             .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(v2_clean_document_visible_condition())
             .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
             .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
         ).all()
@@ -6188,6 +6191,127 @@ def clean_document_detail(
         )
 
 
+def _clean_v2_return_url(return_url: str | None, fallback: str = "/v2-clean/documents") -> str:
+    candidate = (return_url or "").strip()
+    if candidate.startswith("/") and not candidate.startswith("//"):
+        return candidate
+    return fallback
+
+
+def _append_query_flag(url: str, **params: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(params)}"
+
+
+@web_router.post("/v2-clean/documents/{document_id}/remove")
+def clean_document_remove(
+    request: Request,
+    document_id: int,
+    reason: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    target = _clean_v2_return_url(return_url)
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return RedirectResponse(_append_query_flag(target, remove_error="missing_reason"), status_code=303)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document or document.source not in V2_CLEAN_DOCUMENT_SOURCES:
+            return RedirectResponse(_append_query_flag(target, remove_error="not_found"), status_code=303)
+        old_status = document.status
+        document.status = "removed"
+        document.updated_by_id = user_id
+        document.updated_at = datetime.now(UTC)
+
+        related_records = db.scalars(
+            select(VehicleDocumentRecord).where(VehicleDocumentRecord.document_id == document.id)
+        ).all()
+        removed_record_ids: list[int] = []
+        for record in related_records:
+            if (record.status or "").lower() in V2_CLEAN_REMOVED_STATUSES:
+                continue
+            record.status = "removed"
+            record.updated_by_id = user_id
+            removed_record_ids.append(record.id)
+
+        event_payload = {
+            "reason": clean_reason,
+            "previous_status": old_status,
+            "removed_record_ids": removed_record_ids,
+            "storage_path": document.storage_path,
+            "file_name": document.file_name,
+        }
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.removed",
+                old_value=old_status,
+                new_value=json.dumps(event_payload, ensure_ascii=False),
+                user_id=user_id,
+            )
+        )
+        db.commit()
+    return RedirectResponse(_append_query_flag(target, removed="1"), status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/records/{record_id}/remove")
+def clean_vehicle_document_record_remove(
+    request: Request,
+    vehicle_id: int,
+    record_id: int,
+    reason: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    target = _clean_v2_return_url(return_url, f"/v2-clean/fleet/{vehicle_id}/documents")
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return RedirectResponse(_append_query_flag(target, remove_error="missing_reason"), status_code=303)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        record = db.get(VehicleDocumentRecord, record_id)
+        if not record or record.vehicle_id != vehicle_id:
+            return RedirectResponse(_append_query_flag(target, remove_error="not_found"), status_code=303)
+        old_status = record.status
+        metadata = dict(record.metadata_json or {})
+        metadata["_removed_reason"] = clean_reason
+        metadata["_removed_at"] = datetime.now(UTC).isoformat()
+        metadata["_removed_by"] = user_id
+        metadata["_previous_status"] = old_status
+        record.status = "removed"
+        record.metadata_json = metadata
+        record.updated_by_id = user_id
+        if record.document_id:
+            db.add(
+                DocumentEvent(
+                    document_id=record.document_id,
+                    action="document_record.removed",
+                    old_value=old_status,
+                    new_value=json.dumps(
+                        {
+                            "record_id": record.id,
+                            "reason": clean_reason,
+                            "previous_status": old_status,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    user_id=user_id,
+                )
+            )
+        db.commit()
+    return RedirectResponse(_append_query_flag(target, removed="1"), status_code=303)
+
+
 @web_router.post("/v2-clean/documents/{document_id}/reprocess-ocr")
 def clean_document_reprocess_ocr(
     request: Request,
@@ -6347,6 +6471,7 @@ def clean_document_import_center(
         real_documents = db.scalars(
             select(Document)
             .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(v2_clean_document_visible_condition())
             .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
             .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
         ).all()
@@ -6780,6 +6905,7 @@ def _archive_document_payloads(
         db.scalars(
             select(Document.file_hash).where(
                 Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                v2_clean_document_visible_condition(),
                 Document.file_hash.is_not(None),
             )
         ).all()
@@ -7858,6 +7984,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             .where(
                 or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
                 Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                v2_clean_document_visible_condition(),
             )
             .order_by(Document.updated_at.desc(), Document.id.desc())
         ).all()
@@ -7887,6 +8014,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
                 select(Document.classification, func.count()).where(
                     or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
                     Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                    v2_clean_document_visible_condition(),
                 ).group_by(Document.classification)
             ).all()
         }

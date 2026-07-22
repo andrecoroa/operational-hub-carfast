@@ -9474,6 +9474,17 @@ a.metric:hover {
   color: #0f2a5f;
 }
 
+button.clean-upload-preview-card {
+  cursor: zoom-in;
+  font: inherit;
+  text-align: left;
+}
+
+.clean-upload-summary .clean-upload-preview-card:hover {
+  border-color: #b44a35;
+  box-shadow: 0 8px 18px rgba(15, 42, 95, 0.12);
+}
+
 .clean-upload-preview-card img,
 .clean-upload-preview-fallback {
   display: block;
@@ -9510,6 +9521,73 @@ a.metric:hover {
 .clean-upload-preview-meta small {
   color: #64748b;
   font-size: 10px;
+}
+
+.clean-modal-open {
+  overflow: hidden;
+}
+
+.clean-image-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.clean-image-preview-modal[hidden] {
+  display: none;
+}
+
+.clean-image-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.clean-image-preview-dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  width: min(1100px, 94vw);
+  max-height: 92vh;
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
+}
+
+.clean-image-preview-dialog img {
+  display: block;
+  width: 100%;
+  max-height: 78vh;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #f8fafc;
+}
+
+.clean-image-preview-dialog figcaption {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-image-preview-close {
+  justify-self: end;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid #f0c7bd;
+  border-radius: 8px;
+  background: #fff3f0;
+  color: #9f2f1d;
+  cursor: pointer;
+  font-weight: 900;
 }
 
 .clean-substep-savebar {

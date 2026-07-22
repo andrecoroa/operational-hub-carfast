@@ -281,17 +281,23 @@
                 <div class="clean-upload-preview-grid">
                   {% for upload in saved_uploads %}
                     {% set upload_href = "/v2-clean/workshop-entry/" ~ workshop_process.id ~ "/uploads/" ~ upload.stored_name %}
-                    <a class="clean-upload-preview-card" href="{{ upload_href }}" target="_blank" rel="noopener">
-                      {% if upload.content_type and upload.content_type[:6] == "image/" %}
+                    {% if upload.content_type and upload.content_type[:6] == "image/" %}
+                      <button class="clean-upload-preview-card" type="button" data-preview-src="{{ upload_href }}" data-preview-title="{{ upload.label }} · {{ upload.original_name }}">
                         <img src="{{ upload_href }}" alt="{{ upload.label }}">
-                      {% else %}
+                        <span class="clean-upload-preview-meta">
+                          <b>{{ upload.label }}</b>
+                          <small>{{ upload.original_name }}</small>
+                        </span>
+                      </button>
+                    {% else %}
+                      <a class="clean-upload-preview-card" href="{{ upload_href }}" target="_blank" rel="noopener">
                         <span class="clean-upload-preview-fallback">{{ upload.label[:2] }}</span>
-                      {% endif %}
-                      <span class="clean-upload-preview-meta">
-                        <b>{{ upload.label }}</b>
-                        <small>{{ upload.original_name }}</small>
-                      </span>
-                    </a>
+                        <span class="clean-upload-preview-meta">
+                          <b>{{ upload.label }}</b>
+                          <small>{{ upload.original_name }}</small>
+                        </span>
+                      </a>
+                    {% endif %}
                   {% endfor %}
                 </div>
               </div>
@@ -354,6 +360,14 @@
       </section>
     </form>
   </main>
+</div>
+<div class="clean-image-preview-modal" id="clean-image-preview-modal" hidden>
+  <div class="clean-image-preview-backdrop" data-preview-close></div>
+  <figure class="clean-image-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="clean-image-preview-title">
+    <button class="clean-image-preview-close" type="button" data-preview-close>Fechar</button>
+    <img id="clean-image-preview-img" alt="">
+    <figcaption id="clean-image-preview-title"></figcaption>
+  </figure>
 </div>
 <script>
   document.querySelectorAll(".clean-phase-workbench").forEach((workbench) => {
@@ -427,6 +441,34 @@
     });
     plateInput.addEventListener("change", selectPlateIfExact);
   }
+
+  const imagePreviewModal = document.getElementById("clean-image-preview-modal");
+  const imagePreviewImg = document.getElementById("clean-image-preview-img");
+  const imagePreviewTitle = document.getElementById("clean-image-preview-title");
+  const closeImagePreview = () => {
+    if (!imagePreviewModal || !imagePreviewImg) return;
+    imagePreviewModal.hidden = true;
+    imagePreviewImg.removeAttribute("src");
+    imagePreviewImg.alt = "";
+    document.body.classList.remove("clean-modal-open");
+  };
+  document.querySelectorAll("[data-preview-src]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!imagePreviewModal || !imagePreviewImg || !imagePreviewTitle) return;
+      const title = button.dataset.previewTitle || "Imagem guardada";
+      imagePreviewImg.src = button.dataset.previewSrc || "";
+      imagePreviewImg.alt = title;
+      imagePreviewTitle.textContent = title;
+      imagePreviewModal.hidden = false;
+      document.body.classList.add("clean-modal-open");
+    });
+  });
+  document.querySelectorAll("[data-preview-close]").forEach((button) => {
+    button.addEventListener("click", closeImagePreview);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeImagePreview();
+  });
 </script>
 {% if workshop_admin.is_cancelled or workshop_admin.is_closed %}
 <script>

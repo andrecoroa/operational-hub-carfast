@@ -13,6 +13,9 @@ O ficheiro `render.yaml` define:
 - Web Service Python/FastAPI
 - Render PostgreSQL
 - `DATABASE_URL` vindo do Postgres interno do Render
+- disco persistente montado em `/var/data`
+- `DOCUMENT_ARCHIVE_ROOT=/var/data/carfast_documents`
+- `DOCUMENT_INVOICE_INBOX_PATH=/var/data/carfast_documents/Frota/_POR_ASSOCIAR/_Entrada_Documental/Faturas`
 - `APP_SECRET_KEY` gerado pelo Render
 - migracoes Alembic no arranque do servico
 - health check em `/health`
@@ -51,9 +54,39 @@ do Render, Postgres free expira apos 30 dias e nao deve ser usado para producao.
 Para uso real da empresa, trocar a base para plano pago antes de carregar dados
 importantes.
 
+O arquivo documental da v2-clean precisa de storage persistente. Se o plano do
+Web Service nao permitir disco persistente, nao carregar documentos definitivos:
+os ficheiros podem ficar apenas no filesystem efemero do deploy. Em producao,
+confirmar no Render que o disco `carfast-documents` esta montado em `/var/data`
+antes das importacoes.
+
 Nota: `preDeployCommand` nao e suportado em servicos free. Por isso, no plano
 free, as migracoes correm em `scripts/render_start.py` antes de iniciar o
 Uvicorn.
+
+## Arquivo Documental V2-Clean
+
+Raiz fisica:
+
+```text
+/var/data/carfast_documents
+```
+
+Pastas principais:
+
+```text
+Frota/[MATRICULA]_[CHASSIS]/01_Documentacao_Financeira/Faturas
+Frota/[MATRICULA]_[CHASSIS]/02_Documentacao_Tecnica/Processos/[PROCESSO]/01_Diagnosticos
+Frota/[MATRICULA]_[CHASSIS]/02_Documentacao_Tecnica/Processos/[PROCESSO]/03_Fotos_Evidencias
+Frota/[MATRICULA]_[CHASSIS]/03_Documentacao_Base_Viatura/Documentacao_Viatura
+Frota/_POR_ASSOCIAR/99_Pendentes_Classificar
+Frota/_POR_ASSOCIAR/_Entrada_Documental/Faturas
+Frota/_Importacoes_Estruturadas
+```
+
+As listagens estruturadas em Excel ficam arquivadas como fontes em
+`Frota/_Importacoes_Estruturadas`; as linhas de FO, contratos e impros ficam na
+base de dados para classificacao e timeline.
 
 ## Recuperação de Falha: HOST DE BASE Invalido
 

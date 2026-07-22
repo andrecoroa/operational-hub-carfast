@@ -8,11 +8,19 @@ services:
     startCommand: python scripts/render_start.py
     healthCheckPath: /health
     autoDeployTrigger: commit
+    disk:
+      name: carfast-documents
+      mountPath: /var/data
+      sizeGB: 10
     envVars:
       - key: APP_NAME
         value: Operational Hub Carfast
       - key: APP_ENV
         value: production
+      - key: DOCUMENT_ARCHIVE_ROOT
+        value: /var/data/carfast_documents
+      - key: DOCUMENT_INVOICE_INBOX_PATH
+        value: /var/data/carfast_documents/Frota/_POR_ASSOCIAR/_Entrada_Documental/Faturas
       - key: APP_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL

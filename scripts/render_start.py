@@ -3,6 +3,7 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 
@@ -112,9 +113,39 @@ def choose_database_url() -> str:
     raise RuntimeError(f"Nenhum candidato de base de dados válido. Último erro: {last_error}")
 
 
+def prepare_document_storage() -> None:
+    archive_root = os.environ.get("DOCUMENT_ARCHIVE_ROOT", "").strip()
+    if not archive_root and os.environ.get("APP_ENV", "").strip().lower() == "production":
+        archive_root = "/var/data/carfast_documents"
+        os.environ["DOCUMENT_ARCHIVE_ROOT"] = archive_root
+
+    if not archive_root:
+        print("[render_start] DOCUMENT_ARCHIVE_ROOT não definido; a app usará uploads/documents local.")
+        return
+
+    archive_path = Path(archive_root).expanduser()
+    invoice_inbox = os.environ.get("DOCUMENT_INVOICE_INBOX_PATH", "").strip()
+    if not invoice_inbox:
+        invoice_inbox = str(archive_path / "Frota" / "_POR_ASSOCIAR" / "_Entrada_Documental" / "Faturas")
+        os.environ["DOCUMENT_INVOICE_INBOX_PATH"] = invoice_inbox
+
+    for label, folder in (
+        ("DOCUMENT_ARCHIVE_ROOT", archive_path),
+        ("DOCUMENT_INVOICE_INBOX_PATH", Path(invoice_inbox).expanduser()),
+    ):
+        folder.mkdir(parents=True, exist_ok=True)
+        test_file = folder / ".carfast_write_test"
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink(missing_ok=True)
+        print(f"[render_start] {label} pronto: {folder}")
+
+
 def main() -> None:
     port = os.environ.get("PORT", "10000")
     database_url = choose_database_url()
+    env = os.environ.copy()
+    env["DATABASE_URL"] = database_url
+    prepare_document_storage()
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
 

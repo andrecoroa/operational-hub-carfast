@@ -439,7 +439,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert document.storage_path == report.original_link
     assert document.folder_path == (
         "Frota/BB-13-PT_VINBB13PT123456789/02_Documentacao_Tecnica/"
-        "Processos/OF-2026-00001/01_Diagnosticos"
+        "Processos/OFI-2026-000001/01_Diagnosticos"
     )
     document_links = db_session.scalars(
         select(DocumentLink).where(DocumentLink.document_id == document.id)

@@ -12039,7 +12039,7 @@ def local_document_storage_folder(
 def suggest_workshop_process_folder_path(process: WorkshopProcess, vehicle: Vehicle | None) -> str:
     reference_date = getattr(process, "opened_on", None) or getattr(process, "created_at", None) or date.today()
     reference_year = reference_date.year
-    process_ref = f"OF-{reference_year}-{process.id:05d}"
+    process_ref = f"OFI-{reference_year}-{process.id:06d}"
     archive_name = canonical_vehicle_archive_name(vehicle.plate if vehicle else "", vehicle.vin if vehicle else "")
     if archive_name != "_POR_ASSOCIAR":
         return f"Frota/{archive_name}/02_Documentacao_Tecnica/Processos/{process_ref}"

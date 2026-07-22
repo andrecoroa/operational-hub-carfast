@@ -114,30 +114,61 @@ def choose_database_url() -> str:
 
 
 def prepare_document_storage() -> None:
-    archive_root = os.environ.get("DOCUMENT_ARCHIVE_ROOT", "").strip()
-    if not archive_root and os.environ.get("APP_ENV", "").strip().lower() == "production":
-        archive_root = "/var/data/carfast_documents"
-        os.environ["DOCUMENT_ARCHIVE_ROOT"] = archive_root
+    project_archive = Path(__file__).resolve().parents[1] / "uploads" / "documents"
+    configured_root = os.environ.get("DOCUMENT_ARCHIVE_ROOT", "").strip()
+    configured_invoice_inbox = os.environ.get("DOCUMENT_INVOICE_INBOX_PATH", "").strip()
+    is_production = os.environ.get("APP_ENV", "").strip().lower() == "production"
+    require_persistent = os.environ.get("CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
-    if not archive_root:
-        print("[render_start] DOCUMENT_ARCHIVE_ROOT não definido; a app usará uploads/documents local.")
+    candidate_roots: list[tuple[Path, bool]] = []
+    if configured_root:
+        candidate_roots.append((Path(configured_root).expanduser(), True))
+    elif is_production:
+        candidate_roots.append((Path("/var/data/carfast_documents"), True))
+    candidate_roots.append((project_archive, False))
+
+    errors: list[str] = []
+    for archive_path, is_persistent_candidate in candidate_roots:
+        try:
+            _ensure_writable_folder(archive_path)
+            if configured_invoice_inbox and is_persistent_candidate:
+                invoice_inbox = Path(configured_invoice_inbox).expanduser()
+            else:
+                invoice_inbox = archive_path / "Frota" / "_POR_ASSOCIAR" / "_Entrada_Documental" / "Faturas"
+            _ensure_writable_folder(invoice_inbox)
+        except OSError as exc:
+            errors.append(f"{archive_path}: {exc}")
+            print(f"[render_start] storage indisponivel em {archive_path}: {exc}")
+            continue
+
+        if is_production and not is_persistent_candidate:
+            warning = (
+                "[render_start] AVISO: storage persistente indisponivel; "
+                f"a usar fallback nao persistente em {archive_path}. "
+                "Nao carregar documentacao definitiva ate confirmar o disco do Render."
+            )
+            if require_persistent:
+                raise RuntimeError(f"{warning} Erros anteriores: {' | '.join(errors)}")
+            print(warning)
+
+        os.environ["DOCUMENT_ARCHIVE_ROOT"] = str(archive_path)
+        os.environ["DOCUMENT_INVOICE_INBOX_PATH"] = str(invoice_inbox)
+        print(f"[render_start] DOCUMENT_ARCHIVE_ROOT pronto: {archive_path}")
+        print(f"[render_start] DOCUMENT_INVOICE_INBOX_PATH pronto: {invoice_inbox}")
         return
 
-    archive_path = Path(archive_root).expanduser()
-    invoice_inbox = os.environ.get("DOCUMENT_INVOICE_INBOX_PATH", "").strip()
-    if not invoice_inbox:
-        invoice_inbox = str(archive_path / "Frota" / "_POR_ASSOCIAR" / "_Entrada_Documental" / "Faturas")
-        os.environ["DOCUMENT_INVOICE_INBOX_PATH"] = invoice_inbox
+    raise RuntimeError(f"Nenhuma pasta de arquivo documental ficou escrevivel: {' | '.join(errors)}")
 
-    for label, folder in (
-        ("DOCUMENT_ARCHIVE_ROOT", archive_path),
-        ("DOCUMENT_INVOICE_INBOX_PATH", Path(invoice_inbox).expanduser()),
-    ):
-        folder.mkdir(parents=True, exist_ok=True)
-        test_file = folder / ".carfast_write_test"
-        test_file.write_text("ok", encoding="utf-8")
-        test_file.unlink(missing_ok=True)
-        print(f"[render_start] {label} pronto: {folder}")
+
+def _ensure_writable_folder(folder: Path) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    test_file = folder / ".carfast_write_test"
+    test_file.write_text("ok", encoding="utf-8")
+    test_file.unlink(missing_ok=True)
 
 
 def main() -> None:

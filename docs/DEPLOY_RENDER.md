@@ -60,6 +60,24 @@ os ficheiros podem ficar apenas no filesystem efemero do deploy. Em producao,
 confirmar no Render que o disco `carfast-documents` esta montado em `/var/data`
 antes das importacoes.
 
+No arranque, o `scripts/render_start.py` testa se `DOCUMENT_ARCHIVE_ROOT` e
+`DOCUMENT_INVOICE_INBOX_PATH` existem e sao escreviveis. Se `/var/data` ainda
+nao estiver montado/escrevivel, a app arranca com fallback local em
+`uploads/documents` e escreve um aviso forte nos logs. Esse fallback serve apenas
+para nao bloquear o deploy; nao deve ser usado para importacoes documentais
+definitivas. Quando quiseres obrigar a falha caso o storage persistente nao
+esteja pronto, definir:
+
+```text
+CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE=1
+```
+
+Para validar que esta tudo bem antes de importar documentos, procurar nos logs:
+
+```text
+[render_start] DOCUMENT_ARCHIVE_ROOT pronto: /var/data/carfast_documents
+```
+
 Nota: `preDeployCommand` nao e suportado em servicos free. Por isso, no plano
 free, as migracoes correm em `scripts/render_start.py` antes de iniciar o
 Uvicorn.

@@ -5985,6 +5985,7 @@ def clean_document_ocr_validation(
                             "invoice.ocr.extracted",
                             "invoice.ocr.reprocessed",
                             "ocr.validation.status",
+                            "ocr.template.status",
                         ]
                     )
                 )
@@ -6001,6 +6002,19 @@ def clean_document_ocr_validation(
         diagnostic_rows = []
         supplier_groups: dict[str, dict[str, Any]] = {}
         diagnostic_groups: dict[str, dict[str, Any]] = {}
+        template_status_by_key: dict[str, dict[str, Any]] = {}
+        for event_list in events_by_document.values():
+            for event in event_list:
+                if event.action != "ocr.template.status":
+                    continue
+                try:
+                    payload = json.loads(event.new_value or "{}")
+                except json.JSONDecodeError:
+                    continue
+                template_key = str(payload.get("template_key") or "")
+                if template_key and template_key not in template_status_by_key:
+                    template_status_by_key[template_key] = payload
+        template_groups: dict[str, dict[str, Any]] = {}
         for document in validation_documents:
             group = clean_vehicle_document_group(document)
             if clean_scope and clean_scope != group:
@@ -6022,6 +6036,7 @@ def clean_document_ocr_validation(
             if search and search not in haystack:
                 continue
             status_ctx = _ocr_validation_status(document, events_by_document.get(document.id, []))
+            template_ctx = _document_ocr_template_context(document)
             row = {
                 "id": document.id,
                 "document": document,
@@ -6033,7 +6048,38 @@ def clean_document_ocr_validation(
                 "status": status_ctx,
                 "supplier_name": document.supplier_name or "Por identificar",
                 "document_number": document.contract_number or document.reservation_number or str(document.id),
+                "template": template_ctx,
+                "template_key": template_ctx["key"],
             }
+            template_group = template_groups.setdefault(
+                template_ctx["key"],
+                {
+                    "key": template_ctx["key"],
+                    "label": template_ctx["label"],
+                    "type_label": template_ctx["type_label"],
+                    "main_group": group,
+                    "return_scope": group,
+                    "total": 0,
+                    "validated": 0,
+                    "errors": 0,
+                    "pending": 0,
+                    "document_ids": [],
+                    "examples": [],
+                    "vehicles": set(),
+                    "status_payload": template_status_by_key.get(template_ctx["key"], {}),
+                },
+            )
+            template_group["total"] += 1
+            template_group["document_ids"].append(document.id)
+            template_group["vehicles"].add(vehicle_label)
+            if len(template_group["examples"]) < 3:
+                template_group["examples"].append(row["title"])
+            if status_ctx["code"] == "validated":
+                template_group["validated"] += 1
+            elif status_ctx["code"] == "error":
+                template_group["errors"] += 1
+            else:
+                template_group["pending"] += 1
             if group == "invoices":
                 invoice_rows.append(row)
                 supplier_key = row["supplier_name"]
@@ -6073,6 +6119,14 @@ def clean_document_ocr_validation(
                     diag_group["errors"] += 1
                 else:
                     diag_group["pending"] += 1
+        prepared_template_groups = []
+        for group in template_groups.values():
+            status_ctx = _ocr_template_group_status(group)
+            group["status"] = status_ctx
+            group["vehicle_count"] = len(group["vehicles"])
+            group["vehicle_preview"] = ", ".join(sorted(group["vehicles"])[:3])
+            group["document_ids_value"] = ",".join(str(document_id) for document_id in group["document_ids"])
+            prepared_template_groups.append(group)
         return templates.TemplateResponse(
             request,
             "clean_document_ocr_validation.html",
@@ -6081,12 +6135,92 @@ def clean_document_ocr_validation(
                 "q": q or "",
                 "invoice_rows": invoice_rows,
                 "diagnostic_rows": diagnostic_rows,
+                "template_groups": sorted(
+                    prepared_template_groups,
+                    key=lambda item: (
+                        0 if item["status"]["code"] == "review_needed" else 1 if item["status"]["code"] == "pending" else 2,
+                        -item["pending"],
+                        item["label"],
+                    ),
+                ),
                 "supplier_groups": sorted(supplier_groups.values(), key=lambda item: (-item["pending"], item["name"])),
                 "diagnostic_groups": sorted(diagnostic_groups.values(), key=lambda item: (-item["pending"], item["name"])),
                 "invoice_total": len(invoice_rows),
                 "diagnostic_total": len(diagnostic_rows),
             },
         )
+
+
+@web_router.post("/v2-clean/documents/ocr-template-status")
+def clean_document_ocr_template_status(
+    request: Request,
+    template_key: str = Form(...),
+    document_ids: str = Form(""),
+    validation_status: str = Form(...),
+    note: str = Form(""),
+    return_url: str = Form("/v2-clean/documents/ocr-validation"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    clean_return_url = return_url.strip()
+    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/documents/ocr-validation"
+    clean_key = template_key.strip()
+    clean_status = validation_status.strip().lower()
+    if clean_status not in {"validated", "review_needed", "pending"}:
+        clean_status = "pending"
+    ids = []
+    for part in document_ids.split(","):
+        try:
+            ids.append(int(part.strip()))
+        except ValueError:
+            continue
+    user_id = get_web_user_id(request)
+    updated = 0
+    with SessionLocal() as db:
+        query = (
+            select(Document)
+            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(v2_clean_document_visible_condition())
+            .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
+        )
+        if ids:
+            query = query.where(Document.id.in_(ids))
+        documents = db.scalars(query).all()
+        for document in documents:
+            template_ctx = _document_ocr_template_context(document)
+            if template_ctx["key"] != clean_key:
+                continue
+            locked_statuses = {"classified", "ignored"} | set(V2_CLEAN_REMOVED_STATUSES)
+            if clean_status == "validated" and document.status not in locked_statuses:
+                document.status = "extracted" if clean_vehicle_document_group(document) == "invoices" else "received"
+            elif clean_status == "review_needed" and document.status not in locked_statuses:
+                document.status = "ocr_issue"
+            elif clean_status == "pending" and document.status not in locked_statuses:
+                document.status = "ocr_template_pending"
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="ocr.template.status",
+                    old_value=None,
+                    new_value=json.dumps(
+                        {
+                            "status": clean_status,
+                            "template_key": template_ctx["key"],
+                            "template_label": template_ctx["label"],
+                            "note": note.strip(),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    user_id=user_id,
+                )
+            )
+            updated += 1
+        db.commit()
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}template_status=1&template_count={updated}", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/{document_id}/ocr-validation-status")
@@ -6131,6 +6265,8 @@ def clean_document_ocr_validation_status(
                         "status": clean_status,
                         "error_code": error_code.strip(),
                         "note": note.strip(),
+                        "template_key": _document_ocr_template_context(document)["key"],
+                        "template_label": _document_ocr_template_context(document)["label"],
                     },
                     ensure_ascii=False,
                 ),
@@ -7022,8 +7158,87 @@ def _invoice_inbox_folder() -> Path | None:
     return folder
 
 
+def _document_ocr_token(value: str | None, fallback: str = "por_identificar") -> str:
+    normalized = normalize_identifier(value or "")
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+    return normalized[:90] or fallback
+
+
+def _invoice_template_supplier(document: Document) -> str:
+    supplier = (document.supplier_name or "").strip()
+    if supplier and supplier.lower() not in {"v2_clean_manual", "v2_clean_batch"}:
+        return supplier
+    text = " ".join(
+        part for part in [document.title, document.original_name, document.source_subject] if part
+    )
+    normalized = normalize_identifier(text)
+    known_suppliers = [
+        ("filinto", "Filinto Mota"),
+        ("baia", "Baia & Filho"),
+        ("eugenio", "Eugenio & Jorge Pereira"),
+        ("carfast", "CarFast"),
+        ("inspor", "Inspenordeste"),
+        ("inspenordeste", "Inspenordeste"),
+    ]
+    for token, label in known_suppliers:
+        if token in normalized:
+            return label
+    return supplier or "Fornecedor por identificar"
+
+
+def _document_ocr_template_context(document: Document) -> dict[str, str]:
+    group = clean_vehicle_document_group(document)
+    if group == "invoices":
+        supplier = _invoice_template_supplier(document)
+        key = f"invoices:{_document_ocr_token(supplier)}"
+        return {
+            "key": key,
+            "label": f"Fatura · {supplier}",
+            "type_label": "Fatura",
+            "supplier": supplier,
+            "machine": "",
+            "report_type": "",
+        }
+    machine, report_type = _diagnostic_machine_and_type(document)
+    key = f"technical_reports:{_document_ocr_token(machine)}:{_document_ocr_token(report_type)}"
+    return {
+        "key": key,
+        "label": f"Diagnóstico · {machine} · {report_type}",
+        "type_label": "Diagnóstico",
+        "supplier": "",
+        "machine": machine,
+        "report_type": report_type,
+    }
+
+
+def _ocr_template_group_status(group: dict[str, Any]) -> dict[str, str]:
+    payload = group.get("status_payload") or {}
+    status = str(payload.get("status") or "")
+    if status == "validated":
+        return {"code": "validated", "label": "Template validado", "tone": "ok"}
+    if status == "review_needed":
+        return {"code": "review_needed", "label": "Em afinação", "tone": "danger"}
+    if group.get("errors", 0):
+        return {"code": "review_needed", "label": "Erros OCR", "tone": "danger"}
+    return {"code": "pending", "label": "Template por validar", "tone": "warning"}
+
+
 def _ocr_validation_status(document: Document, events: list[DocumentEvent]) -> dict[str, str]:
-    validation_event = next((event for event in events if event.action == "ocr.validation.status"), None)
+    latest_status_event = next(
+        (event for event in events if event.action in {"ocr.validation.status", "ocr.template.status"}),
+        None,
+    )
+    if latest_status_event and latest_status_event.action == "ocr.template.status":
+        try:
+            payload = json.loads(latest_status_event.new_value or "{}")
+        except json.JSONDecodeError:
+            payload = {"status": latest_status_event.new_value or ""}
+        status = str(payload.get("status") or "")
+        if status == "validated" and document.status not in {"classified", "ignored"}:
+            return {"code": "pending", "label": "Template validado", "tone": "ok"}
+        if status == "review_needed":
+            return {"code": "error", "label": "Em afinação OCR", "tone": "danger"}
+    validation_event = latest_status_event if latest_status_event and latest_status_event.action == "ocr.validation.status" else None
     if validation_event:
         try:
             payload = json.loads(validation_event.new_value or "{}")

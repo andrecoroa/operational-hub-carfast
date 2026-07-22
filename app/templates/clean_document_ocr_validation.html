@@ -37,6 +37,10 @@
         <strong>{{ diagnostic_groups|length }}</strong>
         <span>Máquinas / tipos</span>
       </a>
+      <a class="clean-doc-kpi-card" href="#templates-ocr">
+        <strong>{{ template_groups|length }}</strong>
+        <span>Templates OCR</span>
+      </a>
     </section>
 
     <section class="clean-doc-filter-panel clean-card-wide">
@@ -58,6 +62,79 @@
     </section>
 
     <section class="clean-doc-context-grid clean-doc-ocr-layout">
+      <article class="clean-doc-structure-card clean-card-wide" id="templates-ocr">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Calibração OCR</p>
+            <h3>Templates por validar</h3>
+            <p>Valida-se o modelo de extração por fornecedor ou por máquina/tipo. Depois os documentos seguem para a validação normal da ficha da viatura.</p>
+          </div>
+          <strong class="clean-doc-pill">{{ template_groups|length }} templates</strong>
+        </div>
+        <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
+          <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-template-table">
+            <thead>
+              <tr>
+                <th>Template</th>
+                <th>Docs</th>
+                <th>Viaturas</th>
+                <th>Exemplos</th>
+                <th>Estado</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for group in template_groups %}
+                <tr>
+                  <td>
+                    <strong>{{ group.label }}</strong>
+                    <small>{{ group.type_label }}</small>
+                  </td>
+                  <td>
+                    <strong>{{ group.total }}</strong>
+                    <small>{{ group.pending }} pend. · {{ group.errors }} erros</small>
+                  </td>
+                  <td>
+                    <strong>{{ group.vehicle_count }}</strong>
+                    <small>{{ group.vehicle_preview or "Por associar" }}</small>
+                  </td>
+                  <td>
+                    {% for example in group.examples %}
+                      <span class="clean-doc-template-example">{{ example }}</span>
+                    {% endfor %}
+                  </td>
+                  <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ group.status.tone }}">{{ group.status.label }}</span></td>
+                  <td>
+                    <div class="clean-doc-inline-actions clean-doc-template-actions">
+                      <form method="post" action="/v2-clean/documents/ocr-template-status" class="clean-inline-form">
+                        <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation{% if scope %}?scope={{ scope }}{% endif %}">
+                        <input type="hidden" name="template_key" value="{{ group.key }}">
+                        <input type="hidden" name="document_ids" value="{{ group.document_ids_value }}">
+                        <input type="hidden" name="validation_status" value="validated">
+                        <button type="submit" class="button-link primary-link">Validar template</button>
+                      </form>
+                      <details class="clean-doc-ocr-error-menu">
+                        <summary>Afinar</summary>
+                        <form method="post" action="/v2-clean/documents/ocr-template-status">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation{% if scope %}?scope={{ scope }}{% endif %}">
+                          <input type="hidden" name="template_key" value="{{ group.key }}">
+                          <input type="hidden" name="document_ids" value="{{ group.document_ids_value }}">
+                          <input type="hidden" name="validation_status" value="review_needed">
+                          <input type="text" name="note" placeholder="O que falhou no OCR">
+                          <button type="submit">Registar</button>
+                        </form>
+                      </details>
+                    </div>
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="clean-empty-cell">Sem templates OCR para os filtros escolhidos.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
       <article class="clean-doc-structure-card clean-card-wide" id="fornecedores">
         <div class="table-heading flat-heading">
           <div>

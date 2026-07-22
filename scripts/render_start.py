@@ -119,7 +119,15 @@ def prepare_document_storage() -> None:
     configured_root = os.environ.get("DOCUMENT_ARCHIVE_ROOT", "").strip()
     configured_invoice_inbox = os.environ.get("DOCUMENT_INVOICE_INBOX_PATH", "").strip()
     is_production = os.environ.get("APP_ENV", "").strip().lower() == "production"
-    require_persistent = is_production or os.environ.get("CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE", "").strip().lower() in {
+    allow_ephemeral_bridge = os.environ.get("CARFAST_ALLOW_EPHEMERAL_DOCUMENT_STORAGE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    require_persistent = (is_production and not allow_ephemeral_bridge) or os.environ.get(
+        "CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE",
+        "",
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
@@ -131,6 +139,8 @@ def prepare_document_storage() -> None:
         candidate_roots.append((configured_path, not _is_render_ephemeral_path(configured_path, project_root)))
     elif is_production:
         candidate_roots.append((Path("/var/data/carfast_documents"), True))
+        if allow_ephemeral_bridge:
+            candidate_roots.append((project_archive, False))
     else:
         candidate_roots.append((project_archive, False))
 

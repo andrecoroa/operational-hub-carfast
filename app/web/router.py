@@ -6302,6 +6302,23 @@ def clean_document_detail(
             .where(DocumentEvent.document_id == document.id)
             .order_by(DocumentEvent.id.desc())
         ).all()
+        extraction_metadata: dict[str, Any] = {}
+        for event in reversed(events):
+            if event.action not in {
+                "invoice.ocr.extracted",
+                "invoice.ocr.reprocessed",
+                "invoice.lines.extracted",
+                "invoice.extracted",
+                "document.ocr.extracted",
+                "ocr.extracted",
+            }:
+                continue
+            try:
+                parsed_event = json.loads(event.new_value or "")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if isinstance(parsed_event, dict):
+                extraction_metadata.update(parsed_event)
         file_size = "-"
         if document.file_size:
             if document.file_size >= 1024 * 1024:
@@ -6320,6 +6337,7 @@ def clean_document_detail(
                 "events": events,
                 "file_size": file_size,
                 "document_date": clean_date(document.document_date.isoformat() if document.document_date else None),
+                "extraction_metadata": extraction_metadata,
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,

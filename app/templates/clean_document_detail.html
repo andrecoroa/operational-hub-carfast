@@ -98,6 +98,7 @@
           <div><span>Matrícula</span><strong>{{ document.plate or "-" }}</strong></div>
           <div><span>Fornecedor / origem</span><strong>{{ document.supplier_name or document.source or "-" }}</strong></div>
           <div><span>Nº documento</span><strong>{{ document.contract_number or document.reservation_number or document.id }}</strong></div>
+          <div><span>Folha de obra</span><strong>{{ extraction_metadata.work_order_reference or extraction_metadata.repair_order_reference or "-" }}</strong></div>
           <div><span>Processo oficina</span><strong>{% if document.workshop_process_id %}#{{ document.workshop_process_id }}{% else %}-{% endif %}</strong></div>
           <div><span>Canal</span><strong>{{ document.entry_channel or "-" }}</strong></div>
         </div>

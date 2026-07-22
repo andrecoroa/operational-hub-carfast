@@ -1511,6 +1511,7 @@ def _build_archive_rows(
                 "supplier_name": document.supplier_name or document.source or "-",
                 "km": clean_int(metadata.get("km")),
                 "total_with_vat": metadata.get("total_with_vat") or metadata.get("invoice_total_with_vat") or "",
+                "work_order_reference": metadata.get("work_order_reference") or metadata.get("repair_order_reference") or "",
                 "status": document.status,
                 "extraction_state": "validado" if tags or document.status == "classified" else "por_validar",
                 "comparison_state": "validado" if tags or document.status == "classified" else "por_validar",

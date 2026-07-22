@@ -200,6 +200,7 @@
                           <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
                           <div><dt>Data</dt><dd>{{ row.date_display or "-" }}</dd></div>
                           <div><dt>Nº documento</dt><dd>{{ row.external_reference or row.document_number or "-" }}</dd></div>
+                          <div><dt>Folha de obra</dt><dd>{{ row.work_order_reference or "-" }}</dd></div>
                           <div><dt>KM</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
                           {% if row.total_with_vat %}
                             <div><dt>Total c/ IVA</dt><dd>{{ row.total_with_vat }}</dd></div>

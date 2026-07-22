@@ -20,7 +20,7 @@ from app.models.documents import (
 )
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
-from app.web.router import _batch_document_vehicle, local_document_storage_folder
+from app.web.router import _batch_document_vehicle, _batch_invoice_payload, local_document_storage_folder
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -216,6 +216,64 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     assert payload["ocr_status"] == "extracted"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
+
+
+def test_batch_invoice_payload_extracts_vertical_filinto_invoice():
+    text = """
+Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550
+Doc.Nº
+Data
+Conta
+NIF
+Vendedor
+Marca :
+Cor :
+Modelo :
+Descrição
+Valor Total
+16002610
+26/07/2022
+227010
+509285970
+João Sousa
+Matrícula:
+AS-92-ET
+Chassis :
+VR7BBYHZBNE038504
+CIAL_FACVN 2 022 /
+FACTURA
+ORIGINAL
+NIF: 500 115 966
+R-Imposto Único de Circulação
+147,21
+E
+0,00
+147,21
+0,00
+Observações :
+Total do documento
+147,21
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "filinto.pdf", existing_text=text)
+
+    assert payload["document_number"] == "16002610"
+    assert payload["document_date"] == "2022-07-26"
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A."
+    assert payload["plate"] == "AS-92-ET"
+    assert payload["vin"] == "VR7BBYHZBNE038504"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "",
+            "description": "R-Imposto Único de Circulação",
+            "quantity": "",
+            "unit": "",
+            "unit_price": "",
+            "tax": "",
+            "amount": "147,21",
+            "service": "Por classificar",
+        }
+    ]
 
 
 def test_clean_document_reprocess_invoice_ocr_reports_empty_text(authenticated_client, db_session, tmp_path):

@@ -1261,20 +1261,32 @@ def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bo
     rows: list[dict[str, Any]] = []
     for index, item in enumerate(candidates, start=1):
         if isinstance(item, dict):
+            reference = item.get("reference") or item.get("referencia") or item.get("code") or item.get("codigo") or ""
             description = item.get("description") or item.get("descricao") or item.get("text") or item.get("linha") or ""
             quantity = item.get("quantity") or item.get("qty") or item.get("quantidade") or ""
-            amount = item.get("amount") or item.get("value") or item.get("valor") or ""
+            unit = item.get("unit") or item.get("un") or item.get("unidade") or ""
+            unit_price = item.get("unit_price") or item.get("preco_unitario") or item.get("preço_unitário") or ""
+            tax = item.get("tax") or item.get("iva") or item.get("vat") or ""
+            amount = item.get("amount") or item.get("total") or item.get("value") or item.get("valor") or ""
             service = item.get("service") or item.get("servico") or item.get("classification") or "Por classificar"
         else:
+            reference = ""
             description = str(item)
             quantity = ""
+            unit = ""
+            unit_price = ""
+            tax = ""
             amount = ""
             service = "Por classificar"
         rows.append(
             {
                 "index": index,
+                "reference": reference or "-",
                 "description": description or "-",
                 "quantity": quantity or "-",
+                "unit": unit or "-",
+                "unit_price": unit_price or "-",
+                "tax": tax or "-",
                 "amount": amount or "-",
                 "service": service or "Por classificar",
             }

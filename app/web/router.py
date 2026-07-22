@@ -4004,6 +4004,11 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
         ).resolve(),
         (APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)).resolve(),
     ]
+    allowed_roots = [
+        *root_candidates,
+        document_archive_root().resolve(),
+        (APP_PROJECT_ROOT / "uploads").resolve(),
+    ]
     possible_paths: list[Path] = []
     if raw_path:
         possible_paths.append(raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path)
@@ -4013,7 +4018,7 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
     for candidate in possible_paths:
         try:
             candidate_path = candidate.resolve()
-            if not any(candidate_path == root or root in candidate_path.parents for root in root_candidates):
+            if not any(candidate_path == root or root in candidate_path.parents for root in allowed_roots):
                 continue
         except (OSError, ValueError):
             continue
@@ -4023,7 +4028,10 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
 
     if resolved_path is None:
         return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&file_missing=1#danos", status_code=303)
-    return FileResponse(resolved_path, filename=original_name)
+    media_type = str(upload.get("content_type") or "") or None
+    response = FileResponse(resolved_path, media_type=media_type, filename=original_name)
+    response.headers["Content-Disposition"] = f'inline; filename="{original_name}"'
+    return response
 
 
 @web_router.get("/v2-clean/workshop/{process_id}/phase-uploads/{stored_name}")
@@ -6033,6 +6041,10 @@ def clean_document_reprocess_ocr(
         extracted_text = bool(str(payload.get("raw_text_preview") or "").strip())
         if payload.get("document_number") and not document.contract_number:
             document.contract_number = str(payload["document_number"])[:120]
+        if payload.get("supplier_name") and (
+            not document.supplier_name or document.supplier_name in {"v2_clean_manual", "v2_clean_batch"}
+        ):
+            document.supplier_name = str(payload["supplier_name"])[:255]
         if payload.get("document_date") and not document.document_date:
             try:
                 document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
@@ -6338,20 +6350,168 @@ def _batch_invoice_line_amount(text: str) -> str:
     return matches[-1] if matches else ""
 
 
+def _batch_invoice_supplier(text: str) -> str:
+    normalized = normalize_identifier(text)
+    known_suppliers = {
+        normalize_identifier("filinto mota sucessores"): "Filinto Mota Sucessores S.A.",
+        normalize_identifier("carfast rent a car"): "CarFast Rent-A-Car, Lda",
+        normalize_identifier("baia filho"): "Baia & Filho Lda",
+        normalize_identifier("eugenio jorge pereira"): "Eugenio & Jorge Pereira Lda",
+        normalize_identifier("inspenordeste"): "Inspenordeste Inspecoes Automoveis",
+    }
+    for token, label in known_suppliers.items():
+        if token in normalized:
+            return label
+    return ""
+
+
+def _batch_invoice_document_number(text: str) -> str:
+    lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    for index, simplified in enumerate(simplified_lines):
+        if simplified == "VALORTOTAL" and index + 1 < len(lines):
+            value = lines[index + 1].strip()
+            if re.fullmatch(r"\d{4,}", value):
+                return value[:120]
+    patterns = [
+        r"Doc\.?\s*N[ºo]\s+([A-Z0-9_./ -]*?\d{2,4}/\d{3,})",
+        r"(?:fatura|factura|invoice)\s*(?:n[ºo]\.?)?\s*([A-Z0-9][A-Z0-9./_-]{2,})",
+        r"(?:documento|n[ºo])\D{0,24}([A-Z0-9][A-Z0-9./_-]{2,})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            value = " ".join(match.group(1).split()).strip(" .:/_-")
+            simple_match = re.fullmatch(r"(?:FT|FAC|FAT)[-_/ ]?(\d+)", value, flags=re.IGNORECASE)
+            if simple_match:
+                value = simple_match.group(1)
+            return value[-120:]
+    return ""
+
+
+def _batch_invoice_vehicle_fields(text: str) -> dict[str, str]:
+    plate = ""
+    vin = ""
+    plate_match = re.search(r"Matr[ií]cula\s*:\s*([A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
+    if plate_match:
+        plate = plate_match.group(1).strip().upper()
+    vin_match = re.search(r"Chassis\s*:\s*([A-Z0-9]{12,24})", text, flags=re.IGNORECASE)
+    if vin_match:
+        vin = vin_match.group(1).strip().upper()
+    return {"plate": plate, "vin": vin}
+
+
+def _batch_invoice_table_lines(lines: list[str]) -> list[str]:
+    sections: list[str] = []
+    capturing = False
+    for line in lines:
+        simplified = normalize_identifier(line)
+        if "descricao valor total" in simplified or simplified == "descricao valor total":
+            capturing = True
+            continue
+        if capturing and (
+            simplified.startswith("observacoes")
+            or simplified.startswith("base de incidencia")
+            or simplified.startswith("sintese de pagamento")
+            or simplified.startswith("cod taxa")
+            or simplified.startswith("total liquido")
+        ):
+            break
+        if capturing:
+            sections.append(line)
+    return list(dict.fromkeys(sections))
+
+
+def _batch_invoice_vertical_lines(lines: list[str]) -> list[str]:
+    results: list[str] = []
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    start: int | None = None
+    for index, simplified in enumerate(simplified_lines):
+        if simplified.startswith("NIF:") and "500115966" in simplified:
+            start = index + 1
+            break
+    if start is None:
+        return []
+    for index in range(start, len(lines) - 1):
+        simplified = simplified_lines[index]
+        if (
+            not simplified
+            or simplified.startswith("OBSERVACOES")
+            or simplified.startswith("SINTESEDEPAGAMENTO")
+            or simplified.startswith("TOTALLIQUIDO")
+            or simplified.startswith("TOTALIVA")
+            or simplified.startswith("TOTALDODOCUMENTO")
+            or simplified.startswith("BASEDEINCIDENCIA")
+            or simplified.startswith("COD")
+            or simplified.startswith("TAXA")
+            or simplified.startswith("OSARTIGOS")
+            or simplified.startswith("PAGAMENTOPOR")
+        ):
+            if simplified.startswith("OBSERVACOES"):
+                break
+            continue
+        if re.fullmatch(r"[A-Z]", lines[index].strip(), flags=re.IGNORECASE):
+            continue
+        if _batch_invoice_line_amount(lines[index]):
+            continue
+        next_amount = _batch_invoice_line_amount(lines[index + 1])
+        if next_amount:
+            results.append(f"{lines[index]} {next_amount}")
+    return list(dict.fromkeys(results))
+
+
+def _batch_invoice_line_from_text(line: str) -> dict[str, Any] | None:
+    amount = _batch_invoice_line_amount(line)
+    if not amount:
+        return None
+    description = re.sub(r"\s+" + re.escape(amount) + r"\s*$", "", line).strip()
+    reference = ""
+    ref_match = re.match(r"^([A-Z]\s*[-/]?\s*[A-Z0-9._-]{1,24})\s+(.+)$", description)
+    if ref_match:
+        reference = " ".join(ref_match.group(1).split())
+        description = ref_match.group(2).strip()
+    if not description:
+        description = line.strip()
+    return {
+        "reference": reference,
+        "description": description[:240],
+        "quantity": "",
+        "unit": "",
+        "unit_price": "",
+        "tax": "",
+        "amount": amount,
+        "service": _batch_invoice_line_service(description),
+    }
+
+
 def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, existing_text: str = "") -> dict[str, Any]:
     text, source = _batch_invoice_text(file_content, suffix, existing_text)
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
-    invoice_lines = []
-    for line in unique_lines:
+    invoice_lines = [
+        parsed
+        for line in _batch_invoice_table_lines(unique_lines)
+        if (parsed := _batch_invoice_line_from_text(line))
+    ]
+    if not invoice_lines:
+        invoice_lines = [
+            parsed
+            for line in _batch_invoice_vertical_lines(unique_lines)
+            if (parsed := _batch_invoice_line_from_text(line))
+        ]
+    for line in unique_lines if not invoice_lines else []:
         service = _batch_invoice_line_service(line)
         amount = _batch_invoice_line_amount(line)
         if service == "Por classificar" and not amount:
             continue
         invoice_lines.append(
             {
+                "reference": "",
                 "description": line[:240],
                 "quantity": "",
+                "unit": "",
+                "unit_price": "",
+                "tax": "",
                 "amount": amount,
                 "service": service,
             }
@@ -6362,26 +6522,27 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         for line in unique_lines[:12]:
             invoice_lines.append(
                 {
+                    "reference": "",
                     "description": line[:240],
                     "quantity": "",
+                    "unit": "",
+                    "unit_price": "",
+                    "tax": "",
                     "amount": _batch_invoice_line_amount(line),
                     "service": _batch_invoice_line_service(line),
                 }
             )
-    document_number = ""
-    number_match = re.search(
-        r"(?:fatura|factura|invoice|documento|n[ºo])\D{0,24}([A-Z0-9][A-Z0-9./_-]{2,})",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if number_match:
-        document_number = number_match.group(1).strip(" .:/_-")
+    document_number = _batch_invoice_document_number(text)
     document_date = _batch_document_date(text)
+    vehicle_fields = _batch_invoice_vehicle_fields(text)
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",
+        "supplier_name": _batch_invoice_supplier(text),
+        "plate": vehicle_fields["plate"],
+        "vin": vehicle_fields["vin"],
         "raw_text_preview": text[:2500],
         "invoice_lines": invoice_lines,
         "original_name": filename,
@@ -6528,6 +6689,10 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                     )
                     if invoice_payload.get("document_number") and not document.contract_number:
                         document.contract_number = str(invoice_payload["document_number"])[:120]
+                    if invoice_payload.get("supplier_name") and (
+                        not document.supplier_name or document.supplier_name in {"v2_clean_manual", "v2_clean_batch"}
+                    ):
+                        document.supplier_name = str(invoice_payload["supplier_name"])[:255]
                     if invoice_payload.get("document_date") and not document.document_date:
                         try:
                             document.document_date = date.fromisoformat(str(invoice_payload["document_date"])[:10])

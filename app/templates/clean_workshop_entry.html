@@ -366,6 +366,7 @@
   <figure class="clean-image-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="clean-image-preview-title">
     <button class="clean-image-preview-close" type="button" data-preview-close>Fechar</button>
     <img id="clean-image-preview-img" alt="">
+    <p class="clean-image-preview-error" id="clean-image-preview-error" hidden>Não foi possível carregar a imagem guardada. O ficheiro pode ter sido movido ou removido do arquivo.</p>
     <figcaption id="clean-image-preview-title"></figcaption>
   </figure>
 </div>
@@ -445,17 +446,29 @@
   const imagePreviewModal = document.getElementById("clean-image-preview-modal");
   const imagePreviewImg = document.getElementById("clean-image-preview-img");
   const imagePreviewTitle = document.getElementById("clean-image-preview-title");
+  const imagePreviewError = document.getElementById("clean-image-preview-error");
   const closeImagePreview = () => {
     if (!imagePreviewModal || !imagePreviewImg) return;
     imagePreviewModal.hidden = true;
     imagePreviewImg.removeAttribute("src");
     imagePreviewImg.alt = "";
+    if (imagePreviewError) imagePreviewError.hidden = true;
     document.body.classList.remove("clean-modal-open");
   };
+  if (imagePreviewImg) {
+    imagePreviewImg.addEventListener("load", () => {
+      if (imagePreviewError) imagePreviewError.hidden = true;
+    });
+    imagePreviewImg.addEventListener("error", () => {
+      if (imagePreviewError) imagePreviewError.hidden = false;
+    });
+  }
   document.querySelectorAll("[data-preview-src]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
       if (!imagePreviewModal || !imagePreviewImg || !imagePreviewTitle) return;
       const title = button.dataset.previewTitle || "Imagem guardada";
+      if (imagePreviewError) imagePreviewError.hidden = true;
       imagePreviewImg.src = button.dataset.previewSrc || "";
       imagePreviewImg.alt = title;
       imagePreviewTitle.textContent = title;

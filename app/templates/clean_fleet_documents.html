@@ -223,9 +223,13 @@
                               <thead>
                                 <tr>
                                   <th>#</th>
+                                  <th>Referência</th>
                                   <th>Descrição OCR</th>
                                   <th>Qtd.</th>
-                                  <th>Valor</th>
+                                  <th>Un.</th>
+                                  <th>Preço unit.</th>
+                                  <th>IVA</th>
+                                  <th>Total</th>
                                   <th>Serviço</th>
                                 </tr>
                               </thead>
@@ -233,13 +237,17 @@
                                 {% for item in row.invoice_lines %}
                                   <tr>
                                     <td>{{ item.index }}</td>
+                                    <td>{{ item.reference }}</td>
                                     <td>{{ item.description }}</td>
                                     <td>{{ item.quantity }}</td>
+                                    <td>{{ item.unit }}</td>
+                                    <td>{{ item.unit_price }}</td>
+                                    <td>{{ item.tax }}</td>
                                     <td>{{ item.amount }}</td>
                                     <td>{{ item.service }}</td>
                                   </tr>
                                 {% else %}
-                                  <tr><td colspan="5">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas aparecem aqui para validação.</td></tr>
+                                  <tr><td colspan="9">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas aparecem aqui para validação.</td></tr>
                                 {% endfor %}
                               </tbody>
                             </table>

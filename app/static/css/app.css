@@ -9569,6 +9569,17 @@ button.clean-upload-preview-card {
   background: #f8fafc;
 }
 
+.clean-image-preview-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #f3c1b5;
+  border-radius: 8px;
+  background: #fff4f1;
+  color: #9f2f1d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .clean-image-preview-dialog figcaption {
   color: #0f2a5f;
   font-size: 13px;
@@ -15224,10 +15235,12 @@ button.clean-upload-preview-card {
 
 .clean-doc-expanded-detail-grid {
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(460px, 1.8fr) minmax(190px, 0.55fr);
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "document lines actions"
-    "classification classification classification";
+    "document"
+    "lines"
+    "classification"
+    "actions";
   gap: 12px;
   padding: 0 16px 16px;
 }
@@ -15242,6 +15255,18 @@ button.clean-upload-preview-card {
 
 .clean-doc-detail-actions {
   grid-area: actions;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+}
+
+.clean-doc-detail-actions h4 {
+  grid-column: 1 / -1;
+}
+
+.clean-doc-detail-actions form,
+.clean-doc-detail-actions .button-link,
+.clean-doc-detail-actions button {
+  width: 100%;
 }
 
 .clean-doc-line-classification-card {
@@ -15271,10 +15296,13 @@ button.clean-upload-preview-card {
   margin: 0;
 }
 
+.clean-doc-detail-document-card dl {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
 .clean-doc-detail-card dl div {
   display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 8px;
+  gap: 3px;
 }
 
 .clean-doc-detail-card dt {
@@ -15550,11 +15578,12 @@ button.clean-upload-preview-card {
   }
 
   .clean-doc-expanded-detail-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     grid-template-areas:
-      "document lines"
-      "classification classification"
-      "actions actions";
+      "document"
+      "lines"
+      "classification"
+      "actions";
   }
 
   .clean-doc-detail-actions {
@@ -15689,6 +15718,15 @@ button.clean-upload-preview-card {
   color: #667085;
   font-size: 10px;
   text-transform: uppercase;
+}
+
+.clean-doc-invoice-lines th:nth-child(3),
+.clean-doc-invoice-lines td:nth-child(3) {
+  min-width: 260px;
+}
+
+.clean-doc-invoice-lines td:not(:nth-child(3)) {
+  white-space: nowrap;
 }
 
 .clean-doc-invoice-lines tr:last-child td {

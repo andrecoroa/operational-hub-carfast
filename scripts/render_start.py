@@ -114,11 +114,12 @@ def choose_database_url() -> str:
 
 
 def prepare_document_storage() -> None:
-    project_archive = Path(__file__).resolve().parents[1] / "uploads" / "documents"
+    project_root = Path(__file__).resolve().parents[1]
+    project_archive = project_root / "uploads" / "documents"
     configured_root = os.environ.get("DOCUMENT_ARCHIVE_ROOT", "").strip()
     configured_invoice_inbox = os.environ.get("DOCUMENT_INVOICE_INBOX_PATH", "").strip()
     is_production = os.environ.get("APP_ENV", "").strip().lower() == "production"
-    require_persistent = os.environ.get("CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE", "").strip().lower() in {
+    require_persistent = is_production or os.environ.get("CARFAST_REQUIRE_PERSISTENT_DOCUMENT_STORAGE", "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -126,13 +127,22 @@ def prepare_document_storage() -> None:
 
     candidate_roots: list[tuple[Path, bool]] = []
     if configured_root:
-        candidate_roots.append((Path(configured_root).expanduser(), True))
+        configured_path = Path(configured_root).expanduser()
+        candidate_roots.append((configured_path, not _is_render_ephemeral_path(configured_path, project_root)))
     elif is_production:
         candidate_roots.append((Path("/var/data/carfast_documents"), True))
-    candidate_roots.append((project_archive, False))
+    else:
+        candidate_roots.append((project_archive, False))
 
     errors: list[str] = []
     for archive_path, is_persistent_candidate in candidate_roots:
+        if require_persistent and not is_persistent_candidate:
+            errors.append(f"{archive_path}: caminho nao persistente bloqueado")
+            print(
+                "[render_start] storage documental bloqueado: "
+                f"{archive_path} fica dentro do deploy e pode perder ficheiros."
+            )
+            continue
         try:
             _ensure_writable_folder(archive_path)
             if configured_invoice_inbox and is_persistent_candidate:
@@ -162,6 +172,16 @@ def prepare_document_storage() -> None:
         return
 
     raise RuntimeError(f"Nenhuma pasta de arquivo documental ficou escrevivel: {' | '.join(errors)}")
+
+
+def _is_render_ephemeral_path(path: Path, project_root: Path) -> bool:
+    absolute_path = path if path.is_absolute() else project_root / path
+    try:
+        if absolute_path.resolve().is_relative_to(project_root.resolve()):
+            return True
+    except OSError:
+        return False
+    return str(absolute_path).replace("\\", "/").startswith("/opt/render/project/")
 
 
 def _ensure_writable_folder(folder: Path) -> None:

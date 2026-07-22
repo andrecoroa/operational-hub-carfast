@@ -276,6 +276,88 @@ Total do documento
     ]
 
 
+def test_batch_invoice_payload_extracts_eugenio_sage_invoice_with_work_order():
+    text = """
+Fatura FAC 020/17027
+Data Emissão 26/03/2024
+NIF: PT510464157
+V/VIATURA AS-65-ZG 63163,00
+EQUILIBRAGEM DE JANTES
+1
+5,6911 EUR
+5,69 EUR
+REPARAÇAO DE FURO COMERCIAL
+1
+8,1301 EUR
+8,13 EUR
+REQ. 1136
+Observações:
+© Sage licenciado a: EUGENIO & JORGE PEREIRA LDA /510464157
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura_020_17027.pdf", existing_text=text)
+
+    assert payload["document_number"] == "FAC 020/17027"
+    assert payload["document_date"] == "2024-03-26"
+    assert payload["supplier_name"] == "Eugenio & Jorge Pereira Lda"
+    assert payload["supplier_nif"] == "510464157"
+    assert payload["plate"] == "AS-65-ZG"
+    assert payload["km"] == "63163"
+    assert payload["work_order_reference"] == "1136"
+    assert payload["ocr_template"] == "eugenio_jorge_sage_fac"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "",
+            "description": "EQUILIBRAGEM DE JANTES",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "",
+            "tax": "",
+            "amount": "5,69",
+            "service": "Pneus",
+        },
+        {
+            "reference": "",
+            "description": "REPARAÇAO DE FURO COMERCIAL",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "",
+            "tax": "",
+            "amount": "8,13",
+            "service": "Pneus",
+        },
+    ]
+
+
+def test_batch_invoice_payload_uses_work_order_when_eugenio_vehicle_block_is_missing():
+    text = """
+Factura FAC MT25/89
+Data Emissão 23/01/2025
+NIF: PT510464157
+V/VIATURA 0 TRANSFERÊNCIA PARA OFICINA
+PNEU 215/65R16C BESTDRIVE
+2
+70,0000 EUR
+140,00 EUR
+EQUILIBRAGEM DE JANTES
+2
+5,6911 EUR
+11,38 EUR
+REQ. Nº 2300
+Observações:
+© Sage licenciado a: EUGENIO & JORGE PEREIRA LDA /510464157
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura_MT25_89.pdf", existing_text=text)
+
+    assert payload["document_number"] == "FAC MT25/89"
+    assert payload["document_date"] == "2025-01-23"
+    assert payload["supplier_nif"] == "510464157"
+    assert payload["plate"] == ""
+    assert payload["work_order_reference"] == "2300"
+    assert [line["service"] for line in payload["invoice_lines"]] == ["Pneus", "Pneus"]
+
+
 def test_clean_document_reprocess_invoice_ocr_reports_empty_text(authenticated_client, db_session, tmp_path):
     vehicle = _create_vehicle(db_session)
     invoice_path = tmp_path / "fatura_scanner.jpg"

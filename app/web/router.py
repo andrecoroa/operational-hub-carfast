@@ -6800,14 +6800,21 @@ def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "
 
 
 def _batch_invoice_line_service(text: str) -> str:
-    normalized = normalize_identifier(text)
+    normalized = (normalize_identifier(text) or "").lower()
     if "ipo" in normalized or "inspecao" in normalized:
         return "IPO"
     if "calco" in normalized or "pastilha" in normalized:
         return "Calços"
     if "disco" in normalized:
         return "Discos"
-    if "pneu" in normalized:
+    if (
+        "pneu" in normalized
+        or "furo" in normalized
+        or "equilibr" in normalized
+        or "jante" in normalized
+        or "bestdrive" in normalized
+        or re.search(r"\b\d{3}/\d{2}R\d{2}\b", text, flags=re.IGNORECASE)
+    ):
         return "Pneus"
     if "oleo" in normalized or "filtro" in normalized or "revisao" in normalized or "manutencao" in normalized:
         return "Manutenção"
@@ -6820,7 +6827,10 @@ def _batch_invoice_line_amount(text: str) -> str:
 
 
 def _batch_invoice_supplier(text: str) -> str:
-    normalized = normalize_identifier(text)
+    normalized = normalize_identifier(text) or ""
+    supplier_nif = _batch_invoice_supplier_nif(text)
+    if supplier_nif == "510464157":
+        return "Eugenio & Jorge Pereira Lda"
     known_suppliers = {
         normalize_identifier("filinto mota sucessores"): "Filinto Mota Sucessores S.A.",
         normalize_identifier("carfast rent a car"): "CarFast Rent-A-Car, Lda",
@@ -6834,6 +6844,19 @@ def _batch_invoice_supplier(text: str) -> str:
     return ""
 
 
+def _batch_invoice_supplier_nif(text: str) -> str:
+    patterns = [
+        r"licenciado\s+a:.*?/(\d{9})",
+        r"\bNIF\s*:\s*PT\s*(\d{9})",
+        r"\bNIF\s*n[ºo]\s*:\s*(\d{9})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1)
+    return ""
+
+
 def _batch_invoice_document_number(text: str) -> str:
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     simplified_lines = [normalize_identifier(line) for line in lines]
@@ -6843,6 +6866,9 @@ def _batch_invoice_document_number(text: str) -> str:
             if re.fullmatch(r"\d{4,}", value):
                 return value[:120]
     patterns = [
+        r"\bFatura\s+(FAC\s+[A-Z0-9]+/\d+)",
+        r"\bFactura\s+(FAC\s+[A-Z0-9]+/\d+)",
+        r"\b(FAC\s+[A-Z0-9]+/\d+)\b",
         r"Doc\.?\s*N[ºo]\s+([A-Z0-9_./ -]*?\d{2,4}/\d{3,})",
         r"(?:fatura|factura|invoice)\s*(?:n[ºo]\.?)?\s*([A-Z0-9][A-Z0-9./_-]{2,})",
         r"(?:documento|n[ºo])\D{0,24}([A-Z0-9][A-Z0-9./_-]{2,})",
@@ -6861,13 +6887,128 @@ def _batch_invoice_document_number(text: str) -> str:
 def _batch_invoice_vehicle_fields(text: str) -> dict[str, str]:
     plate = ""
     vin = ""
+    km = ""
     plate_match = re.search(r"Matr[ií]cula\s*:\s*([A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
     if plate_match:
         plate = plate_match.group(1).strip().upper()
+    if not plate:
+        plate_match = re.search(r"\b([A-Z]{2}-\d{2}-[A-Z]{2}|\d{2}-[A-Z]{2}-\d{2})\b", text, flags=re.IGNORECASE)
+        if plate_match:
+            plate = plate_match.group(1).strip().upper()
     vin_match = re.search(r"Chassis\s*:\s*([A-Z0-9]{12,24})", text, flags=re.IGNORECASE)
     if vin_match:
         vin = vin_match.group(1).strip().upper()
-    return {"plate": plate, "vin": vin}
+    if plate:
+        km_match = re.search(rf"{re.escape(plate)}\s+(\d{{1,6}}(?:[,.]\d{{2}})?)", text, flags=re.IGNORECASE)
+        if km_match:
+            km = km_match.group(1).replace(",", ".").split(".")[0]
+    return {"plate": plate, "vin": vin, "km": km}
+
+
+def _batch_invoice_work_order_reference(text: str) -> str:
+    match = re.search(r"\bREQ\.?\s*(?:N[ºo]\s*)?(\d{1,8})\b", text, flags=re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _batch_invoice_is_eugenio_template(text: str) -> bool:
+    normalized = (normalize_identifier(text) or "").lower()
+    return _batch_invoice_supplier_nif(text) == "510464157" or (
+        "eugenio" in normalized and "jorge" in normalized and "fac" in normalized
+    )
+
+
+def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
+    start: int | None = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if line.strip().upper().startswith("V/VIATURA") or normalize_identifier(line).startswith("VVIATURA"):
+            start = index + 1
+            break
+    if start is None:
+        return []
+    for index in range(start, len(lines)):
+        simplified = normalize_identifier(lines[index])
+        if simplified.startswith("REQ") or simplified.startswith("OBSERVACOES"):
+            end = index
+            break
+
+    candidates = lines[start:end]
+    results: list[dict[str, Any]] = []
+    skip_tokens = (
+        "CITROEN",
+        "PEUGEOT",
+        "RENAULT",
+        "MERCEDES",
+        "FIAT",
+        "TOTAL ILIQUIDO",
+        "TOTAL LIQUIDO",
+        "MERCADORIA",
+        "SERVICOS",
+    )
+    money_pattern = re.compile(r"(?<!\d)(\d{1,3}(?:[ .]\d{3})*(?:,\d{2,4})|\d+,\d{2,4})\s*EUR\b", re.IGNORECASE)
+    percent_pattern = re.compile(r"\b\d{1,2},\d{2}%$")
+    for index, line in enumerate(candidates):
+        stripped = line.strip()
+        simplified = normalize_identifier(stripped)
+        if not stripped or any(token in stripped.upper() for token in skip_tokens):
+            continue
+        if money_pattern.search(stripped) or percent_pattern.search(stripped):
+            continue
+        if re.fullmatch(r"[0-9.,/%\s-]+", stripped):
+            continue
+        if re.match(r"^\d{2}\s*db\b", stripped, flags=re.IGNORECASE):
+            continue
+        if len(stripped) < 4:
+            continue
+
+        lookahead_lines: list[str] = []
+        for next_line in candidates[index + 1 : index + 8]:
+            next_stripped = next_line.strip()
+            next_simplified = normalize_identifier(next_stripped)
+            if not next_stripped:
+                continue
+            if re.fullmatch(r"[A-Z]", next_stripped, flags=re.IGNORECASE):
+                continue
+            if money_pattern.search(next_stripped) or percent_pattern.search(next_stripped):
+                lookahead_lines.append(next_stripped)
+                continue
+            if re.match(r"^\d{2}\s*db\b", next_stripped, flags=re.IGNORECASE):
+                lookahead_lines.append(next_stripped)
+                continue
+            if re.fullmatch(r"\d+(?:,\d{1,2})?", next_stripped):
+                lookahead_lines.append(next_stripped)
+                continue
+            if next_simplified and not any(token in next_stripped.upper() for token in skip_tokens):
+                break
+        window = " ".join(lookahead_lines)
+        money_values = money_pattern.findall(window)
+        amount = ""
+        for value in reversed(money_values):
+            if not value.startswith("0,000"):
+                amount = value if len(value.rsplit(",", 1)[-1]) == 2 else value.rsplit(",", 1)[0] + "," + value.rsplit(",", 1)[-1][:2]
+                break
+        quantity = ""
+        for lookahead in candidates[index + 1 : index + 4]:
+            if re.fullmatch(r"\d+(?:,\d{1,2})?", lookahead.strip()):
+                quantity = lookahead.strip()
+                break
+            db_quantity = re.search(r"\b(\d+(?:,\d{1,2})?)\b$", lookahead.strip())
+            if re.match(r"^\d{2}\s*db\b", lookahead.strip(), flags=re.IGNORECASE) and db_quantity:
+                quantity = db_quantity.group(1)
+                break
+        results.append(
+            {
+                "reference": "",
+                "description": stripped[:240],
+                "quantity": quantity,
+                "unit": "",
+                "unit_price": "",
+                "tax": "",
+                "amount": amount,
+                "service": _batch_invoice_line_service(stripped),
+            }
+        )
+    return results
 
 
 def _batch_invoice_table_lines(lines: list[str]) -> list[str]:
@@ -6957,11 +7098,13 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     text, source = _batch_invoice_text(file_content, suffix, existing_text)
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
-    invoice_lines = [
-        parsed
-        for line in _batch_invoice_table_lines(unique_lines)
-        if (parsed := _batch_invoice_line_from_text(line))
-    ]
+    invoice_lines = _batch_invoice_eugenio_lines(lines) if _batch_invoice_is_eugenio_template(text) else []
+    if not invoice_lines:
+        invoice_lines = [
+            parsed
+            for line in _batch_invoice_table_lines(unique_lines)
+            if (parsed := _batch_invoice_line_from_text(line))
+        ]
     if not invoice_lines:
         invoice_lines = [
             parsed
@@ -7004,14 +7147,20 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     document_number = _batch_invoice_document_number(text)
     document_date = _batch_document_date(text)
     vehicle_fields = _batch_invoice_vehicle_fields(text)
+    supplier_nif = _batch_invoice_supplier_nif(text)
+    work_order_reference = _batch_invoice_work_order_reference(text)
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",
         "supplier_name": _batch_invoice_supplier(text),
+        "supplier_nif": supplier_nif,
         "plate": vehicle_fields["plate"],
         "vin": vehicle_fields["vin"],
+        "km": vehicle_fields.get("km", ""),
+        "work_order_reference": work_order_reference,
+        "ocr_template": "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else "",
         "raw_text_preview": text[:2500],
         "invoice_lines": invoice_lines,
         "original_name": filename,

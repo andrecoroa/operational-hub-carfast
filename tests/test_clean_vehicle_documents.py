@@ -292,6 +292,10 @@ REPARAÇAO DE FURO COMERCIAL
 8,13 EUR
 REQ. 1136
 Observações:
+11,23 EUR
+2,58 EUR
+13,81 EUR
+Data/Hora Carga
 © Sage licenciado a: EUGENIO & JORGE PEREIRA LDA /510464157
 """
 
@@ -303,6 +307,7 @@ Observações:
     assert payload["supplier_nif"] == "510464157"
     assert payload["plate"] == "AS-65-ZG"
     assert payload["km"] == "63163"
+    assert payload["total_with_vat"] == "13,81"
     assert payload["work_order_reference"] == "1136"
     assert payload["ocr_template"] == "eugenio_jorge_sage_fac"
     assert payload["invoice_lines"] == [
@@ -311,20 +316,22 @@ Observações:
             "description": "EQUILIBRAGEM DE JANTES",
             "quantity": "1",
             "unit": "",
-            "unit_price": "",
+            "unit_price": "5,6911",
             "tax": "",
             "amount": "5,69",
             "service": "Pneus",
+            "service_detail": "",
         },
         {
             "reference": "",
             "description": "REPARAÇAO DE FURO COMERCIAL",
             "quantity": "1",
             "unit": "",
-            "unit_price": "",
+            "unit_price": "8,1301",
             "tax": "",
             "amount": "8,13",
             "service": "Pneus",
+            "service_detail": "Furo",
         },
     ]
 

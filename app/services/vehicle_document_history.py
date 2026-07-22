@@ -197,7 +197,7 @@ DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS: dict[str, list[tuple[str, str]]] = {
     "maintenance": [("revision", "Revisão"), ("degradation", "Degradação"), ("undefined", "Por definir")],
     "pads": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
     "discs": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
-    "tyres": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
+    "tyres": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR"), ("puncture", "Furo")],
     "ipo": [("yes", "IPO"), ("undefined", "Por definir")],
     "fault": [("free_text", "Texto livre")],
     "services": [("telecharge", "Telecarregamento"), ("other", "Outro")],
@@ -1192,7 +1192,9 @@ def _service_matrix_from_text_and_tags(
         matrix["pads"] = "Por definir"
     if matrix["discs"] == "-" and "disco" in normalized:
         matrix["discs"] = "Por definir"
-    if matrix["tyres"] == "-" and ("pneu" in normalized or "roda" in normalized):
+    if matrix["tyres"] == "-" and "furo" in normalized:
+        matrix["tyres"] = "Furo"
+    elif matrix["tyres"] == "-" and ("pneu" in normalized or "roda" in normalized):
         matrix["tyres"] = "Por definir"
     if matrix["ipo"] == "-" and ("ipo" in normalized or "inspec" in normalized):
         matrix["ipo"] = "IPO"
@@ -1284,6 +1286,7 @@ def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bo
             tax = item.get("tax") or item.get("iva") or item.get("vat") or ""
             amount = item.get("amount") or item.get("total") or item.get("value") or item.get("valor") or ""
             service = item.get("service") or item.get("servico") or item.get("classification") or "Por classificar"
+            service_detail = item.get("service_detail") or item.get("detail") or item.get("detalhe") or ""
         else:
             reference = ""
             description = str(item)
@@ -1293,6 +1296,7 @@ def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bo
             tax = ""
             amount = ""
             service = "Por classificar"
+            service_detail = ""
         rows.append(
             {
                 "index": index,
@@ -1303,7 +1307,7 @@ def _invoice_line_items(metadata: dict[str, Any] | list | str | int | float | bo
                 "unit_price": unit_price or "-",
                 "tax": tax or "-",
                 "amount": amount or "-",
-                "service": service or "Por classificar",
+                "service": f"{service}: {service_detail}" if service_detail and service not in ("", "Por classificar") else (service or "Por classificar"),
             }
         )
     return rows
@@ -1485,6 +1489,7 @@ def _build_archive_rows(
     for document in documents:
         if is_structured_import_source(document):
             continue
+        metadata = extraction_metadata.get(document.id) or {}
         archive_group = _document_archive_group(document)
         tags = document_tags.get(document.id, [])
         service_text = " ".join(
@@ -1504,6 +1509,8 @@ def _build_archive_rows(
                 "date": document.document_date,
                 "date_display": _display_date(document.document_date),
                 "supplier_name": document.supplier_name or document.source or "-",
+                "km": clean_int(metadata.get("km")),
+                "total_with_vat": metadata.get("total_with_vat") or metadata.get("invoice_total_with_vat") or "",
                 "status": document.status,
                 "extraction_state": "validado" if tags or document.status == "classified" else "por_validar",
                 "comparison_state": "validado" if tags or document.status == "classified" else "por_validar",
@@ -1515,7 +1522,7 @@ def _build_archive_rows(
                 "tags": [_format_tag(tag) for tag in tags],
                 "service_matrix": service_matrix,
                 "service_matrix_codes": _service_matrix_codes_from_tags(tags),
-                "invoice_lines": _invoice_line_items(extraction_metadata.get(document.id)),
+                "invoice_lines": _invoice_line_items(metadata),
                 "work_order_lines": [],
                 "service_summary": _service_summary(service_matrix),
                 "custom_services": _custom_service_values(tags),
@@ -1560,6 +1567,7 @@ def _document_extraction_metadata(db: Session, document_ids: list[int]) -> dict[
         return {}
     supported_actions = {
         "invoice.ocr.extracted",
+        "invoice.ocr.reprocessed",
         "invoice.lines.extracted",
         "invoice.extracted",
         "document.ocr.extracted",

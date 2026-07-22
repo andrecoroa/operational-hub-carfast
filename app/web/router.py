@@ -6826,6 +6826,22 @@ def _batch_invoice_line_amount(text: str) -> str:
     return matches[-1] if matches else ""
 
 
+def _batch_invoice_money_to_cents(value: str) -> int:
+    normalized = value.replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        return int(round(float(normalized) * 100))
+    except ValueError:
+        return 0
+
+
+def _batch_invoice_format_money(value: str) -> str:
+    normalized = value.replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        return f"{float(normalized):.2f}".replace(".", ",")
+    except ValueError:
+        return value
+
+
 def _batch_invoice_supplier(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     supplier_nif = _batch_invoice_supplier_nif(text)
@@ -6917,6 +6933,24 @@ def _batch_invoice_is_eugenio_template(text: str) -> bool:
     )
 
 
+def _batch_invoice_total_with_vat(text: str) -> str:
+    lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
+    footer_lines: list[str] = []
+    capturing = False
+    for line in lines:
+        simplified = normalize_identifier(line)
+        if simplified.startswith("OBSERVACOES") or simplified.startswith("SINTESDEPAGAMENTO"):
+            capturing = True
+        if capturing:
+            if simplified.startswith("DATAHORACARGA"):
+                break
+            footer_lines.append(line)
+    source = "\n".join(footer_lines or lines[-35:])
+    values = re.findall(r"(?<!\d)(\d{1,3}(?:[ .]\d{3})*(?:,\d{2})|\d+,\d{2})\s*EUR\b", source, flags=re.IGNORECASE)
+    meaningful = [value for value in values if _batch_invoice_money_to_cents(value) > 0]
+    return _batch_invoice_format_money(meaningful[-1]) if meaningful else ""
+
+
 def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
     start: int | None = None
     end = len(lines)
@@ -6982,10 +7016,15 @@ def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
                 break
         window = " ".join(lookahead_lines)
         money_values = money_pattern.findall(window)
+        unit_price = ""
+        for value in money_values:
+            if _batch_invoice_money_to_cents(value) > 0:
+                unit_price = value
+                break
         amount = ""
         for value in reversed(money_values):
-            if not value.startswith("0,000"):
-                amount = value if len(value.rsplit(",", 1)[-1]) == 2 else value.rsplit(",", 1)[0] + "," + value.rsplit(",", 1)[-1][:2]
+            if _batch_invoice_money_to_cents(value) > 0:
+                amount = _batch_invoice_format_money(value)
                 break
         quantity = ""
         for lookahead in candidates[index + 1 : index + 4]:
@@ -7002,10 +7041,11 @@ def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "description": stripped[:240],
                 "quantity": quantity,
                 "unit": "",
-                "unit_price": "",
+                "unit_price": unit_price,
                 "tax": "",
                 "amount": amount,
                 "service": _batch_invoice_line_service(stripped),
+                "service_detail": "Furo" if "furo" in simplified.lower() else "",
             }
         )
     return results
@@ -7159,6 +7199,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "plate": vehicle_fields["plate"],
         "vin": vehicle_fields["vin"],
         "km": vehicle_fields.get("km", ""),
+        "total_with_vat": _batch_invoice_total_with_vat(text),
         "work_order_reference": work_order_reference,
         "ocr_template": "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else "",
         "raw_text_preview": text[:2500],

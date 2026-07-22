@@ -16605,11 +16605,19 @@ a.metric:hover {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.clean-workshop-action-strip {
+  padding: 14px 18px;
+}
+
 .clean-context-action-group {
   align-items: center;
   display: grid;
   gap: 14px;
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.clean-workshop-action-strip .clean-context-action-group {
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1.5fr);
 }
 
 .clean-context-action-group + .clean-context-action-group {
@@ -16641,6 +16649,10 @@ a.metric:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.clean-workshop-action-strip .clean-context-action-row {
+  justify-content: flex-end;
 }
 
 .clean-context-action-row .button-link,
@@ -16709,6 +16721,50 @@ a.metric:hover {
 
 .clean-vehicle-header-card-process {
   gap: 16px;
+}
+
+.clean-vehicle-header-card-workshop {
+  gap: 10px;
+  padding: 16px 18px 18px;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-header-main {
+  align-items: center;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.55fr) minmax(0, 1.45fr);
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-identity {
+  gap: 3px;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-identity strong {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-identity span {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-quick-facts-unified {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  gap: 0;
+  overflow: hidden;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-quick-facts-unified span {
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  border-radius: 0;
+  min-height: 46px;
+  padding: 8px 10px;
+}
+
+.clean-vehicle-header-card-workshop .clean-vehicle-quick-facts-unified span:last-child {
+  border-right: 0;
 }
 
 .clean-vehicle-header-card-docs-compact {

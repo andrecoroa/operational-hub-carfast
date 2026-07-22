@@ -30,11 +30,11 @@
       </div>
     </header>
 
-    <section class="clean-context-action-shell clean-card-wide">
+    <section class="clean-context-action-shell clean-context-action-shell-single clean-workshop-action-strip clean-card-wide">
       <article class="clean-context-action-group">
         <div class="clean-context-action-copy">
-          <strong>Ações da fase</strong>
-          <span>Operações rápidas ligadas a este processo e à documentação de suporte.</span>
+          <strong>Ações rápidas</strong>
+          <span>Operações rápidas ligadas a este processo, à viatura e à documentação de suporte.</span>
         </div>
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
@@ -51,14 +51,6 @@
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}
-        </div>
-      </article>
-      <article class="clean-context-action-group">
-        <div class="clean-context-action-copy">
-          <strong>Acessos rápidos</strong>
-          <span>Atalhos de consulta do processo, viatura e suporte documental.</span>
-        </div>
-        <div class="clean-context-action-row">
           <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
           <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
           <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
@@ -66,15 +58,16 @@
       </article>
     </section>
 
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-workshop">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <p class="eyebrow">Viatura em processo</p>
           <strong>{{ vehicle_context.plate }}</strong>
           <span>{{ vehicle_context.vehicle }}</span>
-          <em>Fornecedor: {{ vehicle_context.purchase_supplier }}</em>
         </div>
         <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+          <span><b>Unit</b><em>{{ vehicle_context.unit or "-" }}</em></span>
+          <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
           <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
           <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
           <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>

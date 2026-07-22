@@ -13,6 +13,7 @@
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
+        <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Validação OCR</a>
         <a class="button-link primary-link" href="#imports">Importações</a>
       </div>
     </header>
@@ -191,6 +192,34 @@
           <button type="submit">Importar documentos</button>
         </form>
         <p class="clean-doc-helper">Aceita PDF e imagens. O ZIP original não é movido nem apagado.</p>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide clean-doc-batch-import-card">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Faturas por classificar</p>
+            <h3>Importar da pasta configurada</h3>
+            <p>Útil em local ou servidor quando a pasta existe nesse ambiente. Em Render, usa ZIP salvo/carregado pela aplicação.</p>
+          </div>
+          <strong class="clean-doc-pill">
+            {% if invoice_inbox_state.available %}
+              {{ invoice_inbox_state.file_count }} ficheiros
+            {% elif invoice_inbox_state.configured %}
+              Inacessível
+            {% else %}
+              Por configurar
+            {% endif %}
+          </strong>
+        </div>
+        {% if invoice_inbox_state.configured %}
+          <p class="clean-doc-helper">{{ invoice_inbox_state.path }}</p>
+        {% else %}
+          <p class="clean-doc-helper">Configurar com DOCUMENT_INVOICE_INBOX_PATH.</p>
+        {% endif %}
+        <form method="post" action="/v2-clean/documents/import/invoice-folder" class="clean-doc-batch-import-form">
+          <button type="submit" {% if not invoice_inbox_state.available %}disabled{% endif %}>Importar pasta</button>
+          <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Ver faturas</a>
+        </form>
       </article>
 
       <article class="clean-doc-structure-card clean-card-wide clean-doc-import-history-card">

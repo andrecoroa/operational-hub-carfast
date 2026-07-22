@@ -5945,6 +5945,200 @@ def clean_documents_create(
     )
 
 
+@web_router.get("/v2-clean/documents/ocr-validation", response_class=HTMLResponse)
+def clean_document_ocr_validation(
+    request: Request,
+    scope: str = "",
+    q: str | None = None,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    search = (q or "").strip().lower()
+    clean_scope = (scope or "").strip()
+    with SessionLocal() as db:
+        documents = db.scalars(
+            select(Document)
+            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
+            .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
+        ).all()
+        validation_documents = [
+            document
+            for document in documents
+            if clean_vehicle_document_group(document) in {"invoices", "technical_reports"}
+        ]
+        document_ids = [document.id for document in validation_documents]
+        events_by_document: dict[int, list[DocumentEvent]] = defaultdict(list)
+        if document_ids:
+            events = db.scalars(
+                select(DocumentEvent)
+                .where(DocumentEvent.document_id.in_(document_ids))
+                .where(
+                    DocumentEvent.action.in_(
+                        [
+                            "invoice.ocr.extracted",
+                            "invoice.ocr.reprocessed",
+                            "ocr.validation.status",
+                        ]
+                    )
+                )
+                .order_by(DocumentEvent.id.desc())
+            ).all()
+            for event in events:
+                events_by_document[event.document_id].append(event)
+        vehicle_ids = {document.vehicle_id for document in validation_documents if document.vehicle_id}
+        vehicles_by_id = {
+            vehicle.id: vehicle
+            for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
+        } if vehicle_ids else {}
+        invoice_rows = []
+        diagnostic_rows = []
+        supplier_groups: dict[str, dict[str, Any]] = {}
+        diagnostic_groups: dict[str, dict[str, Any]] = {}
+        for document in validation_documents:
+            group = clean_vehicle_document_group(document)
+            if clean_scope and clean_scope != group:
+                continue
+            vehicle = vehicles_by_id.get(document.vehicle_id)
+            vehicle_label = vehicle.plate if vehicle and vehicle.plate else document.plate or "Por associar"
+            haystack = " ".join(
+                part
+                for part in [
+                    document.title,
+                    document.original_name,
+                    document.supplier_name,
+                    document.contract_number,
+                    vehicle_label,
+                    document.status,
+                ]
+                if part
+            ).lower()
+            if search and search not in haystack:
+                continue
+            status_ctx = _ocr_validation_status(document, events_by_document.get(document.id, []))
+            row = {
+                "id": document.id,
+                "document": document,
+                "title": document.title or document.original_name or f"Documento #{document.id}",
+                "vehicle_label": vehicle_label,
+                "vehicle_href": f"/v2-clean/fleet/{document.vehicle_id}/documents" if document.vehicle_id else "",
+                "document_href": f"/v2-clean/documents/{document.id}",
+                "date_display": clean_date(document.document_date.isoformat()) if document.document_date else "-",
+                "status": status_ctx,
+                "supplier_name": document.supplier_name or "Por identificar",
+                "document_number": document.contract_number or document.reservation_number or str(document.id),
+            }
+            if group == "invoices":
+                invoice_rows.append(row)
+                supplier_key = row["supplier_name"]
+                supplier_group = supplier_groups.setdefault(
+                    supplier_key,
+                    {"name": supplier_key, "total": 0, "validated": 0, "errors": 0, "pending": 0},
+                )
+                supplier_group["total"] += 1
+                if status_ctx["code"] == "validated":
+                    supplier_group["validated"] += 1
+                elif status_ctx["code"] == "error":
+                    supplier_group["errors"] += 1
+                else:
+                    supplier_group["pending"] += 1
+            else:
+                machine, report_type = _diagnostic_machine_and_type(document)
+                row["machine"] = machine
+                row["report_type"] = report_type
+                diagnostic_rows.append(row)
+                diag_key = f"{machine} · {report_type}"
+                diag_group = diagnostic_groups.setdefault(
+                    diag_key,
+                    {
+                        "name": diag_key,
+                        "machine": machine,
+                        "report_type": report_type,
+                        "total": 0,
+                        "validated": 0,
+                        "errors": 0,
+                        "pending": 0,
+                    },
+                )
+                diag_group["total"] += 1
+                if status_ctx["code"] == "validated":
+                    diag_group["validated"] += 1
+                elif status_ctx["code"] == "error":
+                    diag_group["errors"] += 1
+                else:
+                    diag_group["pending"] += 1
+        return templates.TemplateResponse(
+            request,
+            "clean_document_ocr_validation.html",
+            {
+                "scope": clean_scope,
+                "q": q or "",
+                "invoice_rows": invoice_rows,
+                "diagnostic_rows": diagnostic_rows,
+                "supplier_groups": sorted(supplier_groups.values(), key=lambda item: (-item["pending"], item["name"])),
+                "diagnostic_groups": sorted(diagnostic_groups.values(), key=lambda item: (-item["pending"], item["name"])),
+                "invoice_total": len(invoice_rows),
+                "diagnostic_total": len(diagnostic_rows),
+            },
+        )
+
+
+@web_router.post("/v2-clean/documents/{document_id}/ocr-validation-status")
+def clean_document_ocr_validation_status(
+    request: Request,
+    document_id: int,
+    validation_status: str = Form(...),
+    error_code: str = Form(""),
+    note: str = Form(""),
+    return_url: str = Form("/v2-clean/documents/ocr-validation"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    user_id = get_web_user_id(request)
+    clean_return_url = return_url.strip()
+    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/documents/ocr-validation"
+    clean_status = validation_status.strip().lower()
+    if clean_status not in {"validated", "error", "ignored", "pending"}:
+        clean_status = "pending"
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse(target, status_code=303)
+        if clean_status == "validated":
+            document.status = "classified"
+        elif clean_status == "error":
+            document.status = "ocr_issue"
+        elif clean_status == "ignored":
+            document.status = "ignored"
+        else:
+            document.status = "extracted" if clean_vehicle_document_group(document) == "invoices" else "received"
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="ocr.validation.status",
+                old_value=None,
+                new_value=json.dumps(
+                    {
+                        "status": clean_status,
+                        "error_code": error_code.strip(),
+                        "note": note.strip(),
+                    },
+                    ensure_ascii=False,
+                ),
+                user_id=user_id,
+            )
+        )
+        db.commit()
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}validated=1", status_code=303)
+
+
 @web_router.get("/v2-clean/documents/{document_id}", response_class=HTMLResponse)
 def clean_document_detail(
     request: Request,
@@ -6108,6 +6302,19 @@ def clean_document_import_center(
     clean_status = (status or "").strip()
     with SessionLocal() as db:
         module_ctx = document_center_module_context(db, user_id=get_web_user_id(request))
+        inbox_folder = _invoice_inbox_folder()
+        inbox_state = {
+            "configured": bool(inbox_folder),
+            "path": str(inbox_folder) if inbox_folder else "",
+            "available": bool(inbox_folder and inbox_folder.exists() and inbox_folder.is_dir()),
+            "file_count": 0,
+        }
+        if inbox_state["available"] and inbox_folder:
+            inbox_state["file_count"] = sum(
+                1
+                for item in inbox_folder.rglob("*")
+                if item.is_file() and item.suffix.lower() in BATCH_DOCUMENT_EXTENSIONS
+            )
 
         def matches_search(parts: list[str]) -> bool:
             if not search:
@@ -6206,6 +6413,7 @@ def clean_document_import_center(
                 "invoice_rows": invoice_rows,
                 "vehicle_count": module_ctx["vehicle_count"],
                 "archive_documents_count": module_ctx["archive_documents_count"],
+                "invoice_inbox_state": inbox_state,
                 "imported": imported,
                 "imported_count": imported_count,
                 "batch_imported": batch_imported,
@@ -6549,6 +6757,196 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     }
 
 
+def _archive_document_payloads(
+    db: Session,
+    payloads: list[dict[str, Any]],
+    *,
+    user_id: int | None,
+    source_label: str,
+) -> dict[str, int]:
+    counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0}
+    vehicles = db.scalars(select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))).all()
+    vehicles_by_plate = {
+        re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
+        for vehicle in vehicles
+        if vehicle.plate
+    }
+    vehicles_by_vin = {
+        re.sub(r"[^A-Z0-9]", "", (vehicle.vin or "").upper()): vehicle
+        for vehicle in vehicles
+        if vehicle.vin
+    }
+    known_hashes = set(
+        db.scalars(
+            select(Document.file_hash).where(
+                Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                Document.file_hash.is_not(None),
+            )
+        ).all()
+    )
+    for item in payloads:
+        file_content = item["content"]
+        suffix = item["suffix"]
+        archive_name = str(item["archive_name"])
+        original_name = Path(str(item.get("original_name") or archive_name)).name
+        digest = hashlib.sha256(file_content).hexdigest()
+        if digest in known_hashes:
+            counters["duplicates"] += 1
+            continue
+
+        content_text = _batch_document_pdf_text(file_content, suffix)
+        lookup_text = f"{archive_name}\n{content_text}"
+        vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate, vehicles_by_vin)
+        document_type, classification = _batch_document_type(lookup_text)
+        document_date = _batch_document_date(lookup_text)
+        plate = vehicle.plate if vehicle else None
+        vin = vehicle.vin if vehicle else None
+        folder_path = suggest_document_folder_path(
+            classification,
+            document_date,
+            plate,
+            document_type,
+            vin=vin,
+        )
+        if not vehicle:
+            folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
+        storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        stem = sanitize_archive_component(Path(original_name).stem, "documento")
+        stored_name = f"{stem}_{digest[:12]}{suffix}"
+        stored_path = storage_dir / stored_name
+        if not stored_path.exists():
+            stored_path.write_bytes(file_content)
+
+        document = Document(
+            title=Path(original_name).stem[:200],
+            document_type=document_type,
+            classification=classification,
+            source="v2_clean_manual",
+            entry_channel="v2_clean_batch",
+            source_subject=f"{source_label}: {archive_name}"[:255],
+            original_name=original_name[:255],
+            file_name=stored_name[:255],
+            file_type=suffix.lstrip("."),
+            file_size=len(file_content),
+            storage_provider="local",
+            storage_path=str(stored_path),
+            storage_key=digest,
+            folder_path=folder_path,
+            status="received",
+            file_hash=digest,
+            vehicle_id=vehicle.id if vehicle else None,
+            plate=plate,
+            document_date=document_date,
+            uploaded_by_id=user_id,
+            archived_by_id=user_id,
+            archived_at=datetime.now(UTC),
+            archived=True,
+        )
+        db.add(document)
+        db.flush()
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="batch_import.archived",
+                old_value=None,
+                new_value=json.dumps(
+                    {"source": source_label, "path": archive_name, "vehicle_matched": bool(vehicle)},
+                    ensure_ascii=False,
+                ),
+                user_id=user_id,
+            )
+        )
+        if document_type == "workshop_supplier_invoice":
+            invoice_payload = _batch_invoice_payload(file_content, suffix, original_name, content_text)
+            document.status = "extracted" if str(invoice_payload.get("raw_text_preview") or "").strip() else "ocr_empty"
+            if invoice_payload.get("document_number") and not document.contract_number:
+                document.contract_number = str(invoice_payload["document_number"])[:120]
+            if invoice_payload.get("supplier_name") and (
+                not document.supplier_name or document.supplier_name in {"v2_clean_manual", "v2_clean_batch"}
+            ):
+                document.supplier_name = str(invoice_payload["supplier_name"])[:255]
+            if invoice_payload.get("document_date") and not document.document_date:
+                try:
+                    document.document_date = date.fromisoformat(str(invoice_payload["document_date"])[:10])
+                except ValueError:
+                    pass
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="invoice.ocr.extracted",
+                    old_value=None,
+                    new_value=json.dumps(invoice_payload, ensure_ascii=False),
+                    user_id=user_id,
+                )
+            )
+        known_hashes.add(digest)
+        counters["imported"] += 1
+        counters["matched" if vehicle else "pending"] += 1
+    return counters
+
+
+def _invoice_inbox_folder() -> Path | None:
+    configured = (settings.document_invoice_inbox_path or "").strip()
+    if not configured:
+        return None
+    folder = Path(configured).expanduser()
+    if not folder.is_absolute():
+        folder = APP_PROJECT_ROOT / folder
+    return folder
+
+
+def _ocr_validation_status(document: Document, events: list[DocumentEvent]) -> dict[str, str]:
+    validation_event = next((event for event in events if event.action == "ocr.validation.status"), None)
+    if validation_event:
+        try:
+            payload = json.loads(validation_event.new_value or "{}")
+        except json.JSONDecodeError:
+            payload = {"status": validation_event.new_value or ""}
+        status = str(payload.get("status") or "")
+        if status == "validated":
+            return {"code": "validated", "label": "Validado", "tone": "ok"}
+        if status == "error":
+            return {"code": "error", "label": "Erro registado", "tone": "danger"}
+        if status == "ignored":
+            return {"code": "ignored", "label": "Ignorado", "tone": "muted"}
+    if document.status == "classified":
+        return {"code": "validated", "label": "Validado", "tone": "ok"}
+    if document.status in {"ocr_issue", "ocr_empty"}:
+        return {"code": "error", "label": "Erro OCR", "tone": "danger"}
+    if document.status == "extracted":
+        return {"code": "pending", "label": "Por validar", "tone": "warning"}
+    return {"code": "pending", "label": "Por processar", "tone": "warning"}
+
+
+def _diagnostic_machine_and_type(document: Document) -> tuple[str, str]:
+    text = " ".join(
+        part for part in [document.title, document.original_name, document.source_subject, document.document_type] if part
+    )
+    normalized = normalize_identifier(text)
+    if "autel" in normalized:
+        machine = "Autel"
+    elif "stellantis" in normalized or "servicebox" in normalized or "service box" in normalized:
+        machine = "Stellantis"
+    else:
+        machine = "Por identificar"
+    if "lubrificacao" in normalized or "lubrifica" in normalized:
+        report_type = "Lubrificação motor"
+    elif "manutencao" in normalized:
+        report_type = "Informações manutenção"
+    elif "programacao" in normalized:
+        report_type = "Programação manutenção"
+    elif "telecarreg" in normalized:
+        report_type = "Telecarregamento"
+    elif "defeito" in normalized:
+        report_type = "Leitura de defeitos"
+    elif "teste" in normalized:
+        report_type = "Teste global"
+    else:
+        report_type = "Tipo por identificar"
+    return machine, report_type
+
+
 @web_router.post("/v2-clean/documents/import/archive-batch")
 def clean_document_import_archive_batch(request: Request, file: UploadFile = File(...)):
     denied = clean_experience_denied(request)
@@ -6561,7 +6959,6 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
     if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
         return RedirectResponse("/v2-clean/documents?batch_error=ZIP+vazio+ou+demasiado+grande", status_code=303)
 
-    counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0}
     user_id = get_web_user_id(request)
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
@@ -6573,25 +6970,7 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
             entries = [entry for entry in archive.infolist() if not entry.is_dir()]
             if len(entries) > BATCH_DOCUMENT_MAX_FILES:
                 return RedirectResponse("/v2-clean/documents?batch_error=O+ZIP+tem+demasiados+ficheiros", status_code=303)
-            vehicles = db.scalars(select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))).all()
-            vehicles_by_plate = {
-                re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
-                for vehicle in vehicles
-                if vehicle.plate
-            }
-            vehicles_by_vin = {
-                re.sub(r"[^A-Z0-9]", "", (vehicle.vin or "").upper()): vehicle
-                for vehicle in vehicles
-                if vehicle.vin
-            }
-            known_hashes = set(
-                db.scalars(
-                    select(Document.file_hash).where(
-                        Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
-                        Document.file_hash.is_not(None),
-                    )
-                ).all()
-            )
+            payloads: list[dict[str, Any]] = []
             total_uncompressed = 0
             for entry in entries:
                 archive_name = entry.filename.replace("\\", "/")
@@ -6610,111 +6989,78 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                 if total_uncompressed > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
                     db.rollback()
                     return RedirectResponse("/v2-clean/documents?batch_error=Conteúdo+extraído+demasiado+grande", status_code=303)
-                file_content = archive.read(entry)
-                digest = hashlib.sha256(file_content).hexdigest()
-                if digest in known_hashes:
-                    counters["duplicates"] += 1
-                    continue
-
-                content_text = _batch_document_pdf_text(file_content, suffix)
-                lookup_text = f"{archive_name}\n{content_text}"
-                vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate, vehicles_by_vin)
-                document_type, classification = _batch_document_type(lookup_text)
-                document_date = _batch_document_date(lookup_text)
-                plate = vehicle.plate if vehicle else None
-                vin = vehicle.vin if vehicle else None
-                folder_path = suggest_document_folder_path(
-                    classification,
-                    document_date,
-                    plate,
-                    document_type,
-                    vin=vin,
+                payloads.append(
+                    {
+                        "archive_name": archive_name,
+                        "original_name": Path(archive_name).name,
+                        "suffix": suffix,
+                        "content": archive.read(entry),
+                    }
                 )
-                if not vehicle:
-                    folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
-                storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
-                storage_dir.mkdir(parents=True, exist_ok=True)
-                original_name = Path(archive_name).name
-                stem = sanitize_archive_component(Path(original_name).stem, "documento")
-                stored_name = f"{stem}_{digest[:12]}{suffix}"
-                stored_path = storage_dir / stored_name
-                if not stored_path.exists():
-                    stored_path.write_bytes(file_content)
-
-                document = Document(
-                    title=Path(original_name).stem[:200],
-                    document_type=document_type,
-                    classification=classification,
-                    source="v2_clean_manual",
-                    entry_channel="v2_clean_batch",
-                    source_subject=f"ZIP {filename}: {archive_name}"[:255],
-                    original_name=original_name[:255],
-                    file_name=stored_name[:255],
-                    file_type=suffix.lstrip("."),
-                    file_size=len(file_content),
-                    storage_provider="local",
-                    storage_path=str(stored_path),
-                    storage_key=digest,
-                    folder_path=folder_path,
-                    status="received",
-                    file_hash=digest,
-                    vehicle_id=vehicle.id if vehicle else None,
-                    plate=plate,
-                    document_date=document_date,
-                    uploaded_by_id=user_id,
-                    archived_by_id=user_id,
-                    archived_at=datetime.now(UTC),
-                    archived=True,
-                )
-                db.add(document)
-                db.flush()
-                db.add(
-                    DocumentEvent(
-                        document_id=document.id,
-                        action="batch_import.archived",
-                        old_value=None,
-                        new_value=json.dumps(
-                            {"zip": filename, "path": archive_name, "vehicle_matched": bool(vehicle)},
-                            ensure_ascii=False,
-                        ),
-                        user_id=user_id,
-                    )
-                )
-                if document_type == "workshop_supplier_invoice":
-                    invoice_payload = _batch_invoice_payload(file_content, suffix, original_name, content_text)
-                    document.status = (
-                        "extracted"
-                        if str(invoice_payload.get("raw_text_preview") or "").strip()
-                        else "ocr_empty"
-                    )
-                    if invoice_payload.get("document_number") and not document.contract_number:
-                        document.contract_number = str(invoice_payload["document_number"])[:120]
-                    if invoice_payload.get("supplier_name") and (
-                        not document.supplier_name or document.supplier_name in {"v2_clean_manual", "v2_clean_batch"}
-                    ):
-                        document.supplier_name = str(invoice_payload["supplier_name"])[:255]
-                    if invoice_payload.get("document_date") and not document.document_date:
-                        try:
-                            document.document_date = date.fromisoformat(str(invoice_payload["document_date"])[:10])
-                        except ValueError:
-                            pass
-                    db.add(
-                        DocumentEvent(
-                            document_id=document.id,
-                            action="invoice.ocr.extracted",
-                            old_value=None,
-                            new_value=json.dumps(invoice_payload, ensure_ascii=False),
-                            user_id=user_id,
-                        )
-                    )
-                known_hashes.add(digest)
-                counters["imported"] += 1
-                counters["matched" if vehicle else "pending"] += 1
+            counters = _archive_document_payloads(db, payloads, user_id=user_id, source_label=f"ZIP {filename}")
             db.commit()
     except Exception as exc:  # noqa: BLE001
         message = f"Erro ao arquivar lote ({exc.__class__.__name__})"
         return RedirectResponse(f"/v2-clean/documents?{urlencode({'batch_error': message})}", status_code=303)
 
+    params = urlencode(
+        {
+            "batch_imported": counters["imported"],
+            "batch_matched": counters["matched"],
+            "batch_pending": counters["pending"],
+            "batch_duplicates": counters["duplicates"],
+        }
+    )
+    return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/import/invoice-folder")
+def clean_document_import_invoice_folder(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    inbox = _invoice_inbox_folder()
+    if not inbox or not inbox.exists() or not inbox.is_dir():
+        return RedirectResponse(
+            "/v2-clean/documents?batch_error=Pasta+de+faturas+por+classificar+nao+configurada+ou+inacessivel",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    payloads: list[dict[str, Any]] = []
+    total_size = 0
+    for file_path in sorted(inbox.rglob("*")):
+        if not file_path.is_file():
+            continue
+        suffix = file_path.suffix.lower()
+        if suffix not in BATCH_DOCUMENT_EXTENSIONS:
+            continue
+        file_size = file_path.stat().st_size
+        if file_size > BATCH_DOCUMENT_MAX_FILE_SIZE:
+            continue
+        total_size += file_size
+        if total_size > BATCH_DOCUMENT_MAX_TOTAL_SIZE or len(payloads) >= BATCH_DOCUMENT_MAX_FILES:
+            return RedirectResponse("/v2-clean/documents?batch_error=Pasta+com+demasiados+ficheiros", status_code=303)
+        relative_name = str(file_path.relative_to(inbox)).replace("\\", "/")
+        payloads.append(
+            {
+                "archive_name": relative_name,
+                "original_name": file_path.name,
+                "suffix": suffix,
+                "content": file_path.read_bytes(),
+            }
+        )
+    try:
+        with SessionLocal() as db:
+            counters = _archive_document_payloads(
+                db,
+                payloads,
+                user_id=user_id,
+                source_label=f"Pasta faturas {inbox}",
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        message = f"Erro ao importar pasta ({exc.__class__.__name__})"
+        return RedirectResponse(f"/v2-clean/documents?{urlencode({'batch_error': message})}", status_code=303)
     params = urlencode(
         {
             "batch_imported": counters["imported"],

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     integration_api_key: str | None = None
     database_url: str = "postgresql+psycopg://carfast:carfast@localhost:5432/carfast_v2"
     document_archive_root: str | None = None
+    document_invoice_inbox_path: str | None = None
 
     @property
     def enable_docs(self) -> bool:

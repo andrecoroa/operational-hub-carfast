@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-doc-page-header clean-card-wide clean-doc-center-header">
+      <div class="clean-doc-header-main">
+        <p class="eyebrow">Documentação / validação OCR</p>
+        <h1>Centro de validação OCR</h1>
+        <p>Validar faturas por fornecedor e diagnósticos por máquina/tipo, registando erros para afinar a extração.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/documents">Centro de documentação</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
+      </div>
+    </header>
+
+    <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact clean-doc-ocr-kpi-strip">
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation">
+        <strong>{{ invoice_total + diagnostic_total }}</strong>
+        <span>Total em validação</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation?scope=invoices">
+        <strong>{{ invoice_total }}</strong>
+        <span>Faturas</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation?scope=technical_reports">
+        <strong>{{ diagnostic_total }}</strong>
+        <span>Diagnósticos</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="#fornecedores">
+        <strong>{{ supplier_groups|length }}</strong>
+        <span>Fornecedores</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="#diagnosticos">
+        <strong>{{ diagnostic_groups|length }}</strong>
+        <span>Máquinas / tipos</span>
+      </a>
+    </section>
+
+    <section class="clean-doc-filter-panel clean-card-wide">
+      <form method="get" action="/v2-clean/documents/ocr-validation" class="clean-doc-filter-grid">
+        <label>
+          Pesquisar
+          <input type="text" name="q" value="{{ q }}" placeholder="Fornecedor, matrícula, documento, máquina...">
+        </label>
+        <label>
+          Tipo
+          <select name="scope">
+            <option value="" {% if not scope %}selected{% endif %}>Todos</option>
+            <option value="invoices" {% if scope == "invoices" %}selected{% endif %}>Faturas</option>
+            <option value="technical_reports" {% if scope == "technical_reports" %}selected{% endif %}>Diagnósticos</option>
+          </select>
+        </label>
+        <button type="submit">Filtrar</button>
+      </form>
+    </section>
+
+    <section class="clean-doc-context-grid clean-doc-ocr-layout">
+      <article class="clean-doc-structure-card clean-card-wide" id="fornecedores">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Faturas</p>
+            <h3>Fornecedores em validação</h3>
+            <p>Cada fornecedor pode ganhar regras próprias de OCR sem alterar o fluxo principal.</p>
+          </div>
+          <strong class="clean-doc-pill">{{ supplier_groups|length }} grupos</strong>
+        </div>
+        <div class="clean-doc-ocr-group-grid">
+          {% for group in supplier_groups %}
+            <div class="clean-doc-ocr-group-card">
+              <strong>{{ group.name }}</strong>
+              <span>{{ group.total }} docs · {{ group.pending }} por validar · {{ group.errors }} erros</span>
+            </div>
+          {% else %}
+            <p class="clean-doc-helper">Sem faturas para validar.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="clean-doc-structure-card clean-card-wide" id="diagnosticos">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Diagnósticos</p>
+            <h3>Máquina e tipo de relatório</h3>
+            <p>A validação fica preparada para Autel, Stellantis e novos layouts por tipo de relatório.</p>
+          </div>
+          <strong class="clean-doc-pill">{{ diagnostic_groups|length }} grupos</strong>
+        </div>
+        <div class="clean-doc-ocr-group-grid">
+          {% for group in diagnostic_groups %}
+            <div class="clean-doc-ocr-group-card">
+              <strong>{{ group.name }}</strong>
+              <span>{{ group.total }} docs · {{ group.pending }} por validar · {{ group.errors }} erros</span>
+            </div>
+          {% else %}
+            <p class="clean-doc-helper">Sem diagnósticos para validar.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <details class="clean-doc-collapsible clean-card-wide" {% if invoice_rows %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Faturas por validar</b>
+            <small>Regista erros por fornecedor, reprocessa OCR ou valida o documento.</small>
+          </span>
+          <em>{{ invoice_rows|length }} docs</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
+            <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-table">
+              <thead>
+                <tr>
+                  <th>Viatura</th>
+                  <th>Data</th>
+                  <th>Nº</th>
+                  <th>Fornecedor</th>
+                  <th>Estado</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in invoice_rows %}
+                  <tr>
+                    <td>
+                      <strong>{{ row.vehicle_label }}</strong>
+                      {% if row.vehicle_href %}<small><a href="{{ row.vehicle_href }}">Ficha</a></small>{% endif %}
+                    </td>
+                    <td>{{ row.date_display }}</td>
+                    <td>{{ row.document_number }}</td>
+                    <td>{{ row.supplier_name }}</td>
+                    <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ row.status.tone }}">{{ row.status.label }}</span></td>
+                    <td>
+                      <div class="clean-doc-inline-actions">
+                        <a class="button-link secondary-link" href="{{ row.document_href }}">Abrir</a>
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-inline-form">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
+                          <button type="submit" class="button-link secondary-link">Reprocessar</button>
+                        </form>
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status" class="clean-inline-form">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
+                          <input type="hidden" name="validation_status" value="validated">
+                          <button type="submit" class="button-link primary-link">Validar</button>
+                        </form>
+                        <details class="clean-doc-ocr-error-menu">
+                          <summary>Erro</summary>
+                          <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status">
+                            <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
+                            <input type="hidden" name="validation_status" value="error">
+                            <select name="error_code">
+                              <option value="supplier_layout">Layout fornecedor</option>
+                              <option value="missing_lines">Linhas em falta</option>
+                              <option value="wrong_vehicle">Viatura errada</option>
+                              <option value="no_text">Sem texto</option>
+                              <option value="other">Outro</option>
+                            </select>
+                            <input type="text" name="note" placeholder="Nota curta">
+                            <button type="submit">Registar</button>
+                          </form>
+                        </details>
+                      </div>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="6" class="clean-empty-cell">Sem faturas para os filtros escolhidos.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details class="clean-doc-collapsible clean-card-wide" {% if diagnostic_rows %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Diagnósticos por validar</b>
+            <small>Separados por máquina e tipo para normalizar campos com segurança.</small>
+          </span>
+          <em>{{ diagnostic_rows|length }} docs</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
+            <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-table">
+              <thead>
+                <tr>
+                  <th>Viatura</th>
+                  <th>Data</th>
+                  <th>Máquina</th>
+                  <th>Tipo</th>
+                  <th>Documento</th>
+                  <th>Estado</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in diagnostic_rows %}
+                  <tr>
+                    <td>{{ row.vehicle_label }}</td>
+                    <td>{{ row.date_display }}</td>
+                    <td>{{ row.machine }}</td>
+                    <td>{{ row.report_type }}</td>
+                    <td><a href="{{ row.document_href }}">{{ row.title }}</a></td>
+                    <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ row.status.tone }}">{{ row.status.label }}</span></td>
+                    <td>
+                      <div class="clean-doc-inline-actions">
+                        <a class="button-link secondary-link" href="{{ row.document_href }}">Abrir</a>
+                        <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status" class="clean-inline-form">
+                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=technical_reports">
+                          <input type="hidden" name="validation_status" value="validated">
+                          <button type="submit" class="button-link primary-link">Validar</button>
+                        </form>
+                        <details class="clean-doc-ocr-error-menu">
+                          <summary>Erro</summary>
+                          <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status">
+                            <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=technical_reports">
+                            <input type="hidden" name="validation_status" value="error">
+                            <select name="error_code">
+                              <option value="machine_type">Máquina/tipo errado</option>
+                              <option value="missing_fields">Campos em falta</option>
+                              <option value="wrong_layout">Layout novo</option>
+                              <option value="other">Outro</option>
+                            </select>
+                            <input type="text" name="note" placeholder="Nota curta">
+                            <button type="submit">Registar</button>
+                          </form>
+                        </details>
+                      </div>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="7" class="clean-empty-cell">Sem diagnósticos para os filtros escolhidos.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </section>
+  </main>
+</div>
+{% endblock %}

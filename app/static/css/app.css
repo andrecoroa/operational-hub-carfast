@@ -14780,9 +14780,147 @@ button.clean-upload-preview-card {
   font-size: 11px;
 }
 
+.clean-doc-batch-import-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.clean-doc-ocr-kpi-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.clean-doc-ocr-layout {
+  margin-top: 14px;
+}
+
+.clean-doc-ocr-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.clean-doc-ocr-group-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.clean-doc-ocr-group-card strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.clean-doc-ocr-group-card span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clean-doc-ocr-table td {
+  vertical-align: middle;
+}
+
+.clean-doc-ocr-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.clean-doc-ocr-state-ok {
+  background: #eaf7ee;
+  color: #247a3d;
+}
+
+.clean-doc-ocr-state-warning {
+  background: #fff4e5;
+  color: #9a4d08;
+}
+
+.clean-doc-ocr-state-danger {
+  background: #fef0ee;
+  color: #a43725;
+}
+
+.clean-doc-ocr-state-muted {
+  background: #eef2f6;
+  color: #475467;
+}
+
+.clean-doc-ocr-error-menu {
+  position: relative;
+}
+
+.clean-doc-ocr-error-menu summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border-radius: 8px;
+  background: #fff4e5;
+  color: #8b4b20;
+  font-size: 11px;
+  font-weight: 950;
+  padding: 6px 10px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.clean-doc-ocr-error-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.clean-doc-ocr-error-menu form {
+  position: absolute;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  min-width: 260px;
+  margin-top: 6px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(15, 42, 95, 0.16);
+  padding: 10px;
+}
+
+.clean-doc-ocr-error-menu select,
+.clean-doc-ocr-error-menu input {
+  min-height: 32px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  color: #0f2a5f;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 8px;
+}
+
+.clean-doc-ocr-error-menu button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: #a55d2f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+}
+
 @media (max-width: 1180px) {
   .clean-doc-kpi-strip-compact {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .clean-doc-ocr-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

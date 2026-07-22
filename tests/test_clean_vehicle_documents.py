@@ -259,7 +259,7 @@ Total do documento
 
     assert payload["document_number"] == "16002610"
     assert payload["document_date"] == "2022-07-26"
-    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A."
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A. (NIF 500115966)"
     assert payload["plate"] == "AS-92-ET"
     assert payload["vin"] == "VR7BBYHZBNE038504"
     assert payload["invoice_lines"] == [
@@ -363,6 +363,71 @@ Observações:
     assert payload["plate"] == ""
     assert payload["work_order_reference"] == "2300"
     assert [line["service"] for line in payload["invoice_lines"]] == ["Pneus", "Pneus"]
+
+
+def test_batch_invoice_payload_extracts_filinto_tal_invoice():
+    text = """
+ORIGINAL
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2023/11156583
+DE : 22/12/2023 O.R. : 321803 OFICINA : (081) MMarca Reparação VENCIMENTO : 22/12/2023
+MAT : BB-32-FT MARCA : PEUGEOT MODELO : 2008 1.2PureTech Allure
+KMS : 23506 RECEPCIONISTA : Gil Teixeira CHASSIS : VR3USHNSSPJ666227
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+REVISÃO A
+- OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO - 95N48A 49,00 25,00 36,75 1 36,75B
+OLEO TOTAL INEO XTRA FIRST 0W20 LT QINEOXF 40,00 39,00 24,40 3,50 85,40B
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 175,18 40,29 175,18 40,29 215,47
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "tal.pdf", existing_text=text)
+
+    assert payload["document_kind"] == "invoice"
+    assert payload["document_number"] == "TAL_FAC 2023/11156583"
+    assert payload["document_date"] == "2023-12-22"
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A. (NIF 500115966)"
+    assert payload["supplier_nif"] == "500115966"
+    assert payload["plate"] == "BB-32-FT"
+    assert payload["vin"] == "VR3USHNSSPJ666227"
+    assert payload["km"] == "23506"
+    assert payload["total_with_vat"] == "215,47"
+    assert payload["work_order_reference"] == "321803"
+    assert payload["ocr_template"] == "filinto_mota_tal"
+    assert payload["invoice_lines"][0]["service"] == "Manutenção"
+    assert payload["invoice_lines"][0]["amount"] == "36,75"
+
+
+def test_batch_invoice_payload_extracts_filinto_tal_credit_note():
+    text = """
+ORIGINAL
+Filinto Mota Sucessores S.A. (Braga)
+NIF: 500 324 174
+NOTA DE CRÉDITO
+DOCUMENTO : TAL_ABONOFAC 2023/21903953 Fatura Creditada Nr : 21095913
+DE : 04/12/2023 O.R. : 307917 OFICINA : (071) PEU Reparação VENCIMENTO : 04/12/2023
+MAT : AX-37-FI MARCA : PEUGEOT MODELO : Boxer
+KMS : 25065 RECEPCIONISTA : Marcia Costa CHASSIS : VF3YBBPFC12W32778
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+MUDAR ÓLEO E FILTRO D
+- OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO - 95N48A 59,00 25,00 44,25 -1 -44,25B
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 -61,75 -14,20 -61,75 -14,20 -75,95
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "tal_credit.pdf", existing_text=text)
+
+    assert payload["document_kind"] == "credit_note"
+    assert payload["document_number"] == "TAL_ABONOFAC 2023/21903953"
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A. (NIF 500324174)"
+    assert payload["supplier_nif"] == "500324174"
+    assert payload["plate"] == "AX-37-FI"
+    assert payload["km"] == "25065"
+    assert payload["total_with_vat"] == "-75,95"
+    assert payload["work_order_reference"] == "307917"
+    assert payload["invoice_lines"][0]["service"] == "Manutenção"
+    assert payload["invoice_lines"][0]["amount"] == "-44,25"
 
 
 def test_clean_document_reprocess_invoice_ocr_reports_empty_text(authenticated_client, db_session, tmp_path):

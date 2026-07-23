@@ -8038,7 +8038,10 @@ OCR_FIELD_LABELS = [
 
 def _document_latest_ocr_metadata(events: list[DocumentEvent]) -> dict[str, Any]:
     metadata: dict[str, Any] = {}
-    for event in reversed(events):
+    # Most callers load document events with id desc so the newest extraction
+    # should win. If an older query passes asc order this still accumulates
+    # compatible payloads, but descending order no longer falls back to stale OCR.
+    for event in events:
         if event.action not in OCR_EXTRACTION_ACTIONS:
             continue
         try:
@@ -8046,9 +8049,11 @@ def _document_latest_ocr_metadata(events: list[DocumentEvent]) -> dict[str, Any]
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
         if isinstance(parsed_event, list):
-            metadata["invoice_lines"] = parsed_event
+            metadata.setdefault("invoice_lines", parsed_event)
         elif isinstance(parsed_event, dict):
-            metadata.update(parsed_event)
+            for key, value in parsed_event.items():
+                if key not in metadata:
+                    metadata[key] = value
     return metadata
 
 

@@ -14960,11 +14960,129 @@ button.clean-upload-preview-card {
   gap: 12px;
 }
 
+.clean-doc-ocr-review-form {
+  display: grid;
+  gap: 12px;
+}
+
+.clean-doc-ocr-review-form .clean-doc-extraction-grid {
+  grid-template-columns: minmax(420px, 1.2fr) minmax(360px, 1fr);
+}
+
 .clean-doc-extraction-card {
   border: 1px solid #dce4ef;
   border-radius: 12px;
   background: #fff;
   padding: 12px;
+}
+
+.clean-doc-extraction-card-wide,
+.clean-doc-ocr-feedback-card {
+  min-width: 0;
+}
+
+.clean-doc-ocr-review-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.clean-doc-ocr-review-table th,
+.clean-doc-ocr-review-table td {
+  border-bottom: 1px solid #eef2f6;
+  padding: 8px 10px;
+  color: #0f2a5f;
+  font-size: 12px;
+  font-weight: 850;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.clean-doc-ocr-review-table thead th {
+  background: #f8fafc;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.clean-doc-ocr-review-table tbody th {
+  width: 150px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.clean-doc-ocr-review-table tr:last-child th,
+.clean-doc-ocr-review-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.clean-doc-ocr-review-table input,
+.clean-doc-ocr-review-table select,
+.clean-doc-ocr-feedback-card select,
+.clean-doc-ocr-feedback-card textarea {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 9px;
+}
+
+.clean-doc-ocr-review-table td:nth-child(2) span {
+  display: inline-flex;
+  max-width: 260px;
+  color: #0f2a5f;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.clean-doc-ocr-lines-table td:nth-child(3),
+.clean-doc-ocr-lines-table th:nth-child(3) {
+  min-width: 260px;
+}
+
+.clean-doc-ocr-lines-table td:not(:nth-child(3)) {
+  white-space: nowrap;
+}
+
+.clean-doc-ocr-feedback-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.clean-doc-ocr-feedback-card label {
+  display: grid;
+  gap: 5px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.clean-doc-ocr-feedback-card textarea {
+  min-height: 98px;
+  resize: vertical;
+}
+
+.clean-doc-ocr-review-actions {
+  display: grid;
+  grid-template-columns: 1fr 0.7fr 0.8fr;
+  gap: 8px;
+}
+
+.clean-doc-ocr-review-actions button {
+  width: 100%;
+  justify-content: center;
 }
 
 .clean-doc-extraction-card h4 {
@@ -15182,6 +15300,10 @@ button.clean-upload-preview-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .clean-doc-ocr-review-form .clean-doc-extraction-grid {
+    grid-template-columns: 1fr;
+  }
+
   .clean-doc-ocr-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -15190,6 +15312,10 @@ button.clean-upload-preview-card {
 @media (max-width: 760px) {
   .clean-doc-compact-import-grid,
   .clean-doc-extraction-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-ocr-review-actions {
     grid-template-columns: 1fr;
   }
 }

@@ -3007,6 +3007,14 @@ def clean_tasks_center(
     kind: str = "all",
     plate: str = "",
     q: str = "",
+    record_type: str = "",
+    type: str = "",
+    title: str = "",
+    description: str = "",
+    category: str = "",
+    entity_type: str = "",
+    entity_id: str = "",
+    return_url: str = "",
     created: str | None = None,
     closed: str | None = None,
     reopened: str | None = None,
@@ -3019,7 +3027,10 @@ def clean_tasks_center(
         workspace_codes = set(TASK_WORKSPACE_CONFIG)
         active_workspace = workspace if workspace in workspace_codes else "all"
         active_status = status if status in {"open", "closed", "all"} else "open"
+        incoming_record_type = (record_type or type or "").strip().lower()
         active_kind = kind if kind in {"all", "task", "problem"} else "all"
+        if active_kind == "all" and incoming_record_type in {"task", "problem"}:
+            active_kind = incoming_record_type
         normalized_plate = normalize_identifier(plate) if plate else ""
         task_type_codes = [
             code
@@ -3101,6 +3112,16 @@ def clean_tasks_center(
                     "kind": active_kind,
                     "plate": normalized_plate,
                     "q": q.strip(),
+                },
+                "prefill": {
+                    "record_type": incoming_record_type if incoming_record_type in {"task", "problem"} else "task",
+                    "workspace": active_workspace if active_workspace != "all" else "workshop",
+                    "title": title.strip(),
+                    "description": description.strip(),
+                    "category": category.strip(),
+                    "entity_type": entity_type.strip(),
+                    "entity_id": entity_id.strip(),
+                    "return_url": return_url.strip(),
                 },
                 "created": created,
                 "closed": closed,
@@ -6242,6 +6263,10 @@ def clean_document_ocr_validation_status(
     validation_status: str = Form(...),
     error_code: str = Form(""),
     note: str = Form(""),
+    ocr_field_label: list[str] = Form([]),
+    ocr_field_value: list[str] = Form([]),
+    ocr_field_correction: list[str] = Form([]),
+    ocr_field_issue: list[str] = Form([]),
     return_url: str = Form("/v2-clean/documents/ocr-validation"),
 ):
     denied = clean_experience_denied(request)
@@ -6255,6 +6280,22 @@ def clean_document_ocr_validation_status(
     clean_status = validation_status.strip().lower()
     if clean_status not in {"validated", "error", "ignored", "pending"}:
         clean_status = "pending"
+    field_review: list[dict[str, str]] = []
+    field_count = max(
+        len(ocr_field_label),
+        len(ocr_field_value),
+        len(ocr_field_correction),
+        len(ocr_field_issue),
+    )
+    for index in range(field_count):
+        field_item = {
+            "label": (ocr_field_label[index] if index < len(ocr_field_label) else "").strip(),
+            "extracted": (ocr_field_value[index] if index < len(ocr_field_value) else "").strip(),
+            "correction": (ocr_field_correction[index] if index < len(ocr_field_correction) else "").strip(),
+            "issue": (ocr_field_issue[index] if index < len(ocr_field_issue) else "").strip(),
+        }
+        if any(field_item.values()):
+            field_review.append(field_item)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
@@ -6277,6 +6318,7 @@ def clean_document_ocr_validation_status(
                         "status": clean_status,
                         "error_code": error_code.strip(),
                         "note": note.strip(),
+                        "field_review": field_review,
                         "template_key": _document_ocr_template_context(document)["key"],
                         "template_label": _document_ocr_template_context(document)["label"],
                     },
@@ -7603,7 +7645,7 @@ def _document_ocr_extracted_fields(metadata: dict[str, Any]) -> list[dict[str, s
             continue
         if key == "repair_order_reference" and "work_order_reference" in seen:
             continue
-        fields.append({"label": label, "value": str(value)})
+        fields.append({"key": key, "label": label, "value": str(value)})
         seen.add(key)
     ignored = {
         "invoice_lines",
@@ -7621,7 +7663,7 @@ def _document_ocr_extracted_fields(metadata: dict[str, Any]) -> list[dict[str, s
         if len(fields) >= 12:
             break
         label = key.replace("_", " ").strip().capitalize()
-        fields.append({"label": label, "value": str(value)})
+        fields.append({"key": key, "label": label, "value": str(value)})
         seen.add(key)
     return fields
 

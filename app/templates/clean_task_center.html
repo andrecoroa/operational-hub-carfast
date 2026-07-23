@@ -43,19 +43,22 @@
           </div>
         </div>
         <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
+          <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">
+          <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
+          <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
           <label class="span-2">Título
-            <input name="title" required placeholder="Ex.: Classificar FO 1682 / confirmar intervenção">
+            <input name="title" value="{{ prefill.title }}" required placeholder="Ex.: Classificar FO 1682 / confirmar intervenção">
           </label>
           <label>Tipo
             <select name="record_type">
-              <option value="task">Tarefa</option>
-              <option value="problem">Problema</option>
+              <option value="task" {% if prefill.record_type != "problem" %}selected{% endif %}>Tarefa</option>
+              <option value="problem" {% if prefill.record_type == "problem" %}selected{% endif %}>Problema</option>
             </select>
           </label>
           <label>Área
             <select name="workspace">
               {% for code, label in task_workspace_options if code != "all" %}
-                <option value="{{ code }}" {% if code == "workshop" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -74,10 +77,10 @@
             <input type="date" name="due_on">
           </label>
           <label>Categoria
-            <input name="category" placeholder="documentacao, oficina, auditoria...">
+            <input name="category" value="{{ prefill.category }}" placeholder="documentacao, oficina, auditoria...">
           </label>
           <label class="span-2">Descrição
-            <textarea name="description" rows="3" placeholder="O que tem de ser feito, origem, documento ou evidência..."></textarea>
+            <textarea name="description" rows="3" placeholder="O que tem de ser feito, origem, documento ou evidência...">{{ prefill.description }}</textarea>
           </label>
           <div class="clean-task-create-actions span-2">
             <button type="submit">Criar tarefa</button>

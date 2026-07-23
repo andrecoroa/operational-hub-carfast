@@ -47,7 +47,7 @@
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
-          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
+          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}">Tarefas e problemas</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
         </div>
       </article>
@@ -131,7 +131,7 @@
           <div class="clean-fleet-doc-actions">
             <a class="button-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ver documentação</a>
             <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
-            <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Ver tarefas</a>
+            <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}">Ver tarefas</a>
           </div>
           <div class="clean-document-strip">
             {% for document in documents %}

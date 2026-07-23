@@ -320,8 +320,8 @@
                             <button type="submit">Associar</button>
                           </form>
                         {% endif %}
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Criar tarefa</a>
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&type=problem">Criar problema</a>
+                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
+                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
                         {% if row.open_href %}
                           <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
                         {% endif %}
@@ -399,8 +399,8 @@
                 </section>
                 {{ render_classification_editor(row) }}
                 <div class="clean-doc-detail-footer-actions">
-                  <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Criar tarefa</a>
-                  <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&type=problem">Criar problema</a>
+                  <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
+                  <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
                   <button type="submit" class="button-link primary-link">Guardar e validar</button>
                 </div>
               </form>
@@ -531,7 +531,7 @@
         <div class="clean-context-action-row">
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
-          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}">Tarefas e problemas</a>
+          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefas e problemas</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar à frota</a>
         </div>
       </article>

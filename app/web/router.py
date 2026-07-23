@@ -6963,6 +6963,15 @@ def _batch_invoice_document_number(text: str) -> str:
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     simplified_lines = [normalize_identifier(line) for line in lines]
     for index, simplified in enumerate(simplified_lines):
+        if simplified in {"DOCUMENTO", "DOC", "DOCUMENTON"}:
+            for candidate in lines[index + 1 : index + 5]:
+                value = " ".join(candidate.split()).strip(" .:/_-")
+                value_simple = normalize_identifier(value)
+                if not value or value_simple in {"DOCUMENTO", "DOC", "DATA", "VALORTOTAL"}:
+                    continue
+                if re.search(r"\d", value) and not re.fullmatch(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", value):
+                    return value[-120:]
+    for index, simplified in enumerate(simplified_lines):
         if simplified == "VALORTOTAL" and index + 1 < len(lines):
             value = lines[index + 1].strip()
             if re.fullmatch(r"\d{4,}", value):
@@ -6991,6 +7000,8 @@ def _batch_invoice_vehicle_fields(text: str) -> dict[str, str]:
     plate = ""
     vin = ""
     km = ""
+    lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
+    simplified_lines = [normalize_identifier(line) for line in lines]
     plate_match = re.search(r"Matr[ií]cula\s*:\s*([A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
     if plate_match:
         plate = plate_match.group(1).strip().upper()
@@ -7004,6 +7015,16 @@ def _batch_invoice_vehicle_fields(text: str) -> dict[str, str]:
     km_match = re.search(r"\bKMS?\s*:\s*(\d{1,7})(?:[,.]\d{1,2})?\b", text, flags=re.IGNORECASE)
     if km_match:
         km = km_match.group(1)
+    if not km:
+        for index, simplified in enumerate(simplified_lines):
+            if simplified in {"KMS", "KM", "QUILOMETROS"}:
+                for candidate in lines[index + 1 : index + 4]:
+                    km_match = re.search(r"\b(\d{1,7})(?:[,.]\d{1,2})?\b", candidate)
+                    if km_match:
+                        km = km_match.group(1)
+                        break
+            if km:
+                break
     if plate:
         km_match = re.search(rf"{re.escape(plate)}\s+(\d{{1,6}}(?:[,.]\d{{2}})?)", text, flags=re.IGNORECASE)
         if km_match:
@@ -7028,6 +7049,13 @@ def _batch_invoice_is_eugenio_template(text: str) -> bool:
 
 def _batch_invoice_is_tal_template(text: str) -> bool:
     return "TAL_FAC" in text.upper() or "TAL_ABONOFAC" in text.upper()
+
+
+def _batch_invoice_is_filinto_template(text: str) -> bool:
+    normalized = (normalize_identifier(text) or "").lower()
+    return _batch_invoice_supplier_nif(text) == "500115966" or (
+        "filinto" in normalized and "mota" in normalized
+    )
 
 
 def _batch_invoice_document_kind(text: str) -> str:
@@ -7132,6 +7160,150 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "service": _batch_invoice_line_service(description),
             }
         )
+    return results
+
+
+def _batch_invoice_filinto_lines(lines: list[str]) -> list[dict[str, Any]]:
+    ignored = {
+        "DESCRICAO",
+        "DESCRIÇÃO",
+        "REFERENCIA",
+        "QTD",
+        "QUANTIDADE",
+        "UN",
+        "P.VENDAS/IVA",
+        "PVENDASIVA",
+        "PUNITARIO",
+        "VALOR",
+        "TOTAL",
+        "IVA",
+        "DOCUMENTO",
+        "DATA",
+        "KMS",
+        "MATRICULA",
+        "CHASSIS",
+    }
+    stop_prefixes = (
+        "OBSERVACOES",
+        "SINTESEDEPAGAMENTO",
+        "TOTALLIQUIDO",
+        "TOTALIVA",
+        "TOTALDODOCUMENTO",
+        "BASEDEINCIDENCIA",
+        "COD",
+        "TAXA",
+        "OSARTIGOS",
+        "PAGAMENTOPOR",
+        "DATAHORACARGA",
+    )
+    money_re = re.compile(r"(?<!\d)(-?\d{1,3}(?:[ .]\d{3})*(?:,\d{2,4})|-?\d+,\d{2,4})(?:\s*EUR)?\b", re.IGNORECASE)
+    numeric_re = re.compile(r"^-?\d+(?:,\d{1,4})?(?:\s*EUR)?$", re.IGNORECASE)
+
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    start: int | None = None
+    for index, simplified in enumerate(simplified_lines):
+        if simplified.startswith("NIF") and "500115966" in simplified:
+            start = index + 1
+            break
+    if start is None:
+        for index, simplified in enumerate(simplified_lines):
+            if "PVENDASIVA" in simplified or "PVENDASIVA" in simplified.replace(" ", ""):
+                start = index + 1
+                break
+    if start is None:
+        return []
+
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    index = start
+    while index < len(lines):
+        line = lines[index].strip()
+        simplified = simplified_lines[index]
+        if any(simplified.startswith(prefix) for prefix in stop_prefixes):
+            if simplified.startswith("OBSERVACOES"):
+                break
+            index += 1
+            continue
+        if (
+            not line
+            or simplified in ignored
+            or "TAL" in simplified
+            or simplified.startswith("REQ")
+            or simplified.startswith("DOCUMENTO")
+            or simplified.startswith("DATA")
+            or simplified.startswith("KMS")
+            or simplified.startswith("MATRICULA")
+            or simplified.startswith("CHASSIS")
+            or re.fullmatch(r"[A-Z]", line, flags=re.IGNORECASE)
+            or numeric_re.fullmatch(line)
+            or money_re.fullmatch(line)
+            or re.fullmatch(r"\d{2}[/-]\d{2}[/-]\d{2,4}", line)
+        ):
+            index += 1
+            continue
+
+        window = [candidate.strip() for candidate in lines[index + 1 : index + 10] if candidate.strip()]
+        window_simplified = [normalize_identifier(candidate) for candidate in window]
+        if any(value.startswith("OBSERVACOES") for value in window_simplified[:3]):
+            break
+        values: list[str] = []
+        quantity = ""
+        unit_price = ""
+        amount = ""
+        price_header_seen = False
+        for candidate in window:
+            candidate_simplified = normalize_identifier(candidate)
+            if any(candidate_simplified.startswith(prefix) for prefix in stop_prefixes):
+                break
+            if candidate_simplified in ignored or re.fullmatch(r"[A-Z]", candidate, flags=re.IGNORECASE):
+                if "PVENDASIVA" in candidate_simplified or "PUNITARIO" in candidate_simplified:
+                    price_header_seen = True
+                continue
+            if "PVENDASIVA" in candidate_simplified or "PUNITARIO" in candidate_simplified:
+                price_header_seen = True
+                continue
+            money_values = money_re.findall(candidate)
+            if money_values:
+                if price_header_seen or not any("PVENDASIVA" in value or "PUNITARIO" in value for value in window_simplified):
+                    values.extend(money_values)
+                continue
+            if not quantity and re.fullmatch(r"\d+(?:,\d{1,3})?", candidate):
+                quantity = candidate
+
+        meaningful_values = [value for value in values if _batch_invoice_money_to_cents(value) != 0]
+        if meaningful_values:
+            unit_price = meaningful_values[0]
+            amount = _batch_invoice_format_money(meaningful_values[-1])
+        if not amount:
+            index += 1
+            continue
+
+        reference = ""
+        description = line
+        ref_match = re.match(r"^(?P<ref>[A-Z0-9][A-Z0-9._/-]{2,})\s+(?P<desc>.+)$", line)
+        if ref_match and not re.search(r"\s", ref_match.group("ref")):
+            reference = ref_match.group("ref")
+            description = ref_match.group("desc").strip()
+
+        key = (reference, description, amount)
+        if key not in seen:
+            seen.add(key)
+            service = _batch_invoice_line_service(description)
+            results.append(
+                {
+                    "reference": reference,
+                    "description": description[:240],
+                    "quantity": quantity,
+                    "unit": "",
+                    "unit_price": _batch_invoice_format_money(unit_price) if unit_price else "",
+                    "tax": "",
+                    "amount": amount,
+                    "service": service,
+                    "service_detail": "Furo" if "furo" in (normalize_identifier(description) or "").lower() else "",
+                }
+            )
+        index += 1
+
     return results
 
 
@@ -7318,11 +7490,22 @@ def _batch_invoice_line_from_text(line: str) -> dict[str, Any] | None:
     }
 
 
+def _batch_invoice_total_from_lines(invoice_lines: list[dict[str, Any]]) -> str:
+    total_cents = 0
+    for line in invoice_lines:
+        total_cents += _batch_invoice_money_to_cents(str(line.get("amount") or ""))
+    if total_cents <= 0:
+        return ""
+    return f"{total_cents / 100:.2f}".replace(".", ",")
+
+
 def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, existing_text: str = "") -> dict[str, Any]:
     text, source = _batch_invoice_text(file_content, suffix, existing_text)
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
     invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
+    if not invoice_lines:
+        invoice_lines = _batch_invoice_filinto_lines(lines) if _batch_invoice_is_filinto_template(text) else []
     if not invoice_lines:
         invoice_lines = _batch_invoice_eugenio_lines(lines) if _batch_invoice_is_eugenio_template(text) else []
     if not invoice_lines:
@@ -7375,6 +7558,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     vehicle_fields = _batch_invoice_vehicle_fields(text)
     supplier_nif = _batch_invoice_supplier_nif(text)
     work_order_reference = _batch_invoice_work_order_reference(text)
+    total_with_vat = _batch_invoice_total_with_vat(text) or _batch_invoice_total_from_lines(invoice_lines)
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
         "text_source": source,
@@ -7385,11 +7569,12 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "plate": vehicle_fields["plate"],
         "vin": vehicle_fields["vin"],
         "km": vehicle_fields.get("km", ""),
-        "total_with_vat": _batch_invoice_total_with_vat(text),
+        "total_with_vat": total_with_vat,
         "work_order_reference": work_order_reference,
         "document_kind": _batch_invoice_document_kind(text),
         "ocr_template": (
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
+            "filinto_mota_sucessores" if _batch_invoice_is_filinto_template(text) else
             "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else ""
         ),
         "raw_text_preview": text[:2500],

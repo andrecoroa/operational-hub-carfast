@@ -78,7 +78,7 @@
                 <th>Template</th>
                 <th>Docs</th>
                 <th>Viaturas</th>
-                <th>Exemplos</th>
+                <th>Dados extraídos</th>
                 <th>Estado</th>
                 <th>Ações</th>
               </tr>
@@ -98,9 +98,37 @@
                     <strong>{{ group.vehicle_count }}</strong>
                     <small>{{ group.vehicle_preview or "Por associar" }}</small>
                   </td>
-                  <td>
-                    {% for example in group.examples %}
-                      <span class="clean-doc-template-example">{{ example }}</span>
+                  <td class="clean-doc-ocr-samples-cell">
+                    {% for sample in group.samples %}
+                      <details class="clean-doc-ocr-sample" {% if loop.first %}open{% endif %}>
+                        <summary>
+                          <span>{{ sample.title }}</span>
+                          <em>{{ sample.vehicle_label }}</em>
+                        </summary>
+                        <div class="clean-doc-ocr-sample-body">
+                          {% if sample.extracted_fields %}
+                            <table class="clean-doc-ocr-field-table">
+                              <tbody>
+                                {% for field in sample.extracted_fields %}
+                                  <tr>
+                                    <th>{{ field.label }}</th>
+                                    <td>{{ field.value }}</td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          {% else %}
+                            <p class="clean-doc-helper">Sem campos extraídos registados para este exemplo.</p>
+                          {% endif %}
+                          <div class="clean-doc-ocr-sample-actions">
+                            <a href="{{ sample.document_href }}">Abrir documento</a>
+                            {% if sample.line_count %}<span>{{ sample.line_count }} linhas</span>{% endif %}
+                          </div>
+                          {% if sample.raw_preview %}
+                            <small class="clean-doc-ocr-raw-preview">{{ sample.raw_preview }}</small>
+                          {% endif %}
+                        </div>
+                      </details>
                     {% endfor %}
                   </td>
                   <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ group.status.tone }}">{{ group.status.label }}</span></td>
@@ -177,143 +205,6 @@
         </div>
       </article>
 
-      <details class="clean-doc-collapsible clean-card-wide" {% if invoice_rows %}open{% endif %}>
-        <summary>
-          <span>
-            <b>Faturas por validar</b>
-            <small>Regista erros por fornecedor, reprocessa OCR ou valida o documento.</small>
-          </span>
-          <em>{{ invoice_rows|length }} docs</em>
-        </summary>
-        <div class="clean-doc-collapsible-body">
-          <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
-            <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-table">
-              <thead>
-                <tr>
-                  <th>Viatura</th>
-                  <th>Data</th>
-                  <th>Nº</th>
-                  <th>Fornecedor</th>
-                  <th>Estado</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in invoice_rows %}
-                  <tr>
-                    <td>
-                      <strong>{{ row.vehicle_label }}</strong>
-                      {% if row.vehicle_href %}<small><a href="{{ row.vehicle_href }}">Ficha</a></small>{% endif %}
-                    </td>
-                    <td>{{ row.date_display }}</td>
-                    <td>{{ row.document_number }}</td>
-                    <td>{{ row.supplier_name }}</td>
-                    <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ row.status.tone }}">{{ row.status.label }}</span></td>
-                    <td>
-                      <div class="clean-doc-inline-actions">
-                        <a class="button-link secondary-link" href="{{ row.document_href }}">Abrir</a>
-                        <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-inline-form">
-                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
-                          <button type="submit" class="button-link secondary-link">Reprocessar</button>
-                        </form>
-                        <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status" class="clean-inline-form">
-                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
-                          <input type="hidden" name="validation_status" value="validated">
-                          <button type="submit" class="button-link primary-link">Validar</button>
-                        </form>
-                        <details class="clean-doc-ocr-error-menu">
-                          <summary>Erro</summary>
-                          <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status">
-                            <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=invoices">
-                            <input type="hidden" name="validation_status" value="error">
-                            <select name="error_code">
-                              <option value="supplier_layout">Layout fornecedor</option>
-                              <option value="missing_lines">Linhas em falta</option>
-                              <option value="wrong_vehicle">Viatura errada</option>
-                              <option value="no_text">Sem texto</option>
-                              <option value="other">Outro</option>
-                            </select>
-                            <input type="text" name="note" placeholder="Nota curta">
-                            <button type="submit">Registar</button>
-                          </form>
-                        </details>
-                      </div>
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="6" class="clean-empty-cell">Sem faturas para os filtros escolhidos.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
-      <details class="clean-doc-collapsible clean-card-wide" {% if diagnostic_rows %}open{% endif %}>
-        <summary>
-          <span>
-            <b>Diagnósticos por validar</b>
-            <small>Separados por máquina e tipo para normalizar campos com segurança.</small>
-          </span>
-          <em>{{ diagnostic_rows|length }} docs</em>
-        </summary>
-        <div class="clean-doc-collapsible-body">
-          <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
-            <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-table">
-              <thead>
-                <tr>
-                  <th>Viatura</th>
-                  <th>Data</th>
-                  <th>Máquina</th>
-                  <th>Tipo</th>
-                  <th>Documento</th>
-                  <th>Estado</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in diagnostic_rows %}
-                  <tr>
-                    <td>{{ row.vehicle_label }}</td>
-                    <td>{{ row.date_display }}</td>
-                    <td>{{ row.machine }}</td>
-                    <td>{{ row.report_type }}</td>
-                    <td><a href="{{ row.document_href }}">{{ row.title }}</a></td>
-                    <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ row.status.tone }}">{{ row.status.label }}</span></td>
-                    <td>
-                      <div class="clean-doc-inline-actions">
-                        <a class="button-link secondary-link" href="{{ row.document_href }}">Abrir</a>
-                        <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status" class="clean-inline-form">
-                          <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=technical_reports">
-                          <input type="hidden" name="validation_status" value="validated">
-                          <button type="submit" class="button-link primary-link">Validar</button>
-                        </form>
-                        <details class="clean-doc-ocr-error-menu">
-                          <summary>Erro</summary>
-                          <form method="post" action="/v2-clean/documents/{{ row.id }}/ocr-validation-status">
-                            <input type="hidden" name="return_url" value="/v2-clean/documents/ocr-validation?scope=technical_reports">
-                            <input type="hidden" name="validation_status" value="error">
-                            <select name="error_code">
-                              <option value="machine_type">Máquina/tipo errado</option>
-                              <option value="missing_fields">Campos em falta</option>
-                              <option value="wrong_layout">Layout novo</option>
-                              <option value="other">Outro</option>
-                            </select>
-                            <input type="text" name="note" placeholder="Nota curta">
-                            <button type="submit">Registar</button>
-                          </form>
-                        </details>
-                      </div>
-                    </td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="7" class="clean-empty-cell">Sem diagnósticos para os filtros escolhidos.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
     </section>
   </main>
 </div>

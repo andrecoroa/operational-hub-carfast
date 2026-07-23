@@ -5984,6 +5984,10 @@ def clean_document_ocr_validation(
                         [
                             "invoice.ocr.extracted",
                             "invoice.ocr.reprocessed",
+                            "invoice.lines.extracted",
+                            "invoice.extracted",
+                            "document.ocr.extracted",
+                            "ocr.extracted",
                             "ocr.validation.status",
                             "ocr.template.status",
                         ]
@@ -6037,6 +6041,8 @@ def clean_document_ocr_validation(
                 continue
             status_ctx = _ocr_validation_status(document, events_by_document.get(document.id, []))
             template_ctx = _document_ocr_template_context(document)
+            extraction_metadata = _document_latest_ocr_metadata(events_by_document.get(document.id, []))
+            extracted_fields = _document_ocr_extracted_fields(extraction_metadata)
             row = {
                 "id": document.id,
                 "document": document,
@@ -6050,6 +6056,9 @@ def clean_document_ocr_validation(
                 "document_number": document.contract_number or document.reservation_number or str(document.id),
                 "template": template_ctx,
                 "template_key": template_ctx["key"],
+                "extracted_fields": extracted_fields,
+                "raw_preview": str(extraction_metadata.get("raw_text_preview") or extraction_metadata.get("text_preview") or "")[:260],
+                "line_count": len(extraction_metadata.get("invoice_lines") or extraction_metadata.get("lines") or []),
             }
             template_group = template_groups.setdefault(
                 template_ctx["key"],
@@ -6065,6 +6074,7 @@ def clean_document_ocr_validation(
                     "pending": 0,
                     "document_ids": [],
                     "examples": [],
+                    "samples": [],
                     "vehicles": set(),
                     "status_payload": template_status_by_key.get(template_ctx["key"], {}),
                 },
@@ -6074,6 +6084,8 @@ def clean_document_ocr_validation(
             template_group["vehicles"].add(vehicle_label)
             if len(template_group["examples"]) < 3:
                 template_group["examples"].append(row["title"])
+            if len(template_group["samples"]) < 2:
+                template_group["samples"].append(row)
             if status_ctx["code"] == "validated":
                 template_group["validated"] += 1
             elif status_ctx["code"] == "error":
@@ -6302,23 +6314,8 @@ def clean_document_detail(
             .where(DocumentEvent.document_id == document.id)
             .order_by(DocumentEvent.id.desc())
         ).all()
-        extraction_metadata: dict[str, Any] = {}
-        for event in reversed(events):
-            if event.action not in {
-                "invoice.ocr.extracted",
-                "invoice.ocr.reprocessed",
-                "invoice.lines.extracted",
-                "invoice.extracted",
-                "document.ocr.extracted",
-                "ocr.extracted",
-            }:
-                continue
-            try:
-                parsed_event = json.loads(event.new_value or "")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if isinstance(parsed_event, dict):
-                extraction_metadata.update(parsed_event)
+        extraction_metadata = _document_latest_ocr_metadata(events)
+        extraction_fields = _document_ocr_extracted_fields(extraction_metadata)
         file_size = "-"
         if document.file_size:
             if document.file_size >= 1024 * 1024:
@@ -6338,6 +6335,7 @@ def clean_document_detail(
                 "file_size": file_size,
                 "document_date": clean_date(document.document_date.isoformat() if document.document_date else None),
                 "extraction_metadata": extraction_metadata,
+                "extraction_fields": extraction_fields,
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
@@ -7549,6 +7547,83 @@ def _document_ocr_template_context(document: Document) -> dict[str, str]:
         "machine": machine,
         "report_type": report_type,
     }
+
+
+OCR_EXTRACTION_ACTIONS = {
+    "invoice.ocr.extracted",
+    "invoice.ocr.reprocessed",
+    "invoice.lines.extracted",
+    "invoice.extracted",
+    "document.ocr.extracted",
+    "ocr.extracted",
+}
+
+
+OCR_FIELD_LABELS = [
+    ("supplier_name", "Fornecedor"),
+    ("supplier_nif", "NIF fornecedor"),
+    ("document_number", "Nº documento"),
+    ("document_date", "Data"),
+    ("plate", "Matrícula"),
+    ("vin", "Chassi"),
+    ("km", "KM"),
+    ("work_order_reference", "Folha de obra"),
+    ("repair_order_reference", "Folha de obra"),
+    ("total_with_vat", "Total c/ IVA"),
+    ("total_amount", "Total"),
+    ("document_kind", "Tipo"),
+    ("ocr_template", "Template"),
+]
+
+
+def _document_latest_ocr_metadata(events: list[DocumentEvent]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for event in reversed(events):
+        if event.action not in OCR_EXTRACTION_ACTIONS:
+            continue
+        try:
+            parsed_event = json.loads(event.new_value or "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed_event, list):
+            metadata["invoice_lines"] = parsed_event
+        elif isinstance(parsed_event, dict):
+            metadata.update(parsed_event)
+    return metadata
+
+
+def _document_ocr_extracted_fields(metadata: dict[str, Any]) -> list[dict[str, str]]:
+    fields: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for key, label in OCR_FIELD_LABELS:
+        if key in seen:
+            continue
+        value = metadata.get(key)
+        if value in (None, "", [], {}):
+            continue
+        if key == "repair_order_reference" and "work_order_reference" in seen:
+            continue
+        fields.append({"label": label, "value": str(value)})
+        seen.add(key)
+    ignored = {
+        "invoice_lines",
+        "lines",
+        "raw_text",
+        "raw_text_preview",
+        "text_preview",
+        "ocr_errors",
+        "warnings",
+        "source",
+    }
+    for key, value in metadata.items():
+        if key in ignored or key in seen or value in (None, "", [], {}):
+            continue
+        if len(fields) >= 12:
+            break
+        label = key.replace("_", " ").strip().capitalize()
+        fields.append({"label": label, "value": str(value)})
+        seen.add(key)
+    return fields
 
 
 def _ocr_template_group_status(group: dict[str, Any]) -> dict[str, str]:

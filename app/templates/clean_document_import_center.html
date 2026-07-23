@@ -97,7 +97,7 @@
     {% set impro_count = structured_counts.get("impros", 0) %}
     {% set pending_structured = structured_rows|selectattr("comparison_state", "equalto", "por_validar")|list|length %}
 
-    <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact">
+    <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact clean-doc-kpi-strip-single-line">
       <a class="clean-doc-kpi-card" href="/v2-clean/fleet">
         <strong>{{ vehicle_count }}</strong>
         <span>Viaturas</span>
@@ -187,65 +187,57 @@
               <button type="submit">Importar</button>
             </form>
           </article>
+
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">ZIP</span>
+            <div>
+              <h4>Arquivo ZIP</h4>
+              <p>PDFs/imagens reais, por matrícula ou por pasta.</p>
+            </div>
+            <form method="post" action="/v2-clean/documents/import/archive-batch" enctype="multipart/form-data" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".zip,application/zip" required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">FA</span>
+            <div>
+              <h4>Pasta faturas</h4>
+              <p>
+                {% if invoice_inbox_state.available %}
+                  {{ invoice_inbox_state.file_count }} ficheiros por classificar.
+                {% elif invoice_inbox_state.configured %}
+                  Pasta configurada, mas inacessível.
+                {% else %}
+                  Configurar DOCUMENT_INVOICE_INBOX_PATH.
+                {% endif %}
+              </p>
+            </div>
+            <form method="post" action="/v2-clean/documents/import/invoice-folder" class="clean-doc-compact-form">
+              <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Ver faturas</a>
+              <button type="submit" {% if not invoice_inbox_state.available %}disabled{% endif %}>Importar</button>
+            </form>
+          </article>
         </div>
       </article>
 
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-batch-import-card">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Documentos reais em lote</p>
-            <h3>Importar arquivo ZIP</h3>
-            <p>As subpastas podem estar organizadas por matrícula. Cada PDF ou imagem é arquivado separadamente; duplicados são ignorados e ficheiros sem viatura ficam por associar.</p>
+      <details class="clean-doc-collapsible clean-card-wide clean-doc-import-history-card">
+        <summary>
+          <span>
+            <b>Últimas importações</b>
+            <small>Fontes Excel arquivadas para auditoria e reprocessamento.</small>
+          </span>
+          <em>{{ module_ctx.import_rows|length }} ficheiros</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="table-heading flat-heading">
+            <div>
+              <p class="eyebrow">Últimas importações</p>
+              <h3>Fontes Excel arquivadas</h3>
+              <p>Estas fontes não contam como documentos da viatura; servem apenas para criar e reprocessar linhas estruturadas.</p>
+            </div>
           </div>
-          <strong class="clean-doc-pill">ZIP</strong>
-        </div>
-        <form method="post" action="/v2-clean/documents/import/archive-batch" enctype="multipart/form-data" class="clean-doc-batch-import-form">
-          <label>
-            Pasta compactada
-            <input type="file" name="file" accept=".zip,application/zip" required>
-          </label>
-          <button type="submit">Importar documentos</button>
-        </form>
-        <p class="clean-doc-helper">Aceita PDF e imagens. O ZIP original não é movido nem apagado.</p>
-      </article>
-
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-batch-import-card">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Faturas por classificar</p>
-            <h3>Importar da pasta configurada</h3>
-            <p>Útil em local ou servidor quando a pasta existe nesse ambiente. Em Render, usa ZIP salvo/carregado pela aplicação.</p>
-          </div>
-          <strong class="clean-doc-pill">
-            {% if invoice_inbox_state.available %}
-              {{ invoice_inbox_state.file_count }} ficheiros
-            {% elif invoice_inbox_state.configured %}
-              Inacessível
-            {% else %}
-              Por configurar
-            {% endif %}
-          </strong>
-        </div>
-        {% if invoice_inbox_state.configured %}
-          <p class="clean-doc-helper">{{ invoice_inbox_state.path }}</p>
-        {% else %}
-          <p class="clean-doc-helper">Configurar com DOCUMENT_INVOICE_INBOX_PATH.</p>
-        {% endif %}
-        <form method="post" action="/v2-clean/documents/import/invoice-folder" class="clean-doc-batch-import-form">
-          <button type="submit" {% if not invoice_inbox_state.available %}disabled{% endif %}>Importar pasta</button>
-          <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Ver faturas</a>
-        </form>
-      </article>
-
-      <article class="clean-doc-structure-card clean-card-wide clean-doc-import-history-card">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Últimas importações</p>
-            <h3>Fontes Excel arquivadas</h3>
-            <p>Estas fontes não contam como documentos da viatura; servem apenas para criar e reprocessar linhas estruturadas.</p>
-          </div>
-          <strong class="clean-doc-pill">{{ module_ctx.import_rows|length }} ficheiros</strong>
-        </div>
         <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
           <table class="clean-doc-table clean-doc-table-compact">
             <thead>
@@ -292,7 +284,8 @@
             </tbody>
           </table>
         </div>
-      </article>
+        </div>
+      </details>
 
       <section class="clean-doc-filter-panel clean-card-wide">
         <form method="get" action="/v2-clean/documents" class="clean-doc-filter-grid">

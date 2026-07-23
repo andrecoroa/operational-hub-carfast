@@ -15381,7 +15381,7 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-service-table {
-  min-width: 1180px;
+  min-width: 1060px;
 }
 
 .clean-doc-service-table th,
@@ -15445,8 +15445,40 @@ button.clean-upload-preview-card {
   border: 1px solid #dce4ef;
   border-radius: 10px;
   overflow: hidden;
-  min-width: 1040px;
+  min-width: 1060px;
   table-layout: fixed;
+}
+
+.clean-doc-classify-table .clean-doc-source-col {
+  width: 48px;
+}
+
+.clean-doc-classify-table .clean-doc-date-col {
+  width: 110px;
+}
+
+.clean-doc-classify-table .clean-doc-number-col {
+  width: 76px;
+}
+
+.clean-doc-classify-table .clean-doc-provider-col {
+  width: 30%;
+}
+
+.clean-doc-classify-table .clean-doc-km-col {
+  width: 82px;
+}
+
+.clean-doc-classify-table .clean-doc-services-col {
+  width: 19%;
+}
+
+.clean-doc-classify-table .clean-doc-status-col {
+  width: 114px;
+}
+
+.clean-doc-classify-table .clean-doc-actions-col {
+  width: 124px;
 }
 
 .clean-doc-classify-table th {
@@ -15477,7 +15509,6 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-classify-table .clean-doc-col-provider {
-  width: 330px;
   text-align: left;
 }
 
@@ -15493,7 +15524,6 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-classify-table .clean-doc-col-services {
-  width: 230px;
   text-align: left;
 }
 
@@ -15503,7 +15533,6 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-classify-table .clean-doc-col-actions {
-  width: 116px;
   text-align: right;
 }
 
@@ -15523,8 +15552,66 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-classify-table .clean-doc-service-description {
-  max-width: 230px;
+  max-width: 100%;
   white-space: normal;
+}
+
+.clean-doc-global-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.clean-doc-global-table th,
+.clean-doc-global-table td {
+  vertical-align: middle;
+}
+
+.clean-doc-global-table td strong,
+.clean-doc-global-table td small {
+  display: block;
+}
+
+.clean-doc-global-table td small {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.clean-doc-global-table td:nth-child(4) {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-global-invoice-table th:nth-child(1),
+.clean-doc-global-invoice-table td:nth-child(1),
+.clean-doc-global-workorder-table th:nth-child(1),
+.clean-doc-global-workorder-table td:nth-child(1),
+.clean-doc-global-contract-table th:nth-child(1),
+.clean-doc-global-contract-table td:nth-child(1) {
+  width: 150px;
+}
+
+.clean-doc-global-invoice-table th:nth-child(4),
+.clean-doc-global-invoice-table td:nth-child(4),
+.clean-doc-global-workorder-table th:nth-child(4),
+.clean-doc-global-workorder-table td:nth-child(4),
+.clean-doc-global-contract-table th:nth-child(4),
+.clean-doc-global-contract-table td:nth-child(4) {
+  width: 230px;
+}
+
+.clean-doc-global-invoice-table th:last-child,
+.clean-doc-global-invoice-table td:last-child,
+.clean-doc-global-workorder-table th:last-child,
+.clean-doc-global-workorder-table td:last-child,
+.clean-doc-global-contract-table th:last-child,
+.clean-doc-global-contract-table td:last-child {
+  width: 110px;
+  text-align: right;
 }
 
 .clean-doc-classify-table .clean-doc-classify-actions .button-link {

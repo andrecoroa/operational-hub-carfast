@@ -124,6 +124,16 @@
     {% macro render_classification_table(rows, empty_text, prefix) %}
       <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
         <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table">
+          <colgroup>
+            <col class="clean-doc-source-col">
+            <col class="clean-doc-date-col">
+            <col class="clean-doc-number-col">
+            <col class="clean-doc-provider-col">
+            <col class="clean-doc-km-col">
+            <col class="clean-doc-services-col">
+            <col class="clean-doc-status-col">
+            <col class="clean-doc-actions-col">
+          </colgroup>
           <thead>
             <tr>
               <th></th>
@@ -146,7 +156,7 @@
                 </td>
                 <td class="clean-doc-col-date">{{ row.date_display or "-" }}</td>
                 <td class="clean-doc-col-number"><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
-                <td class="clean-doc-col-provider">{{ row.supplier_name }}</td>
+                <td class="clean-doc-col-provider" title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                 <td class="clean-doc-col-km">{{ row.km if row.km is not none else "-" }}</td>
                 <td class="clean-doc-service-description">
                   {{ render_classified_service_summary(row) }}

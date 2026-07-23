@@ -325,14 +325,15 @@
         </summary>
         <div class="clean-doc-collapsible-body">
           <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
-            <table class="clean-doc-table clean-doc-table-compact">
+            <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-invoice-table">
               <thead>
                 <tr>
                   <th>Viatura</th>
                   <th>Data</th>
                   <th>Nº</th>
                   <th>Fornecedor</th>
-                  <th>Título</th>
+                  <th>FO</th>
+                  <th>Total</th>
                   <th>Estado</th>
                   <th>Ações</th>
                 </tr>
@@ -346,9 +347,10 @@
                     </td>
                     <td>{{ row.date_display }}</td>
                     <td>{{ row.document_number }}</td>
-                    <td>{{ row.supplier_name }}</td>
-                    <td>{{ row.title }}</td>
-                    <td>{{ row.status }}</td>
+                    <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                    <td>{{ row.work_order_reference or "-" }}</td>
+                    <td>{{ row.total_with_vat or "-" }}</td>
+                    <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                     <td>
                       <div class="clean-doc-inline-actions">
                         <a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a>
@@ -357,7 +359,7 @@
                     </td>
                   </tr>
                 {% else %}
-                  <tr><td colspan="7" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                      <tr><td colspan="8" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -394,50 +396,112 @@
                 <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
               </div>
               <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
-                <table class="clean-doc-table clean-doc-table-compact">
-                  <thead>
-                    <tr>
-                      <th>Viatura</th>
-                      <th>Data</th>
-                      <th>Referência</th>
-                      <th>Fornecedor / origem</th>
-                      <th>KM</th>
-                      <th>Descrição / período</th>
-                      <th>Estado</th>
-                      <th>Abrir</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for row in grouped.rows %}
+                {% if grouped.code == "work_orders" %}
+                  <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-workorder-table">
+                    <thead>
                       <tr>
-                        <td>
-                          <strong>{{ row.vehicle_plate }}</strong>
-                          <small>{{ row.vehicle_label }}</small>
-                        </td>
-                        <td>{{ row.date_display or "-" }}</td>
-                        <td>
-                          <strong>{{ row.title }}</strong>
-                          {% if row.external_reference and row.external_reference != row.title and row.external_reference != "-" %}
-                            <small>{{ row.external_reference }}</small>
-                          {% endif %}
-                        </td>
-                        <td>{{ row.supplier_name }}</td>
-                        <td>{{ row.km if row.km is not none else "-" }}</td>
-                        <td>
-                          {% if row.period_display and row.period_display != "-" %}
-                            {{ row.period_display }}
-                          {% else %}
-                            {{ row.description or "-" }}
-                          {% endif %}
-                        </td>
-                        <td>{{ row.comparison_label }}</td>
-                        <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                        <th>Viatura</th>
+                        <th>Data</th>
+                        <th>FO nº</th>
+                        <th>Fornecedor</th>
+                        <th>KM</th>
+                        <th>Serviço / obs.</th>
+                        <th>Estado</th>
+                        <th>Ações</th>
                       </tr>
-                    {% else %}
-                      <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {% for row in grouped.rows %}
+                        <tr>
+                          <td><strong>{{ row.vehicle_plate }}</strong><small>{{ row.vehicle_label }}</small></td>
+                          <td>{{ row.date_display or "-" }}</td>
+                          <td><strong>{{ row.external_reference or row.title }}</strong></td>
+                          <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.description or "-" }}</td>
+                          <td><span class="clean-doc-status-pill">{{ "Importado RW" if row.status == "archived" else row.comparison_label }}</span></td>
+                          <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% elif grouped.code == "contracts" %}
+                  <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-contract-table">
+                    <thead>
+                      <tr>
+                        <th>Viatura</th>
+                        <th>Início</th>
+                        <th>Contrato</th>
+                        <th>Cliente / origem</th>
+                        <th>Período</th>
+                        <th>Estado</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in grouped.rows %}
+                        <tr>
+                          <td><strong>{{ row.vehicle_plate }}</strong><small>{{ row.vehicle_label }}</small></td>
+                          <td>{{ row.date_display or "-" }}</td>
+                          <td><strong>{{ row.external_reference or row.title }}</strong></td>
+                          <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                          <td>{{ row.period_display if row.period_display and row.period_display != "-" else row.description or "-" }}</td>
+                          <td><span class="clean-doc-status-pill">{{ "Importado RW" if row.status == "archived" else row.comparison_label }}</span></td>
+                          <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% else %}
+                  <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table">
+                    <thead>
+                      <tr>
+                        <th>Viatura</th>
+                        <th>Data</th>
+                        <th>Referência</th>
+                        <th>Fornecedor / origem</th>
+                        <th>KM</th>
+                        <th>Descrição / período</th>
+                        <th>Estado</th>
+                        <th>Abrir</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in grouped.rows %}
+                        <tr>
+                          <td>
+                            <strong>{{ row.vehicle_plate }}</strong>
+                            <small>{{ row.vehicle_label }}</small>
+                          </td>
+                          <td>{{ row.date_display or "-" }}</td>
+                          <td>
+                            <strong>{{ row.title }}</strong>
+                            {% if row.external_reference and row.external_reference != row.title and row.external_reference != "-" %}
+                              <small>{{ row.external_reference }}</small>
+                            {% endif %}
+                          </td>
+                          <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>
+                            {% if row.period_display and row.period_display != "-" %}
+                              {{ row.period_display }}
+                            {% else %}
+                              {{ row.description or "-" }}
+                            {% endif %}
+                          </td>
+                          <td><span class="clean-doc-status-pill">{{ row.comparison_label }}</span></td>
+                          <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% endif %}
               </div>
             </section>
           {% endfor %}

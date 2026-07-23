@@ -7065,8 +7065,7 @@ def _batch_invoice_work_order_reference(text: str) -> str:
     match = re.search(r"\bREQ\.?\s*(?:N[ºo]\s*)?(\d{1,8})\b", text, flags=re.IGNORECASE)
     if match:
         return match.group(1)
-    match = re.search(r"\bO\.?\s*R\.?\s*:\s*(\d{1,8})\b", text, flags=re.IGNORECASE)
-    return match.group(1) if match else ""
+    return ""
 
 
 def _batch_invoice_is_eugenio_template(text: str) -> bool:

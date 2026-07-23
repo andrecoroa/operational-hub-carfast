@@ -5973,6 +5973,8 @@ def clean_document_ocr_validation(
     request: Request,
     scope: str = "",
     q: str | None = None,
+    template_key: str = "",
+    sample_id: int | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6025,6 +6027,7 @@ def clean_document_ocr_validation(
         } if vehicle_ids else {}
         invoice_rows = []
         diagnostic_rows = []
+        rows_by_id: dict[int, dict[str, Any]] = {}
         supplier_groups: dict[str, dict[str, Any]] = {}
         diagnostic_groups: dict[str, dict[str, Any]] = {}
         template_status_by_key: dict[str, dict[str, Any]] = {}
@@ -6064,6 +6067,21 @@ def clean_document_ocr_validation(
             template_ctx = _document_ocr_template_context(document)
             extraction_metadata = _document_latest_ocr_metadata(events_by_document.get(document.id, []))
             extracted_fields = _document_ocr_extracted_fields(extraction_metadata)
+            extracted_lines = extraction_metadata.get("invoice_lines") or extraction_metadata.get("lines") or []
+            field_reviews = []
+            latest_validation_note = ""
+            latest_validation_error = ""
+            for event in events_by_document.get(document.id, []):
+                if event.action != "ocr.validation.status":
+                    continue
+                try:
+                    validation_payload = json.loads(event.new_value or "{}")
+                except json.JSONDecodeError:
+                    continue
+                field_reviews = validation_payload.get("field_review") or []
+                latest_validation_note = str(validation_payload.get("note") or "")
+                latest_validation_error = str(validation_payload.get("error_code") or "")
+                break
             row = {
                 "id": document.id,
                 "document": document,
@@ -6078,9 +6096,14 @@ def clean_document_ocr_validation(
                 "template": template_ctx,
                 "template_key": template_ctx["key"],
                 "extracted_fields": extracted_fields,
+                "extracted_lines": extracted_lines,
+                "field_reviews": field_reviews,
+                "latest_validation_note": latest_validation_note,
+                "latest_validation_error": latest_validation_error,
                 "raw_preview": str(extraction_metadata.get("raw_text_preview") or extraction_metadata.get("text_preview") or "")[:260],
-                "line_count": len(extraction_metadata.get("invoice_lines") or extraction_metadata.get("lines") or []),
+                "line_count": len(extracted_lines),
             }
+            rows_by_id[document.id] = row
             template_group = template_groups.setdefault(
                 template_ctx["key"],
                 {
@@ -6159,7 +6182,67 @@ def clean_document_ocr_validation(
             group["vehicle_count"] = len(group["vehicles"])
             group["vehicle_preview"] = ", ".join(sorted(group["vehicles"])[:3])
             group["document_ids_value"] = ",".join(str(document_id) for document_id in group["document_ids"])
+            group["select_href"] = "/v2-clean/documents/ocr-validation?" + urlencode(
+                {
+                    key: value
+                    for key, value in {
+                        "scope": clean_scope,
+                        "q": q or "",
+                        "template_key": group["key"],
+                    }.items()
+                    if value
+                }
+            )
+            for sample in group["samples"]:
+                sample["calibrate_href"] = "/v2-clean/documents/ocr-validation?" + urlencode(
+                    {
+                        key: value
+                        for key, value in {
+                            "scope": clean_scope,
+                            "q": q or "",
+                            "template_key": group["key"],
+                            "sample_id": str(sample["id"]),
+                        }.items()
+                        if value
+                    }
+                )
             prepared_template_groups.append(group)
+        sorted_template_groups = sorted(
+            prepared_template_groups,
+            key=lambda item: (
+                0 if item["status"]["code"] == "review_needed" else 1 if item["status"]["code"] == "pending" else 2,
+                -item["pending"],
+                item["label"],
+            ),
+        )
+        selected_template_group = None
+        clean_template_key = (template_key or "").strip()
+        for group in sorted_template_groups:
+            if clean_template_key and group["key"] == clean_template_key:
+                selected_template_group = group
+                break
+        if not selected_template_group and sorted_template_groups:
+            selected_template_group = sorted_template_groups[0]
+        selected_sample = None
+        if sample_id and sample_id in rows_by_id:
+            candidate = rows_by_id[sample_id]
+            if not selected_template_group or candidate["template_key"] == selected_template_group["key"]:
+                selected_sample = candidate
+        if not selected_sample and selected_template_group and selected_template_group["samples"]:
+            selected_sample = selected_template_group["samples"][0]
+        selected_return_params = {
+            key: value
+            for key, value in {
+                "scope": clean_scope,
+                "q": q or "",
+                "template_key": selected_template_group["key"] if selected_template_group else "",
+                "sample_id": str(selected_sample["id"]) if selected_sample else "",
+            }.items()
+            if value
+        }
+        selected_return_url = "/v2-clean/documents/ocr-validation"
+        if selected_return_params:
+            selected_return_url += "?" + urlencode(selected_return_params)
         return templates.TemplateResponse(
             request,
             "clean_document_ocr_validation.html",
@@ -6168,14 +6251,10 @@ def clean_document_ocr_validation(
                 "q": q or "",
                 "invoice_rows": invoice_rows,
                 "diagnostic_rows": diagnostic_rows,
-                "template_groups": sorted(
-                    prepared_template_groups,
-                    key=lambda item: (
-                        0 if item["status"]["code"] == "review_needed" else 1 if item["status"]["code"] == "pending" else 2,
-                        -item["pending"],
-                        item["label"],
-                    ),
-                ),
+                "template_groups": sorted_template_groups,
+                "selected_template_group": selected_template_group,
+                "selected_sample": selected_sample,
+                "selected_return_url": selected_return_url,
                 "supplier_groups": sorted(supplier_groups.values(), key=lambda item: (-item["pending"], item["name"])),
                 "diagnostic_groups": sorted(diagnostic_groups.values(), key=lambda item: (-item["pending"], item["name"])),
                 "invoice_total": len(invoice_rows),

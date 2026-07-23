@@ -61,6 +61,159 @@
       </form>
     </section>
 
+    {% if selected_template_group and selected_sample %}
+      <section class="clean-card-wide clean-doc-ocr-calibration-workbench" id="calibracao">
+        <div class="table-heading flat-heading">
+          <div>
+            <p class="eyebrow">Template ativo</p>
+            <h3>{{ selected_template_group.label }}</h3>
+            <p>Exemplo em calibração: {{ selected_sample.title }} · {{ selected_sample.vehicle_label }}. Corrige os campos lidos e regista a falha do OCR para este modelo.</p>
+          </div>
+          <div class="clean-doc-inline-actions">
+            <a class="button-link secondary-link" href="{{ selected_sample.document_href }}">Abrir documento</a>
+            <form method="post" action="/v2-clean/documents/ocr-template-status" class="clean-inline-form">
+              <input type="hidden" name="return_url" value="{{ selected_return_url }}">
+              <input type="hidden" name="template_key" value="{{ selected_template_group.key }}">
+              <input type="hidden" name="document_ids" value="{{ selected_template_group.document_ids_value }}">
+              <input type="hidden" name="validation_status" value="validated">
+              <button type="submit" class="button-link primary-link">Validar template</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="clean-doc-ocr-calibration-grid">
+          <article class="clean-doc-ocr-preview-panel">
+            <div class="clean-doc-ocr-preview-header">
+              <strong>Documento de exemplo</strong>
+              <span>{{ selected_sample.date_display }} · {{ selected_sample.supplier_name }}</span>
+            </div>
+            <div class="clean-doc-ocr-preview-box">
+              <p>Preview visual do documento</p>
+              <strong>{{ selected_sample.title }}</strong>
+              <span>Por agora abre em detalhe; a marcação visual por caixas será adicionada quando o PDF tiver coordenadas OCR guardadas.</span>
+              <a class="button-link secondary-link" href="{{ selected_sample.document_href }}">Abrir detalhe</a>
+            </div>
+            {% if selected_sample.raw_preview %}
+              <details class="clean-doc-raw-preview clean-doc-ocr-preview-text">
+                <summary>Ver texto lido</summary>
+                <pre>{{ selected_sample.raw_preview }}</pre>
+              </details>
+            {% endif %}
+          </article>
+
+          <form method="post" action="/v2-clean/documents/{{ selected_sample.id }}/ocr-validation-status" class="clean-doc-ocr-calibration-form">
+            <input type="hidden" name="return_url" value="{{ selected_return_url }}">
+            <article class="clean-doc-ocr-calibration-card">
+              <div class="clean-doc-ocr-card-heading">
+                <h4>Campos extraídos</h4>
+                <span>{{ selected_sample.extracted_fields|length }} campos</span>
+              </div>
+              <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
+                <table class="clean-doc-ocr-review-table clean-doc-ocr-calibration-fields">
+                  <thead>
+                    <tr>
+                      <th>Campo</th>
+                      <th>Valor lido</th>
+                      <th>Correção</th>
+                      <th>Falha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for field in selected_sample.extracted_fields %}
+                      <tr>
+                        <th>
+                          {{ field.label }}
+                          <input type="hidden" name="ocr_field_label" value="{{ field.label }}">
+                        </th>
+                        <td>
+                          <span>{{ field.value }}</span>
+                          <input type="hidden" name="ocr_field_value" value="{{ field.value }}">
+                        </td>
+                        <td><input type="text" name="ocr_field_correction" placeholder="Valor correto"></td>
+                        <td>
+                          <select name="ocr_field_issue">
+                            <option value="">OK</option>
+                            <option value="missing">Não leu</option>
+                            <option value="wrong_value">Valor errado</option>
+                            <option value="wrong_field">Campo trocado</option>
+                            <option value="format">Formato</option>
+                          </select>
+                        </td>
+                      </tr>
+                    {% else %}
+                      <tr><td colspan="4" class="clean-empty-cell">Sem campos estruturados para este exemplo.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="clean-doc-ocr-calibration-card">
+              <div class="clean-doc-ocr-card-heading">
+                <h4>Linhas extraídas</h4>
+                <span>{{ selected_sample.extracted_lines|length }} linhas</span>
+              </div>
+              <div class="clean-doc-table-wrap clean-doc-table-scroll-4">
+                <table class="clean-doc-table clean-doc-table-compact clean-doc-ocr-lines-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Referência</th>
+                      <th>Descrição</th>
+                      <th>Qtd.</th>
+                      <th>Preço unit.</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for line in selected_sample.extracted_lines %}
+                      <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
+                        <td>{{ line.description or line.descricao or line.text or "-" }}</td>
+                        <td>{{ line.quantity or line.qtd or "-" }}</td>
+                        <td>{{ line.unit_price or line.preco_unitario or line.price_unit or "-" }}</td>
+                        <td>{{ line.total or line.amount or line.value or "-" }}</td>
+                      </tr>
+                    {% else %}
+                      <tr><td colspan="6" class="clean-empty-cell">Sem linhas extraídas para este exemplo.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="clean-doc-ocr-feedback-card clean-doc-ocr-calibration-feedback">
+              <label>
+                Tipo de falha
+                <select name="error_code">
+                  <option value="">Sem falha específica</option>
+                  <option value="supplier">Fornecedor/NIF</option>
+                  <option value="document_number">Nº documento</option>
+                  <option value="date">Data</option>
+                  <option value="plate_or_vin">Matrícula/chassi</option>
+                  <option value="km">KM</option>
+                  <option value="work_order">Folha de obra</option>
+                  <option value="total">Total c/ IVA</option>
+                  <option value="lines">Linhas faturadas</option>
+                  <option value="layout">Layout/template</option>
+                </select>
+              </label>
+              <label>
+                Nota para afinar o template
+                <textarea name="note" rows="3" placeholder="Ex.: fornecedor deve ser validado por NIF; campo FO/O.R. é interno do fornecedor; linhas começam após X...">{{ selected_sample.latest_validation_note }}</textarea>
+              </label>
+              <div class="clean-doc-ocr-review-actions">
+                <button type="submit" name="validation_status" value="error" class="button-link primary-link">Registar falha</button>
+                <button type="submit" name="validation_status" value="validated" class="button-link secondary-link">OCR do exemplo OK</button>
+                <button type="submit" name="validation_status" value="pending" class="button-link secondary-link">Manter pendente</button>
+              </div>
+            </article>
+          </form>
+        </div>
+      </section>
+    {% endif %}
+
     <section class="clean-doc-context-grid clean-doc-ocr-layout">
       <article class="clean-doc-structure-card clean-card-wide" id="templates-ocr">
         <div class="table-heading flat-heading">
@@ -78,7 +231,7 @@
                 <th>Template</th>
                 <th>Docs</th>
                 <th>Viaturas</th>
-                <th>Dados extraídos</th>
+                <th>Exemplos</th>
                 <th>Estado</th>
                 <th>Ações</th>
               </tr>
@@ -98,37 +251,12 @@
                     <strong>{{ group.vehicle_count }}</strong>
                     <small>{{ group.vehicle_preview or "Por associar" }}</small>
                   </td>
-                  <td class="clean-doc-ocr-samples-cell">
+                  <td class="clean-doc-ocr-samples-cell clean-doc-ocr-example-links">
                     {% for sample in group.samples %}
-                      <details class="clean-doc-ocr-sample" {% if loop.first %}open{% endif %}>
-                        <summary>
-                          <span>{{ sample.title }}</span>
-                          <em>{{ sample.vehicle_label }}</em>
-                        </summary>
-                        <div class="clean-doc-ocr-sample-body">
-                          {% if sample.extracted_fields %}
-                            <table class="clean-doc-ocr-field-table">
-                              <tbody>
-                                {% for field in sample.extracted_fields %}
-                                  <tr>
-                                    <th>{{ field.label }}</th>
-                                    <td>{{ field.value }}</td>
-                                  </tr>
-                                {% endfor %}
-                              </tbody>
-                            </table>
-                          {% else %}
-                            <p class="clean-doc-helper">Sem campos extraídos registados para este exemplo.</p>
-                          {% endif %}
-                          <div class="clean-doc-ocr-sample-actions">
-                            <a href="{{ sample.document_href }}">Abrir documento</a>
-                            {% if sample.line_count %}<span>{{ sample.line_count }} linhas</span>{% endif %}
-                          </div>
-                          {% if sample.raw_preview %}
-                            <small class="clean-doc-ocr-raw-preview">{{ sample.raw_preview }}</small>
-                          {% endif %}
-                        </div>
-                      </details>
+                      <a class="clean-doc-template-example" href="{{ sample.calibrate_href }}#calibracao">
+                        {{ sample.title }}
+                        <small>{{ sample.vehicle_label }}{% if sample.line_count %} · {{ sample.line_count }} linhas{% endif %}</small>
+                      </a>
                     {% endfor %}
                   </td>
                   <td><span class="clean-doc-ocr-state clean-doc-ocr-state-{{ group.status.tone }}">{{ group.status.label }}</span></td>
@@ -141,6 +269,7 @@
                         <input type="hidden" name="validation_status" value="validated">
                         <button type="submit" class="button-link primary-link">Validar template</button>
                       </form>
+                      <a class="button-link secondary-link" href="{{ group.select_href }}#calibracao">Calibrar</a>
                       <details class="clean-doc-ocr-error-menu">
                         <summary>Afinar</summary>
                         <form method="post" action="/v2-clean/documents/ocr-template-status">

@@ -7393,10 +7393,20 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                 else:
                     description = re.sub(r"\s+-?\d+,\d{2}\s*B?$", "", stripped).strip()
 
-        ref_match = re.match(r"^(?P<desc>.+?)\s+(?P<ref>[A-Z0-9]{4,})$", description)
-        if ref_match:
-            description = ref_match.group("desc").strip(" -")
-            reference = ref_match.group("ref")
+        operation_match = re.match(
+            r"^\((?P<ref>\d{5,})\)\s*(?P<desc>.+)$",
+            description,
+        )
+        if operation_match and not any((table_match, free_match, environmental_match)):
+            reference = operation_match.group("ref")
+            description = operation_match.group("desc").strip(" -")
+            quantity = amount
+            amount = ""
+        else:
+            ref_match = re.match(r"^(?P<desc>.+?)\s+(?P<ref>[A-Z0-9]{4,})$", description)
+            if ref_match:
+                description = ref_match.group("desc").strip(" -")
+                reference = ref_match.group("ref")
         key = (description, amount)
         if key in seen:
             continue

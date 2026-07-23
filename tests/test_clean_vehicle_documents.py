@@ -438,6 +438,34 @@ B APV TX NORMAL 23,00 192,39 44,25 192,39 44,25 236,64
     assert payload["invoice_lines"][-1]["quantity"] == "1"
 
 
+def test_batch_invoice_payload_treats_filinto_operation_duration_as_time():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2025/11170799
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+(22514510) 2 RODAS-EQUILIBRAGEM-NO VEICULO 0,60
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A.
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "tal.pdf", existing_text=text)
+
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "22514510",
+            "description": "2 RODAS-EQUILIBRAGEM-NO VEICULO",
+            "quantity": "0,60",
+            "unit": "",
+            "unit_price": "",
+            "list_price": "",
+            "discount_percent": "",
+            "tax": "",
+            "amount": "",
+            "service": "Pneus",
+        }
+    ]
+
+
 def test_batch_invoice_payload_extracts_caetano_gamobar_3003():
     text = """
 Ident ÚnicoDoc Valor Com IVA Data Vencim.

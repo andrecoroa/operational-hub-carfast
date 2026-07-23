@@ -7105,7 +7105,6 @@ def _batch_invoice_document_number(text: str) -> str:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             value = " ".join(match.group(1).split()).strip(" .:/_-")
-            value = re.sub(r"^TAL_(?:FAC|ABONOFAC)\s+", "", value, flags=re.IGNORECASE).strip()
             simple_match = re.fullmatch(r"(?:FT|FAC|FAT)[-_/ ]?(\d+)", value, flags=re.IGNORECASE)
             if simple_match:
                 value = simple_match.group(1)
@@ -7795,7 +7794,8 @@ def _batch_invoice_filinto_lines(lines: list[str]) -> list[dict[str, Any]]:
 
         meaningful_values = [value for value in values if _batch_invoice_money_to_cents(value) != 0]
         if meaningful_values:
-            unit_price = meaningful_values[0]
+            if quantity and len(meaningful_values) > 1:
+                unit_price = meaningful_values[0]
             amount = _batch_invoice_format_money(meaningful_values[-1])
         if not amount:
             index += 1
@@ -7822,7 +7822,6 @@ def _batch_invoice_filinto_lines(lines: list[str]) -> list[dict[str, Any]]:
                     "tax": "",
                     "amount": amount,
                     "service": service,
-                    "service_detail": "Furo" if "furo" in (normalize_identifier(description) or "").lower() else "",
                 }
             )
         index += 1

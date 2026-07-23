@@ -1,6 +1,7 @@
 import csv
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 import hashlib
 import io
 import json
@@ -7036,6 +7037,8 @@ def _batch_invoice_format_money(value: str) -> str:
 def _batch_invoice_supplier(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     supplier_nif = _batch_invoice_supplier_nif(text)
+    if supplier_nif == "500112967" or _batch_invoice_is_gamobar_template(text):
+        return "Caetano Gamobar Motores, S.A."
     if normalize_identifier("filinto") in normalized and supplier_nif:
         return f"Filinto Mota Sucessores S.A. (NIF {supplier_nif})"
     if supplier_nif == "510464157":
@@ -7054,6 +7057,9 @@ def _batch_invoice_supplier(text: str) -> str:
 
 
 def _batch_invoice_supplier_nif(text: str) -> str:
+    normalized = normalize_identifier(text) or ""
+    if "500112967" in normalized:
+        return "500112967"
     patterns = [
         r"licenciado\s+a:.*?/(\d{9})",
         r"\bNIF\s*:\s*PT\s*(\d{9})",
@@ -7064,6 +7070,8 @@ def _batch_invoice_supplier_nif(text: str) -> str:
         match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
         if match:
             return re.sub(r"\D", "", match.group(1))
+    if _batch_invoice_is_gamobar_template(text):
+        return "500112967"
     return ""
 
 
@@ -7191,6 +7199,22 @@ def _batch_invoice_is_filinto_template(text: str) -> bool:
     )
 
 
+def _batch_invoice_is_gamobar_template(text: str) -> bool:
+    normalized = (normalize_identifier(text) or "").lower()
+    compact = normalized.replace(" ", "")
+    return (
+        "500112967" in compact
+        or ("caetano" in normalized and "gamobar" in normalized)
+        or (
+            "ident" in compact
+            and ("unicodoc" in compact or "únicodoc" in compact)
+            and "valorcomiva" in compact
+            and "datavencim" in compact
+            and re.search(r"\bHFO/\d+/\d{4}\b", text, flags=re.IGNORECASE)
+        )
+    )
+
+
 def _batch_invoice_document_kind(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     if "NOTADECREDITO" in normalized or "TAL_ABONOFAC" in normalized:
@@ -7246,6 +7270,41 @@ def _batch_invoice_totals(text: str) -> dict[str, str]:
     return totals
 
 
+def _batch_invoice_tal_line_candidate(line: str) -> str:
+    cleaned = " ".join(line.split()).strip()
+    if not cleaned:
+        return ""
+
+    # The Filinto/Citroen TAL layout can put section labels and vertical side
+    # text on the same extracted line as the real table row. Keep only the
+    # horizontal invoice row content.
+    cleaned = re.sub(
+        r"^(?:\d+[ªa]?\s*)?REVIS[ÃA]O\s+[A-Z]\s*-?\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^OFERTA\s+DE\s+LAVAGEM\s+[A-Z]\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^CONTROLO\s+DE\s+TRAV[ÕO]ES\s+[A-Z]\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^PNEUS?\s+[A-Z]\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" -")
+
+
 def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
     start: int | None = None
     end = len(lines)
@@ -7272,7 +7331,7 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
             if part.strip()
         )
     for line in source_lines:
-        stripped = line.strip()
+        stripped = _batch_invoice_tal_line_candidate(line)
         stripped = re.split(r"\bSubtotal\b", stripped, maxsplit=1, flags=re.IGNORECASE)[0].strip()
         simplified = (normalize_identifier(stripped) or "").lower()
         if (
@@ -7280,6 +7339,7 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
             or stripped == "."
             or simplified.startswith("subtotal")
             or simplified.startswith("novainterven")
+            or simplified in {"revisao", "ofertadelavagem", "controlodetravoes", "pneus"}
             or simplified.startswith("grupo")
             or simplified.startswith("codigo")
             or simplified.startswith("código")
@@ -7359,6 +7419,271 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
             }
         )
     return results
+
+
+def _batch_invoice_decimal(value: str) -> Decimal | None:
+    cleaned = (value or "").replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        return Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _batch_invoice_gamobar_value_before(lines: list[str], label: str) -> str:
+    label_simple = normalize_identifier(label)
+    for index, line in enumerate(lines):
+        if normalize_identifier(line) == label_simple and index > 0:
+            return lines[index - 1].strip()
+    return ""
+
+
+def _batch_invoice_gamobar_value_after(lines: list[str], label: str) -> str:
+    label_simple = normalize_identifier(label)
+    for index, line in enumerate(lines):
+        if normalize_identifier(line) == label_simple and index + 1 < len(lines):
+            return lines[index + 1].strip()
+    return ""
+
+
+def _batch_invoice_gamobar_section(text: str, start_label: str, end_pattern: str) -> str:
+    match = re.search(
+        rf"{start_label}\s*:?\s*(?P<body>.*?)(?={end_pattern})",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return " ".join(match.group("body").split()).strip()
+
+
+def _batch_invoice_gamobar_parse_lines(lines: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    money_re = re.compile(r"^-?\d+(?:,\d{2,4})$")
+    unit_values = {"HORAS", "UDS", "UN", "H"}
+    type_values = {"MO", "MAT", "VAR"}
+    start: int | None = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if normalize_identifier(line) == "TIPO":
+            start = index + 1
+            break
+    if start is None:
+        return [], []
+    for index in range(start, len(lines)):
+        simplified = normalize_identifier(lines[index])
+        if simplified.startswith("OSSERVICOSCONSTANTES") or simplified.startswith("VALORDEIMPOSTO"):
+            end = index
+            break
+
+    invoice_lines: list[dict[str, Any]] = []
+    ecolub_lines: list[dict[str, Any]] = []
+    index = start
+    while index < end:
+        iva = lines[index].strip()
+        if not money_re.fullmatch(iva):
+            index += 1
+            continue
+        if index + 2 >= end:
+            break
+        amount = lines[index + 1].strip()
+        if not money_re.fullmatch(amount):
+            index += 1
+            continue
+        if normalize_identifier(lines[index + 2]) == "ECOLUB1L":
+            ecolub_lines.append(
+                {
+                    "reference": "",
+                    "description": "Ecolub 1L",
+                    "quantity": "",
+                    "unit": "",
+                    "unit_price": "",
+                    "discount_percent": "",
+                    "tax": iva,
+                    "amount": amount,
+                    "service": "Taxas",
+                    "line_type": "ECO",
+                }
+            )
+            index += 3
+            continue
+
+        discount = ""
+        unit_price = ""
+        unit = ""
+        quantity = ""
+        description_start = index + 6
+        if (
+            index + 5 < end
+            and money_re.fullmatch(lines[index + 2].strip())
+            and money_re.fullmatch(lines[index + 3].strip())
+            and normalize_identifier(lines[index + 4]) in unit_values
+        ):
+            discount = lines[index + 2].strip()
+            unit_price = lines[index + 3].strip()
+            unit = lines[index + 4].strip()
+            quantity = lines[index + 5].strip()
+            description_start = index + 6
+        elif (
+            index + 4 < end
+            and money_re.fullmatch(lines[index + 2].strip())
+            and normalize_identifier(lines[index + 3]) in unit_values
+        ):
+            unit_price = lines[index + 2].strip()
+            unit = lines[index + 3].strip()
+            quantity = lines[index + 4].strip()
+            description_start = index + 5
+        else:
+            index += 1
+            continue
+
+        reference_index: int | None = None
+        for candidate_index in range(description_start, min(end - 1, description_start + 8)):
+            if normalize_identifier(lines[candidate_index + 1]) in type_values:
+                reference_index = candidate_index
+                break
+        if reference_index is None:
+            index += 1
+            continue
+        description = " ".join(lines[description_start:reference_index]).strip()
+        reference = lines[reference_index].strip()
+        line_type = normalize_identifier(lines[reference_index + 1])
+        if normalize_identifier(description) == "ORIGINAL":
+            index = reference_index + 2
+            continue
+        invoice_lines.append(
+            {
+                "reference": reference,
+                "description": description[:240],
+                "quantity": quantity,
+                "unit": unit,
+                "unit_price": unit_price,
+                "discount_percent": discount,
+                "tax": iva,
+                "amount": amount,
+                "service": _batch_invoice_line_service(description),
+                "line_type": line_type,
+            }
+        )
+        index = reference_index + 2
+    return invoice_lines, ecolub_lines
+
+
+def _batch_invoice_gamobar_totals(lines: list[str], ecolub_lines: list[dict[str, Any]]) -> dict[str, str]:
+    totals = {
+        "subtotal_without_vat": "",
+        "vat_amount": "",
+        "total_with_vat": "",
+        "discount_without_vat": "",
+        "gross_without_vat": "",
+        "ecolub_total": "",
+        "materials_total": "",
+        "labor_total": "",
+        "misc_total": "",
+        "taxes_total": "",
+        "taxable_base": "",
+        "ocr_total_check": "",
+    }
+    for index, line in enumerate(lines):
+        if normalize_identifier(line) == "IMPOSTO" and index + 4 < len(lines):
+            totals["vat_amount"] = lines[index + 1].strip()
+            totals["taxable_base"] = lines[index + 3].strip()
+            break
+    for index, line in enumerate(lines):
+        if normalize_identifier(line) == "TOTAL" and index >= 8:
+            values = [value.strip() for value in lines[index - 8 : index]]
+            if len(values) == 8:
+                totals["total_with_vat"] = _batch_invoice_format_money(values[0])
+                totals["vat_amount"] = totals["vat_amount"] or values[1]
+                totals["discount_without_vat"] = values[2]
+                totals["gross_without_vat"] = values[3]
+                totals["taxes_total"] = values[4]
+                totals["misc_total"] = values[5]
+                totals["labor_total"] = values[6]
+                totals["materials_total"] = values[7]
+            break
+    ecolub_total = sum(
+        (_batch_invoice_decimal(str(line.get("amount") or "")) or Decimal("0"))
+        for line in ecolub_lines
+    )
+    if ecolub_total:
+        totals["ecolub_total"] = f"{ecolub_total:.4f}".replace(".", ",")
+    base = _batch_invoice_decimal(totals.get("taxable_base", ""))
+    vat = _batch_invoice_decimal(totals.get("vat_amount", ""))
+    total = _batch_invoice_decimal(totals.get("total_with_vat", ""))
+    if base is not None and vat is not None and total is not None:
+        totals["ocr_total_check"] = "ok" if abs((base + vat) - total) <= Decimal("0.02") else "divergent"
+    return totals
+
+
+def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
+    invoice_lines, ecolub_lines = _batch_invoice_gamobar_parse_lines(lines)
+    totals = _batch_invoice_gamobar_totals(lines, ecolub_lines)
+    document_date = _batch_document_date(text)
+    due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
+    due_date = _batch_document_date(due_date_text)
+    document_number_match = re.search(r"\b(HFO/\d+/\d{4})\b", text, flags=re.IGNORECASE)
+    atcud_match = re.search(r"\bATCUD\s*:?\s*([A-Z0-9-]+)", text, flags=re.IGNORECASE)
+    atcud = _batch_invoice_gamobar_value_before(lines, "ATCUD")
+    if not re.search(r"[A-Z]", atcud or "", flags=re.IGNORECASE):
+        atcud = atcud_match.group(1) if atcud_match else ""
+    authorization = _batch_invoice_gamobar_value_before(lines, "Núm. Autorização")
+    if not re.search(r"^\d", authorization or ""):
+        authorization = _batch_invoice_gamobar_value_after(lines, "Núm. Autorização")
+    if not re.search(r"^\d", authorization or ""):
+        authorization = ""
+    plate_vin = _batch_invoice_gamobar_value_before(lines, "Matrícula / VIN")
+    if "/" not in plate_vin:
+        plate_vin = _batch_invoice_gamobar_value_after(lines, "Matrícula / VIN")
+    plate = ""
+    vin = ""
+    plate_match = re.search(r"\b([A-Z]{2}\d{2}[A-Z]{2})\s*/\s*([A-Z0-9]{12,24})\b", plate_vin, flags=re.IGNORECASE)
+    if plate_match:
+        plate = plate_match.group(1).upper()
+        vin = plate_match.group(2).upper()
+    payment_method = _batch_invoice_gamobar_value_before(lines, "Forma de Pagamento")
+    if normalize_identifier(payment_method) not in {"CREDITO", "PRONTO", "DINHEIRO", "TRANSFERENCIA", "MULTIBANCO"}:
+        payment_method = _batch_invoice_gamobar_value_after(lines, "Forma de Pagamento")
+    client_nif = _batch_invoice_gamobar_value_before(lines, "NIF Cliente")
+    if not re.fullmatch(r"\d{9}", normalize_identifier(client_nif) or ""):
+        client_nif = _batch_invoice_gamobar_value_after(lines, "NIF Cliente")
+    repair_order = _batch_invoice_gamobar_value_before(lines, "OR")
+    if not re.search(r"[A-Z]+/\d+/\d{4}", repair_order or "", flags=re.IGNORECASE):
+        repair_order = _batch_invoice_gamobar_value_after(lines, "OR")
+    vehicle_model = _batch_invoice_gamobar_value_after(lines, "Modelo")
+    if not vehicle_model or normalize_identifier(vehicle_model).startswith("KMS"):
+        vehicle_model = _batch_invoice_gamobar_value_before(lines, "Modelo")
+    km = _batch_invoice_gamobar_value_before(lines, "Kms.")
+    if not re.fullmatch(r"\d+(?:,\d+)?", (km or "").strip()):
+        km = _batch_invoice_gamobar_value_after(lines, "Kms.")
+    opening_date = _batch_invoice_gamobar_value_before(lines, "Data Abertura")
+    if not _batch_document_date(opening_date):
+        opening_date = _batch_invoice_gamobar_value_after(lines, "Data Abertura")
+    complaint = _batch_invoice_gamobar_value_after(lines, "Valor Com IVA")
+    if not complaint or _batch_invoice_decimal(complaint) is not None:
+        complaint = _batch_invoice_gamobar_value_before(lines, "Valor Com IVA")
+    return {
+        "supplier_name": "Caetano Gamobar Motores, S.A.",
+        "supplier_nif": "500112967",
+        "document_number": document_number_match.group(1) if document_number_match else "",
+        "document_date": document_date.isoformat() if document_date else "",
+        "due_date": due_date.isoformat() if due_date else "",
+        "atcud": atcud,
+        "client_name": "Carfast Rent-A-Car Lda",
+        "client_nif": client_nif,
+        "repair_order_reference": repair_order,
+        "authorization_number": authorization,
+        "payment_method": payment_method,
+        "plate": plate,
+        "vin": vin,
+        "vehicle_model": vehicle_model,
+        "km": km.split(",")[0],
+        "opening_date": opening_date,
+        "complaint": complaint,
+        "technical_observations": _batch_invoice_gamobar_section(text, "Observações", r"Carfast\s+Rent-A-Car"),
+        "invoice_lines": invoice_lines,
+        "ecolub_lines": ecolub_lines,
+        "ocr_template": "caetano_gamobar_hfo",
+        **totals,
+    }
 
 
 def _batch_invoice_filinto_lines(lines: list[str]) -> list[dict[str, Any]]:
@@ -7706,7 +8031,10 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
             source = "pdf_text_normalized"
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
-    invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
+    gamobar_data = _batch_invoice_gamobar_data(text, lines) if _batch_invoice_is_gamobar_template(text) else {}
+    invoice_lines = gamobar_data.get("invoice_lines") or []
+    if not invoice_lines:
+        invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
     if not invoice_lines:
         invoice_lines = _batch_invoice_filinto_lines(lines) if _batch_invoice_is_filinto_template(text) else []
     if not invoice_lines:
@@ -7763,16 +8091,39 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     work_order_reference = _batch_invoice_work_order_reference(text)
     repair_order_reference = _batch_invoice_repair_order_reference(text)
     totals = _batch_invoice_totals(text)
+    if gamobar_data:
+        document_number = gamobar_data.get("document_number") or document_number
+        document_date = _batch_document_date(gamobar_data.get("document_date", "")) or document_date
+        vehicle_fields.update(
+            {
+                "plate": gamobar_data.get("plate", "") or vehicle_fields.get("plate", ""),
+                "vin": gamobar_data.get("vin", "") or vehicle_fields.get("vin", ""),
+                "km": gamobar_data.get("km", "") or vehicle_fields.get("km", ""),
+            }
+        )
+        supplier_nif = gamobar_data.get("supplier_nif", "") or supplier_nif
+        repair_order_reference = gamobar_data.get("repair_order_reference", "") or repair_order_reference
+        totals.update({key: value for key, value in gamobar_data.items() if key in totals and value})
     if not totals.get("total_with_vat"):
         totals["total_with_vat"] = _batch_invoice_total_from_lines(invoice_lines)
     customer_fields = _batch_invoice_customer_fields(text)
     due_date = _batch_invoice_due_date(text)
+    if gamobar_data:
+        customer_fields.update(
+            {
+                "client_number": gamobar_data.get("client_number", "") or customer_fields.get("client_number", ""),
+                "client_nif": gamobar_data.get("client_nif", "") or customer_fields.get("client_nif", ""),
+            }
+        )
+        due_date = _batch_document_date(gamobar_data.get("due_date", "")) or due_date
     authorization_match = re.search(
         r"\b(?:autoriz(?:aç|ac)[aã]o|autoriza[cç][aã]o|authorization)\b\D{0,24}([A-Z0-9./_-]{3,})",
         text,
         flags=re.IGNORECASE,
     )
     authorization_number = authorization_match.group(1).strip(" .:/_-") if authorization_match else ""
+    if gamobar_data:
+        authorization_number = gamobar_data.get("authorization_number", "")
     ocr_alerts: list[str] = []
     if _batch_invoice_is_tal_template(text) and not authorization_number:
         ocr_alerts.append("Nº de autorização não encontrado no documento.")
@@ -7799,6 +8150,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "ocr_alerts": ocr_alerts,
         "document_kind": _batch_invoice_document_kind(text),
         "ocr_template": (
+            "caetano_gamobar_hfo" if gamobar_data else
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
             "filinto_mota_sucessores" if _batch_invoice_is_filinto_template(text) else
             "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else ""
@@ -7806,6 +8158,27 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "raw_text_preview": text[:2500],
         "invoice_lines": invoice_lines,
         "original_name": filename,
+        **{
+            key: value
+            for key, value in gamobar_data.items()
+            if key
+            not in {
+                "document_number",
+                "document_date",
+                "due_date",
+                "supplier_name",
+                "supplier_nif",
+                "client_number",
+                "client_nif",
+                "plate",
+                "vin",
+                "km",
+                "invoice_lines",
+                "ocr_template",
+            }
+            and value not in ("", None)
+            and value != []
+        },
     }
 
 
@@ -8015,21 +8388,36 @@ OCR_EXTRACTION_ACTIONS = {
 OCR_FIELD_LABELS = [
     ("supplier_name", "Fornecedor"),
     ("supplier_nif", "NIF fornecedor"),
+    ("client_name", "Cliente"),
     ("client_number", "Nº cliente"),
     ("client_nif", "NIF cliente"),
     ("document_number", "Nº documento"),
     ("document_date", "Data"),
     ("due_date", "Vencimento"),
+    ("atcud", "ATCUD"),
     ("plate", "Matrícula"),
     ("vin", "Chassi"),
+    ("vehicle_model", "Modelo"),
     ("km", "KM"),
+    ("opening_date", "Data abertura"),
     ("work_order_reference", "Folha de obra"),
     ("repair_order_reference", "O.R. fornecedor"),
     ("authorization_number", "Nº autorização"),
+    ("payment_method", "Pagamento"),
+    ("complaint", "Queixa"),
+    ("technical_observations", "Observações técnicas"),
+    ("materials_total", "Materiais"),
+    ("labor_total", "Mão de obra"),
+    ("misc_total", "Diversos"),
+    ("taxes_total", "Taxas"),
+    ("ecolub_total", "Ecolub"),
+    ("gross_without_vat", "Bruto"),
     ("subtotal_without_vat", "Subtotal s/ IVA"),
+    ("taxable_base", "Base tributável"),
     ("vat_amount", "IVA"),
     ("total_with_vat", "Total c/ IVA"),
     ("discount_without_vat", "Desconto s/ IVA"),
+    ("ocr_total_check", "Coerência total"),
     ("total_amount", "Total"),
     ("document_kind", "Tipo"),
     ("ocr_template", "Template"),

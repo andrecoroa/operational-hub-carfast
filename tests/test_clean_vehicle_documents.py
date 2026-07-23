@@ -399,6 +399,343 @@ B APV TX NORMAL 23,00 175,18 40,29 175,18 40,29 215,47
     assert payload["invoice_lines"][0]["amount"] == "36,75"
 
 
+def test_batch_invoice_payload_extracts_only_filinto_tal_table_rows():
+    text = """
+ORIGINAL
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2022/11146106
+DE : 16/12/2022 O.R. : 305504 OFICINA : (001) CIT Reparação VENCIMENTO : 16/12/2022
+MAT : AO-26-GP MARCA : CITROEN MODELO : Jumper
+KMS : 26720 RECEPCIONISTA : Gil Teixeira CHASSIS : VF7VAYHVMMZ106533
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+1ª REVISAO A
+- OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO - 93830000 49,00 25,00 36,75 1 36,75B
+LÍQUIDO DE LAVA-VIDROS CONCENTRADO 1611908680 1,31 12,00 1,15 1 1,15B
+JUNTA TAMPÃO BLOCO MOTOR 016488 2,19 8,00 2,01 1 2,01B
+OLEO TOTAL INEO XTRA FIRST 0W20 LT QINEOXF 40,00 39,00 24,40 5,75 140,30B
+FILTRO OLEO 1680682480 14,65 20,00 11,72 1 11,72B
+SIGOU - Ecolub 1L 0,08 0,08 5,75 0,46B
+Subtotal Peças (155,64)
+Nova Intervenção 192,39
+OFERTA DE LAVAGEM B Lavagem Simples LAVOFE 10,00 99,99 1 B
+Nova Intervenção
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 192,39 44,25 192,39 44,25 236,64
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "tal.pdf", existing_text=text)
+    descriptions = [line["description"] for line in payload["invoice_lines"]]
+
+    assert len(payload["invoice_lines"]) == 7
+    assert "1ª REVISAO" not in descriptions
+    assert "Subtotal Peças" not in descriptions
+    assert "Nova Intervenção" not in descriptions
+    assert payload["invoice_lines"][-1]["description"] == "Lavagem Simples"
+    assert payload["invoice_lines"][-1]["reference"] == "LAVOFE"
+    assert payload["invoice_lines"][-1]["quantity"] == "1"
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_3003():
+    text = """
+Ident ÚnicoDoc Valor Com IVA Data Vencim.
+HFO/3003/2025
+JF68PM28-3003
+ATCUD
+26-08-2025
+27-10-2025
+Data Vencim.
+Carfast Rent-A-Car Lda
+NIF Cliente
+509285970
+OR
+HOJ/4949/2025
+Núm. Autorização
+765/2025
+Forma de Pagamento
+CREDITO
+Matrícula / VIN
+BQ96IP / VR3EDYHT9RJ968630
+Modelo
+PEUGEOT PARTNER ASPHALT LONGA 1.5 B
+Kms.
+9233,00
+Data Abertura
+25-08-2025
+Valor Com IVA
+Cliente queixa-se de luz de aviso de revisão e luz de motor acesas
+Observações:
+Viatura apresenta taxa elevada de carbono no óleo e elevada taxa de diluição - necessário substituir óleo e filtro de óleo e efetuar telecarregamento calculador do motor.
+Carfast Rent-A-Car
+Tipo
+23,00
+13,2192
+40,00
+73,4400
+Horas
+0,30
+SUBSTITUICAO : FILTRO DE ÓLEO (NO VEICULO)
+01E3YA
+MO
+23,00
+17,6256
+40,00
+73,4400
+Horas
+0,40
+MUDANÇA DE ÓLEO
+15510A
+MO
+23,00
+30,8448
+40,00
+73,4400
+Horas
+0,70
+TELECARREGAMENTO DO CALCULADOR DO MOTOR
+19009B
+MO
+23,00
+93,6000
+35,00
+36,0000
+UDS
+4,00
+ÓLEO CASTROL MAGNATEC 5W30 P
+CST-1612B1
+MAT
+23,00
+12,4575
+25,00
+16,6100
+UDS
+1,00
+FILTRO OLEO
+PSA-1680682480
+MAT
+23,00
+2,1450
+25,00
+2,8600
+UDS
+1,00
+JUNTA
+PSA-1682801480
+MAT
+23,00
+30,4200
+35,00
+36,0000
+UDS
+1,30
+ÓLEO CASTROL MAGNATEC 5W30 P
+CST-1612B1
+MAT
+23,00
+2,4676
+2,4676
+UDS
+1,00
+Pequenos materiais
+PM
+VAR
+23,00
+0,2747
+Ecolub 1L
+23,00
+0,1000
+Ecolub 1L
+Os serviços constantes
+Imposto
+46,7255
+23,00
+203,1544
+249,88
+46,7255
+112,77
+315,93
+0,37
+2,47
+61,69
+138,62
+TOTAL
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_3003.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_hfo"
+    assert payload["supplier_name"] == "Caetano Gamobar Motores, S.A."
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "HFO/3003/2025"
+    assert payload["document_date"] == "2025-08-26"
+    assert payload["due_date"] == "2025-10-27"
+    assert payload["atcud"] == "JF68PM28-3003"
+    assert payload["client_name"] == "Carfast Rent-A-Car Lda"
+    assert payload["client_nif"] == "509285970"
+    assert payload["repair_order_reference"] == "HOJ/4949/2025"
+    assert payload["authorization_number"] == "765/2025"
+    assert payload["payment_method"] == "CREDITO"
+    assert payload["plate"] == "BQ96IP"
+    assert payload["vin"] == "VR3EDYHT9RJ968630"
+    assert payload["vehicle_model"] == "PEUGEOT PARTNER ASPHALT LONGA 1.5 B"
+    assert payload["km"] == "9233"
+    assert payload["opening_date"] == "25-08-2025"
+    assert "luz de aviso de revisão" in payload["complaint"]
+    assert "taxa elevada de carbono" in payload["technical_observations"]
+    assert payload["materials_total"] == "138,62"
+    assert payload["labor_total"] == "61,69"
+    assert payload["misc_total"] == "2,47"
+    assert payload["taxes_total"] == "0,37"
+    assert payload["gross_without_vat"] == "315,93"
+    assert payload["discount_without_vat"] == "112,77"
+    assert payload["taxable_base"] == "203,1544"
+    assert payload["vat_amount"] == "46,7255"
+    assert payload["total_with_vat"] == "249,88"
+    assert payload["ecolub_total"] == "0,3747"
+    assert payload["ocr_total_check"] == "ok"
+    assert len(payload["invoice_lines"]) == 8
+    assert payload["invoice_lines"][0]["line_type"] == "MO"
+    assert payload["invoice_lines"][0]["reference"] == "01E3YA"
+    assert payload["invoice_lines"][0]["quantity"] == "0,30"
+    assert payload["invoice_lines"][0]["unit_price"] == "73,4400"
+    assert payload["invoice_lines"][0]["discount_percent"] == "40,00"
+    assert payload["invoice_lines"][0]["amount"] == "13,2192"
+    assert payload["invoice_lines"][3]["reference"] == "CST-1612B1"
+    assert payload["invoice_lines"][3]["amount"] == "93,6000"
+    assert payload["invoice_lines"][-1]["line_type"] == "VAR"
+    assert payload["invoice_lines"][-1]["amount"] == "2,4676"
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_2945():
+    text = """
+Ident ÚnicoDoc Valor Com IVA Data Vencim.
+HFO/2945/2025
+JF68PM28-2945
+ATCUD
+06-08-2025
+05-09-2025
+Data Vencim.
+Carfast Rent-A-Car Lda
+NIF Cliente
+509285970
+OR
+HOJ/4590/2025
+Núm. Autorização
+Forma de Pagamento
+CREDITO
+Matrícula / VIN
+BQ48IP / VR3EDYHT2RJ968629
+Modelo
+PEUGEOT PARTNER PRO STANDARD 1.5 B
+Kms.
+8899,00
+Data Abertura
+04-08-2025
+Valor Com IVA
+Cliente queixa-se que surgiu aviso "defeito no motor"
+Tipo
+23,00
+17,6256
+40,00
+73,4400
+Horas
+0,40
+MUDANÇA DE ÓLEO
+95R48A
+MO
+23,00
+12,4575
+25,00
+16,6100
+UDS
+1,00
+FILTRO OLEO
+PSA-1680682480
+MAT
+23,00
+2,1450
+25,00
+2,8600
+UDS
+1,00
+JUNTA
+PSA-1682801480
+MAT
+23,00
+124,0200
+35,00
+36,0000
+UDS
+5,30
+ÓLEO CASTROL MAGNATEC 5W30 P
+CST-1612B1
+MAT
+23,00
+0,7050
+0,7050
+UDS
+1,00
+Pequenos materiais
+PM
+VAR
+23,00
+0,3747
+Ecolub 1L
+Os serviços constantes
+Imposto
+36,1854
+23,00
+157,3278
+193,51
+36,1854
+83,40
+240,73
+0,37
+0,71
+17,63
+138,62
+TOTAL
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_2945.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_hfo"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "HFO/2945/2025"
+    assert payload["document_date"] == "2025-08-06"
+    assert payload["due_date"] == "2025-09-05"
+    assert payload["atcud"] == "JF68PM28-2945"
+    assert payload["repair_order_reference"] == "HOJ/4590/2025"
+    assert payload.get("authorization_number", "") == ""
+    assert payload["payment_method"] == "CREDITO"
+    assert payload["plate"] == "BQ48IP"
+    assert payload["vin"] == "VR3EDYHT2RJ968629"
+    assert payload["vehicle_model"] == "PEUGEOT PARTNER PRO STANDARD 1.5 B"
+    assert payload["km"] == "8899"
+    assert payload["opening_date"] == "04-08-2025"
+    assert payload["complaint"] == 'Cliente queixa-se que surgiu aviso "defeito no motor"'
+    assert payload.get("technical_observations", "") == ""
+    assert payload["materials_total"] == "138,62"
+    assert payload["labor_total"] == "17,63"
+    assert payload["misc_total"] == "0,71"
+    assert payload["taxes_total"] == "0,37"
+    assert payload["gross_without_vat"] == "240,73"
+    assert payload["discount_without_vat"] == "83,40"
+    assert payload["taxable_base"] == "157,3278"
+    assert payload["vat_amount"] == "36,1854"
+    assert payload["total_with_vat"] == "193,51"
+    assert payload["ecolub_total"] == "0,3747"
+    assert payload["ocr_total_check"] == "ok"
+    assert len(payload["invoice_lines"]) == 5
+    assert payload["invoice_lines"][0]["reference"] == "95R48A"
+    assert payload["invoice_lines"][0]["amount"] == "17,6256"
+    assert payload["invoice_lines"][3]["reference"] == "CST-1612B1"
+    assert payload["invoice_lines"][3]["quantity"] == "5,30"
+    assert payload["invoice_lines"][3]["amount"] == "124,0200"
+    assert payload["invoice_lines"][-1]["line_type"] == "VAR"
+    assert payload["invoice_lines"][-1]["amount"] == "0,7050"
+
+
 def test_batch_invoice_payload_extracts_filinto_tal_credit_note():
     text = """
 ORIGINAL

@@ -195,10 +195,14 @@
                     <thead>
                       <tr>
                         <th>#</th>
+                        <th>Tipo</th>
                         <th>Referência</th>
                         <th>Descrição</th>
                         <th>Qtd.</th>
+                        <th>Un.</th>
                         <th>Preço unit.</th>
+                        <th>Desc.</th>
+                        <th>IVA</th>
                         <th>Total</th>
                       </tr>
                     </thead>
@@ -206,10 +210,14 @@
                       {% for line in invoice_lines %}
                         <tr>
                           <td>{{ loop.index }}</td>
+                          <td>{{ line.line_type or line.tipo or "-" }}</td>
                           <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
                           <td>{{ line.description or line.descricao or line.text or "-" }}</td>
                           <td>{{ line.quantity or line.qtd or "-" }}</td>
+                          <td>{{ line.unit or line.unidade or "-" }}</td>
                           <td>{{ line.unit_price or line.preco_unitario or line.price_unit or "-" }}</td>
+                          <td>{{ line.discount_percent or line.desconto or "-" }}</td>
+                          <td>{{ line.tax or line.iva or "-" }}</td>
                           <td>{{ line.total or line.amount or line.value or "-" }}</td>
                         </tr>
                       {% endfor %}

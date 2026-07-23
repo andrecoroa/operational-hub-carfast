@@ -7018,6 +7018,7 @@ def _batch_invoice_document_number(text: str) -> str:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             value = " ".join(match.group(1).split()).strip(" .:/_-")
+            value = re.sub(r"^TAL_(?:FAC|ABONOFAC)\s+", "", value, flags=re.IGNORECASE).strip()
             simple_match = re.fullmatch(r"(?:FT|FAC|FAT)[-_/ ]?(\d+)", value, flags=re.IGNORECASE)
             if simple_match:
                 value = simple_match.group(1)
@@ -7068,6 +7069,31 @@ def _batch_invoice_work_order_reference(text: str) -> str:
     return ""
 
 
+def _batch_invoice_repair_order_reference(text: str) -> str:
+    match = re.search(r"\bO\.?\s*R\.?\s*:\s*(\d{1,12})\b", text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _batch_invoice_due_date(text: str) -> date | None:
+    match = re.search(r"\bVENCIMENTO\s*:\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return _batch_document_date(match.group(1))
+
+
+def _batch_invoice_customer_fields(text: str) -> dict[str, str]:
+    match = re.search(
+        r"\bCLIENTE\s*:\s*(?P<number>\d{1,12})\s+NIF\s*:\s*(?P<nif>\d{9})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return {"client_number": "", "client_nif": ""}
+    return {"client_number": match.group("number"), "client_nif": match.group("nif")}
+
+
 def _batch_invoice_is_eugenio_template(text: str) -> bool:
     normalized = (normalize_identifier(text) or "").lower()
     return _batch_invoice_supplier_nif(text) == "510464157" or (
@@ -7116,6 +7142,31 @@ def _batch_invoice_total_with_vat(text: str) -> str:
     return _batch_invoice_format_money(meaningful[-1]) if meaningful else ""
 
 
+def _batch_invoice_totals(text: str) -> dict[str, str]:
+    totals = {
+        "subtotal_without_vat": "",
+        "vat_amount": "",
+        "total_with_vat": _batch_invoice_total_with_vat(text),
+        "discount_without_vat": "",
+    }
+    for line in [" ".join(value.split()) for value in text.splitlines() if " ".join(value.split())]:
+        if "APV TX NORMAL" in line.upper():
+            values = re.findall(r"(?<!\d)(-?\d{1,3}(?:[ .]\d{3})*(?:,\d{2})|-?\d+,\d{2})\b", line)
+            if len(values) >= 5:
+                totals["subtotal_without_vat"] = _batch_invoice_format_money(values[-3])
+                totals["vat_amount"] = _batch_invoice_format_money(values[-2])
+                totals["total_with_vat"] = _batch_invoice_format_money(values[-1])
+            break
+    discount_match = re.search(
+        r"VANTAGEM\s+CLIENTE\s*:\s*(\d{1,3}(?:[ .]\d{3})*(?:,\d{2})|\d+,\d{2})\s*€",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if discount_match:
+        totals["discount_without_vat"] = _batch_invoice_format_money(discount_match.group(1))
+    return totals
+
+
 def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
     start: int | None = None
     end = len(lines)
@@ -7149,7 +7200,6 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
             not stripped
             or stripped == "."
             or simplified.startswith("subtotal")
-            or "ofertadelavagem" in simplified
             or simplified.startswith("novainterven")
             or simplified.startswith("grupo")
             or simplified.startswith("codigo")
@@ -7165,17 +7215,40 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
         reference = ""
         quantity = ""
         unit_price = ""
+        free_match = None
         table_match = re.match(
-            r"^(?P<body>.+?)\s+(?P<unit>-?\d+,\d{2})\s+-?\d+,\d{2}\s+-?\d+,\d{2}\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})B?$",
+            r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<discount>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})B?$",
             stripped,
         )
+        environmental_match = None
         if table_match:
             description = table_match.group("body").strip()
-            unit_price = table_match.group("unit")
+            unit_price = table_match.group("net_unit")
             quantity = table_match.group("qty")
             amount = table_match.group("amount")
         else:
-            description = re.sub(r"\s+-?\d+,\d{2}\s*B?$", "", stripped).strip()
+            free_match = re.match(
+                r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<discount>99,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+B?$",
+                stripped,
+            )
+            if free_match:
+                description = free_match.group("body").strip()
+                unit_price = "0,00"
+                quantity = free_match.group("qty")
+                amount = "0,00"
+                environmental_match = None
+            else:
+                environmental_match = re.match(
+                    r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})B?$",
+                    stripped,
+                )
+                if environmental_match:
+                    description = environmental_match.group("body").strip()
+                    unit_price = environmental_match.group("net_unit")
+                    quantity = environmental_match.group("qty")
+                    amount = environmental_match.group("amount")
+                else:
+                    description = re.sub(r"\s+-?\d+,\d{2}\s*B?$", "", stripped).strip()
 
         ref_match = re.match(r"^(?P<desc>.+?)\s+(?P<ref>[A-Z0-9]{4,})$", description)
         if ref_match:
@@ -7192,6 +7265,15 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "quantity": quantity,
                 "unit": "",
                 "unit_price": unit_price,
+                "list_price": (
+                    table_match.group("list_price") if table_match else
+                    free_match.group("list_price") if free_match else
+                    environmental_match.group("list_price") if environmental_match else ""
+                ),
+                "discount_percent": (
+                    table_match.group("discount") if table_match else
+                    free_match.group("discount") if free_match else ""
+                ),
                 "tax": "",
                 "amount": _batch_invoice_format_money(amount) if amount else "",
                 "service": _batch_invoice_line_service(description),
@@ -7600,19 +7682,42 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     vehicle_fields = _batch_invoice_vehicle_fields(text)
     supplier_nif = _batch_invoice_supplier_nif(text)
     work_order_reference = _batch_invoice_work_order_reference(text)
-    total_with_vat = _batch_invoice_total_with_vat(text) or _batch_invoice_total_from_lines(invoice_lines)
+    repair_order_reference = _batch_invoice_repair_order_reference(text)
+    totals = _batch_invoice_totals(text)
+    if not totals.get("total_with_vat"):
+        totals["total_with_vat"] = _batch_invoice_total_from_lines(invoice_lines)
+    customer_fields = _batch_invoice_customer_fields(text)
+    due_date = _batch_invoice_due_date(text)
+    authorization_match = re.search(
+        r"\b(?:autoriz(?:aç|ac)[aã]o|autoriza[cç][aã]o|authorization)\b\D{0,24}([A-Z0-9./_-]{3,})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    authorization_number = authorization_match.group(1).strip(" .:/_-") if authorization_match else ""
+    ocr_alerts: list[str] = []
+    if _batch_invoice_is_tal_template(text) and not authorization_number:
+        ocr_alerts.append("Nº de autorização não encontrado no documento.")
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",
+        "due_date": due_date.isoformat() if due_date else "",
         "supplier_name": _batch_invoice_supplier(text),
         "supplier_nif": supplier_nif,
+        "client_number": customer_fields["client_number"],
+        "client_nif": customer_fields["client_nif"],
         "plate": vehicle_fields["plate"],
         "vin": vehicle_fields["vin"],
         "km": vehicle_fields.get("km", ""),
-        "total_with_vat": total_with_vat,
+        "subtotal_without_vat": totals.get("subtotal_without_vat", ""),
+        "vat_amount": totals.get("vat_amount", ""),
+        "total_with_vat": totals.get("total_with_vat", ""),
+        "discount_without_vat": totals.get("discount_without_vat", ""),
         "work_order_reference": work_order_reference,
+        "repair_order_reference": repair_order_reference,
+        "authorization_number": authorization_number,
+        "ocr_alerts": ocr_alerts,
         "document_kind": _batch_invoice_document_kind(text),
         "ocr_template": (
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
@@ -7831,14 +7936,21 @@ OCR_EXTRACTION_ACTIONS = {
 OCR_FIELD_LABELS = [
     ("supplier_name", "Fornecedor"),
     ("supplier_nif", "NIF fornecedor"),
+    ("client_number", "Nº cliente"),
+    ("client_nif", "NIF cliente"),
     ("document_number", "Nº documento"),
     ("document_date", "Data"),
+    ("due_date", "Vencimento"),
     ("plate", "Matrícula"),
     ("vin", "Chassi"),
     ("km", "KM"),
     ("work_order_reference", "Folha de obra"),
-    ("repair_order_reference", "Folha de obra"),
+    ("repair_order_reference", "O.R. fornecedor"),
+    ("authorization_number", "Nº autorização"),
+    ("subtotal_without_vat", "Subtotal s/ IVA"),
+    ("vat_amount", "IVA"),
     ("total_with_vat", "Total c/ IVA"),
+    ("discount_without_vat", "Desconto s/ IVA"),
     ("total_amount", "Total"),
     ("document_kind", "Tipo"),
     ("ocr_template", "Template"),
@@ -7881,6 +7993,7 @@ def _document_ocr_extracted_fields(metadata: dict[str, Any]) -> list[dict[str, s
         "raw_text_preview",
         "text_preview",
         "ocr_errors",
+        "ocr_alerts",
         "warnings",
         "source",
     }

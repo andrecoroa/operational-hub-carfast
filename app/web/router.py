@@ -6875,6 +6875,35 @@ def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "
     return "", "not_extracted"
 
 
+def _batch_invoice_fold_ocr_stutter(text: str) -> str:
+    if not text.strip():
+        return text
+    folded_lines: list[str] = []
+    for line in text.splitlines():
+        folded: list[str] = []
+        index = 0
+        while index < len(line):
+            next_index = index + 1
+            while next_index < len(line) and line[next_index] == line[index]:
+                next_index += 1
+            char = line[index]
+            count = next_index - index
+            if char != " " and count >= 3:
+                folded.append(char * max(1, round(count / 3)))
+            else:
+                folded.append(char * count)
+            index = next_index
+        folded_lines.append("".join(folded))
+
+    folded_text = "\n".join(folded_lines)
+    signals = ("NIF", "DOCUMENTO", "FACTURA", "FATURA", "KMS", "CHASSIS", "DESCRICAO")
+    raw_normalized = normalize_identifier(text) or ""
+    folded_normalized = normalize_identifier(folded_text) or ""
+    raw_score = sum(1 for signal in signals if signal in raw_normalized)
+    folded_score = sum(1 for signal in signals if signal in folded_normalized)
+    return folded_text if folded_score > raw_score else text
+
+
 def _batch_invoice_line_service(text: str) -> str:
     normalized = (normalize_identifier(text) or "").lower()
     if "ipo" in normalized or "inspecao" in normalized:
@@ -7106,13 +7135,22 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
+    source_lines: list[str] = []
     for line in lines[start:end]:
+        source_lines.extend(
+            part.strip()
+            for part in re.split(r"(?<=\d,\d{2}B)\s+(?=[A-ZÀ-Ú])", line)
+            if part.strip()
+        )
+    for line in source_lines:
         stripped = line.strip()
+        stripped = re.split(r"\bSubtotal\b", stripped, maxsplit=1, flags=re.IGNORECASE)[0].strip()
         simplified = (normalize_identifier(stripped) or "").lower()
         if (
             not stripped
             or stripped == "."
             or simplified.startswith("subtotal")
+            or "ofertadelavagem" in simplified
             or simplified.startswith("novainterven")
             or simplified.startswith("grupo")
             or simplified.startswith("codigo")
@@ -7501,6 +7539,11 @@ def _batch_invoice_total_from_lines(invoice_lines: list[dict[str, Any]]) -> str:
 
 def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, existing_text: str = "") -> dict[str, Any]:
     text, source = _batch_invoice_text(file_content, suffix, existing_text)
+    folded_text = _batch_invoice_fold_ocr_stutter(text)
+    if folded_text != text:
+        text = folded_text
+        if source == "pdf_text":
+            source = "pdf_text_normalized"
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
     invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []

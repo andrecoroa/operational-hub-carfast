@@ -7149,9 +7149,14 @@ def _batch_invoice_vehicle_fields(text: str) -> dict[str, str]:
 
 
 def _batch_invoice_work_order_reference(text: str) -> str:
-    match = re.search(r"\bREQ\.?\s*(?:N[ºo]\s*)?(\d{1,8})\b", text, flags=re.IGNORECASE)
-    if match:
-        return match.group(1)
+    patterns = (
+        r"\bFolha\s+de\s+Obra\s*(?:N[.º°oª]*\s*)?(\d{1,8})\b",
+        r"\bREQ\.?\s*(?:N[ºo]\s*)?(\d{1,8})\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
     return ""
 
 

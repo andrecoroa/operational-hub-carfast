@@ -378,6 +378,7 @@ Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
 REVISÃO A
 - OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO - 95N48A 49,00 25,00 36,75 1 36,75B
 OLEO TOTAL INEO XTRA FIRST 0W20 LT QINEOXF 40,00 39,00 24,40 3,50 85,40B
+Folha de Obra nº 378
 CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
 B APV TX NORMAL 23,00 175,18 40,29 175,18 40,29 215,47
 """
@@ -393,7 +394,7 @@ B APV TX NORMAL 23,00 175,18 40,29 175,18 40,29 215,47
     assert payload["vin"] == "VR3USHNSSPJ666227"
     assert payload["km"] == "23506"
     assert payload["total_with_vat"] == "215,47"
-    assert payload["work_order_reference"] == ""
+    assert payload["work_order_reference"] == "378"
     assert payload["repair_order_reference"] == "321803"
     assert payload["ocr_template"] == "filinto_mota_tal"
     assert payload["invoice_lines"][0]["service"] == "Manutenção"

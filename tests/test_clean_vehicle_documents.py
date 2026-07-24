@@ -841,6 +841,59 @@ TOTAL LÍQUIDO
     assert len(payload["invoice_lines"]) == 4
 
 
+def test_batch_invoice_payload_extracts_filinto_inline_pdf_order_without_column_shift():
+    text = """
+Cap. Social 1.250.000 € - Matriculada na CRC Porto
+nº 500 115 966 Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550
+FACTURA
+Modo de Pagamento : Pronto Pagamento
+CLIENTE : 227010 NIF :509285970
+DOCUMENTO : TAL_FAC 2022/11144696
+DE : 28/10/2022 O.R. : 303476 OFICINA : (81) MMarca Manutenção VENCIMENTO : 28/10/2022
+MAT : AQ-41-XJ MARCA : PEUGEOT MODELO : 308
+KMS : 11015 RECEPCIONISTA : GTEIXEIRA CHASSIS : VR3FRHNSLNY544049
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+SUBSTITUIR FAROLIM A
+FAROLIM DE TRÁS DIREITO - SUBSTITUIÇÃO MMC001 49,00 25,00 36,75 0,50 18,38 B
+FAROLIM TRAS 9835300580 177,00 20,00 141,60 1 141,60 B
+Nova Intervenção 159,98
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 159,98 36,80 159,98 36,80 196,78
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "1-TAL-2-11144696-227010-1211374.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2022/11144696"
+    assert payload["document_date"] == "2022-10-28"
+    assert payload["total_with_vat"] == "196,78"
+    assert payload["repair_order_reference"] == "303476"
+    assert len(payload["invoice_lines"]) == 2
+    assert payload["invoice_lines"][0] == {
+        "reference": "MMC001",
+        "description": "FAROLIM DE TRÁS DIREITO - SUBSTITUIÇÃO",
+        "quantity": "0,50",
+        "unit": "",
+        "unit_price": "36,75",
+        "list_price": "49,00",
+        "discount_percent": "25,00",
+        "tax": "B",
+        "amount": "18,38",
+        "service": "Por classificar",
+    }
+    assert payload["invoice_lines"][1] == {
+        "reference": "9835300580",
+        "description": "FAROLIM TRAS",
+        "quantity": "1",
+        "unit": "",
+        "unit_price": "141,60",
+        "list_price": "177,00",
+        "discount_percent": "20,00",
+        "tax": "B",
+        "amount": "141,60",
+        "service": "Por classificar",
+    }
+
+
 def test_batch_invoice_payload_extracts_filinto_package_invoice_line():
     text = """
 Cap. Social 1.250.000 € - Matriculada na CRC Porto

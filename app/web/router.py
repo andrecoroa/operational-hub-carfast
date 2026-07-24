@@ -8167,6 +8167,111 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
     return False
 
 
+def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]]:
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    start: int | None = None
+    for index, simplified in enumerate(simplified_lines):
+        compact = _compact_identifier(simplified)
+        if simplified.startswith(("DESCRICAO", "DESCRIÇÃO")) or ("PVUNIT" in compact and "TOTALLIQ" in compact):
+            start = index + 1
+            break
+    if start is None:
+        return []
+
+    stop_prefixes = (
+        "BASEDEINCIDENCIA",
+        "CODIGODESCRICAO",
+        "CODDESCRICAO",
+        "GRUPOFILINTOMOTAVANTAGEMCLIENTE",
+        "NOVAINTERVENCAO",
+        "OBSERVACOES",
+        "OSARTIGOS",
+        "PAGAMENTOPOR",
+        "SINTESEDEPAGAMENTO",
+        "TAXA",
+        "TOTALAPAGAR",
+        "TOTALDODOCUMENTO",
+        "TOTALIVA",
+        "TOTALLIQUIDO",
+        "VALORIVA",
+    )
+    skipped_descriptions = {
+        "1AREVISAO",
+        "2AVIA",
+        "2AREVISAO",
+        "3AREVISAO",
+        "DUPLICADO",
+        "FACTURA",
+        "FATURA",
+        "OFERTALAVAGEM",
+        "OFERTADELAVAGEM",
+        "ORIGINAL",
+        "REPARACAO",
+        "REVISAO",
+    }
+    money_re = re.compile(r"^-?\d+(?:[ .]\d{3})*,\d{2,4}$|^-?\d+,\d{2,4}$")
+    quantity_re = re.compile(r"^-?\d+(?:,\d{1,3})?$")
+
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for line in lines[start:]:
+        stripped = line.strip()
+        compact = _compact_identifier(stripped)
+        if any(compact.startswith(prefix) for prefix in stop_prefixes):
+            break
+        if compact in skipped_descriptions or not stripped:
+            continue
+        parts = stripped.split()
+        if len(parts) < 8:
+            continue
+        tax = ""
+        if re.fullmatch(r"[A-Z]", parts[-1], flags=re.IGNORECASE):
+            tax = parts.pop().upper()
+        if len(parts) < 7:
+            continue
+        amount = parts.pop()
+        quantity = parts.pop()
+        unit_price = parts.pop()
+        discount = parts.pop()
+        list_price = parts.pop()
+        reference = parts.pop()
+        if (
+            not money_re.fullmatch(amount)
+            or not quantity_re.fullmatch(quantity)
+            or not money_re.fullmatch(unit_price)
+            or not money_re.fullmatch(discount)
+            or not money_re.fullmatch(list_price)
+            or not re.fullmatch(r"[A-Z0-9._/-]{3,}", reference, flags=re.IGNORECASE)
+        ):
+            continue
+        description = " ".join(parts).strip(" -")
+        description_compact = _compact_identifier(description)
+        if description_compact in skipped_descriptions or any(
+            token in description_compact for token in ("CLIENTE", "DOCUMENTO", "DUPLICADO", "NIF")
+        ):
+            continue
+        amount = _batch_invoice_format_money(amount)
+        key = (reference, description, amount)
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(
+            {
+                "reference": reference,
+                "description": description[:240],
+                "quantity": quantity,
+                "unit": "",
+                "unit_price": _batch_invoice_format_money(unit_price),
+                "list_price": _batch_invoice_format_money(list_price),
+                "discount_percent": _batch_invoice_format_money(discount),
+                "tax": tax,
+                "amount": amount,
+                "service": _batch_invoice_line_service(description),
+            }
+        )
+    return results
+
+
 def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, Any]]:
     simplified_lines = [normalize_identifier(line) for line in lines]
     start: int | None = None
@@ -8921,6 +9026,8 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     invoice_lines = gamobar_data.get("invoice_lines") or []
     used_filinto_stacked_lines = False
     skip_generic_invoice_line_fallback = False
+    if not invoice_lines:
+        invoice_lines = _batch_invoice_filinto_inline_lines(lines) if _batch_invoice_is_filinto_template(text) else []
     if not invoice_lines:
         invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
     if (

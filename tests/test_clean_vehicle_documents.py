@@ -399,6 +399,42 @@ Total do documento
     ]
 
 
+def test_batch_invoice_payload_does_not_map_carfast_nif_as_filinto_supplier():
+    text = """
+CLIENTE : 227010 NIF :509285970
+Exmos Senhores Carfast - Rent-A-Car, Lda
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2025/11170001
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+FILTRO OLEO 1109AL 20,65 20,00 16,52 1 16,52B
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A.
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "filinto.pdf", existing_text=text)
+
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A. (NIF 500115966)"
+    assert payload["supplier_nif"] == "500115966"
+    assert payload["client_number"] == "227010"
+    assert payload["client_nif"] == "509285970"
+
+
+def test_batch_invoice_payload_does_not_invent_supplier_from_carfast_client_block():
+    text = """
+Fornecedor sem NIF visível
+CLIENTE : 227010 NIF :509285970
+Fatura FT-7788
+Data 15/05/2026
+Serviço 25,00
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "fatura.pdf", existing_text=text)
+
+    assert payload["supplier_nif"] == ""
+    assert payload["supplier_name"] == ""
+    assert payload["client_nif"] == "509285970"
+
+
 def test_batch_invoice_payload_extracts_eugenio_sage_invoice_with_work_order():
     text = """
 Fatura FAC 020/17027

@@ -7235,13 +7235,16 @@ def _batch_invoice_supplier(text: str) -> str:
     supplier_nif = _batch_invoice_supplier_nif(text)
     if supplier_nif == "500112967" or _batch_invoice_is_gamobar_template(text):
         return "Caetano Gamobar Motores, S.A."
-    if normalize_identifier("filinto") in normalized and supplier_nif:
-        return f"Filinto Mota Sucessores S.A. (NIF {supplier_nif})"
+    if normalize_identifier("filinto") in normalized:
+        return (
+            f"Filinto Mota Sucessores S.A. (NIF {supplier_nif})"
+            if supplier_nif
+            else "Filinto Mota Sucessores S.A."
+        )
     if supplier_nif == "510464157":
         return "Eugenio & Jorge Pereira Lda"
     known_suppliers = {
         normalize_identifier("filinto mota sucessores"): "Filinto Mota Sucessores S.A.",
-        normalize_identifier("carfast rent a car"): "CarFast Rent-A-Car, Lda",
         normalize_identifier("baia filho"): "Baia & Filho Lda",
         normalize_identifier("eugenio jorge pereira"): "Eugenio & Jorge Pereira Lda",
         normalize_identifier("inspenordeste"): "Inspenordeste Inspecoes Automoveis",
@@ -7252,20 +7255,60 @@ def _batch_invoice_supplier(text: str) -> str:
     return ""
 
 
+CARFAST_CLIENT_NIFS = {"509285970"}
+
+
+def _batch_invoice_nif_matches(text: str) -> list[tuple[str, str]]:
+    matches: list[tuple[str, str]] = []
+    pattern = re.compile(
+        r"\bNIF(?:\s+(?:DO\s+)?(?P<role>CLIENTE|FORNECEDOR|EMITENTE))?"
+        r"\s*(?:N[ºO]\s*)?:?\s*(?:PT\s*)?(?P<nif>(?:\d[\s.]*){9})",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        nif = re.sub(r"\D", "", match.group("nif"))
+        if len(nif) == 9:
+            matches.append(((match.group("role") or "").upper(), nif))
+    return matches
+
+
+def _batch_invoice_client_nifs(text: str) -> set[str]:
+    client_nifs = set(CARFAST_CLIENT_NIFS)
+    client_nifs.update(nif for role, nif in _batch_invoice_nif_matches(text) if role == "CLIENTE")
+    for match in re.finditer(
+        r"\bCLIENTE\b.{0,80}?\bNIF\s*:?\s*(?:PT\s*)?((?:\d[\s.]*){9})",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        nif = re.sub(r"\D", "", match.group(1))
+        if len(nif) == 9:
+            client_nifs.add(nif)
+    return client_nifs
+
+
 def _batch_invoice_supplier_nif(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     if "500112967" in normalized:
         return "500112967"
-    patterns = [
-        r"licenciado\s+a:.*?/(\d{9})",
-        r"\bNIF\s*:\s*PT\s*(\d{9})",
-        r"\bNIF\s*n[ºo]\s*:\s*(\d{9})",
-        r"\bNIF\s*:\s*((?:\d\s*){9})",
+    normalized_lower = normalized.lower()
+    compact = re.sub(r"\D", "", text)
+    if "eugenio" in normalized_lower and "jorge" in normalized_lower and "510464157" in compact:
+        return "510464157"
+    client_nifs = _batch_invoice_client_nifs(text)
+    nif_matches = _batch_invoice_nif_matches(text)
+    supplier_labeled = [
+        nif
+        for role, nif in nif_matches
+        if role in {"FORNECEDOR", "EMITENTE"} and nif not in client_nifs
     ]
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            return re.sub(r"\D", "", match.group(1))
+    if supplier_labeled:
+        return supplier_labeled[0]
+    candidates = [nif for _role, nif in nif_matches if nif not in client_nifs]
+    if candidates:
+        return candidates[0]
+    licensed_match = re.search(r"licenciado\s+a:.*?/(\d{9})", text, flags=re.IGNORECASE | re.DOTALL)
+    if licensed_match and licensed_match.group(1) not in client_nifs:
+        return licensed_match.group(1)
     if _batch_invoice_is_gamobar_template(text):
         return "500112967"
     return ""
@@ -8317,6 +8360,8 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     if not totals.get("total_with_vat"):
         totals["total_with_vat"] = _batch_invoice_total_from_lines(invoice_lines)
     customer_fields = _batch_invoice_customer_fields(text)
+    if supplier_nif and supplier_nif == customer_fields.get("client_nif"):
+        supplier_nif = ""
     due_date = _batch_invoice_due_date(text)
     if gamobar_data:
         customer_fields.update(

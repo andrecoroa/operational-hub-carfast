@@ -1022,6 +1022,123 @@ TOTAL LÍQUIDO
     assert payload["invoice_lines"][0]["amount"] == "135,43"
 
 
+def test_batch_invoice_payload_extracts_filinto_package_line_without_explicit_service_quantity():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+TAL_FAC
+CT
+Total Liq.
+Tmp/Qt
+P.Liq.Unit
+Desc
+P.V.Unit
+Referência
+26/02/2025
+KMS :
+DE :
+2025/11168657
+DOCUMENTO :
+FACTURA
+Descrição
+ORIGINAL
+A
+INDICAÇÃO DE MANUTENÇÃO
+Nova Intervenção
+B
+Mudança Óleo dinâmica diesel (5,3L)
+B
+135,43
+135,43
+135,43
+2
+Mudança Óleo dinâmica diesel (5,3L)
+5,30
+QINEORCP
+OLEO TOTAL QUARTZ INEO RCP 5W30 FPW9.55535/03
+1
+016488
+JUNTA DO BUJAO
+1
+1680682480
+FILTRO OLEO
+1
+MMC001
+Mão de Obra Mecânica
+5,30
+SIGOU - Ecolub 1L
+GRUPO FILINTO MOTA - VANTAGEM CLIENTE:
+APV TX NORMAL
+BASE INCIDÊNCIA
+TAXA I.V.A.
+CÓDIGO/DESCRIÇÃO I.V.A.
+31,15
+135,43
+23,00
+B
+11168657
+JFS4WFN7
+€ DE DESCONTO + I.V.A.
+14,00
+166,58
+TOTAL A PAGAR
+31,15
+TOTAL I.V.A.
+135,43
+TOTAL LÍQUIDO
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11168657-0.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2025/11168657"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["description"] == "Mudança Óleo dinâmica diesel (5,3L)"
+    assert payload["invoice_lines"][0]["quantity"] == "1"
+    assert payload["invoice_lines"][0]["amount"] == "135,43"
+
+
+def test_batch_invoice_payload_extracts_filinto_franchise_without_header_contamination():
+    text = """
+Filinto Mota Sucessores S.A.
+Rua Pinto Bessa, 546
+4300-428 Porto
+NIF: 500 115 966
+ORIGINAL
+2ª VIA
+402,40
+Franquia referente ao veículo com a matricula AQ-91-AA, apolice
+Nº 0004475646000324 da companhia de seguros Tranquilidade.
+VALOR I.V.A.
+GRUPO FILINTO MOTA - VANTAGEM CLIENTE:
+APV TX NORMAL
+BASE INCIDÊNCIA
+TAXA I.V.A.
+CÓDIGO/DESCRIÇÃO I.V.A.
+92,55
+402,40
+23,00
+B
+11158298
+JFS4WFN7
+€ DE DESCONTO + I.V.A.
+0,00
+494,95
+TOTAL A PAGAR
+92,55
+TOTAL I.V.A.
+402,40
+TOTAL LÍQUIDO
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "11158298.pdf", existing_text=text)
+
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["reference"] == "FRANQUIA"
+    assert payload["invoice_lines"][0]["description"].startswith("Franquia referente")
+    assert payload["invoice_lines"][0]["amount"] == "402,40"
+    assert "ORIGINAL" not in {line["description"] for line in payload["invoice_lines"]}
+
+
 def test_batch_invoice_payload_treats_filinto_operation_duration_as_time():
     text = """
 Filinto Mota Sucessores S.A.

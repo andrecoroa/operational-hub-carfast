@@ -8147,10 +8147,12 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
         "DUPLICADO",
         "FACTURA",
         "FATURA",
+        "GRUPO FILINTO MOTA",
         "FORNECEDOR",
         "MATRICULA",
         "NIF",
         "ORIGINAL",
+        "2A VIA",
         "TOTAL IVA",
         "TOTAL DO DOCUMENTO",
         "VENCIMENTO",
@@ -8194,13 +8196,17 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
     )
     skipped_descriptions = {
         "1AREVISAO",
+        "2AVIA",
         "2AREVISAO",
         "3AREVISAO",
+        "CODIGODESCRICAOIVA",
         "CONTROLODETRAVOES",
         "DUPLICADO",
+        "DEDESCONTOIVA",
         "EXMOSSENHORESCARFASTRENTACARLDA",
         "FACTURA",
         "FATURA",
+        "GRUPOFILINTOMOTAVANTAGEMCLIENTE",
         "NIF500115966",
         "NIF509285970",
         "NOVAINTERVENCAO",
@@ -8293,6 +8299,8 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
             if cursor < len(lines) and is_quantity(lines[cursor].strip()):
                 quantity = lines[cursor].strip()
                 cursor += 1
+            if "MUDANCAOLEODINAMICADIESEL" in _compact_identifier(description):
+                quantity = "1"
             key = ("", description, amount)
             if key not in seen:
                 seen.add(key)
@@ -8375,6 +8383,35 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
         index = max(cursor, index + 1)
 
     return results
+
+
+def _batch_invoice_filinto_franchise_lines(lines: list[str]) -> list[dict[str, Any]]:
+    for index, line in enumerate(lines):
+        description = line.strip()
+        compact = _compact_identifier(description)
+        if not compact.startswith("FRANQUIAREFERENTE"):
+            continue
+        amount = ""
+        for previous in reversed(lines[max(0, index - 4) : index]):
+            candidate = previous.strip().removeprefix("€").strip()
+            if _batch_invoice_decimal(candidate) is not None:
+                amount = _batch_invoice_format_money(candidate)
+                break
+        return [
+            {
+                "reference": "FRANQUIA",
+                "description": description[:240],
+                "quantity": "1",
+                "unit": "",
+                "unit_price": amount,
+                "list_price": amount,
+                "discount_percent": "",
+                "tax": "",
+                "amount": amount,
+                "service": _batch_invoice_line_service(description),
+            }
+        ]
+    return []
 
 
 def _batch_invoice_filinto_stacked_lines(lines: list[str]) -> list[dict[str, Any]]:
@@ -8883,6 +8920,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     gamobar_data = _batch_invoice_gamobar_data(text, lines) if _batch_invoice_is_gamobar_template(text) else {}
     invoice_lines = gamobar_data.get("invoice_lines") or []
     used_filinto_stacked_lines = False
+    skip_generic_invoice_line_fallback = False
     if not invoice_lines:
         invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
     if (
@@ -8890,10 +8928,17 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         and _batch_invoice_is_filinto_template(text)
         and _batch_invoice_filinto_lines_are_contaminated(invoice_lines)
     ):
-        stacked_lines = _batch_invoice_filinto_stacked_lines(lines)
-        if stacked_lines:
+        franchise_lines = _batch_invoice_filinto_franchise_lines(lines)
+        stacked_lines = [] if franchise_lines else _batch_invoice_filinto_stacked_lines(lines)
+        if franchise_lines:
+            invoice_lines = franchise_lines
+            used_filinto_stacked_lines = True
+        elif stacked_lines and not _batch_invoice_filinto_lines_are_contaminated(stacked_lines):
             invoice_lines = stacked_lines
             used_filinto_stacked_lines = True
+        else:
+            invoice_lines = []
+            skip_generic_invoice_line_fallback = True
     if not invoice_lines:
         invoice_lines = _batch_invoice_filinto_lines(lines) if _batch_invoice_is_filinto_template(text) else []
     if (
@@ -8901,25 +8946,34 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         and _batch_invoice_is_filinto_template(text)
         and _batch_invoice_filinto_lines_are_contaminated(invoice_lines)
     ):
-        stacked_lines = _batch_invoice_filinto_stacked_lines(lines)
-        if stacked_lines:
+        franchise_lines = _batch_invoice_filinto_franchise_lines(lines)
+        stacked_lines = [] if franchise_lines else _batch_invoice_filinto_stacked_lines(lines)
+        if franchise_lines:
+            invoice_lines = franchise_lines
+            used_filinto_stacked_lines = True
+            skip_generic_invoice_line_fallback = False
+        elif stacked_lines and not _batch_invoice_filinto_lines_are_contaminated(stacked_lines):
             invoice_lines = stacked_lines
             used_filinto_stacked_lines = True
+            skip_generic_invoice_line_fallback = False
+        else:
+            invoice_lines = []
+            skip_generic_invoice_line_fallback = True
     if not invoice_lines:
         invoice_lines = _batch_invoice_eugenio_lines(lines) if _batch_invoice_is_eugenio_template(text) else []
-    if not invoice_lines:
+    if not invoice_lines and not skip_generic_invoice_line_fallback:
         invoice_lines = [
             parsed
             for line in _batch_invoice_table_lines(unique_lines)
             if (parsed := _batch_invoice_line_from_text(line))
         ]
-    if not invoice_lines:
+    if not invoice_lines and not skip_generic_invoice_line_fallback:
         invoice_lines = [
             parsed
             for line in _batch_invoice_vertical_lines(unique_lines)
             if (parsed := _batch_invoice_line_from_text(line))
         ]
-    for line in unique_lines if not invoice_lines else []:
+    for line in unique_lines if not invoice_lines and not skip_generic_invoice_line_fallback else []:
         service = _batch_invoice_line_service(line)
         amount = _batch_invoice_line_amount(line)
         if service == "Por classificar" and not amount:
@@ -8938,7 +8992,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         )
         if len(invoice_lines) >= 40:
             break
-    if not invoice_lines:
+    if not invoice_lines and not skip_generic_invoice_line_fallback:
         for line in unique_lines[:12]:
             invoice_lines.append(
                 {

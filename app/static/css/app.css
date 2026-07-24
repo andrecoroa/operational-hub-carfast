@@ -15097,8 +15097,134 @@ button.clean-upload-preview-card {
   gap: 12px;
 }
 
+.clean-doc-review-workspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.85fr) minmax(620px, 1.45fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-extraction-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.clean-doc-invoice-preview {
+  position: sticky;
+  top: 12px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.clean-doc-invoice-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #dce4ef;
+  padding: 10px 12px;
+}
+
+.clean-doc-invoice-preview-header div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.clean-doc-invoice-preview-header strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.clean-doc-invoice-preview-header span {
+  overflow: hidden;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-invoice-preview iframe {
+  display: block;
+  width: 100%;
+  height: min(76vh, 880px);
+  min-height: 620px;
+  border: 0;
+  background: #eef2f6;
+}
+
+.clean-doc-invoice-preview-image {
+  display: grid;
+  max-height: 76vh;
+  min-height: 620px;
+  overflow: auto;
+  place-items: start center;
+  padding: 10px;
+}
+
+.clean-doc-invoice-preview-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.clean-doc-batch-ocr-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.clean-doc-batch-ocr-panel > div {
+  display: grid;
+  gap: 3px;
+}
+
+.clean-doc-batch-ocr-panel strong {
+  color: #0f2a5f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.clean-doc-batch-ocr-panel span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clean-doc-batch-ocr-panel form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.clean-doc-batch-ocr-panel select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 9px;
+}
+
 .clean-doc-ocr-review-form .clean-doc-extraction-grid {
   grid-template-columns: minmax(420px, 1.2fr) minmax(360px, 1fr);
+}
+
+.clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-extraction-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .clean-doc-extraction-card {
@@ -15454,6 +15580,23 @@ button.clean-upload-preview-card {
     grid-template-columns: 1fr;
   }
 
+  .clean-doc-review-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-invoice-preview {
+    position: static;
+  }
+
+  .clean-doc-invoice-preview iframe,
+  .clean-doc-invoice-preview-image {
+    min-height: 520px;
+  }
+
+  .clean-doc-batch-ocr-panel {
+    grid-template-columns: 1fr;
+  }
+
   .clean-doc-ocr-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -15466,6 +15609,10 @@ button.clean-upload-preview-card {
   }
 
   .clean-doc-ocr-review-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-batch-ocr-panel form {
     grid-template-columns: 1fr;
   }
 }

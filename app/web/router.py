@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 import hashlib
 import io
 import json
+import mimetypes
 from pathlib import Path
 import re
 import zipfile
@@ -6419,6 +6420,10 @@ def clean_document_detail(
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
+    ocr_batch_processed: int | None = None,
+    ocr_batch_failed: int | None = None,
+    ocr_batch_lines: int | None = None,
+    ocr_batch_label: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6438,6 +6443,13 @@ def clean_document_detail(
         ).all()
         extraction_metadata = _document_latest_ocr_metadata(events)
         extraction_fields = _document_ocr_extracted_fields(extraction_metadata)
+        import_batch_label = _document_import_batch_label(document)
+        preview_suffix = Path(document.original_name or document.file_name or document.storage_path or "").suffix.lower()
+        preview_kind = (
+            "pdf" if preview_suffix == ".pdf"
+            else "image" if preview_suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff"}
+            else ""
+        )
         file_size = "-"
         if document.file_size:
             if document.file_size >= 1024 * 1024:
@@ -6461,6 +6473,13 @@ def clean_document_detail(
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
+                "import_batch_label": import_batch_label,
+                "document_preview_kind": preview_kind,
+                "document_preview_url": f"/v2-clean/documents/{document.id}/file?inline=1" if preview_kind else "",
+                "ocr_batch_processed": ocr_batch_processed,
+                "ocr_batch_failed": ocr_batch_failed,
+                "ocr_batch_lines": ocr_batch_lines,
+                "ocr_batch_label": ocr_batch_label or "",
             },
         )
 
@@ -6475,6 +6494,53 @@ def _clean_v2_return_url(return_url: str | None, fallback: str = "/v2-clean/docu
 def _append_query_flag(url: str, **params: str) -> str:
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{urlencode(params)}"
+
+
+def _document_import_batch_label(document: Document) -> str:
+    subject = (document.source_subject or "").strip()
+    if not subject:
+        return ""
+    label, separator, _path = subject.partition(": ")
+    return label.strip() if separator else subject
+
+
+def _document_resolved_file(document: Document) -> Path | None:
+    raw_path = (document.storage_path or "").strip()
+    if not raw_path:
+        return None
+    source_path = Path(raw_path)
+    if not source_path.is_absolute():
+        source_path = APP_PROJECT_ROOT / source_path
+    try:
+        resolved_path = source_path.resolve()
+    except (OSError, ValueError):
+        return None
+    if not resolved_path.exists() or not resolved_path.is_file():
+        return None
+    return resolved_path
+
+
+@web_router.get("/v2-clean/documents/{document_id}/file")
+def clean_document_file(request: Request, document_id: int, inline: int = 1):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document or document.source not in V2_CLEAN_DOCUMENT_SOURCES:
+            return RedirectResponse("/v2-clean/documents?file_missing=1", status_code=303)
+        resolved_path = _document_resolved_file(document)
+        if not resolved_path:
+            return RedirectResponse(f"/v2-clean/documents/{document_id}?file_missing=1", status_code=303)
+        original_name = Path(document.original_name or document.file_name or resolved_path.name).name
+        media_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+    response = FileResponse(resolved_path, media_type=media_type, filename=original_name)
+    if inline:
+        safe_name = original_name.replace('"', "")
+        response.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    return response
 
 
 @web_router.post("/v2-clean/documents/{document_id}/remove")
@@ -6611,64 +6677,147 @@ def clean_document_reprocess_ocr(
             return RedirectResponse(f"{target}{separator}ocr_error=not_found", status_code=303)
         if clean_vehicle_document_group(document) != "invoices":
             return RedirectResponse(f"{target}{separator}ocr_error=unsupported_document", status_code=303)
-        source_path = Path(document.storage_path or "")
-        if source_path and not source_path.is_absolute():
-            source_path = APP_PROJECT_ROOT / source_path
-        try:
-            resolved_path = source_path.resolve()
-        except OSError:
-            return RedirectResponse(f"{target}{separator}ocr_error=file_missing", status_code=303)
-        if not resolved_path.exists() or not resolved_path.is_file():
-            return RedirectResponse(f"{target}{separator}ocr_error=file_missing", status_code=303)
-        suffix = resolved_path.suffix.lower()
-        if suffix not in BATCH_DOCUMENT_EXTENSIONS:
-            return RedirectResponse(f"{target}{separator}ocr_error=unsupported_type", status_code=303)
+        result = _reprocess_invoice_document(db, document=document, user_id=user_id)
+        if result["error"]:
+            return RedirectResponse(
+                f"{target}{separator}ocr_error={result['error']}",
+                status_code=303,
+            )
+        db.commit()
+    if not result["extracted_text"]:
+        return RedirectResponse(
+            f"{target}{separator}ocr_error=no_text&ocr_lines={result['lines']}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"{target}{separator}ocr_reprocessed=1&ocr_lines={result['lines']}",
+        status_code=303,
+    )
+
+
+def _reprocess_invoice_document(
+    db: Session,
+    *,
+    document: Document,
+    user_id: int | None,
+) -> dict[str, Any]:
+    resolved_path = _document_resolved_file(document)
+    if not resolved_path:
+        return {"error": "file_missing", "lines": 0, "extracted_text": False}
+    suffix = resolved_path.suffix.lower()
+    if suffix not in BATCH_DOCUMENT_EXTENSIONS:
+        return {"error": "unsupported_type", "lines": 0, "extracted_text": False}
+    try:
         file_content = resolved_path.read_bytes()
         payload = _batch_invoice_payload(
             file_content,
             suffix,
             document.original_name or document.file_name or resolved_path.name,
         )
-        extracted_lines = len(payload.get("invoice_lines") or [])
-        extracted_text = bool(str(payload.get("raw_text_preview") or "").strip())
-        if payload.get("document_number") and not document.contract_number:
-            document.contract_number = str(payload["document_number"])[:120]
-        if payload.get("supplier_name") and (
-            not document.supplier_name or document.supplier_name in {"v2_clean_manual", "v2_clean_batch"}
-        ):
-            document.supplier_name = str(payload["supplier_name"])[:255]
-        if payload.get("document_date") and not document.document_date:
+    except (OSError, ValueError):
+        return {"error": "read_error", "lines": 0, "extracted_text": False}
+    extracted_lines = len(payload.get("invoice_lines") or [])
+    extracted_text = bool(str(payload.get("raw_text_preview") or "").strip())
+    if payload.get("document_number"):
+        document.contract_number = str(payload["document_number"])[:120]
+    if payload.get("supplier_name"):
+        document.supplier_name = str(payload["supplier_name"])[:255]
+    if payload.get("plate"):
+        document.plate = str(payload["plate"])[:40]
+    if payload.get("document_date"):
+        try:
+            document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
+        except ValueError:
+            pass
+    document.status = "extracted" if extracted_text else "ocr_empty"
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.extracted",
+            old_value=None,
+            new_value=json.dumps(payload, ensure_ascii=False),
+            user_id=user_id,
+        )
+    )
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.reprocessed",
+            old_value=None,
+            new_value=f"{extracted_lines} linhas; origem={payload.get('text_source')}",
+            user_id=user_id,
+        )
+    )
+    return {
+        "error": "",
+        "lines": extracted_lines,
+        "extracted_text": extracted_text,
+        "payload": payload,
+    }
+
+
+@web_router.post("/v2-clean/documents/reprocess-ocr-batch")
+def clean_documents_reprocess_ocr_batch(
+    request: Request,
+    batch_label: str = Form(...),
+    return_url: str = Form("/v2-clean/documents?main_group=invoices"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    clean_batch_label = batch_label.strip()
+    target = _clean_v2_return_url(return_url, "/v2-clean/documents?main_group=invoices")
+    if not clean_batch_label:
+        return RedirectResponse(_append_query_flag(target, ocr_error="missing_batch"), status_code=303)
+    user_id = get_web_user_id(request)
+    processed = 0
+    failed = 0
+    extracted_lines = 0
+    with SessionLocal() as db:
+        candidates = db.scalars(
+            select(Document)
+            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(v2_clean_document_visible_condition())
+            .where(Document.document_type == "workshop_supplier_invoice")
+            .order_by(Document.id)
+        ).all()
+        documents = [
+            document
+            for document in candidates
+            if _document_import_batch_label(document) == clean_batch_label
+        ]
+        if not documents:
+            return RedirectResponse(_append_query_flag(target, ocr_error="batch_not_found"), status_code=303)
+        for document in documents:
             try:
-                document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
-            except ValueError:
-                pass
-        document.status = "extracted" if extracted_text else "ocr_empty"
-        db.add(
-            DocumentEvent(
-                document_id=document.id,
-                action="invoice.ocr.extracted",
-                old_value=None,
-                new_value=json.dumps(payload, ensure_ascii=False),
-                user_id=user_id,
-            )
-        )
-        db.add(
-            DocumentEvent(
-                document_id=document.id,
-                action="invoice.ocr.reprocessed",
-                old_value=None,
-                new_value=f"{extracted_lines} linhas; origem={payload.get('text_source')}",
-                user_id=user_id,
-            )
-        )
+                result = _reprocess_invoice_document(db, document=document, user_id=user_id)
+            except Exception:  # noqa: BLE001
+                result = {"error": "processing_error", "lines": 0, "extracted_text": False}
+            if result["error"]:
+                failed += 1
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="invoice.ocr.batch_failed",
+                        old_value=None,
+                        new_value=str(result["error"]),
+                        user_id=user_id,
+                    )
+                )
+                continue
+            processed += 1
+            extracted_lines += int(result["lines"])
         db.commit()
-    if not extracted_text:
-        return RedirectResponse(
-            f"{target}{separator}ocr_error=no_text&ocr_lines={extracted_lines}",
-            status_code=303,
-        )
     return RedirectResponse(
-        f"{target}{separator}ocr_reprocessed=1&ocr_lines={extracted_lines}",
+        _append_query_flag(
+            target,
+            ocr_batch_processed=str(processed),
+            ocr_batch_failed=str(failed),
+            ocr_batch_lines=str(extracted_lines),
+            ocr_batch_label=clean_batch_label,
+        ),
         status_code=303,
     )
 
@@ -6689,6 +6838,10 @@ def clean_document_import_center(
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
+    ocr_batch_processed: int | None = None,
+    ocr_batch_failed: int | None = None,
+    ocr_batch_lines: int | None = None,
+    ocr_batch_label: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6757,6 +6910,40 @@ def clean_document_import_center(
         invoice_documents = [
             document for document in real_documents if clean_vehicle_document_group(document) == "invoices"
         ]
+        invoice_event_map: dict[int, list[DocumentEvent]] = defaultdict(list)
+        invoice_document_ids = [document.id for document in invoice_documents]
+        if invoice_document_ids:
+            invoice_events = db.scalars(
+                select(DocumentEvent)
+                .where(DocumentEvent.document_id.in_(invoice_document_ids))
+                .where(DocumentEvent.action.in_(OCR_EXTRACTION_ACTIONS))
+                .order_by(DocumentEvent.id.desc())
+            ).all()
+            for event in invoice_events:
+                invoice_event_map[event.document_id].append(event)
+        invoice_batch_map: dict[str, dict[str, Any]] = {}
+        for document in invoice_documents:
+            batch_label = _document_import_batch_label(document)
+            if not batch_label:
+                continue
+            batch = invoice_batch_map.setdefault(
+                batch_label,
+                {
+                    "label": batch_label,
+                    "count": 0,
+                    "pending_count": 0,
+                    "latest_id": document.id,
+                },
+            )
+            batch["count"] += 1
+            if document.status not in {"classified", "ignored"}:
+                batch["pending_count"] += 1
+            batch["latest_id"] = max(batch["latest_id"], document.id)
+        invoice_batches = sorted(
+            invoice_batch_map.values(),
+            key=lambda item: item["latest_id"],
+            reverse=True,
+        )
         invoice_rows = []
         for document in invoice_documents:
             if clean_main_group and clean_main_group != "invoices":
@@ -6775,6 +6962,7 @@ def clean_document_import_center(
                 continue
             if clean_status and document.status != clean_status:
                 continue
+            latest_ocr = _document_latest_ocr_metadata(invoice_event_map.get(document.id, []))
             invoice_rows.append(
                 {
                     "id": document.id,
@@ -6790,6 +6978,9 @@ def clean_document_import_center(
                     "document_number": document.contract_number or document.reservation_number or str(document.id),
                     "supplier_name": document.supplier_name or "-",
                     "status": document.status,
+                    "batch_label": _document_import_batch_label(document),
+                    "work_order_reference": latest_ocr.get("work_order_reference", ""),
+                    "total_with_vat": latest_ocr.get("total_with_vat", ""),
                     "document_href": f"/v2-clean/documents/{document.id}",
                     "vehicle_href": (
                         f"/v2-clean/fleet/{document.vehicle_id}/documents?main_group=invoices"
@@ -6810,6 +7001,7 @@ def clean_document_import_center(
                 "structured_sections": structured_sections,
                 "invoice_count": len(invoice_documents),
                 "invoice_rows": invoice_rows,
+                "invoice_batches": invoice_batches,
                 "vehicle_count": module_ctx["vehicle_count"],
                 "archive_documents_count": module_ctx["archive_documents_count"],
                 "invoice_inbox_state": inbox_state,
@@ -6823,6 +7015,10 @@ def clean_document_import_center(
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
+                "ocr_batch_processed": ocr_batch_processed,
+                "ocr_batch_failed": ocr_batch_failed,
+                "ocr_batch_lines": ocr_batch_lines,
+                "ocr_batch_label": ocr_batch_label or "",
                 "q": q or "",
                 "main_group": clean_main_group,
                 "status": clean_status,
@@ -8621,7 +8817,13 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                         "content": archive.read(entry),
                     }
                 )
-            counters = _archive_document_payloads(db, payloads, user_id=user_id, source_label=f"ZIP {filename}")
+            batch_stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+            counters = _archive_document_payloads(
+                db,
+                payloads,
+                user_id=user_id,
+                source_label=f"ZIP {filename} [{batch_stamp}]",
+            )
             db.commit()
     except Exception as exc:  # noqa: BLE001
         message = f"Erro ao arquivar lote ({exc.__class__.__name__})"
@@ -8679,7 +8881,7 @@ def clean_document_import_invoice_folder(request: Request):
                 db,
                 payloads,
                 user_id=user_id,
-                source_label=f"Pasta faturas {inbox}",
+                source_label=f"Pasta faturas [{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}]",
             )
             db.commit()
     except Exception as exc:  # noqa: BLE001

@@ -22,6 +22,13 @@
             <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
             <button type="submit" class="button-link primary-link">Reprocessar OCR</button>
           </form>
+          {% if import_batch_label %}
+            <form method="post" action="/v2-clean/documents/reprocess-ocr-batch" class="clean-inline-form">
+              <input type="hidden" name="batch_label" value="{{ import_batch_label }}">
+              <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
+              <button type="submit" class="button-link secondary-link">Reprocessar lote</button>
+            </form>
+          {% endif %}
         {% endif %}
         {% if document.status != "removed" %}
           <details class="clean-doc-remove-menu">
@@ -57,6 +64,12 @@
         {% else %}
           OCR reprocessado: {{ ocr_lines or 0 }} linhas extraídas.
         {% endif %}
+      </div>
+    {% endif %}
+    {% if ocr_batch_processed is not none %}
+      <div class="alert {% if ocr_batch_failed %}warning{% else %}success{% endif %}">
+        Lote “{{ ocr_batch_label }}” reprocessado: {{ ocr_batch_processed }} documentos,
+        {{ ocr_batch_lines or 0 }} linhas extraídas{% if ocr_batch_failed %}; {{ ocr_batch_failed }} falharam{% endif %}.
       </div>
     {% endif %}
 
@@ -97,6 +110,7 @@
           <div><span>Data</span><strong>{{ document_date }}</strong></div>
           <div><span>Matrícula</span><strong>{{ document.plate or "-" }}</strong></div>
           <div><span>Fornecedor / origem</span><strong>{{ document.supplier_name or document.source or "-" }}</strong></div>
+          <div><span>Lote de importação</span><strong>{{ import_batch_label or "-" }}</strong></div>
           <div><span>Nº documento</span><strong>{{ document.contract_number or document.reservation_number or document.id }}</strong></div>
           <div><span>Folha de obra</span><strong>{{ extraction_metadata.work_order_reference or "-" }}</strong></div>
           <div><span>O.R. fornecedor</span><strong>{{ extraction_metadata.repair_order_reference or "-" }}</strong></div>
@@ -140,9 +154,28 @@
           {% endif %}
         </div>
 
-        <form method="post" action="/v2-clean/documents/{{ document.id }}/ocr-validation-status" class="clean-doc-ocr-review-form">
-          <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
-          <div class="clean-doc-extraction-grid">
+        <div class="clean-doc-review-workspace">
+          {% if document_preview_url %}
+            <aside class="clean-doc-invoice-preview">
+              <div class="clean-doc-invoice-preview-header">
+                <div>
+                  <strong>Preview da fatura</strong>
+                  <span>{{ document.original_name or document.file_name }}</span>
+                </div>
+                <a class="button-link secondary-link" href="{{ document_preview_url }}" target="_blank" rel="noopener">Abrir</a>
+              </div>
+              {% if document_preview_kind == "pdf" %}
+                <iframe src="{{ document_preview_url }}#toolbar=1&navpanes=0" title="Preview da fatura {{ document.original_name }}"></iframe>
+              {% else %}
+                <div class="clean-doc-invoice-preview-image">
+                  <img src="{{ document_preview_url }}" alt="Preview de {{ document.original_name }}">
+                </div>
+              {% endif %}
+            </aside>
+          {% endif %}
+          <form method="post" action="/v2-clean/documents/{{ document.id }}/ocr-validation-status" class="clean-doc-ocr-review-form">
+            <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
+            <div class="clean-doc-extraction-grid">
             <div class="clean-doc-extraction-card clean-doc-extraction-card-wide">
               <h4>Campos principais</h4>
               <div class="clean-doc-table-wrap">
@@ -254,8 +287,9 @@
                 <button type="submit" name="validation_status" value="pending" class="button-link secondary-link">Manter pendente</button>
               </div>
             </div>
-          </div>
-        </form>
+            </div>
+          </form>
+        </div>
 
         {% set raw_preview = extraction_metadata.raw_text_preview or extraction_metadata.text_preview %}
         {% if raw_preview %}

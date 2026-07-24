@@ -91,6 +91,14 @@
         </div>
       </section>
     {% endif %}
+    {% if ocr_batch_processed is not none %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if ocr_batch_failed %}warning{% endif %}">
+          <strong>Lote “{{ ocr_batch_label }}” reprocessado: {{ ocr_batch_processed }} documentos.</strong>
+          <span>{{ ocr_batch_lines or 0 }} linhas extraídas{% if ocr_batch_failed %} · {{ ocr_batch_failed }} documentos com falha{% endif %}.</span>
+        </div>
+      </section>
+    {% endif %}
 
     {% set work_order_count = structured_counts.get("work_orders", 0) %}
     {% set contract_count = structured_counts.get("contracts", 0) %}
@@ -324,6 +332,24 @@
           <em>{{ invoice_rows|length }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
+          {% if invoice_batches %}
+            <section class="clean-doc-batch-ocr-panel">
+              <div>
+                <strong>Reprocessamento OCR em lote</strong>
+                <span>Escolhe a importação para atualizar todas as faturas desse lote com as regras OCR atuais.</span>
+              </div>
+              <form method="post" action="/v2-clean/documents/reprocess-ocr-batch">
+                <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                <select name="batch_label" required>
+                  <option value="">Selecionar lote...</option>
+                  {% for batch in invoice_batches %}
+                    <option value="{{ batch.label }}">{{ batch.label }} · {{ batch.count }} faturas · {{ batch.pending_count }} por validar</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="button-link primary-link">Reprocessar lote</button>
+              </form>
+            </section>
+          {% endif %}
           <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
             <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-invoice-table">
               <thead>
@@ -332,6 +358,7 @@
                   <th>Data</th>
                   <th>Nº</th>
                   <th>Fornecedor</th>
+                  <th>Lote</th>
                   <th>FO</th>
                   <th>Total</th>
                   <th>Estado</th>
@@ -348,6 +375,7 @@
                     <td>{{ row.date_display }}</td>
                     <td>{{ row.document_number }}</td>
                     <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                    <td title="{{ row.batch_label }}">{{ row.batch_label or "-" }}</td>
                     <td>{{ row.work_order_reference or "-" }}</td>
                     <td>{{ row.total_with_vat or "-" }}</td>
                     <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
@@ -359,7 +387,7 @@
                     </td>
                   </tr>
                 {% else %}
-                      <tr><td colspan="8" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                      <tr><td colspan="9" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

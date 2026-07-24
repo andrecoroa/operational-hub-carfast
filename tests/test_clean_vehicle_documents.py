@@ -218,6 +218,129 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
 
 
+def test_clean_document_reprocess_invoice_ocr_batch_and_replace_old_metadata(
+    authenticated_client,
+    db_session,
+    tmp_path,
+):
+    vehicle = _create_vehicle(db_session)
+    batch_label = "ZIP faturas-filinto.zip [20260724-010203]"
+    documents = []
+    for index, number in enumerate(("4458", "4459"), start=1):
+        invoice_path = tmp_path / f"fatura_{number}.pdf"
+        invoice_path.write_bytes(
+            _make_pdf(
+                f"Fatura FT-{number}\nData 15/05/2026\n"
+                f"Matrícula: {vehicle.plate}\nOleo motor 5W30 {40 + index},00"
+            )
+        )
+        invoice = Document(
+            title=f"Fatura {number}",
+            document_type="workshop_supplier_invoice",
+            classification="workshop",
+            source="v2_clean_manual",
+            entry_channel="v2_clean_batch",
+            source_subject=f"{batch_label}: lote/{invoice_path.name}",
+            original_name=invoice_path.name,
+            file_name=invoice_path.name,
+            file_type="pdf",
+            file_size=invoice_path.stat().st_size,
+            storage_provider="local",
+            storage_path=str(invoice_path),
+            vehicle_id=vehicle.id,
+            plate=vehicle.plate,
+            contract_number="DOCUMENTO",
+            status="received",
+            archived=True,
+        )
+        db_session.add(invoice)
+        documents.append(invoice)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/reprocess-ocr-batch",
+        data={
+            "batch_label": batch_label,
+            "return_url": "/v2-clean/documents?main_group=invoices",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "ocr_batch_processed=2" in response.headers["location"]
+    assert "ocr_batch_failed=0" in response.headers["location"]
+    for document, number in zip(documents, ("4458", "4459"), strict=True):
+        db_session.refresh(document)
+        assert document.contract_number == number
+        assert document.status == "extracted"
+        actions = db_session.scalars(
+            select(DocumentEvent.action)
+            .where(DocumentEvent.document_id == document.id)
+            .order_by(DocumentEvent.id)
+        ).all()
+        assert actions == ["invoice.ocr.extracted", "invoice.ocr.reprocessed"]
+    center = authenticated_client.get("/v2-clean/documents?main_group=invoices")
+    assert center.status_code == 200
+    assert "Reprocessamento OCR em lote" in center.text
+    assert batch_label in center.text
+    assert "2 faturas" in center.text
+
+
+def test_clean_document_detail_previews_invoice_and_identifies_batch(
+    authenticated_client,
+    db_session,
+    tmp_path,
+):
+    invoice_path = tmp_path / "fatura-preview.pdf"
+    pdf_content = _make_pdf("Fatura FT-8899\nData 15/05/2026\nServico 25,00")
+    invoice_path.write_bytes(pdf_content)
+    invoice = Document(
+        title="Fatura com preview",
+        document_type="workshop_supplier_invoice",
+        classification="workshop",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_batch",
+        source_subject="ZIP maio.zip [20260724-020304]: faturas/fatura-preview.pdf",
+        original_name=invoice_path.name,
+        file_name=invoice_path.name,
+        file_type="pdf",
+        file_size=invoice_path.stat().st_size,
+        storage_provider="local",
+        storage_path=str(invoice_path),
+        status="extracted",
+        archived=True,
+    )
+    db_session.add(invoice)
+    db_session.flush()
+    db_session.add(
+        DocumentEvent(
+            document_id=invoice.id,
+            action="invoice.ocr.extracted",
+            new_value=json.dumps(
+                {
+                    "document_number": "8899",
+                    "invoice_lines": [{"description": "Servico", "amount": "25,00"}],
+                }
+            ),
+        )
+    )
+    db_session.commit()
+
+    page = authenticated_client.get(f"/v2-clean/documents/{invoice.id}")
+
+    assert page.status_code == 200
+    assert "Preview da fatura" in page.text
+    assert f'/v2-clean/documents/{invoice.id}/file?inline=1' in page.text
+    assert "ZIP maio.zip [20260724-020304]" in page.text
+    assert "Reprocessar lote" in page.text
+
+    file_response = authenticated_client.get(f"/v2-clean/documents/{invoice.id}/file?inline=1")
+    assert file_response.status_code == 200
+    assert file_response.content == pdf_content
+    assert file_response.headers["content-type"].startswith("application/pdf")
+    assert file_response.headers["content-disposition"].startswith("inline;")
+
+
 def test_batch_invoice_payload_extracts_vertical_filinto_invoice():
     text = """
 Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550

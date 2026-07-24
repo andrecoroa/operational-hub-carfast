@@ -20,7 +20,12 @@ from app.models.documents import (
 )
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
-from app.web.router import _batch_document_vehicle, _batch_invoice_payload, local_document_storage_folder
+from app.web.router import (
+    _batch_document_vehicle,
+    _batch_invoice_filinto_stacked_lines,
+    _batch_invoice_payload,
+    local_document_storage_folder,
+)
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:
@@ -147,7 +152,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert ocr_event is not None
     payload = json.loads(ocr_event.new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v1"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v2"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
@@ -215,7 +220,7 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     ]
     payload = json.loads(events[0].new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v1"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v2"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
 
@@ -597,6 +602,97 @@ B APV TX NORMAL 23,00 192,39 44,25 192,39 44,25 236,64
     assert payload["invoice_lines"][-1]["description"] == "Lavagem Simples"
     assert payload["invoice_lines"][-1]["reference"] == "LAVOFE"
     assert payload["invoice_lines"][-1]["quantity"] == "1"
+
+
+def test_batch_invoice_filinto_stacked_lines_keep_invoice_columns():
+    lines = [
+        "ORIGINAL",
+        "Filinto Mota Sucessores S.A.",
+        "NIF: 500 115 966",
+        "DOCUMENTO :",
+        "TAL_FAC 2022/11146106",
+        "DE :",
+        "16/12/2022",
+        "Descrição",
+        "Referência",
+        "P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq.",
+        "CT",
+        "1ª REVISAO",
+        "A",
+        "- OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO -",
+        "93830000",
+        "49,00",
+        "25,00",
+        "36,75",
+        "1",
+        "36,75 B",
+        "LÍQUIDO DE LAVA-VIDROS CONCENTRADO",
+        "1611908680",
+        "1,31",
+        "12,00",
+        "1,15",
+        "1",
+        "1,15 B",
+        "JUNTA TAMPÃO BLOCO MOTOR",
+        "016488",
+        "2,19",
+        "8,00",
+        "2,01",
+        "1",
+        "2,01 B",
+        "OLEO TOTAL INEO XTRA FIRST 0W20 LT",
+        "QINEOXF",
+        "40,00",
+        "39,00",
+        "24,40",
+        "5,75",
+        "140,30 B",
+        "FILTRO OLEO",
+        "1680682480",
+        "14,65",
+        "20,00",
+        "11,72",
+        "1",
+        "11,72 B",
+        "SIGOU - Ecolub 1L",
+        "0,08",
+        "0,08",
+        "5,75",
+        "0,46 B",
+        "Subtotal Peças (155,64)",
+        "Nova Intervenção 192,39",
+        "OFERTA DE LAVAGEM",
+        "B",
+        "Lavagem Simples",
+        "LAVOFE",
+        "10,00",
+        "99,99",
+        "1",
+        "B",
+        "Nova Intervenção",
+        "OBSERVAÇÕES:",
+    ]
+
+    invoice_lines = _batch_invoice_filinto_stacked_lines(lines)
+
+    assert len(invoice_lines) == 7
+    assert invoice_lines[0] == {
+        "reference": "93830000",
+        "description": "OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO",
+        "quantity": "1",
+        "unit": "",
+        "unit_price": "36,75",
+        "list_price": "49,00",
+        "discount_percent": "25,00",
+        "tax": "",
+        "amount": "36,75",
+        "service": "Manutenção",
+    }
+    assert invoice_lines[3]["reference"] == "QINEOXF"
+    assert invoice_lines[3]["quantity"] == "5,75"
+    assert invoice_lines[3]["amount"] == "140,30"
+    assert invoice_lines[-1]["reference"] == "LAVOFE"
+    assert invoice_lines[-1]["amount"] == "0,00"
 
 
 def test_batch_invoice_payload_treats_filinto_operation_duration_as_time():

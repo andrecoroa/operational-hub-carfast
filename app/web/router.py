@@ -8288,6 +8288,11 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
         ):
             description = lines[index + 5].strip(" -")
             amount = lines[index + 1].strip()
+            quantity = lines[index + 4].strip()
+            cursor = index + 6
+            if cursor < len(lines) and is_quantity(lines[cursor].strip()):
+                quantity = lines[cursor].strip()
+                cursor += 1
             key = ("", description, amount)
             if key not in seen:
                 seen.add(key)
@@ -8295,7 +8300,7 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
                     {
                         "reference": "",
                         "description": description[:240],
-                        "quantity": lines[index + 4].strip(),
+                        "quantity": quantity,
                         "unit": "",
                         "unit_price": _batch_invoice_format_money(lines[index + 3].strip()),
                         "list_price": _batch_invoice_format_money(lines[index + 1].strip()),
@@ -8305,7 +8310,7 @@ def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, An
                         "service": _batch_invoice_line_service(description),
                     }
                 )
-            index += 6
+            index = cursor
             continue
 
         amount = lines[index + 1].strip()
@@ -8998,7 +9003,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         ocr_alerts.append("Nº de autorização não encontrado no documento.")
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
-        "ocr_extractor_version": "invoice-ocr-2026-07-24-v3",
+        "ocr_extractor_version": "invoice-ocr-2026-07-24-v4",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",

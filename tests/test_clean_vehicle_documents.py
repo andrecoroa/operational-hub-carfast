@@ -152,7 +152,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert ocr_event is not None
     payload = json.loads(ocr_event.new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v3"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v4"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
@@ -220,7 +220,7 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     ]
     payload = json.loads(events[0].new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v3"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v4"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
 
@@ -918,6 +918,108 @@ TOTAL LÍQUIDO
     assert payload["invoice_lines"][0]["amount"] == "101,62"
     assert payload["invoice_lines"][0]["service"] == "Manutenção"
     assert payload["invoice_lines"][0]["quantity"] != "1680682480"
+
+
+def test_batch_invoice_payload_extracts_filinto_package_line_with_shifted_quantity():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+TAL_FAC
+CT
+Total Liq.
+Tmp/Qt
+P.Liq.Unit
+Desc
+P.V.Unit
+Referência
+26/02/2025
+VENCIMENTO :
+Gil Teixeira
+RECEPCIONISTA :
+343355
+O.R. :
+11903
+VR3EDYHT4RJ747033
+CHASSIS :
+Partner Asphalt Standard 1.5 BlueHDi 100cv CVM5
+MODELO :
+PEUGEOT
+MARCA :
+BN-35-MO
+(081) MMarca Reparação
+OFICINA :
+26/02/2025
+Descrição
+KMS :
+MAT :
+DE :
+2025/11169922
+DOCUMENTO :
+FACTURA
+Exmos Senhores Carfast - Rent-A-Car, Lda
+CLIENTE :
+NIF : 509285970
+ORIGINAL
+A
+INDICAÇÃO DE MANUTENÇÃO
+B
+135,43
+135,43
+135,43
+2
+Mudança Óleo dinâmica diesel (5,3L)
+1
+MMC001
+Mão de Obra Mecânica
+5,30
+QINEORCP
+OLEO TOTAL QUARTZ INEO RCP 5W30 LT
+1
+1680682480
+FILTRO OLEO
+5,30
+SIGOU - Ecolub 1L
+1
+016488
+JUNTA DO BUJAO
+Nova Intervenção 135,43
+B
+OFERTA DE LAVAGEM
+B
+1
+99,99
+14,00
+LAVACA
+Lavagem Automática com Aspiração
+Nova Intervenção
+Folha de Obra nº 329
+VALOR I.V.A.
+CÓDIGO/DESCRIÇÃO I.V.A.
+31,15
+135,43
+23,00
+B
+11169922
+JFS4WFN7
+€ DE DESCONTO + I.V.A.
+14,00
+166,58
+TOTAL A PAGAR
+31,15
+TOTAL I.V.A.
+135,43
+TOTAL LÍQUIDO
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11169922-0.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2025/11169922"
+    assert payload["total_with_vat"] == "166,58"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["description"] == "Mudança Óleo dinâmica diesel (5,3L)"
+    assert payload["invoice_lines"][0]["quantity"] == "1"
+    assert payload["invoice_lines"][0]["unit_price"] == "135,43"
+    assert payload["invoice_lines"][0]["amount"] == "135,43"
 
 
 def test_batch_invoice_payload_treats_filinto_operation_duration_as_time():

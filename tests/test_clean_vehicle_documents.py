@@ -152,7 +152,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert ocr_event is not None
     payload = json.loads(ocr_event.new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v2"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v3"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
@@ -220,7 +220,7 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     ]
     payload = json.loads(events[0].new_value)
     assert payload["ocr_status"] == "extracted"
-    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v2"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v3"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
 
@@ -531,6 +531,74 @@ Observações:
     assert [line["service"] for line in payload["invoice_lines"]] == ["Pneus", "Pneus"]
 
 
+def test_batch_invoice_payload_extracts_only_eugenio_invoice_items():
+    text = """
+Fatura
+FAC 020/15834
+2024-01-11
+Data Vencimento
+V/VIATURA
+2024-01-11
+Data de emissão
+EUGENIO & JORGE PEREIRA LDA Rua Principal NIF: PT510464157
+NIF nº: 510464157
+Marca
+Matricula
+Kms
+PEUGEOT PARTNER
+AO-52-ZX
+63985,00
+Descrição
+Qt.
+P.Venda S/Iva
+Desc.
+Ecovalor
+Valor Liquido
+Iva
+ATCUD: JF98898F-15834
+195/65R15 HANKOOK K435 91T
+A
+C
+69db 2
+59,1125 EUR
+2,1000 EUR
+118,23 EUR
+23%
+EQUILIBRAGEM ESPECIAL OU COM ARO LIGEIRO
+2
+4,8780 EUR
+0,0000 EUR
+9,76 EUR
+23%
+LAMPADA H7
+1
+6,5000 EUR
+0,0000 EUR
+6,50 EUR
+23%
+Observações:
+136,59 EUR
+31,42 EUR
+168,01 EUR
+© Sage licenciado a: EUGENIO & JORGE PEREIRA LDA /510464157
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura_020_15834.pdf", existing_text=text)
+
+    assert payload["document_number"] == "FAC 020/15834"
+    assert payload["total_with_vat"] == "168,01"
+    assert [line["description"] for line in payload["invoice_lines"]] == [
+        "195/65R15 HANKOOK K435 91T",
+        "EQUILIBRAGEM ESPECIAL OU COM ARO LIGEIRO",
+        "LAMPADA H7",
+    ]
+    assert payload["invoice_lines"][0]["quantity"] == "2"
+    assert payload["invoice_lines"][0]["unit_price"] == "59,1125"
+    assert payload["invoice_lines"][0]["amount"] == "118,23"
+    assert payload["invoice_lines"][1]["quantity"] == "2"
+    assert payload["invoice_lines"][2]["quantity"] == "1"
+
+
 def test_batch_invoice_payload_extracts_filinto_tal_invoice():
     text = """
 ORIGINAL
@@ -693,6 +761,163 @@ def test_batch_invoice_filinto_stacked_lines_keep_invoice_columns():
     assert invoice_lines[3]["amount"] == "140,30"
     assert invoice_lines[-1]["reference"] == "LAVOFE"
     assert invoice_lines[-1]["amount"] == "0,00"
+
+
+def test_batch_invoice_payload_extracts_filinto_columnar_pdf_order():
+    text = """
+Cap. Social 1.250.000 € - Matriculada na CRC Porto
+nº 500 115 966 Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550
+TAL_FAC
+19/12/2024
+339843
+O.R. :
+42608
+VXKUPHMHDP4099734
+BB-96-DU
+Descrição
+KMS :
+2024/11167597
+DOCUMENTO :
+FACTURA
+Exmos Senhores Carfast - Rent-A-Car, Lda
+NIF: 500 115 966
+ORIGINAL
+A
+REVISÃO 40.000 KM
+B
+43,75
+1
+43,75
+30,00
+62,50
+93830000
+OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO----
+B
+4,38
+0,10
+43,75
+30,00
+62,50
+06250907
+VELAS (JOGO)-SUBSTITUICAO-MANUTENCAO
+Subtotal Mão Obra (56,89)
+B
+71,50
+3,25
+22,00
+45,00
+40,00
+QINEOXF
+OLEO TOTAL INEO XTRA FIRST 0W20 B712010
+B
+0,20
+3,25
+0,06
+0,06
+SIGOU - Ecolub 1L
+TOTAL A PAGAR
+332,19
+TOTAL I.V.A.
+62,12
+TOTAL LÍQUIDO
+270,07
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11167597-0.pdf", existing_text=text)
+    descriptions = [line["description"] for line in payload["invoice_lines"]]
+
+    assert payload["document_number"] == "TAL_FAC 2024/11167597"
+    assert payload["total_with_vat"] == "332,19"
+    assert "ORIGINAL" not in descriptions
+    assert "REVISÃO 40.000 KM" not in descriptions
+    assert payload["invoice_lines"][0]["reference"] == "93830000"
+    assert payload["invoice_lines"][0]["description"] == "OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO"
+    assert payload["invoice_lines"][0]["quantity"] == "1"
+    assert payload["invoice_lines"][0]["unit_price"] == "43,75"
+    assert payload["invoice_lines"][0]["list_price"] == "62,50"
+    assert payload["invoice_lines"][0]["discount_percent"] == "30,00"
+    assert payload["invoice_lines"][0]["amount"] == "43,75"
+    assert payload["invoice_lines"][-1]["description"] == "SIGOU - Ecolub 1L"
+    assert len(payload["invoice_lines"]) == 4
+
+
+def test_batch_invoice_payload_extracts_filinto_package_invoice_line():
+    text = """
+Cap. Social 1.250.000 € - Matriculada na CRC Porto
+nº 500 115 966 Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550
+TAL_FAC
+31/12/2024
+340423
+O.R. :
+14144
+VR3UDYHZSPJ925908
+BI-73-EL
+Descrição
+2024/11167923
+DOCUMENTO :
+FACTURA
+NIF: 500 115 966
+ORIGINAL
+A
+INDICAÇÃO DE MANUTENÇÃO (ÓLEO E FILTRO)
+Nova Intervenção
+B
+Mudança Óleo dinâmica diesel (3,95L)
+B
+101,62
+101,62
+101,62
+1
+Mudança Óleo dinâmica diesel (3,95L)
+1
+1680682480
+FILTRO OLEO
+1
+016488
+JUNTA DO BUJAO
+3,95
+QINEORCP
+OLEO TOTAL QUARTZ INEO RCP 5W30 FPW9.55535/03
+1
+MMC001
+Mão de Obra Mecânica
+3,95
+SIGOU - Ecolub 1L
+Nova Intervenção 101,62
+C
+OFERTA DE LAVAGEM
+B
+1
+99,99
+14,00
+LAVACA
+Lavagem Automática com Aspiração
+23,37
+101,62
+23,00
+B
+11167923
+JFS4WFN7
+€ DE DESCONTO + I.V.A.
+14,00
+124,99
+TOTAL A PAGAR
+23,37
+TOTAL I.V.A.
+101,62
+TOTAL LÍQUIDO
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11167923-0.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2024/11167923"
+    assert payload["total_with_vat"] == "124,99"
+    assert payload["invoice_lines"][0]["description"] == "Mudança Óleo dinâmica diesel (3,95L)"
+    assert payload["invoice_lines"][0]["quantity"] == "1"
+    assert payload["invoice_lines"][0]["unit_price"] == "101,62"
+    assert payload["invoice_lines"][0]["amount"] == "101,62"
+    assert payload["invoice_lines"][0]["service"] == "Manutenção"
+    assert payload["invoice_lines"][0]["quantity"] != "1680682480"
 
 
 def test_batch_invoice_payload_treats_filinto_operation_duration_as_time():
@@ -1021,6 +1246,323 @@ TOTAL
     assert payload["invoice_lines"][3]["amount"] == "124,0200"
     assert payload["invoice_lines"][-1]["line_type"] == "VAR"
     assert payload["invoice_lines"][-1]["amount"] == "0,7050"
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_hfj_invoice_with_discount():
+    text = """
+Original
+FATURA
+Ident. Único Doc: TATC HFJ/12488
+2025-08-22
+PRONTO PAGAMENTO
+Forma de
+Pagamento
+84161
+Kms.
+Modelo
+PEUGEOT BOXER 330 PREMIUM L2H2 2.2 B
+AU86DJ / VF3YABPFB12V76230
+Matrícula / VIN
+2025-08-20
+Data Abertura
+HOJ/4894/2025
+OR
+509285970
+NIF Cliente
+Data Doc.
+HFJ/12488/2025
+Doc. Núm.
+Observações:
+Carfast Rent-A-Car Lda (546)
+758/2025
+Núm. Autorização
+275,3400
+Valor Com IVA
+Substituir 2 pneus frente
+IVA
+Valor
+Preço
+Unid.
+Qtd.
+Designação
+Referência
+Tipo
+23,00
+164,0000
+82,0000
+Uds
+2,00
+215/70R15 C 109/107S TBBTIRES ADVENZZA
+9PR
+PN-TL22400055
+MAT
+23,00
+2,2800
+Ecovalor Passageiro/Turismo
+23,00
+0,7400
+0,3700
+Uds
+2,00
+EM:VÁLVULA
+PSA-1609060380
+MAT
+23,00
+28,4600
+28,4600
+Uds
+1,00
+Substituição 2 Pneus
+R502
+VAR
+23,00
+28,3700
+28,3700
+Uds
+1,00
+Alinhamento 1 Eixo
+R521
+VAR
+Os serviços constantes deste documento foram concluidos em 2025-08-22
+Valor de Imposto
+Taxa
+B.T.
+Imposto
+51,4855
+23,00
+223,8500
+IVA
+2,2800
+Ecovalor
+275,34
+51,49
+0,00
+223,85
+2,28
+56,83
+0,00
+164,74
+Total
+IVA
+Desconto
+Bruto
+Taxas
+Diversos
+M. Obra
+Materiais
+ATCUD:JF65PXPW-12488
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "12488.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_hfj"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "HFJ/12488/2025"
+    assert payload["document_date"] == "2025-08-22"
+    assert payload["payment_method"] == "PRONTO PAGAMENTO"
+    assert payload["repair_order_reference"] == "HOJ/4894/2025"
+    assert payload["authorization_number"] == "758/2025"
+    assert payload["plate"] == "AU86DJ"
+    assert payload["vin"] == "VF3YABPFB12V76230"
+    assert payload["km"] == "84161"
+    assert payload["opening_date"] == "2025-08-20"
+    assert payload["complaint"] == "Substituir 2 pneus frente"
+    assert payload["total_with_vat"] == "275,34"
+    assert payload["invoice_lines"][0]["reference"] == "PN-TL22400055"
+    assert payload["invoice_lines"][0]["description"] == "215/70R15 C 109/107S TBBTIRES ADVENZZA 9PR"
+    assert payload["invoice_lines"][0]["quantity"] == "2,00"
+    assert payload["invoice_lines"][0]["unit_price"] == "82,0000"
+    assert payload["invoice_lines"][0]["amount"] == "164,0000"
+    assert len(payload["invoice_lines"]) == 4
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_hfj_invoice_with_percentage_discount():
+    text = """
+Original
+FATURA
+Ident. Único Doc: TATC HFJ/12942
+2025-10-02
+PRONTO PAGAMENTO
+Forma de
+Pagamento
+68380
+Kms.
+Modelo
+PEUGEOT 208 ACTIVE PACK 1.2 PURETEC
+AU99XZ / VR3UPHNEKN5897342
+Matrícula / VIN
+2025-09-26
+Data Abertura
+HOJ/5569/2025
+OR
+509285970
+NIF Cliente
+Data Doc.
+HFJ/12942/2025
+Doc. Núm.
+Observações:
+Carfast Rent-A-Car Lda (546)
+838/2025
+Núm. Autorização
+9,7600
+Valor Com IVA
+Substituir tapetes (alcatifa)
+IVA
+Valor
+Dto. %
+Preço
+Unid.
+Qtd.
+Designação
+Referência
+Tipo
+23,00
+7,9380
+30,00
+11,3400
+Uds
+1,00
+JG TAPETES 208 5 LG 2019 ->
+PSA-LPTPJF0998
+MAT
+23,00
+0,0000
+0,0000
+Uds
+1,00
+Tapetes
+RC03
+VAR
+Os serviços constantes deste documento foram concluidos em 2025-10-02
+Valor de Imposto
+Taxa
+B.T.
+Imposto
+1,8257
+23,00
+7,9380
+IVA
+9,76 €
+1,83
+3,40
+11,34
+0,00
+0,00
+7,94
+Total
+IVA
+Desconto
+Bruto
+Diversos
+M. Obra
+Materiais
+ATCUD:JF65PXPW-12942
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "12942.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_hfj"
+    assert payload["document_number"] == "HFJ/12942/2025"
+    assert payload["plate"] == "AU99XZ"
+    assert payload["km"] == "68380"
+    assert payload["total_with_vat"] == "9,76"
+    assert payload["invoice_lines"][0]["reference"] == "PSA-LPTPJF0998"
+    assert payload["invoice_lines"][0]["description"] == "JG TAPETES 208 5 LG 2019 ->"
+    assert payload["invoice_lines"][0]["discount_percent"] == "30,00"
+    assert payload["invoice_lines"][0]["amount"] == "7,9380"
+    assert len(payload["invoice_lines"]) == 2
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_ffj_franchise_invoice():
+    text = """
+Original
+FATURA
+Ident. Único Doc: TATC FFJ/2602
+2025-08-01
+PRONTO PAGAMENTO
+Forma de
+Pagamento
+15332
+Kms.
+Modelo
+PEUGEOT 208 ALLURE HYBRID 100 E-DCS6
+BI36EJ / VR3UPHPX5P4369170
+Matrícula / VIN
+2025-07-28
+Data Abertura
+FOJ/949/2025
+OR
+509285970
+NIF Cliente
+Data Doc.
+FFJ/2602/2025
+Doc. Núm.
+Observações:
+Carfast Rent-A-Car Lda (546)
+PRVI/9917/2025
+Núm. Orçamento
+220052383
+Núm. Sinistro
+Núm. Autorização
+769,9400
+Valor Com IVA
+Débito franquia
+IVA
+Valor
+Preço
+Unid.
+Qtd.
+Designação
+Referência
+Tipo
+23,00
+625,9675
+625,9675
+Uds
+1,00
+FRANQUIA
+FR
+VAR
+Os serviços constantes deste documento foram concluidos em 2025-08-01
+Valor de Imposto
+Taxa
+B.T.
+Imposto
+143,9725
+23,00
+625,9675
+IVA
+769,94 €
+143,97
+0,00
+625,97
+625,97
+0,00
+0,00
+Total
+IVA
+Desconto
+Bruto
+Diversos
+M. Obra
+Materiais
+ATCUD:JF6PPMRG-2602
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "2602.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_ffj"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "FFJ/2602/2025"
+    assert payload["repair_order_reference"] == "FOJ/949/2025"
+    assert payload["authorization_number"] == ""
+    assert payload["plate"] == "BI36EJ"
+    assert payload["km"] == "15332"
+    assert payload["total_with_vat"] == "769,94"
+    assert payload["invoice_lines"][0]["reference"] == "FR"
+    assert payload["invoice_lines"][0]["description"] == "FRANQUIA"
+    assert payload["invoice_lines"][0]["amount"] == "625,9675"
+    assert len(payload["invoice_lines"]) == 1
 
 
 def test_batch_invoice_payload_extracts_filinto_tal_credit_note():

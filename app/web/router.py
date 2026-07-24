@@ -7324,6 +7324,15 @@ def _batch_invoice_supplier_nif(text: str) -> str:
 def _batch_invoice_document_number(text: str) -> str:
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     simplified_lines = [normalize_identifier(line) for line in lines]
+    tal_inline = re.search(r"\b(TAL_(?:FAC|ABONOFAC)\s+\d{4}/\d{5,})\b", text, flags=re.IGNORECASE)
+    if tal_inline:
+        return " ".join(tal_inline.group(1).split()).upper()
+    for index, simplified in enumerate(simplified_lines):
+        if simplified in {"TAL_FAC", "TAL_ABONOFAC"}:
+            for candidate in lines[index + 1 : index + 35]:
+                value = candidate.strip()
+                if re.fullmatch(r"\d{4}/\d{5,}", value):
+                    return f"{lines[index].strip().upper()} {value}"
     for index, simplified in enumerate(simplified_lines):
         if simplified in {"DOCUMENTO", "DOC", "DOCUMENTON"}:
             for candidate in lines[index + 1 : index + 5]:
@@ -7459,8 +7468,7 @@ def _batch_invoice_is_gamobar_template(text: str) -> bool:
             "ident" in compact
             and ("unicodoc" in compact or "únicodoc" in compact)
             and "valorcomiva" in compact
-            and "datavencim" in compact
-            and re.search(r"\bHFO/\d+/\d{4}\b", text, flags=re.IGNORECASE)
+            and re.search(r"\b(?:HFO|HFJ|FFJ)/\d+/\d{4}\b", text, flags=re.IGNORECASE)
         )
     )
 
@@ -7694,6 +7702,12 @@ def _batch_invoice_gamobar_value_before(lines: list[str], label: str) -> str:
     for index, line in enumerate(lines):
         if normalize_identifier(line) == label_simple and index > 0:
             return lines[index - 1].strip()
+        if (
+            index + 1 < len(lines)
+            and f"{normalize_identifier(line)}{normalize_identifier(lines[index + 1])}" == label_simple
+            and index > 0
+        ):
+            return lines[index - 1].strip()
     return ""
 
 
@@ -7702,6 +7716,12 @@ def _batch_invoice_gamobar_value_after(lines: list[str], label: str) -> str:
     for index, line in enumerate(lines):
         if normalize_identifier(line) == label_simple and index + 1 < len(lines):
             return lines[index + 1].strip()
+        if (
+            index + 1 < len(lines)
+            and f"{normalize_identifier(line)}{normalize_identifier(lines[index + 1])}" == label_simple
+            and index + 2 < len(lines)
+        ):
+            return lines[index + 2].strip()
     return ""
 
 
@@ -7847,11 +7867,19 @@ def _batch_invoice_gamobar_totals(lines: list[str], ecolub_lines: list[dict[str,
             totals["vat_amount"] = lines[index + 1].strip()
             totals["taxable_base"] = lines[index + 3].strip()
             break
+    money_token_re = re.compile(r"^-?\d+(?:[.,]\d{2,4})\s*(?:EUR|€)?$", flags=re.IGNORECASE)
     for index, line in enumerate(lines):
         if normalize_identifier(line) == "TOTAL" and index >= 8:
-            values = [value.strip() for value in lines[index - 8 : index]]
-            if len(values) == 8:
-                totals["total_with_vat"] = _batch_invoice_format_money(values[0])
+            values: list[str] = []
+            for candidate in reversed(lines[:index]):
+                candidate = candidate.strip()
+                if not money_token_re.fullmatch(candidate):
+                    break
+                values.append(candidate)
+            values = list(reversed(values))
+            if len(values) >= 8:
+                values = values[-8:]
+                totals["total_with_vat"] = _batch_invoice_format_money(values[0].replace("€", "").replace("EUR", ""))
                 totals["vat_amount"] = totals["vat_amount"] or values[1]
                 totals["discount_without_vat"] = values[2]
                 totals["gross_without_vat"] = values[3]
@@ -7859,6 +7887,15 @@ def _batch_invoice_gamobar_totals(lines: list[str], ecolub_lines: list[dict[str,
                 totals["misc_total"] = values[5]
                 totals["labor_total"] = values[6]
                 totals["materials_total"] = values[7]
+            elif len(values) >= 7:
+                values = values[-7:]
+                totals["total_with_vat"] = _batch_invoice_format_money(values[0].replace("€", "").replace("EUR", ""))
+                totals["vat_amount"] = totals["vat_amount"] or values[1]
+                totals["discount_without_vat"] = values[2]
+                totals["gross_without_vat"] = values[3]
+                totals["misc_total"] = values[4]
+                totals["labor_total"] = values[5]
+                totals["materials_total"] = values[6]
             break
     ecolub_total = sum(
         (_batch_invoice_decimal(str(line.get("amount") or "")) or Decimal("0"))
@@ -7880,7 +7917,7 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     document_date = _batch_document_date(text)
     due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
     due_date = _batch_document_date(due_date_text)
-    document_number_match = re.search(r"\b(HFO/\d+/\d{4})\b", text, flags=re.IGNORECASE)
+    document_number_match = re.search(r"\b((?:HFO|HFJ|FFJ)/\d+/\d{4})\b", text, flags=re.IGNORECASE)
     atcud_match = re.search(r"\bATCUD\s*:?\s*([A-Z0-9-]+)", text, flags=re.IGNORECASE)
     atcud = _batch_invoice_gamobar_value_before(lines, "ATCUD")
     if not re.search(r"[A-Z]", atcud or "", flags=re.IGNORECASE):
@@ -7888,7 +7925,7 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     authorization = _batch_invoice_gamobar_value_before(lines, "Núm. Autorização")
     if not re.search(r"^\d", authorization or ""):
         authorization = _batch_invoice_gamobar_value_after(lines, "Núm. Autorização")
-    if not re.search(r"^\d", authorization or ""):
+    if not re.search(r"^\d", authorization or "") or _batch_invoice_decimal(authorization) is not None:
         authorization = ""
     plate_vin = _batch_invoice_gamobar_value_before(lines, "Matrícula / VIN")
     if "/" not in plate_vin:
@@ -7900,7 +7937,14 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
         plate = plate_match.group(1).upper()
         vin = plate_match.group(2).upper()
     payment_method = _batch_invoice_gamobar_value_before(lines, "Forma de Pagamento")
-    if normalize_identifier(payment_method) not in {"CREDITO", "PRONTO", "DINHEIRO", "TRANSFERENCIA", "MULTIBANCO"}:
+    if normalize_identifier(payment_method) not in {
+        "CREDITO",
+        "PRONTO",
+        "PRONTOPAGAMENTO",
+        "DINHEIRO",
+        "TRANSFERENCIA",
+        "MULTIBANCO",
+    }:
         payment_method = _batch_invoice_gamobar_value_after(lines, "Forma de Pagamento")
     client_nif = _batch_invoice_gamobar_value_before(lines, "NIF Cliente")
     if not re.fullmatch(r"\d{9}", normalize_identifier(client_nif) or ""):
@@ -7941,7 +7985,11 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
         "technical_observations": _batch_invoice_gamobar_section(text, "Observações", r"Carfast\s+Rent-A-Car"),
         "invoice_lines": invoice_lines,
         "ecolub_lines": ecolub_lines,
-        "ocr_template": "caetano_gamobar_hfo",
+        "ocr_template": (
+            f"caetano_gamobar_{document_number_match.group(1).split('/', 1)[0].lower()}"
+            if document_number_match
+            else "caetano_gamobar_hfo"
+        ),
         **totals,
     }
 
@@ -8102,6 +8150,7 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
         "FORNECEDOR",
         "MATRICULA",
         "NIF",
+        "ORIGINAL",
         "TOTAL IVA",
         "TOTAL DO DOCUMENTO",
         "VENCIMENTO",
@@ -8116,7 +8165,218 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
     return False
 
 
+def _batch_invoice_filinto_columnar_lines(lines: list[str]) -> list[dict[str, Any]]:
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    start: int | None = None
+    for index, simplified in enumerate(simplified_lines):
+        compact = _compact_identifier(simplified)
+        if simplified.startswith(("DESCRICAO", "DESCRIÇÃO")) or ("PVUNIT" in compact and "TOTALLIQ" in compact):
+            start = index + 1
+            break
+    if start is None:
+        return []
+
+    stop_prefixes = (
+        "BASEDEINCIDENCIA",
+        "CODIGODESCRICAO",
+        "CODDESCRICAO",
+        "DATAHORACARGA",
+        "OBSERVACOES",
+        "OSARTIGOS",
+        "PAGAMENTOPOR",
+        "SINTESEDEPAGAMENTO",
+        "TAXA",
+        "TOTALAPAGAR",
+        "TOTALDODOCUMENTO",
+        "TOTALIVA",
+        "TOTALLIQUIDO",
+        "VALORIVA",
+    )
+    skipped_descriptions = {
+        "1AREVISAO",
+        "2AREVISAO",
+        "3AREVISAO",
+        "CONTROLODETRAVOES",
+        "DUPLICADO",
+        "EXMOSSENHORESCARFASTRENTACARLDA",
+        "FACTURA",
+        "FATURA",
+        "NIF500115966",
+        "NIF509285970",
+        "NOVAINTERVENCAO",
+        "OFERTALAVAGEM",
+        "OFERTADELAVAGEM",
+        "ORIGINAL",
+        "PNEUS",
+        "REPARACAO",
+        "REVISAO",
+        "SUBTOTALMAOOBRA",
+        "SUBTOTALPECAS",
+    }
+    ignored_references = {
+        "CT",
+        "DATA",
+        "DESC",
+        "DESCRICAO",
+        "DOCUMENTO",
+        "KMS",
+        "MATRICULA",
+        "PLIQUNIT",
+        "PVUNIT",
+        "REFERENCIA",
+        "TMPQT",
+        "TOTALLIQ",
+    }
+    money_re = re.compile(r"^-?\d+(?:[ .]\d{3})*,\d{2,4}$|^-?\d+,\d{2,4}$")
+    quantity_re = re.compile(r"^-?\d+(?:,\d{1,3})?$")
+
+    def is_money(value: str) -> bool:
+        return bool(money_re.fullmatch(value.strip()))
+
+    def is_quantity(value: str) -> bool:
+        stripped = value.strip()
+        return bool(quantity_re.fullmatch(stripped) and not re.fullmatch(r"\d{4,}", stripped))
+
+    def is_reference(value: str) -> bool:
+        stripped = value.strip(" -")
+        compact = _compact_identifier(stripped)
+        if compact in ignored_references or compact in skipped_descriptions:
+            return False
+        if " " in stripped or len(stripped) < 3:
+            return False
+        return bool(re.fullmatch(r"[A-Z0-9._/-]{3,}", stripped, flags=re.IGNORECASE))
+
+    def is_description(value: str) -> bool:
+        stripped = value.strip(" -")
+        compact = _compact_identifier(stripped)
+        if len(stripped) < 4:
+            return False
+        if compact in skipped_descriptions or compact in ignored_references:
+            return False
+        if any(compact.startswith(prefix) for prefix in stop_prefixes):
+            return False
+        if any(token in compact for token in ("CLIENTE", "DOCUMENTO", "DUPLICADO", "NIF")):
+            return False
+        if is_money(stripped) or is_quantity(stripped) or is_reference(stripped):
+            return False
+        return True
+
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    index = start
+    while index < len(lines):
+        ct = lines[index].strip()
+        compact = _compact_identifier(ct)
+        if any(compact.startswith(prefix) for prefix in stop_prefixes):
+            break
+        if not re.fullmatch(r"[A-Z]", ct, flags=re.IGNORECASE):
+            index += 1
+            continue
+        if index + 4 >= len(lines) or not is_money(lines[index + 1].strip()):
+            index += 1
+            continue
+
+        if (
+            index + 5 < len(lines)
+            and is_money(lines[index + 1].strip())
+            and is_money(lines[index + 2].strip())
+            and is_money(lines[index + 3].strip())
+            and _batch_invoice_format_money(lines[index + 1].strip()) == _batch_invoice_format_money(lines[index + 2].strip())
+            and _batch_invoice_format_money(lines[index + 1].strip()) == _batch_invoice_format_money(lines[index + 3].strip())
+            and re.fullmatch(r"\d+(?:,\d{1,3})?", lines[index + 4].strip())
+            and is_description(lines[index + 5])
+        ):
+            description = lines[index + 5].strip(" -")
+            amount = lines[index + 1].strip()
+            key = ("", description, amount)
+            if key not in seen:
+                seen.add(key)
+                results.append(
+                    {
+                        "reference": "",
+                        "description": description[:240],
+                        "quantity": lines[index + 4].strip(),
+                        "unit": "",
+                        "unit_price": _batch_invoice_format_money(lines[index + 3].strip()),
+                        "list_price": _batch_invoice_format_money(lines[index + 1].strip()),
+                        "discount_percent": "",
+                        "tax": ct.upper(),
+                        "amount": _batch_invoice_format_money(amount),
+                        "service": _batch_invoice_line_service(description),
+                    }
+                )
+            index += 6
+            continue
+
+        amount = lines[index + 1].strip()
+        quantity = lines[index + 2].strip() if index + 2 < len(lines) and is_quantity(lines[index + 2].strip()) else ""
+        unit_price = lines[index + 3].strip() if index + 3 < len(lines) and is_money(lines[index + 3].strip()) else ""
+        discount = ""
+        list_price = ""
+        reference = ""
+        description = ""
+
+        cursor = index + 4
+        if cursor < len(lines) and is_money(lines[cursor].strip()):
+            discount = lines[cursor].strip()
+            cursor += 1
+        if cursor < len(lines) and is_money(lines[cursor].strip()):
+            list_price = lines[cursor].strip()
+            cursor += 1
+        if cursor < len(lines) and is_reference(lines[cursor]):
+            reference = lines[cursor].strip()
+            cursor += 1
+        if cursor < len(lines) and is_description(lines[cursor]):
+            description = lines[cursor].strip(" -")
+            cursor += 1
+
+        # Some rows such as Ecolub have no reference and only one price before
+        # the description: CT, total, quantity, unit price, list price, text.
+        if not description and index + 5 < len(lines):
+            maybe_list = lines[index + 4].strip()
+            maybe_desc = lines[index + 5].strip()
+            if is_money(maybe_list) and is_description(maybe_desc):
+                list_price = maybe_list
+                description = maybe_desc.strip(" -")
+                cursor = index + 6
+
+        if not description:
+            index += 1
+            continue
+        description_compact = _compact_identifier(description)
+        if description_compact in skipped_descriptions or any(description_compact.startswith(prefix) for prefix in stop_prefixes):
+            index += 1
+            continue
+        if reference and _compact_identifier(reference) in skipped_descriptions:
+            reference = ""
+
+        key = (reference, description, amount)
+        if key not in seen:
+            seen.add(key)
+            results.append(
+                {
+                    "reference": reference,
+                    "description": description[:240],
+                    "quantity": quantity,
+                    "unit": "",
+                    "unit_price": _batch_invoice_format_money(unit_price) if unit_price else "",
+                    "list_price": _batch_invoice_format_money(list_price) if list_price else "",
+                    "discount_percent": discount,
+                    "tax": ct.upper(),
+                    "amount": _batch_invoice_format_money(amount) if amount else "",
+                    "service": _batch_invoice_line_service(description),
+                }
+            )
+        index = max(cursor, index + 1)
+
+    return results
+
+
 def _batch_invoice_filinto_stacked_lines(lines: list[str]) -> list[dict[str, Any]]:
+    columnar_lines = _batch_invoice_filinto_columnar_lines(lines)
+    if columnar_lines:
+        return columnar_lines
+
     simplified_lines = [normalize_identifier(line) for line in lines]
     start: int | None = None
     for index, simplified in enumerate(simplified_lines):
@@ -8324,12 +8584,19 @@ def _batch_invoice_filinto_stacked_document_number(lines: list[str]) -> str:
 
 def _batch_invoice_filinto_stacked_totals(lines: list[str]) -> dict[str, str]:
     totals: dict[str, str] = {}
+    money_re = re.compile(r"-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4}")
+
+    def adjacent_value(index: int) -> str:
+        if index > 0 and money_re.fullmatch(lines[index - 1].strip()):
+            return lines[index - 1].strip()
+        if index + 1 < len(lines) and money_re.fullmatch(lines[index + 1].strip()):
+            return lines[index + 1].strip()
+        return ""
+
     for index, line in enumerate(lines):
         compact = _compact_identifier(line)
-        if index + 1 >= len(lines):
-            continue
-        value = lines[index + 1].strip()
-        if not re.fullmatch(r"-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4}", value):
+        value = adjacent_value(index)
+        if not value:
             continue
         if compact.startswith("TOTALAPAGAR"):
             totals["total_with_vat"] = _batch_invoice_format_money(value)
@@ -8343,68 +8610,119 @@ def _batch_invoice_filinto_stacked_totals(lines: list[str]) -> dict[str, str]:
 def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
     start: int | None = None
     end = len(lines)
-    for index, line in enumerate(lines):
-        if line.strip().upper().startswith("V/VIATURA") or normalize_identifier(line).startswith("VVIATURA"):
+    simplified_lines = [normalize_identifier(line) for line in lines]
+    for index, simplified in enumerate(simplified_lines):
+        if _compact_identifier(simplified).startswith("ATCUD"):
             start = index + 1
             break
+    if start is None:
+        for index, simplified in enumerate(simplified_lines):
+            compact = _compact_identifier(simplified)
+            if compact in {"IVA", "TAXAIVA"} and any(
+                _compact_identifier(value).startswith("DESCRICAO") for value in simplified_lines[max(0, index - 8) : index]
+            ):
+                start = index + 1
+                break
+    if start is None:
+        for index, simplified in enumerate(simplified_lines):
+            if _compact_identifier(simplified).startswith("VVIATURA"):
+                start = index + 1
+                break
     if start is None:
         return []
     for index in range(start, len(lines)):
         simplified = normalize_identifier(lines[index])
-        if simplified.startswith("REQ") or simplified.startswith("OBSERVACOES"):
+        if _compact_identifier(simplified).startswith("OBSERVACOES"):
             end = index
             break
 
     candidates = lines[start:end]
     results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
     skip_tokens = (
+        "ATCUD",
+        "CARGA",
         "CITROEN",
+        "DATA",
+        "DOCUMENTO",
+        "EMISSÃO",
+        "EMISSAO",
+        "FATURA",
+        "FOLHA",
+        "KMS",
+        "MATRICULA",
         "PEUGEOT",
         "RENAULT",
         "MERCEDES",
         "FIAT",
+        "MODALIDADE",
+        "MERCADORIA",
+        "NIF",
+        "OBSERVAÇÕES",
+        "OBSERVACOES",
+        "PAGAMENTO",
+        "SAGE",
         "TOTAL ILIQUIDO",
         "TOTAL LIQUIDO",
-        "MERCADORIA",
         "SERVICOS",
     )
     money_pattern = re.compile(r"(?<!\d)(\d{1,3}(?:[ .]\d{3})*(?:,\d{2,4})|\d+,\d{2,4})\s*EUR\b", re.IGNORECASE)
-    percent_pattern = re.compile(r"\b\d{1,2},\d{2}%$")
+    percent_pattern = re.compile(r"\b\d{1,2}(?:,\d{2})?%$")
     for index, line in enumerate(candidates):
         stripped = line.strip()
         simplified = normalize_identifier(stripped)
+        compact = _compact_identifier(stripped)
         if not stripped or any(token in stripped.upper() for token in skip_tokens):
             continue
         if money_pattern.search(stripped) or percent_pattern.search(stripped):
             continue
-        if re.fullmatch(r"[0-9.,/%\s-]+", stripped):
+        if re.fullmatch(r"[0-9.,/%\s-]+", stripped) or re.fullmatch(r"[A-Z]", stripped, flags=re.IGNORECASE):
             continue
         if re.match(r"^\d{2}\s*db\b", stripped, flags=re.IGNORECASE):
+            continue
+        if compact in {"A", "B", "C", "DESCRICAO", "QT", "PVENDASIVA", "DESC", "ECOVALOR", "VALORLIQUIDO", "IVA"}:
             continue
         if len(stripped) < 4:
             continue
 
         lookahead_lines: list[str] = []
-        for next_line in candidates[index + 1 : index + 8]:
+        stop_offset = 1
+        for next_line in candidates[index + 1 : index + 10]:
             next_stripped = next_line.strip()
             next_simplified = normalize_identifier(next_stripped)
             if not next_stripped:
+                stop_offset += 1
                 continue
             if re.fullmatch(r"[A-Z]", next_stripped, flags=re.IGNORECASE):
+                lookahead_lines.append(next_stripped)
+                stop_offset += 1
                 continue
             if money_pattern.search(next_stripped) or percent_pattern.search(next_stripped):
                 lookahead_lines.append(next_stripped)
+                stop_offset += 1
+                if percent_pattern.search(next_stripped):
+                    break
                 continue
             if re.match(r"^\d{2}\s*db\b", next_stripped, flags=re.IGNORECASE):
                 lookahead_lines.append(next_stripped)
+                stop_offset += 1
                 continue
             if re.fullmatch(r"\d+(?:,\d{1,2})?", next_stripped):
                 lookahead_lines.append(next_stripped)
+                stop_offset += 1
                 continue
             if next_simplified and not any(token in next_stripped.upper() for token in skip_tokens):
                 break
         window = " ".join(lookahead_lines)
         money_values = money_pattern.findall(window)
+        normalized_money_values: list[str] = []
+        for value in money_values:
+            split_quantity_price = re.fullmatch(r"(\d+)\s+(\d{1,3},\d{2,4})", value.strip())
+            normalized_money_values.append(split_quantity_price.group(2) if split_quantity_price else value)
+        money_values = normalized_money_values
+        has_tax_marker = any(percent_pattern.search(value) for value in lookahead_lines)
+        if not money_values or (not has_tax_marker and len(money_values) < 2):
+            continue
         unit_price = ""
         for value in money_values:
             if _batch_invoice_money_to_cents(value) > 0:
@@ -8417,6 +8735,10 @@ def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
                 break
         quantity = ""
         for lookahead in candidates[index + 1 : index + 4]:
+            inline_quantity = re.match(r"^(\d+)\s+\d{1,3},\d{2,4}\s*EUR\b", lookahead.strip(), flags=re.IGNORECASE)
+            if inline_quantity:
+                quantity = inline_quantity.group(1)
+                break
             if re.fullmatch(r"\d+(?:,\d{1,2})?", lookahead.strip()):
                 quantity = lookahead.strip()
                 break
@@ -8424,6 +8746,18 @@ def _batch_invoice_eugenio_lines(lines: list[str]) -> list[dict[str, Any]]:
             if re.match(r"^\d{2}\s*db\b", lookahead.strip(), flags=re.IGNORECASE) and db_quantity:
                 quantity = db_quantity.group(1)
                 break
+        if not quantity and unit_price and amount:
+            unit = _batch_invoice_decimal(unit_price)
+            total = _batch_invoice_decimal(amount)
+            if unit and total and unit > 0:
+                derived = total / unit
+                rounded = derived.quantize(Decimal("1"))
+                if abs(derived - rounded) < Decimal("0.02") and rounded > 0:
+                    quantity = str(int(rounded))
+        key = (stripped, amount)
+        if key in seen:
+            continue
+        seen.add(key)
         results.append(
             {
                 "reference": "",
@@ -8664,7 +8998,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         ocr_alerts.append("Nº de autorização não encontrado no documento.")
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
-        "ocr_extractor_version": "invoice-ocr-2026-07-24-v2",
+        "ocr_extractor_version": "invoice-ocr-2026-07-24-v3",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",
@@ -8686,7 +9020,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "ocr_alerts": ocr_alerts,
         "document_kind": _batch_invoice_document_kind(text),
         "ocr_template": (
-            "caetano_gamobar_hfo" if gamobar_data else
+            str(gamobar_data.get("ocr_template") or "caetano_gamobar_hfo") if gamobar_data else
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
             "filinto_mota_sucessores" if _batch_invoice_is_filinto_template(text) else
             "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else ""

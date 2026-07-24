@@ -7140,7 +7140,7 @@ def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "
         return existing_text, "pdf_text"
     if suffix == ".pdf":
         text = _batch_document_pdf_text(file_content, suffix)
-        if _batch_invoice_is_tal_template(text) and not _batch_invoice_is_filinto_template(text):
+        if _batch_invoice_is_tal_template(text) or _batch_invoice_is_filinto_template(text):
             plumber_text = _batch_document_pdfplumber_text(file_content, suffix)
             if plumber_text.strip():
                 return plumber_text, "pdf_text"
@@ -8230,6 +8230,10 @@ def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]
         if len(parts) < 7:
             continue
         amount = parts.pop()
+        amount_tax = re.fullmatch(r"(-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4})([A-Z])", amount, flags=re.IGNORECASE)
+        if amount_tax:
+            amount = amount_tax.group(1)
+            tax = amount_tax.group(2).upper()
         quantity = parts.pop()
         unit_price = parts.pop()
         discount = parts.pop()
@@ -9026,8 +9030,18 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     invoice_lines = gamobar_data.get("invoice_lines") or []
     used_filinto_stacked_lines = False
     skip_generic_invoice_line_fallback = False
-    if not invoice_lines:
-        invoice_lines = _batch_invoice_filinto_inline_lines(lines) if _batch_invoice_is_filinto_template(text) else []
+    if not invoice_lines and _batch_invoice_is_filinto_template(text):
+        inline_lines = _batch_invoice_filinto_inline_lines(lines)
+        tal_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
+        if (
+            inline_lines
+            and tal_lines
+            and len(tal_lines) > len(inline_lines)
+            and not _batch_invoice_filinto_lines_are_contaminated(tal_lines)
+        ):
+            invoice_lines = tal_lines
+        else:
+            invoice_lines = inline_lines
     if not invoice_lines:
         invoice_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
     if (

@@ -894,6 +894,87 @@ B APV TX NORMAL 23,00 159,98 36,80 159,98 36,80 196,78
     }
 
 
+def test_batch_invoice_payload_recovers_filinto_stacked_pdf_order_from_column_shift():
+    text = """
+Mod. PVP.05.2
+nº 500 115 966 Sede: Filinto Mota Sucessores S.A. Rua Pinto Bessa, 550
+FACTURA
+DOCUMENTO :
+2022/11144696
+DE :
+MAT :
+KMS :
+Descrição
+28/10/2022
+OFICINA :
+(81) MMarca Manutenção
+AQ-41-XJ
+MARCA : PEUGEOT
+MODELO : 308
+CHASSIS : VR3FRHNSLNY544049
+11015
+O.R. : 303476
+RECEPCIONISTA : GTEIXEIRA
+VENCIMENTO : 28/10/2022
+Referência
+P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq.
+CT
+Pronto Pagamento
+Modo de Pagamento :
+TAL_FAC
+CLIENTE :
+227010
+Exmos Senhores Carfast - Rent-A-Car, Lda
+ORIGINAL
+NIF: 500 115 966
+SUBSTITUIR FAROLIM
+A
+FAROLIM DE TRÁS DIREITO - SUBSTITUIÇÃO
+MMC001
+49,00 25,00
+36,75
+0,50
+18,38 B
+FAROLIM TRAS
+9835300580
+177,00 20,00
+141,60
+1
+141,60 B
+Nova Intervenção 159,98
+.
+B
+23,00
+159,98
+36,80
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA
+APV TX NORMAL
+VALOR I.V.A.
+TOTAL LÍQUIDO
+159,98
+TOTAL I.V.A.
+36,80
+TOTAL A PAGAR
+196,78
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "1-TAL-2-11144696-227010-1211374.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2022/11144696"
+    assert payload["total_with_vat"] == "196,78"
+    assert payload["vat_amount"] == "36,80"
+    assert payload["subtotal_without_vat"] == "159,98"
+    assert len(payload["invoice_lines"]) == 2
+    assert payload["invoice_lines"][0]["reference"] == "MMC001"
+    assert payload["invoice_lines"][0]["description"] == "FAROLIM DE TRÁS DIREITO - SUBSTITUIÇÃO"
+    assert payload["invoice_lines"][0]["quantity"] == "0,50"
+    assert payload["invoice_lines"][0]["amount"] == "18,38"
+    assert payload["invoice_lines"][1]["reference"] == "9835300580"
+    assert payload["invoice_lines"][1]["description"] == "FAROLIM TRAS"
+    assert payload["invoice_lines"][1]["quantity"] == "1"
+    assert payload["invoice_lines"][1]["amount"] == "141,60"
+
+
 def test_batch_invoice_payload_extracts_filinto_package_invoice_line():
     text = """
 Cap. Social 1.250.000 € - Matriculada na CRC Porto

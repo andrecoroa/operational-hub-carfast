@@ -8160,9 +8160,12 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
     for line in invoice_lines[:8]:
         description = normalize_identifier(str(line.get("description") or "")) or ""
         reference = normalize_identifier(str(line.get("reference") or "")) or ""
+        quantity = str(line.get("quantity") or "").strip().replace(" ", "")
         if any(token.replace(" ", "") in description for token in bad_tokens):
             return True
         if any(token.replace(" ", "") in reference for token in bad_tokens):
+            return True
+        if re.fullmatch(r"\d{6,}", quantity):
             return True
     return False
 
@@ -8737,23 +8740,52 @@ def _batch_invoice_filinto_stacked_totals(lines: list[str]) -> dict[str, str]:
     totals: dict[str, str] = {}
     money_re = re.compile(r"-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4}")
 
-    def adjacent_value(index: int) -> str:
+    def adjacent_values(index: int) -> list[str]:
+        values: list[str] = []
         if index > 0 and money_re.fullmatch(lines[index - 1].strip()):
-            return lines[index - 1].strip()
+            values.append(lines[index - 1].strip())
+        if index + 1 < len(lines) and money_re.fullmatch(lines[index + 1].strip()):
+            values.append(lines[index + 1].strip())
+        return values
+
+    def choose_money(values: list[str], mode: str) -> str:
+        decimal_values = [
+            (value, _batch_invoice_decimal(value))
+            for value in values
+            if _batch_invoice_decimal(value) is not None
+        ]
+        if not decimal_values:
+            return ""
+        if mode == "max":
+            return max(decimal_values, key=lambda item: item[1] or Decimal("0"))[0]
+        if mode == "min":
+            return min(decimal_values, key=lambda item: item[1] or Decimal("0"))[0]
+        return decimal_values[0][0]
+
+    def adjacent_value(index: int, mode: str = "first") -> str:
+        return choose_money(adjacent_values(index), mode)
+
+    def next_adjacent_value(index: int) -> str:
         if index + 1 < len(lines) and money_re.fullmatch(lines[index + 1].strip()):
             return lines[index + 1].strip()
         return ""
 
     for index, line in enumerate(lines):
         compact = _compact_identifier(line)
-        value = adjacent_value(index)
-        if not value:
-            continue
         if compact.startswith("TOTALAPAGAR"):
+            value = adjacent_value(index, "max")
+            if not value:
+                continue
             totals["total_with_vat"] = _batch_invoice_format_money(value)
         elif compact.startswith("TOTALIVA"):
+            value = adjacent_value(index, "min")
+            if not value:
+                continue
             totals["vat_amount"] = _batch_invoice_format_money(value)
         elif compact.startswith("TOTALLIQUIDO"):
+            value = adjacent_value(index)
+            if not value:
+                continue
             totals["subtotal_without_vat"] = _batch_invoice_format_money(value)
     return totals
 

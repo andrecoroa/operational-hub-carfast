@@ -147,6 +147,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert ocr_event is not None
     payload = json.loads(ocr_event.new_value)
     assert payload["ocr_status"] == "extracted"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v1"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
@@ -214,6 +215,7 @@ def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, 
     ]
     payload = json.loads(events[0].new_value)
     assert payload["ocr_status"] == "extracted"
+    assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v1"
     assert payload["document_number"] == "4458"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
 

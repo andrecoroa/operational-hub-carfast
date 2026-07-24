@@ -228,35 +228,63 @@
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>Tipo</th>
-                        <th>Referência</th>
                         <th>Descrição</th>
-                        <th>Qtd.</th>
-                        <th>Un.</th>
-                        <th>Preço unit.</th>
-                        <th>Desc.</th>
-                        <th>IVA</th>
-                        <th>Total</th>
+                        <th>Referência</th>
+                        <th>P.V.Unit</th>
+                        <th>Desc</th>
+                        <th>P.Liq.Unit</th>
+                        <th>Tmp/Qt</th>
+                        <th>Total Liq.</th>
+                        <th>CT</th>
+                        <th>Serviço</th>
+                        <th>Tipo</th>
                       </tr>
                     </thead>
                     <tbody>
                       {% for line in invoice_lines %}
                         <tr>
                           <td>{{ loop.index }}</td>
-                          <td>{{ line.line_type or line.tipo or "-" }}</td>
-                          <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
                           <td>{{ line.description or line.descricao or line.text or "-" }}</td>
-                          <td>{{ line.quantity or line.qtd or "-" }}</td>
-                          <td>{{ line.unit or line.unidade or "-" }}</td>
-                          <td>{{ line.unit_price or line.preco_unitario or line.price_unit or "-" }}</td>
+                          <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
+                          <td>{{ line.list_price or line.preco_venda or line.pv_unit or "-" }}</td>
                           <td>{{ line.discount_percent or line.desconto or "-" }}</td>
-                          <td>{{ line.tax or line.iva or "-" }}</td>
+                          <td>{{ line.unit_price or line.preco_unitario or line.price_unit or "-" }}</td>
+                          <td>{{ line.quantity or line.qtd or "-" }}</td>
                           <td>{{ line.total or line.amount or line.value or "-" }}</td>
+                          <td>{{ line.tax or line.iva or line.ct or "-" }}</td>
+                          <td>{{ line.service or "-" }}</td>
+                          <td>{{ line.line_type or line.tipo or "-" }}</td>
                         </tr>
                       {% endfor %}
                     </tbody>
                   </table>
                 </div>
+                <details class="clean-doc-raw-preview clean-doc-ocr-technical-lines">
+                  <summary>Ver campos técnicos das linhas</summary>
+                  <div class="clean-doc-table-wrap clean-doc-table-scroll-3">
+                    <table class="clean-doc-table clean-doc-table-compact">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Campo</th>
+                          <th>Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for line in invoice_lines %}
+                          {% set line_number = loop.index %}
+                          {% for key, value in line.items() %}
+                            <tr>
+                              <td>{{ line_number }}</td>
+                              <td>{{ key }}</td>
+                              <td>{{ value }}</td>
+                            </tr>
+                          {% endfor %}
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               </div>
             {% endif %}
 

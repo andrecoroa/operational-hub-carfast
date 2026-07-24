@@ -8384,6 +8384,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         ocr_alerts.append("Nº de autorização não encontrado no documento.")
     return {
         "ocr_status": "extracted" if text.strip() else "not_extracted",
+        "ocr_extractor_version": "invoice-ocr-2026-07-24-v1",
         "text_source": source,
         "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",

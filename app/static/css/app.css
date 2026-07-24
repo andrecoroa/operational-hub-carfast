@@ -15304,12 +15304,12 @@ button.clean-upload-preview-card {
   line-height: 1.25;
 }
 
-.clean-doc-ocr-lines-table td:nth-child(3),
-.clean-doc-ocr-lines-table th:nth-child(3) {
+.clean-doc-ocr-lines-table td:nth-child(2),
+.clean-doc-ocr-lines-table th:nth-child(2) {
   min-width: 260px;
 }
 
-.clean-doc-ocr-lines-table td:not(:nth-child(3)) {
+.clean-doc-ocr-lines-table td:not(:nth-child(2)) {
   white-space: nowrap;
 }
 

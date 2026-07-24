@@ -158,25 +158,31 @@
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Referência</th>
                       <th>Descrição</th>
+                      <th>Referência</th>
+                      <th>P.V.Unit</th>
+                      <th>Desc</th>
+                      <th>P.Liq.Unit</th>
                       <th>Qtd.</th>
-                      <th>Preço unit.</th>
-                      <th>Total</th>
+                      <th>Total Liq.</th>
+                      <th>CT</th>
                     </tr>
                   </thead>
                   <tbody>
                     {% for line in selected_sample.extracted_lines %}
                       <tr>
                         <td>{{ loop.index }}</td>
-                        <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
                         <td>{{ line.description or line.descricao or line.text or "-" }}</td>
-                        <td>{{ line.quantity or line.qtd or "-" }}</td>
+                        <td>{{ line.reference or line.referencia or line.code or "-" }}</td>
+                        <td>{{ line.list_price or line.preco_venda or line.pv_unit or "-" }}</td>
+                        <td>{{ line.discount_percent or line.desconto or "-" }}</td>
                         <td>{{ line.unit_price or line.preco_unitario or line.price_unit or "-" }}</td>
+                        <td>{{ line.quantity or line.qtd or "-" }}</td>
                         <td>{{ line.total or line.amount or line.value or "-" }}</td>
+                        <td>{{ line.tax or line.iva or line.ct or "-" }}</td>
                       </tr>
                     {% else %}
-                      <tr><td colspan="6" class="clean-empty-cell">Sem linhas extraídas para este exemplo.</td></tr>
+                      <tr><td colspan="9" class="clean-empty-cell">Sem linhas extraídas para este exemplo.</td></tr>
                     {% endfor %}
                   </tbody>
                 </table>

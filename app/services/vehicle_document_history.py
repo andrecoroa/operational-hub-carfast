@@ -266,6 +266,61 @@ def _safe_date(value: Any) -> date | None:
         return None
 
 
+def _row_text(row: tuple[Any, ...], cols: dict[str, int], candidates: list[str]) -> str:
+    return _normalize_text(first_row_value(row, cols, candidates))
+
+
+def _row_date(row: tuple[Any, ...], cols: dict[str, int], candidates: list[str]) -> date | None:
+    return _safe_date(first_row_value(row, cols, candidates))
+
+
+RENTWAY_START_DATE_COLUMNS = [
+    "Data início",
+    "Data Inicio",
+    "Início",
+    "Inicio",
+    "Start Date",
+    "Start",
+    "Rental Start",
+    "Rental_Start",
+    "Contract Start",
+    "Data contrato",
+    "Date_Out",
+    "date_out",
+    "Checkout",
+    "Checkout Date",
+    "Checkout_Date",
+    "Pick Up",
+    "Pickup",
+    "Pickup Date",
+    "Data levantamento",
+    "Data saída",
+    "Data saida",
+]
+
+RENTWAY_END_DATE_COLUMNS = [
+    "Data fim",
+    "Fim",
+    "End Date",
+    "End",
+    "Rental End",
+    "Rental_End",
+    "Contract End",
+    "Data término",
+    "Data Termino",
+    "Date_In",
+    "date_in",
+    "Checkin",
+    "Checkin Date",
+    "Checkin_Date",
+    "Check In",
+    "Return",
+    "Return Date",
+    "Data retorno",
+    "Data entrada",
+]
+
+
 def _normalize_text(value: Any) -> str:
     return clean_text(value) or ""
 
@@ -821,7 +876,7 @@ def import_impros_xlsx(
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
-        plate = _normalize_text(first_row_value(row, cols, ["PlateNr", "Matrícula", "Matricula"]))
+        plate = _row_text(row, cols, ["PlateNr", "Plate", "Matrícula", "Matricula"])
         row_vehicle = _resolve_vehicle_for_import_row(
             fallback_vehicle=vehicle,
             by_plate=by_plate,
@@ -831,16 +886,16 @@ def import_impros_xlsx(
         )
         if not row_vehicle:
             continue
-        impro_number = _normalize_text(first_row_value(row, cols, ["Impro", "impro_number"]))
-        status = _normalize_text(first_row_value(row, cols, ["Status"]))
-        date_in = _safe_date(first_row_value(row, cols, ["Date_In", "Data entrada"]))
-        date_out = _safe_date(first_row_value(row, cols, ["Date_Out", "Data saída"]))
-        driven_kms = clean_int(first_row_value(row, cols, ["Driven_Kms", "Km"]))
+        impro_number = _row_text(row, cols, ["Impro", "Impro Nr", "Impro Nº", "impro_number", "Número impro", "Numero impro"])
+        status = _row_text(row, cols, ["Status", "Estado"])
+        date_in = _row_date(row, cols, ["Date_In", "Data entrada", *RENTWAY_START_DATE_COLUMNS])
+        date_out = _row_date(row, cols, ["Date_Out", "Data saída", "Data saida", *RENTWAY_END_DATE_COLUMNS])
+        driven_kms = clean_int(first_row_value(row, cols, ["Driven_Kms", "Driven Kms", "Km", "Kms", "KM"]))
         title = impro_number or "Impro"
         description_parts = [
-            _normalize_text(first_row_value(row, cols, ["Impro_Type_Description"])),
-            _normalize_text(first_row_value(row, cols, ["Garage"])),
-            _normalize_text(first_row_value(row, cols, ["Driver_Name"])),
+            _row_text(row, cols, ["Impro_Type_Description", "Impro Type Description", "Tipo impro", "Descrição", "Descricao"]),
+            _row_text(row, cols, ["Garage", "Oficina", "Fornecedor"]),
+            _row_text(row, cols, ["Driver_Name", "Driver Name", "Condutor"]),
         ]
         raw_description = " | ".join(part for part in description_parts if part) or None
         upsert_structured_record(
@@ -850,14 +905,20 @@ def import_impros_xlsx(
             title=title,
             external_reference=impro_number,
             document_date=date_in,
-            supplier_name=_normalize_text(first_row_value(row, cols, ["Garage"])) or None,
+            supplier_name=_row_text(row, cols, ["Garage", "Oficina", "Fornecedor"]) or None,
             raw_description=raw_description,
             km=driven_kms,
             source_system="impro_import",
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
-            subtype=_normalize_text(first_row_value(row, cols, ["Impro_Type_Code"])) or None,
-            metadata_json={**raw, "_status": status, "_date_out": date_out.isoformat() if date_out else None},
+            subtype=_row_text(row, cols, ["Impro_Type_Code", "Impro Type Code", "Tipo"]) or None,
+            metadata_json={
+                **raw,
+                "_status": status or None,
+                "_start_date": date_in.isoformat() if date_in else None,
+                "_date_out": date_out.isoformat() if date_out else None,
+                "_period_source": "rentway",
+            },
             source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
@@ -877,9 +938,9 @@ def import_contracts_xlsx(
     by_plate, by_vin, by_unit = _vehicle_lookup_maps(db)
     for _sheet, headers, _row_number, row, raw in iter_xlsx_rows(path):
         cols = build_column_lookup(headers)
-        plate = _normalize_text(first_row_value(row, cols, ["Matrícula", "Matricula", "PlateNr", "Plate"]))
-        vin = _normalize_text(first_row_value(row, cols, ["Chassi", "VIN", "Vin", "Chassis"]))
-        unit = _normalize_text(first_row_value(row, cols, ["Unit", "UnitNr", "Unit Nr", "Unit Rentway"]))
+        plate = _row_text(row, cols, ["Matrícula", "Matricula", "PlateNr", "Plate", "License Plate"])
+        vin = _row_text(row, cols, ["Chassi", "VIN", "Vin", "Chassis"])
+        unit = _row_text(row, cols, ["Unit", "UnitNr", "Unit Nr", "Unit Rentway"])
         row_vehicle = _resolve_vehicle_for_import_row(
             fallback_vehicle=vehicle,
             by_plate=by_plate,
@@ -896,31 +957,50 @@ def import_contracts_xlsx(
             first_row_value(
                 row,
                 cols,
-                ["Contrato", "Nº Contrato", "No Contrato", "Numero Contrato", "Contract", "Contract Number", "ra", "RA"],
+                [
+                    "Contrato",
+                    "Nº Contrato",
+                    "No Contrato",
+                    "Numero Contrato",
+                    "Contract",
+                    "Contract Number",
+                    "Rental Agreement",
+                    "Agreement",
+                    "ra",
+                    "RA",
+                ],
             )
         )
-        ra_reference = _normalize_text(first_row_value(row, cols, ["ra", "RA"]))
-        supplier_name = _normalize_text(
-            first_row_value(row, cols, ["Fornecedor", "Locadora", "Financeira", "Entidade", "Supplier", "customer_name"])
+        ra_reference = _row_text(row, cols, ["ra", "RA", "Rental Agreement", "Agreement"])
+        supplier_name = _row_text(
+            row,
+            cols,
+            [
+                "Fornecedor",
+                "Locadora",
+                "Financeira",
+                "Entidade",
+                "Supplier",
+                "customer_name",
+                "Customer Name",
+                "Cliente",
+                "Client",
+            ],
         )
-        start_date = _safe_date(
-            first_row_value(row, cols, ["Data início", "Data Inicio", "Start Date", "Data contrato", "date_out"])
-        )
-        end_date = _safe_date(first_row_value(row, cols, ["Data fim", "End Date", "Data término", "Data Termino", "date_in"]))
-        status = _normalize_text(first_row_value(row, cols, ["Estado", "Status", "salesperson"]))
+        start_date = _row_date(row, cols, RENTWAY_START_DATE_COLUMNS)
+        end_date = _row_date(row, cols, RENTWAY_END_DATE_COLUMNS)
+        status = _row_text(row, cols, ["Estado", "Status", "salesperson"])
         monthly_value = _normalize_text(
             first_row_value(row, cols, ["Valor mensal", "Renda", "Mensalidade", "Monthly Value", "Valor", "invoiced_amount"])
         )
-        notes = _normalize_text(
-            first_row_value(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao", "Notes"])
-        )
-        station = _normalize_text(first_row_value(row, cols, ["station", "Estação", "Estacao"]))
-        origin = _normalize_text(first_row_value(row, cols, ["origin", "Origem"]))
-        rate_code = _normalize_text(first_row_value(row, cols, ["rate_code", "Rate Code"]))
-        category = _normalize_text(first_row_value(row, cols, ["category", "Categoria"]))
-        category_requested = _normalize_text(first_row_value(row, cols, ["category_requested", "Categoria pedida"]))
-        ndays = _normalize_text(first_row_value(row, cols, ["ndays", "Dias"]))
-        creation_date = _safe_date(first_row_value(row, cols, ["creation_date", "Data criação", "Data criacao"]))
+        notes = _row_text(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao", "Notes"])
+        station = _row_text(row, cols, ["station", "Estação", "Estacao", "Rental Station"])
+        origin = _row_text(row, cols, ["origin", "Origem", "Source"])
+        rate_code = _row_text(row, cols, ["rate_code", "Rate Code"])
+        category = _row_text(row, cols, ["category", "Categoria", "Vehicle Category"])
+        category_requested = _row_text(row, cols, ["category_requested", "Categoria pedida", "Requested Category"])
+        ndays = _row_text(row, cols, ["ndays", "Dias", "Days"])
+        creation_date = _row_date(row, cols, ["creation_date", "Data criação", "Data criacao", "Created At"])
         cashier_amount = _normalize_text(first_row_value(row, cols, ["cashier_amount", "Valor caixa"]))
 
         description_parts = []
@@ -940,8 +1020,6 @@ def import_contracts_xlsx(
             description_parts.append(f"Dias: {ndays}")
         if creation_date:
             description_parts.append(f"Criado em: {creation_date.strftime('%d/%m/%Y')}")
-        if end_date:
-            description_parts.append(f"Fim: {end_date.strftime('%d/%m/%Y')}")
         if monthly_value:
             description_parts.append(f"Valor: {monthly_value}")
         if cashier_amount:
@@ -972,8 +1050,11 @@ def import_contracts_xlsx(
                 "_rate_code": rate_code or None,
                 "_category": category or None,
                 "_category_requested": category_requested or None,
+                "_status": status or None,
+                "_start_date": start_date.isoformat() if start_date else None,
                 "_creation_date": creation_date.isoformat() if creation_date else None,
                 "_end_date": end_date.isoformat() if end_date else None,
+                "_period_source": "rentway",
                 "_monthly_value": monthly_value or None,
                 "_cashier_amount": cashier_amount or None,
             },
@@ -1401,6 +1482,13 @@ def _build_structured_rows(
         tags = record_tags.get(row.id, [])
         service_text = " ".join(part for part in [row.title, row.raw_description, row.external_reference] if part)
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
+        metadata = row.metadata_json or {}
+        period_start = _metadata_date(metadata, "_start_date") or row.document_date
+        period_end = (
+            _metadata_date(metadata, "_end_date")
+            if row.main_group == "contracts"
+            else _metadata_date(metadata, "_date_out")
+        )
         rows.append(
             {
                 "kind": "record",
@@ -1424,16 +1512,9 @@ def _build_structured_rows(
                 "work_order_lines": _work_order_line_items(row.metadata_json),
                 "service_summary": _service_summary(service_matrix),
                 "custom_services": _custom_service_values(tags),
-                "period_start": row.document_date,
-                "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
-                if row.main_group == "contracts"
-                else _metadata_date(row.metadata_json or {}, "_date_out"),
-                "period_display": _period_display(
-                    row.document_date,
-                    _metadata_date(row.metadata_json or {}, "_end_date")
-                    if row.main_group == "contracts"
-                    else _metadata_date(row.metadata_json or {}, "_date_out"),
-                ),
+                "period_start": period_start,
+                "period_end": period_end,
+                "period_display": _period_display(period_start, period_end),
                 "tags": [_format_tag(tag) for tag in tags],
             }
         )
@@ -2241,6 +2322,13 @@ def _build_global_structured_rows(
     rows: list[dict[str, Any]] = []
     for row in persisted_rows:
         vehicle = vehicles.get(row.vehicle_id)
+        metadata = row.metadata_json or {}
+        period_start = _metadata_date(metadata, "_start_date") or row.document_date
+        period_end = (
+            _metadata_date(metadata, "_end_date")
+            if row.main_group == "contracts"
+            else _metadata_date(metadata, "_date_out")
+        )
         rows.append(
             {
                 "kind": "record",
@@ -2266,16 +2354,9 @@ def _build_global_structured_rows(
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
-                "period_start": row.document_date,
-                "period_end": _metadata_date(row.metadata_json or {}, "_end_date")
-                if row.main_group == "contracts"
-                else _metadata_date(row.metadata_json or {}, "_date_out"),
-                "period_display": _period_display(
-                    row.document_date,
-                    _metadata_date(row.metadata_json or {}, "_end_date")
-                    if row.main_group == "contracts"
-                    else _metadata_date(row.metadata_json or {}, "_date_out"),
-                ),
+                "period_start": period_start,
+                "period_end": period_end,
+                "period_display": _period_display(period_start, period_end),
                 "tags": [_format_tag(tag) for tag in tags_by_record.get(row.id, [])],
             }
         )

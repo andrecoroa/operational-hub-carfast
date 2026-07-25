@@ -3206,6 +3206,12 @@ def test_clean_vehicle_documents_import_impros(authenticated_client, db_session)
     assert record.title == "IMP-9281"
     assert record.km == 42110
     assert record.supplier_name == "Oficina Norte"
+    assert record.document_date == date(2026, 4, 12)
+    assert record.metadata_json["_start_date"] == "2026-04-12"
+    assert record.metadata_json["_date_out"] == "2026-04-18"
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    impro_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "impros")
+    assert impro_row["period_display"] == "12/04/2026 a 18/04/2026"
     import_source = db_session.scalar(
         select(Document).where(
             Document.vehicle_id == vehicle.id,
@@ -3240,6 +3246,13 @@ def test_clean_vehicle_documents_import_contracts(authenticated_client, db_sessi
     assert record.title == "CTR-2026-001"
     assert record.supplier_name == "Locadora X"
     assert record.subtype == "Ativo"
+    assert record.document_date == date(2026, 1, 1)
+    assert record.metadata_json["_start_date"] == "2026-01-01"
+    assert record.metadata_json["_end_date"] == "2029-01-01"
+    assert "Fim:" not in (record.raw_description or "")
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    contract_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts")
+    assert contract_row["period_display"] == "01/01/2026 a 01/01/2029"
     import_source = db_session.scalar(
         select(Document).where(
             Document.vehicle_id == vehicle.id,
@@ -3248,6 +3261,49 @@ def test_clean_vehicle_documents_import_contracts(authenticated_client, db_sessi
         )
     )
     assert import_source is not None
+
+
+def test_clean_vehicle_documents_import_contracts_rentway_checkout_dates(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    workbook = _make_workbook(
+        [
+            "ra",
+            "plate",
+            "customer_name",
+            "checkout_date",
+            "checkin_date",
+            "station",
+            "origin",
+            "category",
+            "ndays",
+            "invoiced_amount",
+        ],
+        [["15394", "CC-11-AA", "Rentway Cliente", "2025-08-01", "2025-08-31", "Aeroporto Porto", "Diretos", "Peugeot 208", 31, "422.18"]],
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/contracts",
+        files={"file": ("contracts.xlsx", workbook.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    record = db_session.scalar(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.vehicle_id == vehicle.id,
+            VehicleDocumentRecord.main_group == "contracts",
+        )
+    )
+    assert record is not None
+    assert record.title == "RA 15394"
+    assert record.document_date == date(2025, 8, 1)
+    assert record.metadata_json["_start_date"] == "2025-08-01"
+    assert record.metadata_json["_end_date"] == "2025-08-31"
+    assert "Estação: Aeroporto Porto" in (record.raw_description or "")
+    assert "Fim:" not in (record.raw_description or "")
+    center_ctx = document_center_module_context(db_session)
+    contract_row = next(row for row in center_ctx["structured_rows"] if row["main_group"] == "contracts")
+    assert contract_row["period_display"] == "01/08/2025 a 31/08/2025"
 
 
 def test_clean_document_center_reimport_refreshes_existing_structured_source(authenticated_client, db_session, tmp_path):

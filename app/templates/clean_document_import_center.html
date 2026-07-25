@@ -488,7 +488,7 @@
                         <th>Contrato</th>
                         <th>Cliente / origem</th>
                         <th>Período</th>
-                        <th>Estado</th>
+                        <th>Detalhe</th>
                         <th>Ações</th>
                       </tr>
                     </thead>
@@ -499,12 +499,43 @@
                           <td>{{ row.date_display or "-" }}</td>
                           <td><strong>{{ row.external_reference or row.title }}</strong></td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
-                          <td>{{ row.period_display if row.period_display and row.period_display != "-" else row.description or "-" }}</td>
-                          <td><span class="clean-doc-status-pill">{{ "Importado RW" if row.status == "archived" else row.comparison_label }}</span></td>
+                          <td>{{ row.period_display or "-" }}</td>
+                          <td>{{ row.description or "Rentway" }}</td>
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
                       {% else %}
                         <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% elif grouped.code == "impros" %}
+                  <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-contract-table">
+                    <thead>
+                      <tr>
+                        <th>Viatura</th>
+                        <th>Início</th>
+                        <th>Impro</th>
+                        <th>Oficina / origem</th>
+                        <th>KM</th>
+                        <th>Período</th>
+                        <th>Detalhe</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in grouped.rows %}
+                        <tr>
+                          <td><strong>{{ row.vehicle_plate }}</strong><small>{{ row.vehicle_label }}</small></td>
+                          <td>{{ row.date_display or "-" }}</td>
+                          <td><strong>{{ row.external_reference or row.title }}</strong></td>
+                          <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
+                          <td>{{ row.km if row.km is not none else "-" }}</td>
+                          <td>{{ row.period_display or "-" }}</td>
+                          <td>{{ row.description or "Rentway" }}</td>
+                          <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>

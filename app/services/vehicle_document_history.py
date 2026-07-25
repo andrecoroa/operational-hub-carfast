@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.documents import (
@@ -176,6 +176,24 @@ def v2_clean_document_visible_condition():
 
 def v2_clean_record_visible_condition():
     return or_(VehicleDocumentRecord.status.is_(None), ~VehicleDocumentRecord.status.in_(V2_CLEAN_REMOVED_STATUSES))
+
+
+def structured_import_source_condition():
+    return or_(
+        Document.entry_channel == "structured_import",
+        Document.source_subject.ilike("%structured%"),
+        Document.source_subject.ilike("%import%"),
+        Document.source_subject.ilike("%listagem%"),
+        Document.title.ilike("%import%"),
+        Document.title.ilike("%listagem%"),
+        Document.folder_path.ilike("%Importacoes_Estruturadas%"),
+        Document.original_name.ilike("%.xlsx"),
+        Document.original_name.ilike("%.xls"),
+        Document.original_name.ilike("%.csv"),
+        Document.file_name.ilike("%.xlsx"),
+        Document.file_name.ilike("%.xls"),
+        Document.file_name.ilike("%.csv"),
+    )
 
 DOCUMENT_HISTORY_COMPARISON_STATES = [
     ("coerente", "Coerente"),
@@ -2074,12 +2092,21 @@ def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, 
     }
 
 
-def _load_structured_import_sources(db: Session, vehicle: Vehicle | None = None) -> list[Document]:
+def _load_structured_import_sources(
+    db: Session,
+    vehicle: Vehicle | None = None,
+    *,
+    limit: int | None = None,
+) -> list[Document]:
     query = select(Document).where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
     query = query.where(v2_clean_document_visible_condition())
+    query = query.where(structured_import_source_condition())
     if vehicle is not None:
         query = query.where(or_(Document.vehicle_id == vehicle.id, Document.vehicle_id.is_(None), Document.plate == vehicle.plate))
-    documents = db.scalars(query.order_by(Document.updated_at.desc(), Document.id.desc())).all()
+    query = query.order_by(Document.updated_at.desc(), Document.id.desc())
+    if limit is not None:
+        query = query.limit(limit)
+    documents = db.scalars(query).all()
     return [document for document in documents if is_structured_import_source(document)]
 
 
@@ -2113,16 +2140,83 @@ def ensure_structured_import_sources_materialized(
     return changed
 
 
-def _build_global_structured_rows(db: Session) -> list[dict[str, Any]]:
-    persisted_rows = db.scalars(
-        select(VehicleDocumentRecord)
-        .where(
-            VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
-            VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
-            v2_clean_record_visible_condition(),
+def _global_structured_record_conditions(
+    *,
+    main_group: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+) -> list[Any]:
+    conditions: list[Any] = [
+        VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES),
+        VehicleDocumentRecord.main_group.in_([code for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS]),
+        v2_clean_record_visible_condition(),
+    ]
+    if main_group:
+        conditions.append(VehicleDocumentRecord.main_group == main_group)
+    if status:
+        conditions.append(
+            or_(
+                VehicleDocumentRecord.status == status,
+                VehicleDocumentRecord.comparison_state == status,
+            )
         )
-        .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
+    if search:
+        token = f"%{search}%"
+        conditions.append(
+            or_(
+                VehicleDocumentRecord.plate.ilike(token),
+                VehicleDocumentRecord.vin.ilike(token),
+                VehicleDocumentRecord.title.ilike(token),
+                VehicleDocumentRecord.supplier_name.ilike(token),
+                VehicleDocumentRecord.external_reference.ilike(token),
+                VehicleDocumentRecord.process_reference.ilike(token),
+                VehicleDocumentRecord.raw_description.ilike(token),
+            )
+        )
+    return conditions
+
+
+def count_global_structured_rows(
+    db: Session,
+    *,
+    main_group: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+) -> int:
+    query = select(func.count()).select_from(VehicleDocumentRecord).where(
+        *_global_structured_record_conditions(main_group=main_group, status=status, search=search)
+    )
+    return int(db.scalar(query) or 0)
+
+
+def count_global_structured_rows_by_group(db: Session) -> dict[str, int]:
+    counts = {code: 0 for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS}
+    result = db.execute(
+        select(VehicleDocumentRecord.main_group, func.count())
+        .where(*_global_structured_record_conditions())
+        .group_by(VehicleDocumentRecord.main_group)
     ).all()
+    for code, count in result:
+        counts[str(code)] = int(count or 0)
+    return counts
+
+
+def _build_global_structured_rows(
+    db: Session,
+    *,
+    main_group: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    query = (
+        select(VehicleDocumentRecord)
+        .where(*_global_structured_record_conditions(main_group=main_group, status=status, search=search))
+        .order_by(VehicleDocumentRecord.document_date.desc().nullslast(), VehicleDocumentRecord.id.desc())
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    persisted_rows = db.scalars(query).all()
     vehicles = {
         vehicle.id: vehicle
         for vehicle in db.scalars(
@@ -2187,41 +2281,36 @@ def document_center_module_context(db: Session, *, user_id: int | None = None) -
     if ensure_structured_import_sources_materialized(db, user_id=user_id):
         db.flush()
 
-    import_sources = _load_structured_import_sources(db)
-    structured_rows = _build_global_structured_rows(db)
-    structured_counts = {code: 0 for code, _ in DOCUMENT_HISTORY_STRUCTURED_GROUPS}
-    for row in structured_rows:
-        structured_counts[row["main_group"]] = structured_counts.get(row["main_group"], 0) + 1
-
-    structured_sections = []
+    import_sources = _load_structured_import_sources(db, limit=20)
+    structured_counts = count_global_structured_rows_by_group(db)
+    pending_structured_count = count_global_structured_rows(db, status="por_validar")
+    structured_rows_preview = _build_global_structured_rows(db, limit=50)
+    structured_sections_preview = []
     for code, label in DOCUMENT_HISTORY_STRUCTURED_GROUPS:
-        rows = [row for row in structured_rows if row["main_group"] == code]
-        structured_sections.append({"code": code, "label": label, "rows": rows})
-
+        structured_sections_preview.append(
+            {
+                "code": code,
+                "label": label,
+                "rows": [row for row in structured_rows_preview if row["main_group"] == code],
+            }
+        )
     archive_documents_count = db.scalar(
-        select(Document.id)
+        select(func.count())
+        .select_from(Document)
         .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
         .where(v2_clean_document_visible_condition())
         .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
-        .limit(1)
     )
-    vehicle_count = db.scalar(select(Vehicle.id).limit(1))
+    vehicle_count = db.scalar(select(func.count()).select_from(Vehicle))
     return {
         "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
         "structured_counts": structured_counts,
-        "structured_rows": structured_rows,
-        "structured_sections": structured_sections,
+        "structured_rows": structured_rows_preview,
+        "structured_sections": structured_sections_preview,
         "import_rows": _build_import_rows(import_sources),
-        "vehicle_count": db.query(Vehicle).count() if vehicle_count is not None else 0,
-        "archive_documents_count": db.query(Document)
-        .filter(
-            Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
-            v2_clean_document_visible_condition(),
-            or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"),
-        )
-        .count()
-        if archive_documents_count is not None
-        else 0,
+        "vehicle_count": int(vehicle_count or 0),
+        "archive_documents_count": int(archive_documents_count or 0),
+        "pending_structured_count": pending_structured_count,
     }
 
 

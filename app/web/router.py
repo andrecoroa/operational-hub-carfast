@@ -134,9 +134,11 @@ from app.services.vehicle_document_history import (
     STRUCTURED_IMPORT_KIND_LABELS,
     V2_CLEAN_DOCUMENT_SOURCES,
     V2_CLEAN_REMOVED_STATUSES,
+    _build_global_structured_rows,
     add_quick_classification,
     attach_document_to_record,
     canonical_structured_import_kind,
+    count_global_structured_rows,
     create_archive_placeholder,
     document_center_module_context,
     import_contracts_xlsx,
@@ -6868,49 +6870,107 @@ def clean_document_import_center(
                 if item.is_file() and item.suffix.lower() in BATCH_DOCUMENT_EXTENSIONS
             )
 
-        def matches_search(parts: list[str]) -> bool:
-            if not search:
-                return True
-            return search in " ".join(part for part in parts if part).lower()
+        preview_limit = 8
 
-        structured_rows = []
-        for row in module_ctx["structured_rows"]:
-            if clean_main_group and row["main_group"] != clean_main_group:
-                continue
-            if clean_status and row["status"] != clean_status and row["comparison_state"] != clean_status:
-                continue
-            if not matches_search(
-                [
-                    row["vehicle_label"],
-                    row["title"],
-                    row["supplier_name"],
-                    row["description"],
-                    row["external_reference"],
-                ]
-            ):
-                continue
-            structured_rows.append(row)
+        def invoice_document_conditions(*, include_filters: bool = True) -> list[Any]:
+            invoice_title_token = "%fatura%"
+            invoice_factura_token = "%factura%"
+            conditions: list[Any] = [
+                Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                v2_clean_document_visible_condition(),
+                or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"),
+                or_(
+                    Document.document_type.in_({"workshop_supplier_invoice", "finance_supplier_invoice"}),
+                    Document.title.ilike(invoice_title_token),
+                    Document.title.ilike(invoice_factura_token),
+                    Document.original_name.ilike(invoice_title_token),
+                    Document.original_name.ilike(invoice_factura_token),
+                    Document.source_subject.ilike(invoice_title_token),
+                    Document.source_subject.ilike(invoice_factura_token),
+                    Document.supplier_name.ilike(invoice_title_token),
+                    Document.supplier_name.ilike(invoice_factura_token),
+                ),
+            ]
+            if include_filters:
+                if clean_status:
+                    conditions.append(Document.status == clean_status)
+                if search:
+                    token = f"%{search}%"
+                    conditions.append(
+                        or_(
+                            Document.plate.ilike(token),
+                            Document.title.ilike(token),
+                            Document.original_name.ilike(token),
+                            Document.supplier_name.ilike(token),
+                            Document.contract_number.ilike(token),
+                            Document.reservation_number.ilike(token),
+                            Document.status.ilike(token),
+                        )
+                    )
+            return conditions
 
-        structured_sections = []
+        structured_sections_preview = []
+        structured_rows_total = 0
         for code, label in DOCUMENT_HISTORY_STRUCTURED_GROUPS:
-            rows = [row for row in structured_rows if row["main_group"] == code]
-            structured_sections.append({"code": code, "label": label, "rows": rows})
+            if clean_main_group and clean_main_group not in {code, "structured"}:
+                total_count = 0
+                rows = []
+            else:
+                total_count = count_global_structured_rows(
+                    db,
+                    main_group=code,
+                    status=clean_status or None,
+                    search=search or None,
+                )
+                rows = _build_global_structured_rows(
+                    db,
+                    main_group=code,
+                    status=clean_status or None,
+                    search=search or None,
+                    limit=preview_limit,
+                )
+            structured_rows_total += total_count
+            structured_sections_preview.append(
+                {
+                    "code": code,
+                    "label": label,
+                    "rows": rows,
+                    "total_count": total_count,
+                    "remaining_count": max(total_count - preview_limit, 0),
+                }
+            )
 
-        real_documents = db.scalars(
-            select(Document)
-            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
-            .where(v2_clean_document_visible_condition())
-            .where(or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"))
-            .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
-        ).all()
-        vehicle_ids = {document.vehicle_id for document in real_documents if document.vehicle_id}
+        invoice_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(*invoice_document_conditions(include_filters=False))
+            )
+            or 0
+        )
+        invoice_rows_total = 0
+        invoice_documents: list[Document] = []
+        if not clean_main_group or clean_main_group == "invoices":
+            invoice_rows_total = int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(Document)
+                    .where(*invoice_document_conditions())
+                )
+                or 0
+            )
+            invoice_documents = db.scalars(
+                select(Document)
+                .where(*invoice_document_conditions())
+                .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
+                .limit(preview_limit)
+            ).all()
+
+        vehicle_ids = {document.vehicle_id for document in invoice_documents if document.vehicle_id}
         vehicles_by_id = {
             vehicle.id: vehicle
             for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
         } if vehicle_ids else {}
-        invoice_documents = [
-            document for document in real_documents if clean_vehicle_document_group(document) == "invoices"
-        ]
         invoice_event_map: dict[int, list[DocumentEvent]] = defaultdict(list)
         invoice_document_ids = [document.id for document in invoice_documents]
         if invoice_document_ids:
@@ -6922,8 +6982,15 @@ def clean_document_import_center(
             ).all()
             for event in invoice_events:
                 invoice_event_map[event.document_id].append(event)
+
         invoice_batch_map: dict[str, dict[str, Any]] = {}
-        for document in invoice_documents:
+        latest_invoice_documents = db.scalars(
+            select(Document)
+            .where(*invoice_document_conditions(include_filters=False))
+            .order_by(Document.updated_at.desc(), Document.id.desc())
+            .limit(200)
+        ).all()
+        for document in latest_invoice_documents:
             batch_label = _document_import_batch_label(document)
             if not batch_label:
                 continue
@@ -6947,22 +7014,7 @@ def clean_document_import_center(
         )
         invoice_rows = []
         for document in invoice_documents:
-            if clean_main_group and clean_main_group != "invoices":
-                continue
             vehicle = vehicles_by_id.get(document.vehicle_id)
-            search_parts = [
-                vehicle.plate if vehicle else document.plate,
-                document.title,
-                document.original_name,
-                document.supplier_name,
-                document.contract_number,
-                document.reservation_number,
-                document.status,
-            ]
-            if not matches_search(search_parts):
-                continue
-            if clean_status and document.status != clean_status:
-                continue
             latest_ocr = _document_latest_ocr_metadata(invoice_event_map.get(document.id, []))
             invoice_rows.append(
                 {
@@ -6996,21 +7048,8 @@ def clean_document_import_center(
                     ),
                 }
             )
-
-        preview_limit = 8
         import_rows = module_ctx["import_rows"]
         import_rows_preview = import_rows[:preview_limit]
-        structured_sections_preview = []
-        for section in structured_sections:
-            section_rows = section["rows"]
-            structured_sections_preview.append(
-                {
-                    **section,
-                    "rows": section_rows[:preview_limit],
-                    "total_count": len(section_rows),
-                    "remaining_count": max(len(section_rows) - preview_limit, 0),
-                }
-            )
 
         response = templates.TemplateResponse(
             request,
@@ -7019,13 +7058,15 @@ def clean_document_import_center(
                 "module_ctx": module_ctx,
                 "structured_groups": DOCUMENT_HISTORY_STRUCTURED_GROUPS,
                 "structured_counts": module_ctx["structured_counts"],
-                "structured_rows": structured_rows,
-                "structured_sections": structured_sections,
+                "structured_rows": [],
+                "structured_rows_count": structured_rows_total,
                 "structured_sections_preview": structured_sections_preview,
-                "invoice_count": len(invoice_documents),
+                "pending_structured_count": module_ctx["pending_structured_count"],
+                "invoice_count": invoice_count,
                 "invoice_rows": invoice_rows,
-                "invoice_rows_preview": invoice_rows[:preview_limit],
-                "invoice_rows_remaining": max(len(invoice_rows) - preview_limit, 0),
+                "invoice_rows_count": invoice_rows_total,
+                "invoice_rows_preview": invoice_rows,
+                "invoice_rows_remaining": max(invoice_rows_total - preview_limit, 0),
                 "invoice_batches": invoice_batches,
                 "import_rows_preview": import_rows_preview,
                 "import_rows_count": len(import_rows),

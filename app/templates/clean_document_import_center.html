@@ -103,7 +103,7 @@
     {% set work_order_count = structured_counts.get("work_orders", 0) %}
     {% set contract_count = structured_counts.get("contracts", 0) %}
     {% set impro_count = structured_counts.get("impros", 0) %}
-    {% set pending_structured = structured_rows|selectattr("comparison_state", "equalto", "por_validar")|list|length %}
+    {% set pending_structured = pending_structured_count or 0 %}
 
     <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact clean-doc-kpi-strip-single-line">
       <a class="clean-doc-kpi-card" href="/v2-clean/fleet">
@@ -337,13 +337,13 @@
         </form>
       </section>
 
-      <details class="clean-doc-collapsible clean-card-wide" {% if invoice_rows or main_group == "invoices" %}open{% endif %}>
+      <details class="clean-doc-collapsible clean-card-wide" {% if invoice_rows_count or main_group == "invoices" %}open{% endif %}>
         <summary>
           <span>
             <b>Faturas reais</b>
             <small>Documentos anexados à viatura para OCR, associação à FO e classificação por serviço.</small>
           </span>
-          <em>{{ invoice_rows|length }} linhas</em>
+          <em>{{ invoice_rows_count }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
           {% if invoice_batches %}
@@ -414,18 +414,18 @@
             </table>
           </div>
           {% if invoice_rows_remaining %}
-            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows|length }} faturas dos filtros atuais. Usa pesquisa, estado ou tipo para reduzir a lista.</p>
+            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows_count }} faturas dos filtros atuais. Usa pesquisa, estado ou tipo para reduzir a lista.</p>
           {% endif %}
         </div>
       </details>
 
-      <details class="clean-doc-collapsible clean-card-wide" {% if structured_rows %}open{% endif %}>
+      <details class="clean-doc-collapsible clean-card-wide" {% if structured_rows_count %}open{% endif %}>
         <summary>
           <span>
             <b>Linhas estruturadas por tipo</b>
             <small>Registos por viatura, separados porque cada tipo tem tratamento diferente.</small>
           </span>
-          <em>{{ structured_rows|length }} linhas</em>
+          <em>{{ structured_rows_count }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
           {% for grouped in structured_sections_preview %}

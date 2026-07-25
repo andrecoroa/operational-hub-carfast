@@ -616,10 +616,13 @@
             <b>Documentação de arquivo</b>
             <small>Documentos reais da viatura. Abrir a linha para OCR, ações e classificação.</small>
           </span>
-          <em>{{ archive_classification_rows|length }} linhas</em>
+          <em>{{ archive_classification_rows_total }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
           {{ render_classification_table(archive_classification_rows, "Sem documentação de arquivo para classificar nos filtros escolhidos.", "archive") }}
+          {% if compact_initial_view and archive_classification_rows_total > archive_classification_rows|length %}
+            <p class="clean-doc-filter-note">Vista compacta: mostradas {{ archive_classification_rows|length }} de {{ archive_classification_rows_total }} linhas. Usa pesquisa, estado ou grupo para trabalhar a lista completa.</p>
+          {% endif %}
           <p class="clean-doc-filter-note">Faturas, diagnósticos, evidências e pendentes ficam fechados por defeito. Abrir a linha mostra OCR, associação, tarefas e problemas.</p>
         </div>
       </details>
@@ -630,10 +633,13 @@
               <b>Documentação estruturada</b>
               <small>Folhas de obra importadas para classificar por serviço</small>
             </span>
-            <em>{{ structured_classification_rows|length }} linhas</em>
+            <em>{{ structured_classification_rows_total }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
           {{ render_classification_table(structured_classification_rows, "Sem folhas de obra estruturadas para classificar nos filtros escolhidos.", "structured") }}
+          {% if compact_initial_view and structured_classification_rows_total > structured_classification_rows|length %}
+            <p class="clean-doc-filter-note">Vista compacta: mostradas {{ structured_classification_rows|length }} de {{ structured_classification_rows_total }} linhas. Seleciona Folhas de obra ou usa filtros para ver todas.</p>
+          {% endif %}
           <p class="clean-doc-filter-note">Cada folha de obra é guardada diretamente na própria linha. Contratos e impros ficam fora da classificação e alimentam a timeline.</p>
         </div>
       </details>
@@ -646,7 +652,7 @@
               <b>Comparação FO vs Fatura</b>
               <small>Coerência financeira</small>
             </span>
-            <em>{{ comparison_rows|length }} pares</em>
+            <em>{{ comparison_rows_total }} pares</em>
           </summary>
           <div class="clean-doc-collapsible-body">
             <div class="clean-doc-table-wrap clean-doc-table-scroll-3">
@@ -671,13 +677,16 @@
                 </tbody>
               </table>
             </div>
+            {% if compact_initial_view and comparison_rows_total > comparison_rows|length %}
+              <p class="clean-doc-filter-note">Vista compacta: mostrados {{ comparison_rows|length }} de {{ comparison_rows_total }} pares. Usa filtros para análise completa.</p>
+            {% endif %}
           </div>
         </details>
       </section>
       {% endif %}
 
       <section class="clean-doc-dual-grid clean-doc-dual-grid-focus">
-        <details class="clean-doc-collapsible clean-card-wide" {% if module_ctx.timeline_events %}open{% endif %}>
+        <details class="clean-doc-collapsible clean-card-wide">
           <summary>
             <span>
               <b>Timeline documental</b>

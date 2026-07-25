@@ -5795,6 +5795,17 @@ def clean_fleet_documents(
                 )
             ]
 
+        compact_initial_view = not any([search, clean_main_group, archive_group, status])
+        table_preview_limit = 8
+        comparison_preview_limit = 3
+        archive_classification_rows_total = len(archive_classification_rows)
+        structured_classification_rows_total = len(structured_classification_rows)
+        comparison_rows_total = len(comparison_rows)
+        if compact_initial_view:
+            archive_classification_rows = archive_classification_rows[:table_preview_limit]
+            structured_classification_rows = structured_classification_rows[:table_preview_limit]
+            comparison_rows = comparison_rows[:comparison_preview_limit]
+
         all_statuses = [
             ("", "Todos"),
             ("pending", "Pendente"),
@@ -5819,6 +5830,10 @@ def clean_fleet_documents(
                 "archive_classification_rows": archive_classification_rows,
                 "work_order_link_options": work_order_link_options,
                 "comparison_rows": comparison_rows,
+                "compact_initial_view": compact_initial_view,
+                "archive_classification_rows_total": archive_classification_rows_total,
+                "structured_classification_rows_total": structured_classification_rows_total,
+                "comparison_rows_total": comparison_rows_total,
                 "q": q or "",
                 "main_group": clean_main_group,
                 "archive_group": archive_group,

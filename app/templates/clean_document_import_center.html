@@ -227,6 +227,17 @@
               <button type="submit" {% if not invoice_inbox_state.available %}disabled{% endif %}>Importar</button>
             </form>
           </article>
+
+          <article class="clean-doc-compact-import-card clean-doc-compact-import-card-muted">
+            <span class="clean-doc-type-token">+</span>
+            <div>
+              <h4>Novos tipos</h4>
+              <p>Preparado para AR, sinistros, diagnósticos ou novos ficheiros estruturados.</p>
+            </div>
+            <div class="clean-doc-compact-form clean-doc-compact-placeholder">
+              <span>A definir</span>
+            </div>
+          </article>
         </div>
       </article>
 
@@ -236,7 +247,7 @@
             <b>Últimas importações</b>
             <small>Fontes Excel arquivadas para auditoria e reprocessamento.</small>
           </span>
-          <em>{{ module_ctx.import_rows|length }} ficheiros</em>
+          <em>{{ import_rows_count }} ficheiros</em>
         </summary>
         <div class="clean-doc-collapsible-body">
           <div class="table-heading flat-heading">
@@ -259,7 +270,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for row in module_ctx.import_rows %}
+              {% for row in import_rows_preview %}
                 <tr>
                   <td>{{ row.date_display or "-" }}</td>
                   <td>{{ row.import_label }}</td>
@@ -292,6 +303,9 @@
             </tbody>
           </table>
         </div>
+        {% if import_rows_remaining %}
+          <p class="clean-doc-table-limit-note">A mostrar as últimas 8 de {{ import_rows_count }} fontes. Abre a fonte ou usa filtros quando precisares de um lote antigo.</p>
+        {% endif %}
         </div>
       </details>
 
@@ -366,7 +380,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for row in invoice_rows %}
+                {% for row in invoice_rows_preview %}
                   <tr>
                     <td>
                       <strong>{{ row.vehicle_plate }}</strong>
@@ -399,6 +413,9 @@
               </tbody>
             </table>
           </div>
+          {% if invoice_rows_remaining %}
+            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows|length }} faturas dos filtros atuais. Usa pesquisa, estado ou tipo para reduzir a lista.</p>
+          {% endif %}
         </div>
       </details>
 
@@ -411,7 +428,7 @@
           <em>{{ structured_rows|length }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
-          {% for grouped in structured_sections %}
+          {% for grouped in structured_sections_preview %}
             <section class="clean-doc-structured-block clean-doc-structured-block-{{ grouped.code }}">
               <div class="table-heading flat-heading">
                 <div>
@@ -428,7 +445,7 @@
                     <p>Sinistros ficam no lado esquerdo da timeline para cruzamento com faturas.</p>
                   {% endif %}
                 </div>
-                <strong class="clean-doc-pill">{{ grouped.rows|length }} linhas</strong>
+                <strong class="clean-doc-pill">{{ grouped.total_count }} linhas</strong>
               </div>
               <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
                 {% if grouped.code == "work_orders" %}
@@ -538,6 +555,9 @@
                   </table>
                 {% endif %}
               </div>
+              {% if grouped.remaining_count %}
+                <p class="clean-doc-table-limit-note">A mostrar 8 de {{ grouped.total_count }} linhas. Usa os filtros acima para trabalhar um conjunto específico.</p>
+              {% endif %}
             </section>
           {% endfor %}
         </div>

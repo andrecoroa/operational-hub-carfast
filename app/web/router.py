@@ -6997,6 +6997,21 @@ def clean_document_import_center(
                 }
             )
 
+        preview_limit = 8
+        import_rows = module_ctx["import_rows"]
+        import_rows_preview = import_rows[:preview_limit]
+        structured_sections_preview = []
+        for section in structured_sections:
+            section_rows = section["rows"]
+            structured_sections_preview.append(
+                {
+                    **section,
+                    "rows": section_rows[:preview_limit],
+                    "total_count": len(section_rows),
+                    "remaining_count": max(len(section_rows) - preview_limit, 0),
+                }
+            )
+
         response = templates.TemplateResponse(
             request,
             "clean_document_import_center.html",
@@ -7006,9 +7021,15 @@ def clean_document_import_center(
                 "structured_counts": module_ctx["structured_counts"],
                 "structured_rows": structured_rows,
                 "structured_sections": structured_sections,
+                "structured_sections_preview": structured_sections_preview,
                 "invoice_count": len(invoice_documents),
                 "invoice_rows": invoice_rows,
+                "invoice_rows_preview": invoice_rows[:preview_limit],
+                "invoice_rows_remaining": max(len(invoice_rows) - preview_limit, 0),
                 "invoice_batches": invoice_batches,
+                "import_rows_preview": import_rows_preview,
+                "import_rows_count": len(import_rows),
+                "import_rows_remaining": max(len(import_rows) - preview_limit, 0),
                 "vehicle_count": module_ctx["vehicle_count"],
                 "archive_documents_count": module_ctx["archive_documents_count"],
                 "invoice_inbox_state": inbox_state,

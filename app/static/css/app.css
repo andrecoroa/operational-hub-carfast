@@ -14599,66 +14599,74 @@ button.clean-upload-preview-card {
 
 .clean-doc-compact-import-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(132px, 1fr));
+  gap: 8px;
   margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .clean-doc-compact-import-card {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 8px 10px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px 8px;
   align-items: start;
   border: 1px solid #dce4ef;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f8fafc;
-  padding: 10px;
+  padding: 8px;
+  min-width: 132px;
+}
+
+.clean-doc-compact-import-card-muted {
+  border-style: dashed;
+  background: #f3f6fa;
 }
 
 .clean-doc-compact-import-card h4 {
   margin: 0 0 3px;
   color: #0f2a5f;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 950;
 }
 
 .clean-doc-compact-import-card p {
   margin: 0;
   color: #667085;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .clean-doc-compact-form {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   align-items: center;
 }
 
 .clean-doc-compact-form input[type="file"] {
-  min-height: 32px;
+  min-height: 28px;
   width: 100%;
   border: 1px solid #dce4ef;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #fff;
   color: #344054;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 5px 6px;
+  padding: 4px 5px;
 }
 
 .clean-doc-compact-form button {
-  min-height: 32px;
+  min-height: 28px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #a55d2f;
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 950;
-  padding: 7px 8px;
+  padding: 6px 8px;
 }
 
 .clean-doc-compact-form button:disabled {
@@ -14667,26 +14675,39 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-compact-form .button-link {
-  min-height: 32px;
-  border-radius: 8px;
-  padding: 7px 8px;
-  font-size: 11px;
+  min-height: 28px;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 10px;
+}
+
+.clean-doc-compact-placeholder {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 7px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 6px 8px;
 }
 
 .clean-doc-kpi-strip-single-line {
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .clean-doc-type-token {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   background: #eef4ff;
   color: #0f2a5f;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 950;
 }
 
@@ -14726,12 +14747,18 @@ button.clean-upload-preview-card {
 
 .clean-doc-table-compact th,
 .clean-doc-table-compact td {
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 .clean-doc-table-scroll-8 {
-  max-height: 390px;
+  max-height: 360px;
   overflow: auto;
+}
+
+.clean-doc-table-scroll-8 .clean-doc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .clean-doc-table-scroll-3 {
@@ -14765,7 +14792,7 @@ button.clean-upload-preview-card {
 }
 
 .clean-doc-import-history-card .clean-doc-table-scroll-8 {
-  max-height: 310px;
+  max-height: 285px;
 }
 
 .clean-doc-import-history-card .clean-doc-table-compact th,
@@ -14794,6 +14821,14 @@ button.clean-upload-preview-card {
   min-height: 30px;
   padding: 6px 10px;
   font-size: 11px;
+}
+
+.clean-doc-table-limit-note {
+  margin: 8px 2px 0;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .clean-doc-batch-import-form button:disabled {

@@ -7141,6 +7141,29 @@ def _batch_document_image_text(file_content: bytes, suffix: str) -> str:
         return ""
 
 
+def _batch_document_pdf_image_text(file_content: bytes, suffix: str) -> str:
+    if suffix != ".pdf" or not file_content:
+        return ""
+    try:
+        import fitz  # type: ignore[import-not-found]
+        import pytesseract  # type: ignore[import-not-found]
+        from PIL import Image  # type: ignore[import-not-found]
+    except Exception:
+        return ""
+    try:
+        page_texts: list[str] = []
+        with fitz.open(stream=file_content, filetype="pdf") as doc:
+            for page in list(doc)[:2]:
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5), alpha=False)
+                image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                page_text = pytesseract.image_to_string(image, lang="por+eng")
+                if page_text.strip():
+                    page_texts.append(page_text)
+        return "\n".join(page_texts)[:12000]
+    except Exception:
+        return ""
+
+
 def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "") -> tuple[str, str]:
     if existing_text.strip():
         return existing_text, "pdf_text"
@@ -7156,6 +7179,9 @@ def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "
                 return plumber_text, "pdf_text"
         if text.strip():
             return text, "pdf_text"
+        pdf_image_text = _batch_document_pdf_image_text(file_content, suffix)
+        if pdf_image_text.strip():
+            return pdf_image_text, "pdf_image_ocr"
     image_text = _batch_document_image_text(file_content, suffix)
     if image_text.strip():
         return image_text, "image_ocr"
@@ -7733,17 +7759,62 @@ def _batch_invoice_cruz_allen_date(value: str) -> str:
         return ""
 
 
+def _batch_invoice_cruz_allen_ocr_money(value: str) -> str:
+    cleaned = (value or "").replace(" ", "").replace(".", "").replace("€", "")
+    if "," in cleaned:
+        return _batch_invoice_format_money(cleaned)
+    digits = re.sub(r"\D", "", cleaned)
+    if len(digits) >= 3:
+        return _batch_invoice_format_money(f"{digits[:-2]},{digits[-2:]}")
+    return _batch_invoice_format_money(cleaned)
+
+
+def _batch_invoice_cruz_allen_normalize_quantity(value: str) -> str:
+    cleaned = (value or "").strip()
+    if cleaned.startswith("+") and re.fullmatch(r"\+\d{2}", cleaned):
+        return f"0,{cleaned[-2:]}"
+    if cleaned.startswith(","):
+        return f"0{cleaned}"
+    if re.fullmatch(r"\d{3}", cleaned) and cleaned[0] not in {"1", "2", "3"}:
+        return f"0,{cleaned[-2:]}"
+    if re.fullmatch(r"\d{3}", cleaned) and cleaned.startswith("1"):
+        return f"{cleaned[0]},{cleaned[1:]}"
+    return cleaned
+
+
+def _batch_invoice_cruz_allen_normalize_or(value: str) -> str:
+    cleaned = (value or "").strip().upper()
+    if cleaned.startswith("ORO"):
+        cleaned = "OR0" + cleaned[3:]
+    return cleaned
+
+
+def _batch_invoice_cruz_allen_normalize_vin(value: str) -> str:
+    cleaned = (value or "").strip().upper()
+    if cleaned.startswith("VFTY"):
+        cleaned = "VF7Y" + cleaned[4:]
+    return cleaned.replace("O", "0")
+
+
 def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
     invoice_lines: list[dict[str, Any]] = []
     section = ""
     capturing = False
     line_pattern = re.compile(
-        r"^(?:(?P<reference>(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,})\s+)?"
+        r"^(?:(?P<reference>(?=[A-Z0-9.:/-]*\d)[A-Z0-9][A-Z0-9.:/-]{2,})\s+)?"
         r"(?P<description>.+?)\s+"
-        r"(?P<quantity>\d+,\d{2}|,\d{2})\s+"
+        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{3}|,\d{2})\s+"
         r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
-        r"(?P<discount>-?\d+,\d{2})\s+"
-        r"(?P<tax>\d{1,2}%)(?:\s+(?P<amount>-?\d+,\d{2})\s*€?)?$",
+        r"(?:(?P<discount>-?\d+,\d{2})\s+)?"
+        r"(?:(?P<tax>\d{1,2}%)(?:\s+(?P<amount>-?\d+(?:,\d{2})?)\s*€?)?)?$",
+        flags=re.IGNORECASE,
+    )
+    free_line_pattern = re.compile(
+        r"^(?:(?P<reference>(?=[A-Z0-9.:/-]*\d)[A-Z0-9][A-Z0-9.:/-]{2,})\s+)?"
+        r"(?P<description>.+?)\s+"
+        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{3}|,\d{2})\s+"
+        r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
+        r"(?P<discount>99,\d{2})$",
         flags=re.IGNORECASE,
     )
     section_map = {
@@ -7754,6 +7825,7 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
     }
     for raw_line in lines:
         line = " ".join(raw_line.split()).strip()
+        line = re.sub(r"\bAo\b(?=\s+\d+,\d{2}\s*€)", ",10", line, flags=re.IGNORECASE)
         simplified = _compact_identifier(line).lower()
         if simplified.startswith("referenciadescricao") and "precounitario" in simplified:
             capturing = True
@@ -7762,20 +7834,28 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
             continue
         if simplified.startswith("observacoes") or simplified.startswith("totalmaodeobra"):
             break
-        if line.startswith("-"):
-            section_key = _compact_identifier(line.lstrip("- ")).lower()
+        if line.startswith(("-", "=")):
+            section_key = _compact_identifier(line.lstrip("-= ")).lower()
             if section_key in section_map:
                 section = section_key
             continue
+        is_free_line = False
         match = line_pattern.match(line)
         if not match:
+            match = free_line_pattern.match(line)
+            is_free_line = bool(match)
+        if not match:
+            if invoice_lines and section == "outrosdebitos" and not re.search(r"\d+,\d{2}", line):
+                invoice_lines[-1]["description"] = f"{invoice_lines[-1]['description']} {line}"[:240]
             continue
         line_type, section_label = section_map.get(section, ("", ""))
-        quantity = match.group("quantity")
-        if quantity.startswith(","):
-            quantity = f"0{quantity}"
+        quantity = _batch_invoice_cruz_allen_normalize_quantity(match.group("quantity"))
         description = match.group("description").strip()
-        amount = _batch_invoice_format_money(match.group("amount") or "0,00") if match.group("amount") else ""
+        amount = ""
+        if match.groupdict().get("amount"):
+            amount = _batch_invoice_cruz_allen_ocr_money(match.group("amount"))
+        elif is_free_line:
+            amount = "0,00"
         invoice_lines.append(
             {
                 "line_type": line_type,
@@ -7785,8 +7865,8 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "quantity": quantity,
                 "unit": "",
                 "unit_price": _batch_invoice_format_money(match.group("unit_price")),
-                "discount_percent": _batch_invoice_format_money(match.group("discount")),
-                "tax": match.group("tax"),
+                "discount_percent": _batch_invoice_format_money(match.group("discount")) if match.group("discount") else "",
+                "tax": match.groupdict().get("tax") or "",
                 "amount": amount,
                 "service": _batch_invoice_line_service(description),
             }
@@ -7795,9 +7875,9 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
 
 
 def _batch_invoice_cruz_allen_total(text: str, label: str) -> str:
-    pattern = rf"{label}\s*:?\s*(-?\d{{1,3}}(?:[ .]\d{{3}})*(?:,\d{{2}})|-?\d+,\d{{2}})\s*€?"
+    pattern = rf"{label}\s*:?\s*(-?\d{{1,3}}(?:[ .]\d{{3}})*(?:,\d{{2}})|-?\d+(?:,\d{{2}})?)\s*€?"
     match = re.search(pattern, text, flags=re.IGNORECASE)
-    return _batch_invoice_format_money(match.group(1)) if match else ""
+    return _batch_invoice_cruz_allen_ocr_money(match.group(1)) if match else ""
 
 
 def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any]:
@@ -7812,7 +7892,7 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         flags=re.IGNORECASE | re.DOTALL,
     )
     meta_match = re.search(
-        r"Cliente\s+n[ºo]\s+NIF\s+Cliente\s+N[ºo]\s+OR\s+P[aá]gina\s+"
+        r"Cliente\s+n[º°o]\s+NIF\s+Cliente\s+N[º°o]\s*OR\s+P[aá]gina\s+"
         r"(?P<client_number>\d+)\s+(?P<client_nif>\d{9})\s+(?P<or>[A-Z0-9./_-]+)",
         text,
         flags=re.IGNORECASE,
@@ -7824,7 +7904,7 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
     )
     plate_match = re.search(r"Matr[ií]cula:\s*(?P<plate>[A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
     km_match = re.search(r"Kil[oó]metros:\s*(?P<km>\d{1,7})", text, flags=re.IGNORECASE)
-    payment_match = re.search(r"Forma\s+Paga\.?:\s*(?P<payment>.+?)\s+Recepcionista:", text, flags=re.IGNORECASE)
+    payment_match = re.search(r"Forma\s+Pag(?:a|o)?\.?:?\s*(?P<payment>.+?)\s+Recepcionista:", text, flags=re.IGNORECASE)
     receptionist_match = re.search(r"Recepcionista:\s*(?P<value>.+?)(?:\n|Modelo:)", text, flags=re.IGNORECASE)
     warranty_match = re.search(r"Data\s+de\s+Garantia:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
     delivery_match = re.search(r"Data\s+de\s+Entrega:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
@@ -7839,6 +7919,11 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         "vat_amount": _batch_invoice_cruz_allen_total(text, r"I\.?V\.?A\s*:\s*23\s*%"),
         "total_with_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Fatura"),
     }
+    if not totals["total_with_vat"]:
+        base = _batch_invoice_decimal(totals["subtotal_without_vat"])
+        vat = _batch_invoice_decimal(totals["vat_amount"])
+        if base is not None and vat is not None:
+            totals["total_with_vat"] = f"{base + vat:.2f}".replace(".", ",")
     return {
         "ocr_template": "cruz_allen_bbc_invoice",
         "supplier_name": "Cruz & Allen - B.B.C Oficina de Automóveis, Lda",
@@ -7848,12 +7933,12 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         "client_name": " ".join(client_match.group("client").split()) if client_match else "",
         "client_number": meta_match.group("client_number") if meta_match else "",
         "client_nif": meta_match.group("client_nif") if meta_match else "",
-        "repair_order_reference": meta_match.group("or") if meta_match else "",
+        "repair_order_reference": _batch_invoice_cruz_allen_normalize_or(meta_match.group("or")) if meta_match else "",
         "work_order_reference": work_order_match.group("value") if work_order_match else "",
         "payment_method": payment_match.group("payment").strip() if payment_match else "",
         "receptionist": receptionist_match.group("value").strip() if receptionist_match else "",
         "vehicle_model": vehicle_match.group("model").strip() if vehicle_match else "",
-        "vin": vehicle_match.group("vin").strip().upper() if vehicle_match else "",
+        "vin": _batch_invoice_cruz_allen_normalize_vin(vehicle_match.group("vin")) if vehicle_match else "",
         "plate": plate_match.group("plate").strip().upper() if plate_match else "",
         "km": km_match.group("km") if km_match else "",
         "warranty_date": _batch_invoice_cruz_allen_date(warranty_match.group("value")) if warranty_match else "",

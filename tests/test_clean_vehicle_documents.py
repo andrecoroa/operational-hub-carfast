@@ -1385,6 +1385,91 @@ CONTRIBUINTE Nº 504 104 250
     assert payload["invoice_lines"][-1]["description"] == "OBS: V/FOLHA OBRA Nº793"
 
 
+def test_batch_invoice_payload_extracts_cruz_allen_scanned_invoice_ocr_text():
+    text = """
+FATURA
+VIA NÚMERO DATA
+Original FS0002239 11/07/24
+Exmo(s) Senhor(es):
+CARFAST, RENT-A-CAR, LDA
+Rua das Industrias, 220
+4785-625 TROFA
+Cliente n° NIF Cliente N°OR Página
+000310 509285970 ORO006547 Ue à
+Forma Pag PAGAM. A 30 DIAS Recepcionista: SONIA SILVA
+Modelo: JUMPER III Chassis: VFTYBBPFCPGO30534
+Matricula: BD-87-LZ Data de Garantia: 01/09/23
+Kilómetros: 41808 Data de Entrega: 11/07/2024
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+= Mao Obra
+00000510 CONTROLO VEICULO 410 39,00€ 10,00 23% 351€
+01022815 MUDAR OLEO MOTOR E FILTRO OLEO - +50 39,00€ 10,00 23% 1755 €
+OPERAÇÃO SERVIÇO
+= Peças
+9809532380 FILTRO OLEO 1,00 20,83€ 10,00 23% 1875 €
+0w30 OLEOQUARTZINEO FIRST 0w30 6,60 35,62 € 20,00 23% 188,07 €
+OW30:GAU ECOLUB 1,00 0,53 € 23% 0,53€
+- Outros Débitos
+016488 JUNTA BUJÃO 1,00 2,39€ 23% 2,39€
+- Outros Débitos
+ENSAIO SIMPLES - OFERTA 1,00 16,00 € 99,99
+P&D PICK UP & DELIVERY 1,00 1,00 € 99,99
+ALERTA VIATURA PRECISA DE VIR OFICINA EFETUAR A 1,00 1,00€ 99,99
+MANUTENÇÃO DOS 50.000KMS
+Observações:
+Total Mão de Obra: 23,40 €
+Total Peças: 256,45 €
+Outros Déb. + T. Ext: 20,39 €
+Total Descontos 6944 €
+Total Líquido: 23080 €
+I.V.A: 23 % 5308 €
+Total Fatura: 28388 €
+CRUZ & ALLEN -B.B.C OFICINA DE AUTOMÓVEIS, LDA
+MATRÍCULA Nº 504 104 250
+Id. Único: Fact FS/0002239
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "FATURA FS2239 CARFAST.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["text_source"] == "pdf_text"
+    assert payload["supplier_nif"] == "504104250"
+    assert payload["document_number"] == "FS0002239"
+    assert payload["document_date"] == "2024-07-11"
+    assert payload["client_number"] == "000310"
+    assert payload["client_nif"] == "509285970"
+    assert payload["repair_order_reference"] == "OR0006547"
+    assert payload["payment_method"] == "PAGAM. A 30 DIAS"
+    assert payload["receptionist"] == "SONIA SILVA"
+    assert payload["vehicle_model"] == "JUMPER III"
+    assert payload["vin"] == "VF7YBBPFCPG030534"
+    assert payload["plate"] == "BD-87-LZ"
+    assert payload["km"] == "41808"
+    assert payload["warranty_date"] == "2023-09-01"
+    assert payload["delivery_date"] == "2024-07-11"
+    assert payload["labor_total"] == "23,40"
+    assert payload["materials_total"] == "256,45"
+    assert payload["misc_total"] == "20,39"
+    assert payload["discount_without_vat"] == "69,44"
+    assert payload["subtotal_without_vat"] == "230,80"
+    assert payload["vat_amount"] == "53,08"
+    assert payload["total_with_vat"] == "283,88"
+    assert len(payload["invoice_lines"]) == 9
+    assert payload["invoice_lines"][0]["quantity"] == "0,10"
+    assert payload["invoice_lines"][0]["amount"] == "3,51"
+    assert payload["invoice_lines"][1]["quantity"] == "0,50"
+    assert payload["invoice_lines"][1]["amount"] == "17,55"
+    assert payload["invoice_lines"][4]["reference"] == "OW30:GAU"
+    assert payload["invoice_lines"][4]["description"] == "ECOLUB"
+    assert payload["invoice_lines"][4]["amount"] == "0,53"
+    assert payload["invoice_lines"][6]["description"] == "ENSAIO SIMPLES - OFERTA"
+    assert payload["invoice_lines"][6]["amount"] == "0,00"
+    assert payload["invoice_lines"][7]["description"] == "P&D PICK UP & DELIVERY"
+    assert payload["invoice_lines"][7]["amount"] == "0,00"
+    assert payload["invoice_lines"][8]["description"].endswith("MANUTENÇÃO DOS 50.000KMS")
+    assert payload["invoice_lines"][8]["amount"] == "0,00"
+
+
 def test_batch_invoice_payload_extracts_caetano_gamobar_3003():
     text = """
 Ident ÚnicoDoc Valor Com IVA Data Vencim.

@@ -8,7 +8,7 @@
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / validação OCR</p>
         <h1>Centro de validação OCR</h1>
-        <p>Validar faturas por fornecedor e diagnósticos por máquina/tipo, registando erros para afinar a extração.</p>
+        <p>Calibrar templates de extração por fornecedor ou por máquina/tipo. Depois de validado o template, os documentos seguem para a validação normal da viatura.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/documents">Centro de documentação</a>
@@ -18,28 +18,24 @@
 
     <section class="clean-doc-kpi-strip clean-doc-kpi-strip-compact clean-doc-ocr-kpi-strip">
       <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation">
-        <strong>{{ invoice_total + diagnostic_total }}</strong>
-        <span>Total em validação</span>
-      </a>
-      <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation?scope=invoices">
-        <strong>{{ invoice_total }}</strong>
-        <span>Faturas</span>
-      </a>
-      <a class="clean-doc-kpi-card" href="/v2-clean/documents/ocr-validation?scope=technical_reports">
-        <strong>{{ diagnostic_total }}</strong>
-        <span>Diagnósticos</span>
-      </a>
-      <a class="clean-doc-kpi-card" href="#fornecedores">
-        <strong>{{ supplier_groups|length }}</strong>
-        <span>Fornecedores</span>
-      </a>
-      <a class="clean-doc-kpi-card" href="#diagnosticos">
-        <strong>{{ diagnostic_groups|length }}</strong>
-        <span>Máquinas / tipos</span>
+        <strong>{{ template_groups|length }}</strong>
+        <span>Templates</span>
       </a>
       <a class="clean-doc-kpi-card" href="#templates-ocr">
-        <strong>{{ template_groups|length }}</strong>
-        <span>Templates OCR</span>
+        <strong>{{ invoice_total + diagnostic_total }}</strong>
+        <span>Docs analisados</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="#templates-ocr">
+        <strong>{{ template_pending_total }}</strong>
+        <span>Pendentes OCR</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="#templates-ocr">
+        <strong>{{ template_error_total }}</strong>
+        <span>Com falhas</span>
+      </a>
+      <a class="clean-doc-kpi-card" href="#templates-ocr">
+        <strong>{{ template_validated_total }}</strong>
+        <span>Exemplos OK</span>
       </a>
     </section>
 
@@ -295,48 +291,6 @@
               {% endfor %}
             </tbody>
           </table>
-        </div>
-      </article>
-
-      <article class="clean-doc-structure-card clean-card-wide" id="fornecedores">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Faturas</p>
-            <h3>Fornecedores em validação</h3>
-            <p>Cada fornecedor pode ganhar regras próprias de OCR sem alterar o fluxo principal.</p>
-          </div>
-          <strong class="clean-doc-pill">{{ supplier_groups|length }} grupos</strong>
-        </div>
-        <div class="clean-doc-ocr-group-grid">
-          {% for group in supplier_groups %}
-            <div class="clean-doc-ocr-group-card">
-              <strong>{{ group.name }}</strong>
-              <span>{{ group.total }} docs · {{ group.pending }} por validar · {{ group.errors }} erros</span>
-            </div>
-          {% else %}
-            <p class="clean-doc-helper">Sem faturas para validar.</p>
-          {% endfor %}
-        </div>
-      </article>
-
-      <article class="clean-doc-structure-card clean-card-wide" id="diagnosticos">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Diagnósticos</p>
-            <h3>Máquina e tipo de relatório</h3>
-            <p>A validação fica preparada para Autel, Stellantis e novos layouts por tipo de relatório.</p>
-          </div>
-          <strong class="clean-doc-pill">{{ diagnostic_groups|length }} grupos</strong>
-        </div>
-        <div class="clean-doc-ocr-group-grid">
-          {% for group in diagnostic_groups %}
-            <div class="clean-doc-ocr-group-card">
-              <strong>{{ group.name }}</strong>
-              <span>{{ group.total }} docs · {{ group.pending }} por validar · {{ group.errors }} erros</span>
-            </div>
-          {% else %}
-            <p class="clean-doc-helper">Sem diagnósticos para validar.</p>
-          {% endfor %}
         </div>
       </article>
 

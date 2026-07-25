@@ -6235,6 +6235,9 @@ def clean_document_ocr_validation(
                 item["label"],
             ),
         )
+        template_pending_total = sum(group["pending"] for group in sorted_template_groups)
+        template_error_total = sum(group["errors"] for group in sorted_template_groups)
+        template_validated_total = sum(group["validated"] for group in sorted_template_groups)
         selected_template_group = None
         clean_template_key = (template_key or "").strip()
         for group in sorted_template_groups:
@@ -6279,6 +6282,9 @@ def clean_document_ocr_validation(
                 "diagnostic_groups": sorted(diagnostic_groups.values(), key=lambda item: (-item["pending"], item["name"])),
                 "invoice_total": len(invoice_rows),
                 "diagnostic_total": len(diagnostic_rows),
+                "template_pending_total": template_pending_total,
+                "template_error_total": template_error_total,
+                "template_validated_total": template_validated_total,
             },
         )
 

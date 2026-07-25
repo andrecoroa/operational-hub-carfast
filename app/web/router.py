@@ -6865,17 +6865,8 @@ def clean_document_import_center(
             "configured": bool(inbox_folder),
             "path": str(inbox_folder) if inbox_folder else "",
             "available": bool(inbox_folder and inbox_folder.exists() and inbox_folder.is_dir()),
-            "file_count": 0,
+            "file_count": None,
         }
-        if inbox_state["available"] and inbox_folder:
-            file_count = 0
-            for item in inbox_folder.rglob("*"):
-                if item.is_file() and item.suffix.lower() in BATCH_DOCUMENT_EXTENSIONS:
-                    file_count += 1
-                    if file_count >= 1000:
-                        break
-            inbox_state["file_count"] = file_count
-            inbox_state["file_count_capped"] = file_count >= 1000
 
         preview_limit = 8
 

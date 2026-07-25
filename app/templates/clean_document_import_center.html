@@ -214,7 +214,7 @@
               <h4>Pasta faturas</h4>
               <p>
                 {% if invoice_inbox_state.available %}
-                  {{ invoice_inbox_state.file_count }}{% if invoice_inbox_state.file_count_capped %}+{% endif %} ficheiros por classificar.
+                  Pasta pronta para importar. A contagem é feita ao importar.
                 {% elif invoice_inbox_state.configured %}
                   Pasta configurada, mas inacessível.
                 {% else %}

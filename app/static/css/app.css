@@ -15172,6 +15172,74 @@ button.clean-upload-preview-card {
   height: auto;
 }
 
+.clean-doc-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 24px;
+}
+
+.clean-doc-preview-modal[hidden] {
+  display: none;
+}
+
+.clean-doc-preview-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1180px, 96vw);
+  height: min(860px, 92vh);
+  overflow: hidden;
+  border: 1px solid #dce4ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+}
+
+.clean-doc-preview-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dce4ef;
+  padding: 12px 14px;
+}
+
+.clean-doc-preview-dialog header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f2a5f;
+  font-size: 15px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-preview-body {
+  min-height: 0;
+  overflow: auto;
+  background: #eef2f6;
+}
+
+.clean-doc-preview-body iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 720px;
+  border: 0;
+  background: #eef2f6;
+}
+
+.clean-doc-preview-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  background: #fff;
+}
+
 .clean-doc-batch-ocr-panel {
   display: grid;
   grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.2fr);

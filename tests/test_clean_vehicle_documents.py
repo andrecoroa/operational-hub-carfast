@@ -336,8 +336,9 @@ def test_clean_document_detail_previews_invoice_and_identifies_batch(
     page = authenticated_client.get(f"/v2-clean/documents/{invoice.id}")
 
     assert page.status_code == 200
-    assert "Preview da fatura" in page.text
+    assert "Pré-visualizar" in page.text
     assert f'/v2-clean/documents/{invoice.id}/file?inline=1' in page.text
+    assert f'<iframe src="/v2-clean/documents/{invoice.id}/file?inline=1' not in page.text
     assert "ZIP maio.zip [20260724-020304]" in page.text
     assert "Reprocessar lote" in page.text
 

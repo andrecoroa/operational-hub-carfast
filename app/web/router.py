@@ -6983,6 +6983,12 @@ def clean_document_import_center(
                     "work_order_reference": latest_ocr.get("work_order_reference", ""),
                     "total_with_vat": latest_ocr.get("total_with_vat", ""),
                     "document_href": f"/v2-clean/documents/{document.id}",
+                    "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
+                    "preview_kind": (
+                        "image"
+                        if (document.file_type or "").lower() in {"jpg", "jpeg", "png", "webp", "gif"}
+                        else "pdf"
+                    ),
                     "vehicle_href": (
                         f"/v2-clean/fleet/{document.vehicle_id}/documents?main_group=invoices"
                         if document.vehicle_id

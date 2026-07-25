@@ -121,6 +121,17 @@
         </label>
       </section>
     {% endmacro %}
+    {% macro render_document_preview_button(row, label="Pré-visualizar") %}
+      {% if row.kind == "document" and row.open_href %}
+        <button
+          type="button"
+          class="button-link secondary-link clean-doc-preview-trigger"
+          data-preview-src="{{ row.open_href }}"
+          data-preview-title="{{ row.detail_label or row.archive_label or row.title or 'Documento' }}"
+          data-preview-kind="{{ 'image' if row.file_type in ['jpg', 'jpeg', 'png', 'webp', 'gif'] else 'pdf' }}"
+        >{{ label }}</button>
+      {% endif %}
+    {% endmacro %}
     {% macro render_classification_table(rows, empty_text, prefix) %}
       <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
         <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table">
@@ -332,9 +343,7 @@
                         {% endif %}
                         <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
                         <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
-                        {% if row.open_href %}
-                          <a class="button-link secondary-link" href="{{ row.open_href }}">Abrir documento</a>
-                        {% endif %}
+                        {{ render_document_preview_button(row) }}
                         {% if row.kind == "document" and (row.source_label == "FA" or row.archive_group == "invoices") %}
                           <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
                             <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or 'invoices' }}">
@@ -828,6 +837,18 @@
         </div>
       </details>
     </section>
+    <div class="clean-doc-preview-modal" id="clean-doc-preview-modal" hidden>
+      <div class="clean-doc-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="clean-doc-preview-title">
+        <header>
+          <strong id="clean-doc-preview-title">Documento</strong>
+          <div class="clean-doc-inline-actions">
+            <a class="button-link secondary-link" id="clean-doc-preview-open" href="#" target="_blank" rel="noopener">Abrir em separador</a>
+            <button type="button" class="button-link secondary-link" data-close-doc-preview>Fechar</button>
+          </div>
+        </header>
+        <div class="clean-doc-preview-body" id="clean-doc-preview-body"></div>
+      </div>
+    </div>
   </main>
 </div>
 <script>
@@ -842,6 +863,49 @@
       button.textContent = willOpen ? "Fechar detalhes" : "Ver detalhes";
       if (willOpen) detailRow.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
+  });
+
+  const documentPreviewModal = document.getElementById("clean-doc-preview-modal");
+  const documentPreviewTitle = document.getElementById("clean-doc-preview-title");
+  const documentPreviewBody = document.getElementById("clean-doc-preview-body");
+  const documentPreviewOpen = document.getElementById("clean-doc-preview-open");
+  const closeDocumentPreview = () => {
+    if (!documentPreviewModal || !documentPreviewBody) return;
+    documentPreviewModal.hidden = true;
+    documentPreviewBody.innerHTML = "";
+    if (documentPreviewOpen) documentPreviewOpen.href = "#";
+  };
+  document.querySelectorAll(".clean-doc-preview-trigger[data-preview-src]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!documentPreviewModal || !documentPreviewBody || !documentPreviewTitle || !documentPreviewOpen) return;
+      const src = button.dataset.previewSrc || "";
+      const title = button.dataset.previewTitle || "Documento";
+      const kind = button.dataset.previewKind || "pdf";
+      documentPreviewTitle.textContent = title;
+      documentPreviewOpen.href = src;
+      documentPreviewBody.innerHTML = "";
+      if (kind === "image") {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = title;
+        documentPreviewBody.appendChild(img);
+      } else {
+        const iframe = document.createElement("iframe");
+        iframe.src = `${src}#toolbar=1&navpanes=0`;
+        iframe.title = title;
+        documentPreviewBody.appendChild(iframe);
+      }
+      documentPreviewModal.hidden = false;
+    });
+  });
+  document.querySelectorAll("[data-close-doc-preview]").forEach((button) => {
+    button.addEventListener("click", closeDocumentPreview);
+  });
+  documentPreviewModal?.addEventListener("click", (event) => {
+    if (event.target === documentPreviewModal) closeDocumentPreview();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDocumentPreview();
   });
 
   const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");

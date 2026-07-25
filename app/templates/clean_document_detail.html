@@ -103,16 +103,16 @@
       </section>
     {% endif %}
 
-    <section class="clean-doc-context-grid">
-      <article class="clean-card-wide clean-panel">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Resumo</p>
-            <h3>Dados documentais</h3>
-            <p>Informação mínima para classificar, auditar e localizar o documento.</p>
-          </div>
-          <span class="status-pill">{{ document.status or "-" }}</span>
-        </div>
+    <section class="clean-doc-context-grid clean-doc-detail-context-grid">
+      <details class="clean-doc-collapsible clean-card-wide clean-doc-detail-secondary">
+        <summary>
+          <span>
+            <b>Dados documentais</b>
+            <small>Identificação, lote e ligações operacionais.</small>
+          </span>
+          <em>{{ document.status or "-" }}</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
         <div class="clean-detail-facts">
           <div><span>Tipo</span><strong>{{ document.document_type or "-" }}</strong></div>
           <div><span>Área</span><strong>{{ document.classification or "-" }}</strong></div>
@@ -126,16 +126,18 @@
           <div><span>Processo oficina</span><strong>{% if document.workshop_process_id %}#{{ document.workshop_process_id }}{% else %}-{% endif %}</strong></div>
           <div><span>Canal</span><strong>{{ document.entry_channel or "-" }}</strong></div>
         </div>
-      </article>
-
-      <article class="clean-card-wide clean-panel">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Arquivo</p>
-            <h3>Localização e origem</h3>
-            <p>O ficheiro fica preservado; aqui mostramos a referência para consulta e auditoria.</p>
-          </div>
         </div>
+      </details>
+
+      <details class="clean-doc-collapsible clean-card-wide clean-doc-detail-secondary">
+        <summary>
+          <span>
+            <b>Arquivo</b>
+            <small>Origem, ficheiro físico e caminho persistente.</small>
+          </span>
+          <em>{{ document.storage_provider or "-" }}</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
         <div class="clean-detail-facts">
           <div><span>Nome original</span><strong>{{ document.original_name or "-" }}</strong></div>
           <div><span>Ficheiro</span><strong>{{ document.file_name or "-" }}</strong></div>
@@ -146,7 +148,8 @@
           Caminho / referência
           <input type="text" value="{{ document.storage_path or document.external_url or '-' }}" readonly>
         </label>
-      </article>
+        </div>
+      </details>
     </section>
 
     {% if extraction_fields or extraction_metadata.invoice_lines or extraction_metadata.lines or extraction_metadata.raw_text_preview or extraction_metadata.text_preview %}
@@ -320,14 +323,15 @@
       </section>
     {% endif %}
 
-    <section class="clean-card-wide clean-panel">
-      <div class="table-heading flat-heading">
-        <div>
-          <p class="eyebrow">Histórico</p>
-          <h3>Eventos do documento</h3>
-        </div>
-        <span class="status-pill">{{ events|length }} eventos</span>
-      </div>
+    <details class="clean-doc-collapsible clean-card-wide clean-doc-detail-secondary">
+      <summary>
+        <span>
+          <b>Eventos do documento</b>
+          <small>Histórico técnico para auditoria.</small>
+        </span>
+        <em>{{ events|length }} eventos</em>
+      </summary>
+      <div class="clean-doc-collapsible-body">
       <div class="clean-table-wrap">
         <table>
           <thead>
@@ -350,7 +354,8 @@
           </tbody>
         </table>
       </div>
-    </section>
+      </div>
+    </details>
     <div class="clean-doc-preview-modal" id="clean-doc-preview-modal" hidden>
       <div class="clean-doc-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="clean-doc-preview-title">
         <header>

@@ -8,13 +8,10 @@
       <div class="clean-doc-header-main">
         <p class="eyebrow">Documentação / gestão v2</p>
         <h1>Centro de documentação</h1>
-        <p>Área global para importar listagens estruturadas, acompanhar filas de classificação e preparar validações por viatura.</p>
+        <p>Importa listagens Rentway para criar linhas estruturadas, alimentar timeline, arquivar documentos reais para OCR e acompanhar apenas as filas que precisam de tratamento.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
-        <a class="button-link secondary-link" href="/v2-clean">Início</a>
-        <a class="button-link secondary-link" href="/v2-clean/fleet">Frota</a>
         <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Validação OCR</a>
-        <a class="button-link primary-link" href="#imports">Importações</a>
       </div>
     </header>
 
@@ -138,15 +135,6 @@
 
     <section class="clean-doc-context-grid">
       <article class="clean-doc-structure-card clean-card-wide" id="imports">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Importação estruturada</p>
-            <h3>Listagens globais</h3>
-            <p>Excel entra aqui uma vez para todas as viaturas. PDFs, faturas reais, fotografias e evidências entram na página documental da própria viatura.</p>
-          </div>
-          <strong class="clean-doc-pill">Global</strong>
-        </div>
-
         <div class="clean-doc-compact-import-grid">
           <article class="clean-doc-compact-import-card">
             <span class="clean-doc-type-token">FO</span>
@@ -250,20 +238,12 @@
           <em>{{ import_rows_count }} ficheiros</em>
         </summary>
         <div class="clean-doc-collapsible-body">
-          <div class="table-heading flat-heading">
-            <div>
-              <p class="eyebrow">Últimas importações</p>
-              <h3>Fontes Excel arquivadas</h3>
-              <p>Estas fontes não contam como documentos da viatura; servem apenas para criar e reprocessar linhas estruturadas.</p>
-            </div>
-          </div>
         <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
           <table class="clean-doc-table clean-doc-table-compact">
             <thead>
               <tr>
                 <th>Data</th>
                 <th>Tipo</th>
-                <th>Ficheiro</th>
                 <th>Registos</th>
                 <th>Estado</th>
                 <th>Ações</th>
@@ -273,8 +253,10 @@
               {% for row in import_rows_preview %}
                 <tr>
                   <td>{{ row.date_display or "-" }}</td>
-                  <td>{{ row.import_label }}</td>
-                  <td>{{ row.file_name }}</td>
+                  <td>
+                    <strong>{{ row.import_label }}</strong>
+                    <small>Ficheiro: {{ row.file_name }}</small>
+                  </td>
                   <td>{{ row.imported_count }}</td>
                   <td>{{ row.status }}</td>
                   <td>
@@ -298,7 +280,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="6" class="clean-empty-cell">Ainda não existem fontes Excel importadas.</td></tr>
+                <tr><td colspan="5" class="clean-empty-cell">Ainda não existem fontes Excel importadas.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -350,7 +332,7 @@
             <section class="clean-doc-batch-ocr-panel">
               <div>
                 <strong>Reprocessamento OCR em lote</strong>
-                <span>Escolhe a importação para atualizar todas as faturas desse lote com as regras OCR atuais.</span>
+                <span>Atualiza as faturas de uma importação com as regras OCR atuais.</span>
               </div>
               <form method="post" action="/v2-clean/documents/reprocess-ocr-batch">
                 <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
@@ -457,7 +439,6 @@
                         <th>FO nº</th>
                         <th>Fornecedor</th>
                         <th>KM</th>
-                        <th>Serviço / obs.</th>
                         <th>Estado</th>
                         <th>Ações</th>
                       </tr>
@@ -470,12 +451,17 @@
                           <td><strong>{{ row.external_reference or row.title }}</strong></td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                           <td>{{ row.km if row.km is not none else "-" }}</td>
-                          <td>{{ row.description or "-" }}</td>
                           <td><span class="clean-doc-status-pill">{{ "Importado RW" if row.status == "archived" else row.comparison_label }}</span></td>
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
+                        {% if row.description %}
+                          <tr class="clean-doc-subrow">
+                            <td></td>
+                            <td colspan="6"><strong>Serviço / obs.:</strong> {{ row.description }}</td>
+                          </tr>
+                        {% endif %}
                       {% else %}
-                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                        <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>
@@ -488,7 +474,6 @@
                         <th>Contrato</th>
                         <th>Cliente / origem</th>
                         <th>Período</th>
-                        <th>Detalhe</th>
                         <th>Ações</th>
                       </tr>
                     </thead>
@@ -500,11 +485,16 @@
                           <td><strong>{{ row.external_reference or row.title }}</strong></td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                           <td>{{ row.period_display or "-" }}</td>
-                          <td>{{ row.description or "Rentway" }}</td>
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
+                        {% if row.description %}
+                          <tr class="clean-doc-subrow">
+                            <td></td>
+                            <td colspan="5"><strong>Detalhe:</strong> {{ row.description }}</td>
+                          </tr>
+                        {% endif %}
                       {% else %}
-                        <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                        <tr><td colspan="6" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>
@@ -518,7 +508,6 @@
                         <th>Oficina / origem</th>
                         <th>KM</th>
                         <th>Período</th>
-                        <th>Detalhe</th>
                         <th>Ações</th>
                       </tr>
                     </thead>
@@ -531,11 +520,16 @@
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                           <td>{{ row.km if row.km is not none else "-" }}</td>
                           <td>{{ row.period_display or "-" }}</td>
-                          <td>{{ row.description or "Rentway" }}</td>
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
+                        {% if row.description %}
+                          <tr class="clean-doc-subrow">
+                            <td></td>
+                            <td colspan="6"><strong>Detalhe:</strong> {{ row.description }}</td>
+                          </tr>
+                        {% endif %}
                       {% else %}
-                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                        <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>

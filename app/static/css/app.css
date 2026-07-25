@@ -14609,6 +14609,7 @@ button.clean-upload-preview-card {
 .clean-doc-compact-import-card {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
   gap: 6px 8px;
   align-items: start;
   border: 1px solid #dce4ef;
@@ -14616,6 +14617,7 @@ button.clean-upload-preview-card {
   background: #f8fafc;
   padding: 8px;
   min-width: 132px;
+  min-height: 162px;
 }
 
 .clean-doc-compact-import-card-muted {
@@ -14640,6 +14642,7 @@ button.clean-upload-preview-card {
 
 .clean-doc-compact-form {
   grid-column: 1 / -1;
+  align-self: end;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 6px;
@@ -14797,7 +14800,7 @@ button.clean-upload-preview-card {
 
 .clean-doc-import-history-card .clean-doc-table-compact th,
 .clean-doc-import-history-card .clean-doc-table-compact td {
-  padding: 7px 9px;
+  padding: 6px 9px;
   vertical-align: middle;
 }
 
@@ -14808,7 +14811,7 @@ button.clean-upload-preview-card {
 .clean-doc-import-history-card .clean-doc-inline-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
 }
 
@@ -14818,9 +14821,10 @@ button.clean-upload-preview-card {
 
 .clean-doc-import-history-card .clean-doc-inline-actions .button-link,
 .clean-doc-import-history-card .clean-doc-inline-actions button {
-  min-height: 30px;
-  padding: 6px 10px;
+  min-height: 28px;
+  padding: 5px 9px;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .clean-doc-table-limit-note {
@@ -15277,14 +15281,14 @@ button.clean-upload-preview-card {
 
 .clean-doc-batch-ocr-panel {
   display: grid;
-  grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.2fr);
-  gap: 14px;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(420px, 1.3fr);
+  gap: 10px;
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid #dce4ef;
   border-radius: 12px;
   background: #f8fafc;
-  padding: 12px;
+  padding: 10px 12px;
 }
 
 .clean-doc-batch-ocr-panel > div {
@@ -15984,6 +15988,81 @@ button.clean-upload-preview-card {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.clean-doc-global-table tr.clean-doc-subrow td {
+  padding-top: 0;
+  border-top: 0;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.clean-doc-global-table tr.clean-doc-subrow td strong {
+  display: inline;
+  color: #0f2a5f;
+  font-size: 11px;
+}
+
+.clean-doc-global-table .clean-doc-inline-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.clean-doc-global-table .clean-doc-inline-actions .button-link,
+.clean-doc-global-table .clean-doc-inline-actions button {
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.clean-doc-detail-context-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-doc-detail-secondary {
+  padding: 0;
+}
+
+.clean-doc-detail-secondary summary {
+  min-height: 58px;
+}
+
+.clean-doc-detail-secondary .clean-doc-collapsible-body {
+  padding: 12px 14px 14px;
+}
+
+.clean-doc-detail-secondary .clean-detail-facts {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+}
+
+.clean-doc-extraction-panel .table-heading {
+  margin-bottom: 10px;
+}
+
+.clean-doc-extraction-panel .clean-doc-extraction-card {
+  padding: 10px;
+}
+
+.clean-doc-extraction-panel .clean-doc-extraction-card h4 {
+  margin: 0 0 8px;
+}
+
+.clean-doc-extraction-panel .clean-doc-table-wrap {
+  max-width: 100%;
+}
+
+.clean-doc-extraction-panel .clean-doc-ocr-review-table th,
+.clean-doc-extraction-panel .clean-doc-ocr-review-table td,
+.clean-doc-extraction-panel .clean-doc-ocr-lines-table th,
+.clean-doc-extraction-panel .clean-doc-ocr-lines-table td {
+  padding: 6px 8px;
+  font-size: 11px;
 }
 
 .clean-doc-global-invoice-table th:nth-child(1),

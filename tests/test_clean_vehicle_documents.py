@@ -1302,6 +1302,89 @@ CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A.
     ]
 
 
+def test_batch_invoice_payload_extracts_cruz_allen_invoice_layout():
+    text = """
+FATURA
+VIA NÚMERO DATA
+Original FS0003721 15/10/25
+Exmo(s) Senhor(es):
+CARFAST, RENT-A-CAR, LDA
+R. DAS INDUSTRIAS, 220
+4785-625-TROFA
+Cliente nº NIF Cliente Nº OR Página
+000310 509285970 OR0008491 1 / 1
+Forma Paga.: PAGAM A 60 DIAS Recepcionista: CARLOS OLIVEIRA
+Modelo: JUMPER III Chassis: VF7YBBPFCPG030533
+Matrícula: BG-84-TN Data de Garantia: 05/04/24
+Kilómetros: 58669 Data de Entrega: 15/10/2025
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+- Mao Obra
+25210910 SUBSTITUIR PLACAS DE TRAVÃO FTE ,70 41,90 € 15,00 23% 24,93 €
+- Peças
+1617273980 E:4 PASTI TR D 1,00 89,37 € 25,00 23% 67,03 €
+- Outros Débitos
+ENSAIO SIMPLES-OFERTA 1,00 16,00 € 99,99 23%
+LIMPEZA DA VIATURA-OFERTA 1,00 18,00 € 99,99 23%
+P & D PICKUP & DELIVERY 1,00 0,01 € 99,99 23%
+OBS: V/FOLHA OBRA Nº793 1,00 0,01 € 99,99 23%
+Observações:
+Total Mão de Obra: 29,33 €
+Total Peças: 89,37 €
+Outros Déb. + T. Ext: 34,02 €
+Total Descontos 60,76 €
+Total Líquido: 91,96 €
+I.V.A: 23 % 21,15 €
+Total Fatura: 113,11 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "20B0CA~1.PDF", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["supplier_name"] == "Cruz & Allen - B.B.C Oficina de Automóveis, Lda"
+    assert payload["supplier_nif"] == "504104250"
+    assert payload["document_number"] == "FS0003721"
+    assert payload["document_date"] == "2025-10-15"
+    assert payload["client_name"] == "CARFAST, RENT-A-CAR, LDA R. DAS INDUSTRIAS, 220 4785-625-TROFA"
+    assert payload["client_number"] == "000310"
+    assert payload["client_nif"] == "509285970"
+    assert payload["repair_order_reference"] == "OR0008491"
+    assert payload["work_order_reference"] == "793"
+    assert payload["payment_method"] == "PAGAM A 60 DIAS"
+    assert payload["receptionist"] == "CARLOS OLIVEIRA"
+    assert payload["vehicle_model"] == "JUMPER III"
+    assert payload["vin"] == "VF7YBBPFCPG030533"
+    assert payload["plate"] == "BG-84-TN"
+    assert payload["km"] == "58669"
+    assert payload["warranty_date"] == "2024-04-05"
+    assert payload["delivery_date"] == "2025-10-15"
+    assert payload["labor_total"] == "29,33"
+    assert payload["materials_total"] == "89,37"
+    assert payload["misc_total"] == "34,02"
+    assert payload["discount_without_vat"] == "60,76"
+    assert payload["subtotal_without_vat"] == "91,96"
+    assert payload["vat_amount"] == "21,15"
+    assert payload["total_with_vat"] == "113,11"
+    assert len(payload["invoice_lines"]) == 6
+    assert payload["invoice_lines"][0] == {
+        "line_type": "MO",
+        "section": "Mão de obra",
+        "reference": "25210910",
+        "description": "SUBSTITUIR PLACAS DE TRAVÃO FTE",
+        "quantity": "0,70",
+        "unit": "",
+        "unit_price": "41,90",
+        "discount_percent": "15,00",
+        "tax": "23%",
+        "amount": "24,93",
+        "service": "Calços",
+    }
+    assert payload["invoice_lines"][1]["reference"] == "1617273980"
+    assert payload["invoice_lines"][1]["amount"] == "67,03"
+    assert payload["invoice_lines"][-1]["description"] == "OBS: V/FOLHA OBRA Nº793"
+
+
 def test_batch_invoice_payload_extracts_caetano_gamobar_3003():
     text = """
 Ident ÚnicoDoc Valor Com IVA Data Vencim.

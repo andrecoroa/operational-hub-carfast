@@ -7146,7 +7146,11 @@ def _batch_invoice_text(file_content: bytes, suffix: str, existing_text: str = "
         return existing_text, "pdf_text"
     if suffix == ".pdf":
         text = _batch_document_pdf_text(file_content, suffix)
-        if _batch_invoice_is_tal_template(text) or _batch_invoice_is_filinto_template(text):
+        if (
+            _batch_invoice_is_tal_template(text)
+            or _batch_invoice_is_filinto_template(text)
+            or _batch_invoice_is_cruz_allen_template(text)
+        ):
             plumber_text = _batch_document_pdfplumber_text(file_content, suffix)
             if plumber_text.strip():
                 return plumber_text, "pdf_text"
@@ -7191,7 +7195,7 @@ def _batch_invoice_line_service(text: str) -> str:
     normalized = (normalize_identifier(text) or "").lower()
     if "ipo" in normalized or "inspecao" in normalized:
         return "IPO"
-    if "calco" in normalized or "pastilha" in normalized:
+    if "calco" in normalized or "pastilha" in normalized or ("placa" in normalized and "trav" in normalized):
         return "Calços"
     if "disco" in normalized:
         return "Discos"
@@ -7246,6 +7250,8 @@ def _compact_identifier(value: str) -> str:
 def _batch_invoice_supplier(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     supplier_nif = _batch_invoice_supplier_nif(text)
+    if supplier_nif == "504104250" or _batch_invoice_is_cruz_allen_template(text):
+        return "Cruz & Allen - B.B.C Oficina de Automóveis, Lda"
     if supplier_nif == "500112967" or _batch_invoice_is_gamobar_template(text):
         return "Caetano Gamobar Motores, S.A."
     if normalize_identifier("filinto") in normalized:
@@ -7301,10 +7307,12 @@ def _batch_invoice_client_nifs(text: str) -> set[str]:
 
 def _batch_invoice_supplier_nif(text: str) -> str:
     normalized = normalize_identifier(text) or ""
+    compact = re.sub(r"\D", "", text)
+    if "504104250" in compact:
+        return "504104250"
     if "500112967" in normalized:
         return "500112967"
     normalized_lower = normalized.lower()
-    compact = re.sub(r"\D", "", text)
     if "eugenio" in normalized_lower and "jorge" in normalized_lower and "510464157" in compact:
         return "510464157"
     client_nifs = _batch_invoice_client_nifs(text)
@@ -7476,6 +7484,14 @@ def _batch_invoice_is_gamobar_template(text: str) -> bool:
             and "valorcomiva" in compact
             and re.search(r"\b(?:HFO|HFJ|FFJ)/\d+/\d{4}\b", text, flags=re.IGNORECASE)
         )
+    )
+
+
+def _batch_invoice_is_cruz_allen_template(text: str) -> bool:
+    normalized = (normalize_identifier(text) or "").lower()
+    compact_digits = re.sub(r"\D", "", text)
+    return "504104250" in compact_digits or (
+        "cruz" in normalized and "allen" in normalized and "oficinadeautomoveis" in normalized
     )
 
 
@@ -7701,6 +7717,150 @@ def _batch_invoice_decimal(value: str) -> Decimal | None:
         return Decimal(cleaned)
     except (InvalidOperation, ValueError):
         return None
+
+
+def _batch_invoice_cruz_allen_date(value: str) -> str:
+    match = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", value)
+    if not match:
+        return ""
+    day, month, year = match.groups()
+    year_int = int(year)
+    if year_int < 100:
+        year_int += 2000
+    try:
+        return date(year_int, int(month), int(day)).isoformat()
+    except ValueError:
+        return ""
+
+
+def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
+    invoice_lines: list[dict[str, Any]] = []
+    section = ""
+    capturing = False
+    line_pattern = re.compile(
+        r"^(?:(?P<reference>(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,})\s+)?"
+        r"(?P<description>.+?)\s+"
+        r"(?P<quantity>\d+,\d{2}|,\d{2})\s+"
+        r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
+        r"(?P<discount>-?\d+,\d{2})\s+"
+        r"(?P<tax>\d{1,2}%)(?:\s+(?P<amount>-?\d+,\d{2})\s*€?)?$",
+        flags=re.IGNORECASE,
+    )
+    section_map = {
+        "maoobra": ("MO", "Mão de obra"),
+        "maodeobra": ("MO", "Mão de obra"),
+        "pecas": ("MAT", "Peças"),
+        "outrosdebitos": ("OUT", "Outros débitos"),
+    }
+    for raw_line in lines:
+        line = " ".join(raw_line.split()).strip()
+        simplified = _compact_identifier(line).lower()
+        if simplified.startswith("referenciadescricao") and "precounitario" in simplified:
+            capturing = True
+            continue
+        if not capturing:
+            continue
+        if simplified.startswith("observacoes") or simplified.startswith("totalmaodeobra"):
+            break
+        if line.startswith("-"):
+            section_key = _compact_identifier(line.lstrip("- ")).lower()
+            if section_key in section_map:
+                section = section_key
+            continue
+        match = line_pattern.match(line)
+        if not match:
+            continue
+        line_type, section_label = section_map.get(section, ("", ""))
+        quantity = match.group("quantity")
+        if quantity.startswith(","):
+            quantity = f"0{quantity}"
+        description = match.group("description").strip()
+        amount = _batch_invoice_format_money(match.group("amount") or "0,00") if match.group("amount") else ""
+        invoice_lines.append(
+            {
+                "line_type": line_type,
+                "section": section_label,
+                "reference": (match.group("reference") or "").strip(),
+                "description": description[:240],
+                "quantity": quantity,
+                "unit": "",
+                "unit_price": _batch_invoice_format_money(match.group("unit_price")),
+                "discount_percent": _batch_invoice_format_money(match.group("discount")),
+                "tax": match.group("tax"),
+                "amount": amount,
+                "service": _batch_invoice_line_service(description),
+            }
+        )
+    return invoice_lines
+
+
+def _batch_invoice_cruz_allen_total(text: str, label: str) -> str:
+    pattern = rf"{label}\s*:?\s*(-?\d{{1,3}}(?:[ .]\d{{3}})*(?:,\d{{2}})|-?\d+,\d{{2}})\s*€?"
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    return _batch_invoice_format_money(match.group(1)) if match else ""
+
+
+def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any]:
+    header_match = re.search(
+        r"\bOriginal\s+(?P<number>[A-Z]{1,4}\d{3,})\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    client_match = re.search(
+        r"Exmo\(s\)\s+Senhor\(es\):\s*(?P<client>.+?)\s+Cliente\s+n[ºo]\s+NIF\s+Cliente",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    meta_match = re.search(
+        r"Cliente\s+n[ºo]\s+NIF\s+Cliente\s+N[ºo]\s+OR\s+P[aá]gina\s+"
+        r"(?P<client_number>\d+)\s+(?P<client_nif>\d{9})\s+(?P<or>[A-Z0-9./_-]+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    vehicle_match = re.search(
+        r"Modelo:\s*(?P<model>.+?)\s+Chassis:\s*(?P<vin>[A-Z0-9]{12,24})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    plate_match = re.search(r"Matr[ií]cula:\s*(?P<plate>[A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
+    km_match = re.search(r"Kil[oó]metros:\s*(?P<km>\d{1,7})", text, flags=re.IGNORECASE)
+    payment_match = re.search(r"Forma\s+Paga\.?:\s*(?P<payment>.+?)\s+Recepcionista:", text, flags=re.IGNORECASE)
+    receptionist_match = re.search(r"Recepcionista:\s*(?P<value>.+?)(?:\n|Modelo:)", text, flags=re.IGNORECASE)
+    warranty_match = re.search(r"Data\s+de\s+Garantia:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
+    delivery_match = re.search(r"Data\s+de\s+Entrega:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
+    work_order_match = re.search(r"V/FOLHA\s+OBRA\s*N[ºo]\s*(?P<value>\d{1,8})", text, flags=re.IGNORECASE)
+
+    totals = {
+        "labor_total": _batch_invoice_cruz_allen_total(text, r"Total\s+M[aã]o\s+de\s+Obra"),
+        "materials_total": _batch_invoice_cruz_allen_total(text, r"Total\s+Pe[cç]as"),
+        "misc_total": _batch_invoice_cruz_allen_total(text, r"Outros\s+D[eé]b\.\s*\+\s*T\.\s*Ext"),
+        "discount_without_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Descontos"),
+        "subtotal_without_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+L[ií]quido"),
+        "vat_amount": _batch_invoice_cruz_allen_total(text, r"I\.?V\.?A\s*:\s*23\s*%"),
+        "total_with_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Fatura"),
+    }
+    return {
+        "ocr_template": "cruz_allen_bbc_invoice",
+        "supplier_name": "Cruz & Allen - B.B.C Oficina de Automóveis, Lda",
+        "supplier_nif": "504104250",
+        "document_number": header_match.group("number") if header_match else "",
+        "document_date": _batch_invoice_cruz_allen_date(header_match.group("date")) if header_match else "",
+        "client_name": " ".join(client_match.group("client").split()) if client_match else "",
+        "client_number": meta_match.group("client_number") if meta_match else "",
+        "client_nif": meta_match.group("client_nif") if meta_match else "",
+        "repair_order_reference": meta_match.group("or") if meta_match else "",
+        "work_order_reference": work_order_match.group("value") if work_order_match else "",
+        "payment_method": payment_match.group("payment").strip() if payment_match else "",
+        "receptionist": receptionist_match.group("value").strip() if receptionist_match else "",
+        "vehicle_model": vehicle_match.group("model").strip() if vehicle_match else "",
+        "vin": vehicle_match.group("vin").strip().upper() if vehicle_match else "",
+        "plate": plate_match.group("plate").strip().upper() if plate_match else "",
+        "km": km_match.group("km") if km_match else "",
+        "warranty_date": _batch_invoice_cruz_allen_date(warranty_match.group("value")) if warranty_match else "",
+        "delivery_date": _batch_invoice_cruz_allen_date(delivery_match.group("value")) if delivery_match else "",
+        "invoice_lines": _batch_invoice_cruz_allen_lines(lines),
+        **totals,
+    }
 
 
 def _batch_invoice_gamobar_value_before(lines: list[str], label: str) -> str:
@@ -9065,7 +9225,8 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     lines = [" ".join(line.split()) for line in text.splitlines() if " ".join(line.split())]
     unique_lines = list(dict.fromkeys(lines))
     gamobar_data = _batch_invoice_gamobar_data(text, lines) if _batch_invoice_is_gamobar_template(text) else {}
-    invoice_lines = gamobar_data.get("invoice_lines") or []
+    cruz_allen_data = _batch_invoice_cruz_allen_data(text, lines) if _batch_invoice_is_cruz_allen_template(text) else {}
+    invoice_lines = cruz_allen_data.get("invoice_lines") or gamobar_data.get("invoice_lines") or []
     used_filinto_stacked_lines = False
     skip_generic_invoice_line_fallback = False
     if not invoice_lines and _batch_invoice_is_filinto_template(text):
@@ -9174,6 +9335,20 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     work_order_reference = _batch_invoice_work_order_reference(text)
     repair_order_reference = _batch_invoice_repair_order_reference(text)
     totals = _batch_invoice_totals(text)
+    if cruz_allen_data:
+        document_number = cruz_allen_data.get("document_number") or document_number
+        document_date = _batch_document_date(cruz_allen_data.get("document_date", "")) or document_date
+        vehicle_fields.update(
+            {
+                "plate": cruz_allen_data.get("plate", "") or vehicle_fields.get("plate", ""),
+                "vin": cruz_allen_data.get("vin", "") or vehicle_fields.get("vin", ""),
+                "km": cruz_allen_data.get("km", "") or vehicle_fields.get("km", ""),
+            }
+        )
+        supplier_nif = cruz_allen_data.get("supplier_nif", "") or supplier_nif
+        work_order_reference = cruz_allen_data.get("work_order_reference", "") or work_order_reference
+        repair_order_reference = cruz_allen_data.get("repair_order_reference", "") or repair_order_reference
+        totals.update({key: value for key, value in cruz_allen_data.items() if key in totals and value})
     if used_filinto_stacked_lines:
         totals.update({key: value for key, value in _batch_invoice_filinto_stacked_totals(lines).items() if value})
     if gamobar_data:
@@ -9192,6 +9367,13 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     if not totals.get("total_with_vat"):
         totals["total_with_vat"] = _batch_invoice_total_from_lines(invoice_lines)
     customer_fields = _batch_invoice_customer_fields(text)
+    if cruz_allen_data:
+        customer_fields.update(
+            {
+                "client_number": cruz_allen_data.get("client_number", "") or customer_fields.get("client_number", ""),
+                "client_nif": cruz_allen_data.get("client_nif", "") or customer_fields.get("client_nif", ""),
+            }
+        )
     if supplier_nif and supplier_nif == customer_fields.get("client_nif"):
         supplier_nif = ""
     due_date = _batch_invoice_due_date(text)
@@ -9238,6 +9420,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "ocr_alerts": ocr_alerts,
         "document_kind": _batch_invoice_document_kind(text),
         "ocr_template": (
+            str(cruz_allen_data.get("ocr_template") or "cruz_allen_bbc_invoice") if cruz_allen_data else
             str(gamobar_data.get("ocr_template") or "caetano_gamobar_hfo") if gamobar_data else
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
             "filinto_mota_sucessores" if _batch_invoice_is_filinto_template(text) else
@@ -9248,7 +9431,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "original_name": filename,
         **{
             key: value
-            for key, value in gamobar_data.items()
+            for key, value in {**cruz_allen_data, **gamobar_data}.items()
             if key
             not in {
                 "document_number",

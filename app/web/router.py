@@ -6045,11 +6045,9 @@ def clean_document_ocr_validation(
             vehicle.id: vehicle
             for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
         } if vehicle_ids else {}
-        invoice_rows = []
-        diagnostic_rows = []
+        invoice_total = 0
+        diagnostic_total = 0
         rows_by_id: dict[int, dict[str, Any]] = {}
-        supplier_groups: dict[str, dict[str, Any]] = {}
-        diagnostic_groups: dict[str, dict[str, Any]] = {}
         template_status_by_key: dict[str, dict[str, Any]] = {}
         for event_list in events_by_document.values():
             for event in event_list:
@@ -6157,44 +6155,9 @@ def clean_document_ocr_validation(
             else:
                 template_group["pending"] += 1
             if group == "invoices":
-                invoice_rows.append(row)
-                supplier_key = row["supplier_name"]
-                supplier_group = supplier_groups.setdefault(
-                    supplier_key,
-                    {"name": supplier_key, "total": 0, "validated": 0, "errors": 0, "pending": 0},
-                )
-                supplier_group["total"] += 1
-                if status_ctx["code"] == "validated":
-                    supplier_group["validated"] += 1
-                elif status_ctx["code"] == "error":
-                    supplier_group["errors"] += 1
-                else:
-                    supplier_group["pending"] += 1
+                invoice_total += 1
             else:
-                machine, report_type = _diagnostic_machine_and_type(document)
-                row["machine"] = machine
-                row["report_type"] = report_type
-                diagnostic_rows.append(row)
-                diag_key = f"{machine} · {report_type}"
-                diag_group = diagnostic_groups.setdefault(
-                    diag_key,
-                    {
-                        "name": diag_key,
-                        "machine": machine,
-                        "report_type": report_type,
-                        "total": 0,
-                        "validated": 0,
-                        "errors": 0,
-                        "pending": 0,
-                    },
-                )
-                diag_group["total"] += 1
-                if status_ctx["code"] == "validated":
-                    diag_group["validated"] += 1
-                elif status_ctx["code"] == "error":
-                    diag_group["errors"] += 1
-                else:
-                    diag_group["pending"] += 1
+                diagnostic_total += 1
         prepared_template_groups = []
         for group in template_groups.values():
             status_ctx = _ocr_template_group_status(group)
@@ -6272,16 +6235,16 @@ def clean_document_ocr_validation(
             {
                 "scope": clean_scope,
                 "q": q or "",
-                "invoice_rows": invoice_rows,
-                "diagnostic_rows": diagnostic_rows,
+                "invoice_rows": [],
+                "diagnostic_rows": [],
                 "template_groups": sorted_template_groups,
                 "selected_template_group": selected_template_group,
                 "selected_sample": selected_sample,
                 "selected_return_url": selected_return_url,
-                "supplier_groups": sorted(supplier_groups.values(), key=lambda item: (-item["pending"], item["name"])),
-                "diagnostic_groups": sorted(diagnostic_groups.values(), key=lambda item: (-item["pending"], item["name"])),
-                "invoice_total": len(invoice_rows),
-                "diagnostic_total": len(diagnostic_rows),
+                "supplier_groups": [],
+                "diagnostic_groups": [],
+                "invoice_total": invoice_total,
+                "diagnostic_total": diagnostic_total,
                 "template_pending_total": template_pending_total,
                 "template_error_total": template_error_total,
                 "template_validated_total": template_validated_total,
@@ -6880,6 +6843,7 @@ def clean_document_import_center(
             db,
             user_id=get_web_user_id(request),
             materialize_sources=False,
+            include_structured_preview=False,
         )
         inbox_folder = _invoice_inbox_folder()
         inbox_state = {

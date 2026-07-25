@@ -2368,6 +2368,7 @@ def document_center_module_context(
     *,
     user_id: int | None = None,
     materialize_sources: bool = True,
+    include_structured_preview: bool = True,
 ) -> dict[str, Any]:
     if materialize_sources and ensure_structured_import_sources_materialized(db, user_id=user_id):
         db.flush()
@@ -2375,7 +2376,7 @@ def document_center_module_context(
     import_sources = _load_structured_import_sources(db, limit=20)
     structured_counts = count_global_structured_rows_by_group(db)
     pending_structured_count = count_global_structured_rows(db, status="por_validar")
-    structured_rows_preview = _build_global_structured_rows(db, limit=50)
+    structured_rows_preview = _build_global_structured_rows(db, limit=50) if include_structured_preview else []
     structured_sections_preview = []
     for code, label in DOCUMENT_HISTORY_STRUCTURED_GROUPS:
         structured_sections_preview.append(

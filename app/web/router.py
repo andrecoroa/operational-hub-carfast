@@ -11111,6 +11111,10 @@ def clean_workshop_entry(
             historical = process.creation_mode == "historical"
             query_suffix = clean_workshop_query_suffix(process_id=process.id)
             vehicle_context = clean_workshop_context_for_process(db, process)
+            vehicle_detail_href = f"/v2-clean/fleet/{process.vehicle_id}" if process.vehicle_id else "/v2-clean/fleet"
+            vehicle_documents_href = (
+                f"/v2-clean/fleet/{process.vehicle_id}/documents" if process.vehicle_id else "/v2-clean/documents"
+            )
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
             saved_entry = dict(entry_phase.data_json or {}) if entry_phase and entry_phase.data_json else {}
             if (
@@ -11126,6 +11130,11 @@ def clean_workshop_entry(
                 historical=historical,
             )
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
+            resolved_vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
+            vehicle_detail_href = f"/v2-clean/fleet/{resolved_vehicle.id}" if resolved_vehicle else "/v2-clean/fleet"
+            vehicle_documents_href = (
+                f"/v2-clean/fleet/{resolved_vehicle.id}/documents" if resolved_vehicle else "/v2-clean/documents"
+            )
         workshop_admin = clean_workshop_admin_context(db, request, process)
     return templates.TemplateResponse(
         request,
@@ -11141,6 +11150,9 @@ def clean_workshop_entry(
             "workshop_process": process,
             "workshop_admin": workshop_admin,
             "active_step": "entrada",
+            "vehicle_detail_href": vehicle_detail_href,
+            "vehicle_documents_href": vehicle_documents_href,
+            "task_board_href": "/v2-clean/tasks",
             "next_phase_url": f"/v2-clean/workshop/validacao{query_suffix}",
             "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate)}",
             "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True)}",

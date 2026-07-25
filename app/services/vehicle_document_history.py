@@ -1969,9 +1969,14 @@ def _build_timeline(
     return rendered, ticks, segments, board
 
 
-def vehicle_document_module_context(db: Session, vehicle: Vehicle) -> dict[str, Any]:
+def vehicle_document_module_context(
+    db: Session,
+    vehicle: Vehicle,
+    *,
+    materialize_sources: bool = True,
+) -> dict[str, Any]:
     documents = _load_vehicle_documents(db, vehicle)
-    if _ensure_structured_sources_materialized(db, vehicle=vehicle, documents=documents):
+    if materialize_sources and _ensure_structured_sources_materialized(db, vehicle=vehicle, documents=documents):
         db.flush()
         documents = _load_vehicle_documents(db, vehicle)
     record_tags, document_tags = _tag_maps(db, vehicle.id)

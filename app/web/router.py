@@ -5584,7 +5584,7 @@ def clean_fleet_documents(
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
         try:
-            module_ctx = vehicle_document_module_context(db, vehicle)
+            module_ctx = vehicle_document_module_context(db, vehicle, materialize_sources=False)
         except Exception:
             db.rollback()
             module_ctx = {

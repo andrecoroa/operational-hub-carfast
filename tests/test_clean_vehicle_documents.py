@@ -1470,6 +1470,95 @@ Id. Único: Fact FS/0002239
     assert payload["invoice_lines"][8]["amount"] == "0,00"
 
 
+def test_batch_invoice_payload_extracts_cruz_allen_fs0004003():
+    text = """
+FATURA
+VIA NÚMERO DATA
+Original FS0004003 22/12/25
+Exmo(s) Senhor(es):
+CARFAST, RENT-A-CAR, LDA
+R. DAS INDUSTRIAS, 220
+4785-625-TROFA
+Cliente nº NIF Cliente Nº OR Página
+000310 509285970 OR0008902 1 / 1
+Forma Paga.: PAGAM A 60 DIAS Recepcionista: CARLOS OLIVEIRA
+Modelo: FABIA Chassis: TMBJG8NX0PY154577
+Matrícula: BC-73-RJ Data de Garantia: 26/07/23
+Kilómetros: 51366 Data de Entrega: 22/12/2025
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+- Mao Obra
+151BRM07 ENCHIMENTO DEPOSITO DE LIQUIDO ADBLUE ,10 41,90 € 15,00 23% 3,56 €
+- Peças
+1618891880 UREIA 10,00 1,80 € 23% 18,00 €
+Observações: Total Mão de Obra: 4,19 €
+Total Peças:
+18,00 €
+Outros Déb. + T. Ext:
+Total Descontos
+0,63 €
+Total Líquido:
+21,56 €
+I.V.A: 23 %
+4,96 €
+Total Fatura:
+26,52 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "2025-12-22_BC-73-RJ_FORN_Fatura_VIA_DOC.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["supplier_nif"] == "504104250"
+    assert payload["document_number"] == "FS0004003"
+    assert payload["document_date"] == "2025-12-22"
+    assert payload["client_number"] == "000310"
+    assert payload["client_nif"] == "509285970"
+    assert payload["repair_order_reference"] == "OR0008902"
+    assert payload["payment_method"] == "PAGAM A 60 DIAS"
+    assert payload["receptionist"] == "CARLOS OLIVEIRA"
+    assert payload["vehicle_model"] == "FABIA"
+    assert payload["vin"] == "TMBJG8NX0PY154577"
+    assert payload["plate"] == "BC-73-RJ"
+    assert payload["km"] == "51366"
+    assert payload["warranty_date"] == "2023-07-26"
+    assert payload["delivery_date"] == "2025-12-22"
+    assert payload["labor_total"] == "4,19"
+    assert payload["materials_total"] == "18,00"
+    assert payload["discount_without_vat"] == "0,63"
+    assert payload["subtotal_without_vat"] == "21,56"
+    assert payload["vat_amount"] == "4,96"
+    assert payload["total_with_vat"] == "26,52"
+    assert payload["invoice_lines"] == [
+        {
+            "line_type": "MO",
+            "section": "Mão de obra",
+            "reference": "151BRM07",
+            "description": "ENCHIMENTO DEPOSITO DE LIQUIDO ADBLUE",
+            "quantity": "0,10",
+            "unit": "",
+            "unit_price": "41,90",
+            "discount_percent": "15,00",
+            "tax": "23%",
+            "amount": "3,56",
+            "service": "Por classificar",
+        },
+        {
+            "line_type": "MAT",
+            "section": "Peças",
+            "reference": "1618891880",
+            "description": "UREIA",
+            "quantity": "10,00",
+            "unit": "",
+            "unit_price": "1,80",
+            "discount_percent": "",
+            "tax": "23%",
+            "amount": "18,00",
+            "service": "Por classificar",
+        },
+    ]
+
+
 def test_batch_invoice_payload_extracts_caetano_gamobar_3003():
     text = """
 Ident ÚnicoDoc Valor Com IVA Data Vencim.

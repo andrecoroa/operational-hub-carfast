@@ -15147,6 +15147,49 @@ button.clean-upload-preview-card {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.clean-doc-detail-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.clean-doc-detail-hero h1 {
+  overflow-wrap: anywhere;
+  max-width: 980px;
+  font-size: clamp(1.8rem, 3.2vw, 3rem);
+  line-height: 1.05;
+}
+
+.clean-doc-detail-hero .clean-header-actions {
+  align-content: start;
+  align-items: start;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  max-width: 420px;
+}
+
+.clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid {
+  grid-template-columns: minmax(340px, 0.78fr) minmax(560px, 1.22fr);
+  grid-template-areas:
+    "fields lines"
+    "feedback feedback";
+  align-items: start;
+}
+
+.clean-doc-extraction-fields {
+  grid-area: fields;
+}
+
+.clean-doc-extraction-lines {
+  grid-area: lines;
+}
+
+.clean-doc-ocr-feedback-card {
+  grid-area: feedback;
+}
+
+.clean-doc-extraction-lines .clean-doc-table-scroll-3 {
+  max-height: 330px;
+}
+
 .clean-doc-invoice-preview {
   position: sticky;
   top: 12px;
@@ -15689,6 +15732,23 @@ button.clean-upload-preview-card {
 
   .clean-doc-review-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .clean-doc-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-detail-hero .clean-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+
+  .clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "fields"
+      "lines"
+      "feedback";
   }
 
   .clean-doc-invoice-preview {

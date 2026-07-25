@@ -4,7 +4,7 @@
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-page-hero clean-card-wide">
+    <header class="clean-page-hero clean-card-wide clean-doc-detail-hero">
       <div>
         <p class="eyebrow">Documentação / detalhe v2</p>
         <h1>{{ document.title or document.original_name or ("Documento #" ~ document.id) }}</h1>
@@ -169,8 +169,8 @@
         <div class="clean-doc-review-workspace">
           <form method="post" action="/v2-clean/documents/{{ document.id }}/ocr-validation-status" class="clean-doc-ocr-review-form">
             <input type="hidden" name="return_url" value="/v2-clean/documents/{{ document.id }}">
-            <div class="clean-doc-extraction-grid">
-            <div class="clean-doc-extraction-card clean-doc-extraction-card-wide">
+            <div class="clean-doc-extraction-grid clean-doc-detail-extraction-grid">
+            <div class="clean-doc-extraction-card clean-doc-extraction-card-wide clean-doc-extraction-fields">
               <h4>Campos principais</h4>
               <div class="clean-doc-table-wrap">
                 <table class="clean-doc-ocr-review-table">

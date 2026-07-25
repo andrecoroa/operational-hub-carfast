@@ -2277,8 +2277,13 @@ def _build_global_structured_rows(
     return rows
 
 
-def document_center_module_context(db: Session, *, user_id: int | None = None) -> dict[str, Any]:
-    if ensure_structured_import_sources_materialized(db, user_id=user_id):
+def document_center_module_context(
+    db: Session,
+    *,
+    user_id: int | None = None,
+    materialize_sources: bool = True,
+) -> dict[str, Any]:
+    if materialize_sources and ensure_structured_import_sources_materialized(db, user_id=user_id):
         db.flush()
 
     import_sources = _load_structured_import_sources(db, limit=20)

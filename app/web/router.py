@@ -6855,7 +6855,11 @@ def clean_document_import_center(
     clean_main_group = (main_group or "").strip()
     clean_status = (status or "").strip()
     with SessionLocal() as db:
-        module_ctx = document_center_module_context(db, user_id=get_web_user_id(request))
+        module_ctx = document_center_module_context(
+            db,
+            user_id=get_web_user_id(request),
+            materialize_sources=False,
+        )
         inbox_folder = _invoice_inbox_folder()
         inbox_state = {
             "configured": bool(inbox_folder),
@@ -6864,11 +6868,14 @@ def clean_document_import_center(
             "file_count": 0,
         }
         if inbox_state["available"] and inbox_folder:
-            inbox_state["file_count"] = sum(
-                1
-                for item in inbox_folder.rglob("*")
-                if item.is_file() and item.suffix.lower() in BATCH_DOCUMENT_EXTENSIONS
-            )
+            file_count = 0
+            for item in inbox_folder.rglob("*"):
+                if item.is_file() and item.suffix.lower() in BATCH_DOCUMENT_EXTENSIONS:
+                    file_count += 1
+                    if file_count >= 1000:
+                        break
+            inbox_state["file_count"] = file_count
+            inbox_state["file_count_capped"] = file_count >= 1000
 
         preview_limit = 8
 

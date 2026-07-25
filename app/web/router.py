@@ -6427,6 +6427,7 @@ def clean_document_detail(
             select(DocumentEvent)
             .where(DocumentEvent.document_id == document.id)
             .order_by(DocumentEvent.id.desc())
+            .limit(120)
         ).all()
         extraction_metadata = _document_latest_ocr_metadata(events)
         extraction_fields = _document_ocr_extracted_fields(extraction_metadata)
@@ -10870,7 +10871,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
         if not vehicle:
             return RedirectResponse("/v2-clean/fleet", status_code=303)
         context = clean_vehicle_display_context(db, vehicle)
-        all_vehicle_documents = db.scalars(
+        documents = db.scalars(
             select(Document)
             .where(
                 or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
@@ -10878,14 +10879,23 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
                 v2_clean_document_visible_condition(),
             )
             .order_by(Document.updated_at.desc(), Document.id.desc())
+            .limit(8)
         ).all()
-        documents = all_vehicle_documents[:8]
         try:
-            document_module_ctx = vehicle_document_module_context(db, vehicle)
+            document_module_ctx = vehicle_document_module_context(db, vehicle, materialize_sources=False)
             document_summary = document_module_ctx["group_counts"]
             document_group_labels = DOCUMENT_HISTORY_MAIN_GROUP_LABELS
         except Exception:
-            document_summary = clean_vehicle_document_summary(all_vehicle_documents)
+            document_summary = {
+                row[0] or "sem_classificacao": row[1]
+                for row in db.execute(
+                    select(Document.classification, func.count()).where(
+                        or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
+                        Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                        v2_clean_document_visible_condition(),
+                    ).group_by(Document.classification)
+                ).all()
+            }
             document_group_labels = CLEAN_FLEET_DOCUMENT_GROUP_LABELS
         tasks = db.scalars(
             select(Task)
@@ -19297,6 +19307,7 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
             select(DocumentEvent)
             .where(DocumentEvent.document_id == document.id)
             .order_by(DocumentEvent.id.desc())
+            .limit(120)
         ).all()
         linked_email_intake = db.scalar(
             select(EmailIntake)

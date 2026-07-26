@@ -288,9 +288,10 @@ def test_clean_document_reprocess_invoice_ocr_batch_and_replace_old_metadata(
         assert actions == ["invoice.ocr.extracted", "invoice.ocr.reprocessed"]
     center = authenticated_client.get("/v2-clean/documents?main_group=invoices")
     assert center.status_code == 200
-    assert "Reprocessamento OCR em lote" in center.text
+    assert 'action="/v2-clean/documents/reprocess-ocr-batch"' in center.text
+    assert 'type="hidden" name="batch_label"' in center.text
+    assert "Reprocessar" in center.text
     assert batch_label in center.text
-    assert "2 faturas" in center.text
 
 
 def test_clean_document_detail_previews_invoice_and_identifies_batch(

@@ -398,6 +398,7 @@
                       <th>Docs</th>
                       <th>Pendentes</th>
                       <th>Validados</th>
+                      <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -410,29 +411,24 @@
                         <td>{{ batch.count }}</td>
                         <td>{{ batch.pending_count }}</td>
                         <td>{{ batch.classified_count }}</td>
+                        <td>
+                          <form
+                            method="post"
+                            action="/v2-clean/documents/reprocess-ocr-batch"
+                            onsubmit="return confirm('Reprocessar o OCR das {{ batch.count }} faturas deste lote?');"
+                          >
+                            <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                            <input type="hidden" name="batch_label" value="{{ batch.label }}">
+                            <button type="submit" class="button-link secondary-link">Reprocessar</button>
+                          </form>
+                        </td>
                       </tr>
                     {% else %}
-                      <tr><td colspan="7" class="clean-empty-cell">Sem lotes de faturas importados.</td></tr>
+                      <tr><td colspan="8" class="clean-empty-cell">Sem lotes de faturas importados.</td></tr>
                     {% endfor %}
                   </tbody>
                 </table>
               </div>
-            </section>
-            <section class="clean-doc-batch-ocr-panel">
-              <div>
-                <strong>Reprocessamento OCR em lote</strong>
-                <span>Usa quando uma regra OCR foi afinada e queres atualizar um lote específico.</span>
-              </div>
-              <form method="post" action="/v2-clean/documents/reprocess-ocr-batch">
-                <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
-                <select name="batch_label" required>
-                  <option value="">Selecionar lote...</option>
-                  {% for batch in invoice_batches %}
-                    <option value="{{ batch.label }}">{{ batch.label }} · {{ batch.count }} faturas · {{ batch.pending_count }} por validar</option>
-                  {% endfor %}
-                </select>
-                <button type="submit" class="button-link primary-link">Reprocessar lote</button>
-              </form>
             </section>
           {% endif %}
           <section class="clean-doc-preview-audit-panel">

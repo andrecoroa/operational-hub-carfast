@@ -447,7 +447,12 @@
             </table>
           </div>
           {% if invoice_rows_remaining %}
-            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows_count }} faturas dos filtros atuais. Usa fornecedor, viatura, lote, estado ou pesquisa para fechar o conjunto de trabalho.</p>
+            <div class="clean-doc-table-limit-note clean-doc-table-limit-actions">
+              <span>A mostrar {{ invoice_limit }} de {{ invoice_rows_count }} faturas dos filtros atuais. Usa fornecedor, viatura, lote, estado ou pesquisa para fechar o conjunto de trabalho.</span>
+              {% if invoice_can_show_more %}
+                <a class="button-link secondary-link" href="{{ request.url.include_query_params(invoice_limit=invoice_next_limit) }}">Ver mais documentos</a>
+              {% endif %}
+            </div>
           {% endif %}
         </div>
       </details>

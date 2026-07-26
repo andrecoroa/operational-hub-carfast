@@ -14861,6 +14861,20 @@ button.clean-upload-preview-card {
   line-height: 1.35;
 }
 
+.clean-doc-table-limit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clean-doc-table-limit-actions .button-link {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .clean-doc-batch-import-form button:disabled {
   cursor: not-allowed;
   opacity: 0.55;

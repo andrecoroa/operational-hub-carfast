@@ -3670,6 +3670,9 @@ def test_clean_vehicle_documents_import_rentway_exports_with_preamble(authentica
     assert module_ctx["group_counts"]["impros"] == 1
     assert module_ctx["group_counts"]["contracts"] == 1
     assert len(module_ctx["import_rows"]) == 2
+    impro_rows = [row for row in module_ctx["structured_rows"] if row["main_group"] == "impros"]
+    assert impro_rows
+    assert impro_rows[0]["period_display"] == "06/01/2026 a 12/01/2026"
     contract_rows = [row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts"]
     assert contract_rows
     assert contract_rows[0]["period_display"] == "01/01/2024 a 31/01/2024"

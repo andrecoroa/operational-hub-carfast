@@ -919,8 +919,10 @@ def import_impros_xlsx(
             continue
         impro_number = _row_text(row, cols, ["Impro", "Impro Nr", "Impro Nº", "impro_number", "Número impro", "Numero impro"])
         status = _row_text(row, cols, ["Status", "Estado"])
-        date_in = _row_date(row, cols, ["Date_In", "Data entrada", *RENTWAY_START_DATE_COLUMNS])
-        date_out = _row_date(row, cols, ["Date_Out", "Data saída", "Data saida", *RENTWAY_END_DATE_COLUMNS])
+        date_in = _row_date(row, cols, [*RENTWAY_START_DATE_COLUMNS, "Data entrada"])
+        date_out = _row_date(row, cols, [*RENTWAY_END_DATE_COLUMNS, "Data saída", "Data saida"])
+        if date_in and date_out and date_in > date_out:
+            date_in, date_out = date_out, date_in
         driven_kms = clean_int(first_row_value(row, cols, ["Driven_Kms", "Driven Kms", "Km", "Kms", "KM"]))
         title = impro_number or "Impro"
         description_parts = [

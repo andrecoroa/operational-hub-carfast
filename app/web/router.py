@@ -6819,6 +6819,7 @@ def clean_document_import_center(
     invoice_supplier: str = "",
     invoice_vehicle: str = "",
     invoice_batch: str = "",
+    invoice_limit: int = 8,
     imported: str | None = None,
     imported_count: int | None = None,
     batch_imported: int | None = None,
@@ -6861,6 +6862,11 @@ def clean_document_import_center(
         }
 
         preview_limit = 8
+        try:
+            invoice_preview_limit = int(invoice_limit or preview_limit)
+        except (TypeError, ValueError):
+            invoice_preview_limit = preview_limit
+        invoice_preview_limit = max(preview_limit, min(invoice_preview_limit, 96))
 
         def invoice_document_conditions(*, include_filters: bool = True) -> list[Any]:
             invoice_title_token = "%fatura%"
@@ -6964,8 +6970,14 @@ def clean_document_import_center(
                 select(Document)
                 .where(*invoice_document_conditions())
                 .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
-                .limit(preview_limit)
+                .limit(invoice_preview_limit)
             ).all()
+        invoice_can_show_more = invoice_rows_total > invoice_preview_limit and invoice_preview_limit < 96
+        invoice_next_limit = (
+            min(invoice_rows_total, 96, 24 if invoice_preview_limit <= preview_limit else invoice_preview_limit * 2)
+            if invoice_can_show_more
+            else invoice_preview_limit
+        )
 
         vehicle_ids = {document.vehicle_id for document in invoice_documents if document.vehicle_id}
         vehicles_by_id = {
@@ -7094,7 +7106,10 @@ def clean_document_import_center(
                 "invoice_rows": invoice_rows,
                 "invoice_rows_count": invoice_rows_total,
                 "invoice_rows_preview": invoice_rows,
-                "invoice_rows_remaining": max(invoice_rows_total - preview_limit, 0),
+                "invoice_rows_remaining": max(invoice_rows_total - invoice_preview_limit, 0),
+                "invoice_limit": invoice_preview_limit,
+                "invoice_next_limit": invoice_next_limit,
+                "invoice_can_show_more": invoice_can_show_more,
                 "invoice_batches": invoice_batches,
                 "invoice_supplier": clean_invoice_supplier,
                 "invoice_vehicle": clean_invoice_vehicle,

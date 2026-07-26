@@ -50,12 +50,14 @@
         {% endfor %}
       </select>
     {% endmacro %}
-    {% macro render_service_select_grid(row, form_id) %}
+    {% macro render_service_select_grid(row, form_id, title="Classificação por serviço", show_status=True) %}
       <section class="clean-doc-line-classification">
-        <div class="clean-doc-line-classification-header">
-          <h4>Classificação por serviço</h4>
-          <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
-        </div>
+        {% if title or show_status %}
+          <div class="clean-doc-line-classification-header">
+            {% if title %}<h4>{{ title }}</h4>{% endif %}
+            {% if show_status %}<span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>{% endif %}
+          </div>
+        {% endif %}
         <div class="clean-doc-line-classification-grid">
           <label>
             <span>Manutenção</span>
@@ -217,7 +219,7 @@
                 <td colspan="9">
                   <details class="clean-doc-expanded-detail">
                     <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
-                    <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact">
+                    <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
                       <section class="clean-doc-detail-card clean-doc-detail-document-card">
                         <h4>Dados do documento</h4>
                         <dl>
@@ -232,6 +234,18 @@
                           <div><dt>Estado documento</dt><dd>{{ row.status }}</dd></div>
                         </dl>
                       </section>
+                      {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                        <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
+                          <div class="clean-doc-line-classification">
+                            <div class="clean-doc-line-classification-header">
+                              <h4>Serviços relevantes da fatura</h4>
+                              <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                            </div>
+                            {{ render_service_select_grid(row, form_id, "", False) }}
+                            <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
+                          </div>
+                        </section>
+                      {% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-detail-lines-card">
                         {% if row.source_label == "FO" %}
                           <div class="clean-doc-invoice-lines">
@@ -277,7 +291,6 @@
                                   <th>Preço unit.</th>
                                   <th>IVA</th>
                                   <th>Total</th>
-                                  <th>Serviço</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -291,10 +304,9 @@
                                     <td>{{ item.unit_price }}</td>
                                     <td>{{ item.tax }}</td>
                                     <td>{{ item.amount }}</td>
-                                    <td>{{ item.service }}</td>
                                   </tr>
                                 {% else %}
-                                  <tr><td colspan="9">Sem linhas OCR extraídas. Quando a fatura for lida, as linhas aparecem aqui para validação.</td></tr>
+                                  <tr><td colspan="8">Sem linhas OCR extraídas. Reprocessa OCR ou abre o documento para validar.</td></tr>
                                 {% endfor %}
                               </tbody>
                             </table>
@@ -327,9 +339,11 @@
                           {% endif %}
                         {% endif %}
                       </section>
-                      <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
-                        {{ render_service_select_grid(row, form_id) }}
-                      </section>
+                      {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
+                        <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
+                          {{ render_service_select_grid(row, form_id) }}
+                        </section>
+                      {% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-actions">
                         <h4>Ações</h4>
                         {% if row.kind == "pending_record" %}

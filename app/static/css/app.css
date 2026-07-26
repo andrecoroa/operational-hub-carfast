@@ -16316,6 +16316,385 @@ button.clean-upload-preview-card {
   text-align: left;
 }
 
+/* v2 documentation visual normalization */
+.clean-doc-page-header.clean-doc-center-header,
+.clean-doc-page-header.clean-doc-detail-hero,
+.clean-page-hero.clean-doc-detail-hero {
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.clean-doc-page-header.clean-doc-center-header .clean-doc-header-main,
+.clean-doc-page-header.clean-doc-detail-hero > div:first-child,
+.clean-page-hero.clean-doc-detail-hero > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.clean-doc-page-header.clean-doc-center-header h1,
+.clean-page-hero.clean-doc-detail-hero h1,
+.clean-doc-detail-hero h1 {
+  font-size: clamp(1.75rem, 2.25vw, 2.35rem);
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.clean-doc-page-header.clean-doc-center-header p,
+.clean-doc-detail-subtitle {
+  max-width: 900px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.clean-doc-page-header .clean-header-actions {
+  align-self: center;
+  gap: 8px;
+}
+
+.clean-doc-page-header .clean-header-actions .button-link {
+  min-height: 34px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.clean-doc-kpi-strip-single-line {
+  align-items: stretch;
+}
+
+.clean-doc-kpi-strip-single-line .clean-doc-kpi-card {
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.clean-doc-compact-import-grid {
+  align-items: stretch;
+}
+
+.clean-doc-compact-import-card {
+  min-height: 148px;
+}
+
+.clean-doc-compact-import-card h4,
+.clean-doc-compact-import-card p {
+  min-width: 0;
+}
+
+.clean-doc-compact-import-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.clean-doc-compact-form {
+  margin-top: auto;
+}
+
+.clean-doc-compact-form .button-link,
+.clean-doc-compact-form button,
+.clean-doc-compact-form input[type="file"] {
+  width: 100%;
+}
+
+.clean-doc-import-history-card .clean-doc-inline-actions,
+.clean-doc-global-table .clean-doc-inline-actions {
+  justify-content: flex-start;
+}
+
+.clean-doc-import-history-card .clean-doc-remove-menu-inline,
+.clean-doc-global-table .clean-doc-remove-menu-inline {
+  margin: 0;
+}
+
+.clean-doc-table-scroll-8 {
+  border: 1px solid #e5edf6;
+  border-radius: 10px;
+}
+
+.clean-doc-table-scroll-8 .clean-doc-table,
+.clean-doc-table-scroll-3 .clean-doc-table {
+  border: 0;
+  border-radius: 0;
+}
+
+.clean-doc-global-table {
+  min-width: 900px;
+}
+
+.clean-doc-global-table th,
+.clean-doc-global-table td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  line-height: 1.25;
+}
+
+.clean-doc-global-table td {
+  height: 44px;
+}
+
+.clean-doc-global-table tr.clean-doc-subrow td {
+  height: auto;
+  padding: 4px 10px 8px;
+  text-align: left;
+}
+
+.clean-doc-global-table tr.clean-doc-subrow td strong {
+  margin-right: 4px;
+}
+
+.clean-doc-global-table .clean-doc-inline-actions {
+  align-items: center;
+}
+
+.clean-doc-global-table .clean-doc-inline-actions .button-link,
+.clean-doc-global-table .clean-doc-inline-actions button {
+  min-height: 26px;
+  padding: 5px 8px;
+}
+
+.clean-doc-batch-ocr-panel {
+  grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1.45fr);
+  padding: 8px 10px;
+}
+
+.clean-doc-batch-ocr-panel form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.clean-doc-invoice-workbar {
+  grid-template-columns: minmax(180px, 1.1fr) minmax(150px, 1fr) minmax(120px, 0.85fr) minmax(150px, 0.9fr) minmax(115px, 0.75fr) auto;
+  padding: 8px 10px;
+}
+
+.clean-doc-invoice-workbar input,
+.clean-doc-invoice-workbar select,
+.clean-doc-batch-ocr-panel select {
+  min-height: 34px;
+}
+
+.clean-doc-structured-block .table-heading.flat-heading {
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+
+.clean-doc-structured-block .table-heading.flat-heading h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.clean-doc-structured-block .table-heading.flat-heading p {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.clean-vehicle-header-card-docs-compact {
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-header-main {
+  grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1.45fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity strong {
+  font-size: clamp(2rem, 3vw, 2.75rem);
+  line-height: 1;
+}
+
+.clean-vehicle-header-card-docs-compact .clean-vehicle-identity span {
+  max-width: 360px;
+  line-height: 1.15;
+}
+
+.clean-fleet-doc-action-strip {
+  padding: 10px 14px;
+}
+
+.clean-fleet-doc-action-group {
+  grid-template-columns: minmax(190px, 0.32fr) minmax(0, 1fr) minmax(0, 0.9fr);
+}
+
+.clean-fleet-doc-action-group .clean-context-action-row .button-link {
+  min-height: 34px;
+  padding: 8px 11px;
+}
+
+.clean-doc-group-strip {
+  gap: 8px;
+}
+
+.clean-doc-group-card {
+  min-height: 58px;
+  padding: 9px 10px;
+}
+
+.clean-doc-filter-panel {
+  padding: 12px 14px;
+}
+
+.clean-doc-filter-grid {
+  align-items: end;
+  gap: 10px;
+}
+
+.clean-doc-filter-grid input,
+.clean-doc-filter-grid select,
+.clean-doc-filter-grid button {
+  min-height: 38px;
+}
+
+.clean-doc-detail-context-grid {
+  gap: 10px;
+}
+
+.clean-doc-detail-secondary summary {
+  min-height: 52px;
+}
+
+.clean-doc-operational-summary {
+  padding: 12px;
+}
+
+.clean-doc-summary-strip {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.clean-doc-summary-strip span {
+  padding: 8px 10px;
+}
+
+.clean-doc-summary-strip span:nth-child(5n) {
+  border-right: 1px solid #e5edf6;
+}
+
+.clean-doc-summary-strip span:nth-child(6n) {
+  border-right: 0;
+}
+
+.clean-doc-extraction-panel {
+  padding: 14px;
+}
+
+.clean-doc-review-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid {
+  grid-template-columns: minmax(320px, 0.72fr) minmax(620px, 1.28fr);
+}
+
+.clean-doc-extraction-lines .clean-doc-table-scroll-3 {
+  max-height: 380px;
+}
+
+.clean-doc-ocr-lines-table {
+  min-width: 980px;
+}
+
+.clean-doc-ocr-lines-table th:nth-child(2),
+.clean-doc-ocr-lines-table td:nth-child(2) {
+  min-width: 300px;
+  white-space: normal;
+}
+
+.clean-doc-ocr-lines-table th,
+.clean-doc-ocr-lines-table td {
+  text-align: left;
+}
+
+.clean-doc-ocr-technical-lines summary,
+.clean-doc-raw-preview summary {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.clean-doc-ocr-calibration-workbench {
+  padding: 14px;
+}
+
+.clean-doc-ocr-calibration-grid {
+  grid-template-columns: minmax(280px, 0.52fr) minmax(0, 1.48fr);
+}
+
+.clean-doc-ocr-preview-box {
+  min-height: 260px;
+}
+
+.clean-doc-ocr-template-table .clean-doc-template-actions {
+  align-items: center;
+}
+
+.clean-doc-ocr-template-table .clean-doc-template-example {
+  display: grid;
+  gap: 2px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clean-doc-event-value {
+  max-width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .clean-doc-batch-ocr-panel,
+  .clean-doc-invoice-workbar,
+  .clean-fleet-doc-action-group,
+  .clean-vehicle-header-card-docs-compact .clean-vehicle-header-main,
+  .clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid,
+  .clean-doc-ocr-calibration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-summary-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .clean-doc-summary-strip span:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .clean-fleet-doc-action-group .clean-context-action-row:last-child {
+    border-left: 0;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .clean-doc-page-header.clean-doc-center-header,
+  .clean-page-hero.clean-doc-detail-hero {
+    padding: 14px;
+  }
+
+  .clean-doc-page-header.clean-doc-center-header h1,
+  .clean-page-hero.clean-doc-detail-hero h1 {
+    font-size: 1.55rem;
+  }
+
+  .clean-doc-summary-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .clean-doc-summary-strip span {
+    border-right: 0;
+  }
+
+  .clean-doc-compact-import-card {
+    min-height: 0;
+  }
+
+  .clean-doc-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .clean-doc-classify-table .clean-doc-classify-actions .button-link {
   min-height: 32px;
   padding: 7px 10px;

@@ -6997,13 +6997,13 @@ def clean_document_import_center(
                 invoice_event_map[event.document_id].append(event)
 
         invoice_batch_map: dict[str, dict[str, Any]] = {}
-        latest_invoice_documents = db.scalars(
+        invoice_batch_documents = db.scalars(
             select(Document)
             .where(*invoice_document_conditions(include_filters=False))
             .order_by(Document.updated_at.desc(), Document.id.desc())
-            .limit(200)
+            .limit(10000)
         ).all()
-        for document in latest_invoice_documents:
+        for document in invoice_batch_documents:
             batch_label = _document_import_batch_label(document)
             if not batch_label:
                 continue
@@ -7013,18 +7013,57 @@ def clean_document_import_center(
                     "label": batch_label,
                     "count": 0,
                     "pending_count": 0,
+                    "classified_count": 0,
+                    "supplier_counts": defaultdict(int),
+                    "vehicle_counts": defaultdict(int),
+                    "latest_date": document.updated_at or document.created_at,
                     "latest_id": document.id,
                 },
             )
             batch["count"] += 1
             if document.status not in {"classified", "ignored"}:
                 batch["pending_count"] += 1
+            else:
+                batch["classified_count"] += 1
+            if document.supplier_name:
+                batch["supplier_counts"][document.supplier_name] += 1
+            if document.plate:
+                batch["vehicle_counts"][document.plate] += 1
+            document_date = document.updated_at or document.created_at
+            if document_date and (not batch["latest_date"] or document_date > batch["latest_date"]):
+                batch["latest_date"] = document_date
             batch["latest_id"] = max(batch["latest_id"], document.id)
+
+        def _invoice_batch_summary(batch: dict[str, Any]) -> dict[str, Any]:
+            supplier_counts = sorted(
+                batch["supplier_counts"].items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+            vehicle_count = len(batch["vehicle_counts"])
+            supplier_label = " · ".join(
+                f"{supplier} ({count})" for supplier, count in supplier_counts[:2]
+            )
+            if len(supplier_counts) > 2:
+                supplier_label = f"{supplier_label} · +{len(supplier_counts) - 2}"
+            return {
+                "label": batch["label"],
+                "count": batch["count"],
+                "pending_count": batch["pending_count"],
+                "classified_count": batch["classified_count"],
+                "supplier_label": supplier_label or "-",
+                "vehicle_count": vehicle_count,
+                "latest_date_display": clean_date(
+                    batch["latest_date"].isoformat() if batch["latest_date"] else None
+                ),
+                "latest_id": batch["latest_id"],
+            }
+
         invoice_batches = sorted(
-            invoice_batch_map.values(),
+            (_invoice_batch_summary(batch) for batch in invoice_batch_map.values()),
             key=lambda item: item["latest_id"],
             reverse=True,
         )
+        invoice_batches_preview = invoice_batches[:8]
         invoice_supplier_options = [
             {"value": supplier, "count": int(count or 0)}
             for supplier, count in db.execute(
@@ -7121,6 +7160,8 @@ def clean_document_import_center(
                 "invoice_next_limit": invoice_next_limit,
                 "invoice_can_show_more": invoice_can_show_more,
                 "invoice_batches": invoice_batches,
+                "invoice_batches_preview": invoice_batches_preview,
+                "invoice_batches_count": len(invoice_batches),
                 "invoice_supplier": clean_invoice_supplier,
                 "invoice_vehicle": clean_invoice_vehicle,
                 "invoice_batch": clean_invoice_batch,

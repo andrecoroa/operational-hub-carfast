@@ -15419,6 +15419,39 @@ button.clean-upload-preview-card {
   background: #fff;
 }
 
+.clean-doc-invoice-batch-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.clean-doc-invoice-batch-summary .table-heading {
+  padding-bottom: 6px;
+}
+
+.clean-doc-table-scroll-compact {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.clean-doc-batch-summary-table th,
+.clean-doc-batch-summary-table td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.clean-doc-batch-summary-table td:nth-child(2),
+.clean-doc-batch-summary-table td:nth-child(3) {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .clean-doc-batch-ocr-panel {
   display: grid;
   grid-template-columns: minmax(220px, 0.7fr) minmax(420px, 1.3fr);

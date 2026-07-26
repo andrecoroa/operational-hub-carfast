@@ -115,6 +115,10 @@
         <strong>{{ invoice_count }}</strong>
         <span>Faturas</span>
       </a>
+      <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=invoices#invoice-batches">
+        <strong>{{ invoice_batches_count }}</strong>
+        <span>Lotes faturas</span>
+      </a>
       <a class="clean-doc-kpi-card" href="/v2-clean/documents?main_group=contracts">
         <strong>{{ contract_count }}</strong>
         <span>Contratos</span>
@@ -375,6 +379,45 @@
             </div>
           </form>
           {% if invoice_batches %}
+            <section class="clean-doc-invoice-batch-summary" id="invoice-batches">
+              <div class="table-heading flat-heading">
+                <div>
+                  <h4>Lotes de faturas</h4>
+                  <p>Últimos lotes importados, com volume, fornecedor principal e documentos ainda por fechar.</p>
+                </div>
+                <span>{{ invoice_batches_count }} lotes</span>
+              </div>
+              <div class="clean-doc-table-wrap clean-doc-table-scroll-compact">
+                <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-batch-summary-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Lote</th>
+                      <th>Fornecedor</th>
+                      <th>Viaturas</th>
+                      <th>Docs</th>
+                      <th>Pendentes</th>
+                      <th>Validados</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for batch in invoice_batches_preview %}
+                      <tr>
+                        <td>{{ batch.latest_date_display }}</td>
+                        <td><strong>{{ batch.label }}</strong></td>
+                        <td>{{ batch.supplier_label }}</td>
+                        <td>{{ batch.vehicle_count }}</td>
+                        <td>{{ batch.count }}</td>
+                        <td>{{ batch.pending_count }}</td>
+                        <td>{{ batch.classified_count }}</td>
+                      </tr>
+                    {% else %}
+                      <tr><td colspan="7" class="clean-empty-cell">Sem lotes de faturas importados.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </section>
             <section class="clean-doc-batch-ocr-panel">
               <div>
                 <strong>Reprocessamento OCR em lote</strong>

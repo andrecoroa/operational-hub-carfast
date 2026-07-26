@@ -16282,6 +16282,10 @@ button.clean-upload-preview-card {
   text-align: right;
 }
 
+.clean-doc-global-table tr.clean-doc-subrow-left td {
+  text-align: left;
+}
+
 .clean-doc-classify-table .clean-doc-classify-actions .button-link {
   min-height: 32px;
   padding: 7px 10px;

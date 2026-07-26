@@ -400,7 +400,6 @@
                   <th>Data</th>
                   <th>Nº</th>
                   <th>Fornecedor</th>
-                  <th>Lote</th>
                   <th>FO</th>
                   <th>Total</th>
                   <th>Estado</th>
@@ -417,7 +416,6 @@
                     <td>{{ row.date_display }}</td>
                     <td>{{ row.document_number }}</td>
                     <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
-                    <td title="{{ row.batch_label }}">{{ row.batch_label or "-" }}</td>
                     <td>{{ row.work_order_reference or "-" }}</td>
                     <td>{{ row.total_with_vat or "-" }}</td>
                     <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
@@ -435,8 +433,13 @@
                       </div>
                     </td>
                   </tr>
+                  {% if row.batch_label %}
+                    <tr class="clean-doc-subrow clean-doc-subrow-left">
+                      <td colspan="8"><strong>Lote:</strong> {{ row.batch_label }}</td>
+                    </tr>
+                  {% endif %}
                 {% else %}
-                      <tr><td colspan="9" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                      <tr><td colspan="8" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -501,9 +504,8 @@
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
                         {% if row.description %}
-                          <tr class="clean-doc-subrow">
-                            <td></td>
-                            <td colspan="6"><strong>Serviço / obs.:</strong> {{ row.description }}</td>
+                          <tr class="clean-doc-subrow clean-doc-subrow-left">
+                            <td colspan="7"><strong>Serviço / obs.:</strong> {{ row.description }}</td>
                           </tr>
                         {% endif %}
                       {% else %}
@@ -526,7 +528,7 @@
                     <tbody>
                       {% for row in grouped.rows %}
                         <tr>
-                          <td><strong>{{ row.vehicle_plate }}</strong><small>{{ row.vehicle_label }}</small></td>
+                          <td><strong>{{ row.vehicle_plate }}</strong></td>
                           <td>{{ row.date_display or "-" }}</td>
                           <td><strong>{{ row.external_reference or row.title }}</strong></td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
@@ -534,9 +536,8 @@
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
                         {% if row.description %}
-                          <tr class="clean-doc-subrow">
-                            <td></td>
-                            <td colspan="5"><strong>Detalhe:</strong> {{ row.description }}</td>
+                          <tr class="clean-doc-subrow clean-doc-subrow-left">
+                            <td colspan="6"><strong>Detalhe:</strong> {{ row.description }}</td>
                           </tr>
                         {% endif %}
                       {% else %}
@@ -560,7 +561,7 @@
                     <tbody>
                       {% for row in grouped.rows %}
                         <tr>
-                          <td><strong>{{ row.vehicle_plate }}</strong><small>{{ row.vehicle_label }}</small></td>
+                          <td><strong>{{ row.vehicle_plate }}</strong></td>
                           <td>{{ row.date_display or "-" }}</td>
                           <td><strong>{{ row.external_reference or row.title }}</strong></td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
@@ -569,9 +570,8 @@
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
                         {% if row.description %}
-                          <tr class="clean-doc-subrow">
-                            <td></td>
-                            <td colspan="6"><strong>Detalhe:</strong> {{ row.description }}</td>
+                          <tr class="clean-doc-subrow clean-doc-subrow-left">
+                            <td colspan="7"><strong>Detalhe:</strong> {{ row.description }}</td>
                           </tr>
                         {% endif %}
                       {% else %}

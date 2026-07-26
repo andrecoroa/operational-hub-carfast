@@ -500,6 +500,68 @@ ATCUD: JJWNNZZ4-1195
     ]
 
 
+def test_batch_invoice_payload_extracts_filinto_automoveis_invoice_without_vertical_noise():
+    text = """
+788
+581
+105
+€ 000.573
+laicoS
+.paC
+Filinto Mota - Automóveis, Lda
+Estr. Exterior da Circunvalação, 10686
+4460-281 Srª da Hora - Matosinhos
+NIF: 501 185 887
+Exmos Senhores Carfast - Rent-A-Car, Lda
+FACTURA Rua das Indústrias, 220
+4785-625 TROFA
+Doc.Nº CIAL_FACVO2 025 /585
+Conta 227010 Data 29/05/2025 NIF509285970
+Vendedor First Rent
+Marca : CITROEN Modelo : Jumper FF 33 L3H2 2.2 BlueHDi Matrícula: AS-01-ZG
+Chassis : VF7YBBPFCNG007451 Nº Motor : Cilindrada : 2179 Nº Stock : 701 002
+Descrição Valor Total
+Despesas Recondicionamento 1 953,00
+.
+Observações :
+Base de incidência de I.V.A. Síntese de Pagamento
+Cod Taxa % Base IVA Valor IVA
+Total Líquido 1 953,00
+V 23,00 1 953,00 449,19 Total IVA 449,19
+Total do documento 2 402,19
+ATCUD: JJWJNKPD-585
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-585-0.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "filinto_mota_automoveis_cial_facvo2"
+    assert payload["supplier_name"] == "Filinto Mota - Automóveis, Lda (NIF 501185887)"
+    assert payload["supplier_nif"] == "501185887"
+    assert payload["client_nif"] == "509285970"
+    assert payload["document_number"] == "CIAL_FACVO2 025/585"
+    assert payload["document_date"] == "2025-05-29"
+    assert payload["plate"] == "AS-01-ZG"
+    assert payload["vin"] == "VF7YBBPFCNG007451"
+    assert payload["km"] == ""
+    assert payload["work_order_reference"] == ""
+    assert payload["subtotal_without_vat"] == "1953,00"
+    assert payload["vat_amount"] == "449,19"
+    assert payload["total_with_vat"] == "2402,19"
+    assert payload["atcud"] == "JJWJNKPD-585"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "",
+            "description": "Despesas Recondicionamento",
+            "quantity": "",
+            "unit": "",
+            "unit_price": "",
+            "tax": "",
+            "amount": "1953,00",
+            "service": "Por classificar",
+        }
+    ]
+
+
 def test_batch_invoice_payload_does_not_map_carfast_nif_as_filinto_supplier():
     text = """
 CLIENTE : 227010 NIF :509285970

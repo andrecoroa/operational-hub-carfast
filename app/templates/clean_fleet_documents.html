@@ -527,7 +527,7 @@
       </div>
     {% endif %}
 
-    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process clean-vehicle-header-card-docs-compact">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process">
       <div class="clean-vehicle-header-main">
         <div class="clean-vehicle-identity">
           <strong>{{ ctx.identity.plate or "-" }}</strong>
@@ -537,7 +537,7 @@
           <span><b>Unit</b><em>{{ ctx.identity.unit or "-" }}</em></span>
           <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
           <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
-          <span><b>Compra</b><em>{{ ctx.identity.purchase_date }}</em></span>
+          <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
           <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
           <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
           <span><b>Chassi</b><em>{{ ctx.identity.vin }}</em></span>
@@ -568,20 +568,13 @@
       <article class="clean-context-action-group clean-fleet-doc-action-group">
         <div class="clean-context-action-copy">
           <strong>Comandos documentais</strong>
-          <span>Arquivo, pendentes e navegação desta viatura.</span>
+          <span>Arquivo e trabalho documental desta viatura.</span>
         </div>
         <div class="clean-context-action-row clean-context-action-row-primary">
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
           <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
-          <a class="button-link secondary-link" href="#audit-real-start">Início real</a>
-          <a class="button-link secondary-link" href="#audit-maintenance-count">Nº manutenções</a>
-        </div>
-        <div class="clean-context-action-row">
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
-          <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
           <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefas e problemas</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar à frota</a>
         </div>
       </article>
     </section>

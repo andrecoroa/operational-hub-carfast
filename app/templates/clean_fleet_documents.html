@@ -124,11 +124,11 @@
       </section>
     {% endmacro %}
     {% macro render_document_preview_button(row, label="Pré-visualizar") %}
-      {% if row.kind == "document" and row.open_href %}
+      {% if row.kind == "document" and row.preview_href %}
         <button
           type="button"
           class="button-link secondary-link clean-doc-preview-trigger"
-          data-preview-src="{{ row.open_href }}"
+          data-preview-src="{{ row.preview_href }}"
           data-preview-title="{{ row.detail_label or row.archive_label or row.title or 'Documento' }}"
           data-preview-kind="{{ 'image' if row.file_type in ['jpg', 'jpeg', 'png', 'webp', 'gif'] else 'pdf' }}"
         >{{ label }}</button>
@@ -322,7 +322,7 @@
                           {{ render_service_select_grid(row, form_id) }}
                         </section>
                       {% endif %}
-                      {% if row.kind == "document" and row.open_href %}
+                      {% if row.kind == "document" and row.preview_href %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-inline-preview" hidden>
                           <header class="clean-doc-inline-preview-header">
                             <div>
@@ -330,7 +330,7 @@
                               <span data-inline-preview-title>{{ row.detail_label or row.archive_label or row.title or "Documento" }}</span>
                             </div>
                             <div class="clean-doc-inline-actions">
-                              <a class="button-link secondary-link" data-inline-preview-open href="{{ row.open_href }}" target="_blank" rel="noopener">Abrir em separador</a>
+                              <a class="button-link secondary-link" data-inline-preview-open href="{{ row.preview_href }}" target="_blank" rel="noopener">Abrir em separador</a>
                               <button type="button" class="button-link secondary-link" data-close-inline-preview>Fechar preview</button>
                             </div>
                           </header>

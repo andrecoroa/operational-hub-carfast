@@ -4,11 +4,15 @@
   {% set active_menu = "documents" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
+    {% set invoice_lines = extraction_metadata.invoice_lines or extraction_metadata.lines or [] %}
+    {% set document_display_title = "Fatura / Nota de crédito" if document.document_type == "workshop_supplier_invoice" else (document.title or document.original_name or ("Documento #" ~ document.id)) %}
+    {% set document_file_label = document.title or document.original_name or document.file_name or ("Documento #" ~ document.id) %}
     <header class="clean-page-hero clean-card-wide clean-doc-detail-hero">
       <div>
         <p class="eyebrow">Documentação / detalhe v2</p>
-        <h1>{{ document.title or document.original_name or ("Documento #" ~ document.id) }}</h1>
-        <p>Consulta e validação do documento dentro da nova experiência.</p>
+        <h1>{{ document_display_title }}</h1>
+        <p class="clean-doc-detail-subtitle">{{ document_file_label }}</p>
+        <p>Validação do documento, leitura OCR, associação à viatura e classificação operacional.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         {% if vehicle %}
@@ -81,6 +85,27 @@
         {{ ocr_batch_lines or 0 }} linhas extraídas{% if ocr_batch_failed %}; {{ ocr_batch_failed }} falharam{% endif %}.
       </div>
     {% endif %}
+
+    <section class="clean-card-wide clean-doc-operational-summary">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Resumo operacional</p>
+          <h3>{{ document.contract_number or document.reservation_number or document.id }}</h3>
+          <p>{{ document.supplier_name or document.source or "-" }}{% if document_date and document_date != "-" %} · {{ document_date }}{% endif %}</p>
+        </div>
+        <span class="status-pill">{{ document.status or "-" }}</span>
+      </div>
+      <div class="clean-doc-summary-strip">
+        <span><b>Fornecedor</b><em>{{ document.supplier_name or document.source or "-" }}</em></span>
+        <span><b>Nº documento</b><em>{{ document.contract_number or document.reservation_number or document.id }}</em></span>
+        <span><b>Data</b><em>{{ document_date }}</em></span>
+        <span><b>Total c/ IVA</b><em>{{ extraction_metadata.total_with_vat or extraction_metadata.total or "-" }}</em></span>
+        <span><b>Folha de obra</b><em>{{ extraction_metadata.work_order_reference or "-" }}</em></span>
+        <span><b>Viatura</b><em>{% if vehicle %}{{ vehicle.plate }}{% else %}{{ document.plate or "-" }}{% endif %}</em></span>
+        <span><b>Lote</b><em>{{ import_batch_label or "-" }}</em></span>
+        <span><b>Linhas OCR</b><em>{{ invoice_lines|length }}</em></span>
+      </div>
+    </section>
 
     {% if vehicle_ctx %}
       <section class="clean-vehicle-header-card clean-vehicle-header-card-unified">
@@ -346,7 +371,7 @@
               <tr>
                 <td>{{ event.created_at.strftime("%d/%m/%Y %H:%M") if event.created_at else "-" }}</td>
                 <td>{{ event.action }}</td>
-                <td>{{ event.new_value or event.old_value or "-" }}</td>
+                <td class="clean-doc-event-value">{{ (event.new_value or event.old_value or "-")|truncate(180, True) }}</td>
               </tr>
             {% else %}
               <tr><td colspan="3" class="clean-empty-cell">Sem eventos registados.</td></tr>

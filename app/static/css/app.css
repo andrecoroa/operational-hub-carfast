@@ -15155,8 +15155,16 @@ button.clean-upload-preview-card {
 .clean-doc-detail-hero h1 {
   overflow-wrap: anywhere;
   max-width: 980px;
-  font-size: clamp(1.8rem, 3.2vw, 3rem);
+  font-size: clamp(1.8rem, 2.6vw, 2.65rem);
   line-height: 1.05;
+}
+
+.clean-doc-detail-subtitle {
+  max-width: 980px;
+  overflow-wrap: anywhere;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .clean-doc-detail-hero .clean-header-actions {
@@ -15164,6 +15172,55 @@ button.clean-upload-preview-card {
   align-items: start;
   grid-template-columns: repeat(2, minmax(150px, 1fr));
   max-width: 420px;
+}
+
+.clean-doc-operational-summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+}
+
+.clean-doc-operational-summary .table-heading {
+  margin: 0;
+}
+
+.clean-doc-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.clean-doc-summary-strip span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 1px solid #e5edf6;
+  border-bottom: 1px solid #e5edf6;
+}
+
+.clean-doc-summary-strip span:nth-child(4n) {
+  border-right: 0;
+}
+
+.clean-doc-summary-strip b {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.clean-doc-summary-strip em {
+  overflow: hidden;
+  color: #0f2a5f;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid {
@@ -15786,6 +15843,18 @@ button.clean-upload-preview-card {
     max-width: none;
   }
 
+  .clean-doc-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clean-doc-summary-strip span:nth-child(4n) {
+    border-right: 1px solid #e5edf6;
+  }
+
+  .clean-doc-summary-strip span:nth-child(2n) {
+    border-right: 0;
+  }
+
   .clean-doc-review-workspace .clean-doc-ocr-review-form .clean-doc-detail-extraction-grid {
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -16175,6 +16244,14 @@ button.clean-upload-preview-card {
 .clean-doc-extraction-panel .clean-doc-ocr-lines-table td {
   padding: 6px 8px;
   font-size: 11px;
+}
+
+.clean-doc-event-value {
+  max-width: 520px;
+  overflow-wrap: anywhere;
+  color: #475467;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .clean-doc-global-invoice-table th:nth-child(1),

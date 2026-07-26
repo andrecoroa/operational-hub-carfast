@@ -7819,15 +7819,15 @@ def _batch_invoice_filinto_vnc_data(text: str, lines: list[str]) -> dict[str, An
 
 def _batch_invoice_is_gamobar_template(text: str) -> bool:
     normalized = (normalize_identifier(text) or "").lower()
-    compact = normalized.replace(" ", "")
+    compact = re.sub(r"[^a-z0-9]", "", normalized)
     return (
         "500112967" in compact
         or ("caetano" in normalized and "gamobar" in normalized)
         or (
             "ident" in compact
-            and ("unicodoc" in compact or "únicodoc" in compact)
-            and "valorcomiva" in compact
-            and re.search(r"\b(?:HFO|HFJ|FFJ|XFO)/\d+/\d{4}\b", text, flags=re.IGNORECASE)
+            and "doc" in compact
+            and ("valorcomiva" in compact or "dataemiss" in compact)
+            and re.search(r"\b(?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+(?:/\d{4})?\b", text, flags=re.IGNORECASE)
         )
     )
 
@@ -8523,7 +8523,34 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     document_date = _batch_document_date(text)
     due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
     due_date = _batch_document_date(due_date_text)
-    document_number_match = re.search(r"\b((?:HFO|HFJ|FFJ|XFO)/\d+/\d{4})\b", text, flags=re.IGNORECASE)
+    full_document_numbers = re.findall(
+        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+/\d{4})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    short_document_numbers = re.findall(
+        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    document_number = (
+        full_document_numbers[0].upper()
+        if full_document_numbers
+        else (short_document_numbers[0].upper() if short_document_numbers else "")
+    )
+    parts_header = re.search(
+        r"(?P<due>\d{2}/\d{2}/\d{4})\s*"
+        r"(?P<document_date>\d{4}-\d{2}-\d{2})\s*"
+        r".{0,500}?"
+        r"(?P<number>HFM/\d+/\d{4})\s*"
+        r"Data\s+de\s+vencimento\s*N[ºo]\s*Fatura\s*Data\s+Doc\.",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if parts_header:
+        document_date = _batch_document_date(parts_header.group("document_date"))
+        due_date = _batch_document_date(parts_header.group("due"))
+        document_number = parts_header.group("number").upper()
     atcud_match = re.search(r"\bATCUD\s*:?\s*([A-Z0-9-]+)", text, flags=re.IGNORECASE)
     atcud = _batch_invoice_gamobar_value_before(lines, "ATCUD")
     if not re.search(r"[A-Z]", atcud or "", flags=re.IGNORECASE):
@@ -8573,7 +8600,7 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     return {
         "supplier_name": "Caetano Gamobar Motores, S.A.",
         "supplier_nif": "500112967",
-        "document_number": document_number_match.group(1) if document_number_match else "",
+        "document_number": document_number,
         "document_date": document_date.isoformat() if document_date else "",
         "due_date": due_date.isoformat() if due_date else "",
         "atcud": atcud,
@@ -8592,8 +8619,8 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
         "invoice_lines": invoice_lines,
         "ecolub_lines": ecolub_lines,
         "ocr_template": (
-            f"caetano_gamobar_{document_number_match.group(1).split('/', 1)[0].lower()}"
-            if document_number_match
+            f"caetano_gamobar_{document_number.split('/', 1)[0].lower()}"
+            if document_number
             else "caetano_gamobar_hfo"
         ),
         **totals,

@@ -2497,6 +2497,80 @@ ATCUD:JF6PPMRG-2602
     assert len(payload["invoice_lines"]) == 1
 
 
+def test_batch_invoice_payload_extracts_caetano_gamobar_ffo_invoice_number():
+    text = """
+Original
+FATURA
+Ident. Único Doc: TAT FFO/525
+2024-07-30
+2024-09-28
+Data Vencim.
+Data Doc.
+FFO/525/2024
+Doc. Núm.
+42127
+Kms.
+AS43JQ / VR3UDYHSKNJ684417
+Matrícula /
+VIN
+Carfast Rent-A-Car Lda (546)
+NIF Cliente
+509285970
+Valor Com IVA
+REVISÕES : OPERAÇÕES SISTEMÁTICAS
+Total Fatura
+212,86
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_ffo_525.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_ffo"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "FFO/525/2024"
+    assert payload["document_date"] == "2024-07-30"
+    assert payload["plate"] == "AS43JQ"
+    assert payload["km"] == "42127"
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_hfm_parts_header():
+    text = """
+2ª Via
+Fatura
+04/09/2025
+2025-08-05
+509285970
+NIF
+Carfast Rent-A-Car Lda(546)
+HFM/352/2025
+Data de vencimento
+Nº Fatura
+Data Doc.
+Armazém Caet. Techn. Porto - Delfim Ferreira
+05/08/2025 14:29:46
+Data Emissão
+CRÉDITO
+Forma de Pagamento
+Ident. Único Doc: VCRFC HFM/352
+Qtd.
+Designação
+Referência
+6,00
+RECARGA KIT
+9831814080
+Total Fatura
+140,01
+ATCUD:JF6SPMRD-352
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_hfm_352.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_hfm"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "HFM/352/2025"
+    assert payload["document_date"] == "2025-08-05"
+    assert payload["due_date"] == "2025-09-04"
+
+
 def test_batch_invoice_payload_extracts_filinto_tal_credit_note():
     text = """
 ORIGINAL

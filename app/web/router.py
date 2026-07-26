@@ -7055,6 +7055,12 @@ def clean_document_import_center(
         for document in invoice_documents:
             vehicle = vehicles_by_id.get(document.vehicle_id)
             latest_ocr = _document_latest_ocr_metadata(invoice_event_map.get(document.id, []))
+            invoice_lines = latest_ocr.get("invoice_lines") or []
+            service_summary = []
+            for line in invoice_lines:
+                service = str((line or {}).get("service") or "").strip()
+                if service and service != "Por classificar" and service not in service_summary:
+                    service_summary.append(service)
             invoice_rows.append(
                 {
                     "id": document.id,
@@ -7069,11 +7075,15 @@ def clean_document_import_center(
                     "title": document.title or document.original_name,
                     "document_number": document.contract_number or document.reservation_number or str(document.id),
                     "supplier_name": document.supplier_name or "-",
+                    "supplier_nif": str(latest_ocr.get("supplier_nif") or "").strip(),
                     "status": document.status,
                     "batch_label": _document_import_batch_label(document),
                     "work_order_reference": latest_ocr.get("work_order_reference", ""),
                     "km": str(latest_ocr.get("km") or "").strip() or None,
                     "total_with_vat": latest_ocr.get("total_with_vat", ""),
+                    "ocr_status": latest_ocr.get("ocr_status") or document.status,
+                    "invoice_lines": invoice_lines,
+                    "service_summary": service_summary,
                     "document_href": f"/v2-clean/documents/{document.id}",
                     "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
                     "preview_kind": (

@@ -864,10 +864,37 @@
       if (!detailRow) return;
       const detail = detailRow.querySelector("details");
       const willOpen = detailRow.hidden;
+      document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
+        if (row !== detailRow) {
+          row.hidden = true;
+          row.classList.remove("clean-doc-detail-open");
+          const openDetail = row.querySelector("details");
+          if (openDetail) openDetail.open = false;
+        }
+      });
       detailRow.hidden = !willOpen;
+      detailRow.classList.toggle("clean-doc-detail-open", willOpen);
       if (detail) detail.open = willOpen;
       button.textContent = willOpen ? "Fechar detalhes" : "Ver detalhes";
-      if (willOpen) detailRow.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  });
+  const closeOpenDocumentDetail = () => {
+    document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
+      row.hidden = true;
+      row.classList.remove("clean-doc-detail-open");
+      const detail = row.querySelector("details");
+      if (detail) detail.open = false;
+    });
+    document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
+      button.textContent = "Ver detalhes";
+    });
+  };
+  document.querySelectorAll(".clean-doc-classify-detail-row .clean-doc-expanded-detail > summary").forEach((summary) => {
+    summary.addEventListener("click", (event) => {
+      const detailRow = summary.closest(".clean-doc-classify-detail-row.clean-doc-detail-open");
+      if (!detailRow) return;
+      event.preventDefault();
+      closeOpenDocumentDetail();
     });
   });
 
@@ -911,7 +938,10 @@
     if (event.target === documentPreviewModal) closeDocumentPreview();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeDocumentPreview();
+    if (event.key === "Escape") {
+      closeDocumentPreview();
+      closeOpenDocumentDetail();
+    }
   });
 
   const timelineFilterButtons = document.querySelectorAll("[data-timeline-filters] [data-range]");

@@ -403,12 +403,14 @@
                   <th>FO</th>
                   <th>KM</th>
                   <th>Total</th>
+                  <th>Serviços</th>
                   <th>Estado</th>
                   <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in invoice_rows_preview %}
+                  {% set detail_id = "global-invoice-detail-" ~ row.id %}
                   <tr>
                     <td>
                       <strong>{{ row.vehicle_plate }}</strong>
@@ -420,11 +422,20 @@
                     <td>{{ row.work_order_reference or "-" }}</td>
                     <td>{{ row.km if row.km is not none else "-" }}</td>
                     <td>{{ row.total_with_vat or "-" }}</td>
+                    <td>
+                      <div class="clean-doc-service-summary-inline">
+                        {% for service in row.service_summary %}
+                          <span>{{ service }}</span>
+                        {% else %}
+                          <em>Por classificar</em>
+                        {% endfor %}
+                      </div>
+                    </td>
                     <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                     <td>
                       <div class="clean-doc-inline-actions">
                         <a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a>
-                        <a class="button-link secondary-link" href="{{ row.document_href }}">Documento</a>
+                        <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Detalhes</button>
                         <button
                           type="button"
                           class="button-link secondary-link clean-doc-preview-trigger"
@@ -432,16 +443,122 @@
                           data-preview-title="{{ row.document_number or row.title or 'Fatura' }}"
                           data-preview-kind="{{ row.preview_kind or 'pdf' }}"
                         >Preview</button>
+                        <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
+                          <summary>Remover</summary>
+                          <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                            <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                            <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                            <button type="submit">Confirmar</button>
+                          </form>
+                        </details>
                       </div>
                     </td>
                   </tr>
                   {% if row.batch_label %}
                     <tr class="clean-doc-subrow clean-doc-subrow-left">
-                      <td colspan="9"><strong>Lote:</strong> {{ row.batch_label }}</td>
+                      <td colspan="10"><strong>Lote:</strong> {{ row.batch_label }}</td>
                     </tr>
                   {% endif %}
+                  <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
+                    <td colspan="10">
+                      <details class="clean-doc-expanded-detail">
+                        <summary>Fatura {{ row.document_number or row.title }}</summary>
+                        <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact clean-doc-invoice-focus-grid">
+                          <section class="clean-doc-detail-card clean-doc-detail-document-card">
+                            <h4>Dados do documento</h4>
+                            <dl>
+                              <div><dt>Viatura</dt><dd>{{ row.vehicle_plate }}</dd></div>
+                              <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
+                              <div><dt>NIF fornecedor</dt><dd>{{ row.supplier_nif or "-" }}</dd></div>
+                              <div><dt>Data</dt><dd>{{ row.date_display or "-" }}</dd></div>
+                              <div><dt>Nº documento</dt><dd>{{ row.document_number or "-" }}</dd></div>
+                              <div><dt>Folha de obra</dt><dd>{{ row.work_order_reference or "-" }}</dd></div>
+                              <div><dt>KM</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
+                              <div><dt>Total c/ IVA</dt><dd>{{ row.total_with_vat or "-" }}</dd></div>
+                              <div><dt>Estado OCR</dt><dd>{{ row.ocr_status or "-" }}</dd></div>
+                            </dl>
+                          </section>
+                          <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
+                            <div class="clean-doc-line-classification">
+                              <div class="clean-doc-line-classification-header">
+                                <h4>Serviços relevantes da fatura</h4>
+                                <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                              </div>
+                              <div class="clean-doc-service-summary-inline clean-doc-service-summary-panel">
+                                {% for service in row.service_summary %}
+                                  <span>{{ service }}</span>
+                                {% else %}
+                                  <em>Por classificar</em>
+                                {% endfor %}
+                              </div>
+                              <p class="clean-doc-help-text">A classificação operacional é ao nível da fatura. As linhas abaixo ficam disponíveis para consulta e análises futuras.</p>
+                            </div>
+                          </section>
+                          <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-detail-lines-card">
+                            <div class="clean-doc-invoice-lines">
+                              <strong>Linhas faturadas</strong>
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>#</th>
+                                    <th>Referência</th>
+                                    <th>Descrição OCR</th>
+                                    <th>Qtd.</th>
+                                    <th>Un.</th>
+                                    <th>Preço unit.</th>
+                                    <th>IVA</th>
+                                    <th>Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {% for item in row.invoice_lines %}
+                                    <tr>
+                                      <td>{{ item.index }}</td>
+                                      <td>{{ item.reference }}</td>
+                                      <td>{{ item.description }}</td>
+                                      <td>{{ item.quantity }}</td>
+                                      <td>{{ item.unit }}</td>
+                                      <td>{{ item.unit_price }}</td>
+                                      <td>{{ item.tax }}</td>
+                                      <td>{{ item.amount }}</td>
+                                    </tr>
+                                  {% else %}
+                                    <tr><td colspan="8">Sem linhas OCR extraídas. Reprocessa OCR ou abre o documento para validar.</td></tr>
+                                  {% endfor %}
+                                </tbody>
+                              </table>
+                            </div>
+                          </section>
+                          <section class="clean-doc-detail-card clean-doc-detail-actions">
+                            <h4>Ações</h4>
+                            <a class="button-link secondary-link" href="{{ row.vehicle_href }}">Abrir ficha da viatura</a>
+                            <a class="button-link secondary-link" href="{{ row.document_href }}">Abrir página completa</a>
+                            <button
+                              type="button"
+                              class="button-link secondary-link clean-doc-preview-trigger"
+                              data-preview-src="{{ row.preview_href }}"
+                              data-preview-title="{{ row.document_number or row.title or 'Fatura' }}"
+                              data-preview-kind="{{ row.preview_kind or 'pdf' }}"
+                            >Pré-visualizar PDF</button>
+                            <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
+                              <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                              <button type="submit" class="button-link secondary-link">Reprocessar OCR</button>
+                            </form>
+                            <details class="clean-doc-remove-menu">
+                              <summary>Remover documento</summary>
+                              <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                                <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                                <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                                <button type="submit">Confirmar remoção</button>
+                              </form>
+                            </details>
+                          </section>
+                        </div>
+                      </details>
+                    </td>
+                  </tr>
                 {% else %}
-                      <tr><td colspan="9" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                      <tr><td colspan="10" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -658,6 +775,46 @@
   </main>
 </div>
 <script>
+  document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const detailRow = document.getElementById(button.dataset.detailTarget || "");
+      if (!detailRow) return;
+      const detail = detailRow.querySelector("details");
+      const willOpen = detailRow.hidden;
+      document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
+        if (row !== detailRow) {
+          row.hidden = true;
+          row.classList.remove("clean-doc-detail-open");
+          const openDetail = row.querySelector("details");
+          if (openDetail) openDetail.open = false;
+        }
+      });
+      detailRow.hidden = !willOpen;
+      detailRow.classList.toggle("clean-doc-detail-open", willOpen);
+      if (detail) detail.open = willOpen;
+      button.textContent = willOpen ? "Fechar" : "Detalhes";
+    });
+  });
+  const closeOpenDocumentDetail = () => {
+    document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
+      row.hidden = true;
+      row.classList.remove("clean-doc-detail-open");
+      const detail = row.querySelector("details");
+      if (detail) detail.open = false;
+    });
+    document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
+      button.textContent = "Detalhes";
+    });
+  };
+  document.querySelectorAll(".clean-doc-classify-detail-row .clean-doc-expanded-detail > summary").forEach((summary) => {
+    summary.addEventListener("click", (event) => {
+      const detailRow = summary.closest(".clean-doc-classify-detail-row.clean-doc-detail-open");
+      if (!detailRow) return;
+      event.preventDefault();
+      closeOpenDocumentDetail();
+    });
+  });
+
   const documentPreviewModal = document.getElementById("clean-doc-preview-modal");
   const documentPreviewTitle = document.getElementById("clean-doc-preview-title");
   const documentPreviewBody = document.getElementById("clean-doc-preview-body");
@@ -698,7 +855,10 @@
     if (event.target === documentPreviewModal) closeDocumentPreview();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeDocumentPreview();
+    if (event.key === "Escape") {
+      closeDocumentPreview();
+      closeOpenDocumentDetail();
+    }
   });
 </script>
 {% endblock %}

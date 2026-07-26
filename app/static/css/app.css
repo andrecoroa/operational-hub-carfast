@@ -16923,8 +16923,29 @@ button.clean-upload-preview-card {
   background: #fff;
 }
 
+.clean-doc-classify-detail-row.clean-doc-detail-open > td {
+  position: fixed;
+  inset: 0;
+  z-index: 82;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  background: rgba(15, 23, 42, 0.46);
+  padding: 24px !important;
+}
+
 .clean-doc-expanded-detail {
   border-top: 1px solid #e7edf5;
+}
+
+.clean-doc-detail-open .clean-doc-expanded-detail {
+  width: min(1220px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border: 1px solid #dce4ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
 }
 
 .clean-doc-expanded-detail > summary {
@@ -16959,6 +16980,14 @@ button.clean-upload-preview-card {
     "actions";
   gap: 12px;
   padding: 0 16px 16px;
+}
+
+.clean-doc-invoice-focus-grid {
+  grid-template-areas:
+    "document"
+    "classification"
+    "lines"
+    "actions";
 }
 
 .clean-doc-detail-document-card {
@@ -17074,6 +17103,22 @@ button.clean-upload-preview-card {
   min-width: 0;
   width: 100%;
   text-align: left;
+}
+
+.clean-doc-service-summary-panel {
+  justify-content: start;
+}
+
+.clean-doc-service-summary-panel span,
+.clean-doc-service-summary-panel em {
+  min-height: 30px;
+}
+
+.clean-doc-help-text {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .clean-doc-classify-detail-form {

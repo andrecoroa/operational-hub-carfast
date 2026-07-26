@@ -5318,6 +5318,15 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "colour": vehicle_context.get("colour") or "-",
             "fuel": vehicle_context.get("fuel") or "-",
             "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
+            "current_km": clean_km(
+                str(
+                    snapshot_value(
+                        data,
+                        ["kms", "km", "odometer", "odometer_km", "current_km", "quilometros"],
+                    )
+                    or ""
+                )
+            ),
         },
         "dates": {
             "registration": clean_date(vehicle_context.get("plate_date")),
@@ -5622,7 +5631,23 @@ def clean_fleet_documents(
             return search in blob
 
         archive_rows = []
+        archive_document_ids = [
+            row["id"] for row in module_ctx["archive_rows"] if row.get("kind") == "document"
+        ]
+        manual_document_notes: dict[int, str] = {}
+        if archive_document_ids:
+            for event in db.scalars(
+                select(DocumentEvent)
+                .where(
+                    DocumentEvent.document_id.in_(archive_document_ids),
+                    DocumentEvent.action == "document.manual_note",
+                )
+                .order_by(DocumentEvent.id)
+            ).all():
+                manual_document_notes[event.document_id] = event.new_value or ""
         for row in module_ctx["archive_rows"]:
+            if row.get("kind") == "document":
+                row["manual_note"] = manual_document_notes.get(row["id"], "")
             if archive_group and row["archive_group"] != archive_group:
                 continue
             if clean_main_group and row.get("main_group") != clean_main_group:
@@ -11432,6 +11457,7 @@ def clean_fleet_documents_save_classification_row(
     ipo: list[str] = Form(default=[]),
     other: list[str] = Form(default=[]),
     other_custom: str = Form(""),
+    manual_note: str = Form(""),
     record_id: int | None = Form(None),
     document_id: int | None = Form(None),
     return_group: str = Form(""),
@@ -11496,6 +11522,10 @@ def clean_fleet_documents_save_classification_row(
                 )
             record.status = "classified"
             record.comparison_state = "validado"
+            record.metadata_json = {
+                **(record.metadata_json or {}),
+                "manual_note": manual_note.strip(),
+            }
             record.updated_by_id = user_id
         elif document_id:
             document = db.get(Document, document_id)
@@ -11530,6 +11560,15 @@ def clean_fleet_documents_save_classification_row(
                     user_id=user_id,
                 )
             document.status = "classified"
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="document.manual_note",
+                    old_value=None,
+                    new_value=manual_note.strip(),
+                    user_id=user_id,
+                )
+            )
         db.commit()
     query = "classified=1"
     if return_group:

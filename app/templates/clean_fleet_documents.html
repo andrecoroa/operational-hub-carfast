@@ -88,12 +88,13 @@
     {% endmacro %}
     {% macro render_service_choices(row, category, form_id="") %}
       {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
+      {% set suggested_codes = row.service_suggestion_codes.get(category, []) if row.service_suggestion_codes else [] %}
       <fieldset class="clean-doc-service-choice-group">
         <legend>{{ quick_classification_labels.get(category, category) }}</legend>
         <div class="clean-doc-service-choice-list">
           {% for option_code, option_label in quick_classifications.get(category, []) %}
             <label>
-              <input type="checkbox" name="{{ category }}" value="{{ option_code }}" {% if form_id %}form="{{ form_id }}"{% endif %} {% if option_code in current_codes %}checked{% endif %}>
+              <input type="checkbox" name="{{ category }}" value="{{ option_code }}" {% if form_id %}form="{{ form_id }}"{% endif %} {% if option_code in current_codes or option_code in suggested_codes %}checked{% endif %} data-classification-origin="{{ 'saved' if option_code in current_codes else 'suggested' }}">
               <span>{{ option_label }}</span>
             </label>
           {% endfor %}
@@ -101,13 +102,13 @@
       </fieldset>
     {% endmacro %}
     {% macro render_classification_editor(row, form_id="", title="Classificação por serviço") %}
-      <section class="clean-doc-classification-editor">
+      <section class="clean-doc-classification-editor {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-validated{% else %}is-suggested{% endif %}">
         <div class="table-heading flat-heading">
           <div>
             <h4>{{ title }}</h4>
             <p>Podes selecionar mais do que um serviço, incluindo várias opções da mesma categoria.</p>
           </div>
-          <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+          <span class="clean-doc-status-pill {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-valid{% endif %}">{{ row.comparison_label or row.extraction_state or row.status }}</span>
         </div>
         <div class="clean-doc-service-choice-grid">
           {{ render_service_choices(row, 'maintenance', form_id) }}
@@ -175,7 +176,7 @@
                 <td class="clean-doc-col-work-order">{{ row.work_order_reference or "-" }}</td>
                 <td class="clean-doc-col-km">{{ row.km if row.km is not none else "-" }}</td>
                 <td class="clean-doc-col-total">{{ row.total_with_vat or "-" }}</td>
-                <td class="clean-doc-col-status"><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
+                <td class="clean-doc-col-status"><span class="clean-doc-status-pill {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-valid{% endif %}">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                 <td class="clean-doc-col-actions">
                   <form id="{{ form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-inline-classify-form">
                     {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
@@ -187,7 +188,7 @@
                   </div>
                 </td>
               </tr>
-              {% set note_text = row.description or row.process_reference %}
+              {% set note_text = row.manual_note or "" %}
               {% if row.batch_label or note_text or row.service_summary %}
                 <tr class="clean-doc-classify-note-row clean-doc-classify-group-note-row">
                   <td></td>
@@ -207,7 +208,13 @@
               <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
                 <td colspan="9">
                   <details class="clean-doc-expanded-detail">
-                    <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
+                    <summary>
+                      <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
+                      <span class="clean-doc-detail-summary-actions">
+                        <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                        <span class="clean-doc-summary-close">Fechar</span>
+                      </span>
+                    </summary>
                     <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
                       <section class="clean-doc-detail-card clean-doc-detail-document-card">
                         <h4>Dados do documento</h4>
@@ -323,6 +330,12 @@
                           {% endif %}
                         {% endif %}
                       </section>
+                      <section class="clean-doc-detail-card clean-doc-detail-note-card">
+                        <label class="clean-doc-custom-service-field">
+                          <span>Observação manual</span>
+                          <textarea name="manual_note" form="{{ form_id }}" rows="3" placeholder="Adicionar uma nota apenas quando for útil">{{ row.manual_note or "" }}</textarea>
+                        </label>
+                      </section>
                       {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                           {{ render_service_select_grid(row, form_id) }}
@@ -418,7 +431,7 @@
               </div>
             </div>
             <div class="clean-doc-work-order-actions">
-              <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+              <span class="clean-doc-status-pill {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-valid{% endif %}">{{ row.comparison_label or row.extraction_state or row.status }}</span>
               <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="work-order-detail-{{ row.id }}">Ver detalhes</button>
               <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
                 <summary>Remover</summary>
@@ -434,6 +447,10 @@
               <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row">
                 <input type="hidden" name="record_id" value="{{ row.id }}">
                 <input type="hidden" name="return_group" value="work_orders">
+                <label class="clean-doc-custom-service-field clean-doc-work-order-note-field">
+                  <span>Observação manual</span>
+                  <textarea name="manual_note" rows="2" placeholder="Adicionar uma nota apenas quando for útil">{{ row.manual_note or "" }}</textarea>
+                </label>
                 <section class="clean-doc-work-order-lines">
                   <div class="table-heading flat-heading">
                     <div><h4>Linhas da folha de obra</h4><p>Itens associados pelo número da FO.</p></div>
@@ -537,6 +554,7 @@
           <span><b>Unit</b><em>{{ ctx.identity.unit or "-" }}</em></span>
           <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
           <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
+          <span><b>KM atuais</b><em>{{ ctx.identity.current_km or "-" }}</em></span>
           <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
           <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
           <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>

@@ -214,7 +214,12 @@ DOCUMENT_HISTORY_ALERT_SEVERITIES = [
 DOCUMENT_HISTORY_ALERT_LABELS = dict(DOCUMENT_HISTORY_ALERT_SEVERITIES)
 
 DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS: dict[str, list[tuple[str, str]]] = {
-    "maintenance": [("revision", "Revisão"), ("degradation", "Degradação"), ("undefined", "Por definir")],
+    "maintenance": [
+        ("revision", "Revisão"),
+        ("degradation", "Degradação"),
+        ("telecharge", "Telecarregamento"),
+        ("cabin_filter", "Filtro de habitáculo"),
+    ],
     "pads": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
     "discs": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR")],
     "tyres": [("undefined", "Por definir"), ("front", "FR"), ("rear", "TR"), ("both", "FR + TR"), ("puncture", "Furo")],
@@ -222,7 +227,7 @@ DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS: dict[str, list[tuple[str, str]]] = {
     "fault": [("free_text", "Texto livre")],
     "services": [("telecharge", "Telecarregamento"), ("other", "Outro")],
     "repair": [("free_text", "Texto livre")],
-    "other": [("free_text", "Texto livre")],
+    "other": [("claim", "Sinistro"), ("glass", "Vidros")],
 }
 DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS = {
     "maintenance": "Manutenção",
@@ -1340,10 +1345,17 @@ def _service_matrix_from_text_and_tags(
             matrix[category] = " · ".join(values)
     normalized = normalize_header(text or "")
     if matrix["maintenance"] == "-":
+        maintenance_suggestions: list[str] = []
+        if "telecarreg" in normalized:
+            maintenance_suggestions.append("Telecarregamento")
+        if "filtrohabitac" in normalized or "filtropolen" in normalized:
+            maintenance_suggestions.append("Filtro de habitáculo")
         if "degrad" in normalized and ("oleo" in normalized or "oil" in normalized):
-            matrix["maintenance"] = "Degradação"
+            maintenance_suggestions.append("Degradação")
         elif "revis" in normalized or "manutenc" in normalized:
-            matrix["maintenance"] = "Revisão"
+            maintenance_suggestions.append("Revisão")
+        if maintenance_suggestions:
+            matrix["maintenance"] = " · ".join(maintenance_suggestions)
     if matrix["pads"] == "-" and ("calco" in normalized or "pastilha" in normalized or "travo" in normalized):
         matrix["pads"] = "Por definir"
     if matrix["discs"] == "-" and "disco" in normalized:
@@ -1354,6 +1366,11 @@ def _service_matrix_from_text_and_tags(
         matrix["tyres"] = "Por definir"
     if matrix["ipo"] == "-" and ("ipo" in normalized or "inspec" in normalized):
         matrix["ipo"] = "IPO"
+    if matrix["other"] == "-":
+        if "sinistr" in normalized or "acident" in normalized:
+            matrix["other"] = "Sinistro"
+        elif "vidro" in normalized or "parabris" in normalized:
+            matrix["other"] = "Vidros"
     return matrix
 
 
@@ -1365,6 +1382,26 @@ def _service_matrix_codes_from_tags(tags: list[VehicleDocumentRecordTag]) -> dic
         if target and code and code not in matrix[target]:
             matrix[target].append(code)
     return matrix
+
+
+def _service_matrix_suggestion_codes(
+    matrix: dict[str, str],
+    saved_codes: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    suggestions: dict[str, list[str]] = {key: [] for key in saved_codes}
+    label_codes = {
+        category: {normalize_header(label): code for code, label in options}
+        for category, options in DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS.items()
+        if category in suggestions
+    }
+    for category, value in matrix.items():
+        if category not in suggestions or saved_codes.get(category) or value in ("", "-", "Por definir"):
+            continue
+        for label in str(value).split(" · "):
+            code = label_codes.get(category, {}).get(normalize_header(label))
+            if code and code != "undefined" and code not in suggestions[category]:
+                suggestions[category].append(code)
+    return suggestions
 
 
 def _work_order_line_items(metadata: dict[str, Any] | list | str | int | float | bool | None) -> list[dict[str, Any]]:
@@ -1603,6 +1640,7 @@ def _build_structured_rows(
         tags = record_tags.get(row.id, [])
         service_text = " ".join(part for part in [row.title, row.raw_description, row.external_reference] if part)
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
+        service_matrix_codes = _service_matrix_codes_from_tags(tags)
         period_start, period_end = _timeline_period_dates(row)
         display_date = period_start or row.document_date
         comparison_state = _structured_comparison_state(row)
@@ -1624,11 +1662,13 @@ def _build_structured_rows(
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
                 "service_matrix": service_matrix,
-                "service_matrix_codes": _service_matrix_codes_from_tags(tags),
+                "service_matrix_codes": service_matrix_codes,
+                "service_suggestion_codes": _service_matrix_suggestion_codes(service_matrix, service_matrix_codes),
                 "invoice_lines": _invoice_line_items(row.metadata_json),
                 "work_order_lines": _work_order_line_items(row.metadata_json),
                 "service_summary": _service_summary(service_matrix),
                 "custom_services": _custom_service_values(tags),
+                "manual_note": str((row.metadata_json or {}).get("manual_note") or ""),
                 "period_start": period_start,
                 "period_end": period_end,
                 "period_display": _period_display(period_start, period_end),
@@ -1714,6 +1754,7 @@ def _build_archive_rows(
             if part
         )
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
+        service_matrix_codes = _service_matrix_codes_from_tags(tags)
         rows.append(
             {
                 "kind": "document",
@@ -1742,11 +1783,13 @@ def _build_archive_rows(
                 "file_type": (document.file_type or Path(document.original_name or document.file_name or "").suffix.lstrip(".")).lower(),
                 "tags": [_format_tag(tag) for tag in tags],
                 "service_matrix": service_matrix,
-                "service_matrix_codes": _service_matrix_codes_from_tags(tags),
+                "service_matrix_codes": service_matrix_codes,
+                "service_suggestion_codes": _service_matrix_suggestion_codes(service_matrix, service_matrix_codes),
                 "invoice_lines": _invoice_line_items(metadata),
                 "work_order_lines": [],
                 "service_summary": _service_summary(service_matrix),
                 "custom_services": _custom_service_values(tags),
+                "manual_note": "",
             }
         )
     for record in pending_records:
@@ -1775,12 +1818,17 @@ def _build_archive_rows(
                 "tags": [],
                 "service_matrix": _service_matrix_from_text_and_tags(record.title or record.raw_description or "", []),
                 "service_matrix_codes": _service_matrix_codes_from_tags([]),
+                "service_suggestion_codes": _service_matrix_suggestion_codes(
+                    _service_matrix_from_text_and_tags(record.title or record.raw_description or "", []),
+                    _service_matrix_codes_from_tags([]),
+                ),
                 "invoice_lines": [],
                 "work_order_lines": [],
                 "service_summary": _service_summary(
                     _service_matrix_from_text_and_tags(record.title or record.raw_description or "", [])
                 ),
                 "custom_services": [],
+                "manual_note": str((record.metadata_json or {}).get("manual_note") or ""),
             }
         )
     rows.sort(key=lambda row: (row["date"] or date.min, row["title"]), reverse=True)

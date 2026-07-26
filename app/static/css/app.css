@@ -17161,6 +17161,173 @@ button.clean-upload-preview-card {
   margin: 0 auto;
 }
 
+/* Vehicle documents: compact lists and focused classification workspace. */
+.clean-doc-group-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.clean-doc-group-card {
+  min-width: 112px;
+}
+
+.clean-doc-service-table-wrap {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.clean-doc-service-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+.clean-doc-service-table thead th {
+  background: #f4f6f8;
+  box-shadow: 0 1px 0 #dce4ef;
+}
+
+.clean-doc-detail-open .clean-doc-expanded-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1420px, calc(100vw - 32px));
+  height: min(94vh, 940px);
+  max-height: 94vh;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.clean-doc-detail-open .clean-doc-expanded-detail > summary {
+  position: relative;
+  z-index: 3;
+  min-height: 54px;
+  border-bottom: 1px solid #dce4ef;
+  background: #fff;
+}
+
+.clean-doc-detail-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clean-doc-summary-close {
+  border-radius: 7px;
+  background: #9b3f20;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.clean-doc-detail-open .clean-doc-expanded-detail-grid {
+  min-height: 0;
+  overflow: auto;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid {
+  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-areas:
+    "document classification"
+    "lines classification"
+    "note actions"
+    "preview preview";
+  align-items: start;
+}
+
+.clean-doc-detail-document-card dl {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.clean-doc-detail-note-card {
+  grid-area: note;
+}
+
+.clean-doc-detail-note-card textarea,
+.clean-doc-work-order-note-field textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-line-classification-card {
+  position: sticky;
+  top: 0;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions {
+  position: static;
+  grid-template-columns: 1fr;
+}
+
+.clean-doc-service-choice-list input:checked + span {
+  border-color: #78b88a;
+  background: #e7f5eb;
+  color: #176b36;
+}
+
+.clean-doc-classification-editor.is-suggested .clean-doc-service-choice-list input:checked + span {
+  border-color: #e7c36a;
+  background: #fff5d9;
+  color: #8b5b00;
+}
+
+.clean-doc-service-choice-list input[data-classification-origin="saved"]:checked + span {
+  border-color: #78b88a;
+  background: #e7f5eb;
+  color: #176b36;
+}
+
+.clean-doc-status-pill {
+  background: #fff5d9;
+  color: #8b5b00;
+}
+
+.clean-doc-status-pill.is-valid,
+.is-validated > .table-heading .clean-doc-status-pill {
+  border-color: #9bc9a8;
+  background: #e7f5eb;
+  color: #176b36;
+}
+
+@media (max-width: 900px) {
+  .clean-doc-group-strip {
+    grid-template-columns: repeat(7, 122px);
+  }
+
+  .clean-doc-classify-detail-row.clean-doc-detail-open > td {
+    padding: 8px !important;
+  }
+
+  .clean-doc-detail-open .clean-doc-expanded-detail {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .clean-doc-detail-open .clean-doc-invoice-focus-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "document"
+      "classification"
+      "lines"
+      "note"
+      "actions"
+      "preview";
+  }
+
+  .clean-doc-detail-document-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-line-classification-card,
+  .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions {
+    position: static;
+  }
+}
+
 .clean-doc-detail-card {
   display: grid;
   align-content: start;

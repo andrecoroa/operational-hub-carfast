@@ -19,7 +19,11 @@ from app.models.documents import (
     VehicleDocumentRecordTag,
 )
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
-from app.services.vehicle_document_history import document_center_module_context, vehicle_document_module_context
+from app.services.vehicle_document_history import (
+    DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+    document_center_module_context,
+    vehicle_document_module_context,
+)
 from app.web.router import (
     _batch_document_vehicle,
     _batch_invoice_filinto_stacked_lines,
@@ -3296,6 +3300,7 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
             "tyres": "",
             "ipo": "",
             "other": "",
+            "manual_note": "Confirmado em oficina",
         },
         follow_redirects=False,
     )
@@ -3305,6 +3310,7 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     db_session.refresh(record)
     assert record.status == "classified"
     assert record.comparison_state == "validado"
+    assert record.metadata_json["manual_note"] == "Confirmado em oficina"
     tag = db_session.scalar(
         select(VehicleDocumentRecordTag).where(
             VehicleDocumentRecordTag.vehicle_id == vehicle.id,
@@ -3319,6 +3325,47 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     assert page.status_code == 200
     assert '<option value="rear" selected>TR</option>' in page.text
     assert "Validado" in page.text
+    assert "Confirmado em oficina" in page.text
+    assert "is-valid" in page.text
+
+
+def test_clean_vehicle_documents_service_choices_match_operational_vocabulary(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-1701",
+        external_reference="1701",
+        plate=vehicle.plate,
+        raw_description="Telecarregamento e filtro habitáculo",
+        status="structured",
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    maintenance = dict(DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS["maintenance"])
+    other = dict(DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS["other"])
+    assert "undefined" not in maintenance
+    assert maintenance["telecharge"] == "Telecarregamento"
+    assert maintenance["cabin_filter"] == "Filtro de habitáculo"
+    assert other == {"claim": "Sinistro", "glass": "Vidros"}
+
+    page = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=work_orders"
+    )
+    assert page.status_code == 200
+    assert "Telecarregamento" in page.text
+    assert "Filtro de habitáculo" in page.text
+    assert "Sinistro" in page.text
+    assert "Vidros" in page.text
+
+    context = vehicle_document_module_context(db_session, vehicle)
+    assert "telecharge" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
+    assert "cabin_filter" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
 
 
 def test_clean_vehicle_documents_saves_multiple_services_and_custom_values(authenticated_client, db_session):

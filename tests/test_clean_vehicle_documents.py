@@ -2796,6 +2796,129 @@ ATCUD:JF6SPMRD-352
     assert payload["due_date"] == "2025-09-04"
 
 
+def test_batch_invoice_payload_extracts_caetano_gamobar_ffo_without_financial_rows():
+    text = """
+Original
+FATURA
+FFO/889/2025
+04/09/2025
+REPARAR CONFORME RELATORIO DE PERITAGEM 604062222
+935,94
+175,01
+0,00
+760,93
+0,00
+384,52
+376,41
+Total
+IVA
+Desconto
+Bruto
+Diversos
+M. Obra
+Materiais
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_ffo_889.pdf", existing_text=text)
+
+    assert payload["document_number"] == "FFO/889/2025"
+    assert payload["total_with_vat"] == "935,94"
+    assert payload["taxable_base"] == "760,9300"
+    assert payload["vat_amount"] == "175,01"
+    assert payload["ocr_total_check"] == "ok"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["description"] == "REPARAR CONFORME RELATORIO DE PERITAGEM 604062222"
+    assert payload["invoice_lines"][0]["amount"] == "760,9300"
+    assert all(line["description"] not in {"Total", "IVA", "Bruto"} for line in payload["invoice_lines"])
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_ffo_discounted_total():
+    text = """
+FATURA
+FFO/892/2025
+REPARAR CONF RELATÓRIO PERITAGEM 220052383
+2548,07
+476,47
+142,50
+2214,10
+0,00
+1439,11
+632,49
+Total
+IVA
+Desconto
+Bruto
+Diversos
+M. Obra
+Materiais
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_ffo_892.pdf", existing_text=text)
+
+    assert payload["total_with_vat"] == "2548,07"
+    assert payload["taxable_base"] == "2071,6000"
+    assert payload["discount_without_vat"] == "142,50"
+    assert len(payload["invoice_lines"]) == 1
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_hfm_single_parts_line():
+    text = """
+Fatura
+04/09/2025
+2025-08-05
+HFM/352/2025
+Data de vencimento
+Nº Fatura
+Data Doc.
+MP
+23,00
+113,83
+10,00
+21,08
+Uds
+6,00
+2C10-03
+RECARGA KIT
+9831814080
+PSA
+Total Fatura
+Total IVA
+Dto.
+Total B.T.
+Total Embalagens
+Total Portes
+140,01
+26,18
+12,65
+113,83
+0,00
+0,00
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_hfm_352.pdf", existing_text=text)
+
+    assert payload["document_number"] == "HFM/352/2025"
+    assert payload["total_with_vat"] == "140,01"
+    assert payload["taxable_base"] == "113,83"
+    assert payload["vat_amount"] == "26,18"
+    assert payload["ocr_total_check"] == "ok"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "9831814080",
+            "description": "RECARGA KIT",
+            "quantity": "6,00",
+            "unit": "Uds",
+            "unit_price": "21,08",
+            "list_price": "21,08",
+            "discount_percent": "10,00",
+            "tax": "23,00",
+            "amount": "113,83",
+            "service": "Por classificar",
+            "line_type": "MAT",
+        }
+    ]
+
+
 def test_batch_invoice_payload_extracts_filinto_tal_credit_note():
     text = """
 ORIGINAL

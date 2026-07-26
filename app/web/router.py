@@ -7907,9 +7907,23 @@ def _batch_invoice_filinto_vnc_data(text: str, lines: list[str]) -> dict[str, An
 def _batch_invoice_is_gamobar_template(text: str) -> bool:
     normalized = (normalize_identifier(text) or "").lower()
     compact = re.sub(r"[^a-z0-9]", "", normalized)
+    gamobar_number = re.search(
+        r"\b(?:HFO|HFJ|FFJ|XFO|FFO|HFM|BFO)/\d+(?:/\d{4})?\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    ffo_summary = all(
+        marker in compact
+        for marker in ("total", "iva", "desconto", "bruto", "mobra", "materiais")
+    )
+    hfm_summary = all(
+        marker in compact
+        for marker in ("totalfatura", "totaliva", "totalbt", "totalembalagens", "totalportes")
+    )
     return (
         "500112967" in compact
         or ("caetano" in normalized and "gamobar" in normalized)
+        or bool(gamobar_number and (ffo_summary or hfm_summary))
         or (
             "ident" in compact
             and "doc" in compact
@@ -8560,6 +8574,186 @@ def _batch_invoice_gamobar_parse_lines(lines: list[str]) -> tuple[list[dict[str,
     return invoice_lines, ecolub_lines
 
 
+def _batch_invoice_gamobar_summary_values(
+    lines: list[str],
+    labels: tuple[str, ...],
+    *,
+    values_before: bool,
+) -> list[str]:
+    normalized = [normalize_identifier(line) for line in lines]
+    normalized_labels = [normalize_identifier(label) for label in labels]
+    money_re = re.compile(
+        r"^-?\d{1,3}(?:[ .]\d{3})*(?:[.,]\d{2,4})\s*(?:EUR|€)?$|"
+        r"^-?\d+(?:[.,]\d{2,4})\s*(?:EUR|€)?$",
+        flags=re.IGNORECASE,
+    )
+    for index in range(0, len(lines) - len(labels) + 1):
+        if normalized[index:index + len(labels)] != normalized_labels:
+            continue
+        if values_before:
+            candidates = lines[max(0, index - len(labels)):index]
+        else:
+            candidates = lines[index + len(labels):index + (2 * len(labels))]
+        if len(candidates) != len(labels) or not all(money_re.fullmatch(value.strip()) for value in candidates):
+            continue
+        return [
+            _batch_invoice_format_money(value.replace("€", "").replace("EUR", "").strip())
+            for value in candidates
+        ]
+    return []
+
+
+def _batch_invoice_gamobar_ffo_data(
+    text: str,
+    lines: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
+    values = _batch_invoice_gamobar_summary_values(
+        lines,
+        ("Total", "IVA", "Desconto", "Bruto", "Diversos", "M. Obra", "Materiais"),
+        values_before=True,
+    )
+    if not values:
+        return [], [], {}
+    # In the FFO body the last three values are emitted in visual column
+    # order (Materiais, Diversos, M. Obra), not in the following label order.
+    total, vat, discount, gross, materials, misc, labor = values
+    gross_value = _batch_invoice_decimal(gross)
+    discount_value = _batch_invoice_decimal(discount)
+    taxable_base = (
+        gross_value - discount_value
+        if gross_value is not None and discount_value is not None
+        else None
+    )
+    description_match = re.search(
+        r"\b(REPARAR\b.*?(?:RELAT[ÓO]RIO\s+DE\s+PERITAGEM|RELAT[ÓO]RIO\s+PERITAGEM)\s+\d+)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    report_match = re.search(r"\bPERITAGEM\s+(\d{6,})\b", text, flags=re.IGNORECASE)
+    if description_match:
+        description = " ".join(description_match.group(1).split())
+    elif report_match:
+        description = f"REPARAR CONFORME RELATÓRIO DE PERITAGEM {report_match.group(1)}"
+    else:
+        description = "Reparação conforme peritagem"
+    amount = (
+        f"{taxable_base:.4f}".replace(".", ",")
+        if taxable_base is not None
+        else ""
+    )
+    invoice_lines = [
+        {
+            "reference": "",
+            "description": description[:240],
+            "quantity": "",
+            "unit": "",
+            "unit_price": "",
+            "discount_percent": discount,
+            "tax": "23,00",
+            "amount": amount,
+            "service": _batch_invoice_line_service(description),
+            "line_type": "VAR",
+        }
+    ]
+    totals = {
+        "subtotal_without_vat": amount,
+        "taxable_base": amount,
+        "vat_amount": vat,
+        "total_with_vat": total,
+        "discount_without_vat": discount,
+        "gross_without_vat": gross,
+        "materials_total": materials,
+        "labor_total": labor,
+        "misc_total": misc,
+        "taxes_total": "",
+        "ecolub_total": "",
+        "ocr_total_check": "",
+    }
+    base_value = _batch_invoice_decimal(amount)
+    vat_value = _batch_invoice_decimal(vat)
+    total_value = _batch_invoice_decimal(total)
+    if base_value is not None and vat_value is not None and total_value is not None:
+        totals["ocr_total_check"] = (
+            "ok"
+            if abs((base_value + vat_value) - total_value) <= Decimal("0.02")
+            else "divergent"
+        )
+    return invoice_lines, [], totals
+
+
+def _batch_invoice_gamobar_hfm_data(
+    text: str,
+    lines: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
+    line_match = re.search(
+        r"\bMP\s+"
+        r"(?P<tax>-?\d+,\d{2,4})\s+"
+        r"(?P<amount>-?\d+,\d{2,4})\s+"
+        r"(?P<discount>-?\d+,\d{2,4})\s+"
+        r"(?P<price>-?\d+,\d{2,4})\s+"
+        r"(?P<unit>Uds|UN|H)\s+"
+        r"(?P<quantity>-?\d+,\d{2,4})\s+"
+        r"(?P<location>[A-Z0-9-]+)\s+"
+        r"(?P<description>[A-ZÀ-Ú][A-ZÀ-Ú0-9 /+().-]*?)\s+"
+        r"(?P<reference>[A-Z0-9-]{5,})\s+"
+        r"(?P<line_type>[A-Z]{2,4})\b",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    invoice_lines: list[dict[str, Any]] = []
+    if line_match:
+        description = " ".join(line_match.group("description").split())
+        invoice_lines.append(
+            {
+                "reference": line_match.group("reference"),
+                "description": description[:240],
+                "quantity": line_match.group("quantity"),
+                "unit": line_match.group("unit"),
+                "unit_price": line_match.group("price"),
+                "list_price": line_match.group("price"),
+                "discount_percent": line_match.group("discount"),
+                "tax": line_match.group("tax"),
+                "amount": line_match.group("amount"),
+                "service": _batch_invoice_line_service(description),
+                "line_type": "MAT",
+            }
+        )
+    values = _batch_invoice_gamobar_summary_values(
+        lines,
+        ("Total Fatura", "Total IVA", "Dto.", "Total B.T.", "Total Embalagens", "Total Portes"),
+        values_before=False,
+    )
+    totals: dict[str, str] = {}
+    if values:
+        total, vat, discount, base, packages, postage = values
+        totals = {
+            "subtotal_without_vat": base,
+            "taxable_base": base,
+            "vat_amount": vat,
+            "total_with_vat": total,
+            "discount_without_vat": discount,
+            "gross_without_vat": "",
+            "materials_total": base,
+            "labor_total": "",
+            "misc_total": "",
+            "taxes_total": "",
+            "ecolub_total": "",
+            "packaging_total": packages,
+            "postage_total": postage,
+            "ocr_total_check": "",
+        }
+        base_value = _batch_invoice_decimal(base)
+        vat_value = _batch_invoice_decimal(vat)
+        total_value = _batch_invoice_decimal(total)
+        if base_value is not None and vat_value is not None and total_value is not None:
+            totals["ocr_total_check"] = (
+                "ok"
+                if abs((base_value + vat_value) - total_value) <= Decimal("0.02")
+                else "divergent"
+            )
+    return invoice_lines, [], totals
+
+
 def _batch_invoice_gamobar_totals(lines: list[str], ecolub_lines: list[dict[str, Any]]) -> dict[str, str]:
     totals = {
         "subtotal_without_vat": "",
@@ -8625,8 +8819,6 @@ def _batch_invoice_gamobar_totals(lines: list[str], ecolub_lines: list[dict[str,
 
 
 def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
-    invoice_lines, ecolub_lines = _batch_invoice_gamobar_parse_lines(lines)
-    totals = _batch_invoice_gamobar_totals(lines, ecolub_lines)
     document_date = _batch_document_date(text)
     due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
     due_date = _batch_document_date(due_date_text)
@@ -8645,6 +8837,16 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
         if full_document_numbers
         else (short_document_numbers[0].upper() if short_document_numbers else "")
     )
+    document_prefix = document_number.split("/", 1)[0] if document_number else ""
+    if document_prefix == "FFO":
+        invoice_lines, ecolub_lines, totals = _batch_invoice_gamobar_ffo_data(text, lines)
+    elif document_prefix == "HFM":
+        invoice_lines, ecolub_lines, totals = _batch_invoice_gamobar_hfm_data(text, lines)
+    else:
+        invoice_lines, ecolub_lines = _batch_invoice_gamobar_parse_lines(lines)
+        totals = _batch_invoice_gamobar_totals(lines, ecolub_lines)
+    if not totals:
+        totals = _batch_invoice_gamobar_totals(lines, ecolub_lines)
     parts_header = re.search(
         r"(?P<due>\d{2}/\d{2}/\d{4})\s*"
         r"(?P<document_date>\d{4}-\d{2}-\d{2})\s*"
@@ -9852,7 +10054,15 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         or []
     )
     used_filinto_stacked_lines = False
-    skip_generic_invoice_line_fallback = bool(filinto_automoveis_data or filinto_vnc_data)
+    specialized_gamobar_template = str(gamobar_data.get("ocr_template") or "") in {
+        "caetano_gamobar_ffo",
+        "caetano_gamobar_hfm",
+    }
+    skip_generic_invoice_line_fallback = bool(
+        filinto_automoveis_data
+        or filinto_vnc_data
+        or specialized_gamobar_template
+    )
     if not invoice_lines and _batch_invoice_is_filinto_template(text) and not filinto_vnc_data:
         inline_lines = _batch_invoice_filinto_inline_lines(lines)
         tal_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []

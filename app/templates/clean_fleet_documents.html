@@ -86,40 +86,40 @@
         </div>
       </section>
     {% endmacro %}
-    {% macro render_service_choices(row, category) %}
+    {% macro render_service_choices(row, category, form_id="") %}
       {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
       <fieldset class="clean-doc-service-choice-group">
         <legend>{{ quick_classification_labels.get(category, category) }}</legend>
         <div class="clean-doc-service-choice-list">
           {% for option_code, option_label in quick_classifications.get(category, []) %}
             <label>
-              <input type="checkbox" name="{{ category }}" value="{{ option_code }}" {% if option_code in current_codes %}checked{% endif %}>
+              <input type="checkbox" name="{{ category }}" value="{{ option_code }}" {% if form_id %}form="{{ form_id }}"{% endif %} {% if option_code in current_codes %}checked{% endif %}>
               <span>{{ option_label }}</span>
             </label>
           {% endfor %}
         </div>
       </fieldset>
     {% endmacro %}
-    {% macro render_classification_editor(row) %}
+    {% macro render_classification_editor(row, form_id="", title="Classificação por serviço") %}
       <section class="clean-doc-classification-editor">
         <div class="table-heading flat-heading">
           <div>
-            <h4>Classificação por serviço</h4>
+            <h4>{{ title }}</h4>
             <p>Podes selecionar mais do que um serviço, incluindo várias opções da mesma categoria.</p>
           </div>
           <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
         </div>
         <div class="clean-doc-service-choice-grid">
-          {{ render_service_choices(row, 'maintenance') }}
-          {{ render_service_choices(row, 'pads') }}
-          {{ render_service_choices(row, 'discs') }}
-          {{ render_service_choices(row, 'tyres') }}
-          {{ render_service_choices(row, 'ipo') }}
-          {{ render_service_choices(row, 'other') }}
+          {{ render_service_choices(row, 'maintenance', form_id) }}
+          {{ render_service_choices(row, 'pads', form_id) }}
+          {{ render_service_choices(row, 'discs', form_id) }}
+          {{ render_service_choices(row, 'tyres', form_id) }}
+          {{ render_service_choices(row, 'ipo', form_id) }}
+          {{ render_service_choices(row, 'other', form_id) }}
         </div>
         <label class="clean-doc-custom-service-field">
           <span>Outros serviços</span>
-          <input type="text" name="other_custom" value="{{ row.custom_services|join('; ') }}" list="document-service-suggestions" placeholder="Escrever um ou vários serviços, separados por ponto e vírgula">
+          <input type="text" name="other_custom" {% if form_id %}form="{{ form_id }}"{% endif %} value="{{ row.custom_services|join('; ') }}" list="document-service-suggestions" placeholder="Escrever um ou vários serviços, separados por ponto e vírgula">
         </label>
       </section>
     {% endmacro %}
@@ -144,7 +144,6 @@
             <col class="clean-doc-provider-col">
             <col class="clean-doc-km-col">
             <col class="clean-doc-total-col">
-            <col class="clean-doc-services-col">
             <col class="clean-doc-status-col">
             <col class="clean-doc-actions-col">
           </colgroup>
@@ -156,7 +155,6 @@
               <th class="clean-doc-col-provider">Fornecedor</th>
               <th class="clean-doc-col-km">Km</th>
               <th class="clean-doc-col-total">Total</th>
-              <th class="clean-doc-col-services">Serviços adjudicados</th>
               <th class="clean-doc-col-status">Estado</th>
               <th class="clean-doc-col-actions">Ações</th>
             </tr>
@@ -174,9 +172,6 @@
                 <td class="clean-doc-col-provider" title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                 <td class="clean-doc-col-km">{{ row.km if row.km is not none else "-" }}</td>
                 <td class="clean-doc-col-total">{{ row.total_with_vat or "-" }}</td>
-                <td class="clean-doc-service-description">
-                  {{ render_classified_service_summary(row) }}
-                </td>
                 <td class="clean-doc-col-status"><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                 <td class="clean-doc-col-actions">
                   <form id="{{ form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-inline-classify-form">
@@ -186,37 +181,25 @@
                   </form>
                   <div class="clean-doc-classify-actions">
                     <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Ver detalhes</button>
-                    {% if row.kind == "document" %}
-                      <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
-                        <summary>Remover</summary>
-                        <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
-                          <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
-                          <input type="text" name="reason" placeholder="Motivo obrigatório" required>
-                          <button type="submit">Confirmar</button>
-                        </form>
-                      </details>
-                    {% elif row.kind in ["record", "pending_record"] %}
-                      <details class="clean-doc-remove-menu clean-doc-remove-menu-inline">
-                        <summary>Remover</summary>
-                        <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/records/{{ row.id }}/remove">
-                          <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.main_group or row.archive_group or '' }}">
-                          <input type="text" name="reason" placeholder="Motivo obrigatório" required>
-                          <button type="submit">Confirmar</button>
-                        </form>
-                      </details>
-                    {% endif %}
                   </div>
                 </td>
               </tr>
               {% set note_text = row.description or row.process_reference %}
-              {% if note_text %}
+              {% if note_text or row.service_summary %}
                 <tr class="clean-doc-classify-note-row clean-doc-classify-group-note-row">
                   <td></td>
-                  <td colspan="8"><strong>OBS:</strong> {{ note_text }}</td>
+                  <td colspan="7">
+                    {% if row.service_summary %}
+                      <span class="clean-doc-subrow-block"><strong>Serviços:</strong> {{ render_classified_service_summary(row) }}</span>
+                    {% endif %}
+                    {% if note_text %}
+                      <span class="clean-doc-subrow-block"><strong>OBS:</strong> {{ note_text }}</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% endif %}
               <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
-                <td colspan="9">
+                <td colspan="8">
                   <details class="clean-doc-expanded-detail">
                     <summary>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</summary>
                     <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
@@ -236,14 +219,8 @@
                       </section>
                       {% if row.source_label == "FA" or row.archive_group == "invoices" %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
-                          <div class="clean-doc-line-classification">
-                            <div class="clean-doc-line-classification-header">
-                              <h4>Serviços relevantes da fatura</h4>
-                              <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
-                            </div>
-                            {{ render_service_select_grid(row, form_id, "", False) }}
-                            <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
-                          </div>
+                          {{ render_classification_editor(row, form_id, "Serviços relevantes da fatura") }}
+                          <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
                         </section>
                       {% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-detail-lines-card">
@@ -322,7 +299,7 @@
                                 </div>
                               {% endif %}
                               <div class="clean-doc-inline-link-form">
-                                <select name="work_order_record_id">
+                                <select name="work_order_record_id" form="{{ form_id }}">
                                   <option value="">Selecionar folha de obra</option>
                                   {% for work_order in work_order_link_options %}
                                     <option value="{{ work_order.id }}">{{ work_order.label }}</option>
@@ -331,6 +308,7 @@
                                 <button
                                   type="submit"
                                   class="button-link secondary-link"
+                                  form="{{ form_id }}"
                                   formaction="/v2-clean/fleet/{{ vehicle.id }}/documents/link-work-order"
                                   formmethod="post"
                                 >Associar FO</button>
@@ -342,6 +320,21 @@
                       {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                           {{ render_service_select_grid(row, form_id) }}
+                        </section>
+                      {% endif %}
+                      {% if row.kind == "document" and row.open_href %}
+                        <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-inline-preview" hidden>
+                          <header class="clean-doc-inline-preview-header">
+                            <div>
+                              <h4>Pré-visualização</h4>
+                              <span data-inline-preview-title>{{ row.detail_label or row.archive_label or row.title or "Documento" }}</span>
+                            </div>
+                            <div class="clean-doc-inline-actions">
+                              <a class="button-link secondary-link" data-inline-preview-open href="{{ row.open_href }}" target="_blank" rel="noopener">Abrir em separador</a>
+                              <button type="button" class="button-link secondary-link" data-close-inline-preview>Fechar preview</button>
+                            </div>
+                          </header>
+                          <div class="clean-doc-inline-preview-body" data-inline-preview-body></div>
                         </section>
                       {% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-actions">
@@ -368,13 +361,33 @@
                           </form>
                         {% endif %}
                         <button type="submit" form="{{ form_id }}" class="button-link primary-link">Guardar e validar</button>
+                        {% if row.kind == "document" %}
+                          <details class="clean-doc-remove-menu">
+                            <summary>Remover documento</summary>
+                            <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                              <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
+                              <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                              <button type="submit">Confirmar remoção</button>
+                            </form>
+                          </details>
+                        {% elif row.kind in ["record", "pending_record"] %}
+                          <details class="clean-doc-remove-menu">
+                            <summary>Remover registo</summary>
+                            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/records/{{ row.id }}/remove">
+                              <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.main_group or row.archive_group or '' }}">
+                              <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                              <button type="submit">Confirmar remoção</button>
+                            </form>
+                          </details>
+                        {% endif %}
+                        <button type="button" class="button-link secondary-link clean-doc-detail-close">Fechar detalhes</button>
                       </section>
                     </div>
                   </details>
                 </td>
               </tr>
             {% else %}
-              <tr><td colspan="9" class="clean-empty-cell">{{ empty_text }}</td></tr>
+              <tr><td colspan="8" class="clean-empty-cell">{{ empty_text }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -894,6 +907,11 @@
   });
   const closeOpenDocumentDetail = () => {
     document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
+      row.querySelectorAll(".clean-doc-inline-preview").forEach((preview) => {
+        preview.hidden = true;
+        const body = preview.querySelector("[data-inline-preview-body]");
+        if (body) body.innerHTML = "";
+      });
       row.hidden = true;
       row.classList.remove("clean-doc-detail-open");
       const detail = row.querySelector("details");
@@ -903,6 +921,9 @@
       button.textContent = "Ver detalhes";
     });
   };
+  document.querySelectorAll(".clean-doc-detail-close").forEach((button) => {
+    button.addEventListener("click", closeOpenDocumentDetail);
+  });
   document.querySelectorAll(".clean-doc-classify-detail-row .clean-doc-expanded-detail > summary").forEach((summary) => {
     summary.addEventListener("click", (event) => {
       const detailRow = summary.closest(".clean-doc-classify-detail-row.clean-doc-detail-open");
@@ -916,6 +937,20 @@
   const documentPreviewTitle = document.getElementById("clean-doc-preview-title");
   const documentPreviewBody = document.getElementById("clean-doc-preview-body");
   const documentPreviewOpen = document.getElementById("clean-doc-preview-open");
+  const fillPreviewBody = (body, src, title, kind) => {
+    body.innerHTML = "";
+    if (kind === "image") {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = title;
+      body.appendChild(img);
+    } else {
+      const iframe = document.createElement("iframe");
+      iframe.src = `${src}#toolbar=1&navpanes=0`;
+      iframe.title = title;
+      body.appendChild(iframe);
+    }
+  };
   const closeDocumentPreview = () => {
     if (!documentPreviewModal || !documentPreviewBody) return;
     documentPreviewModal.hidden = true;
@@ -924,25 +959,36 @@
   };
   document.querySelectorAll(".clean-doc-preview-trigger[data-preview-src]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (!documentPreviewModal || !documentPreviewBody || !documentPreviewTitle || !documentPreviewOpen) return;
       const src = button.dataset.previewSrc || "";
       const title = button.dataset.previewTitle || "Documento";
       const kind = button.dataset.previewKind || "pdf";
+      const inlinePreview = button.closest(".clean-doc-expanded-detail")?.querySelector(".clean-doc-inline-preview");
+      if (inlinePreview) {
+        const inlineTitle = inlinePreview.querySelector("[data-inline-preview-title]");
+        const inlineBody = inlinePreview.querySelector("[data-inline-preview-body]");
+        const inlineOpen = inlinePreview.querySelector("[data-inline-preview-open]");
+        if (!inlineBody) return;
+        if (inlineTitle) inlineTitle.textContent = title;
+        if (inlineOpen) inlineOpen.href = src;
+        fillPreviewBody(inlineBody, src, title, kind);
+        inlinePreview.hidden = false;
+        inlinePreview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+      if (!documentPreviewModal || !documentPreviewBody || !documentPreviewTitle || !documentPreviewOpen) return;
       documentPreviewTitle.textContent = title;
       documentPreviewOpen.href = src;
-      documentPreviewBody.innerHTML = "";
-      if (kind === "image") {
-        const img = document.createElement("img");
-        img.src = src;
-        img.alt = title;
-        documentPreviewBody.appendChild(img);
-      } else {
-        const iframe = document.createElement("iframe");
-        iframe.src = `${src}#toolbar=1&navpanes=0`;
-        iframe.title = title;
-        documentPreviewBody.appendChild(iframe);
-      }
+      fillPreviewBody(documentPreviewBody, src, title, kind);
       documentPreviewModal.hidden = false;
+    });
+  });
+  document.querySelectorAll("[data-close-inline-preview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const preview = button.closest(".clean-doc-inline-preview");
+      if (!preview) return;
+      const body = preview.querySelector("[data-inline-preview-body]");
+      preview.hidden = true;
+      if (body) body.innerHTML = "";
     });
   });
   document.querySelectorAll("[data-close-doc-preview]").forEach((button) => {

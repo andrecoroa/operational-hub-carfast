@@ -397,12 +397,68 @@ Total do documento
         {
             "reference": "",
             "description": "R-Imposto Único de Circulação",
-            "quantity": "",
+            "quantity": "1",
             "unit": "",
-            "unit_price": "",
-            "tax": "",
+            "unit_price": "147,21",
+            "tax": "E",
             "amount": "147,21",
-            "service": "Por classificar",
+            "service": "Outro",
+        }
+    ]
+
+
+def test_batch_invoice_payload_extracts_filinto_vnc_iuc_invoice():
+    text = """
+Filinto Mota Sucessores S.A.
+Estr. Exterior da Circunvalação, 10686
+4460-281 Srª da Hora - Matosinhos
+NIF: 500 115 966
+Exmos Senhores Carfast - Rent-A-Car, Lda
+FACTURA Rua das Indústrias, 220
+4785-625 TROFA
+Doc.Nº CIAL_FACVN2 025 /3822
+Conta 227010 Data 31/10/2025 NIF 509285970
+Vendedor João Sousa
+Marca : FIAT Modelo : 600 Hybrid Série 2 600 Hybrid 1.2 100cv DCT Matrícula: BZ-73-SC
+Chassis : ZFA5FBAT9SJ078967 Nº Motor : Cilindrada : 1199 Nº Stock : 136 727
+Cor : VERMELHO Interior : TECIDO COM FIO RECICLADO E MONOGRAM Combustível : Gasolina
+PASSIONE
+Descrição Valor Total
+R-Imposto Único de Circulação 111,46
+.
+Observações : ALD n.º 2025.057598.00. IUC - Não Sujeito
+Base de incidência de I.V.A. Síntese de Pagamento
+Cod Taxa % Base IVA Valor IVA
+Total Líquido 111,46
+E 0,00 111,46 0,00 Total IVA 0,00
+Total do documento 111,46
+ATCUD: JJWNNZZ4-3822
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "VNC.22 (Original)-29204-28.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "filinto_mota_venda_iuc"
+    assert payload["document_number"] == "CIAL_FACVN2 025 /3822"
+    assert payload["document_date"] == "2025-10-31"
+    assert payload["supplier_name"] == "Filinto Mota Sucessores S.A. (NIF 500115966)"
+    assert payload["supplier_nif"] == "500115966"
+    assert payload["client_nif"] == "509285970"
+    assert payload["plate"] == "BZ-73-SC"
+    assert payload["vin"] == "ZFA5FBAT9SJ078967"
+    assert payload["total_with_vat"] == "111,46"
+    assert payload["vat_amount"] == "0,00"
+    assert payload["atcud"] == "JJWNNZZ4-3822"
+    assert payload["model"] == "600 Hybrid Série 2 600 Hybrid 1.2 100cv DCT"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "",
+            "description": "R-Imposto Único de Circulação",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "111,46",
+            "tax": "E",
+            "amount": "111,46",
+            "service": "Outro",
         }
     ]
 

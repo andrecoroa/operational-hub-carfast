@@ -7659,6 +7659,109 @@ def _batch_invoice_is_filinto_template(text: str) -> bool:
     )
 
 
+def _batch_invoice_is_filinto_vnc_template(text: str) -> bool:
+    compact = _compact_identifier(text)
+    return (
+        _batch_invoice_is_filinto_template(text)
+        and "CIALFACVN" in compact
+        and (
+            "IMPOSTOUNICODECIRCULACAO" in compact
+            or "MODVNC" in compact
+            or "600HYBRID" in compact
+        )
+    )
+
+
+def _batch_invoice_filinto_vnc_data(text: str, lines: list[str]) -> dict[str, Any]:
+    if not _batch_invoice_is_filinto_vnc_template(text):
+        return {}
+
+    joined = "\n".join(lines)
+
+    def first_match(pattern: str, source: str = joined, flags: int = re.IGNORECASE) -> str:
+        match = re.search(pattern, source, flags=flags)
+        return " ".join(match.group(1).split()).strip(" .:/_-") if match else ""
+
+    document_number = first_match(
+        r"Doc\.?\s*N[ºo]\s*(CIAL_FACVN\s*\d\s*\d{2,4}\s*/\s*\d+)",
+        flags=re.IGNORECASE,
+    )
+    if document_number:
+        document_number = re.sub(r"\s*/\s*", " /", document_number)
+        document_number = re.sub(r"CIAL_FACVN\s*(\d)\s+(\d{3})", r"CIAL_FACVN\1 \2", document_number, flags=re.IGNORECASE)
+        document_number = document_number.upper()
+
+    document_date = first_match(r"\bData\s+(\d{1,2}/\d{1,2}/\d{4})\b")
+    client_nif = first_match(r"\bNIF\s+(\d{9})\b")
+    plate = first_match(r"Matr[ií]cula\s*:\s*([A-Z0-9-]{6,12})").upper()
+    vin = first_match(r"Chassis\s*:\s*([A-Z0-9]{12,24})").upper()
+    atcud = first_match(r"\bATCUD\s*:\s*([A-Z0-9-]+)").upper()
+    observations = first_match(r"Observa[cç][oõ]es\s*:\s*(.+?)(?:Base\s+de\s+incid[eê]ncia|Total\s+L[ií]quido|ATCUD|$)", flags=re.IGNORECASE | re.DOTALL)
+    model = first_match(r"Modelo\s*:\s*(.+?)\s+Matr[ií]cula\s*:", flags=re.IGNORECASE | re.DOTALL)
+    brand = first_match(r"Marca\s*:\s*([A-Z0-9À-ÿ .'-]+?)\s+Modelo\s*:", flags=re.IGNORECASE | re.DOTALL)
+    fuel = first_match(r"Combust[ií]vel\s*:\s*([A-ZÀ-ÿ ]+)")
+    stock_number = first_match(r"N[ºo]\s*Stock\s*:\s*([\d ]+)")
+
+    line_description = "R-Imposto Único de Circulação"
+    line_amount = ""
+    for index, line in enumerate(lines):
+        compact_line = _compact_identifier(line)
+        if "IMPOSTOUNICODECIRCULACAO" in compact_line:
+            for candidate in lines[index : index + 4]:
+                money_match = re.search(r"(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})", candidate)
+                if money_match:
+                    line_amount = _batch_invoice_format_money(money_match.group(1))
+                    break
+            if not line_amount:
+                for candidate in lines[index + 1 : index + 4]:
+                    money_match = re.search(r"^(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})$", candidate.strip())
+                    if money_match:
+                        line_amount = _batch_invoice_format_money(money_match.group(1))
+                        break
+            break
+
+    total = first_match(r"Total\s+do\s+documento\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})")
+    if not total:
+        total = line_amount
+    vat_amount = first_match(r"Total\s+IVA\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})") or "0,00"
+    subtotal = first_match(r"Total\s+L[ií]quido\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})") or total
+
+    invoice_lines = []
+    if line_amount:
+        invoice_lines.append(
+            {
+                "reference": "",
+                "description": line_description,
+                "quantity": "1",
+                "unit": "",
+                "unit_price": line_amount,
+                "tax": "E",
+                "amount": line_amount,
+                "service": "Outro",
+            }
+        )
+
+    return {
+        "ocr_template": "filinto_mota_venda_iuc",
+        "document_number": document_number,
+        "document_date": document_date,
+        "supplier_nif": "500115966",
+        "client_nif": client_nif,
+        "plate": plate,
+        "vin": vin,
+        "brand": brand,
+        "model": model,
+        "fuel": fuel,
+        "stock_number": stock_number,
+        "atcud": atcud,
+        "observations": observations,
+        "subtotal_without_vat": _batch_invoice_format_money(subtotal) if subtotal else "",
+        "vat_amount": _batch_invoice_format_money(vat_amount) if vat_amount else "",
+        "total_with_vat": _batch_invoice_format_money(total) if total else "",
+        "invoice_lines": invoice_lines,
+    }
+
+
 def _batch_invoice_is_gamobar_template(text: str) -> bool:
     normalized = (normalize_identifier(text) or "").lower()
     compact = normalized.replace(" ", "")
@@ -9508,10 +9611,11 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     unique_lines = list(dict.fromkeys(lines))
     gamobar_data = _batch_invoice_gamobar_data(text, lines) if _batch_invoice_is_gamobar_template(text) else {}
     cruz_allen_data = _batch_invoice_cruz_allen_data(text, lines) if _batch_invoice_is_cruz_allen_template(text) else {}
-    invoice_lines = cruz_allen_data.get("invoice_lines") or gamobar_data.get("invoice_lines") or []
+    filinto_vnc_data = _batch_invoice_filinto_vnc_data(text, lines)
+    invoice_lines = cruz_allen_data.get("invoice_lines") or gamobar_data.get("invoice_lines") or filinto_vnc_data.get("invoice_lines") or []
     used_filinto_stacked_lines = False
-    skip_generic_invoice_line_fallback = False
-    if not invoice_lines and _batch_invoice_is_filinto_template(text):
+    skip_generic_invoice_line_fallback = bool(filinto_vnc_data)
+    if not invoice_lines and _batch_invoice_is_filinto_template(text) and not filinto_vnc_data:
         inline_lines = _batch_invoice_filinto_inline_lines(lines)
         tal_lines = _batch_invoice_tal_lines(lines) if _batch_invoice_is_tal_template(text) else []
         if (
@@ -9646,6 +9750,20 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         supplier_nif = gamobar_data.get("supplier_nif", "") or supplier_nif
         repair_order_reference = gamobar_data.get("repair_order_reference", "") or repair_order_reference
         totals.update({key: value for key, value in gamobar_data.items() if key in totals and value})
+    if filinto_vnc_data:
+        document_number = str(filinto_vnc_data.get("document_number") or document_number)
+        document_date = _batch_document_date(str(filinto_vnc_data.get("document_date") or "")) or document_date
+        vehicle_fields.update(
+            {
+                "plate": str(filinto_vnc_data.get("plate") or vehicle_fields.get("plate", "")),
+                "vin": str(filinto_vnc_data.get("vin") or vehicle_fields.get("vin", "")),
+                "km": str(filinto_vnc_data.get("km") or vehicle_fields.get("km", "")),
+            }
+        )
+        supplier_nif = str(filinto_vnc_data.get("supplier_nif") or supplier_nif)
+        work_order_reference = ""
+        repair_order_reference = ""
+        totals.update({key: value for key, value in filinto_vnc_data.items() if key in totals and value})
     if not totals.get("total_with_vat"):
         totals["total_with_vat"] = _batch_invoice_total_from_lines(invoice_lines)
     customer_fields = _batch_invoice_customer_fields(text)
@@ -9667,6 +9785,13 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
             }
         )
         due_date = _batch_document_date(gamobar_data.get("due_date", "")) or due_date
+    if filinto_vnc_data:
+        customer_fields.update(
+            {
+                "client_number": customer_fields.get("client_number", ""),
+                "client_nif": str(filinto_vnc_data.get("client_nif") or customer_fields.get("client_nif", "")),
+            }
+        )
     authorization_match = re.search(
         r"\b(?:autoriz(?:aç|ac)[aã]o|autoriza[cç][aã]o|authorization)\b\D{0,24}([A-Z0-9./_-]{3,})",
         text,
@@ -9704,6 +9829,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "ocr_template": (
             str(cruz_allen_data.get("ocr_template") or "cruz_allen_bbc_invoice") if cruz_allen_data else
             str(gamobar_data.get("ocr_template") or "caetano_gamobar_hfo") if gamobar_data else
+            str(filinto_vnc_data.get("ocr_template") or "filinto_mota_venda_iuc") if filinto_vnc_data else
             "filinto_mota_tal" if _batch_invoice_is_tal_template(text) else
             "filinto_mota_sucessores" if _batch_invoice_is_filinto_template(text) else
             "eugenio_jorge_sage_fac" if _batch_invoice_is_eugenio_template(text) else ""
@@ -9713,7 +9839,7 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "original_name": filename,
         **{
             key: value
-            for key, value in {**cruz_allen_data, **gamobar_data}.items()
+            for key, value in {**cruz_allen_data, **gamobar_data, **filinto_vnc_data}.items()
             if key
             not in {
                 "document_number",
@@ -9728,6 +9854,8 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
                 "km",
                 "invoice_lines",
                 "ocr_template",
+                "supplier_nif",
+                "client_nif",
             }
             and value not in ("", None)
             and value != []

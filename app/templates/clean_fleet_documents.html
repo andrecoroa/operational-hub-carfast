@@ -528,26 +528,20 @@
       </div>
     </section>
 
-    <section class="clean-context-action-shell clean-card-wide">
-      <article class="clean-context-action-group">
+    <section class="clean-context-action-shell clean-context-action-shell-single clean-fleet-doc-action-strip clean-card-wide">
+      <article class="clean-context-action-group clean-fleet-doc-action-group">
         <div class="clean-context-action-copy">
-          <strong>Ações documentais</strong>
-          <span>Entradas manuais e gestão do arquivo real desta viatura.</span>
+          <strong>Comandos documentais</strong>
+          <span>Arquivo, pendentes e navegação desta viatura.</span>
         </div>
-        <div class="clean-context-action-row">
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
+        <div class="clean-context-action-row clean-context-action-row-primary">
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
           <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
           <a class="button-link secondary-link" href="#audit-real-start">Início real</a>
           <a class="button-link secondary-link" href="#audit-maintenance-count">Nº manutenções</a>
         </div>
-      </article>
-      <article class="clean-context-action-group">
-        <div class="clean-context-action-copy">
-          <strong>Acessos rápidos</strong>
-          <span>Navegação entre os fluxos ligados a esta viatura.</span>
-        </div>
         <div class="clean-context-action-row">
+          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha v2-clean</a>
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefas e problemas</a>

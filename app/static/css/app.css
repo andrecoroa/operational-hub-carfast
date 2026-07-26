@@ -14503,6 +14503,32 @@ button.clean-upload-preview-card {
   padding: 10px 12px;
 }
 
+.clean-vehicle-header-card-docs-compact ~ .clean-doc-group-strip {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.clean-vehicle-header-card-docs-compact ~ .clean-doc-group-strip .clean-doc-group-card {
+  min-height: 52px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  padding: 8px 10px;
+}
+
+.clean-vehicle-header-card-docs-compact ~ .clean-doc-group-strip .clean-doc-group-badge {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.clean-vehicle-header-card-docs-compact ~ .clean-doc-group-strip .clean-doc-group-card strong {
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.clean-vehicle-header-card-docs-compact ~ .clean-doc-group-strip .clean-doc-group-card em {
+  font-size: 11px;
+}
+
 .clean-doc-filter-panel {
   padding: 14px 16px;
 }
@@ -18227,6 +18253,44 @@ button.clean-upload-preview-card {
 
 .clean-vehicle-header-card-docs-compact .clean-vehicle-header-footer {
   padding-top: 8px;
+}
+
+.clean-fleet-doc-action-strip {
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px 16px;
+}
+
+.clean-fleet-doc-action-group {
+  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 0.9fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.clean-fleet-doc-action-group .clean-context-action-copy {
+  gap: 4px;
+}
+
+.clean-fleet-doc-action-group .clean-context-action-copy span {
+  max-width: 280px;
+}
+
+.clean-fleet-doc-action-group .clean-context-action-row {
+  gap: 8px;
+}
+
+.clean-fleet-doc-action-group .clean-context-action-row-primary {
+  justify-content: flex-start;
+}
+
+.clean-fleet-doc-action-group .clean-context-action-row:last-child {
+  justify-content: flex-end;
+  border-left: 1px solid #e7edf5;
+  padding-left: 14px;
+}
+
+.clean-vehicle-header-card-docs-compact + .clean-fleet-doc-action-strip + .clean-doc-group-strip {
+  margin-top: 8px;
 }
 
 .clean-vehicle-header-main {

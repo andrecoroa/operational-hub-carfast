@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.documents import (
@@ -71,6 +71,7 @@ STRUCTURED_IMPORT_KIND_LABELS = {
 }
 
 STRUCTURED_RECORD_TYPES = {"structured", "legacy_structured"}
+RENTWAY_TIMELINE_GROUPS = {"contracts", "impros"}
 
 STRUCTURED_IMPORT_KIND_ALIASES = {
     "workorders": "work_orders",
@@ -201,6 +202,7 @@ DOCUMENT_HISTORY_COMPARISON_STATES = [
     ("divergente", "Divergente"),
     ("por_validar", "Por validar"),
     ("validado", "Validado"),
+    ("imported_rentway", "Importado RW"),
 ]
 DOCUMENT_HISTORY_COMPARISON_LABELS = dict(DOCUMENT_HISTORY_COMPARISON_STATES)
 
@@ -277,8 +279,14 @@ def _row_date(row: tuple[Any, ...], cols: dict[str, int], candidates: list[str])
 RENTWAY_START_DATE_COLUMNS = [
     "Data início",
     "Data Inicio",
+    "Data de início",
+    "Data de Inicio",
     "Início",
     "Inicio",
+    "Início contrato",
+    "Inicio contrato",
+    "Data início contrato",
+    "Data inicio contrato",
     "Start Date",
     "Start",
     "Rental Start",
@@ -296,11 +304,21 @@ RENTWAY_START_DATE_COLUMNS = [
     "Data levantamento",
     "Data saída",
     "Data saida",
+    "Saída",
+    "Saida",
+    "Data entrega",
+    "Entrega",
+    "Data inicial",
+    "Data de",
+    "De",
 ]
 
 RENTWAY_END_DATE_COLUMNS = [
     "Data fim",
+    "Data de fim",
     "Fim",
+    "Fim contrato",
+    "Data fim contrato",
     "End Date",
     "End",
     "Rental End",
@@ -318,6 +336,15 @@ RENTWAY_END_DATE_COLUMNS = [
     "Return Date",
     "Data retorno",
     "Data entrada",
+    "Data devolução",
+    "Data devolucao",
+    "Devolução",
+    "Devolucao",
+    "Data final",
+    "Data até",
+    "Data ate",
+    "Até",
+    "Ate",
 ]
 
 
@@ -469,6 +496,7 @@ def upsert_structured_record(
     plate: str | None = None,
     vin: str | None = None,
     subtype: str | None = None,
+    comparison_state: str | None = None,
     metadata_json: dict[str, Any] | None = None,
     source_document_id: int | None = None,
     user_id: int | None = None,
@@ -493,6 +521,8 @@ def upsert_structured_record(
         record.plate = plate
         record.vin = vin
         record.subtype = subtype
+        if comparison_state is not None:
+            record.comparison_state = comparison_state
         existing_metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
         incoming_metadata = metadata_json if isinstance(metadata_json, dict) else {}
         record.metadata_json = {**existing_metadata, **incoming_metadata}
@@ -515,6 +545,7 @@ def upsert_structured_record(
         plate=plate,
         vin=vin,
         subtype=subtype,
+        comparison_state=comparison_state,
         metadata_json=metadata_json,
         document_id=source_document_id,
         status="structured",
@@ -912,6 +943,7 @@ def import_impros_xlsx(
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
             subtype=_row_text(row, cols, ["Impro_Type_Code", "Impro Type Code", "Tipo"]) or None,
+            comparison_state="imported_rentway",
             metadata_json={
                 **raw,
                 "_status": status or None,
@@ -989,7 +1021,7 @@ def import_contracts_xlsx(
         )
         start_date = _row_date(row, cols, RENTWAY_START_DATE_COLUMNS)
         end_date = _row_date(row, cols, RENTWAY_END_DATE_COLUMNS)
-        status = _row_text(row, cols, ["Estado", "Status", "salesperson"])
+        status = _row_text(row, cols, ["Estado", "Status"])
         monthly_value = _normalize_text(
             first_row_value(row, cols, ["Valor mensal", "Renda", "Mensalidade", "Monthly Value", "Valor", "invoiced_amount"])
         )
@@ -1043,6 +1075,7 @@ def import_contracts_xlsx(
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
             subtype=status or None,
+            comparison_state="imported_rentway",
             metadata_json={
                 **raw,
                 "_station": station or None,
@@ -1442,6 +1475,51 @@ def _metadata_date(metadata: dict[str, Any] | None, key: str) -> date | None:
         return None
 
 
+def _metadata_date_from_candidates(metadata: dict[str, Any] | None, candidates: list[str]) -> date | None:
+    if not isinstance(metadata, dict):
+        return None
+    by_header = {normalize_header(key): value for key, value in metadata.items() if key}
+    for candidate in candidates:
+        value = by_header.get(normalize_header(candidate))
+        parsed = _safe_date(value)
+        if parsed:
+            return parsed
+    return None
+
+
+def _timeline_period_dates(row: VehicleDocumentRecord) -> tuple[date | None, date | None]:
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    start = (
+        _metadata_date(metadata, "_start_date")
+        or _metadata_date_from_candidates(metadata, RENTWAY_START_DATE_COLUMNS)
+        or row.document_date
+    )
+    if row.main_group == "contracts":
+        end = _metadata_date(metadata, "_end_date") or _metadata_date_from_candidates(metadata, RENTWAY_END_DATE_COLUMNS)
+    elif row.main_group == "impros":
+        end = (
+            _metadata_date(metadata, "_date_out")
+            or _metadata_date(metadata, "_end_date")
+            or _metadata_date_from_candidates(metadata, RENTWAY_END_DATE_COLUMNS)
+        )
+    else:
+        end = None
+    return start, end
+
+
+def _structured_comparison_state(row: VehicleDocumentRecord) -> str:
+    if row.comparison_state:
+        return row.comparison_state
+    if row.main_group in RENTWAY_TIMELINE_GROUPS:
+        return "imported_rentway"
+    return "por_validar"
+
+
+def _structured_comparison_label(row: VehicleDocumentRecord) -> str:
+    state = _structured_comparison_state(row)
+    return DOCUMENT_HISTORY_COMPARISON_LABELS.get(state, state)
+
+
 def _period_display(start: date | None, end: date | None) -> str:
     if start and end:
         return f"{_display_date(start)} a {_display_date(end)}"
@@ -1482,27 +1560,23 @@ def _build_structured_rows(
         tags = record_tags.get(row.id, [])
         service_text = " ".join(part for part in [row.title, row.raw_description, row.external_reference] if part)
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)
-        metadata = row.metadata_json or {}
-        period_start = _metadata_date(metadata, "_start_date") or row.document_date
-        period_end = (
-            _metadata_date(metadata, "_end_date")
-            if row.main_group == "contracts"
-            else _metadata_date(metadata, "_date_out")
-        )
+        period_start, period_end = _timeline_period_dates(row)
+        display_date = period_start or row.document_date
+        comparison_state = _structured_comparison_state(row)
         rows.append(
             {
                 "kind": "record",
                 "id": row.id,
                 "main_group": row.main_group,
                 "group_label": DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS.get(row.main_group, row.main_group),
-                "date": row.document_date,
-                "date_display": _display_date(row.document_date),
+                "date": display_date,
+                "date_display": _display_date(display_date),
                 "title": row.title or row.external_reference or row.main_group,
                 "supplier_name": row.supplier_name or "-",
                 "km": row.km,
                 "status": row.status,
-                "comparison_state": row.comparison_state or "por_validar",
-                "comparison_label": DOCUMENT_HISTORY_COMPARISON_LABELS.get(row.comparison_state or "por_validar", "Por validar"),
+                "comparison_state": comparison_state,
+                "comparison_label": _structured_comparison_label(row),
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",
@@ -2240,12 +2314,34 @@ def _global_structured_record_conditions(
     if main_group:
         conditions.append(VehicleDocumentRecord.main_group == main_group)
     if status:
-        conditions.append(
-            or_(
-                VehicleDocumentRecord.status == status,
-                VehicleDocumentRecord.comparison_state == status,
+        if status == "por_validar":
+            conditions.append(
+                or_(
+                    VehicleDocumentRecord.status == status,
+                    VehicleDocumentRecord.comparison_state == status,
+                    and_(
+                        VehicleDocumentRecord.comparison_state.is_(None),
+                        ~VehicleDocumentRecord.main_group.in_(list(RENTWAY_TIMELINE_GROUPS)),
+                    ),
+                )
             )
-        )
+        elif status == "imported_rentway":
+            conditions.append(
+                or_(
+                    VehicleDocumentRecord.comparison_state == status,
+                    and_(
+                        VehicleDocumentRecord.comparison_state.is_(None),
+                        VehicleDocumentRecord.main_group.in_(list(RENTWAY_TIMELINE_GROUPS)),
+                    ),
+                )
+            )
+        else:
+            conditions.append(
+                or_(
+                    VehicleDocumentRecord.status == status,
+                    VehicleDocumentRecord.comparison_state == status,
+                )
+            )
     if search:
         token = f"%{search}%"
         conditions.append(
@@ -2322,13 +2418,9 @@ def _build_global_structured_rows(
     rows: list[dict[str, Any]] = []
     for row in persisted_rows:
         vehicle = vehicles.get(row.vehicle_id)
-        metadata = row.metadata_json or {}
-        period_start = _metadata_date(metadata, "_start_date") or row.document_date
-        period_end = (
-            _metadata_date(metadata, "_end_date")
-            if row.main_group == "contracts"
-            else _metadata_date(metadata, "_date_out")
-        )
+        period_start, period_end = _timeline_period_dates(row)
+        display_date = period_start or row.document_date
+        comparison_state = _structured_comparison_state(row)
         rows.append(
             {
                 "kind": "record",
@@ -2343,14 +2435,14 @@ def _build_global_structured_rows(
                 "vehicle_href": f"/v2-clean/fleet/{row.vehicle_id}/documents",
                 "main_group": row.main_group,
                 "group_label": DOCUMENT_HISTORY_STRUCTURED_GROUP_LABELS.get(row.main_group, row.main_group),
-                "date": row.document_date,
-                "date_display": _display_date(row.document_date),
+                "date": display_date,
+                "date_display": _display_date(display_date),
                 "title": row.title or row.external_reference or row.main_group,
                 "supplier_name": row.supplier_name or "-",
                 "km": row.km,
                 "status": row.status,
-                "comparison_state": row.comparison_state or "por_validar",
-                "comparison_label": DOCUMENT_HISTORY_COMPARISON_LABELS.get(row.comparison_state or "por_validar", "Por validar"),
+                "comparison_state": comparison_state,
+                "comparison_label": _structured_comparison_label(row),
                 "process_reference": row.process_reference or "-",
                 "description": row.raw_description or "",
                 "external_reference": row.external_reference or "-",

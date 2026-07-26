@@ -729,6 +729,64 @@ B APV TX NORMAL 23,00 192,39 44,25 192,39 44,25 236,64
     assert payload["invoice_lines"][-1]["quantity"] == "1"
 
 
+def test_batch_invoice_payload_keeps_filinto_package_components_without_individual_prices():
+    text = """
+ORIGINAL
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2025/11173485
+DE : 18/06/2025 O.R. : 348678 OFICINA : (001) CIT Reparação VENCIMENTO : 18/06/2025
+MAT : BB-69-TE MARCA : CITROEN MODELO : Berlingo Van XL 1.5 BlueHDi 100 S&S CVM6
+KMS : 63170 RECEPCIONISTA : Gil Teixeira CHASSIS : VR7EFYHT2PJ697244
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+INDICAÇÃO DE MANUTENÇÃO A
+Mudança Óleo dinâmica diesel (5,3L) 2 135,43 135,43 135,43 B
+Mão de Obra Mecânica MMC001 1
+OLEO TOTAL QUARTZ INEO RCP 5W30 LT QINEORCP 5,30
+FILTRO OLEO 1680682480 1
+SIGOU - Ecolub 1L 5,30
+JUNTA DO BUJAO 016488 1
+Nova Intervenção 135,43
+MUDANÇA DE OLEO DE TRAVÕES B
+MUDANCA DE OLEO CIRCUITO DE TRAVAGEM MANUTENCAO 25022707 66,00 31,06 45,50 0,40 18,20 B
+ÓLEO DOS TRAVÕES 1610725580 12,56 20,00 10,05 2 20,10 B
+SIGOU - Ecolub 0,5L 0,04 0,04 2 0,08 B
+Subtotal Peças (20,18)
+Nova Intervenção 38,38
+OFERTA DE LAVAGEM D
+Lavagem Automática com Aspiração LAVACA 14,00 99,99 1 B
+Nova Intervenção
+Folha de Obra nº 580
+GRUPO FILINTO MOTA - VANTAGEM CLIENTE: 27,22€ DE DESCONTO + I.V.A.
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 173,81 39,98 173,81 39,98 213,79
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "11173485.pdf", existing_text=text)
+    lines = payload["invoice_lines"]
+
+    assert payload["document_number"] == "TAL_FAC 2025/11173485"
+    assert payload["work_order_reference"] == "580"
+    assert payload["km"] == "63170"
+    assert payload["total_with_vat"] == "213,79"
+    assert len(lines) == 10
+    assert lines[0]["description"] == "Mudança Óleo dinâmica diesel (5,3L)"
+    assert lines[0]["amount"] == "135,43"
+    assert lines[1]["reference"] == "MMC001"
+    assert lines[1]["description"] == "Mão de Obra Mecânica"
+    assert lines[2]["reference"] == "QINEORCP"
+    assert lines[2]["quantity"] == "5,30"
+    assert lines[3]["reference"] == "1680682480"
+    assert lines[4]["description"] == "SIGOU - Ecolub 1L"
+    assert lines[5]["reference"] == "016488"
+    assert lines[6]["reference"] == "25022707"
+    assert lines[6]["amount"] == "18,20"
+    assert lines[7]["reference"] == "1610725580"
+    assert lines[8]["description"] == "SIGOU - Ecolub 0,5L"
+    assert lines[9]["reference"] == "LAVACA"
+    assert lines[9]["amount"] == "0,00"
+
+
 def test_batch_invoice_filinto_stacked_lines_keep_invoice_columns():
     lines = [
         "ORIGINAL",

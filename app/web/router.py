@@ -7953,8 +7953,6 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
         ):
             continue
         amount = _batch_invoice_line_amount(stripped)
-        if not amount:
-            continue
 
         description = stripped
         reference = ""
@@ -7962,11 +7960,22 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
         unit_price = ""
         free_match = None
         table_match = re.match(
-            r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<discount>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})B?$",
+            r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<discount>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})\s*B?$",
             stripped,
         )
         environmental_match = None
-        if table_match:
+        package_match = re.match(
+            r"^(?P<body>.+?)\s+\d+\s+(?P<list_price>-?\d+,\d{2})\s+"
+            r"(?P<net_unit>-?\d+,\d{2})\s+(?P<amount>-?\d+,\d{2})\s*B?$",
+            stripped,
+        )
+        component_match = None
+        ecolub_component_match = None
+        if package_match:
+            description = package_match.group("body").strip()
+            unit_price = package_match.group("net_unit")
+            amount = package_match.group("amount")
+        elif table_match:
             description = table_match.group("body").strip()
             unit_price = table_match.group("net_unit")
             quantity = table_match.group("qty")
@@ -7984,7 +7993,7 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                 environmental_match = None
             else:
                 environmental_match = re.match(
-                    r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})B?$",
+                    r"^(?P<body>.+?)\s+(?P<list_price>-?\d+,\d{2})\s+(?P<net_unit>-?\d+,\d{2})\s+(?P<qty>-?\d+(?:,\d+)?)\s+(?P<amount>-?\d+,\d{2})\s*B?$",
                     stripped,
                 )
                 if environmental_match:
@@ -7993,7 +8002,33 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                     quantity = environmental_match.group("qty")
                     amount = environmental_match.group("amount")
                 else:
-                    description = re.sub(r"\s+-?\d+,\d{2}\s*B?$", "", stripped).strip()
+                    component_match = (
+                        None
+                        if stripped.startswith("(")
+                        else re.match(
+                            r"^(?P<desc>.+?)\s+(?P<ref>[A-Z0-9]{4,})\s+"
+                            r"(?P<qty>-?\d+(?:,\d+)?)$",
+                            stripped,
+                        )
+                    )
+                    ecolub_component_match = re.match(
+                        r"^(?P<desc>SIGOU\s*-\s*Ecolub\b.+?)\s+(?P<qty>-?\d+(?:,\d+)?)$",
+                        stripped,
+                        flags=re.IGNORECASE,
+                    )
+                    if component_match:
+                        description = component_match.group("desc").strip(" -")
+                        reference = component_match.group("ref")
+                        quantity = component_match.group("qty")
+                        amount = ""
+                    elif ecolub_component_match:
+                        description = ecolub_component_match.group("desc").strip()
+                        quantity = ecolub_component_match.group("qty")
+                        amount = ""
+                    else:
+                        description = re.sub(r"\s+-?\d+,\d{2}\s*B?$", "", stripped).strip()
+        if not amount and not component_match and not ecolub_component_match:
+            continue
 
         operation_match = re.match(
             r"^\((?P<ref>\d{5,})\)\s*(?P<desc>.+)$",
@@ -8004,7 +8039,7 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
             description = operation_match.group("desc").strip(" -")
             quantity = amount
             amount = ""
-        else:
+        elif not reference:
             ref_match = re.match(r"^(?P<desc>.+?)\s+(?P<ref>[A-Z0-9]{4,})$", description)
             if ref_match:
                 description = ref_match.group("desc").strip(" -")
@@ -8021,6 +8056,7 @@ def _batch_invoice_tal_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "unit": "",
                 "unit_price": unit_price,
                 "list_price": (
+                    package_match.group("list_price") if package_match else
                     table_match.group("list_price") if table_match else
                     free_match.group("list_price") if free_match else
                     environmental_match.group("list_price") if environmental_match else ""

@@ -6820,6 +6820,7 @@ def clean_document_import_center(
     invoice_vehicle: str = "",
     invoice_batch: str = "",
     invoice_limit: int = 8,
+    invoice_batch_limit: int = 8,
     imported: str | None = None,
     imported_count: int | None = None,
     batch_imported: int | None = None,
@@ -6867,6 +6868,11 @@ def clean_document_import_center(
         except (TypeError, ValueError):
             invoice_preview_limit = preview_limit
         invoice_preview_limit = max(preview_limit, min(invoice_preview_limit, 96))
+        try:
+            batch_preview_limit = int(invoice_batch_limit or preview_limit)
+        except (TypeError, ValueError):
+            batch_preview_limit = preview_limit
+        batch_preview_limit = max(preview_limit, min(batch_preview_limit, 80))
 
         def invoice_document_conditions(*, include_filters: bool = True) -> list[Any]:
             invoice_title_token = "%fatura%"
@@ -7097,7 +7103,12 @@ def clean_document_import_center(
             key=lambda item: item["latest_id"],
             reverse=True,
         )
-        invoice_batches_preview = invoice_batches[:8]
+        invoice_batches_preview = invoice_batches[:batch_preview_limit]
+        invoice_batches_remaining = max(len(invoice_batches) - batch_preview_limit, 0)
+        invoice_batch_next_limit = min(
+            batch_preview_limit + preview_limit,
+            max(len(invoice_batches), preview_limit),
+        )
         invoice_supplier_options = [
             {"value": supplier, "count": int(count or 0)}
             for supplier, count in db.execute(
@@ -7197,6 +7208,9 @@ def clean_document_import_center(
                 "invoice_batches": invoice_batches,
                 "invoice_batches_preview": invoice_batches_preview,
                 "invoice_batches_count": len(invoice_batches),
+                "invoice_batches_remaining": invoice_batches_remaining,
+                "invoice_batch_limit": batch_preview_limit,
+                "invoice_batch_next_limit": invoice_batch_next_limit,
                 "invoice_preview_audit": invoice_preview_audit,
                 "invoice_supplier": clean_invoice_supplier,
                 "invoice_vehicle": clean_invoice_vehicle,

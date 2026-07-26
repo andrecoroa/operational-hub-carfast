@@ -295,6 +295,69 @@
         </div>
       </details>
 
+      {% if invoice_batches %}
+        <details class="clean-doc-collapsible clean-card-wide clean-doc-import-history-card" id="invoice-batches">
+          <summary>
+            <span>
+              <b>Lotes de faturas</b>
+              <small>Últimos lotes importados, com volume, fornecedor principal e documentos ainda por fechar.</small>
+            </span>
+            <em>{{ invoice_batches_count }} lotes</em>
+          </summary>
+          <div class="clean-doc-collapsible-body">
+            <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
+              <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-batch-summary-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Lote</th>
+                    <th>Fornecedor</th>
+                    <th>Viaturas</th>
+                    <th>Docs</th>
+                    <th>Pendentes</th>
+                    <th>Validados</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for batch in invoice_batches_preview %}
+                    <tr>
+                      <td>{{ batch.latest_date_display }}</td>
+                      <td><strong>{{ batch.label }}</strong></td>
+                      <td>{{ batch.supplier_label }}</td>
+                      <td>{{ batch.vehicle_count }}</td>
+                      <td>{{ batch.count }}</td>
+                      <td>{{ batch.pending_count }}</td>
+                      <td>{{ batch.classified_count }}</td>
+                      <td>
+                        <form
+                          method="post"
+                          action="/v2-clean/documents/reprocess-ocr-batch"
+                          onsubmit="return confirm('Reprocessar o OCR das {{ batch.count }} faturas deste lote?');"
+                        >
+                          <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
+                          <input type="hidden" name="batch_label" value="{{ batch.label }}">
+                          <button type="submit" class="button-link secondary-link">Reprocessar</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if invoice_batches_remaining %}
+              <div class="clean-doc-table-footer">
+                <span>A mostrar {{ invoice_batch_limit }} de {{ invoice_batches_count }} lotes.</span>
+                <a
+                  class="button-link secondary-link"
+                  href="{{ request.url.include_query_params(invoice_batch_limit=invoice_batch_next_limit) }}#invoice-batches"
+                >Ver mais lotes</a>
+              </div>
+            {% endif %}
+          </div>
+        </details>
+      {% endif %}
+
       <section class="clean-doc-filter-panel clean-card-wide">
         <form method="get" action="/v2-clean/documents" class="clean-doc-filter-grid">
           <label>
@@ -378,59 +441,6 @@
               <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Limpar</a>
             </div>
           </form>
-          {% if invoice_batches %}
-            <section class="clean-doc-invoice-batch-summary" id="invoice-batches">
-              <div class="table-heading flat-heading">
-                <div>
-                  <h4>Lotes de faturas</h4>
-                  <p>Últimos lotes importados, com volume, fornecedor principal e documentos ainda por fechar.</p>
-                </div>
-                <span>{{ invoice_batches_count }} lotes</span>
-              </div>
-              <div class="clean-doc-table-wrap clean-doc-table-scroll-compact">
-                <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-batch-summary-table">
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Lote</th>
-                      <th>Fornecedor</th>
-                      <th>Viaturas</th>
-                      <th>Docs</th>
-                      <th>Pendentes</th>
-                      <th>Validados</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for batch in invoice_batches_preview %}
-                      <tr>
-                        <td>{{ batch.latest_date_display }}</td>
-                        <td><strong>{{ batch.label }}</strong></td>
-                        <td>{{ batch.supplier_label }}</td>
-                        <td>{{ batch.vehicle_count }}</td>
-                        <td>{{ batch.count }}</td>
-                        <td>{{ batch.pending_count }}</td>
-                        <td>{{ batch.classified_count }}</td>
-                        <td>
-                          <form
-                            method="post"
-                            action="/v2-clean/documents/reprocess-ocr-batch"
-                            onsubmit="return confirm('Reprocessar o OCR das {{ batch.count }} faturas deste lote?');"
-                          >
-                            <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
-                            <input type="hidden" name="batch_label" value="{{ batch.label }}">
-                            <button type="submit" class="button-link secondary-link">Reprocessar</button>
-                          </form>
-                        </td>
-                      </tr>
-                    {% else %}
-                      <tr><td colspan="8" class="clean-empty-cell">Sem lotes de faturas importados.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          {% endif %}
           <section class="clean-doc-preview-audit-panel">
             <div class="table-heading flat-heading">
               <div>
@@ -685,8 +695,11 @@
         </summary>
         <div class="clean-doc-collapsible-body">
           {% for grouped in structured_sections_preview %}
-            <section class="clean-doc-structured-block clean-doc-structured-block-{{ grouped.code }}">
-              <div class="table-heading flat-heading">
+            <details
+              class="clean-doc-structured-block clean-doc-structured-block-{{ grouped.code }}"
+              {% if grouped.code not in ["contracts", "impros"] %}open{% endif %}
+            >
+              <summary class="table-heading flat-heading">
                 <div>
                   <h4>{{ grouped.label }}</h4>
                   {% if grouped.code == "work_orders" %}
@@ -702,7 +715,7 @@
                   {% endif %}
                 </div>
                 <strong class="clean-doc-pill">{{ grouped.total_count }} linhas</strong>
-              </div>
+              </summary>
               <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
                 {% if grouped.code == "work_orders" %}
                   <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-workorder-table">
@@ -856,7 +869,7 @@
               {% if grouped.remaining_count %}
                 <p class="clean-doc-table-limit-note">A mostrar 8 de {{ grouped.total_count }} linhas. Usa os filtros acima para trabalhar um conjunto específico.</p>
               {% endif %}
-            </section>
+            </details>
           {% endfor %}
         </div>
       </details>

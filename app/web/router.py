@@ -6816,6 +6816,9 @@ def clean_document_import_center(
     q: str | None = None,
     main_group: str = "",
     status: str = "",
+    invoice_supplier: str = "",
+    invoice_vehicle: str = "",
+    invoice_batch: str = "",
     imported: str | None = None,
     imported_count: int | None = None,
     batch_imported: int | None = None,
@@ -6839,6 +6842,9 @@ def clean_document_import_center(
     search = (q or "").strip().lower()
     clean_main_group = (main_group or "").strip()
     clean_status = (status or "").strip()
+    clean_invoice_supplier = (invoice_supplier or "").strip()
+    clean_invoice_vehicle = (invoice_vehicle or "").strip()
+    clean_invoice_batch = (invoice_batch or "").strip()
     with SessionLocal() as db:
         module_ctx = document_center_module_context(
             db,
@@ -6878,6 +6884,17 @@ def clean_document_import_center(
             if include_filters:
                 if clean_status:
                     conditions.append(Document.status == clean_status)
+                if clean_invoice_supplier:
+                    conditions.append(Document.supplier_name == clean_invoice_supplier)
+                if clean_invoice_vehicle:
+                    conditions.append(Document.plate == clean_invoice_vehicle)
+                if clean_invoice_batch:
+                    conditions.append(
+                        or_(
+                            Document.source_subject == clean_invoice_batch,
+                            Document.source_subject.ilike(f"{clean_invoice_batch}: %"),
+                        )
+                    )
                 if search:
                     token = f"%{search}%"
                     conditions.append(
@@ -6996,6 +7013,32 @@ def clean_document_import_center(
             key=lambda item: item["latest_id"],
             reverse=True,
         )
+        invoice_supplier_options = [
+            {"value": supplier, "count": int(count or 0)}
+            for supplier, count in db.execute(
+                select(Document.supplier_name, func.count())
+                .where(*invoice_document_conditions(include_filters=False))
+                .where(Document.supplier_name.is_not(None))
+                .where(Document.supplier_name != "")
+                .group_by(Document.supplier_name)
+                .order_by(func.count().desc(), Document.supplier_name.asc())
+                .limit(40)
+            ).all()
+            if supplier
+        ]
+        invoice_vehicle_options = [
+            {"value": plate, "count": int(count or 0)}
+            for plate, count in db.execute(
+                select(Document.plate, func.count())
+                .where(*invoice_document_conditions(include_filters=False))
+                .where(Document.plate.is_not(None))
+                .where(Document.plate != "")
+                .group_by(Document.plate)
+                .order_by(func.count().desc(), Document.plate.asc())
+                .limit(60)
+            ).all()
+            if plate
+        ]
         invoice_rows = []
         for document in invoice_documents:
             vehicle = vehicles_by_id.get(document.vehicle_id)
@@ -7052,6 +7095,11 @@ def clean_document_import_center(
                 "invoice_rows_preview": invoice_rows,
                 "invoice_rows_remaining": max(invoice_rows_total - preview_limit, 0),
                 "invoice_batches": invoice_batches,
+                "invoice_supplier": clean_invoice_supplier,
+                "invoice_vehicle": clean_invoice_vehicle,
+                "invoice_batch": clean_invoice_batch,
+                "invoice_supplier_options": invoice_supplier_options,
+                "invoice_vehicle_options": invoice_vehicle_options,
                 "import_rows_preview": import_rows_preview,
                 "import_rows_count": len(import_rows),
                 "import_rows_remaining": max(len(import_rows) - preview_limit, 0),

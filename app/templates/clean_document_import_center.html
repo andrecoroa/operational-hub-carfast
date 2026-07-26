@@ -328,11 +328,57 @@
           <em>{{ invoice_rows_count }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
+          <form class="clean-doc-invoice-workbar" method="get" action="/v2-clean/documents">
+            <input type="hidden" name="main_group" value="invoices">
+            <label>
+              Pesquisar
+              <input type="search" name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula...">
+            </label>
+            <label>
+              Fornecedor
+              <select name="invoice_supplier">
+                <option value="">Todos</option>
+                {% for supplier in invoice_supplier_options %}
+                  <option value="{{ supplier.value }}" {% if invoice_supplier == supplier.value %}selected{% endif %}>{{ supplier.value }} · {{ supplier.count }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Viatura
+              <select name="invoice_vehicle">
+                <option value="">Todas</option>
+                {% for vehicle in invoice_vehicle_options %}
+                  <option value="{{ vehicle.value }}" {% if invoice_vehicle == vehicle.value %}selected{% endif %}>{{ vehicle.value }} · {{ vehicle.count }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Lote
+              <select name="invoice_batch">
+                <option value="">Todos</option>
+                {% for batch in invoice_batches %}
+                  <option value="{{ batch.label }}" {% if invoice_batch == batch.label %}selected{% endif %}>{{ batch.label }} · {{ batch.count }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Estado
+              <select name="status">
+                {% for code, label in status_options %}
+                  <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="clean-doc-invoice-workbar-actions">
+              <button type="submit" class="button-link primary-link">Filtrar</button>
+              <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Limpar</a>
+            </div>
+          </form>
           {% if invoice_batches %}
             <section class="clean-doc-batch-ocr-panel">
               <div>
                 <strong>Reprocessamento OCR em lote</strong>
-                <span>Atualiza as faturas de uma importação com as regras OCR atuais.</span>
+                <span>Usa quando uma regra OCR foi afinada e queres atualizar um lote específico.</span>
               </div>
               <form method="post" action="/v2-clean/documents/reprocess-ocr-batch">
                 <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">
@@ -396,7 +442,7 @@
             </table>
           </div>
           {% if invoice_rows_remaining %}
-            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows_count }} faturas dos filtros atuais. Usa pesquisa, estado ou tipo para reduzir a lista.</p>
+            <p class="clean-doc-table-limit-note">A mostrar 8 de {{ invoice_rows_count }} faturas dos filtros atuais. Usa fornecedor, viatura, lote, estado ou pesquisa para fechar o conjunto de trabalho.</p>
           {% endif %}
         </div>
       </details>

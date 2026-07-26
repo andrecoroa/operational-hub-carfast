@@ -15369,6 +15369,49 @@ button.clean-upload-preview-card {
   padding: 7px 9px;
 }
 
+.clean-doc-invoice-workbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.25fr) minmax(150px, 1fr) minmax(110px, 0.75fr) minmax(170px, 1fr) minmax(120px, 0.75fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.clean-doc-invoice-workbar label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.clean-doc-invoice-workbar input,
+.clean-doc-invoice-workbar select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 9px;
+}
+
+.clean-doc-invoice-workbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
 .clean-doc-ocr-review-form .clean-doc-extraction-grid {
   grid-template-columns: minmax(420px, 1.2fr) minmax(360px, 1fr);
 }
@@ -15762,6 +15805,15 @@ button.clean-upload-preview-card {
 
   .clean-doc-batch-ocr-panel {
     grid-template-columns: 1fr;
+  }
+
+  .clean-doc-invoice-workbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clean-doc-invoice-workbar-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .clean-doc-ocr-group-grid {

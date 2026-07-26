@@ -16143,6 +16143,52 @@ button.clean-upload-preview-card {
   width: 124px;
 }
 
+.clean-doc-vehicle-invoice-table {
+  min-width: 1240px;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-number-col,
+.clean-doc-vehicle-invoice-table .clean-doc-col-number {
+  width: 190px;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-provider-col {
+  width: 300px;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-work-order-col,
+.clean-doc-vehicle-invoice-table .clean-doc-col-work-order {
+  width: 86px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-km-col,
+.clean-doc-vehicle-invoice-table .clean-doc-col-km {
+  width: 88px;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-total-col,
+.clean-doc-vehicle-invoice-table .clean-doc-col-total {
+  width: 100px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-status-col,
+.clean-doc-vehicle-invoice-table .clean-doc-col-status {
+  width: 118px;
+}
+
+.clean-doc-vehicle-invoice-table .clean-doc-actions-col {
+  width: 126px;
+}
+
+.clean-doc-vehicle-invoice-table tr.clean-doc-classify-group-note-row > td {
+  padding: 6px 10px 9px;
+  text-align: left;
+}
+
 .clean-doc-classify-table th {
   background: #f8fafc;
   color: #111827;

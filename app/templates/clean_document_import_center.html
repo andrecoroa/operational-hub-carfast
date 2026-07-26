@@ -590,7 +590,6 @@
                         <th>Referência</th>
                         <th>Fornecedor / origem</th>
                         <th>KM</th>
-                        <th>Descrição / período</th>
                         <th>Estado</th>
                         <th>Abrir</th>
                       </tr>
@@ -611,18 +610,21 @@
                           </td>
                           <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                           <td>{{ row.km if row.km is not none else "-" }}</td>
-                          <td>
-                            {% if row.period_display and row.period_display != "-" %}
-                              {{ row.period_display }}
-                            {% else %}
-                              {{ row.description or "-" }}
-                            {% endif %}
-                          </td>
                           <td><span class="clean-doc-status-pill">{{ row.comparison_label }}</span></td>
                           <td><a class="button-link secondary-link" href="{{ row.vehicle_href }}">Ficha</a></td>
                         </tr>
+                        {% if (row.period_display and row.period_display != "-") or row.description %}
+                          <tr class="clean-doc-subrow clean-doc-subrow-left">
+                            <td colspan="7">
+                              <strong>Detalhe:</strong>
+                              {% if row.period_display and row.period_display != "-" %}{{ row.period_display }}{% endif %}
+                              {% if row.period_display and row.period_display != "-" and row.description %} · {% endif %}
+                              {% if row.description %}{{ row.description }}{% endif %}
+                            </td>
+                          </tr>
+                        {% endif %}
                       {% else %}
-                        <tr><td colspan="8" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
+                        <tr><td colspan="7" class="clean-empty-cell">Sem linhas deste tipo.</td></tr>
                       {% endfor %}
                     </tbody>
                   </table>

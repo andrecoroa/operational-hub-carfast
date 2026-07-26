@@ -7827,7 +7827,7 @@ def _batch_invoice_is_gamobar_template(text: str) -> bool:
             "ident" in compact
             and "doc" in compact
             and ("valorcomiva" in compact or "dataemiss" in compact)
-            and re.search(r"\b(?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+(?:/\d{4})?\b", text, flags=re.IGNORECASE)
+            and re.search(r"\b(?:HFO|HFJ|FFJ|XFO|FFO|HFM|BFO)/\d+(?:/\d{4})?\b", text, flags=re.IGNORECASE)
         )
     )
 
@@ -8544,12 +8544,12 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
     due_date = _batch_document_date(due_date_text)
     full_document_numbers = re.findall(
-        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+/\d{4})\b",
+        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM|BFO)/\d+/\d{4})\b",
         text,
         flags=re.IGNORECASE,
     )
     short_document_numbers = re.findall(
-        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM)/\d+)\b",
+        r"\b((?:HFO|HFJ|FFJ|XFO|FFO|HFM|BFO)/\d+)\b",
         text,
         flags=re.IGNORECASE,
     )

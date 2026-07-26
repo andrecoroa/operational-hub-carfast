@@ -2102,6 +2102,70 @@ ATCUD:JF6NPXD9-696
     ]
 
 
+def test_batch_invoice_payload_extracts_caetano_gamobar_bfo_632():
+    text = """
+CAETANO MOTORS
+Caetano Gamobar Motors, S.A.
+NIPC: 500 112 967
+FATURA
+Doc. Núm.
+BFO/632/2025
+Data Doc.
+2025-07-31
+Data Vencim.
+2025-08-30
+NIF Cliente
+509285970
+OR
+BOJ/2214/2025
+Data Abertura
+2025-07-25
+Matrícula / VIN
+BH86EB / VR3EFYHT2PJ918611
+Modelo
+PEUGEOT PARTNER LONGA 1.5 BLUEHDI 1
+Kms.
+49872
+Forma de Pagamento
+CRÉDITO
+Valor Com IVA
+243,5900
+Ident. Único Doc: TAT BFO/632
+Tipo
+23,00
+47,0460
+40,00
+78,4100
+Horas
+1,00
+- OPERAÇÕES SISTEMÁTICAS DE MANUTENÇÃO -
+95N48A
+MO
+23,00
+125,7425
+35,00
+36,5000
+Uds
+5,30
+ÓLEO MOTOR TOTAL INEO RCP (5W30)
+PSA-TPPRCPINEO
+MAT
+449,34
+Total
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_bfo_632.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_bfo"
+    assert payload["supplier_name"] == "Caetano Gamobar Motores, S.A."
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["client_nif"] == "509285970"
+    assert payload["document_number"] == "BFO/632/2025"
+    assert payload["document_date"] == "2025-07-31"
+    assert payload["repair_order_reference"] == "BOJ/2214/2025"
+    assert payload["plate"] == "BH86EB"
+    assert payload["vin"] == "VR3EFYHT2PJ918611"
+    assert payload["km"] == "49872"
 def test_batch_invoice_payload_extracts_caetano_gamobar_2945():
     text = """
 Ident ÚnicoDoc Valor Com IVA Data Vencim.

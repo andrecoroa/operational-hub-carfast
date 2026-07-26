@@ -24,6 +24,7 @@ from app.web.router import (
     _batch_document_vehicle,
     _batch_invoice_filinto_stacked_lines,
     _batch_invoice_payload,
+    _batch_invoice_total_from_lines,
     local_document_storage_folder,
 )
 
@@ -1266,6 +1267,51 @@ TOTAL LÍQUIDO
     assert payload["invoice_lines"][0]["amount"] == "101,62"
     assert payload["invoice_lines"][0]["service"] == "Manutenção"
     assert payload["invoice_lines"][0]["quantity"] != "1680682480"
+
+
+def test_batch_invoice_payload_extracts_filinto_collision_parts_with_spaced_thousands():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+FACTURA
+DOCUMENTO : TAL_FAC 2025/11167979
+DE : 02/01/2025 O.R. : 340280 OFICINA : (082) MMarca Colisão VENCIMENTO : 02/01/2025
+MAT : BH-86-EB MARCA : PEUGEOT MODELO : Partner KMS : 29452
+CHASSIS : VR3EFYHT2PJ918611
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+SINSITRO FRENTE A
+Mão de Obra Chapa MCH001 67,00 15,00 56,95 9,94 566,08 B
+Mão de Obra Pintura MPT001 67,00 15,00 56,95 3,51 199,89 B
+Ingredientes de Pintura INGPNT 83,92 15,00 71,33 1 71,33 B
+Subtotal Mão Obra (837,30)
+Orcamento Pecas ORCP 3 522,86 15,00 2 994,43 1 2 994,43 B
+Nova Intervenção 3 831,73
+B APV TX NORMAL 23,00 3 831,73 881,30 3 831,73 881,30 4 713,03
+TOTAL A PAGAR 4 713,03
+ATCUD:JFS4WFN7-11167979
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11167979-0.pdf", existing_text=text)
+    invoice_lines = payload["invoice_lines"]
+
+    assert payload["document_number"] == "TAL_FAC 2025/11167979"
+    assert payload["work_order_reference"] == ""
+    assert payload["km"] == "29452"
+    assert payload["total_with_vat"] == "4713,03"
+    assert len(invoice_lines) == 4
+    assert invoice_lines[-1] == {
+        "reference": "ORCP",
+        "description": "Orcamento Pecas",
+        "quantity": "1",
+        "unit": "",
+        "unit_price": "2994,43",
+        "list_price": "3522,86",
+        "discount_percent": "15,00",
+        "tax": "B",
+        "amount": "2994,43",
+        "service": "Por classificar",
+    }
+    assert _batch_invoice_total_from_lines(invoice_lines) == "3831,73"
 
 
 def test_batch_invoice_payload_extracts_filinto_package_line_with_shifted_quantity():

@@ -8964,6 +8964,12 @@ def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]
     seen: set[tuple[str, str, str]] = set()
     for line in lines[start:]:
         stripped = line.strip()
+        # Keep monetary values such as "3 522,86" as one column when the
+        # invoice row is tokenized below. Require the pattern more than once
+        # so "1 141,60" remains quantity 1 plus amount 141,60.
+        spaced_money_pattern = r"(?<![\d,])(-?\d{1,3})[ .](?=\d{3},\d{2,4}(?!\d))"
+        if len(re.findall(spaced_money_pattern, stripped)) >= 2:
+            stripped = re.sub(spaced_money_pattern, r"\1", stripped)
         compact = _compact_identifier(stripped)
         if any(compact.startswith(prefix) for prefix in stop_prefixes):
             break

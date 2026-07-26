@@ -7531,7 +7531,7 @@ def _batch_invoice_client_nifs(text: str) -> set[str]:
 def _batch_invoice_supplier_nif(text: str) -> str:
     normalized = normalize_identifier(text) or ""
     compact = re.sub(r"\D", "", text)
-    if "504104250" in compact:
+    if "504104250" in compact and _batch_invoice_is_cruz_allen_template(text):
         return "504104250"
     if "500112967" in normalized:
         return "500112967"
@@ -7835,9 +7835,24 @@ def _batch_invoice_is_gamobar_template(text: str) -> bool:
 def _batch_invoice_is_cruz_allen_template(text: str) -> bool:
     normalized = (normalize_identifier(text) or "").lower()
     compact_digits = re.sub(r"\D", "", text)
-    return "504104250" in compact_digits or (
-        "cruz" in normalized and "allen" in normalized and "oficinadeautomoveis" in normalized
+    supplier_identity = (
+        "cruz" in normalized
+        and "allen" in normalized
+        and (
+            "oficinadeautomoveis" in normalized
+            or "bbc oficina" in normalized
+            or "bbcoficina" in normalized
+        )
     )
+    invoice_structure = bool(
+        re.search(r"\b(?:Original\s+)?FS\s*0*\d{3,}\b", text, flags=re.IGNORECASE)
+        or (
+            "referenciadescricao" in normalized
+            and "precounitario" in normalized
+            and "totalfatura" in normalized
+        )
+    )
+    return supplier_identity or ("504104250" in compact_digits and invoice_structure)
 
 
 def _batch_invoice_document_kind(text: str) -> str:
@@ -8139,9 +8154,10 @@ def _batch_invoice_cruz_allen_normalize_quantity(value: str) -> str:
 
 def _batch_invoice_cruz_allen_normalize_or(value: str) -> str:
     cleaned = (value or "").strip().upper()
-    if cleaned.startswith("ORO"):
-        cleaned = "OR0" + cleaned[3:]
-    return cleaned
+    cleaned = re.sub(r"[^A-Z0-9]", "", cleaned)
+    if not cleaned.startswith("OR"):
+        return cleaned
+    return f"OR{cleaned[2:].replace('O', '0')}"
 
 
 def _batch_invoice_cruz_allen_normalize_vin(value: str) -> str:
@@ -8237,7 +8253,7 @@ def _batch_invoice_cruz_allen_total(text: str, label: str) -> str:
 
 def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any]:
     header_match = re.search(
-        r"\bOriginal\s+(?P<number>[A-Z]{1,4}\d{3,})\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b",
+        r"\b(?:Original\s+)?(?P<number>FS\s*0*\d{3,})\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -8258,7 +8274,11 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         flags=re.IGNORECASE,
     )
     plate_match = re.search(r"Matr[ií]cula:\s*(?P<plate>[A-Z0-9-]{6,12})", text, flags=re.IGNORECASE)
-    km_match = re.search(r"Kil[oó]metros:\s*(?P<km>\d{1,7})", text, flags=re.IGNORECASE)
+    km_match = re.search(
+        r"\b(?:Kil[oó]metros|Quil[oó]metros|Kms?)\s*[:.;-]?\s*(?P<km>\d{1,7})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
     payment_match = re.search(r"Forma\s+Pag(?:a|o)?\.?:?\s*(?P<payment>.+?)\s+Recepcionista:", text, flags=re.IGNORECASE)
     receptionist_match = re.search(r"Recepcionista:\s*(?P<value>.+?)(?:\n|Modelo:)", text, flags=re.IGNORECASE)
     warranty_match = re.search(r"Data\s+de\s+Garantia:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
@@ -8283,7 +8303,7 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         "ocr_template": "cruz_allen_bbc_invoice",
         "supplier_name": "Cruz & Allen - B.B.C Oficina de Automóveis, Lda",
         "supplier_nif": "504104250",
-        "document_number": header_match.group("number") if header_match else "",
+        "document_number": re.sub(r"\s+", "", header_match.group("number")).upper() if header_match else "",
         "document_date": _batch_invoice_cruz_allen_date(header_match.group("date")) if header_match else "",
         "client_name": " ".join(client_match.group("client").split()) if client_match else "",
         "client_number": meta_match.group("client_number") if meta_match else "",

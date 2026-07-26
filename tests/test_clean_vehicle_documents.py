@@ -1674,6 +1674,58 @@ Id. Único: Fact FS/0002239
     assert payload["invoice_lines"][8]["amount"] == "0,00"
 
 
+def test_batch_invoice_payload_does_not_treat_cruz_allen_customer_as_supplier():
+    text = """
+FERREIRA DA COSTA & IRMAO LDA
+RUA NOVAIS DA CUNHA, 973
+NIF: 500114013
+DOC NR: FR F E1331001FAC1E/22037832
+DATA/HORA: 12-02-25 16:20
+ARTIGO QT. P.Un. VALOR
+GASOLEO 1 42,39 1,764 74,78
+TOTAL EUROS 74,78
+N.I.F.: 504104250
+Nome: CRUZ ALLEN BBC
+Morada: GONDOMAR
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Scan2025-02-13_100117.pdf", existing_text=text)
+
+    assert payload["ocr_template"] != "cruz_allen_bbc_invoice"
+    assert payload["supplier_nif"] != "504104250"
+    assert payload["supplier_name"] != "Cruz & Allen - B.B.C Oficina de Automóveis, Lda"
+
+
+def test_batch_invoice_payload_normalizes_cruz_allen_scanned_header_km_and_order():
+    text = """
+FATURA
+VIA NÚMERO DATA
+FS 0002342 17/09/24
+Exmo(s) Senhor(es):
+CARFAST, RENT-A-CAR, LDA
+Cliente nº NIF Cliente Nº OR Página
+000310 509285970 OR0O06861 1 / 1
+Modelo: JUMPER III Chassis: VF7YAAPFBPG032533
+Matrícula: BD-57-MC
+Kms. 28822 Data de Entrega: 17/09/2024
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+- Mao Obra
+93830000 REVISAO 1,00 41,90 € 15,00 23% 35,61 €
+Observações:
+Total Fatura: 43,80 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Scan2024-09-17_105229.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["document_number"] == "FS0002342"
+    assert payload["document_date"] == "2024-09-17"
+    assert payload["repair_order_reference"] == "OR0006861"
+    assert payload["km"] == "28822"
+
+
 def test_batch_invoice_payload_extracts_cruz_allen_fs0004003():
     text = """
 FATURA

@@ -401,6 +401,7 @@
                   <th>Nº</th>
                   <th>Fornecedor</th>
                   <th>FO</th>
+                  <th>KM</th>
                   <th>Total</th>
                   <th>Estado</th>
                   <th>Ações</th>
@@ -417,6 +418,7 @@
                     <td>{{ row.document_number }}</td>
                     <td title="{{ row.supplier_name }}">{{ row.supplier_name }}</td>
                     <td>{{ row.work_order_reference or "-" }}</td>
+                    <td>{{ row.km if row.km is not none else "-" }}</td>
                     <td>{{ row.total_with_vat or "-" }}</td>
                     <td><span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
                     <td>
@@ -435,11 +437,11 @@
                   </tr>
                   {% if row.batch_label %}
                     <tr class="clean-doc-subrow clean-doc-subrow-left">
-                      <td colspan="8"><strong>Lote:</strong> {{ row.batch_label }}</td>
+                      <td colspan="9"><strong>Lote:</strong> {{ row.batch_label }}</td>
                     </tr>
                   {% endif %}
                 {% else %}
-                      <tr><td colspan="8" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
+                      <tr><td colspan="9" class="clean-empty-cell">Sem faturas reais para os filtros escolhidos.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

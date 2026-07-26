@@ -97,11 +97,14 @@
       </div>
       <div class="clean-doc-summary-strip">
         <span><b>Fornecedor</b><em>{{ document.supplier_name or document.source or "-" }}</em></span>
+        <span><b>NIF fornecedor</b><em>{{ extraction_metadata.supplier_nif or "-" }}</em></span>
         <span><b>Nº documento</b><em>{{ document.contract_number or document.reservation_number or document.id }}</em></span>
         <span><b>Data</b><em>{{ document_date }}</em></span>
+        <span><b>KM</b><em>{{ extraction_metadata.km or "-" }}</em></span>
         <span><b>Total c/ IVA</b><em>{{ extraction_metadata.total_with_vat or extraction_metadata.total or "-" }}</em></span>
         <span><b>Folha de obra</b><em>{{ extraction_metadata.work_order_reference or "-" }}</em></span>
         <span><b>Viatura</b><em>{% if vehicle %}{{ vehicle.plate }}{% else %}{{ document.plate or "-" }}{% endif %}</em></span>
+        <span><b>Estado OCR</b><em>{{ extraction_metadata.ocr_validation_status or extraction_metadata.ocr_status or document.status or "-" }}</em></span>
         <span><b>Lote</b><em>{{ import_batch_label or "-" }}</em></span>
         <span><b>Linhas OCR</b><em>{{ invoice_lines|length }}</em></span>
       </div>

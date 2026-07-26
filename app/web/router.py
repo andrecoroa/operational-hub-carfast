@@ -7060,6 +7060,7 @@ def clean_document_import_center(
                     "status": document.status,
                     "batch_label": _document_import_batch_label(document),
                     "work_order_reference": latest_ocr.get("work_order_reference", ""),
+                    "km": str(latest_ocr.get("km") or "").strip() or None,
                     "total_with_vat": latest_ocr.get("total_with_vat", ""),
                     "document_href": f"/v2-clean/documents/{document.id}",
                     "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",

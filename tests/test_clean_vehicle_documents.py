@@ -1,7 +1,7 @@
 import hashlib
 import json
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from io import BytesIO
 
@@ -790,6 +790,110 @@ B APV TX NORMAL 23,00 175,18 40,29 175,18 40,29 215,47
     assert payload["ocr_template"] == "filinto_mota_tal"
     assert payload["invoice_lines"][0]["service"] == "Manutenção"
     assert payload["invoice_lines"][0]["amount"] == "36,75"
+
+
+def test_batch_invoice_payload_extracts_filinto_tal_11156038_complete_table():
+    text = """
+ORIGINAL
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+FACTURA
+PRONTO PAGAMENTO
+Modo de Pagamento : Pronto Pagamento
+CLIENTE : 227010 NIF :509285970
+ATCUD: JFS4WFN7-11156038
+DOCUMENTO : TAL_FAC 2023/11156038
+DE : 05/12/2023 O.R. : 320340 OFICINA : (001) CIT Reparação VENCIMENTO : 05/12/2023
+MAT : AN-48-RA MARCA : CITROEN MODELO : C3 1.5 BlueHDi 100 S&S CVM Shine Pack
+KMS : 39643 RECEPCIONISTA : Gil Teixeira CHASSIS : VF7SXYHTUNT506748
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+VER TRAVÕES E
+SUBSTITUICAO DISCO TRAVAO AF (2) 25680910 57,00 25,00 42,75 1,10 47,03B
+E:2 DISCOS DE TRAVÃO DIA PSA 1686717180 110,95 20,00 88,76 1 88,76B
+CONJ 4 PASTILHAS TRAVÕES FR 1647863780 98,38 20,00 78,70 1 78,70B
+SPRAY LIMPEZA TRAVOES 500ML D1636264180 4,17 20,00 3,34 1 3,34B
+Subtotal Peças (170,80)
+Nova Intervenção 217,83
+OFERTA DE LAVAGEM G
+Lavagem Automática com Aspiração LAVACA 12,50 99,99 1 B
+Nova Intervenção
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A. BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 217,83 50,10 217,83 50,10 267,93
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "1-TAL-2-11156038-227010-1300984.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2023/11156038"
+    assert payload["document_date"] == "2023-12-05"
+    assert payload["supplier_nif"] == "500115966"
+    assert payload["client_nif"] == "509285970"
+    assert payload["plate"] == "AN-48-RA"
+    assert payload["vin"] == "VF7SXYHTUNT506748"
+    assert payload["km"] == "39643"
+    assert payload["repair_order_reference"] == "320340"
+    assert payload["total_with_vat"] == "267,93"
+    assert payload["invoice_lines"] == [
+        {
+            "reference": "25680910",
+            "description": "SUBSTITUICAO DISCO TRAVAO AF (2)",
+            "quantity": "1,10",
+            "unit": "",
+            "unit_price": "42,75",
+            "list_price": "57,00",
+            "discount_percent": "25,00",
+            "tax": "",
+            "amount": "47,03",
+            "service": "Discos",
+        },
+        {
+            "reference": "1686717180",
+            "description": "E:2 DISCOS DE TRAVÃO DIA PSA",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "88,76",
+            "list_price": "110,95",
+            "discount_percent": "20,00",
+            "tax": "",
+            "amount": "88,76",
+            "service": "Discos",
+        },
+        {
+            "reference": "1647863780",
+            "description": "CONJ 4 PASTILHAS TRAVÕES FR",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "78,70",
+            "list_price": "98,38",
+            "discount_percent": "20,00",
+            "tax": "",
+            "amount": "78,70",
+            "service": "Calços",
+        },
+        {
+            "reference": "D1636264180",
+            "description": "SPRAY LIMPEZA TRAVOES 500ML",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "3,34",
+            "list_price": "4,17",
+            "discount_percent": "20,00",
+            "tax": "",
+            "amount": "3,34",
+            "service": "Por classificar",
+        },
+        {
+            "reference": "LAVACA",
+            "description": "Lavagem Automática com Aspiração",
+            "quantity": "1",
+            "unit": "",
+            "unit_price": "0,00",
+            "list_price": "12,50",
+            "discount_percent": "99,99",
+            "tax": "",
+            "amount": "0,00",
+            "service": "Por classificar",
+        },
+    ]
 
 
 def test_batch_invoice_payload_extracts_only_filinto_tal_table_rows():
@@ -4077,15 +4181,43 @@ def test_clean_vehicle_documents_recovers_legacy_timeline_dates_from_raw_metadat
         source_system="contract_import",
         metadata_json={"date_out": "20250801", "date_in": "2025-08-31T18:30:00"},
     )
-    db_session.add_all([work_order, contract])
+    portuguese_contract = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="contracts",
+        title="RA 49",
+        external_reference="49",
+        document_date=None,
+        source_system="contract_import",
+        metadata_json={"Data de saída": "2024-01-01T00:01:59", "Data de entrada": "2024-01-31T23:59:00"},
+    )
+    portuguese_impro = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="impros",
+        title="Impro 8461",
+        external_reference="8461",
+        document_date=None,
+        source_system="impro_import",
+        metadata_json={"Data de saída": "2024-01-28T00:00:00", "Data de entrada": "2024-02-05T00:00:00"},
+    )
+    db_session.add_all([work_order, contract, portuguese_contract, portuguese_impro])
     db_session.commit()
 
     module_ctx = vehicle_document_module_context(db_session, vehicle)
     work_order_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "work_orders")
     contract_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts")
+    portuguese_contract_row = next(
+        row
+        for row in module_ctx["structured_rows"]
+        if row["main_group"] == "contracts" and row["external_reference"] == "49"
+    )
+    portuguese_impro_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "impros")
 
     assert work_order_row["date_display"] == "24/07/2026"
     assert contract_row["period_display"] == "01/08/2025 a 31/08/2025"
+    assert portuguese_contract_row["period_display"] == "01/01/2024 a 31/01/2024"
+    assert portuguese_impro_row["period_display"] == "28/01/2024 a 05/02/2024"
     assert any(
         any(card["group"] == "work_orders" for card in event["right"])
         for event in module_ctx["timeline_events"]
@@ -4487,5 +4619,126 @@ def test_clean_vehicle_documents_import_rentway_exports_with_preamble(authentica
     )
     assert any(
         any(card["group"] == "impros" for card in event["center"])
+        for event in module_ctx["timeline_events"]
+    )
+
+
+def test_clean_vehicle_documents_import_real_rentway_portuguese_date_headers(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    impros = _make_rentway_export_workbook(
+        "Impros - 25/07/2026 11:22",
+        [
+            "Estado",
+            "Impro",
+            "Estação de devolução",
+            "Data de entrada",
+            "Matrícula",
+            "Marca",
+            "Modelo do Veículo",
+            "Condutor",
+            "ID Grupo",
+            "Estação de saída",
+            "Data de saída",
+            "Oficina",
+            "Km percorridos",
+            "Código de tipo de Impro",
+            "Descrição do tipo de Impro",
+        ],
+        [[
+            "Closed",
+            8461,
+            "AEROPORTO PORTO",
+            datetime(2024, 2, 5),
+            "CC-11-AA",
+            "CITROEN",
+            "BERLINGO",
+            "Filinto Mota",
+            "2",
+            "AEROPORTO PORTO",
+            datetime(2024, 1, 28),
+            "",
+            51,
+            "SERVICO",
+            "SERVIÇO STAFF",
+        ]],
+    )
+    contracts = _make_rentway_export_workbook(
+        "Informações de Contratos - 25/07/2026 13:23",
+        [
+            "Contrato",
+            "Estação",
+            "Data de criação",
+            "Dias",
+            "Data de saída",
+            "Data de entrada",
+            "Código da tarifa",
+            "Vendedor",
+            "Origem",
+            "Matrícula",
+            "Categoria",
+            "Categoria solicitada",
+            "Qtd. faturada",
+            "Nome do cliente",
+            "Valor de caixa",
+        ],
+        [[
+            49,
+            "AEROPORTO PORTO",
+            datetime(2024, 1, 5, 16, 28, 19),
+            31,
+            datetime(2024, 1, 1, 0, 1, 59),
+            datetime(2024, 1, 31, 23, 59),
+            "CORP MENSAL",
+            "DIRECTOS",
+            "DIRECTOS",
+            "CC-11-AA",
+            "CITROEN BERLINGO OU SIMILAR",
+            "CITROEN BERLINGO OU SIMILAR",
+            711.91,
+            "ROTA LATINA, LDA.",
+            0,
+        ]],
+    )
+
+    impro_response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/impros",
+        files={
+            "file": (
+                "impros.xlsx",
+                impros.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        follow_redirects=False,
+    )
+    contract_response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/import/contracts",
+        files={
+            "file": (
+                "contracts.xlsx",
+                contracts.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert impro_response.status_code == 303
+    assert contract_response.status_code == 303
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    impro_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "impros")
+    contract_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts")
+
+    assert impro_row["period_display"] == "28/01/2024 a 05/02/2024"
+    assert contract_row["period_display"] == "01/01/2024 a 31/01/2024"
+    assert any(
+        any(card["group"] == "contracts" and card["period"] == "01/01/2024 a 31/01/2024" for card in event["center"])
+        for event in module_ctx["timeline_events"]
+    )
+    assert any(
+        any(card["group"] == "impros" and card["period"] == "28/01/2024 a 05/02/2024" for card in event["center"])
         for event in module_ctx["timeline_events"]
     )

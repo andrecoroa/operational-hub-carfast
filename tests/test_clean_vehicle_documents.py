@@ -463,6 +463,42 @@ ATCUD: JJWNNZZ4-3822
     ]
 
 
+def test_batch_invoice_payload_extracts_filinto_vnc_finance_invoice():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+Exmos Senhores Carfast - Rent-A-Car, Lda
+FACTURA Rua das Indústrias, 220
+Doc.Nº CIAL_FACVN2 025 /1195
+Conta 227010 Data 01/04/2025 NIF 509285970
+Marca : PEUGEOT Modelo : Partner Longa 1.5 BlueHDi Matrícula: BS-61-FU
+Chassis : VR3EDYHTXRJ968622 Combustível : Diesel
+Descrição Valor Total
+Isento IVA ao Abrigo Art.º 16 - N.º 6, Alinea C
+R-Despesas de Locação Financeira 68,00
+R-Serviços Prestados Loc. Financeira 37,00
+Observações : Viatura Vendida com financiamento
+Total Líquido 105,00
+Total IVA 8,51
+Total do documento 113,51
+ATCUD: JJWNNZZ4-1195
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "filinto_1195.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "filinto_mota_venda_financeira"
+    assert payload["document_number"] == "CIAL_FACVN2 025 /1195"
+    assert payload["supplier_nif"] == "500115966"
+    assert payload["client_nif"] == "509285970"
+    assert payload["plate"] == "BS-61-FU"
+    assert payload["vin"] == "VR3EDYHTXRJ968622"
+    assert payload["total_with_vat"] == "113,51"
+    assert [(line["description"], line["amount"]) for line in payload["invoice_lines"]] == [
+        ("R-Despesas de Locação Financeira", "68,00"),
+        ("R-Serviços Prestados Loc. Financeira", "37,00"),
+    ]
+
+
 def test_batch_invoice_payload_does_not_map_carfast_nif_as_filinto_supplier():
     text = """
 CLIENTE : 227010 NIF :509285970
@@ -1895,6 +1931,123 @@ TOTAL
     assert payload["invoice_lines"][3]["amount"] == "93,6000"
     assert payload["invoice_lines"][-1]["line_type"] == "VAR"
     assert payload["invoice_lines"][-1]["amount"] == "2,4676"
+
+
+def test_batch_invoice_payload_extracts_caetano_gamobar_xfo_696():
+    text = """
+FATURA
+Ident. Único Doc: TAT XFO/696
+2025-09-23
+CRÉDITO
+Forma de
+Pagamento
+13197
+Kms.
+PEUGEOT PARTNER ASPHALT LONGA 1.5 B
+BS61FU / VR3EDYHTXRJ968622
+Matrícula / VIN
+2025-09-16
+Data Abertura
+XOJ/1986/2025
+OR
+509285970
+NIF Cliente
+2025-11-24
+Data Vencim.
+XFO/696/2025
+Doc. Núm.
+160,5000
+Valor Com IVA
+CLIENTE QUEIXA SE DA CHAVE DE SERVICO ANTES DO TEMPO
+Tipo
+23,00
+18,8184
+40,00
+78,4100
+Horas
+0,40
+MUDANCA DE OLEO E FIL
+01E8DA
+MO
+23,00
+1,9800
+25,00
+2,6400
+Uds
+1,00
+LAMPADA 12V 16W S/CASQ
+PSA-6216E0
+MAT
+23,00
+13,5000
+25,00
+18,0000
+Uds
+1,00
+FILTRO OLEO
+PSA-1680682480
+MAT
+23,00
+93,7137
+35,00
+36,5000
+Uds
+3,95
+ÓLEO MOTOR TOTAL INEO RCP (5W30)
+PSA-TPPRCPINEO
+MAT
+23,00
+0,2793
+Ecolub 1L
+23,00
+2,1975
+25,00
+2,9300
+Uds
+1,00
+JUNTA
+PSA-1682801480
+MAT
+Os serviços constantes deste documento foram concluidos em 2025-09-23
+130,4889
+IVA
+0,2793
+Ecolub 1L
+160,50
+30,01
+68,90
+199,39
+0,28
+0,00
+18,82
+111,39
+Total
+IVA
+Desconto
+Bruto
+Taxas
+Diversos
+M. Obra
+Materiais
+ATCUD:JF6NPXD9-696
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "gamobar_696.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "caetano_gamobar_xfo"
+    assert payload["supplier_nif"] == "500112967"
+    assert payload["document_number"] == "XFO/696/2025"
+    assert payload["plate"] == "BS61FU"
+    assert payload["vin"] == "VR3EDYHTXRJ968622"
+    assert payload["km"] == "13197"
+    assert payload["total_with_vat"] == "160,50"
+    assert [line["reference"] for line in payload["invoice_lines"]] == [
+        "01E8DA",
+        "PSA-6216E0",
+        "PSA-1680682480",
+        "PSA-TPPRCPINEO",
+        "PSA-1682801480",
+    ]
 
 
 def test_batch_invoice_payload_extracts_caetano_gamobar_2945():

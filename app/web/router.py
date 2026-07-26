@@ -7700,11 +7700,6 @@ def _batch_invoice_is_filinto_vnc_template(text: str) -> bool:
     return (
         _batch_invoice_is_filinto_template(text)
         and "CIALFACVN" in compact
-        and (
-            "IMPOSTOUNICODECIRCULACAO" in compact
-            or "MODVNC" in compact
-            or "600HYBRID" in compact
-        )
     )
 
 
@@ -7738,47 +7733,71 @@ def _batch_invoice_filinto_vnc_data(text: str, lines: list[str]) -> dict[str, An
     fuel = first_match(r"Combust[ií]vel\s*:\s*([A-ZÀ-ÿ ]+)")
     stock_number = first_match(r"N[ºo]\s*Stock\s*:\s*([\d ]+)")
 
-    line_description = "R-Imposto Único de Circulação"
-    line_amount = ""
-    for index, line in enumerate(lines):
-        compact_line = _compact_identifier(line)
-        if "IMPOSTOUNICODECIRCULACAO" in compact_line:
-            for candidate in lines[index : index + 4]:
-                money_match = re.search(r"(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})", candidate)
-                if money_match:
-                    line_amount = _batch_invoice_format_money(money_match.group(1))
-                    break
-            if not line_amount:
-                for candidate in lines[index + 1 : index + 4]:
-                    money_match = re.search(r"^(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})$", candidate.strip())
-                    if money_match:
-                        line_amount = _batch_invoice_format_money(money_match.group(1))
-                        break
-            break
+    invoice_lines: list[dict[str, Any]] = []
+    sales_section = re.search(
+        r"Descri[cç][aã]o\s+Valor\s+Total\s*(?P<body>.*?)(?=Observa[cç][oõ]es\s*:|Base\s+de\s+incid[eê]ncia|$)",
+        joined,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if sales_section:
+        for raw_line in sales_section.group("body").splitlines():
+            line = " ".join(raw_line.split()).strip(" .")
+            match = re.match(
+                r"(?P<description>R-.+?)\s+(?P<amount>-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                continue
+            amount = _batch_invoice_format_money(match.group("amount"))
+            description = match.group("description").strip()
+            is_iuc = "IMPOSTOUNICODECIRCULACAO" in _compact_identifier(description)
+            invoice_lines.append(
+                {
+                    "reference": "",
+                    "description": description,
+                    "quantity": "1",
+                    "unit": "",
+                    "unit_price": amount,
+                    "tax": "E" if is_iuc else "",
+                    "amount": amount,
+                    "service": "Outro" if is_iuc else _batch_invoice_line_service(description),
+                }
+            )
+    if not invoice_lines and "IMPOSTOUNICODECIRCULACAO" in _compact_identifier(joined):
+        description = first_match(r"(R-Imposto\s+[ÚU]nico\s+de\s+Circula[cç][aã]o)")
+        amount = first_match(
+            r"R-Imposto\s+[ÚU]nico\s+de\s+Circula[cç][aã]o\s+"
+            r"(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if description and amount:
+            amount = _batch_invoice_format_money(amount)
+            invoice_lines.append(
+                {
+                    "reference": "",
+                    "description": description,
+                    "quantity": "1",
+                    "unit": "",
+                    "unit_price": amount,
+                    "tax": "E",
+                    "amount": amount,
+                    "service": "Outro",
+                }
+            )
 
     total = first_match(r"Total\s+do\s+documento\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})")
-    if not total:
-        total = line_amount
     vat_amount = first_match(r"Total\s+IVA\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})") or "0,00"
     subtotal = first_match(r"Total\s+L[ií]quido\s+(\d{1,3}(?:[ .]\d{3})*,\d{2}|\d+,\d{2})") or total
-
-    invoice_lines = []
-    if line_amount:
-        invoice_lines.append(
-            {
-                "reference": "",
-                "description": line_description,
-                "quantity": "1",
-                "unit": "",
-                "unit_price": line_amount,
-                "tax": "E",
-                "amount": line_amount,
-                "service": "Outro",
-            }
-        )
+    compact = _compact_identifier(text)
+    template = (
+        "filinto_mota_venda_iuc"
+        if "IMPOSTOUNICODECIRCULACAO" in compact
+        else "filinto_mota_venda_financeira"
+    )
 
     return {
-        "ocr_template": "filinto_mota_venda_iuc",
+        "ocr_template": template,
         "document_number": document_number,
         "document_date": document_date,
         "supplier_nif": "500115966",
@@ -7808,7 +7827,7 @@ def _batch_invoice_is_gamobar_template(text: str) -> bool:
             "ident" in compact
             and ("unicodoc" in compact or "únicodoc" in compact)
             and "valorcomiva" in compact
-            and re.search(r"\b(?:HFO|HFJ|FFJ)/\d+/\d{4}\b", text, flags=re.IGNORECASE)
+            and re.search(r"\b(?:HFO|HFJ|FFJ|XFO)/\d+/\d{4}\b", text, flags=re.IGNORECASE)
         )
     )
 
@@ -8504,7 +8523,7 @@ def _batch_invoice_gamobar_data(text: str, lines: list[str]) -> dict[str, Any]:
     document_date = _batch_document_date(text)
     due_date_text = _batch_invoice_gamobar_value_before(lines, "Data Vencim.")
     due_date = _batch_document_date(due_date_text)
-    document_number_match = re.search(r"\b((?:HFO|HFJ|FFJ)/\d+/\d{4})\b", text, flags=re.IGNORECASE)
+    document_number_match = re.search(r"\b((?:HFO|HFJ|FFJ|XFO)/\d+/\d{4})\b", text, flags=re.IGNORECASE)
     atcud_match = re.search(r"\bATCUD\s*:?\s*([A-Z0-9-]+)", text, flags=re.IGNORECASE)
     atcud = _batch_invoice_gamobar_value_before(lines, "ATCUD")
     if not re.search(r"[A-Z]", atcud or "", flags=re.IGNORECASE):

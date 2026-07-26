@@ -1157,6 +1157,60 @@ TOTAL LÍQUIDO
     assert payload["invoice_lines"][0]["amount"] == "135,43"
 
 
+def test_batch_invoice_payload_extracts_filinto_inline_package_without_tal_fallback():
+    text = """
+Filinto Mota Sucessores S.A.
+NIF: 500 115 966
+DOCUMENTO : TAL_FAC 2025/11179616
+DE : 31/12/2025 O.R. : 356423 OFICINA : (001) CIT Reparação VENCIMENTO : 31/01/2026
+MAT : BC-98-FA MARCA : CITROEN MODELO : Berlingo Van XL 1.5 BlueHDi 100 S&S CVM6
+KMS : 103153 RECEPCIONISTA : Gil Teixeira CHASSIS : VR7EFYHT2PJ721791
+Descrição Referência P.V.Unit Desc P.Liq.Unit Tmp/Qt Total Liq. CT
+INDICAÇÃO DE DEFEITO DO MOTOR C F
+Nova Intervenção
+INDICAÇÃO DE MANUTENÇÃO EM 300 KM, FEZ TROCA DE ÓELO D F
+AOS 95.841 KM
+Mudança Óleo dinâmica diesel (5,3L) 2 135,43 135,43 135,43 F
+OLEO TOTAL QUARTZ INEO RCP 5W30 FPW9.55535/03 QINEORCP 5,30 B
+JUNTA DO BUJAO 016488 1 B
+FILTRO OLEO 1680682480 1 B
+Mão de Obra Mecânica MMC001 1 F
+SIGOU - Ecolub 1L 5,30 F
+Nova Intervenção 135,43
+CONTROLO DE LUZES E F
+LAMPADA DE CHAPA DE MATRICULA-SUBSTITUICAO-NO 52890910 66,00 31,06 45,50 0,20 9,10 F
+VEICULO
+ABRA#ADEIRA 7588E8 0,16 12,00 0,14 1 0,14B
+LAMPADA 12V-W5W 6216A1 2,70 20,00 2,16 2 4,32B
+Subtotal Peças (4,46)
+Nova Intervenção 13,56
+LAVAGEM DE OFERTA F F
+Lavagem Automática com Aspiração LAVACA 15,00 99,99 1 F
+CÓDIGO/DESCRIÇÃO I.V.A. TAXA I.V.A.BASE INCIDÊNCIA VALOR I.V.A. TOTAL LÍQUIDO TOTAL I.V.A. TOTAL A PAGAR
+B APV TX NORMAL 23,00 112,53 25,88 148,99 34,27 183,26
+ATCUD:JFS4WFN7-11179616
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "Fatura-11179616-0.pdf", existing_text=text)
+
+    assert payload["document_number"] == "TAL_FAC 2025/11179616"
+    assert payload["document_date"] == "2025-12-31"
+    assert payload["km"] == "103153"
+    assert payload["total_with_vat"] == "183,26"
+    assert payload["repair_order_reference"] == "356423"
+    assert len(payload["invoice_lines"]) == 4
+    assert [line["amount"] for line in payload["invoice_lines"]] == ["135,43", "9,10", "0,14", "4,32"]
+    assert payload["invoice_lines"][0]["description"] == "Mudança Óleo dinâmica diesel (5,3L)"
+    assert payload["invoice_lines"][0]["quantity"] == "1"
+    assert payload["invoice_lines"][1]["reference"] == "52890910"
+    assert payload["invoice_lines"][1]["description"] == "LAMPADA DE CHAPA DE MATRICULA-SUBSTITUICAO-NO"
+    assert payload["invoice_lines"][2]["reference"] == "7588E8"
+    assert payload["invoice_lines"][2]["unit_price"] == "0,14"
+    assert payload["invoice_lines"][3]["reference"] == "6216A1"
+    assert all("AOS 95" not in line["description"] for line in payload["invoice_lines"])
+    assert all("LAVAGEM" not in line["description"] for line in payload["invoice_lines"])
+
+
 def test_batch_invoice_payload_extracts_filinto_package_line_without_explicit_service_quantity():
     text = """
 Filinto Mota Sucessores S.A.

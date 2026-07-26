@@ -8522,7 +8522,12 @@ def _batch_invoice_filinto_lines_are_contaminated(invoice_lines: list[dict[str, 
         description = normalize_identifier(str(line.get("description") or "")) or ""
         reference = normalize_identifier(str(line.get("reference") or "")) or ""
         quantity = str(line.get("quantity") or "").strip().replace(" ", "")
-        if any(token.replace(" ", "") in description for token in bad_tokens):
+        if len(re.findall(r"-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4}", description)) >= 2:
+            return True
+        description_compact = _compact_identifier(description)
+        if any(token.replace(" ", "") in description for token in bad_tokens if token != "MATRICULA"):
+            return True
+        if "MATRICULA" in description_compact and description_compact.startswith(("MAT", "MATRICULA")):
             return True
         if any(token.replace(" ", "") in reference for token in bad_tokens):
             return True
@@ -8547,7 +8552,6 @@ def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]
         "CODIGODESCRICAO",
         "CODDESCRICAO",
         "GRUPOFILINTOMOTAVANTAGEMCLIENTE",
-        "NOVAINTERVENCAO",
         "OBSERVACOES",
         "OSARTIGOS",
         "PAGAMENTOPOR",
@@ -8567,6 +8571,7 @@ def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]
         "DUPLICADO",
         "FACTURA",
         "FATURA",
+        "NOVAINTERVENCAO",
         "OFERTALAVAGEM",
         "OFERTADELAVAGEM",
         "ORIGINAL",
@@ -8583,10 +8588,41 @@ def _batch_invoice_filinto_inline_lines(lines: list[str]) -> list[dict[str, Any]
         compact = _compact_identifier(stripped)
         if any(compact.startswith(prefix) for prefix in stop_prefixes):
             break
-        if compact in skipped_descriptions or not stripped:
+        if (
+            compact in skipped_descriptions
+            or any(compact.startswith(token) for token in ("NOVAINTERVENCAO",))
+            or not stripped
+        ):
+            continue
+        package_match = re.match(
+            r"^(?P<description>.+?)\s+\d+\s+(?P<amount>-?\d+(?:[ .]\d{3})*,\d{2,4}|-?\d+,\d{2,4})\s+"
+            r"(?P=amount)\s+(?P=amount)\s+(?P<tax>[A-Z])$",
+            stripped,
+            flags=re.IGNORECASE,
+        )
+        if package_match and "MUDANCAOLEODINAMICADIESEL" in _compact_identifier(package_match.group("description")):
+            description = package_match.group("description").strip(" -")
+            amount = _batch_invoice_format_money(package_match.group("amount"))
+            key = ("", description, amount)
+            if key not in seen:
+                seen.add(key)
+                results.append(
+                    {
+                        "reference": "",
+                        "description": description[:240],
+                        "quantity": "1",
+                        "unit": "",
+                        "unit_price": amount,
+                        "list_price": amount,
+                        "discount_percent": "",
+                        "tax": package_match.group("tax").upper(),
+                        "amount": amount,
+                        "service": _batch_invoice_line_service(description),
+                    }
+                )
             continue
         parts = stripped.split()
-        if len(parts) < 8:
+        if len(parts) < 7:
             continue
         tax = ""
         if re.fullmatch(r"[A-Z]", parts[-1], flags=re.IGNORECASE):

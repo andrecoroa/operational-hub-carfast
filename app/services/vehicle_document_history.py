@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -345,6 +345,18 @@ RENTWAY_END_DATE_COLUMNS = [
     "Data ate",
     "Até",
     "Ate",
+]
+
+WORK_ORDER_DATE_COLUMNS = [
+    "Data",
+    "DocumentDate",
+    "Document Date",
+    "Data documento",
+    "Data da folha de obra",
+    "Data FO",
+    "Data abertura",
+    "Opening Date",
+    "Created At",
 ]
 
 
@@ -712,7 +724,7 @@ def import_work_orders_xlsx(
         )
         if not row_vehicle:
             continue
-        document_date = _safe_date(first_row_value(row, cols, ["Data", "DocumentDate"]))
+        document_date = _row_date(row, cols, WORK_ORDER_DATE_COLUMNS)
         supplier_name = _normalize_text(first_row_value(row, cols, ["Nome fornecedor", "Fornecedor", "Supplier"]))
         raw_description = _normalize_text(first_row_value(row, cols, ["Observações", "Observacoes", "Descrição", "Descricao"]))
         km = clean_int(first_row_value(row, cols, ["Kms", "KM", "Km", "Quilómetros", "Quilometros"]))
@@ -729,7 +741,11 @@ def import_work_orders_xlsx(
             source_system="work_order_import",
             plate=row_vehicle.plate,
             vin=row_vehicle.vin,
-            metadata_json={**raw, "work_order_header": raw},
+            metadata_json={
+                **raw,
+                "work_order_header": raw,
+                "_document_date": document_date.isoformat() if document_date else None,
+            },
             source_document_id=source_document.id if source_document else None,
             user_id=user_id,
         )
@@ -832,7 +848,7 @@ def import_work_order_details_xlsx(
         header_updates[key] = {
             "reference": reference,
             "km": clean_int(first_row_value(row, cols, ["Kms", "KM", "Km", "Quilómetros", "Quilometros"])),
-            "document_date": _safe_date(first_row_value(row, cols, ["Data", "DocumentDate"])),
+            "document_date": _row_date(row, cols, WORK_ORDER_DATE_COLUMNS),
             "supplier_name": _normalize_text(first_row_value(row, cols, ["Nome fornecedor", "Fornecedor", "Supplier"])),
         }
 
@@ -1467,14 +1483,11 @@ def _metadata_date(metadata: dict[str, Any] | None, key: str) -> date | None:
     value = (metadata or {}).get(key)
     if not value:
         return None
-    if isinstance(value, date):
-        return value
     if isinstance(value, datetime):
         return value.date()
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
+    if isinstance(value, date):
+        return value
+    return _safe_date(value)
 
 
 def _metadata_date_from_candidates(metadata: dict[str, Any] | None, candidates: list[str]) -> date | None:
@@ -1491,13 +1504,33 @@ def _metadata_date_from_candidates(metadata: dict[str, Any] | None, candidates: 
 
 def _timeline_period_dates(row: VehicleDocumentRecord) -> tuple[date | None, date | None]:
     metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
-    start = (
-        _metadata_date(metadata, "_start_date")
-        or _metadata_date_from_candidates(metadata, RENTWAY_START_DATE_COLUMNS)
-        or row.document_date
-    )
+    if row.main_group == "work_orders":
+        start = (
+            _metadata_date(metadata, "_document_date")
+            or _metadata_date_from_candidates(metadata, WORK_ORDER_DATE_COLUMNS)
+            or row.document_date
+        )
+        return start, None
+
+    start = _metadata_date(metadata, "_start_date") or _metadata_date_from_candidates(
+        metadata, RENTWAY_START_DATE_COLUMNS
+    ) or row.document_date
     if row.main_group == "contracts":
         end = _metadata_date(metadata, "_end_date") or _metadata_date_from_candidates(metadata, RENTWAY_END_DATE_COLUMNS)
+        days = clean_int(
+            next(
+                (
+                    value
+                    for key, value in metadata.items()
+                    if normalize_header(key) in {"ndays", "dias", "days"} and value not in (None, "")
+                ),
+                None,
+            )
+        )
+        if start and not end and days and days > 0:
+            end = start + timedelta(days=max(days - 1, 0))
+        elif end and not start and days and days > 0:
+            start = end - timedelta(days=max(days - 1, 0))
     elif row.main_group == "impros":
         end = (
             _metadata_date(metadata, "_date_out")
@@ -1506,6 +1539,8 @@ def _timeline_period_dates(row: VehicleDocumentRecord) -> tuple[date | None, dat
         )
     else:
         end = None
+    if start and end and start > end:
+        start, end = end, start
     return start, end
 
 

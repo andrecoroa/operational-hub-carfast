@@ -64,9 +64,26 @@ def excel_date_to_iso(value: Any) -> str | None:
     text = str(value).strip()
     if not text:
         return None
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S"):
+    normalized = text.replace("T", " ").replace("Z", "").strip()
+    if normalized.isdigit() and len(normalized) == 8:
+        for fmt in ("%Y%m%d", "%d%m%Y"):
+            try:
+                return datetime.strptime(normalized, fmt).date().isoformat()
+            except ValueError:
+                pass
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%d.%m.%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M:%S",
+    ):
         try:
-            return datetime.strptime(text, fmt).date().isoformat()
+            return datetime.strptime(normalized, fmt).date().isoformat()
         except ValueError:
             pass
     return text

@@ -3422,6 +3422,68 @@ def test_clean_vehicle_documents_import_contracts_rentway_checkout_dates(authent
     assert contract_row["period_display"] == "01/08/2025 a 31/08/2025"
 
 
+def test_clean_vehicle_documents_recovers_legacy_timeline_dates_from_raw_metadata(db_session):
+    vehicle = _create_vehicle(db_session)
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO 1773",
+        external_reference="1773",
+        document_date=None,
+        source_system="work_order_import",
+        metadata_json={"Data": "24/07/2026 13:42:10"},
+    )
+    contract = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="contracts",
+        title="RA 15394",
+        external_reference="15394",
+        document_date=None,
+        source_system="contract_import",
+        metadata_json={"date_out": "20250801", "date_in": "2025-08-31T18:30:00"},
+    )
+    db_session.add_all([work_order, contract])
+    db_session.commit()
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    work_order_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "work_orders")
+    contract_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts")
+
+    assert work_order_row["date_display"] == "24/07/2026"
+    assert contract_row["period_display"] == "01/08/2025 a 31/08/2025"
+    assert any(
+        any(card["group"] == "work_orders" for card in event["right"])
+        for event in module_ctx["timeline_events"]
+    )
+    assert any(
+        any(card["group"] == "contracts" and card["period"] == "01/08/2025 a 31/08/2025" for card in event["center"])
+        for event in module_ctx["timeline_events"]
+    )
+
+
+def test_clean_vehicle_documents_derives_contract_end_date_from_duration(db_session):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="contracts",
+        title="RA 49",
+        external_reference="49",
+        document_date=None,
+        source_system="contract_import",
+        metadata_json={"checkout_date": "01.08.2025", "ndays": 31},
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+    contract_row = next(row for row in module_ctx["structured_rows"] if row["main_group"] == "contracts")
+
+    assert contract_row["period_display"] == "01/08/2025 a 31/08/2025"
+
+
 def test_clean_document_center_reimport_refreshes_existing_structured_source(authenticated_client, db_session, tmp_path):
     vehicle = _create_vehicle(db_session)
     workbook = _make_workbook(

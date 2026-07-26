@@ -6997,6 +6997,14 @@ def clean_document_import_center(
                 invoice_event_map[event.document_id].append(event)
 
         invoice_batch_map: dict[str, dict[str, Any]] = {}
+        invoice_preview_audit = {
+            "total": 0,
+            "ok": 0,
+            "missing_path": 0,
+            "missing_file": 0,
+            "old_project_path": 0,
+            "issues": [],
+        }
         invoice_batch_documents = db.scalars(
             select(Document)
             .where(*invoice_document_conditions(include_filters=False))
@@ -7004,6 +7012,32 @@ def clean_document_import_center(
             .limit(10000)
         ).all()
         for document in invoice_batch_documents:
+            raw_storage_path = (document.storage_path or "").strip()
+            preview_issue = ""
+            if not raw_storage_path:
+                preview_issue = "Sem caminho de ficheiro"
+                invoice_preview_audit["missing_path"] += 1
+            elif "/opt/render/project/src/uploads" in raw_storage_path.replace("\\", "/"):
+                preview_issue = "Caminho antigo fora do arquivo persistente"
+                invoice_preview_audit["old_project_path"] += 1
+            elif not _document_resolved_file(document):
+                preview_issue = "Ficheiro arquivado não encontrado"
+                invoice_preview_audit["missing_file"] += 1
+            else:
+                invoice_preview_audit["ok"] += 1
+            invoice_preview_audit["total"] += 1
+            if preview_issue and len(invoice_preview_audit["issues"]) < 8:
+                invoice_preview_audit["issues"].append(
+                    {
+                        "id": document.id,
+                        "title": document.title or document.original_name or f"Documento {document.id}",
+                        "plate": document.plate or "-",
+                        "supplier_name": document.supplier_name or "-",
+                        "batch_label": _document_import_batch_label(document) or "-",
+                        "issue": preview_issue,
+                        "document_href": f"/v2-clean/documents/{document.id}",
+                    }
+                )
             batch_label = _document_import_batch_label(document)
             if not batch_label:
                 continue
@@ -7125,6 +7159,7 @@ def clean_document_import_center(
                     "service_summary": service_summary,
                     "document_href": f"/v2-clean/documents/{document.id}",
                     "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
+                    "preview_available": bool(_document_resolved_file(document)),
                     "preview_kind": (
                         "image"
                         if (document.file_type or "").lower() in {"jpg", "jpeg", "png", "webp", "gif"}
@@ -7162,6 +7197,7 @@ def clean_document_import_center(
                 "invoice_batches": invoice_batches,
                 "invoice_batches_preview": invoice_batches_preview,
                 "invoice_batches_count": len(invoice_batches),
+                "invoice_preview_audit": invoice_preview_audit,
                 "invoice_supplier": clean_invoice_supplier,
                 "invoice_vehicle": clean_invoice_vehicle,
                 "invoice_batch": clean_invoice_batch,

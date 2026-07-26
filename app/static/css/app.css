@@ -18379,6 +18379,61 @@ button.clean-upload-preview-card {
   line-height: 1.4;
 }
 
+.clean-doc-preview-audit-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #dbe5f2;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.clean-doc-preview-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.clean-doc-preview-audit-card {
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid #d7e1ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b2a64;
+  text-decoration: none;
+}
+
+.clean-doc-preview-audit-card strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.clean-doc-preview-audit-card span {
+  color: #61708b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clean-doc-preview-audit-card-ok {
+  border-color: #cfe8d9;
+  background: #f3fbf6;
+}
+
+.clean-doc-preview-audit-card-warning {
+  border-color: #f4c99b;
+  background: #fff8ed;
+}
+
+.clean-doc-preview-audit-table td,
+.clean-doc-preview-audit-table th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .clean-doc-inline-workbench-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

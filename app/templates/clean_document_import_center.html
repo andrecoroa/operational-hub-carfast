@@ -435,6 +435,65 @@
               </form>
             </section>
           {% endif %}
+          <section class="clean-doc-preview-audit-panel">
+            <div class="table-heading flat-heading">
+              <div>
+                <h4>Auditoria de preview</h4>
+                <p>Confirma se as faturas importadas ainda têm ficheiro físico disponível para abrir em preview.</p>
+              </div>
+              <span>{{ invoice_preview_audit["ok"] }} / {{ invoice_preview_audit["total"] }} OK</span>
+            </div>
+            <div class="clean-doc-preview-audit-grid">
+              <a class="clean-doc-preview-audit-card" href="/v2-clean/documents?main_group=invoices">
+                <strong>{{ invoice_preview_audit["total"] }}</strong>
+                <span>Faturas reais</span>
+              </a>
+              <a class="clean-doc-preview-audit-card clean-doc-preview-audit-card-ok" href="/v2-clean/documents?main_group=invoices">
+                <strong>{{ invoice_preview_audit["ok"] }}</strong>
+                <span>Com preview</span>
+              </a>
+              <div class="clean-doc-preview-audit-card {% if invoice_preview_audit["missing_path"] %}clean-doc-preview-audit-card-warning{% endif %}">
+                <strong>{{ invoice_preview_audit["missing_path"] }}</strong>
+                <span>Sem caminho</span>
+              </div>
+              <div class="clean-doc-preview-audit-card {% if invoice_preview_audit["missing_file"] %}clean-doc-preview-audit-card-warning{% endif %}">
+                <strong>{{ invoice_preview_audit["missing_file"] }}</strong>
+                <span>Ficheiro em falta</span>
+              </div>
+              <div class="clean-doc-preview-audit-card {% if invoice_preview_audit["old_project_path"] %}clean-doc-preview-audit-card-warning{% endif %}">
+                <strong>{{ invoice_preview_audit["old_project_path"] }}</strong>
+                <span>Caminho antigo</span>
+              </div>
+            </div>
+            {% if invoice_preview_audit["issues"] %}
+              <div class="clean-doc-table-wrap clean-doc-table-scroll-compact">
+                <table class="clean-doc-table clean-doc-table-compact clean-doc-preview-audit-table">
+                  <thead>
+                    <tr>
+                      <th>Documento</th>
+                      <th>Viatura</th>
+                      <th>Fornecedor</th>
+                      <th>Lote</th>
+                      <th>Problema</th>
+                      <th>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for issue in invoice_preview_audit["issues"] %}
+                      <tr>
+                        <td>{{ issue.title }}</td>
+                        <td>{{ issue.plate }}</td>
+                        <td>{{ issue.supplier_name }}</td>
+                        <td>{{ issue.batch_label }}</td>
+                        <td><span class="clean-doc-status-pill">{{ issue.issue }}</span></td>
+                        <td><a class="button-link secondary-link" href="{{ issue.document_href }}">Abrir</a></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+          </section>
           <div class="clean-doc-table-wrap clean-doc-table-scroll-8">
             <table class="clean-doc-table clean-doc-table-compact clean-doc-global-table clean-doc-global-invoice-table">
               <thead>
@@ -583,6 +642,7 @@
                               data-preview-src="{{ row.preview_href }}"
                               data-preview-title="{{ row.document_number or row.title or 'Fatura' }}"
                               data-preview-kind="{{ row.preview_kind or 'pdf' }}"
+                              {% if not row.preview_available %}disabled{% endif %}
                             >Pré-visualizar PDF</button>
                             <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
                               <input type="hidden" name="return_url" value="/v2-clean/documents?main_group=invoices">

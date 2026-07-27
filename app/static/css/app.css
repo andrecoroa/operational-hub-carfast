@@ -17233,6 +17233,12 @@ body.clean-doc-modal-open {
   gap: 10px;
 }
 
+.clean-doc-detail-summary-actions .button-link {
+  width: auto;
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
 .clean-doc-summary-close {
   border-radius: 7px;
   background: #9b3f20;
@@ -17244,7 +17250,7 @@ body.clean-doc-modal-open {
 
 .clean-doc-detail-open .clean-doc-expanded-detail-grid {
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -17252,12 +17258,11 @@ body.clean-doc-modal-open {
 .clean-doc-detail-open .clean-doc-invoice-focus-grid {
   position: relative;
   grid-template-columns: minmax(0, 1fr) minmax(410px, 440px);
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "document classification"
-    "lines classification"
-    "note classification"
-    "preview preview";
-  align-items: start;
+    "lines classification";
+  align-items: stretch;
 }
 
 .clean-doc-detail-document-card dl {
@@ -17275,12 +17280,24 @@ body.clean-doc-modal-open {
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-line-classification-card {
-  position: sticky;
-  top: 0;
-  max-height: calc(94vh - 92px);
+  position: relative;
+  min-height: 0;
+  max-height: none;
+  height: 100%;
   padding-bottom: 214px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-lines-card {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-note-card {
+  display: none;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions {
@@ -17305,11 +17322,14 @@ body.clean-doc-modal-open {
 }
 
 .clean-doc-detail-open .clean-doc-inline-preview {
-  position: absolute;
+  position: relative;
   z-index: 12;
-  inset: 0;
+  inset: auto;
+  grid-area: classification;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
   margin: 0;
   border: 0;
   border-radius: 0;

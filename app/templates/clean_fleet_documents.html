@@ -220,7 +220,17 @@
                       <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
-                        <span class="clean-doc-summary-close">Fechar</span>
+                        {% if row.kind == "document" and row.preview_href %}
+                          <button
+                            type="button"
+                            class="button-link secondary-link clean-doc-preview-trigger clean-doc-summary-command"
+                            data-preview-src="{{ row.preview_href }}"
+                            data-preview-title="{{ row.detail_label or row.archive_label or row.title or 'Documento' }}"
+                            data-preview-kind="{{ 'image' if row.file_type in ['jpg', 'jpeg', 'png', 'webp', 'gif'] else 'pdf' }}"
+                          >Preview</button>
+                        {% endif %}
+                        <button type="submit" form="{{ form_id }}" class="button-link primary-link clean-doc-summary-command">Guardar e validar</button>
+                        <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
                       </span>
                     </summary>
                     <div class="clean-doc-expanded-detail-grid clean-doc-expanded-detail-grid-compact{% if row.source_label == 'FA' or row.archive_group == 'invoices' %} clean-doc-invoice-focus-grid{% endif %}">
@@ -987,7 +997,9 @@
     if (documentPreviewOpen) documentPreviewOpen.href = "#";
   };
   document.querySelectorAll(".clean-doc-preview-trigger[data-preview-src]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const src = button.dataset.previewSrc || "";
       const title = button.dataset.previewTitle || "Documento";
       const kind = button.dataset.previewKind || "pdf";
@@ -1012,7 +1024,9 @@
     });
   });
   document.querySelectorAll("[data-close-inline-preview]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const preview = button.closest(".clean-doc-inline-preview");
       if (!preview) return;
       const body = preview.querySelector("[data-inline-preview-body]");
@@ -1022,6 +1036,9 @@
   });
   document.querySelectorAll("[data-close-doc-preview]").forEach((button) => {
     button.addEventListener("click", closeDocumentPreview);
+  });
+  document.querySelectorAll(".clean-doc-summary-command").forEach((button) => {
+    button.addEventListener("click", (event) => event.stopPropagation());
   });
   documentPreviewModal?.addEventListener("click", (event) => {
     if (event.target === documentPreviewModal) closeDocumentPreview();

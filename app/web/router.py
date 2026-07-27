@@ -11021,16 +11021,24 @@ def _archive_document_payloads(
         existing_document = known_documents.get(digest)
         if existing_document:
             counters["duplicates"] += 1
-            if clean_vehicle_document_group(existing_document) == "invoices":
-                content_text = _batch_document_pdf_text(file_content, suffix)
-                invoice_payload = _batch_invoice_payload(
-                    file_content,
-                    suffix,
-                    original_name,
-                    content_text,
-                )
+            content_text = _batch_document_pdf_text(file_content, suffix)
+            invoice_payload = _batch_invoice_payload(
+                file_content,
+                suffix,
+                original_name,
+                content_text,
+            )
+            detected_type, _ = _batch_document_type(f"{archive_name}\n{content_text}")
+            detected_invoice = bool(invoice_payload.get("ocr_template"))
+            if (
+                clean_vehicle_document_group(existing_document) == "invoices"
+                or detected_type == "workshop_supplier_invoice"
+                or detected_invoice
+            ):
                 extracted_text = bool(str(invoice_payload.get("raw_text_preview") or "").strip())
                 if extracted_text:
+                    existing_document.document_type = "workshop_supplier_invoice"
+                    existing_document.classification = existing_document.classification or "invoice"
                     if invoice_payload.get("document_number"):
                         existing_document.contract_number = str(invoice_payload["document_number"])[:120]
                     if invoice_payload.get("supplier_name"):

@@ -219,6 +219,23 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
 
+    matched.document_type = "workshop_other"
+    matched.classification = "other"
+    matched.status = "classified"
+    db_session.commit()
+
+    repeated = authenticated_client.post(
+        "/v2-clean/documents/import/archive-batch",
+        files={"file": ("documentos.zip", batch.getvalue(), "application/zip")},
+        follow_redirects=False,
+    )
+
+    assert repeated.status_code == 303
+    assert "batch_reprocessed=2" in repeated.headers["location"]
+    db_session.refresh(matched)
+    assert matched.document_type == "workshop_supplier_invoice"
+    assert matched.status == "classified"
+
 
 def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
     vehicle = _create_vehicle(db_session)

@@ -7008,7 +7008,7 @@ def clean_documents_reprocess_ocr_batch(
 
 
 @web_router.get("/v2-clean/documents/export/invoices.csv")
-def clean_document_invoices_export(request: Request):
+def clean_document_invoices_export(request: Request, inline: bool = False):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -7129,11 +7129,8 @@ def clean_document_invoices_export(request: Request):
 
     payload = output.getvalue().encode("utf-8-sig")
     filename = f"faturas_carfast_{date.today().isoformat()}.csv"
-    return Response(
-        content=payload,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    headers = {} if inline else {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=payload, media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)

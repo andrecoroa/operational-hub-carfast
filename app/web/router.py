@@ -7131,9 +7131,10 @@ def clean_document_invoices_export(request: Request, inline: bool = False):
     payload = output.getvalue().encode("utf-8-sig")
     filename = f"faturas_carfast_{date.today().isoformat()}.csv"
     browser_inline = inline or request.url.path.endswith("/invoices-audit")
+    if browser_inline:
+        return JSONResponse({"filename": filename, "csv": output.getvalue()})
     headers = {} if browser_inline else {"Content-Disposition": f'attachment; filename="{filename}"'}
-    media_type = "text/plain; charset=utf-8" if browser_inline else "text/csv; charset=utf-8"
-    return Response(content=payload, media_type=media_type, headers=headers)
+    return Response(content=payload, media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)

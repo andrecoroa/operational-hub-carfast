@@ -129,8 +129,25 @@ def extract_workshop_report_values_from_bytes(
     report_code: str,
     filename: str | None = None,
 ) -> dict[str, Any]:
-    text = _extract_pdf_text_from_bytes(content, filename or "relatorio.pdf")
-    return _extract_values_from_text(text, report_code, pdf_bytes=content, filename=filename or "relatorio.pdf")
+    effective_name = filename or "relatorio.pdf"
+    try:
+        text = _extract_pdf_text_from_bytes(content, effective_name)
+    except (RuntimeError, ValueError):
+        text = ""
+
+    values = _extract_values_from_text(
+        text,
+        report_code,
+        pdf_bytes=content,
+        filename=effective_name,
+    )
+    if values:
+        return values
+
+    ocr_text = _extract_pdf_text_from_bytes_via_ocr(content, effective_name)
+    if not ocr_text.strip():
+        return {}
+    return _extract_values_from_text(ocr_text, report_code)
 
 
 def _extract_values_from_text(

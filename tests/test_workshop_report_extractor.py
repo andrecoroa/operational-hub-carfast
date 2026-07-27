@@ -1,3 +1,4 @@
+import app.services.workshop_report_extractor as extractor
 from app.services.workshop_report_extractor import _extract_values_from_text
 
 
@@ -70,3 +71,26 @@ def test_path_only_report_is_not_presented_as_missing_extraction():
             "limiar de manutencao > (o PDF nao contem valores tecnicos)"
         )
     }
+
+
+def test_report_value_extraction_falls_back_to_ocr(monkeypatch):
+    monkeypatch.setattr(extractor, "_extract_pdf_text_from_bytes", lambda *_args: "")
+    monkeypatch.setattr(
+        extractor,
+        "_extract_pdf_text_from_bytes_via_ocr",
+        lambda *_args: """
+        Referencia do software
+        9698770180
+        Data de telecarregamento
+        06 / 11 / 2025
+        """,
+    )
+
+    values = extractor.extract_workshop_report_values_from_bytes(
+        b"scanned-pdf",
+        "remote_download",
+        "relatorio-digitalizado.pdf",
+    )
+
+    assert values["software_reference"] == "9698770180"
+    assert values["remote_download_date"] == "06 / 11 / 2025"

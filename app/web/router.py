@@ -6861,9 +6861,14 @@ def clean_document_reprocess_ocr(
         separator = "&" if "?" in target else "?"
         if not document:
             return RedirectResponse(f"{target}{separator}ocr_error=not_found", status_code=303)
-        if clean_vehicle_document_group(document) != "invoices":
+        document_group = clean_vehicle_document_group(document)
+        if document_group not in {"invoices", "technical_reports"}:
             return RedirectResponse(f"{target}{separator}ocr_error=unsupported_document", status_code=303)
-        result = _reprocess_invoice_document(db, document=document, user_id=user_id)
+        result = (
+            _reprocess_historical_report_document(db, document=document, user_id=user_id)
+            if document_group == "technical_reports"
+            else _reprocess_invoice_document(db, document=document, user_id=user_id)
+        )
         if result["error"]:
             return RedirectResponse(
                 f"{target}{separator}ocr_error={result['error']}",
@@ -6879,6 +6884,73 @@ def clean_document_reprocess_ocr(
         f"{target}{separator}ocr_reprocessed=1&ocr_lines={result['lines']}",
         status_code=303,
     )
+
+
+def _reprocess_historical_report_document(
+    db: Session,
+    *,
+    document: Document,
+    user_id: int | None,
+) -> dict[str, Any]:
+    resolved_path = _document_resolved_file(document)
+    if not resolved_path:
+        return {"error": "file_missing", "lines": 0, "extracted_text": False}
+    try:
+        content = resolved_path.read_bytes()
+        filename = document.original_name or document.file_name or resolved_path.name
+        report_meta = classify_workshop_report_from_bytes(content, filename)
+        report_code = str(report_meta.get("report_code") or "other_reading")
+        if report_code not in CLEAN_WORKSHOP_REPORT_CODES:
+            report_code = "other_reading"
+        extracted_values = extract_workshop_report_values_from_bytes(content, report_code, filename)
+    except (OSError, RuntimeError, ValueError):
+        return {"error": "read_error", "lines": 0, "extracted_text": False}
+
+    document.status = "pending_validation" if extracted_values else "unable_to_read"
+    payload = {
+        **report_meta,
+        "extracted_values": extracted_values,
+        "reprocessed": True,
+    }
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="historical_report.ocr.reprocessed",
+            new_value=json.dumps(payload, ensure_ascii=False, default=str),
+            user_id=user_id,
+        )
+    )
+
+    links = db.scalars(
+        select(DocumentLink).where(
+            DocumentLink.document_id == document.id,
+            DocumentLink.entity_type == "workshop_technical_reading",
+        )
+    ).all()
+    for link in links:
+        try:
+            reading_id = int(link.entity_id)
+        except (TypeError, ValueError):
+            continue
+        reading = db.get(WorkshopTechnicalReading, reading_id)
+        if not reading:
+            continue
+        current_data = reading.data_json if isinstance(reading.data_json, dict) else {}
+        reading.reading_type = report_code
+        reading.data_json = {
+            **current_data,
+            "document_id": document.id,
+            "report_meta": report_meta,
+            "extracted_values": extracted_values,
+        }
+        reading.status = "pending_validation" if extracted_values else "unable_to_read"
+        reading.updated_by_id = user_id
+
+    return {
+        "error": None,
+        "lines": len(extracted_values),
+        "extracted_text": bool(extracted_values),
+    }
 
 
 def _reprocess_invoice_document(

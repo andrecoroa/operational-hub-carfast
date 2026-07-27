@@ -7022,6 +7022,8 @@ def clean_document_import_center(
     batch_pending: int | None = None,
     batch_duplicates: int | None = None,
     batch_reprocessed: int | None = None,
+    batch_reprocess_failed: int | None = None,
+    batch_operation: str = "",
     batch_error: str | None = None,
     report_imported: int | None = None,
     report_matched: int | None = None,
@@ -7467,6 +7469,8 @@ def clean_document_import_center(
                 "batch_pending": batch_pending,
                 "batch_duplicates": batch_duplicates,
                 "batch_reprocessed": batch_reprocessed,
+                "batch_reprocess_failed": batch_reprocess_failed,
+                "batch_operation": batch_operation,
                 "batch_error": batch_error,
                 "report_imported": report_imported,
                 "report_matched": report_matched,
@@ -10980,6 +10984,7 @@ def _archive_document_payloads(
     user_id: int | None,
     source_label: str,
     triage_unknown: bool = False,
+    force_invoice_reprocess: bool = False,
 ) -> dict[str, int]:
     counters = {
         "imported": 0,
@@ -10987,6 +10992,7 @@ def _archive_document_payloads(
         "pending": 0,
         "duplicates": 0,
         "reprocessed": 0,
+        "reprocess_failed": 0,
         "routed": 0,
         "triage": 0,
     }
@@ -11031,7 +11037,8 @@ def _archive_document_payloads(
             detected_type, _ = _batch_document_type(f"{archive_name}\n{content_text}")
             detected_invoice = bool(invoice_payload.get("ocr_template"))
             if (
-                clean_vehicle_document_group(existing_document) == "invoices"
+                force_invoice_reprocess
+                or clean_vehicle_document_group(existing_document) == "invoices"
                 or detected_type == "workshop_supplier_invoice"
                 or detected_invoice
             ):
@@ -11072,6 +11079,8 @@ def _archive_document_payloads(
                         )
                     )
                     counters["reprocessed"] += 1
+                elif force_invoice_reprocess:
+                    counters["reprocess_failed"] += 1
             continue
 
         content_text = _batch_document_pdf_text(file_content, suffix)
@@ -11619,7 +11628,11 @@ async def clean_document_import_historical_reports(
 
 
 @web_router.post("/v2-clean/documents/import/archive-batch")
-def clean_document_import_archive_batch(request: Request, file: UploadFile = File(...)):
+def clean_document_import_archive_batch(
+    request: Request,
+    file: UploadFile = File(...),
+    operation: str = Form("import"),
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -11674,6 +11687,7 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
                 payloads,
                 user_id=user_id,
                 source_label=f"ZIP {filename} [{batch_stamp}]",
+                force_invoice_reprocess=operation == "reprocess_invoices",
             )
             db.commit()
     except Exception as exc:  # noqa: BLE001
@@ -11687,6 +11701,8 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
             "batch_pending": counters["pending"],
             "batch_duplicates": counters["duplicates"],
             "batch_reprocessed": counters["reprocessed"],
+            "batch_reprocess_failed": counters["reprocess_failed"],
+            "batch_operation": operation,
         }
     )
     return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)

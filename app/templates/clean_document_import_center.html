@@ -47,11 +47,14 @@
           {% else %}
             <strong>{{ batch_imported }} documentos reais arquivados.</strong>
             {% set reprocessed = batch_reprocessed or 0 %}
+            {% set reprocess_failed = batch_reprocess_failed or 0 %}
             {% set ignored = (batch_duplicates or 0) - reprocessed %}
             <span>
               {{ batch_matched }} associados a viaturas · {{ batch_pending }} por associar
               {% if reprocessed %} · {{ reprocessed }} existentes reprocessados{% endif %}
-              {% if ignored %} · {{ ignored }} duplicados ignorados{% endif %}.
+              {% if reprocess_failed %} · {{ reprocess_failed }} falharam no OCR{% endif %}
+              {% if ignored and batch_operation != "reprocess_invoices" %} · {{ ignored }} duplicados ignorados{% endif %}
+              {% if ignored and batch_operation == "reprocess_invoices" and not reprocess_failed %} · {{ ignored }} sem resultado OCR{% endif %}.
             </span>
           {% endif %}
         </div>
@@ -231,7 +234,14 @@
             </div>
             <form method="post" action="/v2-clean/documents/import/archive-batch" enctype="multipart/form-data" class="clean-doc-compact-form">
               <input type="file" name="file" accept=".zip,application/zip" required>
-              <button type="submit">Importar</button>
+              <button type="submit" name="operation" value="import">Importar</button>
+              <button
+                type="submit"
+                name="operation"
+                value="reprocess_invoices"
+                class="secondary-link"
+                title="Atualiza o OCR das faturas existentes neste ZIP sem criar duplicados"
+              >Reprocessar existentes</button>
             </form>
           </article>
 

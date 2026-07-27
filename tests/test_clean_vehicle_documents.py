@@ -237,6 +237,53 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert matched.status == "classified"
 
 
+def test_clean_document_batch_zip_explicitly_reprocesses_every_existing_file(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "document_archive_root", str(tmp_path))
+    pdf = _make_pdf("Conteudo sem marcadores suficientes para deteção automática")
+    batch = _make_zip({"arquivo/desconhecido.pdf": pdf})
+
+    imported = authenticated_client.post(
+        "/v2-clean/documents/import/archive-batch",
+        files={"file": ("documentos.zip", batch.getvalue(), "application/zip")},
+        follow_redirects=False,
+    )
+    assert imported.status_code == 303
+    document = db_session.scalar(
+        select(Document).where(Document.entry_channel == "v2_clean_batch")
+    )
+    assert document is not None
+    document.document_type = "workshop_other"
+    document.classification = "other"
+    db_session.commit()
+
+    repeated = authenticated_client.post(
+        "/v2-clean/documents/import/archive-batch",
+        files={"file": ("documentos.zip", batch.getvalue(), "application/zip")},
+        data={"operation": "reprocess_invoices"},
+        follow_redirects=False,
+    )
+
+    assert repeated.status_code == 303
+    location = repeated.headers["location"]
+    assert "batch_duplicates=1" in location
+    assert "batch_reprocessed=1" in location
+    assert "batch_reprocess_failed=0" in location
+    assert "batch_operation=reprocess_invoices" in location
+    db_session.refresh(document)
+    assert document.document_type == "workshop_supplier_invoice"
+    assert db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "invoice.ocr.reprocessed",
+        )
+    ) is not None
+
+
 def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
     vehicle = _create_vehicle(db_session)
     vehicles_by_plate = {"OTHERPLATE": vehicle}

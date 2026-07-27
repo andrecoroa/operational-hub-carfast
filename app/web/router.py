@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -5749,6 +5749,7 @@ def clean_fleet_documents(
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
+    open_item: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -5803,6 +5804,9 @@ def clean_fleet_documents(
             blob = " ".join(part for part in parts if part).lower()
             return search in blob
 
+        def is_open_archive_row(row: dict) -> bool:
+            return bool(open_item) and open_item == f"{row.get('kind')}:{row.get('id')}"
+
         archive_rows = []
         archive_document_ids = [
             row["id"] for row in module_ctx["archive_rows"] if row.get("kind") == "document"
@@ -5821,13 +5825,14 @@ def clean_fleet_documents(
         for row in module_ctx["archive_rows"]:
             if row.get("kind") == "document":
                 row["manual_note"] = manual_document_notes.get(row["id"], "")
-            if archive_group and row["archive_group"] != archive_group:
+            keep_open = is_open_archive_row(row)
+            if archive_group and row["archive_group"] != archive_group and not keep_open:
                 continue
-            if clean_main_group and row.get("main_group") != clean_main_group:
+            if clean_main_group and row.get("main_group") != clean_main_group and not keep_open:
                 continue
-            if status and row["status"] != status and row.get("comparison_state") != status:
+            if status and row["status"] != status and row.get("comparison_state") != status and not keep_open:
                 continue
-            if not matches_search(
+            if not keep_open and not matches_search(
                 [
                     row["title"],
                     row["supplier_name"],
@@ -5974,6 +5979,16 @@ def clean_fleet_documents(
             key=lambda row: (row.get("date") or date.min, row.get("source_label") or "", str(row.get("title") or "")),
             reverse=True,
         )
+        invoice_classification_rows = [
+            row
+            for row in archive_classification_rows
+            if row.get("source_label") == "FA" or row.get("archive_group") == "invoices"
+        ]
+        other_archive_classification_rows = [
+            row
+            for row in archive_classification_rows
+            if row.get("source_label") != "FA" and row.get("archive_group") != "invoices"
+        ]
 
         comparison_rows = [
             row
@@ -5993,14 +6008,17 @@ def clean_fleet_documents(
                 )
             ]
 
-        compact_initial_view = not any([search, clean_main_group, archive_group, status])
+        compact_initial_view = not any([search, clean_main_group, archive_group, status, open_item])
         table_preview_limit = 8
         comparison_preview_limit = 3
         archive_classification_rows_total = len(archive_classification_rows)
+        invoice_classification_rows_total = len(invoice_classification_rows)
+        other_archive_classification_rows_total = len(other_archive_classification_rows)
         structured_classification_rows_total = len(structured_classification_rows)
         comparison_rows_total = len(comparison_rows)
         if compact_initial_view:
-            archive_classification_rows = archive_classification_rows[:table_preview_limit]
+            invoice_classification_rows = invoice_classification_rows[:table_preview_limit]
+            other_archive_classification_rows = other_archive_classification_rows[:table_preview_limit]
             structured_classification_rows = structured_classification_rows[:table_preview_limit]
             comparison_rows = comparison_rows[:comparison_preview_limit]
 
@@ -6026,10 +6044,14 @@ def clean_fleet_documents(
                 "structured_sections": structured_sections,
                 "structured_classification_rows": structured_classification_rows,
                 "archive_classification_rows": archive_classification_rows,
+                "invoice_classification_rows": invoice_classification_rows,
+                "other_archive_classification_rows": other_archive_classification_rows,
                 "work_order_link_options": work_order_link_options,
                 "comparison_rows": comparison_rows,
                 "compact_initial_view": compact_initial_view,
                 "archive_classification_rows_total": archive_classification_rows_total,
+                "invoice_classification_rows_total": invoice_classification_rows_total,
+                "other_archive_classification_rows_total": other_archive_classification_rows_total,
                 "structured_classification_rows_total": structured_classification_rows_total,
                 "comparison_rows_total": comparison_rows_total,
                 "q": q or "",
@@ -6050,6 +6072,7 @@ def clean_fleet_documents(
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
+                "open_item": open_item,
             },
         )
         db.commit()
@@ -13013,6 +13036,7 @@ def clean_fleet_documents_save_classification_row(
     document_id: int | None = Form(None),
     return_group: str = Form(""),
     classification_action: str = Form("save"),
+    open_item: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -13135,6 +13159,8 @@ def clean_fleet_documents_save_classification_row(
     query = "classified=1"
     if return_group:
         query += f"&main_group={return_group}"
+    if open_item:
+        query += f"&open_item={quote_plus(open_item)}"
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)
 
 
@@ -13145,6 +13171,7 @@ def clean_fleet_documents_link_work_order(
     document_id: int = Form(...),
     work_order_record_id: int = Form(...),
     return_group: str = Form("invoices"),
+    open_item: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -13193,6 +13220,8 @@ def clean_fleet_documents_link_work_order(
     query = "linked_work_order=1"
     if return_group:
         query += f"&main_group={return_group}"
+    if open_item:
+        query += f"&open_item={quote_plus(open_item)}"
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)
 
 

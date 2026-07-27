@@ -3616,7 +3616,7 @@ def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
     response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
 
     assert response.status_code == 200
-    assert "Documentação de arquivo" in response.text
+    assert ">Faturas<" in response.text
     assert "Documentação estruturada" in response.text
     assert "Timeline documental" in response.text
 
@@ -4071,6 +4071,53 @@ def test_clean_vehicle_documents_links_invoice_to_work_order_once(authenticated_
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices")
     assert page.status_code == 200
     assert "FO 1608" in page.text
+
+
+def test_clean_vehicle_documents_keeps_detail_open_after_classification(authenticated_client, db_session):
+    vehicle = _create_vehicle(db_session)
+    document = Document(
+        title="Service Box 396",
+        document_type="servicebox_tsb",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_manual",
+        original_name="service-box-396.pdf",
+        file_name="service-box-396.pdf",
+        storage_provider="local",
+        storage_path="Frota/service-box-396.pdf",
+        folder_path="Frota/Service Box",
+        status="received",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        supplier_name="service box",
+        contract_number="396",
+        document_date=date(2026, 7, 21),
+    )
+    db_session.add(document)
+    db_session.commit()
+    db_session.refresh(document)
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "document_id": str(document.id),
+            "return_group": "servicebox_tsb",
+            "open_item": f"document:{document.id}",
+            "maintenance": "revision",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert f"open_item=document%3A{document.id}" in response.headers["location"]
+
+    page = authenticated_client.get(response.headers["location"])
+    assert page.status_code == 200
+    assert ">Faturas<" in page.text
+    assert "Outros documentos" in page.text
+    assert "Service Box / TSB" in page.text
+    assert ">396<" in page.text
+    assert f'id="archive-other-detail-SB-{document.id}"' in page.text
+    assert "clean-doc-detail-open" in page.text
 
 
 def test_clean_vehicle_documents_imports_multiple_detail_lines_by_work_order_number(

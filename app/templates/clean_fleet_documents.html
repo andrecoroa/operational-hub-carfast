@@ -143,9 +143,10 @@
         >{{ label }}</button>
       {% endif %}
     {% endmacro %}
-    {% macro render_classification_table(rows, empty_text, prefix) %}
+    {% macro render_classification_table(rows, empty_text, prefix, table_mode="invoice") %}
       <div class="clean-doc-table-wrap clean-doc-service-table-wrap">
-        <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table clean-doc-vehicle-invoice-table">
+        <table class="clean-doc-table clean-doc-service-table clean-doc-classify-table {% if table_mode == 'invoice' %}clean-doc-vehicle-invoice-table{% else %}clean-doc-generic-archive-table{% endif %}">
+          {% if table_mode == "invoice" %}
           <colgroup>
             <col class="clean-doc-source-col">
             <col class="clean-doc-date-col">
@@ -157,8 +158,10 @@
             <col class="clean-doc-status-col">
             <col class="clean-doc-actions-col">
           </colgroup>
+          {% endif %}
           <thead>
             <tr>
+              {% if table_mode == "invoice" %}
               <th></th>
               <th class="clean-doc-col-date">Data</th>
               <th class="clean-doc-col-number">Nº</th>
@@ -168,6 +171,14 @@
               <th class="clean-doc-col-total">Total</th>
               <th class="clean-doc-col-status">Estado</th>
               <th class="clean-doc-col-actions">Ações</th>
+              {% else %}
+              <th>Tipo</th>
+              <th>Data</th>
+              <th>Documento</th>
+              <th>Origem</th>
+              <th>Estado</th>
+              <th>Ações</th>
+              {% endif %}
             </tr>
           </thead>
           <tbody>
@@ -175,6 +186,7 @@
               {% set detail_id = prefix ~ "-detail-" ~ row.source_label ~ "-" ~ row.id %}
               {% set form_id = prefix ~ "-form-" ~ row.source_label ~ "-" ~ row.id %}
               <tr class="clean-doc-classify-group-row">
+                {% if table_mode == "invoice" %}
                 <td>
                   <span class="clean-doc-source-chip">{{ row.source_label }}</span>
                 </td>
@@ -185,12 +197,20 @@
                 <td class="clean-doc-col-km">{{ row.km if row.km is not none else "-" }}</td>
                 <td class="clean-doc-col-total">{{ row.total_with_vat or "-" }}</td>
                 <td class="clean-doc-col-status"><span class="clean-doc-status-pill {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-valid{% endif %}">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
+                {% else %}
+                <td><span class="clean-doc-source-chip">{{ row.source_label }}</span></td>
+                <td>{{ row.date_display or "-" }}</td>
+                <td><strong>{{ row.external_reference or row.document_number or row.title }}</strong></td>
+                <td title="{{ row.supplier_name }}">{{ row.supplier_name or row.archive_label or "-" }}</td>
+                <td><span class="clean-doc-status-pill {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-valid{% endif %}">{{ row.comparison_label or row.extraction_state or row.status }}</span></td>
+                {% endif %}
                 <td class="clean-doc-col-actions">
                   <form id="{{ form_id }}" method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/classify-row" class="clean-doc-inline-classify-form">
                     {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
                     {% if row.kind == 'document' %}<input type="hidden" name="document_id" value="{{ row.id }}">{% endif %}
                     <input type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
-                    <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
+                    <input type="hidden" name="open_item" value="{{ row.kind }}:{{ row.id }}">
+                    <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}&open_item={{ row.kind }}%3A{{ row.id }}">
                   </form>
                   <div class="clean-doc-classify-actions">
                     <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Ver detalhes</button>
@@ -201,7 +221,7 @@
               {% if row.batch_label or note_text or row.service_summary or row.service_suggestion_codes or row.source_label == "FA" %}
                 <tr class="clean-doc-classify-note-row clean-doc-classify-group-note-row">
                   <td></td>
-                  <td colspan="8">
+                  <td colspan="{{ 8 if table_mode == 'invoice' else 5 }}">
                     {% if row.batch_label %}
                       <span class="clean-doc-subrow-block"><strong>Lote:</strong> {{ row.batch_label }}</span>
                     {% endif %}
@@ -214,9 +234,10 @@
                   </td>
                 </tr>
               {% endif %}
-              <tr class="clean-doc-classify-detail-row" id="{{ detail_id }}" hidden>
-                <td colspan="9">
-                  <details class="clean-doc-expanded-detail">
+              {% set row_open_item = row.kind ~ ":" ~ row.id %}
+              <tr class="clean-doc-classify-detail-row{% if open_item == row_open_item %} clean-doc-detail-open{% endif %}" id="{{ detail_id }}" {% if open_item != row_open_item %}hidden{% endif %}>
+                <td colspan="{{ 9 if table_mode == 'invoice' else 6 }}">
+                  <details class="clean-doc-expanded-detail" {% if open_item == row_open_item %}open{% endif %}>
                     <summary>
                       <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
@@ -440,7 +461,7 @@
                 </td>
               </tr>
             {% else %}
-              <tr><td colspan="9" class="clean-empty-cell">{{ empty_text }}</td></tr>
+              <tr><td colspan="{{ 9 if table_mode == 'invoice' else 6 }}" class="clean-empty-cell">{{ empty_text }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -689,19 +710,37 @@
       <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
           <span>
-            <b>Documentação de arquivo</b>
-            <small>Documentos reais da viatura. Abrir a linha para OCR, ações e classificação.</small>
+            <b>Faturas</b>
+            <small>Documentos financeiros da viatura, com OCR, serviços e validação.</small>
           </span>
-          <em>{{ archive_classification_rows_total }} linhas</em>
+          <em>{{ invoice_classification_rows_total }} linhas</em>
         </summary>
         <div class="clean-doc-collapsible-body">
-          {{ render_classification_table(archive_classification_rows, "Sem documentação de arquivo para classificar nos filtros escolhidos.", "archive") }}
-          {% if compact_initial_view and archive_classification_rows_total > archive_classification_rows|length %}
-            <p class="clean-doc-filter-note">Vista compacta: mostradas {{ archive_classification_rows|length }} de {{ archive_classification_rows_total }} linhas. Usa pesquisa, estado ou grupo para trabalhar a lista completa.</p>
+          {{ render_classification_table(invoice_classification_rows, "Sem faturas nos filtros escolhidos.", "archive-invoice") }}
+          {% if compact_initial_view and invoice_classification_rows_total > invoice_classification_rows|length %}
+            <p class="clean-doc-filter-note">Vista compacta: mostradas {{ invoice_classification_rows|length }} de {{ invoice_classification_rows_total }} faturas. Usa pesquisa, estado ou grupo para trabalhar a lista completa.</p>
           {% endif %}
-          <p class="clean-doc-filter-note">Faturas, diagnósticos, evidências e pendentes ficam fechados por defeito. Abrir a linha mostra OCR, associação, tarefas e problemas.</p>
+          <p class="clean-doc-filter-note">A tabela financeira fica reservada às faturas. Abrir a linha mostra OCR, associação, tarefas e classificação.</p>
         </div>
       </details>
+
+      {% if other_archive_classification_rows_total %}
+      <details class="clean-doc-collapsible clean-card-wide" {% if (main_group and main_group != 'invoices') or open_item %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Outros documentos</b>
+            <small>Service Box, diagnósticos, evidências e restantes documentos reais.</small>
+          </span>
+          <em>{{ other_archive_classification_rows_total }} linhas</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          {{ render_classification_table(other_archive_classification_rows, "Sem outros documentos nos filtros escolhidos.", "archive-other", "generic") }}
+          {% if compact_initial_view and other_archive_classification_rows_total > other_archive_classification_rows|length %}
+            <p class="clean-doc-filter-note">Vista compacta: mostradas {{ other_archive_classification_rows|length }} de {{ other_archive_classification_rows_total }} documentos.</p>
+          {% endif %}
+        </div>
+      </details>
+      {% endif %}
 
       <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
@@ -937,6 +976,11 @@
   </main>
 </div>
 <script>
+  const initiallyOpenDocumentDetail = document.querySelector(".clean-doc-classify-detail-row.clean-doc-detail-open");
+  if (initiallyOpenDocumentDetail) {
+    document.documentElement.classList.add("clean-doc-modal-open");
+    document.body.classList.add("clean-doc-modal-open");
+  }
   document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
     button.addEventListener("click", () => {
       const detailRow = document.getElementById(button.dataset.detailTarget || "");

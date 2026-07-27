@@ -7007,6 +7007,7 @@ def clean_documents_reprocess_ocr_batch(
     )
 
 
+@web_router.get("/v2-clean/documents/invoice-data-view")
 @web_router.get("/v2-clean/documents/export/invoices-audit")
 @web_router.get("/v2-clean/documents/export/invoices.csv")
 def clean_document_invoices_export(request: Request, inline: bool = False):
@@ -7130,7 +7131,7 @@ def clean_document_invoices_export(request: Request, inline: bool = False):
 
     payload = output.getvalue().encode("utf-8-sig")
     filename = f"faturas_carfast_{date.today().isoformat()}.csv"
-    browser_inline = inline or request.url.path.endswith("/invoices-audit")
+    browser_inline = inline or not request.url.path.endswith(".csv")
     if browser_inline:
         return JSONResponse({"filename": filename, "csv": output.getvalue()})
     headers = {} if browser_inline else {"Content-Disposition": f'attachment; filename="{filename}"'}

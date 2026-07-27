@@ -7007,6 +7007,7 @@ def clean_documents_reprocess_ocr_batch(
     )
 
 
+@web_router.get("/v2-clean/documents/export/invoices-audit")
 @web_router.get("/v2-clean/documents/export/invoices.csv")
 def clean_document_invoices_export(request: Request, inline: bool = False):
     denied = clean_experience_denied(request)

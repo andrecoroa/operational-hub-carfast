@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
+import html
 import io
 import json
 import mimetypes
@@ -7133,7 +7134,12 @@ def clean_document_invoices_export(request: Request, inline: bool = False):
     filename = f"faturas_carfast_{date.today().isoformat()}.csv"
     browser_inline = inline or not request.url.path.endswith(".csv")
     if browser_inline:
-        return JSONResponse({"filename": filename, "csv": output.getvalue()})
+        escaped_csv = html.escape(output.getvalue())
+        return HTMLResponse(
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            f"<title>{filename}</title></head><body>"
+            f"<textarea id=\"invoice-data\">{escaped_csv}</textarea></body></html>"
+        )
     headers = {} if browser_inline else {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content=payload, media_type="text/csv; charset=utf-8", headers=headers)
 

@@ -438,6 +438,7 @@ def _document_archive_group(document: Document) -> str:
     title_blob = " ".join(
         str(part or "") for part in [document.title, document.original_name, document.source_subject, document.supplier_name]
     )
+    raw_title = title_blob.lower()
     title = normalize_header(title_blob)
     if doc_type in {"workshopsupplierinvoice", "financesupplierinvoice"} or "fatura" in title or "factura" in title:
         return "invoices"
@@ -447,9 +448,30 @@ def _document_archive_group(document: Document) -> str:
         token in title for token in ["comprovativo", "recibo", "payment proof"]
     ):
         return "payment_proofs"
-    if doc_type in {"workshopreport", "workshopdiagnostic", "workshopbsi"} or any(
-        token in title for token in ["diagn", "relatorio", "relat", "bsi", "autel", "stellantis"]
+    if doc_type in {
+        "workshopreport",
+        "workshopdiagnostic",
+        "workshopbsi",
+        "maintenanceinformation",
+        "enginelubrication",
+        "maintenanceprogramming",
+        "faultreading",
+        "remotedownload",
+        "globaltest",
+        "technicalreport",
+    } or any(
+        token in title
+        for token in [
+            "diagn",
+            "relatorio",
+            "relat",
+            "bsi",
+            "autel",
+            "stellantis",
+        ]
     ):
+        return "diagnostics"
+    if any(token in raw_title for token in ("s_im_", "s_lm_", "s_pm_", "s_ld_", "s_tc_", "s_tg_")):
         return "diagnostics"
     if "servicebox" in title or "servicebox" in doc_type or "tsb" in title or "boletim" in title:
         return "servicebox_tsb"

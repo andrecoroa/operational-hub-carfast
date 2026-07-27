@@ -5617,7 +5617,24 @@ def clean_vehicle_document_group(document: Document) -> str:
         return "work_orders"
     if doc_type in {"workshop_supplier_invoice", "finance_supplier_invoice"} or "fatura" in title or "factura" in title:
         return "invoices"
-    if doc_type in {"workshop_report", "workshop_diagnostic", "workshop_bsi"} or "relat" in title or "bsi" in title or "diagn" in title:
+    if (
+        doc_type in {
+            "workshop_report",
+            "workshop_diagnostic",
+            "workshop_bsi",
+            "maintenance_information",
+            "engine_lubrication",
+            "maintenance_programming",
+            "fault_reading",
+            "remote_download",
+            "global_test",
+            "technical_report",
+        }
+        or "relat" in title
+        or "bsi" in title
+        or "diagn" in title
+        or any(token in title for token in ("s_im_", "s_lm_", "s_pm_", "s_ld_", "s_tc_", "s_tg_"))
+    ):
         return "technical_reports"
     if "service box" in title or "servicebox" in title:
         return "service_box"
@@ -7860,7 +7877,23 @@ def _batch_document_type(path_text: str) -> tuple[str, str]:
     normalized = path_text.lower()
     if any(token in normalized for token in ("fatura", "factura", "invoice")):
         return "workshop_supplier_invoice", "workshop"
-    if any(token in normalized for token in ("diagnost", "autel", "stellantis", "lubrifica", "manutenc", "telecarreg")):
+    if any(
+        token in normalized
+        for token in (
+            "diagnost",
+            "autel",
+            "stellantis",
+            "lubrifica",
+            "manutenc",
+            "telecarreg",
+            "s_im_",
+            "s_lm_",
+            "s_pm_",
+            "s_ld_",
+            "s_tc_",
+            "s_tg_",
+        )
+    ):
         return "workshop_report", "workshop"
     if any(token in normalized for token in ("foto", "photo", "imagem", "image", "quadrante")):
         return "workshop_photo", "workshop"

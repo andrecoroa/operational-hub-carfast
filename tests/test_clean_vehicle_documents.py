@@ -108,8 +108,36 @@ def _make_pdf(text: str) -> bytes:
 def test_document_inbox_type_detection_is_conservative():
     assert _batch_document_type("Faturas/Fatura_123.pdf") == ("workshop_supplier_invoice", "workshop")
     assert _batch_document_type("Relatorios/Diagnostico_Autel.pdf") == ("workshop_report", "workshop")
+    assert _batch_document_type("S_IM_VR3EDYHTXRJ968622_260512_1612.pdf") == ("workshop_report", "workshop")
     assert _batch_document_type("Folha de obra/FO_123.pdf") == ("workshop_work_order", "workshop")
     assert _batch_document_type("documento_recebido_001.pdf") == ("workshop_other", "workshop")
+
+
+def test_legacy_stellantis_report_is_counted_as_vehicle_diagnostic(db_session):
+    vehicle = _create_vehicle(db_session)
+    document = Document(
+        title="S_IM_VR3EDYHTXRJ968622_260512_1612",
+        document_type="unknown_document",
+        classification="triage",
+        source="v2_clean_manual",
+        entry_channel="document_inbox",
+        original_name="S_IM_VR3EDYHTXRJ968622_260512_1612.pdf",
+        file_name="S_IM_VR3EDYHTXRJ968622_260512_1612.pdf",
+        storage_provider="local",
+        storage_path="Frota/_POR_ASSOCIAR/00_Caixa_Entrada/S_IM.pdf",
+        folder_path="Frota/_POR_ASSOCIAR/00_Caixa_Entrada",
+        status="pending_triage",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        document_date=date(2026, 5, 12),
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    module_ctx = vehicle_document_module_context(db_session, vehicle)
+
+    assert module_ctx["group_counts"]["diagnostics"] == 1
+    assert any(row["archive_group"] == "diagnostics" for row in module_ctx["archive_rows"])
 
 
 def test_historical_report_payloads_accept_files_and_safe_zip_entries():

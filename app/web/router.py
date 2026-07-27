@@ -6899,7 +6899,7 @@ def _reprocess_invoice_document(
     except (OSError, ValueError):
         return {"error": "read_error", "lines": 0, "extracted_text": False}
     extracted_lines = len(payload.get("invoice_lines") or [])
-    extracted_text = bool(str(payload.get("raw_text_preview") or "").strip())
+    extracted_text = _invoice_payload_was_extracted(payload)
     if payload.get("document_number"):
         document.contract_number = str(payload["document_number"])[:120]
     if payload.get("supplier_name"):
@@ -8138,6 +8138,17 @@ def _batch_invoice_filinto_automoveis_data(text: str, lines: list[str]) -> dict[
         "invoice_lines": invoice_lines,
         "ocr_template": "filinto_mota_automoveis_cial_facvo2",
     }
+
+
+def _invoice_payload_was_extracted(payload: dict[str, Any]) -> bool:
+    if str(payload.get("ocr_status") or "").strip().lower() != "extracted":
+        return False
+    return bool(
+        str(payload.get("raw_text_preview") or "").strip()
+        or str(payload.get("document_number") or "").strip()
+        or str(payload.get("supplier_name") or "").strip()
+        or payload.get("invoice_lines")
+    )
 
 
 def _batch_invoice_is_filinto_vnc_template(text: str) -> bool:
@@ -11042,7 +11053,7 @@ def _archive_document_payloads(
                 or detected_type == "workshop_supplier_invoice"
                 or detected_invoice
             ):
-                extracted_text = bool(str(invoice_payload.get("raw_text_preview") or "").strip())
+                extracted_text = _invoice_payload_was_extracted(invoice_payload)
                 if extracted_text:
                     existing_document.document_type = "workshop_supplier_invoice"
                     existing_document.classification = existing_document.classification or "invoice"
@@ -11154,7 +11165,7 @@ def _archive_document_payloads(
         )
         if document_type == "workshop_supplier_invoice":
             invoice_payload = _batch_invoice_payload(file_content, suffix, original_name, content_text)
-            document.status = "extracted" if str(invoice_payload.get("raw_text_preview") or "").strip() else "ocr_empty"
+            document.status = "extracted" if _invoice_payload_was_extracted(invoice_payload) else "ocr_empty"
             if invoice_payload.get("document_number") and not document.contract_number:
                 document.contract_number = str(invoice_payload["document_number"])[:120]
             if invoice_payload.get("supplier_name") and (

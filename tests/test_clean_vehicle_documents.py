@@ -30,11 +30,31 @@ from app.web.router import (
     _batch_invoice_filinto_stacked_lines,
     _batch_invoice_payload,
     _batch_invoice_total_from_lines,
+    _invoice_payload_was_extracted,
     _historical_report_date,
     _historical_report_payloads,
     _historical_report_vehicle,
     local_document_storage_folder,
 )
+
+
+def test_invoice_payload_accepts_structured_scanned_ocr_without_raw_preview():
+    assert _invoice_payload_was_extracted(
+        {
+            "ocr_status": "extracted",
+            "text_source": "pdf_image_ocr",
+            "raw_text_preview": "",
+            "document_number": "FS0002124",
+            "invoice_lines": [{"description": "Serviço"}],
+        }
+    )
+    assert not _invoice_payload_was_extracted(
+        {
+            "ocr_status": "not_extracted",
+            "document_number": "FS0002124",
+            "invoice_lines": [],
+        }
+    )
 
 
 def _make_workbook(headers: list[str], rows: list[list[object]]) -> BytesIO:

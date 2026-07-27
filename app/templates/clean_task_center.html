@@ -25,6 +25,11 @@
     {% if reopened %}
       <div class="clean-alert-success">Tarefa reaberta.</div>
     {% endif %}
+    {% if request.query_params.get("error") == "missing_title" %}
+      <div class="clean-alert-warning">Indica um título antes de criar o registo.</div>
+    {% elif request.query_params.get("error") == "forbidden" %}
+      <div class="clean-alert-warning">Não tens permissão para alterar tarefas.</div>
+    {% endif %}
 
     <section class="clean-process-kpi-row" aria-label="Indicadores do centro de tarefas">
       <article><span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>ativas</em></article>
@@ -83,7 +88,7 @@
             <textarea name="description" rows="3" placeholder="O que tem de ser feito, origem, documento ou evidência...">{{ prefill.description }}</textarea>
           </label>
           <div class="clean-task-create-actions span-2">
-            <button type="submit">Criar tarefa</button>
+            <button type="submit">Criar registo</button>
           </div>
         </form>
       </article>
@@ -182,6 +187,8 @@
                   </span>
                 </td>
                 <td>
+                  <div class="clean-task-row-actions">
+                    <a class="button-link secondary-link" href="/task-board/{{ task.id }}">Abrir</a>
                   {% if task_is_closed %}
                     <form method="post" action="/v2-clean/tasks/{{ task.id }}/reopen">
                       <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
@@ -193,6 +200,7 @@
                       <button class="button-link secondary-link" type="submit">Fechar</button>
                     </form>
                   {% endif %}
+                  </div>
                 </td>
               </tr>
             {% else %}

@@ -243,7 +243,8 @@
                             class="button-link secondary-link clean-doc-summary-command"
                           >Reprocessar</button>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" class="button-link primary-link clean-doc-summary-command">Guardar</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link clean-doc-summary-command">Guardar classificação</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link secondary-link clean-doc-summary-command">Guardar e validar</button>
                         <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
                       </span>
                     </summary>
@@ -411,7 +412,8 @@
                             <button type="submit" class="button-link secondary-link">Reprocessar OCR</button>
                           </form>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" class="button-link primary-link">Guardar e validar</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link">Guardar classificação</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link secondary-link">Guardar e validar</button>
                         {% if row.kind == "document" %}
                           <details class="clean-doc-remove-menu">
                             <summary>Remover documento</summary>
@@ -505,7 +507,8 @@
                 <div class="clean-doc-detail-footer-actions">
                   <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
                   <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
-                  <button type="submit" class="button-link primary-link">Guardar e validar</button>
+                  <button type="submit" name="classification_action" value="save" class="button-link primary-link">Guardar classificação</button>
+                  <button type="submit" name="classification_action" value="validate" class="button-link secondary-link">Guardar e validar</button>
                 </div>
               </form>
             </details>

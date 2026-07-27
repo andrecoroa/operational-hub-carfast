@@ -3153,6 +3153,16 @@ def clean_tasks_create(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not has_any_web_permission(
+        request,
+        "tasks.write",
+        "tasks.operational.write",
+        "tasks.workshop.write",
+        "tasks.administration.write",
+        "admin.manage",
+    ):
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     clean_title = title.strip()
     if not clean_title:
         return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
@@ -3176,6 +3186,8 @@ def clean_tasks_create(
             due_on=parsed_due,
             entity_type=entity_type.strip()[:120] or None,
             entity_id=entity_id.strip()[:120] or None,
+            team_id=default_team_id(db, workspace_config["default_team_code"]),
+            created_by_id=user_id,
             external_source_id=f"v2_clean:{clean_workspace}:{record_type}:{now.timestamp()}",
         )
         db.add(task)
@@ -3183,15 +3195,30 @@ def clean_tasks_create(
         db.add(
             TaskHistory(
                 task_id=task.id,
+                user_id=user_id,
                 field_name="created",
                 old_value=None,
                 new_value=f"Criada na v2-clean como {'problema' if is_problem else 'tarefa'}",
             )
         )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"{'Problema' if is_problem else 'Tarefa'} criado na v2-clean: {task.title}",
+            user_id=user_id,
+        )
         db.commit()
-    target = return_url.strip() or f"/v2-clean/tasks?workspace={clean_workspace}&created=1"
+        task_id = task.id
+    clean_return_url = return_url.strip()
+    target = (
+        clean_return_url
+        if clean_return_url.startswith("/") and not clean_return_url.startswith("//")
+        else f"/v2-clean/tasks?workspace={clean_workspace}&created=1"
+    )
     separator = "&" if "?" in target else "?"
-    return RedirectResponse(f"{target}{separator}task_id={task.id}", status_code=303)
+    return RedirectResponse(f"{target}{separator}task_created=1&task_id={task_id}", status_code=303)
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/close", response_class=HTMLResponse)
@@ -3199,6 +3226,16 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not has_any_web_permission(
+        request,
+        "tasks.write",
+        "tasks.operational.write",
+        "tasks.workshop.write",
+        "tasks.administration.write",
+        "admin.manage",
+    ):
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if task:
@@ -3208,13 +3245,23 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
             db.add(
                 TaskHistory(
                     task_id=task.id,
+                    user_id=user_id,
                     field_name="status",
                     old_value=prior_status,
                     new_value="closed",
                 )
             )
+            record_audit(
+                db,
+                action="task.close",
+                entity_type="task",
+                entity_id=task.id,
+                detail=f"Tarefa fechada na v2-clean: {task.title}",
+                user_id=user_id,
+            )
             db.commit()
-    target = return_url.strip() or "/v2-clean/tasks?closed=1"
+    clean_return_url = return_url.strip()
+    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/tasks?closed=1"
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}closed=1", status_code=303)
 
@@ -3224,6 +3271,16 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not has_any_web_permission(
+        request,
+        "tasks.write",
+        "tasks.operational.write",
+        "tasks.workshop.write",
+        "tasks.administration.write",
+        "admin.manage",
+    ):
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         if task:
@@ -3233,13 +3290,23 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
             db.add(
                 TaskHistory(
                     task_id=task.id,
+                    user_id=user_id,
                     field_name="status",
                     old_value=prior_status,
                     new_value="new",
                 )
             )
+            record_audit(
+                db,
+                action="task.reopen",
+                entity_type="task",
+                entity_id=task.id,
+                detail=f"Tarefa reaberta na v2-clean: {task.title}",
+                user_id=user_id,
+            )
             db.commit()
-    target = return_url.strip() or "/v2-clean/tasks?reopened=1"
+    clean_return_url = return_url.strip()
+    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/tasks?reopened=1"
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}reopened=1", status_code=303)
 
@@ -6853,6 +6920,18 @@ def clean_document_import_center(
     batch_pending: int | None = None,
     batch_duplicates: int | None = None,
     batch_error: str | None = None,
+    report_imported: int | None = None,
+    report_matched: int | None = None,
+    report_pending: int | None = None,
+    report_duplicates: int | None = None,
+    report_failed: int | None = None,
+    report_error: str | None = None,
+    inbox_imported: int | None = None,
+    inbox_routed: int | None = None,
+    inbox_pending: int | None = None,
+    inbox_duplicates: int | None = None,
+    inbox_error: str | None = None,
+    triage_saved: int | None = None,
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
@@ -7210,6 +7289,36 @@ def clean_document_import_center(
             )
         import_rows = module_ctx["import_rows"]
         import_rows_preview = import_rows[:preview_limit]
+        triage_documents = db.scalars(
+            select(Document)
+            .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+            .where(Document.entry_channel == "document_inbox")
+            .where(Document.status == "pending_triage")
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(20)
+        ).all()
+        triage_rows = [
+            {
+                "id": document.id,
+                "title": document.title or Path(document.original_name).stem,
+                "original_name": document.original_name,
+                "plate": document.plate or "",
+                "vehicle_id": document.vehicle_id,
+                "date_display": clean_date(document.document_date.isoformat()) if document.document_date else "-",
+                "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
+            }
+            for document in triage_documents
+        ]
+        triage_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+                .where(Document.entry_channel == "document_inbox")
+                .where(Document.status == "pending_triage")
+            )
+            or 0
+        )
 
         response = templates.TemplateResponse(
             request,
@@ -7255,6 +7364,20 @@ def clean_document_import_center(
                 "batch_pending": batch_pending,
                 "batch_duplicates": batch_duplicates,
                 "batch_error": batch_error,
+                "report_imported": report_imported,
+                "report_matched": report_matched,
+                "report_pending": report_pending,
+                "report_duplicates": report_duplicates,
+                "report_failed": report_failed,
+                "report_error": report_error,
+                "inbox_imported": inbox_imported,
+                "inbox_routed": inbox_routed,
+                "inbox_pending": inbox_pending,
+                "inbox_duplicates": inbox_duplicates,
+                "inbox_error": inbox_error,
+                "triage_saved": triage_saved,
+                "triage_rows": triage_rows,
+                "triage_count": triage_count,
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
@@ -7284,6 +7407,7 @@ BATCH_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", 
 BATCH_DOCUMENT_MAX_FILES = 2000
 BATCH_DOCUMENT_MAX_FILE_SIZE = 30 * 1024 * 1024
 BATCH_DOCUMENT_MAX_TOTAL_SIZE = 250 * 1024 * 1024
+HISTORICAL_REPORT_MAX_FILES = 500
 
 
 def _batch_document_vehicle(
@@ -7332,6 +7456,93 @@ def _batch_document_date(path_text: str) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def _historical_report_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text[:10], pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _historical_report_vehicle(
+    report_meta: dict[str, Any],
+    path_text: str,
+    vehicles_by_plate: dict[str, Vehicle],
+    vehicles_by_vin: dict[str, Vehicle],
+) -> Vehicle | None:
+    candidates = [
+        *(report_meta.get("vin_candidates") or []),
+        *(report_meta.get("plate_candidates") or []),
+        report_meta.get("vehicle_identifier"),
+    ]
+    for candidate in candidates:
+        compact = re.sub(r"[^A-Z0-9]", "", str(candidate or "").upper())
+        if compact in vehicles_by_vin:
+            return vehicles_by_vin[compact]
+        if compact in vehicles_by_plate:
+            return vehicles_by_plate[compact]
+    return _batch_document_vehicle(path_text, vehicles_by_plate, vehicles_by_vin)
+
+
+def _historical_report_payloads(
+    uploads: list[tuple[str, bytes]],
+) -> tuple[list[dict[str, Any]], str | None]:
+    payloads: list[dict[str, Any]] = []
+    total_size = 0
+    for upload_name, upload_content in uploads:
+        suffix = Path(upload_name).suffix.lower()
+        if suffix == ".zip":
+            try:
+                archive = zipfile.ZipFile(io.BytesIO(upload_content))
+            except (zipfile.BadZipFile, OSError):
+                return [], "ZIP de relatórios inválido"
+            with archive:
+                for entry in archive.infolist():
+                    archive_name = entry.filename.replace("\\", "/")
+                    parts = [part for part in archive_name.split("/") if part]
+                    entry_suffix = Path(archive_name).suffix.lower()
+                    if (
+                        entry.is_dir()
+                        or not parts
+                        or archive_name.startswith("/")
+                        or ".." in parts
+                        or entry.flag_bits & 0x1
+                        or entry_suffix not in BATCH_DOCUMENT_EXTENSIONS
+                        or entry.file_size > BATCH_DOCUMENT_MAX_FILE_SIZE
+                    ):
+                        continue
+                    total_size += entry.file_size
+                    if total_size > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+                        return [], "Conteúdo dos relatórios demasiado grande"
+                    payloads.append(
+                        {
+                            "archive_name": f"{upload_name}/{archive_name}",
+                            "original_name": Path(archive_name).name,
+                            "suffix": entry_suffix,
+                            "content": archive.read(entry),
+                        }
+                    )
+        elif suffix in BATCH_DOCUMENT_EXTENSIONS:
+            total_size += len(upload_content)
+            if len(upload_content) > BATCH_DOCUMENT_MAX_FILE_SIZE or total_size > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+                return [], "Relatórios demasiado grandes"
+            payloads.append(
+                {
+                    "archive_name": upload_name,
+                    "original_name": Path(upload_name).name,
+                    "suffix": suffix,
+                    "content": upload_content,
+                }
+            )
+        if len(payloads) > HISTORICAL_REPORT_MAX_FILES:
+            return [], "Demasiados relatórios no mesmo lote"
+    return payloads, None
 
 
 def _batch_document_pdf_text(file_content: bytes, suffix: str) -> str:
@@ -7985,11 +8196,11 @@ def _batch_invoice_is_cruz_allen_template(text: str) -> bool:
         )
     )
     invoice_structure = bool(
-        re.search(r"\b(?:Original\s+)?FS\s*0*\d{3,}\b", text, flags=re.IGNORECASE)
+        re.search(r"\b(?:Original\s+)?(?:FS|ND|SI|V1)[ -]*0*\d{3,}\b", text, flags=re.IGNORECASE)
         or (
             "referenciadescricao" in normalized
-            and "precounitario" in normalized
-            and "totalfatura" in normalized
+            and ("preco" in normalized or "prego" in normalized)
+            and ("totalfatura" in normalized or "totaldocumento" in normalized)
         )
     )
     return supplier_identity or ("504104250" in compact_digits and invoice_structure)
@@ -8256,7 +8467,7 @@ def _batch_invoice_decimal(value: str) -> Decimal | None:
 
 
 def _batch_invoice_cruz_allen_date(value: str) -> str:
-    match = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", value)
+    match = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", value)
     if not match:
         return ""
     day, month, year = match.groups()
@@ -8285,9 +8496,11 @@ def _batch_invoice_cruz_allen_normalize_quantity(value: str) -> str:
         return f"0,{cleaned[-2:]}"
     if cleaned.startswith(","):
         return f"0{cleaned}"
-    if re.fullmatch(r"\d{3}", cleaned) and cleaned[0] not in {"1", "2", "3"}:
-        return f"0,{cleaned[-2:]}"
-    if re.fullmatch(r"\d{3}", cleaned) and cleaned.startswith("1"):
+    if re.fullmatch(r"\d{2}", cleaned):
+        return f"0,{cleaned}"
+    if cleaned == "410":
+        return "0,10"
+    if re.fullmatch(r"\d{3}", cleaned):
         return f"{cleaned[0]},{cleaned[1:]}"
     return cleaned
 
@@ -8314,16 +8527,16 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
     line_pattern = re.compile(
         r"^(?:(?P<reference>(?=[A-Z0-9.:/-]*\d)[A-Z0-9][A-Z0-9.:/-]{2,})\s+)?"
         r"(?P<description>.+?)\s+"
-        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{3}|,\d{2})\s+"
+        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{2,3}|,\d{2})\s+"
         r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
         r"(?:(?P<discount>-?\d+,\d{2})\s+)?"
-        r"(?:(?P<tax>\d{1,2}%)(?:\s+(?P<amount>-?\d+(?:,\d{2})?)\s*€?)?)?$",
+        r"(?:(?P<tax>\d{1,2}%|(?:23|13|6),00)(?:\s+(?P<amount>-?\d+(?:,\d{2})?)\s*€?)?)?$",
         flags=re.IGNORECASE,
     )
     free_line_pattern = re.compile(
         r"^(?:(?P<reference>(?=[A-Z0-9.:/-]*\d)[A-Z0-9][A-Z0-9.:/-]{2,})\s+)?"
         r"(?P<description>.+?)\s+"
-        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{3}|,\d{2})\s+"
+        r"(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{2,3}|,\d{2})\s+"
         r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
         r"(?P<discount>99,\d{2})$",
         flags=re.IGNORECASE,
@@ -8338,7 +8551,11 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
         line = " ".join(raw_line.split()).strip()
         line = re.sub(r"\bAo\b(?=\s+\d+,\d{2}\s*€)", ",10", line, flags=re.IGNORECASE)
         simplified = _compact_identifier(line).lower()
-        if simplified.startswith("referenciadescricao") and "precounitario" in simplified:
+        if (
+            "referencia" in simplified
+            and "descricao" in simplified
+            and ("preco" in simplified or "prego" in simplified)
+        ):
             capturing = True
             continue
         if not capturing:
@@ -8357,6 +8574,19 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
             is_free_line = bool(match)
         if not match:
             if invoice_lines and section == "outrosdebitos" and not re.search(r"\d+,\d{2}", line):
+                if simplified.startswith(
+                    (
+                        "continua",
+                        "cruzallen",
+                        "telefone",
+                        "ruadr",
+                        "capitalsocial",
+                        "paraefeitodetransferencia",
+                        "osartigosfacturados",
+                        "processadoporprograma",
+                    )
+                ):
+                    continue
                 invoice_lines[-1]["description"] = f"{invoice_lines[-1]['description']} {line}"[:240]
             continue
         line_type, section_label = section_map.get(section, ("", ""))
@@ -8385,15 +8615,241 @@ def _batch_invoice_cruz_allen_lines(lines: list[str]) -> list[dict[str, Any]]:
     return invoice_lines
 
 
+def _batch_invoice_cruz_allen_stacked_lines(lines: list[str]) -> list[dict[str, Any]]:
+    description_start: int | None = None
+    values_start: int | None = None
+    for index, raw_line in enumerate(lines):
+        simplified = _compact_identifier(raw_line).lower()
+        if (
+            description_start is None
+            and simplified.startswith("referencia")
+            and "descricao" in simplified
+            and "pre" not in simplified
+        ):
+            description_start = index + 1
+        if (
+            description_start is not None
+            and index > description_start
+            and simplified.startswith("qtd")
+            and ("unitario" in simplified or "unitrio" in simplified)
+        ):
+            values_start = index + 1
+            break
+    if description_start is None or values_start is None:
+        return []
+
+    section_map = {
+        "maoobra": ("MO", "Mão de obra"),
+        "maodeobra": ("MO", "Mão de obra"),
+        "pecas": ("MAT", "Peças"),
+        "outrosdebitos": ("OUT", "Outros débitos"),
+    }
+    descriptions: list[dict[str, str]] = []
+    section = ""
+    for raw_line in lines[description_start : values_start - 1]:
+        line = " ".join(raw_line.split()).strip()
+        simplified = _compact_identifier(line).lower()
+        if not line or simplified.startswith(("cruzallen", "telefone", "ruadr", "capitalsocial")):
+            continue
+        if line.startswith(("-", "=")):
+            section_key = _compact_identifier(line.lstrip("-= ")).lower()
+            if section_key in section_map:
+                section = section_key
+            continue
+        reference_match = re.match(
+            r"^(?P<reference>(?=[A-Z0-9.:/-]*\d)[A-Z0-9][A-Z0-9.:/&-]{1,24})\s+(?P<description>.+)$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if reference_match:
+            descriptions.append(
+                {
+                    "reference": reference_match.group("reference").strip(),
+                    "description": reference_match.group("description").strip(),
+                    "section": section,
+                }
+            )
+        elif re.match(
+            r"^(?:CHAP\b|ENSAIO\b|LIMPEZA\b|P\s*&\s*D\b|ALERTA\b|OBS\b)",
+            line,
+            flags=re.IGNORECASE,
+        ):
+            descriptions.append({"reference": "", "description": line, "section": section})
+        elif descriptions:
+            descriptions[-1]["description"] = f"{descriptions[-1]['description']} {line}"[:240]
+
+    value_pattern = re.compile(
+        r"^(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{2,3}|,\d{2})\s+"
+        r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
+        r"(?:(?P<discount>-?\d+,\d{2})\s+)?"
+        r"(?:(?P<tax>\d{1,2}%)(?:\s+(?P<amount>-?\d+(?:,\d{2})?)\s*€?)?)?$",
+        flags=re.IGNORECASE,
+    )
+    free_value_pattern = re.compile(
+        r"^(?P<quantity>\+?\d+,\d{2}|\+\d{2}|\d{2,3}|,\d{2})\s+"
+        r"(?P<unit_price>-?\d+,\d{2})\s*€?\s+"
+        r"(?P<discount>99,\d{2})$",
+        flags=re.IGNORECASE,
+    )
+    values: list[re.Match[str]] = []
+    for raw_line in lines[values_start:]:
+        line = " ".join(raw_line.split()).strip()
+        simplified = _compact_identifier(line).lower()
+        if simplified.startswith(("continua", "atcud", "fatura")):
+            break
+        match = value_pattern.match(line) or free_value_pattern.match(line)
+        if match:
+            values.append(match)
+
+    if not descriptions or len(values) < min(2, len(descriptions)):
+        return []
+    invoice_lines: list[dict[str, Any]] = []
+    for description_data, match in zip(descriptions, values):
+        line_type, section_label = section_map.get(description_data["section"], ("", ""))
+        description = description_data["description"]
+        description = re.sub(r"^P\s*&\s*D\s+", "", description, flags=re.IGNORECASE)
+        amount = (
+            _batch_invoice_cruz_allen_ocr_money(match.group("amount"))
+            if match.groupdict().get("amount")
+            else "0,00"
+        )
+        invoice_lines.append(
+            {
+                "line_type": line_type,
+                "section": section_label,
+                "reference": description_data["reference"],
+                "description": description[:240],
+                "quantity": _batch_invoice_cruz_allen_normalize_quantity(match.group("quantity")),
+                "unit": "",
+                "unit_price": _batch_invoice_format_money(match.group("unit_price")),
+                "discount_percent": (
+                    _batch_invoice_format_money(match.group("discount"))
+                    if match.groupdict().get("discount")
+                    else ""
+                ),
+                "tax": match.groupdict().get("tax") or "",
+                "amount": amount,
+                "service": _batch_invoice_line_service(description),
+            }
+        )
+    return invoice_lines
+
+
+def _batch_invoice_cruz_allen_service_lines(lines: list[str]) -> list[dict[str, Any]]:
+    capturing = False
+    description_parts: list[str] = []
+    value_pattern = re.compile(
+        r"^(?P<prefix>.*?)\s*(?P<tax>\d{1,2}%)\s+"
+        r"(?P<quantity>\d+,\d{2})\s+"
+        r"(?P<unit_price>-?\d+,\d{2})\s+"
+        r"(?P<discount>-?\d+,\d{2})"
+        r"(?:\s+(?P<amount>-?\d+,\d{2})\s*€?)?$",
+        flags=re.IGNORECASE,
+    )
+    pending: dict[str, str] | None = None
+    for raw_line in lines:
+        line = " ".join(raw_line.split()).strip(" |")
+        simplified = _compact_identifier(line).lower()
+        if (
+            simplified.startswith("descricao")
+            and "iva" in simplified
+            and "qtd" in simplified
+            and "preco" in simplified
+            and "valor" in simplified
+        ):
+            capturing = True
+            continue
+        if not capturing:
+            continue
+        if simplified.startswith(("observacoes", "totaldesconto", "totaliva", "totaldocumento")):
+            break
+        if pending:
+            amount_match = re.fullmatch(r"(?P<amount>-?\d+,\d{2})\s*€?", line)
+            if amount_match:
+                pending["amount"] = _batch_invoice_format_money(amount_match.group("amount"))
+                return [pending]
+            if line:
+                pending["description"] = f"{pending['description']} {line}"[:240]
+            continue
+        match = value_pattern.match(line)
+        if not match:
+            if line and not line.startswith((">", "L")):
+                description_parts.append(line)
+            continue
+        prefix = match.group("prefix").strip()
+        if prefix:
+            description_parts.append(prefix)
+        description = " ".join(description_parts).strip() or "Serviços prestados"
+        result = {
+            "line_type": "SERV",
+            "section": "Serviços",
+            "reference": "",
+            "description": description[:240],
+            "quantity": match.group("quantity"),
+            "unit": "",
+            "unit_price": _batch_invoice_format_money(match.group("unit_price")),
+            "discount_percent": _batch_invoice_format_money(match.group("discount")),
+            "tax": match.group("tax"),
+            "amount": (
+                _batch_invoice_format_money(match.group("amount"))
+                if match.group("amount")
+                else ""
+            ),
+            "service": _batch_invoice_line_service(description),
+        }
+        if result["amount"]:
+            return [result]
+        pending = result
+    return []
+
+
 def _batch_invoice_cruz_allen_total(text: str, label: str) -> str:
     pattern = rf"{label}\s*:?\s*(-?\d{{1,3}}(?:[ .]\d{{3}})*(?:,\d{{2}})|-?\d+(?:,\d{{2}})?)\s*€?"
     match = re.search(pattern, text, flags=re.IGNORECASE)
     return _batch_invoice_cruz_allen_ocr_money(match.group(1)) if match else ""
 
 
+def _batch_invoice_cruz_allen_split_totals(lines: list[str], totals: dict[str, str]) -> dict[str, str]:
+    start = next(
+        (index for index, line in enumerate(lines) if _compact_identifier(line).lower().startswith("observacoes")),
+        None,
+    )
+    if start is None:
+        return totals
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if _compact_identifier(lines[index]).lower().startswith("paraefeitodetransferencia")
+        ),
+        len(lines),
+    )
+    block = lines[start:end]
+    keys = [
+        "labor_total",
+        "materials_total",
+        "misc_total",
+        "discount_without_vat",
+        "subtotal_without_vat",
+        "vat_amount",
+        "total_with_vat",
+    ]
+    values: list[str] = []
+    for raw_line in block:
+        stripped = " ".join(raw_line.split()).strip()
+        if re.fullmatch(r"-?\d{1,3}(?:[ .]\d{3})*(?:,\d{2})\s*€?", stripped):
+            values.append(_batch_invoice_cruz_allen_ocr_money(stripped))
+    missing_keys = [key for key in keys if not totals.get(key)]
+    if len(values) == len(keys):
+        return {**totals, **dict(zip(keys, values))}
+    if len(values) == len(missing_keys):
+        return {**totals, **dict(zip(missing_keys, values))}
+    return totals
+
+
 def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any]:
     header_match = re.search(
-        r"\b(?:Original\s+)?(?P<number>FS\s*0*\d{3,})\s+(?P<date>\d{1,2}/\d{1,2}/\d{2,4})\b",
+        r"\b(?:Original\s+)?(?P<number>(?:FS|ND|SI|V1)[ -]*0*\d{3,})\s+(?P<date>\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -8419,6 +8875,8 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         text,
         flags=re.IGNORECASE,
     )
+    if not km_match:
+        km_match = re.search(r"\b(?P<km>\d{3,7})\s+Data\s+de\s+Entrega\b", text, flags=re.IGNORECASE)
     payment_match = re.search(r"Forma\s+Pag(?:a|o)?\.?:?\s*(?P<payment>.+?)\s+Recepcionista:", text, flags=re.IGNORECASE)
     receptionist_match = re.search(r"Recepcionista:\s*(?P<value>.+?)(?:\n|Modelo:)", text, flags=re.IGNORECASE)
     warranty_match = re.search(r"Data\s+de\s+Garantia:\s*(?P<value>\d{1,2}/\d{1,2}/\d{2,4})", text, flags=re.IGNORECASE)
@@ -8432,13 +8890,27 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         "discount_without_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Descontos"),
         "subtotal_without_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+L[ií]quido"),
         "vat_amount": _batch_invoice_cruz_allen_total(text, r"I\.?V\.?A\s*:\s*23\s*%"),
-        "total_with_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Fatura"),
+        "total_with_vat": _batch_invoice_cruz_allen_total(text, r"Total\s+Fa(?:c)?tura"),
     }
+    if not totals["subtotal_without_vat"]:
+        totals["subtotal_without_vat"] = _batch_invoice_cruz_allen_total(text, r"(?<!IVA\s)Total(?:\s+L[ií]quido)?")
+    if not totals["vat_amount"]:
+        totals["vat_amount"] = _batch_invoice_cruz_allen_total(text, r"Total\s+I\.?V\.?A")
+    if not totals["total_with_vat"]:
+        totals["total_with_vat"] = _batch_invoice_cruz_allen_total(text, r"Total\s+Documento")
     if not totals["total_with_vat"]:
         base = _batch_invoice_decimal(totals["subtotal_without_vat"])
         vat = _batch_invoice_decimal(totals["vat_amount"])
         if base is not None and vat is not None:
             totals["total_with_vat"] = f"{base + vat:.2f}".replace(".", ",")
+    totals = _batch_invoice_cruz_allen_split_totals(lines, totals)
+    invoice_lines = _batch_invoice_cruz_allen_lines(lines)
+    if len(invoice_lines) <= 1:
+        stacked_lines = _batch_invoice_cruz_allen_stacked_lines(lines)
+        if len(stacked_lines) > len(invoice_lines):
+            invoice_lines = stacked_lines
+    if not invoice_lines:
+        invoice_lines = _batch_invoice_cruz_allen_service_lines(lines)
     return {
         "ocr_template": "cruz_allen_bbc_invoice",
         "supplier_name": "Cruz & Allen - B.B.C Oficina de Automóveis, Lda",
@@ -8458,7 +8930,7 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
         "km": km_match.group("km") if km_match else "",
         "warranty_date": _batch_invoice_cruz_allen_date(warranty_match.group("value")) if warranty_match else "",
         "delivery_date": _batch_invoice_cruz_allen_date(delivery_match.group("value")) if delivery_match else "",
-        "invoice_lines": _batch_invoice_cruz_allen_lines(lines),
+        "invoice_lines": invoice_lines,
         **totals,
     }
 
@@ -10098,6 +10570,8 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
         "caetano_gamobar_hfm",
     }
     skip_generic_invoice_line_fallback = bool(
+        cruz_allen_data
+        or
         filinto_automoveis_data
         or filinto_vnc_data
         or specialized_gamobar_template
@@ -10390,8 +10864,16 @@ def _archive_document_payloads(
     *,
     user_id: int | None,
     source_label: str,
+    triage_unknown: bool = False,
 ) -> dict[str, int]:
-    counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0}
+    counters = {
+        "imported": 0,
+        "matched": 0,
+        "pending": 0,
+        "duplicates": 0,
+        "routed": 0,
+        "triage": 0,
+    }
     vehicles = db.scalars(select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))).all()
     vehicles_by_plate = {
         re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
@@ -10426,6 +10908,10 @@ def _archive_document_payloads(
         lookup_text = f"{archive_name}\n{content_text}"
         vehicle = _batch_document_vehicle(lookup_text, vehicles_by_plate, vehicles_by_vin)
         document_type, classification = _batch_document_type(lookup_text)
+        is_unknown = document_type == "workshop_other"
+        if triage_unknown and is_unknown:
+            document_type = "unknown_document"
+            classification = "triage"
         document_date = _batch_document_date(lookup_text)
         plate = vehicle.plate if vehicle else None
         vin = vehicle.vin if vehicle else None
@@ -10436,7 +10922,9 @@ def _archive_document_payloads(
             document_type,
             vin=vin,
         )
-        if not vehicle:
+        if triage_unknown and is_unknown:
+            folder_path = "Frota/_POR_ASSOCIAR/00_Caixa_Entrada"
+        elif not vehicle:
             folder_path = "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
         storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
         storage_dir.mkdir(parents=True, exist_ok=True)
@@ -10451,7 +10939,7 @@ def _archive_document_payloads(
             document_type=document_type,
             classification=classification,
             source="v2_clean_manual",
-            entry_channel="v2_clean_batch",
+            entry_channel="document_inbox" if triage_unknown else "v2_clean_batch",
             source_subject=f"{source_label}: {archive_name}"[:255],
             original_name=original_name[:255],
             file_name=stored_name[:255],
@@ -10461,7 +10949,7 @@ def _archive_document_payloads(
             storage_path=str(stored_path),
             storage_key=digest,
             folder_path=folder_path,
-            status="received",
+            status="pending_triage" if triage_unknown and is_unknown else "received",
             file_hash=digest,
             vehicle_id=vehicle.id if vehicle else None,
             plate=plate,
@@ -10476,7 +10964,7 @@ def _archive_document_payloads(
         db.add(
             DocumentEvent(
                 document_id=document.id,
-                action="batch_import.archived",
+                action="document_inbox.received" if triage_unknown else "batch_import.archived",
                 old_value=None,
                 new_value=json.dumps(
                     {"source": source_label, "path": archive_name, "vehicle_matched": bool(vehicle)},
@@ -10511,6 +10999,7 @@ def _archive_document_payloads(
         known_hashes.add(digest)
         counters["imported"] += 1
         counters["matched" if vehicle else "pending"] += 1
+        counters["triage" if is_unknown else "routed"] += 1
     return counters
 
 
@@ -10759,6 +11248,206 @@ def _diagnostic_machine_and_type(document: Document) -> tuple[str, str]:
     return machine, report_type
 
 
+@web_router.post("/v2-clean/documents/import/historical-reports")
+async def clean_document_import_historical_reports(
+    request: Request,
+    files: list[UploadFile] = File(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    uploads = [
+        (Path(upload.filename or "relatorio.pdf").name, await upload.read())
+        for upload in files
+    ]
+    payloads, payload_error = _historical_report_payloads(uploads)
+    if payload_error:
+        return RedirectResponse(
+            f"/v2-clean/documents?{urlencode({'report_error': payload_error})}",
+            status_code=303,
+        )
+    if not payloads:
+        return RedirectResponse(
+            "/v2-clean/documents?report_error=Nenhum+relatorio+compativel",
+            status_code=303,
+        )
+
+    user_id = get_web_user_id(request)
+    counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0, "failed": 0}
+    with SessionLocal() as db:
+        vehicles = db.scalars(
+            select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))
+        ).all()
+        vehicles_by_plate = {
+            re.sub(r"[^A-Z0-9]", "", str(vehicle.plate or "").upper()): vehicle
+            for vehicle in vehicles
+            if vehicle.plate
+        }
+        vehicles_by_vin = {
+            re.sub(r"[^A-Z0-9]", "", str(vehicle.vin or "").upper()): vehicle
+            for vehicle in vehicles
+            if vehicle.vin
+        }
+        known_hashes = set(
+            db.scalars(select(Document.file_hash).where(Document.file_hash.is_not(None))).all()
+        )
+        for item in payloads:
+            content = item["content"]
+            filename = item["original_name"]
+            suffix = item["suffix"]
+            digest = hashlib.sha256(content).hexdigest()
+            if digest in known_hashes:
+                counters["duplicates"] += 1
+                continue
+            try:
+                report_meta = classify_workshop_report_from_bytes(content, filename)
+            except (RuntimeError, ValueError):
+                report_meta = {}
+            report_code = str(report_meta.get("report_code") or "other_reading")
+            if report_code not in CLEAN_WORKSHOP_REPORT_CODES:
+                report_code = "other_reading"
+            try:
+                extracted_values = extract_workshop_report_values_from_bytes(content, report_code, filename)
+                extraction_error = None
+            except (RuntimeError, ValueError) as exc:
+                extracted_values = {}
+                extraction_error = str(exc)
+                counters["failed"] += 1
+
+            lookup_text = " ".join(
+                [
+                    str(item["archive_name"]),
+                    str(report_meta.get("vehicle_identifier") or ""),
+                    " ".join(str(value) for value in (report_meta.get("vin_candidates") or [])),
+                    " ".join(str(value) for value in (report_meta.get("plate_candidates") or [])),
+                ]
+            )
+            vehicle = _historical_report_vehicle(
+                report_meta,
+                lookup_text,
+                vehicles_by_plate,
+                vehicles_by_vin,
+            )
+            report_date = _historical_report_date(report_meta.get("report_date"))
+            report_label = str(
+                report_meta.get("report_name")
+                or clean_workshop_report_display_label(report_code, "Relatório técnico")
+            )
+            plate = vehicle.plate if vehicle else None
+            vin = vehicle.vin if vehicle else None
+            folder_path = (
+                suggest_document_folder_path(
+                    "workshop",
+                    report_date,
+                    plate,
+                    "workshop_diagnostic",
+                    vin=vin,
+                )
+                if vehicle
+                else "Frota/_POR_ASSOCIAR/03_Diagnosticos"
+            )
+            storage_dir = local_document_storage_folder(folder_path, plate=plate, vin=vin)
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            stored_name = str(report_meta.get("suggested_file_name") or "").strip()
+            stored_name = Path(stored_name).name if stored_name else f"relatorio_{digest[:12]}{suffix}"
+            stored_path = storage_dir / stored_name
+            if stored_path.exists():
+                stored_path = storage_dir / f"{stored_path.stem}_{digest[:8]}{stored_path.suffix or suffix}"
+            stored_path.write_bytes(content)
+
+            metadata = {
+                **report_meta,
+                "extracted_values": extracted_values,
+                "extraction_error": extraction_error,
+                "archive_name": item["archive_name"],
+                "sha256": digest,
+            }
+            document = Document(
+                title=f"{report_label} - {plate or vin or 'Por associar'}"[:200],
+                document_type="workshop_diagnostic",
+                classification="technical",
+                source="v2_clean_manual",
+                entry_channel="historical_report_import",
+                source_subject="Importação de relatórios históricos",
+                original_name=filename[:255],
+                file_name=stored_path.name[:255],
+                file_type=suffix.lstrip("."),
+                file_size=len(content),
+                storage_provider="local",
+                storage_path=str(stored_path),
+                storage_key=digest,
+                folder_path=folder_path,
+                status="pending_validation" if extracted_values else "unable_to_read",
+                file_hash=digest,
+                vehicle_id=vehicle.id if vehicle else None,
+                plate=plate,
+                document_date=report_date,
+                uploaded_by_id=user_id,
+                archived_by_id=user_id,
+                archived_at=datetime.now(UTC),
+                archived=True,
+            )
+            db.add(document)
+            db.flush()
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="historical_report.imported",
+                    new_value=json.dumps(metadata, ensure_ascii=False, default=str),
+                    user_id=user_id,
+                )
+            )
+            if vehicle:
+                odometer_value = (
+                    extracted_values.get("odometer_km")
+                    or extracted_values.get("km")
+                    or extracted_values.get("mileage")
+                )
+                try:
+                    odometer_km = int(float(str(odometer_value).replace(" ", "").replace(",", ".")))
+                except (TypeError, ValueError):
+                    odometer_km = None
+                reading = WorkshopTechnicalReading(
+                    process_id=None,
+                    vehicle_id=vehicle.id,
+                    user_id=user_id,
+                    reading_type=report_code,
+                    reading_date=report_date,
+                    odometer_km=odometer_km,
+                    summary=report_label,
+                    data_json={
+                        "document_id": document.id,
+                        "report_meta": report_meta,
+                        "extracted_values": extracted_values,
+                    },
+                    storage_provider="local",
+                    external_url=f"/v2-clean/documents/{document.id}/file",
+                    status="pending_validation",
+                    updated_by_id=user_id,
+                )
+                db.add(reading)
+                db.flush()
+                db.add(
+                    DocumentLink(
+                        document_id=document.id,
+                        entity_type="workshop_technical_reading",
+                        entity_id=str(reading.id),
+                        category=report_code,
+                    )
+                )
+                counters["matched"] += 1
+            else:
+                counters["pending"] += 1
+            known_hashes.add(digest)
+            counters["imported"] += 1
+        db.commit()
+
+    return RedirectResponse(
+        f"/v2-clean/documents?{urlencode({f'report_{key}': value for key, value in counters.items()})}",
+        status_code=303,
+    )
+
+
 @web_router.post("/v2-clean/documents/import/archive-batch")
 def clean_document_import_archive_batch(request: Request, file: UploadFile = File(...)):
     denied = clean_experience_denied(request)
@@ -10830,6 +11519,184 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
         }
     )
     return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/import/inbox")
+def clean_document_import_inbox(request: Request, files: list[UploadFile] = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    uploads: list[tuple[str, bytes]] = []
+    total_size = 0
+    for upload in files[:HISTORICAL_REPORT_MAX_FILES]:
+        filename = Path(upload.filename or "documento").name
+        content = upload.file.read()
+        total_size += len(content)
+        if total_size > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+            return RedirectResponse(
+                "/v2-clean/documents?inbox_error=Ficheiros+demasiado+grandes",
+                status_code=303,
+            )
+        uploads.append((filename, content))
+    payloads, payload_error = _historical_report_payloads(uploads)
+    if payload_error:
+        return RedirectResponse(
+            f"/v2-clean/documents?{urlencode({'inbox_error': payload_error})}",
+            status_code=303,
+        )
+    try:
+        with SessionLocal() as db:
+            counters = _archive_document_payloads(
+                db,
+                payloads,
+                user_id=get_web_user_id(request),
+                source_label=f"Caixa de entrada [{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}]",
+                triage_unknown=True,
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            f"/v2-clean/documents?{urlencode({'inbox_error': f'Erro ao importar ({exc.__class__.__name__})'})}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        "/v2-clean/documents?"
+        + urlencode(
+            {
+                "inbox_imported": counters["imported"],
+                "inbox_routed": counters["routed"],
+                "inbox_pending": counters["triage"],
+                "inbox_duplicates": counters["duplicates"],
+            }
+        ),
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/documents/{document_id}/triage")
+def clean_document_complete_triage(
+    request: Request,
+    document_id: int,
+    title: str = Form(...),
+    document_type: str = Form(...),
+    destination: str = Form(...),
+    extraction_rule: str = Form("none"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    clean_title = title.strip()[:200]
+    clean_type = re.sub(r"[^a-z0-9_]+", "_", document_type.strip().lower()).strip("_")[:80]
+    allowed_destinations = {
+        "invoices": ("workshop_supplier_invoice", "workshop"),
+        "reports": ("workshop_report", "workshop"),
+        "work_orders": ("workshop_work_order", "workshop"),
+        "vehicle_archive": (clean_type or "vehicle_document", "fleet"),
+        "other": (clean_type or "other_document", "general"),
+    }
+    if not clean_title or destination not in allowed_destinations:
+        return RedirectResponse("/v2-clean/documents?inbox_error=Triagem+incompleta", status_code=303)
+    target_type, classification = allowed_destinations[destination]
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document or document.status != "pending_triage":
+            return RedirectResponse("/v2-clean/documents?inbox_error=Documento+nao+esta+em+triagem", status_code=303)
+        old_values = {
+            "title": document.title,
+            "document_type": document.document_type,
+            "folder_path": document.folder_path,
+            "status": document.status,
+        }
+        document.title = clean_title
+        document.document_type = target_type
+        document.classification = classification
+        document.status = "received"
+        folder_path = suggest_document_folder_path(
+            classification,
+            document.document_date,
+            document.plate,
+            target_type,
+        )
+        if not document.vehicle_id:
+            folder_path = f"Frota/_POR_ASSOCIAR/{'01_Faturas' if destination == 'invoices' else '02_Documentos_Triados'}"
+        resolved_path = _document_resolved_file(document)
+        if resolved_path:
+            target_dir = local_document_storage_folder(
+                folder_path,
+                plate=document.plate,
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_dir / resolved_path.name
+            if resolved_path != target_path and not target_path.exists():
+                resolved_path.replace(target_path)
+                document.storage_path = str(target_path)
+        document.folder_path = folder_path
+        extraction_result: dict[str, Any] | None = None
+        if extraction_rule == "invoice_ocr":
+            document.document_type = "workshop_supplier_invoice"
+            extraction_result = _reprocess_invoice_document(
+                db,
+                document=document,
+                user_id=get_web_user_id(request),
+            )
+        elif extraction_rule == "report_ocr" and resolved_path:
+            try:
+                file_content = Path(document.storage_path).read_bytes()
+                report_meta = classify_workshop_report_from_bytes(
+                    file_content,
+                    document.original_name or document.file_name,
+                )
+                report_code = str(report_meta.get("report_code") or "other_reading")
+                if report_code not in CLEAN_WORKSHOP_REPORT_CODES:
+                    report_code = "other_reading"
+                extracted_values = extract_workshop_report_values_from_bytes(
+                    file_content,
+                    report_code,
+                    document.original_name or document.file_name,
+                )
+                document.document_type = "workshop_diagnostic"
+                document.classification = "technical"
+                document.status = "pending_validation" if extracted_values else "unable_to_read"
+                extraction_result = {"error": "", "report_code": report_code}
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="workshop_report.extracted",
+                        old_value=None,
+                        new_value=json.dumps(
+                            {
+                                **report_meta,
+                                "extracted_values": extracted_values,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        user_id=get_web_user_id(request),
+                    )
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                document.status = "unable_to_read"
+                extraction_result = {"error": exc.__class__.__name__}
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.triage.completed",
+                old_value=json.dumps(old_values, ensure_ascii=False),
+                new_value=json.dumps(
+                    {
+                        "title": document.title,
+                        "document_type": document.document_type,
+                        "destination": destination,
+                        "folder_path": folder_path,
+                        "extraction_rule": extraction_rule,
+                        "extraction_error": (extraction_result or {}).get("error", ""),
+                    },
+                    ensure_ascii=False,
+                ),
+                user_id=get_web_user_id(request),
+            )
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/documents?triage_saved=1", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/invoice-folder")
@@ -11461,6 +12328,7 @@ def clean_fleet_documents_save_classification_row(
     record_id: int | None = Form(None),
     document_id: int | None = Form(None),
     return_group: str = Form(""),
+    classification_action: str = Form("save"),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -11480,6 +12348,7 @@ def clean_fleet_documents_save_classification_row(
         if item.strip()
     ]
     categories = list(category_values)
+    should_validate = classification_action == "validate"
 
     def normalized_values(values: list[str]) -> list[str]:
         cleaned = list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
@@ -11520,8 +12389,8 @@ def clean_fleet_documents_save_classification_row(
                     free_text=free_text,
                     user_id=user_id,
                 )
-            record.status = "classified"
-            record.comparison_state = "validado"
+            record.status = "classified" if should_validate else "pending_validation"
+            record.comparison_state = "validado" if should_validate else "por_validar"
             record.metadata_json = {
                 **(record.metadata_json or {}),
                 "manual_note": manual_note.strip(),
@@ -11559,13 +12428,22 @@ def clean_fleet_documents_save_classification_row(
                     free_text=free_text,
                     user_id=user_id,
                 )
-            document.status = "classified"
+            document.status = "classified" if should_validate else "pending_validation"
             db.add(
                 DocumentEvent(
                     document_id=document.id,
                     action="document.manual_note",
                     old_value=None,
                     new_value=manual_note.strip(),
+                    user_id=user_id,
+                )
+            )
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="document.classification_validated" if should_validate else "document.classification_saved",
+                    old_value=None,
+                    new_value="validado" if should_validate else "por_validar",
                     user_id=user_id,
                 )
             )

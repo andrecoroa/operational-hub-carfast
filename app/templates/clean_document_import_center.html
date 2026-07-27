@@ -52,6 +52,35 @@
       </section>
     {% endif %}
 
+    {% if report_imported is not none or report_error %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if report_error %}danger{% endif %}">
+          {% if report_error %}
+            <strong>Não foi possível importar os relatórios: {{ report_error }}.</strong>
+          {% else %}
+            <strong>{{ report_imported }} relatórios históricos arquivados.</strong>
+            <span>{{ report_matched }} associados a viaturas · {{ report_pending }} por associar · {{ report_duplicates }} duplicados ignorados{% if report_failed %} · {{ report_failed }} por rever{% endif %}.</span>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if inbox_imported is not none or inbox_error or triage_saved %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if inbox_error %}danger{% endif %}">
+          {% if inbox_error %}
+            <strong>Não foi possível receber os documentos: {{ inbox_error }}.</strong>
+          {% elif triage_saved %}
+            <strong>Triagem concluída.</strong>
+            <span>O documento foi encaminhado e a decisão ficou registada.</span>
+          {% else %}
+            <strong>{{ inbox_imported }} documentos recebidos.</strong>
+            <span>{{ inbox_routed }} encaminhados automaticamente · {{ inbox_pending }} em triagem · {{ inbox_duplicates }} duplicados ignorados.</span>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
     {% if request.query_params.get("removed") == "1" or request.query_params.get("remove_error") %}
       <section class="clean-doc-filter-panel clean-card-wide">
         <div class="clean-doc-inline-workbench-note {% if request.query_params.get('remove_error') %}warning{% endif %}">
@@ -220,18 +249,89 @@
             </form>
           </article>
 
-          <article class="clean-doc-compact-import-card clean-doc-compact-import-card-muted">
-            <span class="clean-doc-type-token">+</span>
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">RH</span>
             <div>
-              <h4>Novos tipos</h4>
-              <p>Preparado para AR, sinistros, diagnósticos ou novos ficheiros estruturados.</p>
+              <h4>Relatórios históricos</h4>
+              <p>PDFs/imagens ou ZIP. Deteta tipo, matrícula/VIN e extrai como na oficina.</p>
             </div>
-            <div class="clean-doc-compact-form clean-doc-compact-placeholder">
-              <span>A definir</span>
+            <form method="post" action="/v2-clean/documents/import/historical-reports" enctype="multipart/form-data" class="clean-doc-compact-form">
+              <input type="file" name="files" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.zip,application/zip" multiple required>
+              <button type="submit">Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card clean-doc-inbox-import-card">
+            <span class="clean-doc-type-token">IN</span>
+            <div>
+              <h4>Caixa de entrada</h4>
+              <p>Reconhece e encaminha documentos conhecidos. Os restantes ficam em triagem.</p>
             </div>
+            <form method="post" action="/v2-clean/documents/import/inbox" enctype="multipart/form-data" class="clean-doc-compact-form">
+              <input type="file" name="files" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.zip,application/zip" multiple required>
+              <button type="submit">Receber</button>
+            </form>
           </article>
         </div>
       </article>
+
+      <details class="clean-doc-collapsible clean-card-wide clean-doc-triage-card" {% if triage_saved or inbox_pending %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Caixa de entrada / Triagem</b>
+            <small>Documentos cujo tipo ou destino ainda não foi reconhecido com segurança.</small>
+          </span>
+          <em>{{ triage_count }} pendentes</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-triage-list">
+            {% for row in triage_rows %}
+              <article class="clean-doc-triage-row">
+                <div class="clean-doc-triage-file">
+                  <strong>{{ row.original_name }}</strong>
+                  <small>{{ row.date_display }}{% if row.plate %} · {{ row.plate }}{% endif %}</small>
+                  <a class="button-link secondary-link" href="{{ row.preview_href }}" target="_blank" rel="noopener">Pré-visualizar</a>
+                </div>
+                <form method="post" action="/v2-clean/documents/{{ row.id }}/triage" class="clean-doc-triage-form">
+                  <label>
+                    Nome
+                    <input type="text" name="title" value="{{ row.title }}" required>
+                  </label>
+                  <label>
+                    Tipo
+                    <input type="text" name="document_type" value="" placeholder="Ex.: relatório de danos" required>
+                  </label>
+                  <label>
+                    Destino
+                    <select name="destination" required>
+                      <option value="">Selecionar...</option>
+                      <option value="invoices">Faturas</option>
+                      <option value="reports">Relatórios / diagnósticos</option>
+                      <option value="work_orders">Folhas de obra</option>
+                      <option value="vehicle_archive">Arquivo da viatura</option>
+                      <option value="other">Outro arquivo</option>
+                    </select>
+                  </label>
+                  <label>
+                    Extração
+                    <select name="extraction_rule">
+                      <option value="none">Sem extração</option>
+                      <option value="invoice_ocr">OCR de fatura</option>
+                      <option value="report_ocr">Extrator de relatório</option>
+                    </select>
+                  </label>
+                  <button type="submit">Concluir triagem</button>
+                </form>
+              </article>
+            {% else %}
+              <p class="clean-empty-cell">Não existem documentos por triar.</p>
+            {% endfor %}
+          </div>
+          {% if triage_count > triage_rows|length %}
+            <p class="clean-doc-table-limit-note">A mostrar os 20 documentos mais recentes de {{ triage_count }} pendentes.</p>
+          {% endif %}
+        </div>
+      </details>
 
       <details class="clean-doc-collapsible clean-card-wide clean-doc-import-history-card">
         <summary>

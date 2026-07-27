@@ -19457,6 +19457,13 @@ body.clean-doc-modal-open {
   margin: 0;
 }
 
+.clean-task-row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .clean-task-table .button-link {
   width: auto;
 }
@@ -19576,8 +19583,67 @@ body.clean-doc-modal-open {
   font-size: 0.88rem;
 }
 
+.clean-doc-inbox-import-card {
+  border-style: dashed;
+}
+
+.clean-doc-triage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-doc-triage-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 3fr);
+  gap: 12px;
+  align-items: end;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e3e9f1;
+}
+
+.clean-doc-triage-file {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.clean-doc-triage-file strong,
+.clean-doc-triage-file small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-doc-triage-file .button-link {
+  justify-self: start;
+}
+
+.clean-doc-triage-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(150px, 1fr) minmax(140px, 0.9fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.clean-doc-triage-form label {
+  min-width: 0;
+  margin: 0;
+}
+
+.clean-doc-triage-form input,
+.clean-doc-triage-form select,
+.clean-doc-triage-form button {
+  width: 100%;
+  min-height: 38px;
+}
+
 @media (max-width: 720px) {
   .clean-doc-batch-import-form {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-doc-triage-row,
+  .clean-doc-triage-form {
     grid-template-columns: 1fr;
   }
 }

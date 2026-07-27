@@ -25,10 +25,14 @@ from app.services.vehicle_document_history import (
     vehicle_document_module_context,
 )
 from app.web.router import (
+    _batch_document_type,
     _batch_document_vehicle,
     _batch_invoice_filinto_stacked_lines,
     _batch_invoice_payload,
     _batch_invoice_total_from_lines,
+    _historical_report_date,
+    _historical_report_payloads,
+    _historical_report_vehicle,
     local_document_storage_folder,
 )
 
@@ -77,6 +81,51 @@ def _make_pdf(text: str) -> bytes:
     content = document.tobytes()
     document.close()
     return content
+
+
+def test_document_inbox_type_detection_is_conservative():
+    assert _batch_document_type("Faturas/Fatura_123.pdf") == ("workshop_supplier_invoice", "workshop")
+    assert _batch_document_type("Relatorios/Diagnostico_Autel.pdf") == ("workshop_report", "workshop")
+    assert _batch_document_type("Folha de obra/FO_123.pdf") == ("workshop_work_order", "workshop")
+    assert _batch_document_type("documento_recebido_001.pdf") == ("workshop_other", "workshop")
+
+
+def test_historical_report_payloads_accept_files_and_safe_zip_entries():
+    archive = _make_zip(
+        {
+            "AQ-41-XJ/manutencao.pdf": b"report-a",
+            "../escape.pdf": b"blocked",
+            "notas.txt": b"ignored",
+        }
+    ).getvalue()
+
+    payloads, error = _historical_report_payloads(
+        [("lote.zip", archive), ("diagnostico.pdf", b"report-b")]
+    )
+
+    assert error is None
+    assert [payload["original_name"] for payload in payloads] == [
+        "manutencao.pdf",
+        "diagnostico.pdf",
+    ]
+
+
+def test_historical_report_vehicle_prefers_extracted_vin():
+    by_plate_vehicle = Vehicle(id=1, plate="AQ-41-XJ", vin="VIN-PLATE")
+    by_vin_vehicle = Vehicle(id=2, plate="BB-69-TE", vin="VR3EDYHT9RJ968630")
+
+    matched = _historical_report_vehicle(
+        {
+            "vin_candidates": ["VR3EDYHT9RJ968630"],
+            "plate_candidates": ["AQ-41-XJ"],
+        },
+        "AQ-41-XJ.pdf",
+        {"AQ41XJ": by_plate_vehicle},
+        {"VR3EDYHT9RJ968630": by_vin_vehicle},
+    )
+
+    assert matched is by_vin_vehicle
+    assert _historical_report_date("27/07/2026") == date(2026, 7, 27)
 
 
 def _create_vehicle(db_session):
@@ -1943,6 +1992,248 @@ CONTRIBUINTE Nº 504 104 250
     assert payload["km"] == "28822"
 
 
+def test_batch_invoice_payload_handles_cruz_allen_degraded_header_and_split_totals():
+    text = """
+FATURA
+CITROEN VIA NÚMERO, DATA
+Original FS0002235 10/07/24
+Cruz & Allen CARFAST, RENT-A-CAR, LDA
+Cliente n° NIF Cliente Página
+000310 509285970 OR 1/1
+Modelo: BERLINGO VU (K9) FUR Chassis: VR7EFYHT2PJ721795
+Matricula: BC-92-EE
+Kilómetros: 25380 Data de Entrega: 10/07/2024
+Referência Descrição ASS Qtd. Preço Unitário Dto. IVA Valor
+- Mao Obra
+00000510 CONTROLO VEICULO ,10 39,00€ 10,00 23% 3,51€
+01022815 MUDANCA DE OLEO E FILTRO MOTOR 40 39,00€ 10,00 23% 14,04 €
+- Peças
+1680682480 FILTRO OLEO 1,00 15,93€ 10,00 23% 14,34 €
+OW20 OLEOQUARTZINEO FIRST OW20 5,30 39,90 € 20,00 23% 169,18 €
+OW20:GAU ECOLUB 1,00 0,42 € 23% 0,42 €
+- Outros Débitos
+016488 JUNTA BUJÃO 1,00 2,39€ 23% 2,39€
+P&D PICK UP & DELIVERY 1,00 1,00€ 99,99 23%
+Observações:
+Total Mão de Obra:
+Total Peças:
+Outros Déb. + T. Ext:
+Total Descontos
+Total Líquido:
+IVA: 23 %
+Total Fatura:
+19,50 €
+227,82 €
+3,39 €
+46,83 €
+203,38 €
+46,89 €
+250,77 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "FS-0002235.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["km"] == "25380"
+    assert payload["total_with_vat"] == "250,77"
+    assert payload["labor_total"] == "19,50"
+    assert payload["materials_total"] == "227,82"
+    assert len(payload["invoice_lines"]) == 7
+    assert payload["invoice_lines"][1]["quantity"] == "0,40"
+    assert all("Total " not in line["description"] for line in payload["invoice_lines"])
+
+
+def test_batch_invoice_payload_rebuilds_cruz_allen_stacked_two_page_table():
+    text = """
+FATURA
+VIA NUMERO DATA
+Original FS0002242 11/07/24
+Cruz & Allen CARFAST, RENT-A-CAR, LDA
+Cliente nº NIF Cliente Nº OR Página
+000310 509285970 OR0006545 1/2
+Modelo: C4 (C41) DVSRC/UE63
+Matrícula: AX-30-EF
+Kilómetros: 18261
+Chassis: VR7BBYHZBNE063309
+Referência Descrição
+- Mao Obra
+93830000 OPERAÇÕES SISTEMATICAS MANUTENÇÃO
+49450907 SUBSTITUICAO FILTRO DE POLEN
+- Peças
+1680682480 FILTRO OLEO
+9833351080 FILTRO CARVÃO
+5W30 RCP OLEO QUARTZ INEO RCP 5W30
+- Outros Débitos
+016488 JUNTA BUJAO
+1611908680 LIQUIDO L-VIDROS
+- Mao Obra
+CHAP REPARAR FRISO / CALHA VIDRO PORTA TRAS
+DIREITA ( PARTIDO )
+- Outros Débitos
+ENSAIO SIMPLES - OFERTA
+- Outros Débitos
+LIMPEZA DA VIATURA - OFERTA
+P&D PICK UP & DELIVERY
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+Qtd. Preço Unitário Dto. IVA Valor
+1,00 39,00€ 10,00 23% 35,10 €
+,10 39,00 € 10,00 23% 3,51€
+1,00 15,93 € 10,00 23% 14,34 €
+1,00 43,13 € 10,00 23% 38,82 €
+4,00 45,84 € 20,00 23% 146,69 €
+1,00 2,39€ 23% 2,39€
+1,00 1,37 € 23% 1,37 €
+1,20 39,00 € 23% 46,80 €
+1,00 16,00 € 99,99
+1,00 15,00 € 99,99
+1,00 1,00 € 99,99
+Continua...
+FATURA
+Original FS0002242 11/07/24
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+ALERTA MANUTENÇÃO DESTA VIATURA 30.000KMS / 1ANO - 1,00 1,00€ 99,99
+Observações:
+Total Fatura: 355,49 €
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "FS-0002242.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["document_number"] == "FS0002242"
+    assert payload["km"] == "18261"
+    assert len(payload["invoice_lines"]) == 11
+    assert payload["invoice_lines"][0]["reference"] == "93830000"
+    assert payload["invoice_lines"][0]["amount"] == "35,10"
+    assert payload["invoice_lines"][7]["description"].endswith("DIREITA ( PARTIDO )")
+    assert payload["invoice_lines"][-1]["description"] == "PICK UP & DELIVERY"
+    assert all("CAPITAL SOCIAL" not in line["description"] for line in payload["invoice_lines"])
+
+
+def test_batch_invoice_payload_handles_cruz_allen_abbreviated_header_and_garbled_km_label():
+    text = """
+FATURA
+Original FS0002485 27/11/24
+Cruz & Allen CARFAST, RENT-A-CAR, LDA
+Modelo: BERLINGO
+Matrícula: BN-91-MN
+pi sltâmetras: 35880 Data de Entrega: 27/11/2024
+Referência Descrição Qtd. Preço Uni Dto. IVA Valor
+- Mao Obra
+01022815 MUDANCA DE OLEO E FILTRO MOTOR 40 39,00€ 10,00 23% 14,04 €
+- Peças
+1680682480 FILTRO OLEO 1,00 15,93€ 10,00 23% 14,34 €
+- Outros Débitos
+P&D PICK UP & DELIVERY 1,00 1,00€ 99,99 23%
+Continua
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+Telefone 229 000 000
+Capital Social 100000 EUR
+Observações:
+Total Fatura: 461,61 €
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "FS-0002485.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["km"] == "35880"
+    assert payload["total_with_vat"] == "461,61"
+    assert len(payload["invoice_lines"]) == 3
+    assert payload["invoice_lines"][0]["quantity"] == "0,40"
+    assert payload["invoice_lines"][-1]["description"] == "P&D PICK UP & DELIVERY"
+    assert all("Telefone" not in line["description"] for line in payload["invoice_lines"])
+    assert all("Capital Social" not in line["description"] for line in payload["invoice_lines"])
+
+
+def test_batch_invoice_payload_handles_cruz_allen_nd_service_invoice():
+    text = """
+FATURA
+Cruz & Allen VIA NÚMERO DATA
+Original ND 0000548 19-08-2025
+CARFAST RENT-A-CAR, LDA
+Descrição Tx. IVA Qtd. Preço Dto. Valor
+Serviços Prestados
+Valor E
+23% 1,00 206,78 0,00 206,78 €
+Observações
+Total 206,78 €
+Total Desconto 0,00 €
+Total IVA 47,56 €
+Total Documento 254,34 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "ND-0000548.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["document_number"] == "ND0000548"
+    assert payload["document_date"] == "2025-08-19"
+    assert payload["subtotal_without_vat"] == "206,78"
+    assert payload["vat_amount"] == "47,56"
+    assert payload["total_with_vat"] == "254,34"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["description"] == "Serviços Prestados Valor E"
+    assert payload["invoice_lines"][0]["amount"] == "206,78"
+
+
+def test_batch_invoice_payload_handles_cruz_allen_wrapped_service_amount():
+    text = """
+FATURA
+Cruz & Allen VIA NUMERO DATA
+Original ND 0000410 09-09-2024
+CARFAST, RENT-A-CAR, LDA
+Descrição Tx. IVA Qtd. Preço Dto. Valor
+Serviços Prestados Referente a 23% 1,00 663,16 0,00
+Comissões Processos
+Seguradoras de junho a agosto
+663,16 €
+Total 663,16 €
+Total IVA 152,53 €
+Total Documento 815,69 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "ND-0000410.pdf", existing_text=text)
+
+    assert payload["document_number"] == "ND0000410"
+    assert payload["total_with_vat"] == "815,69"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["amount"] == "663,16"
+    assert "Comissões Processos Seguradoras" in payload["invoice_lines"][0]["description"]
+
+
+def test_batch_invoice_payload_handles_cruz_allen_parts_receipt():
+    text = """
+FATURA/RECIBO
+VIA NUMERO DATA
+Original V10000341 23/05/24
+Cruz & Allen CARFAST, RENT-A-CAR, LDA
+Marca Referência Descrição Qtd Preço Unitário Dto. Iva% Valor
+cl 9844895280 FAROLIM TRAS 1,00 203,75 € 10,00 23,00 183,37 €
+Total Bruto: 203,75 €
+Descontos 20,38 €
+Subtotal 183,37 €
+IVA 23 % 42,18€
+Total Factura: 225,55 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "V1-0000341.pdf", existing_text=text)
+
+    assert payload["document_number"] == "V10000341"
+    assert payload["total_with_vat"] == "225,55"
+    assert len(payload["invoice_lines"]) == 1
+    assert payload["invoice_lines"][0]["description"].endswith("FAROLIM TRAS")
+    assert payload["invoice_lines"][0]["tax"] == "23,00"
+    assert payload["invoice_lines"][0]["amount"] == "183,37"
+
+
 def test_batch_invoice_payload_extracts_cruz_allen_fs0004003():
     text = """
 FATURA
@@ -3308,8 +3599,8 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     assert response.status_code == 303
     assert response.headers["location"].endswith("?classified=1&main_group=work_orders")
     db_session.refresh(record)
-    assert record.status == "classified"
-    assert record.comparison_state == "validado"
+    assert record.status == "pending_validation"
+    assert record.comparison_state == "por_validar"
     assert record.metadata_json["manual_note"] == "Confirmado em oficina"
     tag = db_session.scalar(
         select(VehicleDocumentRecordTag).where(
@@ -3324,9 +3615,9 @@ def test_clean_vehicle_documents_save_row_classification(authenticated_client, d
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
     assert '<option value="rear" selected>TR</option>' in page.text
-    assert "Validado" in page.text
+    assert "Por validar" in page.text
     assert "Confirmado em oficina" in page.text
-    assert "is-valid" in page.text
+    assert "Guardar classificação" in page.text
 
 
 def test_clean_vehicle_documents_service_choices_match_operational_vocabulary(
@@ -3368,6 +3659,41 @@ def test_clean_vehicle_documents_service_choices_match_operational_vocabulary(
     assert "cabin_filter" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
 
 
+def test_clean_vehicle_documents_can_explicitly_validate_row_classification(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-1702",
+        external_reference="1702",
+        plate=vehicle.plate,
+        status="structured",
+    )
+    db_session.add(record)
+    db_session.commit()
+    db_session.refresh(record)
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "record_id": str(record.id),
+            "return_group": "work_orders",
+            "maintenance": "revision",
+            "classification_action": "validate",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.refresh(record)
+    assert record.status == "classified"
+    assert record.comparison_state == "validado"
+
+
 def test_clean_vehicle_documents_saves_multiple_services_and_custom_values(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     record = VehicleDocumentRecord(
@@ -3398,8 +3724,8 @@ def test_clean_vehicle_documents_saves_multiple_services_and_custom_values(authe
 
     assert response.status_code == 303
     db_session.refresh(record)
-    assert record.status == "classified"
-    assert record.comparison_state == "validado"
+    assert record.status == "pending_validation"
+    assert record.comparison_state == "por_validar"
     tags = db_session.scalars(
         select(VehicleDocumentRecordTag).where(VehicleDocumentRecordTag.record_id == record.id)
     ).all()

@@ -7021,6 +7021,7 @@ def clean_document_import_center(
     batch_matched: int | None = None,
     batch_pending: int | None = None,
     batch_duplicates: int | None = None,
+    batch_reprocessed: int | None = None,
     batch_error: str | None = None,
     report_imported: int | None = None,
     report_matched: int | None = None,
@@ -7465,6 +7466,7 @@ def clean_document_import_center(
                 "batch_matched": batch_matched,
                 "batch_pending": batch_pending,
                 "batch_duplicates": batch_duplicates,
+                "batch_reprocessed": batch_reprocessed,
                 "batch_error": batch_error,
                 "report_imported": report_imported,
                 "report_matched": report_matched,
@@ -11916,6 +11918,7 @@ def clean_document_import_invoice_folder(request: Request):
             "batch_matched": counters["matched"],
             "batch_pending": counters["pending"],
             "batch_duplicates": counters["duplicates"],
+            "batch_reprocessed": counters["reprocessed"],
         }
     )
     return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)

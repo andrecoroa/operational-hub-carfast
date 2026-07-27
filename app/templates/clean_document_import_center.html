@@ -46,7 +46,13 @@
             <strong>Não foi possível importar o lote: {{ batch_error }}.</strong>
           {% else %}
             <strong>{{ batch_imported }} documentos reais arquivados.</strong>
-            <span>{{ batch_matched }} associados a viaturas · {{ batch_pending }} por associar · {{ batch_duplicates }} duplicados ignorados.</span>
+            {% set reprocessed = batch_reprocessed or 0 %}
+            {% set ignored = (batch_duplicates or 0) - reprocessed %}
+            <span>
+              {{ batch_matched }} associados a viaturas · {{ batch_pending }} por associar
+              {% if reprocessed %} · {{ reprocessed }} existentes reprocessados{% endif %}
+              {% if ignored %} · {{ ignored }} duplicados ignorados{% endif %}.
+            </span>
           {% endif %}
         </div>
       </section>

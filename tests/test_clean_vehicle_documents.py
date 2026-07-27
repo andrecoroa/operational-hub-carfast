@@ -304,6 +304,75 @@ def test_clean_document_batch_zip_explicitly_reprocesses_every_existing_file(
     ) is not None
 
 
+def test_invoice_ocr_manifest_updates_existing_document_by_hash(
+    authenticated_client,
+    db_session,
+):
+    digest = hashlib.sha256(b"same-invoice").hexdigest()
+    document = Document(
+        title="Fatura antiga",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_batch",
+        original_name="fatura.pdf",
+        file_name="fatura.pdf",
+        file_type="pdf",
+        storage_provider="local",
+        storage_path="missing.pdf",
+        file_hash=digest,
+        status="classified",
+        archived=True,
+    )
+    db_session.add(document)
+    db_session.commit()
+    db_session.refresh(document)
+    manifest = {
+        "schema": "carfast.invoice-ocr-manifest.v1",
+        "documents": [
+            {
+                "file_hash": digest,
+                "status": "extracted",
+                "payload": {
+                    "ocr_status": "extracted",
+                    "text_source": "pdf_image_ocr",
+                    "document_number": "FS0002124",
+                    "supplier_name": "Cruz & Allen",
+                    "document_date": "2025-05-27",
+                    "invoice_lines": [{"description": "Serviço", "amount": "25,00"}],
+                },
+            }
+        ],
+    }
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/invoice-ocr-manifest",
+        files={
+            "file": (
+                "resultados.json",
+                json.dumps(manifest).encode("utf-8"),
+                "application/json",
+            )
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "manifest_updated=1" in response.headers["location"]
+    assert "manifest_lines=1" in response.headers["location"]
+    db_session.refresh(document)
+    assert document.contract_number == "FS0002124"
+    assert document.supplier_name == "Cruz & Allen"
+    assert document.document_date == date(2025, 5, 27)
+    assert document.status == "classified"
+    actions = db_session.scalars(
+        select(DocumentEvent.action)
+        .where(DocumentEvent.document_id == document.id)
+        .order_by(DocumentEvent.id)
+    ).all()
+    assert actions == ["invoice.ocr.extracted", "invoice.ocr.manifest_imported"]
+
+
 def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
     vehicle = _create_vehicle(db_session)
     vehicles_by_plate = {"OTHERPLATE": vehicle}

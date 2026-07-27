@@ -122,6 +122,7 @@ from app.services.workshop_history_importer import (
     import_workshop_technical_history_file,
     technical_history_template_csv,
 )
+
 from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_AUDIT_FIELDS,
     DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
@@ -164,6 +165,8 @@ from app.services.vehicles import normalize_identifier
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
+INVOICE_OCR_MANIFEST_SCHEMA = "carfast.invoice-ocr-manifest.v1"
+INVOICE_OCR_MANIFEST_MAX_SIZE = 25 * 1024 * 1024
 APP_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -7044,6 +7047,11 @@ def clean_document_import_center(
     ocr_batch_failed: int | None = None,
     ocr_batch_lines: int | None = None,
     ocr_batch_label: str | None = None,
+    manifest_updated: int | None = None,
+    manifest_missing: int | None = None,
+    manifest_failed: int | None = None,
+    manifest_lines: int | None = None,
+    manifest_error: str | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -7493,6 +7501,11 @@ def clean_document_import_center(
                 "ocr_batch_failed": ocr_batch_failed,
                 "ocr_batch_lines": ocr_batch_lines,
                 "ocr_batch_label": ocr_batch_label or "",
+                "manifest_updated": manifest_updated,
+                "manifest_missing": manifest_missing,
+                "manifest_failed": manifest_failed,
+                "manifest_lines": manifest_lines,
+                "manifest_error": manifest_error,
                 "q": q or "",
                 "main_group": clean_main_group,
                 "status": clean_status,
@@ -11636,6 +11649,156 @@ async def clean_document_import_historical_reports(
         f"/v2-clean/documents?{urlencode({f'report_{key}': value for key, value in counters.items()})}",
         status_code=303,
     )
+
+
+def _apply_invoice_ocr_payload(
+    db: Session,
+    *,
+    document: Document,
+    payload: dict[str, Any],
+    user_id: int | None,
+    source: str,
+) -> int:
+    extracted_lines = len(payload.get("invoice_lines") or [])
+    if payload.get("document_number"):
+        document.contract_number = str(payload["document_number"])[:120]
+    if payload.get("supplier_name"):
+        document.supplier_name = str(payload["supplier_name"])[:200]
+    if payload.get("plate"):
+        document.plate = str(payload["plate"])[:40]
+    if payload.get("document_date"):
+        try:
+            document.document_date = date.fromisoformat(str(payload["document_date"])[:10])
+        except ValueError:
+            pass
+    if document.status in {
+        "ocr_empty",
+        "ocr_issue",
+        "unable_to_read",
+        "received",
+        "extracted",
+        "por_validar",
+        "pending_validation",
+    }:
+        document.status = "extracted"
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.extracted",
+            old_value=None,
+            new_value=json.dumps(payload, ensure_ascii=False),
+            user_id=user_id,
+        )
+    )
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.manifest_imported",
+            old_value=None,
+            new_value=json.dumps(
+                {"source": source, "lines": extracted_lines},
+                ensure_ascii=False,
+            ),
+            user_id=user_id,
+        )
+    )
+    return extracted_lines
+
+
+@web_router.post("/v2-clean/documents/import/invoice-ocr-manifest")
+def clean_documents_import_invoice_ocr_manifest(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    filename = Path(file.filename or "resultados-ocr.json").name
+    content = file.file.read(INVOICE_OCR_MANIFEST_MAX_SIZE + 1)
+    if not content or len(content) > INVOICE_OCR_MANIFEST_MAX_SIZE:
+        return RedirectResponse(
+            "/v2-clean/documents?manifest_error=Manifesto+vazio+ou+demasiado+grande",
+            status_code=303,
+        )
+    try:
+        manifest = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return RedirectResponse(
+            "/v2-clean/documents?manifest_error=Manifesto+JSON+inválido",
+            status_code=303,
+        )
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema") != INVOICE_OCR_MANIFEST_SCHEMA
+        or not isinstance(manifest.get("documents"), list)
+    ):
+        return RedirectResponse(
+            "/v2-clean/documents?manifest_error=Formato+de+manifesto+incompatível",
+            status_code=303,
+        )
+    entries = manifest["documents"]
+    hashes = {
+        str(entry.get("file_hash") or "").lower()
+        for entry in entries
+        if isinstance(entry, dict)
+        and re.fullmatch(r"[a-fA-F0-9]{64}", str(entry.get("file_hash") or ""))
+    }
+    updated = 0
+    missing = 0
+    failed = 0
+    lines = 0
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        documents_by_hash = {
+            document.file_hash.lower(): document
+            for document in db.scalars(
+                select(Document).where(
+                    Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+                    v2_clean_document_visible_condition(),
+                    Document.file_hash.in_(hashes),
+                )
+            ).all()
+            if document.file_hash
+        }
+        for entry in entries:
+            if not isinstance(entry, dict):
+                failed += 1
+                continue
+            digest = str(entry.get("file_hash") or "").lower()
+            document = documents_by_hash.get(digest)
+            if not document:
+                missing += 1
+                continue
+            payload = entry.get("payload")
+            if (
+                entry.get("status") != "extracted"
+                or not isinstance(payload, dict)
+                or not _invoice_payload_was_extracted(payload)
+            ):
+                failed += 1
+                continue
+            document.document_type = "workshop_supplier_invoice"
+            document.classification = document.classification or "invoice"
+            lines += _apply_invoice_ocr_payload(
+                db,
+                document=document,
+                payload=payload,
+                user_id=user_id,
+                source=filename,
+            )
+            updated += 1
+        db.commit()
+    params = urlencode(
+        {
+            "manifest_updated": updated,
+            "manifest_missing": missing,
+            "manifest_failed": failed,
+            "manifest_lines": lines,
+        }
+    )
+    return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/archive-batch")

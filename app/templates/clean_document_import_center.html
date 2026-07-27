@@ -61,6 +61,19 @@
       </section>
     {% endif %}
 
+    {% if manifest_updated is not none or manifest_error %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if manifest_error %}danger{% endif %}">
+          {% if manifest_error %}
+            <strong>Não foi possível importar os resultados OCR: {{ manifest_error }}.</strong>
+          {% else %}
+            <strong>{{ manifest_updated }} faturas atualizadas pelos resultados locais.</strong>
+            <span>{{ manifest_lines or 0 }} linhas extraídas · {{ manifest_missing or 0 }} documentos não encontrados · {{ manifest_failed or 0 }} resultados com falha.</span>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
     {% if report_imported is not none or report_error %}
       <section class="clean-doc-filter-panel clean-card-wide">
         <div class="clean-doc-inline-workbench-note {% if report_error %}danger{% endif %}">
@@ -262,6 +275,18 @@
             <form method="post" action="/v2-clean/documents/import/invoice-folder" class="clean-doc-compact-form">
               <a class="button-link secondary-link" href="/v2-clean/documents?main_group=invoices">Ver faturas</a>
               <button type="submit" {% if not invoice_inbox_state.available %}disabled{% endif %}>Importar</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">OCR</span>
+            <div>
+              <h4>Resultados OCR</h4>
+              <p>Aplica a extração local aos documentos existentes através do SHA-256.</p>
+            </div>
+            <form method="post" action="/v2-clean/documents/import/invoice-ocr-manifest" enctype="multipart/form-data" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".json,application/json" required>
+              <button type="submit">Aplicar resultados</button>
             </form>
           </article>
 

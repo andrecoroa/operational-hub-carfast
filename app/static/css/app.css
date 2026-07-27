@@ -17011,6 +17011,18 @@ button.clean-upload-preview-card {
   background: #fff;
 }
 
+.clean-doc-service-summary-inline span.is-saved {
+  border-color: #9bc9a8;
+  background: #e7f5eb;
+  color: #176b36;
+}
+
+.clean-doc-service-summary-inline span.is-suggested {
+  border-color: #e7c36a;
+  background: #fff5d9;
+  color: #8b5b00;
+}
+
 .clean-doc-classify-detail-row.clean-doc-detail-open > td {
   position: fixed;
   inset: 0;
@@ -17020,6 +17032,12 @@ button.clean-upload-preview-card {
   justify-items: center;
   background: rgba(15, 23, 42, 0.46);
   padding: 24px !important;
+}
+
+html.clean-doc-modal-open,
+body.clean-doc-modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 
 .clean-doc-expanded-detail {
@@ -17226,10 +17244,12 @@ button.clean-upload-preview-card {
 .clean-doc-detail-open .clean-doc-expanded-detail-grid {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid {
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) minmax(410px, 440px);
   grid-template-areas:
     "document classification"
     "lines classification"
@@ -17255,11 +17275,24 @@ button.clean-upload-preview-card {
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-line-classification-card {
   position: sticky;
   top: 0;
+  max-height: calc(94vh - 92px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions {
   position: static;
   grid-template-columns: 1fr;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-service-choice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-service-choice-list span {
+  min-height: 32px;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .clean-doc-service-choice-list input:checked + span {

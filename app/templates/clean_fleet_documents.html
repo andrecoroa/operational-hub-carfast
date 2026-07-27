@@ -24,12 +24,20 @@
       <div class="clean-doc-service-summary-inline">
         {% for category in ['maintenance', 'pads', 'discs', 'tyres', 'ipo', 'other'] %}
           {% set current_codes = row.service_matrix_codes.get(category, []) if row.service_matrix_codes else [] %}
+          {% set suggested_codes = row.service_suggestion_codes.get(category, []) if row.service_suggestion_codes else [] %}
           {% set option_labels = dict(quick_classifications.get(category, [])) %}
           {% for code in current_codes %}
             {% if code %}
               {% set ns.has_services = true %}
               {% set label = option_labels.get(code, code) %}
-              <span>{{ label if category == 'ipo' else category_labels.get(category, category) ~ ': ' ~ label }}</span>
+              <span class="is-saved">{{ label if category == 'ipo' else category_labels.get(category, category) ~ ': ' ~ label }}</span>
+            {% endif %}
+          {% endfor %}
+          {% for code in suggested_codes %}
+            {% if code and code not in current_codes %}
+              {% set ns.has_services = true %}
+              {% set label = option_labels.get(code, code) %}
+              <span class="is-suggested">{{ label if category == 'ipo' else category_labels.get(category, category) ~ ': ' ~ label }}</span>
             {% endif %}
           {% endfor %}
         {% endfor %}
@@ -189,14 +197,14 @@
                 </td>
               </tr>
               {% set note_text = row.manual_note or "" %}
-              {% if row.batch_label or note_text or row.service_summary %}
+              {% if row.batch_label or note_text or row.service_summary or row.service_suggestion_codes or row.source_label == "FA" %}
                 <tr class="clean-doc-classify-note-row clean-doc-classify-group-note-row">
                   <td></td>
                   <td colspan="8">
                     {% if row.batch_label %}
                       <span class="clean-doc-subrow-block"><strong>Lote:</strong> {{ row.batch_label }}</span>
                     {% endif %}
-                    {% if row.service_summary %}
+                    {% if row.source_label == "FA" or row.service_summary or row.service_suggestion_codes %}
                       <span class="clean-doc-subrow-block"><strong>Serviços:</strong> {{ render_classified_service_summary(row) }}</span>
                     {% endif %}
                     {% if note_text %}
@@ -919,6 +927,8 @@
       detailRow.hidden = !willOpen;
       detailRow.classList.toggle("clean-doc-detail-open", willOpen);
       if (detail) detail.open = willOpen;
+      document.documentElement.classList.toggle("clean-doc-modal-open", willOpen);
+      document.body.classList.toggle("clean-doc-modal-open", willOpen);
       button.textContent = willOpen ? "Fechar detalhes" : "Ver detalhes";
     });
   });
@@ -937,6 +947,8 @@
     document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
       button.textContent = "Ver detalhes";
     });
+    document.documentElement.classList.remove("clean-doc-modal-open");
+    document.body.classList.remove("clean-doc-modal-open");
   };
   document.querySelectorAll(".clean-doc-detail-close").forEach((button) => {
     button.addEventListener("click", closeOpenDocumentDetail);

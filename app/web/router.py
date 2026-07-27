@@ -7007,6 +7007,135 @@ def clean_documents_reprocess_ocr_batch(
     )
 
 
+@web_router.get("/v2-clean/documents/export/invoices.csv")
+def clean_document_invoices_export(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+
+    invoice_token = "%fatura%"
+    factura_token = "%factura%"
+    conditions = [
+        Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
+        v2_clean_document_visible_condition(),
+        or_(Document.entry_channel.is_(None), Document.entry_channel != "structured_import"),
+        or_(
+            Document.document_type.in_({"workshop_supplier_invoice", "finance_supplier_invoice"}),
+            Document.title.ilike(invoice_token),
+            Document.title.ilike(factura_token),
+            Document.original_name.ilike(invoice_token),
+            Document.original_name.ilike(factura_token),
+            Document.source_subject.ilike(invoice_token),
+            Document.source_subject.ilike(factura_token),
+            Document.supplier_name.ilike(invoice_token),
+            Document.supplier_name.ilike(factura_token),
+        ),
+    ]
+    with SessionLocal() as db:
+        documents = db.scalars(
+            select(Document)
+            .where(*conditions)
+            .order_by(Document.document_date.desc().nullslast(), Document.id.desc())
+        ).all()
+        document_ids = [document.id for document in documents]
+        events_by_document: dict[int, list[DocumentEvent]] = defaultdict(list)
+        if document_ids:
+            events = db.scalars(
+                select(DocumentEvent)
+                .where(DocumentEvent.document_id.in_(document_ids))
+                .where(DocumentEvent.action.in_(OCR_EXTRACTION_ACTIONS))
+                .order_by(DocumentEvent.id.desc())
+            ).all()
+            for event in events:
+                events_by_document[event.document_id].append(event)
+
+        vehicle_ids = {document.vehicle_id for document in documents if document.vehicle_id}
+        vehicles_by_id = (
+            {
+                vehicle.id: vehicle
+                for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids))).all()
+            }
+            if vehicle_ids
+            else {}
+        )
+
+        output = io.StringIO(newline="")
+        fieldnames = [
+            "document_id", "vehicle_id", "matricula", "marca_modelo", "fornecedor",
+            "nif_fornecedor", "numero_fatura", "data_fatura", "vencimento", "folha_obra",
+            "km", "total_com_iva", "estado_documento", "estado_ocr", "lote",
+            "ficheiro_original", "linha_numero", "linha_tipo", "linha_referencia",
+            "linha_descricao", "linha_quantidade", "linha_unidade", "linha_preco_unitario",
+            "linha_desconto", "linha_iva", "linha_total", "linha_servico",
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for document in documents:
+            metadata = _document_latest_ocr_metadata(events_by_document.get(document.id, []))
+            vehicle = vehicles_by_id.get(document.vehicle_id)
+            lines = metadata.get("invoice_lines") or metadata.get("lines") or []
+            if not isinstance(lines, list):
+                lines = []
+            header = {
+                "document_id": document.id,
+                "vehicle_id": document.vehicle_id or "",
+                "matricula": document.plate or metadata.get("plate") or (vehicle.plate if vehicle else ""),
+                "marca_modelo": f"{vehicle.brand or ''} {vehicle.model or ''}".strip() if vehicle else "",
+                "fornecedor": document.supplier_name or metadata.get("supplier_name") or "",
+                "nif_fornecedor": metadata.get("supplier_nif") or "",
+                "numero_fatura": (
+                    metadata.get("document_number")
+                    or document.contract_number
+                    or document.reservation_number
+                    or ""
+                ),
+                "data_fatura": (
+                    metadata.get("document_date")
+                    or (document.document_date.isoformat() if document.document_date else "")
+                ),
+                "vencimento": metadata.get("due_date") or "",
+                "folha_obra": (
+                    metadata.get("work_order_reference")
+                    or metadata.get("repair_order_reference")
+                    or ""
+                ),
+                "km": metadata.get("km") or "",
+                "total_com_iva": metadata.get("total_with_vat") or metadata.get("total_amount") or "",
+                "estado_documento": document.status,
+                "estado_ocr": metadata.get("ocr_status") or "",
+                "lote": _document_import_batch_label(document) or "",
+                "ficheiro_original": document.original_name or "",
+            }
+            for line_index, line in enumerate(lines or [{}], start=1):
+                line = line if isinstance(line, dict) else {"description": str(line)}
+                writer.writerow(
+                    {
+                        **header,
+                        "linha_numero": line.get("line_number") or line.get("number") or line_index,
+                        "linha_tipo": line.get("type") or line.get("line_type") or "",
+                        "linha_referencia": line.get("reference") or line.get("sku") or "",
+                        "linha_descricao": line.get("description") or line.get("designation") or "",
+                        "linha_quantidade": line.get("quantity") or "",
+                        "linha_unidade": line.get("unit") or "",
+                        "linha_preco_unitario": line.get("unit_price") or line.get("price") or "",
+                        "linha_desconto": line.get("discount") or line.get("discount_percent") or "",
+                        "linha_iva": line.get("tax") or line.get("vat") or "",
+                        "linha_total": line.get("amount") or line.get("total") or "",
+                        "linha_servico": line.get("service") or "",
+                    }
+                )
+
+    payload = output.getvalue().encode("utf-8-sig")
+    filename = f"faturas_carfast_{date.today().isoformat()}.csv"
+    return Response(
+        content=payload,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(
     request: Request,

@@ -17211,9 +17211,9 @@ body.clean-doc-modal-open {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(1420px, calc(100vw - 32px));
-  height: min(94vh, 940px);
-  max-height: 94vh;
+  width: min(1560px, calc(100vw - 12px));
+  height: min(96vh, 980px);
+  max-height: 96vh;
   overflow: hidden;
   border-radius: 10px;
   background: #fff;
@@ -17263,7 +17263,7 @@ body.clean-doc-modal-open {
   position: relative;
   height: 100%;
   min-height: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(410px, 440px);
+  grid-template-columns: minmax(0, 3fr) minmax(480px, 2fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "document classification"

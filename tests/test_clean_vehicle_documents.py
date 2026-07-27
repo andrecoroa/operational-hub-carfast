@@ -187,6 +187,7 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert "batch_matched=1" in response.headers["location"]
     assert "batch_pending=1" in response.headers["location"]
     assert "batch_duplicates=1" in response.headers["location"]
+    assert "batch_reprocessed=1" in response.headers["location"]
     documents = db_session.scalars(
         select(Document).where(Document.entry_channel == "v2_clean_batch").order_by(Document.id)
     ).all()
@@ -208,6 +209,13 @@ def test_clean_document_batch_zip_associates_pending_and_deduplicates(
     assert payload["ocr_status"] == "extracted"
     assert payload["ocr_extractor_version"] == "invoice-ocr-2026-07-24-v4"
     assert any("Oleo motor" in row["description"] for row in payload["invoice_lines"])
+    reprocessed_event = db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == matched.id,
+            DocumentEvent.action == "invoice.ocr.reprocessed",
+        )
+    )
+    assert reprocessed_event is not None
     assert pending.folder_path == "Frota/_POR_ASSOCIAR/99_Pendentes_Classificar"
     assert Path(pending.storage_path).exists()
 
@@ -1990,6 +1998,31 @@ CONTRIBUINTE Nº 504 104 250
     assert payload["document_date"] == "2024-09-17"
     assert payload["repair_order_reference"] == "OR0006861"
     assert payload["km"] == "28822"
+
+
+def test_batch_invoice_payload_uses_canonical_cruz_allen_filename_when_ocr_misreads_number():
+    text = """
+FATURA
+VIA NÚMERO DATA
+Original FS0002322 05/09/24
+Exmo(s) Senhor(es):
+CARFAST, RENT-A-CAR, LDA
+Cliente nº NIF Cliente Nº OR Página
+000310 509285970 OR0006801 1 / 1
+Modelo: BERLINGO Chassis: VR7EFYHT2PJ721795
+Matrícula: BC-92-EE
+Kilómetros: 25380
+Referência Descrição Qtd. Preço Unitário Dto. IVA Valor
+93830000 REVISAO 1,00 41,90 € 15,00 23% 35,61 €
+Total Fatura: 43,80 €
+CRUZ & ALLEN - B.B.C OFICINA DE AUTOMÓVEIS, LDA
+CONTRIBUINTE Nº 504 104 250
+"""
+
+    payload = _batch_invoice_payload(b"", ".pdf", "FS-0002320.pdf", existing_text=text)
+
+    assert payload["ocr_template"] == "cruz_allen_bbc_invoice"
+    assert payload["document_number"] == "FS0002320"
 
 
 def test_batch_invoice_payload_handles_cruz_allen_degraded_header_and_split_totals():

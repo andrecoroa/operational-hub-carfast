@@ -9037,6 +9037,14 @@ def _batch_invoice_cruz_allen_data(text: str, lines: list[str]) -> dict[str, Any
     }
 
 
+def _batch_invoice_cruz_allen_filename_number(filename: str) -> str:
+    stem = Path(filename).stem.strip().upper()
+    match = re.fullmatch(r"(FS|ND|SI|V1)[\s_-]*0*(\d{3,})", stem)
+    if not match:
+        return ""
+    return f"{match.group(1)}{int(match.group(2)):07d}"
+
+
 def _batch_invoice_gamobar_value_before(lines: list[str], label: str) -> str:
     label_simple = normalize_identifier(label)
     for index, line in enumerate(lines):
@@ -10786,6 +10794,9 @@ def _batch_invoice_payload(file_content: bytes, suffix: str, filename: str, exis
     totals = _batch_invoice_totals(text)
     if cruz_allen_data:
         document_number = cruz_allen_data.get("document_number") or document_number
+        filename_number = _batch_invoice_cruz_allen_filename_number(filename)
+        if filename_number:
+            document_number = filename_number
         document_date = _batch_document_date(cruz_allen_data.get("document_date", "")) or document_date
         vehicle_fields.update(
             {
@@ -10973,6 +10984,7 @@ def _archive_document_payloads(
         "matched": 0,
         "pending": 0,
         "duplicates": 0,
+        "reprocessed": 0,
         "routed": 0,
         "triage": 0,
     }
@@ -10987,23 +10999,72 @@ def _archive_document_payloads(
         for vehicle in vehicles
         if vehicle.vin
     }
-    known_hashes = set(
-        db.scalars(
-            select(Document.file_hash).where(
+    known_documents = {
+        document.file_hash: document
+        for document in db.scalars(
+            select(Document).where(
                 Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
                 v2_clean_document_visible_condition(),
                 Document.file_hash.is_not(None),
             )
         ).all()
-    )
+        if document.file_hash
+    }
     for item in payloads:
         file_content = item["content"]
         suffix = item["suffix"]
         archive_name = str(item["archive_name"])
         original_name = Path(str(item.get("original_name") or archive_name)).name
         digest = hashlib.sha256(file_content).hexdigest()
-        if digest in known_hashes:
+        existing_document = known_documents.get(digest)
+        if existing_document:
             counters["duplicates"] += 1
+            if (
+                clean_vehicle_document_group(existing_document) == "invoices"
+                and existing_document.status
+                in {
+                    "ocr_empty",
+                    "ocr_issue",
+                    "unable_to_read",
+                    "received",
+                    "extracted",
+                    "por_validar",
+                    "pending_validation",
+                }
+            ):
+                content_text = _batch_document_pdf_text(file_content, suffix)
+                invoice_payload = _batch_invoice_payload(
+                    file_content,
+                    suffix,
+                    original_name,
+                    content_text,
+                )
+                extracted_text = bool(str(invoice_payload.get("raw_text_preview") or "").strip())
+                if extracted_text:
+                    if invoice_payload.get("document_number"):
+                        existing_document.contract_number = str(invoice_payload["document_number"])[:120]
+                    if invoice_payload.get("supplier_name"):
+                        existing_document.supplier_name = str(invoice_payload["supplier_name"])[:255]
+                    if invoice_payload.get("plate"):
+                        existing_document.plate = str(invoice_payload["plate"])[:40]
+                    if invoice_payload.get("document_date"):
+                        try:
+                            existing_document.document_date = date.fromisoformat(
+                                str(invoice_payload["document_date"])[:10]
+                            )
+                        except ValueError:
+                            pass
+                    existing_document.status = "extracted"
+                    db.add(
+                        DocumentEvent(
+                            document_id=existing_document.id,
+                            action="invoice.ocr.reprocessed",
+                            old_value=None,
+                            new_value=json.dumps(invoice_payload, ensure_ascii=False),
+                            user_id=user_id,
+                        )
+                    )
+                    counters["reprocessed"] += 1
             continue
 
         content_text = _batch_document_pdf_text(file_content, suffix)
@@ -11098,7 +11159,7 @@ def _archive_document_payloads(
                     user_id=user_id,
                 )
             )
-        known_hashes.add(digest)
+        known_documents[digest] = document
         counters["imported"] += 1
         counters["matched" if vehicle else "pending"] += 1
         counters["triage" if is_unknown else "routed"] += 1
@@ -11618,6 +11679,7 @@ def clean_document_import_archive_batch(request: Request, file: UploadFile = Fil
             "batch_matched": counters["matched"],
             "batch_pending": counters["pending"],
             "batch_duplicates": counters["duplicates"],
+            "batch_reprocessed": counters["reprocessed"],
         }
     )
     return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)

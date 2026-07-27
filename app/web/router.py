@@ -6229,6 +6229,8 @@ def clean_document_ocr_validation(
                             "invoice.extracted",
                             "document.ocr.extracted",
                             "ocr.extracted",
+                            "historical_report.imported",
+                            "historical_report.ocr.reprocessed",
                             "ocr.validation.status",
                             "ocr.template.status",
                         ]
@@ -6906,6 +6908,36 @@ def _reprocess_historical_report_document(
     except (OSError, RuntimeError, ValueError):
         return {"error": "read_error", "lines": 0, "extracted_text": False}
 
+    match_metadata = _historical_report_match_metadata(report_meta, extracted_values)
+    if not document.vehicle_id:
+        vehicles = db.scalars(
+            select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))
+        ).all()
+        vehicles_by_plate = {
+            re.sub(r"[^A-Z0-9]", "", str(vehicle.plate or "").upper()): vehicle
+            for vehicle in vehicles
+            if vehicle.plate
+        }
+        vehicles_by_vin = {
+            re.sub(r"[^A-Z0-9]", "", str(vehicle.vin or "").upper()): vehicle
+            for vehicle in vehicles
+            if vehicle.vin
+        }
+        vehicle = _historical_report_vehicle(
+            match_metadata,
+            " ".join(
+                [
+                    document.original_name or "",
+                    document.file_name or "",
+                    document.storage_path or "",
+                ]
+            ),
+            vehicles_by_plate,
+            vehicles_by_vin,
+        )
+        if vehicle:
+            document.vehicle_id = vehicle.id
+            document.plate = vehicle.plate
     document.status = "pending_validation" if extracted_values else "unable_to_read"
     payload = {
         **report_meta,
@@ -6927,6 +6959,47 @@ def _reprocess_historical_report_document(
             DocumentLink.entity_type == "workshop_technical_reading",
         )
     ).all()
+    if not links and document.vehicle_id:
+        odometer_value = (
+            extracted_values.get("odometer_km")
+            or extracted_values.get("km")
+            or extracted_values.get("mileage")
+        )
+        try:
+            odometer_km = int(float(str(odometer_value).replace(" ", "").replace(",", ".")))
+        except (TypeError, ValueError):
+            odometer_km = None
+        reading = WorkshopTechnicalReading(
+            process_id=None,
+            vehicle_id=document.vehicle_id,
+            user_id=user_id,
+            reading_type=report_code,
+            reading_date=document.document_date,
+            odometer_km=odometer_km,
+            summary=str(
+                report_meta.get("report_name")
+                or clean_workshop_report_display_label(report_code, "Relatório técnico")
+            ),
+            data_json={
+                "document_id": document.id,
+                "report_meta": report_meta,
+                "extracted_values": extracted_values,
+            },
+            storage_provider=document.storage_provider or "local",
+            external_url=f"/v2-clean/documents/{document.id}/file",
+            status="pending_validation" if extracted_values else "unable_to_read",
+            updated_by_id=user_id,
+        )
+        db.add(reading)
+        db.flush()
+        link = DocumentLink(
+            document_id=document.id,
+            entity_type="workshop_technical_reading",
+            entity_id=str(reading.id),
+            category=report_code,
+        )
+        db.add(link)
+        links = [link]
     for link in links:
         try:
             reading_id = int(link.entity_id)
@@ -7821,6 +7894,33 @@ def _historical_report_vehicle(
         if compact in vehicles_by_plate:
             return vehicles_by_plate[compact]
     return _batch_document_vehicle(path_text, vehicles_by_plate, vehicles_by_vin)
+
+
+def _historical_report_match_metadata(
+    report_meta: dict[str, Any],
+    extracted_values: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(report_meta)
+    vin_candidates = list(report_meta.get("vin_candidates") or [])
+    plate_candidates = list(report_meta.get("plate_candidates") or [])
+    vin_candidates.extend(
+        extracted_values[key]
+        for key in ("vin", "chassis", "vehicle_vin")
+        if extracted_values.get(key)
+    )
+    plate_candidates.extend(
+        extracted_values[key]
+        for key in ("plate", "registration", "registration_number", "vehicle_plate")
+        if extracted_values.get(key)
+    )
+    merged["vin_candidates"] = vin_candidates
+    merged["plate_candidates"] = plate_candidates
+    merged["vehicle_identifier"] = (
+        report_meta.get("vehicle_identifier")
+        or next(iter(vin_candidates), None)
+        or next(iter(plate_candidates), None)
+    )
+    return merged
 
 
 def _historical_report_payloads(
@@ -11488,6 +11588,8 @@ OCR_EXTRACTION_ACTIONS = {
     "invoice.extracted",
     "document.ocr.extracted",
     "ocr.extracted",
+    "historical_report.imported",
+    "historical_report.ocr.reprocessed",
 }
 
 
@@ -11545,7 +11647,14 @@ def _document_latest_ocr_metadata(events: list[DocumentEvent]) -> dict[str, Any]
         if isinstance(parsed_event, list):
             metadata.setdefault("invoice_lines", parsed_event)
         elif isinstance(parsed_event, dict):
+            extracted_values = parsed_event.get("extracted_values")
+            if isinstance(extracted_values, dict):
+                for key, value in extracted_values.items():
+                    if key not in metadata:
+                        metadata[key] = value
             for key, value in parsed_event.items():
+                if key == "extracted_values":
+                    continue
                 if key not in metadata:
                     metadata[key] = value
     return metadata
@@ -11729,6 +11838,7 @@ async def clean_document_import_historical_reports(
                 extraction_error = str(exc)
                 counters["failed"] += 1
 
+            match_metadata = _historical_report_match_metadata(report_meta, extracted_values)
             lookup_text = " ".join(
                 [
                     str(item["archive_name"]),
@@ -11738,7 +11848,7 @@ async def clean_document_import_historical_reports(
                 ]
             )
             vehicle = _historical_report_vehicle(
-                report_meta,
+                match_metadata,
                 lookup_text,
                 vehicles_by_plate,
                 vehicles_by_vin,

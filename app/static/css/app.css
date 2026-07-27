@@ -12282,7 +12282,7 @@ button.clean-upload-preview-card {
 
 .clean-fleet-toolbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(180px, 220px) 140px;
+  grid-template-columns: minmax(280px, 1fr) minmax(180px, 220px) auto;
   gap: 10px;
   align-items: end;
 }
@@ -17248,6 +17248,39 @@ body.clean-doc-modal-open {
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 900;
+}
+
+.clean-fleet-search-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.clean-fleet-search-actions button {
+  min-width: 132px;
+}
+
+.clean-fleet-search-actions .button-link {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+}
+
+.clean-fleet-search-feedback {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #667085;
+  font-size: var(--clean-font-sm);
+  font-weight: 750;
+}
+
+.clean-fleet-search-feedback strong {
+  color: #0f2a5f;
+  font-weight: 950;
 }
 
 .clean-doc-detail-open .clean-doc-expanded-detail-grid {

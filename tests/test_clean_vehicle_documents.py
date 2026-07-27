@@ -32,8 +32,10 @@ from app.web.router import (
     _batch_invoice_total_from_lines,
     _invoice_payload_was_extracted,
     _historical_report_date,
+    _historical_report_match_metadata,
     _historical_report_payloads,
     _historical_report_vehicle,
+    _document_latest_ocr_metadata,
     local_document_storage_folder,
 )
 
@@ -146,6 +148,40 @@ def test_historical_report_vehicle_prefers_extracted_vin():
 
     assert matched is by_vin_vehicle
     assert _historical_report_date("27/07/2026") == date(2026, 7, 27)
+
+
+def test_historical_report_match_metadata_includes_extracted_vehicle_identity():
+    metadata = _historical_report_match_metadata(
+        {"report_code": "fault_reading"},
+        {"registration": "AQ-41-XJ", "chassis": "VR3EDYHT9RJ968630"},
+    )
+
+    assert metadata["plate_candidates"] == ["AQ-41-XJ"]
+    assert metadata["vin_candidates"] == ["VR3EDYHT9RJ968630"]
+    assert metadata["vehicle_identifier"] == "VR3EDYHT9RJ968630"
+
+
+def test_historical_report_extracted_values_are_visible_to_ocr_validation():
+    event = DocumentEvent(
+        action="historical_report.imported",
+        new_value=json.dumps(
+            {
+                "report_code": "fault_reading",
+                "extracted_values": {
+                    "registration": "AQ-41-XJ",
+                    "odometer_km": "42127",
+                    "faults": ["P0011"],
+                },
+            }
+        ),
+    )
+
+    metadata = _document_latest_ocr_metadata([event])
+
+    assert metadata["report_code"] == "fault_reading"
+    assert metadata["registration"] == "AQ-41-XJ"
+    assert metadata["odometer_km"] == "42127"
+    assert metadata["faults"] == ["P0011"]
 
 
 def _create_vehicle(db_session):

@@ -24,10 +24,23 @@
 
     <section class="clean-panel clean-card-wide clean-fleet-list-panel">
       <form method="get" action="/v2-clean/fleet" class="clean-fleet-toolbar" data-clean-fleet-search>
-        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off" list="clean-fleet-plate-suggestions" data-clean-fleet-query></label>
+        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off" list="clean-fleet-plate-suggestions" data-clean-fleet-query aria-describedby="clean-fleet-search-help"></label>
         <label>Âmbito<select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para comércio</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select></label>
-        <button type="submit">Filtrar</button>
+        <div class="clean-fleet-search-actions">
+          <button type="submit">Pesquisar</button>
+          {% if q %}
+            <a href="/v2-clean/fleet?scope={{ scope }}" class="button-link secondary-link">Limpar</a>
+          {% endif %}
+        </div>
       </form>
+      <div class="clean-fleet-search-feedback" id="clean-fleet-search-help" aria-live="polite">
+        {% if q %}
+          <strong>{{ rows|length }} resultado{% if rows|length != 1 %}s{% endif %}</strong>
+          <span>para “{{ q }}”</span>
+        {% else %}
+          <span>Escreve a matrícula completa ou parte da matrícula, Unit, VIN, marca ou modelo. Carrega em Enter para pesquisar.</span>
+        {% endif %}
+      </div>
       <datalist id="clean-fleet-plate-suggestions">
         {% for plate in plate_suggestions %}
           <option value="{{ plate }}"></option>
@@ -62,25 +75,15 @@
     const form = document.querySelector("[data-clean-fleet-search]");
     const query = document.querySelector("[data-clean-fleet-query]");
     if (!form || !query) return;
-    let timer;
-    let lastSubmitted = query.value.trim();
-    const submitSearch = () => {
-      const current = query.value.trim();
-      if (current === lastSubmitted) return;
-      lastSubmitted = current;
-      if (typeof form.requestSubmit === "function") {
+    const knownPlates = new Set(
+      Array.from(document.querySelectorAll("#clean-fleet-plate-suggestions option"))
+        .map((option) => option.value.trim().toUpperCase())
+    );
+    query.addEventListener("change", () => {
+      const current = query.value.trim().toUpperCase();
+      if (knownPlates.has(current)) {
         form.requestSubmit();
-      } else {
-        form.submit();
       }
-    };
-    query.addEventListener("input", () => {
-      clearTimeout(timer);
-      timer = setTimeout(submitSearch, 300);
-    });
-    query.addEventListener("search", () => {
-      clearTimeout(timer);
-      submitSearch();
     });
   })();
 </script>

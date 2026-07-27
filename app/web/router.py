@@ -11021,19 +11021,7 @@ def _archive_document_payloads(
         existing_document = known_documents.get(digest)
         if existing_document:
             counters["duplicates"] += 1
-            if (
-                clean_vehicle_document_group(existing_document) == "invoices"
-                and existing_document.status
-                in {
-                    "ocr_empty",
-                    "ocr_issue",
-                    "unable_to_read",
-                    "received",
-                    "extracted",
-                    "por_validar",
-                    "pending_validation",
-                }
-            ):
+            if clean_vehicle_document_group(existing_document) == "invoices":
                 content_text = _batch_document_pdf_text(file_content, suffix)
                 invoice_payload = _batch_invoice_payload(
                     file_content,
@@ -11056,7 +11044,16 @@ def _archive_document_payloads(
                             )
                         except ValueError:
                             pass
-                    existing_document.status = "extracted"
+                    if existing_document.status in {
+                        "ocr_empty",
+                        "ocr_issue",
+                        "unable_to_read",
+                        "received",
+                        "extracted",
+                        "por_validar",
+                        "pending_validation",
+                    }:
+                        existing_document.status = "extracted"
                     db.add(
                         DocumentEvent(
                             document_id=existing_document.id,

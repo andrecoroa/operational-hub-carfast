@@ -190,6 +190,7 @@
                     {% if row.kind in ['record', 'pending_record'] %}<input type="hidden" name="record_id" value="{{ row.id }}">{% endif %}
                     {% if row.kind == 'document' %}<input type="hidden" name="document_id" value="{{ row.id }}">{% endif %}
                     <input type="hidden" name="return_group" value="{{ row.main_group or row.archive_group or '' }}">
+                    <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
                   </form>
                   <div class="clean-doc-classify-actions">
                     <button type="button" class="button-link secondary-link clean-doc-detail-toggle" data-detail-target="{{ detail_id }}">Ver detalhes</button>
@@ -220,6 +221,10 @@
                       <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                        {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                          <a class="button-link secondary-link clean-doc-summary-command" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefa</a>
+                          <a class="button-link secondary-link clean-doc-summary-command" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Problema</a>
+                        {% endif %}
                         {% if row.kind == "document" and row.preview_href %}
                           <button
                             type="button"
@@ -229,7 +234,16 @@
                             data-preview-kind="{{ 'image' if row.file_type in ['jpg', 'jpeg', 'png', 'webp', 'gif'] else 'pdf' }}"
                           >Preview</button>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" class="button-link primary-link clean-doc-summary-command">Guardar e validar</button>
+                        {% if row.kind == "document" and (row.source_label == "FA" or row.archive_group == "invoices") %}
+                          <button
+                            type="submit"
+                            form="{{ form_id }}"
+                            formaction="/v2-clean/documents/{{ row.id }}/reprocess-ocr"
+                            formmethod="post"
+                            class="button-link secondary-link clean-doc-summary-command"
+                          >Reprocessar</button>
+                        {% endif %}
+                        <button type="submit" form="{{ form_id }}" class="button-link primary-link clean-doc-summary-command">Guardar</button>
                         <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
                       </span>
                     </summary>

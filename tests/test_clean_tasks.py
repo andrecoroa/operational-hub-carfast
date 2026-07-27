@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models import Task, TaskHistory
+from app.models import Task, TaskHistory, Vehicle, VehicleDocumentRecord, WorkshopPhasedProcess
 
 
 def test_clean_task_center_creates_document_task_with_audit(authenticated_client, db_session):
@@ -98,3 +98,65 @@ def test_clean_task_center_rejects_external_return_url(authenticated_client, db_
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/v2-clean/tasks?workspace=operational")
+
+
+def test_clean_task_center_prefills_document_context(authenticated_client, db_session):
+    vehicle = Vehicle(plate="AA-11-BB", brand="PEUGEOT", model="PARTNER")
+    db_session.add(vehicle)
+    db_session.flush()
+    record = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="archive",
+        main_group="invoices",
+        status="extracted",
+        external_reference="FAC 2026/42",
+        plate=vehicle.plate,
+        supplier_name="Fornecedor Teste",
+        raw_description="Mudança de óleo",
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    response = authenticated_client.get(
+        f"/v2-clean/tasks?workspace=workshop&record_type=problem"
+        f"&entity_type=vehicle_document_record&entity_id={record.id}"
+    )
+
+    assert response.status_code == 200
+    assert 'value="AA-11-BB"' in response.text
+    assert "Problema: Faturas FAC 2026/42" in response.text
+    assert "Fornecedor: Fornecedor Teste" in response.text
+    assert "Descrição: Mudança de óleo" in response.text
+    assert 'value="documentacao"' in response.text
+
+
+def test_workshop_record_action_opens_prefilled_task_form(authenticated_client, db_session):
+    process = WorkshopPhasedProcess(
+        process_type="maintenance",
+        title="Revisão programada",
+        creation_mode="operational",
+        status="open",
+        plate_snapshot="CC-22-DD",
+        current_phase_code="diagnostico",
+        priority="normal",
+        origin="v2_clean",
+        initial_observation="Ruído no motor",
+    )
+    db_session.add(process)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/records",
+        data={"record_type": "problem", "phase": "diagnostico"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/tasks?")
+    center = authenticated_client.get(response.headers["location"])
+    assert center.status_code == 200
+    assert "Problema:" in center.text
+    assert "Diagnóstico Técnico" in center.text
+    assert "Revisão programada" in center.text
+    assert "Ruído no motor" in center.text
+    assert 'value="CC-22-DD"' in center.text

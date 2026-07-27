@@ -3004,6 +3004,95 @@ def clean_process_center(request: Request):
         )
 
 
+def clean_task_prefill_from_context(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: str,
+    record_type: str,
+    plate: str,
+    title: str,
+    description: str,
+    category: str,
+    phase: str = "",
+) -> dict[str, str]:
+    context = {
+        "plate": normalize_identifier(plate) if plate else "",
+        "title": title.strip(),
+        "description": description.strip(),
+        "category": category.strip(),
+    }
+    parsed_id = parse_int_from_text(entity_id)
+    kind_label = "Problema" if record_type == "problem" else "Tarefa"
+    if not parsed_id:
+        return context
+
+    if entity_type == "vehicle_document_record":
+        record = db.get(VehicleDocumentRecord, parsed_id)
+        if not record:
+            return context
+        vehicle = db.get(Vehicle, record.vehicle_id)
+        plate_value = record.plate or (vehicle.plate if vehicle else None)
+        reference = record.external_reference or record.process_reference or record.title or f"#{record.id}"
+        group_label = DOCUMENT_HISTORY_MAIN_GROUP_LABELS.get(record.main_group, record.main_group or "Documento")
+        if not context["plate"] and plate_value:
+            context["plate"] = normalize_identifier(plate_value)
+        if not context["title"]:
+            context["title"] = f"{kind_label}: {group_label} {reference}"
+        if not context["category"]:
+            context["category"] = "documentacao"
+        if not context["description"]:
+            details = [
+                f"Origem: {group_label} {reference}",
+                f"Viatura: {plate_value or '-'}",
+                f"Data: {record.document_date.strftime('%d/%m/%Y') if record.document_date else '-'}",
+                f"Fornecedor: {record.supplier_name or '-'}",
+            ]
+            if record.raw_description:
+                details.append(f"Descrição: {record.raw_description.strip()}")
+            context["description"] = "\n".join(details)
+        return context
+
+    if entity_type == "workshop_phased_process":
+        process = db.get(WorkshopPhasedProcess, parsed_id)
+        if not process:
+            return context
+        phase_code = phase.strip() or process.current_phase_code or "entrada"
+        phase_label = CLEAN_WORKSHOP_PHASES.get(phase_code, {}).get("title", phase_code.replace("_", " ").title())
+        process_ref = clean_workshop_process_reference(process)
+        if not context["plate"] and process.plate_snapshot:
+            context["plate"] = normalize_identifier(process.plate_snapshot)
+        if not context["title"]:
+            context["title"] = f"{kind_label}: {process_ref} · {phase_label}"
+        if not context["category"]:
+            context["category"] = "oficina"
+        if not context["description"]:
+            details = [
+                f"Origem: processo {process_ref}",
+                f"Fase: {phase_label}",
+                f"Viatura: {process.plate_snapshot or '-'}",
+                f"Processo: {process.title or '-'}",
+            ]
+            if process.initial_observation:
+                details.append(f"Observação inicial: {process.initial_observation.strip()}")
+            context["description"] = "\n".join(details)
+        return context
+
+    if entity_type == "vehicle":
+        vehicle = db.get(Vehicle, parsed_id)
+        if vehicle:
+            if not context["plate"] and vehicle.plate:
+                context["plate"] = normalize_identifier(vehicle.plate)
+            vehicle_name = " ".join(part for part in (vehicle.brand, vehicle.model, vehicle.version) if part)
+            if not context["title"]:
+                context["title"] = f"{kind_label}: {vehicle.plate or 'viatura'}"
+            if not context["description"]:
+                context["description"] = f"Viatura: {vehicle.plate or '-'}\nModelo: {vehicle_name or '-'}"
+        return context
+
+    return context
+
+
 @web_router.get("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_center(
     request: Request,
@@ -3019,6 +3108,7 @@ def clean_tasks_center(
     category: str = "",
     entity_type: str = "",
     entity_id: str = "",
+    phase: str = "",
     return_url: str = "",
     created: str | None = None,
     closed: str | None = None,
@@ -3033,10 +3123,22 @@ def clean_tasks_center(
         active_workspace = workspace if workspace in workspace_codes else "all"
         active_status = status if status in {"open", "closed", "all"} else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
+        effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
+        prefill_context = clean_task_prefill_from_context(
+            db,
+            entity_type=entity_type.strip(),
+            entity_id=entity_id.strip(),
+            record_type=effective_record_type,
+            plate=plate,
+            title=title,
+            description=description,
+            category=category,
+            phase=phase,
+        )
         active_kind = kind if kind in {"all", "task", "problem"} else "all"
         if active_kind == "all" and incoming_record_type in {"task", "problem"}:
             active_kind = incoming_record_type
-        normalized_plate = normalize_identifier(plate) if plate else ""
+        normalized_plate = prefill_context["plate"]
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
@@ -3119,11 +3221,11 @@ def clean_tasks_center(
                     "q": q.strip(),
                 },
                 "prefill": {
-                    "record_type": incoming_record_type if incoming_record_type in {"task", "problem"} else "task",
+                    "record_type": effective_record_type,
                     "workspace": active_workspace if active_workspace != "all" else "workshop",
-                    "title": title.strip(),
-                    "description": description.strip(),
-                    "category": category.strip(),
+                    "title": prefill_context["title"],
+                    "description": prefill_context["description"],
+                    "category": prefill_context["category"],
                     "entity_type": entity_type.strip(),
                     "entity_id": entity_id.strip(),
                     "return_url": return_url.strip(),
@@ -13333,60 +13435,27 @@ def clean_workshop_create_record(
     if not user_id:
         return RedirectResponse("/login", status_code=303)
 
-    is_problem = record_type == "problem"
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id)
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
         if clean_workshop_process_is_readonly(process):
             return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
+        process_url = clean_workshop_process_url(process)
+        query = urlencode(
+            {
+                "workspace": "workshop",
+                "record_type": "problem" if record_type == "problem" else "task",
+                "entity_type": "workshop_phased_process",
+                "entity_id": process.id,
+                "phase": phase,
+                "plate": process.plate_snapshot or "",
+                "category": "oficina",
+                "return_url": process_url,
+            }
+        )
 
-        phase_label = CLEAN_WORKSHOP_PHASES.get(phase, {}).get("title", phase.title())
-        process_ref = f"OFI-{process.created_at.year if process.created_at else datetime.now().year}-{process.id:06d}"
-        plate = process.plate_snapshot or "Sem matrícula"
-        kind_label = "Problema" if is_problem else "Tarefa"
-        task = Task(
-            title=f"{kind_label} oficina · {plate} · {phase_label}",
-            description=(
-                f"Criado a partir do processo {process_ref}, fase {phase_label}. "
-                "Completar descrição, responsável e prazo no Centro de Tarefas."
-            ),
-            task_type="workshop_problem" if is_problem else "workshop_task",
-            source="workshop_v2_clean",
-            category="workshop",
-            subcategory="problem" if is_problem else "workshop_process",
-            status="new",
-            priority="high" if is_problem else "normal",
-            plate=process.plate_snapshot,
-            external_source_id=f"workshop:{process.id}:{phase}:{record_type}:{datetime.now(UTC).timestamp()}",
-            entity_type="workshop_phased_process",
-            entity_id=str(process.id),
-            team_id=default_team_id(db, "workshop"),
-            created_by_id=user_id,
-        )
-        db.add(task)
-        db.flush()
-        db.add(
-            TaskHistory(
-                task_id=task.id,
-                user_id=user_id,
-                field_name="status",
-                old_value=None,
-                new_value="new",
-            )
-        )
-        record_audit(
-            db,
-            action="task.create",
-            entity_type="task",
-            entity_id=task.id,
-            detail=f"{kind_label} criado a partir de {process_ref} ({phase_label})",
-            user_id=user_id,
-        )
-        db.commit()
-        task_id = task.id
-
-    return RedirectResponse(f"/task-board/{task_id}", status_code=303)
+    return RedirectResponse(f"/v2-clean/tasks?{query}", status_code=303)
 
 
 @web_router.post("/v2-clean/workshop/{phase}/save", response_class=HTMLResponse)

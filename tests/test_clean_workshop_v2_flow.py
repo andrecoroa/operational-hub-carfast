@@ -351,15 +351,32 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         follow_redirects=False,
     )
     assert created_problem.status_code == 303
+    assert created_problem.headers["location"].startswith("/v2-clean/tasks?")
+    problem_form = client.get(created_problem.headers["location"])
+    assert problem_form.status_code == 200
+    assert "Problema:" in problem_form.text
+    assert vehicle.plate in problem_form.text
+    assert "Entrada" in problem_form.text
+
+    submitted_problem = client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": f"Problema: oficina {vehicle.plate}",
+            "description": "Criado a partir da fase Entrada.",
+            "workspace": "workshop",
+            "record_type": "problem",
+            "plate": vehicle.plate,
+            "category": "oficina",
+            "entity_type": "workshop_phased_process",
+            "entity_id": str(process_id),
+        },
+        follow_redirects=False,
+    )
+    assert submitted_problem.status_code == 303
     problem = db_session.scalar(
-        select(Task).where(
-            Task.entity_type == "workshop_phased_process",
-            Task.entity_id == str(process_id),
-            Task.task_type == "workshop_problem",
-        )
+        select(Task).where(Task.title == f"Problema: oficina {vehicle.plate}")
     )
     assert problem is not None
-    assert created_problem.headers["location"] == f"/task-board/{problem.id}"
     assert problem.plate == vehicle.plate
 
     validation_payload = {

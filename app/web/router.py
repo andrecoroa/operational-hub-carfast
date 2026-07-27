@@ -7147,6 +7147,7 @@ def clean_document_invoices_export(request: Request, inline: bool = False):
 @web_router.get("/v2-clean/documents", response_class=HTMLResponse)
 def clean_document_import_center(
     request: Request,
+    audit_export: bool = False,
     q: str | None = None,
     main_group: str = "",
     status: str = "",
@@ -7195,6 +7196,8 @@ def clean_document_import_center(
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/", status_code=303)
+    if audit_export:
+        return clean_document_invoices_export(request, inline=True)
     search = (q or "").strip().lower()
     clean_main_group = (main_group or "").strip()
     clean_status = (status or "").strip()

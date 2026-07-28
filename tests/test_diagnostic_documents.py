@@ -9,11 +9,20 @@ import app.main as app_main
 import app.web.router as web_router
 from app.main import app
 from app.models import Base
-from app.models.documents import DiagnosticDocument, Document
+from app.models.documents import DiagnosticDocument, DiagnosticExtraction, Document
 from app.models.vehicles import Vehicle
 from app.models.workshop import WorkshopProcess
 from app.services.bootstrap import seed_initial_data
-from app.services.diagnostic_documents import backfill_legacy_diagnostics
+from app.services.diagnostic_documents import (
+    backfill_legacy_diagnostics,
+    ensure_diagnostic_profile,
+)
+from app.services.diagnostic_ocr import (
+    extract_coordinate_observations,
+    parse_diagnostic_filename,
+    parse_diagnostic_payload,
+    persist_diagnostic_extraction,
+)
 from app.services.users import create_user
 
 
@@ -336,3 +345,217 @@ def test_workshop_document_flow_only_adds_diagnostic_profile_for_diagnostics():
             assert document.workshop_process_id == process_id
             assert document.document_type == "workshop_diagnostic"
             assert profile.document_id == document.id
+
+
+def test_diagnostic_filename_preserves_numeric_family_code():
+    metadata = parse_diagnostic_filename(
+        "S_RVC0_VR3UPHPX4S5036874_260521_1644.pdf"
+    )
+
+    assert metadata == {
+        "machine_prefix": "S",
+        "family": "RVC0",
+        "vin": "VR3UPHPX4S5036874",
+        "capture_date": "260521",
+        "capture_time": "1644",
+    }
+    without_date = parse_diagnostic_filename(
+        "S_PLM_VF7YAAPFBPG032534_sem_data.pdf"
+    )
+    assert without_date["machine_prefix"] == "S"
+    assert without_date["family"] == "PLM"
+    assert without_date["vin"] == "VF7YAAPFBPG032534"
+    assert without_date["capture_date"] is None
+    assert without_date["capture_time"] is None
+
+
+def test_ocr_only_page_recovers_spaced_vin_and_dtc():
+    parsed = parse_diagnostic_payload(
+        filename="relatorio_scan.pdf",
+        pages=[
+            {
+                "number": 1,
+                "layout_text": "",
+                "native_text": "",
+                "words": [],
+                "ocr": {
+                    "text": (
+                        "AUTEL MAXISYS\n"
+                        "VIN: VF3 YBBPFBPG057051\n"
+                        "Código P0420 - eficiência do catalisador"
+                    )
+                },
+            }
+        ],
+    )
+
+    assert parsed["normalized"]["source_machine"] == "autel"
+    assert parsed["normalized"]["vin"] == "VF3YBBPFBPG057051"
+    assert parsed["dtcs"][0]["code"] == "P0420"
+
+
+def _word(text: str, x0: float, top: float) -> dict:
+    return {
+        "text": text,
+        "x0": x0,
+        "x1": x0 + max(len(text) * 5, 5),
+        "top": top,
+        "bottom": top + 8,
+        "doctop": top,
+    }
+
+
+def test_coordinate_readers_keep_optional_engine_fields_from_both_machines():
+    autel_page = {
+        "number": 1,
+        "height": 842,
+        "words": [
+            _word("NO.", 23, 100),
+            _word("Nome", 80, 100),
+            _word("Valor", 419, 100),
+            _word("Unidade", 532, 100),
+            _word("1", 23, 132),
+            _word("Taxa", 80, 132),
+            _word("de", 110, 132),
+            _word("diluição", 125, 132),
+            _word("estimada", 170, 132),
+            _word("2.4", 419, 132),
+            _word("%", 532, 132),
+            _word("2", 23, 164),
+            _word("Estado", 80, 164),
+            _word("SCR", 120, 164),
+            _word("Ativo", 419, 164),
+        ],
+    }
+    stellantis_page = {
+        "number": 1,
+        "height": 842,
+        "words": [
+            _word("Descrição", 36, 100),
+            _word("Valor", 155, 100),
+            _word("Unidade", 273, 100),
+            _word("Ajuda", 392, 100),
+            _word("Pressão", 31, 130),
+            _word("de", 75, 130),
+            _word("óleo", 31, 142),
+            _word("1.047", 147, 136),
+            _word("Bar", 268, 136),
+            _word("Medição", 386, 130),
+            _word("do", 425, 130),
+            _word("calculador", 445, 130),
+        ],
+    }
+
+    autel = extract_coordinate_observations([autel_page], "autel")
+    stellantis = extract_coordinate_observations(
+        [stellantis_page],
+        "stellantis_diagbox",
+    )
+
+    assert autel[0]["label"] == "Taxa de diluição estimada"
+    assert autel[0]["value"] == "2.4"
+    assert autel[1]["label"] == "Estado SCR"
+    assert autel[1]["unit"] is None
+    assert stellantis == [
+        {
+            "sequence": 1,
+            "label": "Pressão de óleo",
+            "value": "1.047",
+            "unit": "Bar",
+            "help": "Medição do calculador",
+            "page": 1,
+            "source": "stellantis_coordinate_table",
+            "anchor_top": 136.0,
+        }
+    ]
+
+
+def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
+    with diagnostic_test_context() as (testing_session, client):
+        with testing_session() as db:
+            vehicle = Vehicle(
+                plate="DI-20-AG",
+                vin="VF3YBBPFBPG057051",
+                rentway_unit_nr="620",
+                lifecycle_status="active",
+                operational_status="free",
+            )
+            document = make_document(
+                title="Informações lubrificação motor",
+                document_type="workshop_diagnostic",
+                storage_path=r"C:\diagnostics\A_ILM_example.pdf",
+            )
+            db.add_all([vehicle, document])
+            db.flush()
+            profile = ensure_diagnostic_profile(db, document)
+            db.flush()
+            payload = {
+                "extractor_name": "carfast_diagnostic_pdf",
+                "extractor_version": "1.0.0",
+                "parser_name": "autel_diagnostic_parser",
+                "parser_version": "1.0.0",
+                "source_machine": "autel",
+                "source_family": "ILM",
+                "source_filename": "A_ILM_VF3YBBPFBPG057051_260117_0952.pdf",
+                "source_sha256": "a" * 64,
+                "source_page_count": 1,
+                "extraction_method": "native_text+layout_words",
+                "extraction_status": "extracted",
+                "confidence": 0.98,
+                "native_text": "todo o texto nativo, sem truncar",
+                "ocr_text": None,
+                "raw_metadata": {"pdf": {"/Producer": "iText"}, "filename": {}},
+                "pages": [
+                    {
+                        "number": 1,
+                        "native_text": "todo o texto nativo, sem truncar",
+                        "layout_text": "todo o texto nativo, sem truncar",
+                        "words": [{"text": "todo", "x0": 1, "top": 1}],
+                    }
+                ],
+                "normalized": {
+                    "vin": "VF3YBBPFBPG057051",
+                    "plate": None,
+                    "report_number": "MAXIA20260117095227",
+                    "tool": "MaxiDAS DS900-BT",
+                    "tool_serial": "VX2GR7V02050",
+                    "technician_name": None,
+                    "odometer": None,
+                    "diagnostic_type": "engine_lubrication_information",
+                },
+                "dynamic_fields": {
+                    "observations": [
+                        {
+                            "label": "Taxa de diluição estimada",
+                            "value": "2.4",
+                            "unit": "%",
+                        }
+                    ],
+                    "label_values": [],
+                    "dtcs": [],
+                },
+                "warnings": [],
+            }
+
+            first = persist_diagnostic_extraction(db, profile, payload)
+            second = persist_diagnostic_extraction(db, profile, payload)
+            db.flush()
+
+            assert first.id == second.id
+            assert len(db.scalars(select(DiagnosticExtraction)).all()) == 1
+            assert first.raw_metadata_json["pdf"]["/Producer"] == "iText"
+            assert first.pages_json[0]["words"][0]["text"] == "todo"
+            assert first.dynamic_fields_json["observations"][0]["value"] == "2.4"
+            assert profile.report_number == "MAXIA20260117095227"
+            assert profile.diagnostic_tool == "MaxiDAS DS900-BT"
+            assert profile.validation_status == "needs_review"
+            assert document.vehicle_id == vehicle.id
+            assert document.file_hash == "a" * 64
+            document_id = document.id
+            db.commit()
+
+        detail = client.get(f"/documents/{document_id}")
+        assert detail.status_code == 200
+        assert "Dados técnicos completos da extração" in detail.text
+        assert "Taxa de diluição estimada" in detail.text
+        assert "autel_diagnostic_parser" in detail.text

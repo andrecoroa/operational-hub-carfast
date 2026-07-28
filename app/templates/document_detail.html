@@ -30,6 +30,18 @@
     {% if updated %}
       <div class="success">Documento atualizado.</div>
     {% endif %}
+    {% if ocr_extracted %}
+      <div class="success">Relatório extraído. Os campos técnicos ficaram pendentes de validação.</div>
+    {% endif %}
+    {% if ocr_error %}
+      <div class="error">
+        {% if ocr_error == "source_unavailable" %}
+          Não foi possível aceder ao PDF original pelo caminho guardado.
+        {% else %}
+          A extração do relatório falhou. O erro técnico ficou registado no histórico.
+        {% endif %}
+      </div>
+    {% endif %}
 
     <section class="document-workbench document-workbench-single">
       <section class="document-summary-card">
@@ -89,6 +101,97 @@
             </span>
           {% endif %}
         </div>
+        {% if diagnostic %}
+          <div class="button-row">
+            <form method="post" action="/documents/{{ document.id }}/diagnostic/extract">
+              <button type="submit">
+                {% if latest_diagnostic_extraction %}Reprocessar PDF{% else %}Extrair PDF{% endif %}
+              </button>
+            </form>
+            {% if latest_diagnostic_extraction %}
+              <span>
+                {{ latest_diagnostic_extraction.source_machine or "Máquina não identificada" }}
+                · família {{ latest_diagnostic_extraction.source_family or "-" }}
+                · {{ latest_diagnostic_extraction.source_page_count }} pág.
+              </span>
+            {% endif %}
+          </div>
+        {% endif %}
+        {% if latest_diagnostic_extraction %}
+          {% set extraction_fields = latest_diagnostic_extraction.dynamic_fields_json or {} %}
+          <details class="compact-details document-extra-details">
+            <summary>
+              Dados técnicos completos da extração
+              ({{ extraction_fields.get("observations", [])|length }} medições,
+              {{ extraction_fields.get("dtcs", [])|length }} códigos)
+            </summary>
+            <div class="document-fact-grid">
+              <div><span>Leitor</span><strong>{{ latest_diagnostic_extraction.parser_name }} {{ latest_diagnostic_extraction.parser_version }}</strong></div>
+              <div><span>Método</span><strong>{{ latest_diagnostic_extraction.extraction_method }}</strong></div>
+              <div><span>Confiança</span><strong>{{ latest_diagnostic_extraction.confidence or "-" }}</strong></div>
+              <div><span>SHA-256</span><strong>{{ latest_diagnostic_extraction.source_sha256 }}</strong></div>
+            </div>
+            {% if extraction_fields.get("observations") %}
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Campo</th><th>Valor</th><th>Unidade</th><th>Página</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for field in extraction_fields.get("observations", []) %}
+                      <tr>
+                        <td>
+                          {{ field.get("label") }}
+                          {% if field.get("help") %}<small>{{ field.get("help") }}</small>{% endif %}
+                        </td>
+                        <td>{{ field.get("value") or "-" }}</td>
+                        <td>{{ field.get("unit") or "-" }}</td>
+                        <td>{{ field.get("page") }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+            {% if extraction_fields.get("dtcs") %}
+              <div class="event-list">
+                {% for dtc in extraction_fields.get("dtcs", []) %}
+                  <article class="event-item">
+                    <strong>{{ dtc.get("code") }}</strong>
+                    <span>Página {{ dtc.get("page") }} · {{ dtc.get("raw_context") }}</span>
+                  </article>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if latest_diagnostic_extraction.warnings_json %}
+              <div class="error">
+                {% for warning in latest_diagnostic_extraction.warnings_json %}
+                  <div>{{ warning }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <details class="compact-details">
+              <summary>Metadados brutos e campos de cabeçalho</summary>
+              <pre>{{ latest_diagnostic_extraction.raw_metadata_json }}</pre>
+              {% for field in extraction_fields.get("label_values", []) %}
+                <div><strong>{{ field.get("label") }}:</strong> {{ field.get("value") or "-" }} (p. {{ field.get("page") }})</div>
+              {% endfor %}
+            </details>
+            {% if diagnostic_extractions|length > 1 %}
+              <details class="compact-details">
+                <summary>Histórico de extrações ({{ diagnostic_extractions|length }})</summary>
+                {% for extraction in diagnostic_extractions %}
+                  <div>
+                    <strong>#{{ extraction.id }}</strong>
+                    · {{ extraction.created_at }}
+                    · {{ extraction.parser_name }} {{ extraction.parser_version }}
+                    · {{ extraction.source_sha256 }}
+                  </div>
+                {% endfor %}
+              </details>
+            {% endif %}
+          </details>
+        {% endif %}
         <form method="post" action="/documents/{{ document.id }}/diagnostic" class="form-stack">
           <div class="form-grid two-columns">
             <label>
@@ -161,7 +264,7 @@
             </label>
           </div>
           <label>
-            Texto OCR
+            Texto integral extraído
             <textarea name="ocr_text" rows="6">{{ diagnostic.ocr_text if diagnostic else '' }}</textarea>
           </label>
           <label>

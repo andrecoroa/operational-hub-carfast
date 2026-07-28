@@ -35,6 +35,7 @@ from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import (
     DiagnosticDocument,
+    DiagnosticExtraction,
     Document,
     DocumentEvent,
     DocumentLink,
@@ -175,6 +176,10 @@ from app.services.diagnostic_documents import (
     document_vehicle_predicate,
     ensure_diagnostic_profile,
     find_vehicle_by_plate,
+)
+from app.services.diagnostic_ocr import (
+    extract_diagnostic_pdf,
+    persist_diagnostic_extraction,
 )
 from app.services.users import create_user
 from app.services.vehicles import normalize_identifier
@@ -22025,7 +22030,13 @@ def document_create(
 
 
 @web_router.get("/documents/{document_id}", response_class=HTMLResponse)
-def document_detail(request: Request, document_id: int, updated: str | None = None):
+def document_detail(
+    request: Request,
+    document_id: int,
+    updated: str | None = None,
+    ocr_extracted: str | None = None,
+    ocr_error: str | None = None,
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
@@ -22060,6 +22071,16 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
         diagnostic = db.scalar(
             select(DiagnosticDocument).where(DiagnosticDocument.document_id == document.id)
         )
+        diagnostic_extractions = []
+        if diagnostic:
+            diagnostic_extractions = db.scalars(
+                select(DiagnosticExtraction)
+                .where(DiagnosticExtraction.diagnostic_document_id == diagnostic.id)
+                .order_by(DiagnosticExtraction.id.desc())
+            ).all()
+        latest_diagnostic_extraction = (
+            diagnostic_extractions[0] if diagnostic_extractions else None
+        )
         return templates.TemplateResponse(
             request,
             "document_detail.html",
@@ -22071,6 +22092,8 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "linked_email_intake": linked_email_intake,
                 "attachments": attachments,
                 "diagnostic": diagnostic,
+                "diagnostic_extractions": diagnostic_extractions,
+                "latest_diagnostic_extraction": latest_diagnostic_extraction,
                 "diagnostic_types": DIAGNOSTIC_TYPES,
                 "diagnostic_type_labels": DIAGNOSTIC_TYPE_LABELS,
                 "diagnostic_statuses": DIAGNOSTIC_STATUSES,
@@ -22091,6 +22114,8 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "status_labels": DOCUMENT_STATUS_LABELS,
                 "sources": DOCUMENT_SOURCES,
                 "updated": updated,
+                "ocr_extracted": ocr_extracted,
+                "ocr_error": ocr_error,
             },
         )
 
@@ -22192,6 +22217,103 @@ def document_diagnostic_update(
         )
         db.commit()
     return RedirectResponse(f"/documents/{document_id}?updated=1", status_code=303)
+
+
+@web_router.post(
+    "/documents/{document_id}/diagnostic/extract",
+    response_class=HTMLResponse,
+)
+def document_diagnostic_extract(request: Request, document_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse("/documents", status_code=303)
+        profile = ensure_diagnostic_profile(db, document)
+        source_path = next(
+            (
+                candidate
+                for raw_path in (document.storage_path, document.storage_key)
+                if raw_path
+                for candidate in (Path(raw_path),)
+                if candidate.is_file() and candidate.suffix.lower() == ".pdf"
+            ),
+            None,
+        )
+        if not source_path:
+            profile.ocr_status = "failed"
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="diagnostic.extraction_failed",
+                    old_value=None,
+                    new_value="O original PDF não está acessível no caminho guardado.",
+                    user_id=user_id,
+                )
+            )
+            db.commit()
+            return RedirectResponse(
+                f"/documents/{document_id}?ocr_error=source_unavailable",
+                status_code=303,
+            )
+
+        profile.ocr_status = "processing"
+        try:
+            payload = extract_diagnostic_pdf(source_path)
+            extraction = persist_diagnostic_extraction(db, profile, payload)
+        except Exception as exc:
+            profile.ocr_status = "failed"
+            db.add(
+                DocumentEvent(
+                    document_id=document.id,
+                    action="diagnostic.extraction_failed",
+                    old_value=None,
+                    new_value=str(exc)[:1000],
+                    user_id=user_id,
+                )
+            )
+            db.commit()
+            return RedirectResponse(
+                f"/documents/{document_id}?ocr_error=extraction_failed",
+                status_code=303,
+            )
+
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="diagnostic.extracted",
+                old_value=None,
+                new_value=(
+                    f"Extração {extraction.id}: {payload['source_machine']} / "
+                    f"{payload.get('source_family') or 'sem família'}, "
+                    f"{payload['source_page_count']} página(s)."
+                ),
+                user_id=user_id,
+            )
+        )
+        record_audit(
+            db,
+            action="diagnostic_document.extracted",
+            entity_type="document",
+            entity_id=document.id,
+            detail=f"PDF diagnóstico extraído: {document.title or document.original_name}.",
+            after_json={
+                "extraction_id": extraction.id,
+                "source_machine": payload["source_machine"],
+                "source_family": payload.get("source_family"),
+                "source_sha256": payload["source_sha256"],
+                "page_count": payload["source_page_count"],
+            },
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/documents/{document_id}?ocr_extracted=1",
+        status_code=303,
+    )
 
 
 @web_router.get("/documents/{document_id}/email-original", response_class=HTMLResponse)

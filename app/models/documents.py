@@ -202,3 +202,43 @@ class DiagnosticDocument(TimestampMixin, Base):
     validation_notes: Mapped[str | None] = mapped_column(Text)
     validated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DiagnosticExtraction(Base):
+    """Immutable, versioned extraction of a diagnostic PDF.
+
+    The normalized fields on ``DiagnosticDocument`` are the operational view. This
+    table keeps every extraction run so a new parser never destroys text, metadata
+    or fields captured by an older parser.
+    """
+
+    __tablename__ = "diagnostic_extractions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    diagnostic_document_id: Mapped[int] = mapped_column(
+        ForeignKey("diagnostic_documents.id", ondelete="CASCADE"),
+        index=True,
+    )
+    extractor_name: Mapped[str] = mapped_column(String(120))
+    extractor_version: Mapped[str] = mapped_column(String(40))
+    parser_name: Mapped[str] = mapped_column(String(120))
+    parser_version: Mapped[str] = mapped_column(String(40))
+    source_machine: Mapped[str | None] = mapped_column(String(80), index=True)
+    source_family: Mapped[str | None] = mapped_column(String(40), index=True)
+    source_filename: Mapped[str | None] = mapped_column(String(255))
+    source_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    source_page_count: Mapped[int] = mapped_column(Integer)
+    extraction_method: Mapped[str] = mapped_column(String(80))
+    extraction_status: Mapped[str] = mapped_column(String(40), index=True)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    native_text: Mapped[str | None] = mapped_column(Text)
+    ocr_text: Mapped[str | None] = mapped_column(Text)
+    raw_metadata_json: Mapped[dict | list | None] = mapped_column(JSON)
+    pages_json: Mapped[dict | list | None] = mapped_column(JSON)
+    normalized_data_json: Mapped[dict | list | None] = mapped_column(JSON)
+    dynamic_fields_json: Mapped[dict | list | None] = mapped_column(JSON)
+    warnings_json: Mapped[dict | list | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )

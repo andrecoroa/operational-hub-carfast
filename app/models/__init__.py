@@ -3,6 +3,7 @@ from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.documents import (
     DiagnosticDocument,
+    DiagnosticExtraction,
     Document,
     DocumentEvent,
     DocumentLink,
@@ -82,6 +83,7 @@ __all__ = [
     "ClaimRentwayAR",
     "Document",
     "DiagnosticDocument",
+    "DiagnosticExtraction",
     "DocumentEvent",
     "DocumentLink",
     "VehicleDocumentAlert",

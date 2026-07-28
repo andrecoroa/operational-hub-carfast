@@ -1,17 +1,81 @@
+from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.models.documents import Document, DocumentLink
 from app.models.audit import AuditLog
 from app.models.tasks import Task
-from app.models.vehicles import Vehicle
+from app.models.vehicles import Vehicle, VehicleExternalSnapshot
 from app.models.workshop_phased import (
     WorkshopPhasedProcess,
     WorkshopPhasedProcessPhase,
     WorkshopPhasedTechnicalReport,
 )
+from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.web.router import clean_workshop_phase_advance_error
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
+
+
+def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
+    vehicle = Vehicle(
+        plate="KM-11-AA",
+        vin="VINKM11AA123456789",
+        rentway_unit_nr="811",
+        brand="PEUGEOT",
+        model="208",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina KM-11-AA",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="entrada",
+        priority="normal",
+        initial_km=101234,
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    entry_phase = WorkshopPhasedProcessPhase(
+        process_id=process.id,
+        phase_code="entrada",
+        name="Entrada",
+        status="completed",
+        sort_order=1,
+        data_json={"entry_km": "101234", "entry_km_source": "manual"},
+    )
+    db_session.add(entry_phase)
+    db_session.commit()
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Vehicles"
+    sheet.append(["PlateNr", "ChassisNr", "UnitNr", "Kms", "CurrentStatus", "BrandId", "ModelId"])
+    sheet.append([vehicle.plate, vehicle.vin, vehicle.rentway_unit_nr, 145678, "FREE", "PEUGEOT", "208"])
+    import_path = tmp_path / "rentway_fleet.xlsx"
+    workbook.save(import_path)
+
+    result = import_rentway_fleet_xlsx(db_session, import_path)
+
+    db_session.refresh(process)
+    db_session.refresh(entry_phase)
+    snapshot = db_session.scalar(
+        select(VehicleExternalSnapshot).where(
+            VehicleExternalSnapshot.vehicle_id == vehicle.id,
+            VehicleExternalSnapshot.source_system == "rentway",
+        )
+    )
+    assert result["updated_rows"] == 1
+    assert snapshot is not None
+    assert snapshot.data_json["Kms"] == 145678
+    assert process.initial_km == 101234
+    assert entry_phase.data_json["entry_km"] == "101234"
+    assert entry_phase.data_json["entry_km_source"] == "manual"
 
 
 def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_session):
@@ -258,6 +322,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert db_session.scalars(select(WorkshopPhasedProcess)).all() == []
 
     entry_payload = {
+        "entry_mode": "Marcação",
         "entry_reasons": ["Revisão / degradação óleo", "Pneus"],
         "short_description": "Teste entrada",
         "requested_service": "Confirmar manutenção e pneus",
@@ -282,6 +347,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         "minimum_damage_photos": "yes",
         "expected_exit": "2026-06-30T10:00",
         "validation_notes": "nota",
+        "external_repair": "pending",
     }
 
     saved_entry = client.post(
@@ -321,6 +387,8 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert len(entry_phase.data_json["uploads"]) == 2
     assert {item["slot"] for item in entry_phase.data_json["uploads"]} == {"dashboard", "front"}
     assert entry_phase.data_json["physical_checks"]["damage_matches_rentway"] == "not_checked"
+    assert entry_phase.data_json["entry_mode"] == "Marcação"
+    assert entry_phase.data_json["external_repair"] == "pending"
     assert entry_phase.data_json["minimum_checks"]["minimum_reason_selected"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_km_confirmed"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_damage_photos"] == "yes"
@@ -344,6 +412,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert f"/v2-clean/workshop-entry/{process_id}/uploads/{dashboard_upload['stored_name']}" in entry_page.text
     assert "clean-upload-preview-card" in entry_page.text
     assert "Já carregado · 1 imagem" in entry_page.text
+    assert "Marcação / entrada" in entry_page.text
+    assert "Notas finais" in entry_page.text
+    assert "Guardar fase" in entry_page.text
+    assert 'value="not_applicable"' in entry_page.text
 
     created_problem = client.post(
         f"/v2-clean/workshop/{process_id}/records",
@@ -392,6 +464,15 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
         "validation_closed": "Com reservas",
         "validation_reserve_reason": "Pneu requer confirmação adicional.",
     }
+
+    validation_page = client.get(
+        f"/v2-clean/workshop/validacao?process_id={process_id}"
+    )
+    assert validation_page.status_code == 200
+    assert 'data-target="prerequisitos"' not in validation_page.text
+    assert 'data-history-preview="' in validation_page.text
+    assert "clean-history-preview-modal" in validation_page.text
+    assert "Guardar fase" in validation_page.text
 
     saved_validation = client.post(
         "/v2-clean/workshop/validacao/save",

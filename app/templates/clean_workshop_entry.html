@@ -113,7 +113,7 @@
       <section class="clean-phase-workbench clean-card-wide">
         <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
           <button class="clean-substep-card active" type="button" data-target="motivo">
-            <span><b>Motivo da entrada</b><em>Pedido recebido e prioridade</em></span>
+            <span><b>Marcação / entrada</b><em>Origem, pedido recebido e prioridade</em></span>
             <strong>{{ entry_substep_status.motivo }}</strong>
           </button>
           <button class="clean-substep-card" type="button" data-target="danos">
@@ -121,7 +121,7 @@
             <strong>{{ entry_substep_status.danos }}</strong>
           </button>
           <button class="clean-substep-card" type="button" data-target="saida">
-            <span><b>Saída da entrada</b><em>Guardar ou avançar fase</em></span>
+            <span><b>Notas finais</b><em>Informações e encaminhamento</em></span>
             <strong>{{ entry_substep_status.saida }}</strong>
           </button>
         </aside>
@@ -144,6 +144,11 @@
             <div class="clean-phase-field-grid">
               <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
+              <label>Tipo de registo<select name="entry_mode">
+                {% for option in ["Marcação", "Entrada"] %}
+                  <option value="{{ option }}" {% if (saved_entry.entry_mode or "Entrada") == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select></label>
             </div>
             <div class="clean-chip-grid clean-chip-grid-final">
               {% for reason in entry_reasons %}
@@ -188,7 +193,7 @@
               </select></label>
             </div>
             <div class="clean-substep-savebar">
-              <button type="submit" name="action" value="advance">Guardar e seguir</button>
+              <button type="submit" name="action" value="save">Guardar fase</button>
             </div>
           </article>
 
@@ -220,6 +225,7 @@
                     <label><input type="radio" name="{{ code }}" value="yes" {% if saved_physical.get(code, "not_checked") == "yes" %}checked{% endif %}><span>Sim</span></label>
                     <label><input type="radio" name="{{ code }}" value="no" {% if saved_physical.get(code, "not_checked") == "no" %}checked{% endif %}><span>Não</span></label>
                     <label><input type="radio" name="{{ code }}" value="not_checked" {% if saved_physical.get(code, "not_checked") == "not_checked" %}checked{% endif %}><span>N/V</span></label>
+                    <label><input type="radio" name="{{ code }}" value="not_applicable" {% if saved_physical.get(code) == "not_applicable" %}checked{% endif %}><span>N/A</span></label>
                   </div>
                 </div>
               {% endfor %}
@@ -314,15 +320,15 @@
               </div>
             </div>
             <div class="clean-substep-savebar">
-              <button type="submit" name="action" value="advance">Guardar e seguir</button>
+              <button type="submit" name="action" value="save">Guardar fase</button>
             </div>
           </article>
 
           <article class="clean-substep-panel" id="clean-substep-saida">
             <div class="table-heading flat-heading">
               <div>
-                <p class="eyebrow">Saída da fase</p>
-                <h3>Entrada pronta para validação?</h3>
+                <p class="eyebrow">Notas finais</p>
+                <h3>Informação a registar ou comunicar</h3>
                 <p>{% if is_historical %}Guardar reconstrução histórica ou avançar quando houver informação suficiente para classificar documentos e validar evidências.{% else %}Guardar o registo inicial ou avançar para validação administrativa quando o mínimo obrigatório estiver completo.{% endif %}</p>
               </div>
             </div>
@@ -342,14 +348,27 @@
                       <label><input type="radio" name="{{ code }}" value="yes" {% if saved_minimum.get(code, "not_checked") == "yes" %}checked{% endif %}><span>Sim</span></label>
                       <label><input type="radio" name="{{ code }}" value="no" {% if saved_minimum.get(code, "not_checked") == "no" %}checked{% endif %}><span>Não</span></label>
                       <label><input type="radio" name="{{ code }}" value="not_checked" {% if saved_minimum.get(code, "not_checked") == "not_checked" %}checked{% endif %}><span>N/V</span></label>
+                      <label><input type="radio" name="{{ code }}" value="not_applicable" {% if saved_minimum.get(code) == "not_applicable" %}checked{% endif %}><span>N/A</span></label>
                     </div>
                   </div>
                 {% endfor %}
               </div>
               <div class="clean-exit-fields">
                 <label>Saída prevista<input name="expected_exit" type="datetime-local" value="{{ saved_entry.expected_exit or '' }}"></label>
-                <label>Notas para a validação administrativa<textarea name="validation_notes" rows="4" placeholder="Algo que quem valida deve saber antes de consultar histórico, plano ou Service Box...">{{ saved_entry.validation_notes or "" }}</textarea></label>
+                <label>Encaminhar para reparação externa?<select name="external_repair">
+                  <option value="no" {% if (saved_entry.external_repair or "no") == "no" %}selected{% endif %}>Não</option>
+                  <option value="yes" {% if saved_entry.external_repair == "yes" %}selected{% endif %}>Sim</option>
+                  <option value="pending" {% if saved_entry.external_repair == "pending" %}selected{% endif %}>Por decidir</option>
+                </select></label>
+                <label>Notas a registar / informar<textarea name="validation_notes" rows="4" placeholder="Informação para a validação, reparação externa ou fase seguinte...">{{ saved_entry.validation_notes or "" }}</textarea></label>
               </div>
+              {% set missing_items = [] %}
+              {% if not saved_reasons %}{% set _ = missing_items.append("motivo da entrada") %}{% endif %}
+              {% if not saved_entry.entry_km %}{% set _ = missing_items.append("KM de entrada") %}{% endif %}
+              {% if not dashboard_uploads and not is_historical %}{% set _ = missing_items.append("foto do quadrante") %}{% endif %}
+              {% if missing_items %}
+                <p class="clean-rule-note"><strong>Pontos em falta:</strong> {{ missing_items | join(", ") }}.</p>
+              {% endif %}
               <div class="clean-action-list">
                 <button type="submit" name="action" value="save">Guardar entrada</button>
                 <button type="submit" name="action" value="advance">Avançar para Validação Administrativa</button>

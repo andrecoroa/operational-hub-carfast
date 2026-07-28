@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">Tarefas / experiência nova</p>
         <h2>Centro de Tarefas</h2>
-        <p>Criar, acompanhar e fechar tarefas ou problemas ligados a viaturas, documentos e processos v2.</p>
+        <p>Fila autónoma para criar, acompanhar e concluir trabalho da nova experiência. Problemas são exclusivos da Oficina.</p>
       </div>
       <div class="clean-module-hero-actions">
         <a class="button-link secondary-link" href="/v2-clean">Início</a>
@@ -18,6 +18,9 @@
 
     {% if created %}
       <div class="clean-alert-success">Tarefa criada com sucesso.</div>
+    {% endif %}
+    {% if updated %}
+      <div class="clean-alert-success">Registo atualizado.</div>
     {% endif %}
     {% if closed %}
       <div class="clean-alert-success">Tarefa fechada.</div>
@@ -29,6 +32,8 @@
       <div class="clean-alert-warning">Indica um título antes de criar o registo.</div>
     {% elif request.query_params.get("error") == "forbidden" %}
       <div class="clean-alert-warning">Não tens permissão para alterar tarefas.</div>
+    {% elif request.query_params.get("error") == "not_found" %}
+      <div class="clean-alert-warning">O registo não existe nesta fila.</div>
     {% endif %}
 
     <section class="clean-process-kpi-row" aria-label="Indicadores do centro de tarefas">
@@ -43,8 +48,8 @@
         <div class="table-heading flat-heading">
           <div>
             <p class="eyebrow">Criar</p>
-            <h3>Tarefa ou problema</h3>
-            <p>Usa este registo rápido quando a classificação documental, oficina ou frota gerar uma ação.</p>
+            <h3>Novo registo</h3>
+            <p>Cria uma tarefa em qualquer área. Na Oficina também podes registar um problema.</p>
           </div>
         </div>
         <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
@@ -57,7 +62,7 @@
           <label>Tipo
             <select name="record_type">
               <option value="task" {% if prefill.record_type != "problem" %}selected{% endif %}>Tarefa</option>
-              <option value="problem" {% if prefill.record_type == "problem" %}selected{% endif %}>Problema</option>
+              <option value="problem" data-workshop-only {% if prefill.record_type == "problem" %}selected{% endif %}>Problema de Oficina</option>
             </select>
           </label>
           <label>Área
@@ -116,8 +121,8 @@
       <div class="table-heading flat-heading">
         <div>
           <p class="eyebrow">Consulta</p>
-          <h3>Tarefas e problemas</h3>
-          <p>Lista própria da v2. Pode ser filtrada por área, estado, tipo, matrícula ou texto.</p>
+          <h3>Fila de trabalho</h3>
+          <p>Consulta e trata os registos sem sair para o módulo antigo.</p>
         </div>
       </div>
 
@@ -188,7 +193,7 @@
                 </td>
                 <td>
                   <div class="clean-task-row-actions">
-                    <a class="button-link secondary-link" href="/task-board/{{ task.id }}">Abrir</a>
+                    <button class="button-link secondary-link" type="button" data-task-detail-toggle="task-detail-{{ task.id }}">Detalhes</button>
                   {% if task_is_closed %}
                     <form method="post" action="/v2-clean/tasks/{{ task.id }}/reopen">
                       <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
@@ -203,6 +208,36 @@
                   </div>
                 </td>
               </tr>
+              <tr class="clean-task-detail-row" id="task-detail-{{ task.id }}" hidden>
+                <td colspan="7">
+                  <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
+                    <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                    <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
+                    <label>Estado
+                      <select name="status">
+                        {% for code, label in [("new", "Nova"), ("in_execution", "Em curso"), ("waiting", "Em espera"), ("resolved", "Resolvida"), ("closed", "Fechada"), ("cancelled", "Cancelada")] %}
+                          <option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>Prioridade
+                      <select name="priority">
+                        {% for code, label in [("low", "Baixa"), ("normal", "Normal"), ("high", "Alta"), ("urgent", "Urgente")] %}
+                          <option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
+                    <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
+                    <label>Categoria<input name="category" value="{{ task.category or '' }}"></label>
+                    <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
+                    <div class="clean-task-edit-meta span-2">
+                      <span>Origem: {{ task.entity_type or "registo manual" }}{% if task.entity_id %} · {{ task.entity_id }}{% endif %}</span>
+                      <button type="submit">Guardar alterações</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
             {% else %}
               <tr>
                 <td colspan="7">Sem tarefas para os filtros selecionados.</td>
@@ -214,4 +249,28 @@
     </section>
   </main>
 </div>
+<script>
+  const taskWorkspace = document.querySelector('.clean-task-create-form select[name="workspace"]');
+  const taskRecordType = document.querySelector('.clean-task-create-form select[name="record_type"]');
+  const syncProblemOption = () => {
+    if (!taskWorkspace || !taskRecordType) return;
+    const problemOption = taskRecordType.querySelector("[data-workshop-only]");
+    if (!problemOption) return;
+    const allowed = taskWorkspace.value === "workshop";
+    problemOption.hidden = !allowed;
+    problemOption.disabled = !allowed;
+    if (!allowed && taskRecordType.value === "problem") taskRecordType.value = "task";
+  };
+  taskWorkspace?.addEventListener("change", syncProblemOption);
+  syncProblemOption();
+
+  document.querySelectorAll("[data-task-detail-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = document.getElementById(button.dataset.taskDetailToggle || "");
+      if (!row) return;
+      row.hidden = !row.hidden;
+      button.textContent = row.hidden ? "Detalhes" : "Fechar detalhe";
+    });
+  });
+</script>
 {% endblock %}

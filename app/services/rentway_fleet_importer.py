@@ -179,6 +179,9 @@ def import_rentway_fleet_xlsx(
                 rentway_unit_nr=payload["rentway_unit_nr"],
             )
             if vehicle:
+                # Rentway updates the live fleet record and its external snapshot only.
+                # Historical workshop mileage belongs to the workshop process and is
+                # deliberately never synchronized from this payload.
                 for field, value in payload.items():
                     setattr(vehicle, field, value)
                 stats["updated_rows"] += 1

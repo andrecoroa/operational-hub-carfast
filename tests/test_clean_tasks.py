@@ -42,8 +42,8 @@ def test_clean_task_center_creates_document_task_with_audit(authenticated_client
     center = authenticated_client.get("/v2-clean/tasks?workspace=workshop")
     assert center.status_code == 200
     assert "Confirmar classificação da fatura" in center.text
-    assert f'/task-board/{task.id}' in center.text
-    assert authenticated_client.get(f"/task-board/{task.id}").status_code == 200
+    assert f'task-detail-{task.id}' in center.text
+    assert f'/task-board/{task.id}' not in center.text
 
 
 def test_clean_task_center_creates_problem_and_closes_it(authenticated_client, db_session):
@@ -98,6 +98,52 @@ def test_clean_task_center_rejects_external_return_url(authenticated_client, db_
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/v2-clean/tasks?workspace=operational")
+
+
+def test_clean_task_center_limits_problems_to_workshop_and_updates_inline(authenticated_client, db_session):
+    created = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Registo operacional",
+            "workspace": "operational",
+            "record_type": "problem",
+            "priority": "normal",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Registo operacional"))
+    assert task is not None
+    assert task.subcategory != "problem"
+
+    updated = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": "Registo operacional revisto",
+            "description": "Tratado inteiramente na experiência clean.",
+            "status": "in_execution",
+            "priority": "high",
+            "due_on": "2026-08-03",
+            "category": "operacao",
+            "plate": "aa-11-bb",
+            "return_url": "/v2-clean/tasks?workspace=operational",
+        },
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    db_session.refresh(task)
+    assert task.title == "Registo operacional revisto"
+    assert task.status == "in_execution"
+    assert task.priority == "high"
+    assert task.plate == "AA-11-BB"
+    assert task.due_on.isoformat() == "2026-08-03"
+    assert db_session.scalar(
+        select(TaskHistory).where(
+            TaskHistory.task_id == task.id,
+            TaskHistory.field_name == "status",
+            TaskHistory.new_value == "in_execution",
+        )
+    )
 
 
 def test_clean_task_center_prefills_document_context(authenticated_client, db_session):

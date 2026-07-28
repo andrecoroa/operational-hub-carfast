@@ -244,7 +244,6 @@
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
                         {% if row.source_label == "FA" or row.archive_group == "invoices" %}
                           <a class="button-link secondary-link clean-doc-summary-command" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefa</a>
-                          <a class="button-link secondary-link clean-doc-summary-command" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Problema</a>
                         {% endif %}
                         {% if row.kind == "document" and row.preview_href %}
                           <button
@@ -432,7 +431,6 @@
                           </form>
                         {% endif %}
                         <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
                         {{ render_document_preview_button(row) }}
                         {% if row.kind == "document" and (row.source_label == "FA" or row.archive_group == "invoices") %}
                           <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
@@ -540,7 +538,6 @@
                 {{ render_classification_editor(row) }}
                 <div class="clean-doc-detail-footer-actions">
                   <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
-                  <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=problem&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar problema</a>
                   <button type="submit" name="classification_action" value="save" class="button-link primary-link">Guardar classificação</button>
                   <button type="submit" name="classification_action" value="validate" class="button-link secondary-link">Guardar e validar</button>
                 </div>

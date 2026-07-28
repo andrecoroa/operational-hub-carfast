@@ -111,13 +111,19 @@
       <input type="hidden" name="current_substep" value="">
       <input type="hidden" name="form_state_json" value="">
       {% if phase_key == "validacao" %}
+        {% if prerequisite_warning_count %}
+          <section class="clean-panel clean-card-wide clean-phase-error" role="status">
+            <strong>{{ prerequisite_warning_count }} aviso{% if prerequisite_warning_count != 1 %}s{% endif %} nos dados da viatura.</strong>
+            <span>
+              {% for item in validation_prerequisites if item.impact_class == "warn" %}
+                {{ item.name }}: {{ item.status }}{% if not loop.last %} · {% endif %}
+              {% endfor %}
+            </span>
+          </section>
+        {% endif %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
-            <button class="clean-substep-card active" type="button" data-target="prerequisitos">
-              <span><b>Pré-requisitos da viatura</b><em>Ficha, campanhas e dados base</em></span>
-              <strong class="{% if validation_substep_status.prerequisitos == 'OK' %}ok{% else %}warn{% endif %}">{{ validation_substep_status.prerequisitos }}</strong>
-            </button>
-            <button class="clean-substep-card" type="button" data-target="pedido">
+            <button class="clean-substep-card active" type="button" data-target="pedido">
               <span><b>Validação do pedido</b><em>Serviço validado após histórico</em></span>
               <strong>{{ validation_substep_status.pedido }}</strong>
             </button>
@@ -128,7 +134,7 @@
           </aside>
 
           <div class="clean-substep-detail">
-            <article class="clean-substep-panel active" id="clean-substep-prerequisitos">
+            <article class="clean-substep-panel" id="clean-substep-prerequisitos" hidden>
               <div class="table-heading flat-heading">
                 <div>
                   <p class="eyebrow">Pré-requisitos</p>
@@ -156,13 +162,13 @@
               <p class="clean-rule-note">Regra: campanhas por executar não bloqueiam; ficam como aviso/tarefa e permitem avançar com reserva. Só risco técnico crítico impede a passagem.</p>
             </article>
 
-            <article class="clean-substep-panel" id="clean-substep-pedido">
+            <article class="clean-substep-panel active" id="clean-substep-pedido">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pedido</p><h3>Validação do serviço pedido</h3><p>Depois de consultar histórico, confirmas que serviço ou serviços devem seguir para diagnóstico/decisão. O pedido de entrada não é alterado.</p></div></div>
               <div class="clean-phase-field-grid">
                 <div class="clean-history-quick-actions">
-                  <a href="{{ vehicle_documents_href }}?doc_group=work_orders">Consultar folhas de obra</a>
-                  <a href="{{ vehicle_documents_href }}?doc_group=invoices">Consultar faturas</a>
-                  <a href="{{ vehicle_documents_href }}?doc_group=technical_reports">Consultar relatórios anteriores</a>
+                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=work_orders" data-history-title="Folhas de obra">Consultar folhas de obra</button>
+                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=invoices" data-history-title="Faturas">Consultar faturas</button>
+                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=technical_reports" data-history-title="Relatórios anteriores">Consultar relatórios anteriores</button>
                 </div>
                 <div class="clean-service-validation-list">
                   <div class="clean-service-validation-head">
@@ -919,13 +925,20 @@
             {% if workshop_process and workshop_process.status == "closed" %}
               <a class="next-phase-action" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
             {% else %}
-              <button type="submit" name="action" value="save_substep">Guardar e seguir</button>
+              <button type="submit" name="action" value="save_substep">Guardar fase</button>
             {% endif %}
           </div>
         </div>
       </article>
     </form>
   </main>
+</div>
+<div class="clean-image-preview-modal" id="clean-history-preview-modal" hidden>
+  <div class="clean-image-preview-backdrop" data-history-preview-close></div>
+  <section class="clean-image-preview-dialog clean-history-preview-dialog" role="dialog" aria-modal="true">
+    <header><strong id="clean-history-preview-title">Histórico da viatura</strong><button type="button" data-history-preview-close>Fechar</button></header>
+    <iframe id="clean-history-preview-frame" title="Histórico da viatura"></iframe>
+  </section>
 </div>
 <script>
   document.querySelectorAll(".clean-workshop-final-grid").forEach((form) => {
@@ -996,6 +1009,26 @@
         activateTarget(target);
         workbench.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+    });
+  });
+  const historyPreviewModal = document.getElementById("clean-history-preview-modal");
+  const historyPreviewFrame = document.getElementById("clean-history-preview-frame");
+  const historyPreviewTitle = document.getElementById("clean-history-preview-title");
+  document.querySelectorAll("[data-history-preview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!historyPreviewModal || !historyPreviewFrame) return;
+      historyPreviewFrame.src = button.dataset.historyPreview || "";
+      if (historyPreviewTitle) historyPreviewTitle.textContent = button.dataset.historyTitle || "Histórico da viatura";
+      historyPreviewModal.hidden = false;
+      document.body.classList.add("clean-modal-open");
+    });
+  });
+  document.querySelectorAll("[data-history-preview-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!historyPreviewModal || !historyPreviewFrame) return;
+      historyPreviewModal.hidden = true;
+      historyPreviewFrame.removeAttribute("src");
+      document.body.classList.remove("clean-modal-open");
     });
   });
   document.querySelectorAll(".clean-service-validation-list").forEach((list) => {

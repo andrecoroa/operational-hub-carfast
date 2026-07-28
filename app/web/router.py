@@ -3115,6 +3115,7 @@ def clean_tasks_center(
     phase: str = "",
     return_url: str = "",
     created: str | None = None,
+    updated: str | None = None,
     closed: str | None = None,
     reopened: str | None = None,
 ):
@@ -3235,6 +3236,7 @@ def clean_tasks_center(
                     "return_url": return_url.strip(),
                 },
                 "created": created,
+                "updated": updated,
                 "closed": closed,
                 "reopened": reopened,
             },
@@ -3274,7 +3276,8 @@ def clean_tasks_create(
         return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
     clean_workspace = normalize_task_workspace(workspace)
     workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
-    is_problem = record_type == "problem"
+    is_problem = record_type == "problem" and clean_workspace == "workshop"
+    effective_record_type = "problem" if is_problem else "task"
     parsed_due = parse_iso_or_dmy_date(due_on)
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
@@ -3294,7 +3297,7 @@ def clean_tasks_create(
             entity_id=entity_id.strip()[:120] or None,
             team_id=default_team_id(db, workspace_config["default_team_code"]),
             created_by_id=user_id,
-            external_source_id=f"v2_clean:{clean_workspace}:{record_type}:{now.timestamp()}",
+            external_source_id=f"v2_clean:{clean_workspace}:{effective_record_type}:{now.timestamp()}",
         )
         db.add(task)
         db.flush()
@@ -3325,6 +3328,92 @@ def clean_tasks_create(
     )
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}task_created=1&task_id={task_id}", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/update", response_class=HTMLResponse)
+def clean_tasks_update(
+    request: Request,
+    task_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    status: str = Form("new"),
+    priority: str = Form("normal"),
+    due_on: str = Form(""),
+    category: str = Form(""),
+    plate: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id or not has_any_web_permission(
+        request,
+        "tasks.write",
+        "tasks.operational.write",
+        "tasks.workshop.write",
+        "tasks.administration.write",
+        "admin.manage",
+    ):
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    clean_title = title.strip()
+    if not clean_title:
+        return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
+    allowed_statuses = {"new", "in_execution", "waiting", "resolved", "closed", "cancelled"}
+    clean_status = status if status in allowed_statuses else "new"
+    clean_priority = priority if priority in {"low", "normal", "high", "urgent"} else "normal"
+    parsed_due = parse_iso_or_dmy_date(due_on)
+    normalized_plate = normalize_identifier(plate) if plate.strip() else None
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task or task.source != "v2_clean":
+            return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
+        changes = {
+            "title": (task.title, clean_title[:200]),
+            "description": (task.description, description.strip() or None),
+            "status": (task.status, clean_status),
+            "priority": (task.priority, clean_priority),
+            "due_on": (task.due_on, parsed_due),
+            "category": (task.category, category.strip()[:80] or None),
+            "plate": (task.plate, normalized_plate),
+        }
+        for field_name, (old_value, new_value) in changes.items():
+            if old_value == new_value:
+                continue
+            setattr(task, field_name, new_value)
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name=field_name,
+                    old_value=str(old_value) if old_value is not None else None,
+                    new_value=str(new_value) if new_value is not None else None,
+                )
+            )
+        if clean_status in TASK_ARCHIVE_STATUSES:
+            task.closed_at = task.closed_at or now
+            if clean_status == "resolved":
+                task.resolved_at = task.resolved_at or now
+        else:
+            task.closed_at = None
+        record_audit(
+            db,
+            action="task.update",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Registo atualizado no Centro de Tarefas: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+    clean_return_url = return_url.strip()
+    target = (
+        clean_return_url
+        if clean_return_url.startswith("/") and not clean_return_url.startswith("//")
+        else "/v2-clean/tasks"
+    )
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}updated=1", status_code=303)
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/close", response_class=HTMLResponse)
@@ -13513,6 +13602,7 @@ async def clean_workshop_entry_save(request: Request):
                 "entry_reasons": entry_reasons,
                 "short_description": str(form.get("short_description") or "").strip(),
                 "requested_service": str(form.get("requested_service") or "").strip(),
+                "entry_mode": str(form.get("entry_mode") or "Entrada").strip(),
                 "entry_km": str(form.get("entry_km") or "").strip(),
                 "entry_km_source": "manual" if str(form.get("entry_km") or "").strip() else "",
                 "reported_by": str(form.get("reported_by") or "").strip(),
@@ -13526,6 +13616,7 @@ async def clean_workshop_entry_save(request: Request):
                 "physical_check_note": str(form.get("physical_check_note") or "").strip(),
                 "expected_exit": str(form.get("expected_exit") or "").strip(),
                 "validation_notes": str(form.get("validation_notes") or "").strip(),
+                "external_repair": str(form.get("external_repair") or "no").strip(),
                 "minimum_checks": minimum_checks,
                 "uploads": [*existing_uploads, *stored_uploads],
                 "saved_at": now.isoformat(),

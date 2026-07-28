@@ -17329,12 +17329,31 @@ body.clean-doc-modal-open {
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-lines-card {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   max-height: 100%;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-lines-card > .clean-doc-invoice-lines {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-lines-card > .clean-doc-invoice-work-order-link {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding-top: 12px;
+  background: #fff;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-note-card {

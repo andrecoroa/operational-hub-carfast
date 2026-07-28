@@ -264,6 +264,13 @@
                             class="button-link secondary-link clean-doc-summary-command"
                           >Reprocessar</button>
                         {% endif %}
+                        {% if row.kind == "document" %}
+                          <button
+                            type="button"
+                            class="button-link secondary-link clean-doc-summary-command clean-doc-remove-trigger"
+                            data-remove-form="remove-document-{{ row.id }}"
+                          >Remover</button>
+                        {% endif %}
                         <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link clean-doc-summary-command">Guardar classificação</button>
                         <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link secondary-link clean-doc-summary-command">Guardar e validar</button>
                         <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
@@ -457,6 +464,12 @@
                         <button type="button" class="button-link secondary-link clean-doc-detail-close">Fechar detalhes</button>
                       </section>
                     </div>
+                    {% if row.kind == "document" %}
+                      <form id="remove-document-{{ row.id }}" method="post" action="/v2-clean/documents/{{ row.id }}/remove" hidden>
+                        <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
+                        <input type="hidden" name="reason" value="">
+                      </form>
+                    {% endif %}
                   </details>
                 </td>
               </tr>
@@ -1100,6 +1113,20 @@
   });
   document.querySelectorAll(".clean-doc-summary-command").forEach((button) => {
     button.addEventListener("click", (event) => event.stopPropagation());
+  });
+  document.querySelectorAll(".clean-doc-remove-trigger[data-remove-form]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const form = document.getElementById(button.dataset.removeForm || "");
+      const reasonInput = form?.querySelector('input[name="reason"]');
+      if (!form || !reasonInput) return;
+      const reason = window.prompt("Motivo da remoção (ex.: documento duplicado):", "Documento duplicado");
+      if (!reason || !reason.trim()) return;
+      if (!window.confirm("Remover este documento da ficha da viatura?")) return;
+      reasonInput.value = reason.trim();
+      form.submit();
+    });
   });
   documentPreviewModal?.addEventListener("click", (event) => {
     if (event.target === documentPreviewModal) closeDocumentPreview();

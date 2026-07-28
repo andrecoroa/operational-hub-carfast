@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
+import re
 from tempfile import NamedTemporaryFile
 from typing import Any
 
@@ -440,10 +441,28 @@ def _document_archive_group(document: Document) -> str:
     )
     raw_title = title_blob.lower()
     title = normalize_header(title_blob)
+    supplier = normalize_header(document.supplier_name or "")
+    references = [
+        document.contract_number,
+        document.reservation_number,
+        document.title,
+        document.original_name,
+        document.file_name,
+    ]
+    is_cruz_allen_fs_invoice = (
+        "cruz" in supplier
+        and "allen" in supplier
+        and any(
+            re.search(r"(?<![a-z0-9])fs[\s._/-]*\d{4,}(?![a-z0-9])", str(reference or ""), re.IGNORECASE)
+            for reference in references
+        )
+    )
     if doc_type in {"workshopsupplierinvoice", "financesupplierinvoice"} or "fatura" in title or "factura" in title:
         return "invoices"
     if doc_type == "financecreditnote" or "nota credito" in title or "nota de credito" in title:
         return "credit_notes"
+    if is_cruz_allen_fs_invoice:
+        return "invoices"
     if doc_type in {"financepaymentproof", "financereceipt"} or any(
         token in title for token in ["comprovativo", "recibo", "payment proof"]
     ):

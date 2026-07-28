@@ -5613,9 +5613,27 @@ def clean_vehicle_document_group(document: Document) -> str:
     title = " ".join(
         part for part in [document.title, document.original_name, document.supplier_name, document.source_subject] if part
     ).lower()
+    supplier = _compact_identifier(document.supplier_name or "").lower()
+    references = [
+        document.contract_number,
+        document.reservation_number,
+        document.title,
+        document.original_name,
+        document.file_name,
+    ]
+    is_cruz_allen_fs_invoice = (
+        "cruz" in supplier
+        and "allen" in supplier
+        and any(
+            re.search(r"(?<![a-z0-9])fs[\s._/-]*\d{4,}(?![a-z0-9])", str(reference or ""), re.IGNORECASE)
+            for reference in references
+        )
+    )
     if doc_type == "workshop_work_order" or "folha" in title or "ordem" in title or "fo " in title:
         return "work_orders"
     if doc_type in {"workshop_supplier_invoice", "finance_supplier_invoice"} or "fatura" in title or "factura" in title:
+        return "invoices"
+    if is_cruz_allen_fs_invoice:
         return "invoices"
     if (
         doc_type in {

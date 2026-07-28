@@ -4037,6 +4037,76 @@ def test_clean_vehicle_documents_shows_existing_invoice_ocr_lines(authenticated_
     assert "Associar FO" in response.text
 
 
+def test_clean_vehicle_documents_treats_cruz_allen_fs_reference_as_invoice(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO 2877",
+        external_reference="2877",
+        plate=vehicle.plate,
+        status="structured",
+    )
+    invoice = Document(
+        title="FS0002877",
+        document_type="archive_document",
+        source="v2_clean_manual",
+        entry_channel="batch_import",
+        original_name="FS0002877.pdf",
+        file_name="FS0002877.pdf",
+        storage_provider="local",
+        storage_path="Frota/FS0002877.pdf",
+        status="received",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+        supplier_name="Cruz & Allen - B.B.C Oficina de Automóveis, Lda",
+        contract_number="FS0002877",
+    )
+    db_session.add_all([work_order, invoice])
+    db_session.commit()
+    db_session.refresh(work_order)
+    db_session.refresh(invoice)
+
+    context = vehicle_document_module_context(db_session, vehicle)
+    row = next(item for item in context["archive_rows"] if item["id"] == invoice.id)
+    assert row["archive_group"] == "invoices"
+    assert row["main_group"] == "invoices"
+
+    page = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"
+    )
+    assert page.status_code == 200
+    assert "FS0002877" in page.text
+    assert "Serviços relevantes da fatura" in page.text
+    assert "Associar FO" in page.text
+    assert f"/v2-clean/documents/{invoice.id}/remove" in page.text
+
+    linked = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/link-work-order",
+        data={
+            "document_id": str(invoice.id),
+            "work_order_record_id": str(work_order.id),
+            "return_group": "invoices",
+            "open_item": f"document:{invoice.id}",
+        },
+        follow_redirects=False,
+    )
+    assert linked.status_code == 303
+    assert f"open_item=document%3A{invoice.id}" in linked.headers["location"]
+    assert db_session.scalar(
+        select(DocumentLink).where(
+            DocumentLink.document_id == invoice.id,
+            DocumentLink.entity_type == "vehicle_document_record",
+            DocumentLink.entity_id == str(work_order.id),
+            DocumentLink.category == "invoice_work_order",
+        )
+    )
+
+
 def test_clean_vehicle_documents_links_invoice_to_work_order_once(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     work_order = VehicleDocumentRecord(

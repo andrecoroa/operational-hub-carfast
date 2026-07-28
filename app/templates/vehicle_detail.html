@@ -30,6 +30,12 @@
     {% if document_created %}
       <div class="success">Documento associado a esta viatura.</div>
     {% endif %}
+    {% if diagnostic_created %}
+      <div class="success">Diagnóstico associado a esta viatura.</div>
+    {% endif %}
+    {% if diagnostic_linked %}
+      <div class="success">Documento existente convertido e associado como diagnóstico.</div>
+    {% endif %}
     {% if error %}
       <div class="alert">{{ error }}</div>
     {% endif %}
@@ -114,8 +120,40 @@
             </div>
           </div>
 
+          <details class="workshop-record-group" {% if diagnostics %}open{% endif %}>
+            <summary>Diagnósticos <span>{{ diagnostics_count }}</span></summary>
+            <div class="event-list diagnostic-document-list">
+              {% for document, diagnostic in diagnostics %}
+                <article class="event-item diagnostic-document-item">
+                  <div>
+                    <strong><a class="table-link" href="/documents/{{ document.id }}">{{ document.title or document.original_name }}</a></strong>
+                    <span>{{ diagnostic_validation_status_labels.get(diagnostic.validation_status, diagnostic.validation_status) }}</span>
+                  </div>
+                  <p>
+                    {{ diagnostic_type_labels.get(diagnostic.diagnostic_type, diagnostic.diagnostic_type) }}
+                    &middot; {{ diagnostic_status_labels.get(diagnostic.diagnostic_status, diagnostic.diagnostic_status) }}
+                  </p>
+                  <p>
+                    Data {{ document.document_date or "-" }}
+                    &middot; KM {{ diagnostic.odometer_km or "-" }}
+                    &middot; OCR {{ diagnostic_ocr_status_labels.get(diagnostic.ocr_status, diagnostic.ocr_status) }}
+                  </p>
+                  <p>
+                    Associação:
+                    {{ diagnostic_association_status_labels.get(diagnostic.association_status, diagnostic.association_status) }}
+                  </p>
+                  {% if can_manage_document_links and document.external_url %}
+                    <p><a class="table-link" href="{{ document.external_url }}" target="_blank" rel="noreferrer">Abrir relatório</a></p>
+                  {% endif %}
+                </article>
+              {% else %}
+                <p class="muted">Sem diagnósticos documentais associados a esta viatura.</p>
+              {% endfor %}
+            </div>
+          </details>
+
           <details class="workshop-record-group" {% if documents %}open{% endif %}>
-            <summary>Documentos <span>{{ documents|length }}</span></summary>
+            <summary>Outros documentos <span>{{ documents_count }}</span></summary>
             <div class="event-list">
               {% for document in documents %}
                 <article class="event-item">
@@ -177,7 +215,7 @@
           </details>
 
           <details class="workshop-record-group" {% if technical_readings_count %}open{% endif %}>
-            <summary>Histórico técnico / Diagnósticos <span>{{ technical_readings_count }}</span></summary>
+            <summary>Histórico de leituras técnicas <span>{{ technical_readings_count }}</span></summary>
             <div class="technical-history-summary">
               {% if technical_readings_count %}
                 <div>
@@ -284,6 +322,104 @@
                 <textarea name="description" rows="3"></textarea>
               </label>
               <button type="submit">Criar tarefa</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card">
+            <summary>Adicionar diagnóstico</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/diagnostics" class="form-stack">
+              <label>
+                Título do relatório
+                <input type="text" name="title" maxlength="200" required>
+              </label>
+              <label>
+                Tipo de diagnóstico
+                <select name="diagnostic_type">
+                  {% for code, label in diagnostic_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Data do relatório
+                  <input type="date" name="document_date">
+                </label>
+                <label>
+                  Quilometragem
+                  <input type="number" name="odometer_km" min="0">
+                </label>
+              </div>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Nº do relatório
+                  <input type="text" name="report_number" maxlength="160">
+                </label>
+                <label>
+                  Técnico
+                  <input type="text" name="technician_name" maxlength="160">
+                </label>
+              </div>
+              <div class="compact-form-grid two-col">
+                <label>
+                  Equipamento de diagnóstico
+                  <input type="text" name="diagnostic_tool" maxlength="160" placeholder="Autel MaxiSys, DiagBox...">
+                </label>
+                <label>
+                  Nº de série do equipamento
+                  <input type="text" name="diagnostic_tool_serial" maxlength="160">
+                </label>
+              </div>
+              <div class="compact-form-grid two-col">
+                <label>
+                  OCR
+                  <select name="ocr_status">
+                    {% for code, label in diagnostic_ocr_statuses %}
+                      <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Validação
+                  <select name="validation_status">
+                    {% for code, label in diagnostic_validation_statuses %}
+                      <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              </div>
+              <label>
+                Link original / entrada 365
+                <input type="url" name="url_original" placeholder="https://...">
+              </label>
+              <label>
+                Link arquivado
+                <input type="url" name="url_archive" placeholder="https://...">
+              </label>
+              <label>
+                Notas
+                <textarea name="notes" rows="2"></textarea>
+              </label>
+              <button type="submit">Adicionar diagnóstico</button>
+            </form>
+          </details>
+
+          <details class="workshop-action-card">
+            <summary>Associar diagnóstico existente</summary>
+            <form method="post" action="/fleet/{{ vehicle.id }}/diagnostics/link" class="form-stack">
+              <label>
+                ID do documento
+                <input type="number" name="document_id" min="1" required placeholder="Ex.: 1522">
+              </label>
+              <label>
+                Tipo de diagnóstico
+                <select name="diagnostic_type">
+                  {% for code, label in diagnostic_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <button type="submit">Associar como diagnóstico</button>
             </form>
           </details>
 

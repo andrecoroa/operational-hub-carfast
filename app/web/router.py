@@ -34,6 +34,7 @@ from app.core.database import SessionLocal
 from app.core.security import verify_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.documents import (
+    DiagnosticDocument,
     Document,
     DocumentEvent,
     DocumentLink,
@@ -161,6 +162,20 @@ from app.services.workshop_report_extractor import (
 from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.diagnostic_documents import (
+    DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
+    DIAGNOSTIC_OCR_STATUSES,
+    DIAGNOSTIC_OCR_STATUS_LABELS,
+    DIAGNOSTIC_STATUSES,
+    DIAGNOSTIC_STATUS_LABELS,
+    DIAGNOSTIC_TYPES,
+    DIAGNOSTIC_TYPE_LABELS,
+    DIAGNOSTIC_VALIDATION_STATUSES,
+    DIAGNOSTIC_VALIDATION_STATUS_LABELS,
+    document_vehicle_predicate,
+    ensure_diagnostic_profile,
+    find_vehicle_by_plate,
+)
 from app.services.users import create_user
 from app.services.vehicles import normalize_identifier
 
@@ -15562,6 +15577,8 @@ def vehicle_detail(
     saved: str | None = None,
     task_created: str | None = None,
     document_created: str | None = None,
+    diagnostic_created: str | None = None,
+    diagnostic_linked: str | None = None,
     error: str | None = None,
 ):
     if not get_web_user_id(request):
@@ -15625,9 +15642,14 @@ def vehicle_detail(
                 select(WorkshopProcess).where(WorkshopProcess.id.in_(process_ids))
             ).all()
         } if process_ids else {}
+        vehicle_document_match = document_vehicle_predicate(vehicle)
+        non_diagnostic_filter = or_(
+            Document.document_type.is_(None),
+            Document.document_type != "workshop_diagnostic",
+        )
         documents = db.scalars(
             select(Document)
-            .where(or_(Document.vehicle_id == vehicle.id, Document.plate == (vehicle.plate or "")))
+            .where(vehicle_document_match, non_diagnostic_filter)
             .order_by(Document.id.desc())
             .limit(20)
         ).all()
@@ -15638,6 +15660,25 @@ def vehicle_detail(
             .limit(10)
         ).all()
         active_users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        documents_count = (
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(vehicle_document_match, non_diagnostic_filter)
+            )
+            or 0
+        )
+        diagnostics = db.execute(
+            select(Document, DiagnosticDocument)
+            .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
+            .where(vehicle_document_match)
+            .order_by(
+                Document.document_date.is_(None),
+                Document.document_date.desc(),
+                Document.id.desc(),
+            )
+        ).all()
+        diagnostics_count = len(diagnostics)
         return templates.TemplateResponse(
             request,
             "vehicle_detail.html",
@@ -15671,6 +15712,17 @@ def vehicle_detail(
                 "history_audit_phase_labels": HISTORY_AUDIT_PHASE_LABELS,
                 "history_audit_status_labels": HISTORY_AUDIT_STATUS_LABELS,
                 "active_users": active_users,
+                "documents_count": documents_count,
+                "diagnostics": diagnostics,
+                "diagnostics_count": diagnostics_count,
+                "diagnostic_types": DIAGNOSTIC_TYPES,
+                "diagnostic_type_labels": DIAGNOSTIC_TYPE_LABELS,
+                "diagnostic_status_labels": DIAGNOSTIC_STATUS_LABELS,
+                "diagnostic_ocr_statuses": DIAGNOSTIC_OCR_STATUSES,
+                "diagnostic_ocr_status_labels": DIAGNOSTIC_OCR_STATUS_LABELS,
+                "diagnostic_validation_statuses": DIAGNOSTIC_VALIDATION_STATUSES,
+                "diagnostic_validation_status_labels": DIAGNOSTIC_VALIDATION_STATUS_LABELS,
+                "diagnostic_association_status_labels": DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
                 "document_status_labels": DOCUMENT_STATUS_LABELS,
                 "document_area_labels": DOCUMENT_AREA_LABELS,
                 "document_type_labels": DOCUMENT_TYPE_LABELS,
@@ -15680,6 +15732,8 @@ def vehicle_detail(
                 "saved": saved,
                 "task_created": task_created,
                 "document_created": document_created,
+                "diagnostic_created": diagnostic_created,
+                "diagnostic_linked": diagnostic_linked,
                 "error": error,
             },
         )
@@ -16608,6 +16662,7 @@ def vehicle_create_document(
     request: Request,
     vehicle_id: int,
     title: str = Form(""),
+    document_type: str = Form("workshop_other"),
     status: str = Form("received"),
     document_date: str = Form(""),
     source: str = Form("email"),
@@ -16628,11 +16683,11 @@ def vehicle_create_document(
         if not vehicle:
             return RedirectResponse("/fleet", status_code=303)
         try:
-            add_document_record(
+            document = add_document_record(
                 db,
                 title=title,
                 classification="workshop",
-                document_type="workshop_other",
+                document_type=document_type,
                 status=status,
                 document_date=parse_optional_date(document_date),
                 source=source,
@@ -16650,11 +16705,169 @@ def vehicle_create_document(
                 notes=notes,
                 user_id=user_id,
             )
+            if document.document_type == "workshop_diagnostic":
+                ensure_diagnostic_profile(db, document)
         except ValueError:
             return RedirectResponse(f"/fleet/{vehicle_id}?error=Indica%20título%20e%20link.", status_code=303)
         db.commit()
 
     return RedirectResponse(f"/fleet/{vehicle_id}?document_created=1", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/diagnostics", response_class=HTMLResponse)
+def vehicle_create_diagnostic(
+    request: Request,
+    vehicle_id: int,
+    title: str = Form(""),
+    diagnostic_type: str = Form("other_diagnostic"),
+    diagnostic_status: str = Form("received"),
+    document_date: str = Form(""),
+    report_number: str = Form(""),
+    diagnostic_tool: str = Form(""),
+    diagnostic_tool_serial: str = Form(""),
+    technician_name: str = Form(""),
+    odometer_km: str = Form(""),
+    ocr_status: str = Form("not_requested"),
+    validation_status: str = Form("pending"),
+    url_original: str = Form(""),
+    url_archive: str = Form(""),
+    notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/fleet", status_code=303)
+        try:
+            document = add_document_record(
+                db,
+                title=title,
+                classification="workshop",
+                document_type="workshop_diagnostic",
+                status="associated",
+                document_date=parse_optional_date(document_date),
+                source="manual",
+                entry_channel="vehicle_diagnostic",
+                source_sender="",
+                source_subject="",
+                url_original=url_original,
+                url_archive=url_archive,
+                plate=vehicle.plate or "",
+                vehicle_id=vehicle.id,
+                supplier_name="",
+                customer_name="",
+                task_id=None,
+                workshop_process_id=None,
+                notes=notes,
+                user_id=user_id,
+            )
+        except ValueError:
+            return RedirectResponse(
+                f"/fleet/{vehicle_id}?error=Indica%20título%20e%20link.",
+                status_code=303,
+            )
+
+        profile = ensure_diagnostic_profile(
+            db,
+            document,
+            diagnostic_type=diagnostic_type,
+            association_status="confirmed",
+        )
+        profile.diagnostic_status = (
+            diagnostic_status
+            if diagnostic_status in DIAGNOSTIC_STATUS_LABELS
+            else "received"
+        )
+        profile.report_number = report_number.strip() or None
+        profile.diagnostic_tool = diagnostic_tool.strip() or None
+        profile.diagnostic_tool_serial = diagnostic_tool_serial.strip() or None
+        profile.technician_name = technician_name.strip() or None
+        profile.odometer_km = parse_optional_int(odometer_km)
+        profile.ocr_status = (
+            ocr_status if ocr_status in DIAGNOSTIC_OCR_STATUS_LABELS else "not_requested"
+        )
+        profile.validation_status = (
+            validation_status
+            if validation_status in DIAGNOSTIC_VALIDATION_STATUS_LABELS
+            else "pending"
+        )
+        if profile.validation_status == "validated":
+            profile.validated_by_id = user_id
+            profile.validated_at = datetime.now(UTC)
+        record_audit(
+            db,
+            action="diagnostic_document.created",
+            entity_type="document",
+            entity_id=document.id,
+            detail=f"Diagnóstico associado à viatura {vehicle.plate or vehicle.id}.",
+            after_json={
+                "vehicle_id": vehicle.id,
+                "diagnostic_type": profile.diagnostic_type,
+                "ocr_status": profile.ocr_status,
+                "validation_status": profile.validation_status,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/fleet/{vehicle_id}?diagnostic_created=1", status_code=303)
+
+
+@web_router.post("/fleet/{vehicle_id}/diagnostics/link", response_class=HTMLResponse)
+def vehicle_link_diagnostic(
+    request: Request,
+    vehicle_id: int,
+    document_id: int = Form(...),
+    diagnostic_type: str = Form("other_diagnostic"),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        document = db.get(Document, document_id)
+        if not vehicle or not document:
+            return RedirectResponse(
+                f"/fleet/{vehicle_id}?error=Documento%20não%20encontrado.",
+                status_code=303,
+            )
+        previous_vehicle_id = document.vehicle_id
+        document.vehicle_id = vehicle.id
+        document.plate = vehicle.plate
+        profile = ensure_diagnostic_profile(
+            db,
+            document,
+            diagnostic_type=diagnostic_type,
+            association_status="manual",
+        )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="diagnostic.vehicle_linked",
+                old_value=str(previous_vehicle_id) if previous_vehicle_id else None,
+                new_value=str(vehicle.id),
+                user_id=user_id,
+            )
+        )
+        record_audit(
+            db,
+            action="diagnostic_document.vehicle_linked",
+            entity_type="document",
+            entity_id=document.id,
+            detail=f"Diagnóstico ligado manualmente à viatura {vehicle.plate or vehicle.id}.",
+            after_json={
+                "vehicle_id": vehicle.id,
+                "diagnostic_type": profile.diagnostic_type,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+
+    return RedirectResponse(f"/fleet/{vehicle_id}?diagnostic_linked=1", status_code=303)
 
 
 @web_router.get("/workshop", response_class=HTMLResponse)
@@ -18523,7 +18736,7 @@ def workshop_create_document(
         vehicle = db.get(Vehicle, process.vehicle_id)
         folder_path = process.document_folder_path or suggest_workshop_process_folder_path(process, vehicle)
         try:
-            add_document_record(
+            document = add_document_record(
                 db,
                 title=title,
                 classification="workshop",
@@ -18546,6 +18759,8 @@ def workshop_create_document(
                 user_id=user_id,
                 folder_path_override=folder_path,
             )
+            if document.document_type == "workshop_diagnostic":
+                ensure_diagnostic_profile(db, document)
         except ValueError:
             return RedirectResponse(f"/workshop/{process_id}?error=Indica%20título%20e%20link.", status_code=303)
         db.commit()
@@ -21753,6 +21968,8 @@ def document_create(
         )
         db.add(document)
         db.flush()
+        if document.document_type == "workshop_diagnostic":
+            ensure_diagnostic_profile(db, document)
         if import_batch_id.strip():
             db.add(
                 DocumentEvent(
@@ -21840,6 +22057,9 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 )
             )
         attachments = db.scalars(attachments_statement.order_by(EmailIntakeAttachment.id.asc())).all()
+        diagnostic = db.scalar(
+            select(DiagnosticDocument).where(DiagnosticDocument.document_id == document.id)
+        )
         return templates.TemplateResponse(
             request,
             "document_detail.html",
@@ -21850,6 +22070,16 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "events": events,
                 "linked_email_intake": linked_email_intake,
                 "attachments": attachments,
+                "diagnostic": diagnostic,
+                "diagnostic_types": DIAGNOSTIC_TYPES,
+                "diagnostic_type_labels": DIAGNOSTIC_TYPE_LABELS,
+                "diagnostic_statuses": DIAGNOSTIC_STATUSES,
+                "diagnostic_status_labels": DIAGNOSTIC_STATUS_LABELS,
+                "diagnostic_ocr_statuses": DIAGNOSTIC_OCR_STATUSES,
+                "diagnostic_ocr_status_labels": DIAGNOSTIC_OCR_STATUS_LABELS,
+                "diagnostic_validation_statuses": DIAGNOSTIC_VALIDATION_STATUSES,
+                "diagnostic_validation_status_labels": DIAGNOSTIC_VALIDATION_STATUS_LABELS,
+                "diagnostic_association_status_labels": DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
                 "attachment_statuses": DOCUMENT_ATTACHMENT_STATUSES,
                 "attachment_status_labels": DOCUMENT_ATTACHMENT_STATUS_LABELS,
                 "areas": DOCUMENT_AREAS,
@@ -21863,6 +22093,105 @@ def document_detail(request: Request, document_id: int, updated: str | None = No
                 "updated": updated,
             },
         )
+
+
+@web_router.post("/documents/{document_id}/diagnostic", response_class=HTMLResponse)
+def document_diagnostic_update(
+    request: Request,
+    document_id: int,
+    diagnostic_type: str = Form("other_diagnostic"),
+    diagnostic_status: str = Form("received"),
+    report_number: str = Form(""),
+    diagnostic_tool: str = Form(""),
+    diagnostic_tool_serial: str = Form(""),
+    technician_name: str = Form(""),
+    odometer_km: str = Form(""),
+    detected_plate: str = Form(""),
+    detected_vin: str = Form(""),
+    ocr_status: str = Form("not_requested"),
+    ocr_confidence: str = Form(""),
+    ocr_text: str = Form(""),
+    validation_status: str = Form("pending"),
+    validation_notes: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse("/documents", status_code=303)
+        profile = ensure_diagnostic_profile(
+            db,
+            document,
+            diagnostic_type=diagnostic_type,
+            detected_plate=detected_plate,
+            detected_vin=detected_vin,
+        )
+        profile.diagnostic_status = (
+            diagnostic_status
+            if diagnostic_status in DIAGNOSTIC_STATUS_LABELS
+            else "received"
+        )
+        profile.report_number = report_number.strip() or None
+        profile.diagnostic_tool = diagnostic_tool.strip() or None
+        profile.diagnostic_tool_serial = diagnostic_tool_serial.strip() or None
+        profile.technician_name = technician_name.strip() or None
+        profile.odometer_km = parse_optional_int(odometer_km)
+        profile.ocr_status = (
+            ocr_status if ocr_status in DIAGNOSTIC_OCR_STATUS_LABELS else "not_requested"
+        )
+        try:
+            confidence = float(ocr_confidence.replace(",", ".")) if ocr_confidence.strip() else None
+        except ValueError:
+            confidence = None
+        profile.ocr_confidence = (
+            max(0.0, min(confidence, 1.0)) if confidence is not None else None
+        )
+        profile.ocr_text = ocr_text.strip() or None
+        profile.validation_status = (
+            validation_status
+            if validation_status in DIAGNOSTIC_VALIDATION_STATUS_LABELS
+            else "pending"
+        )
+        profile.validation_notes = validation_notes.strip() or None
+        if profile.validation_status == "validated":
+            profile.validated_by_id = user_id
+            profile.validated_at = datetime.now(UTC)
+        else:
+            profile.validated_by_id = None
+            profile.validated_at = None
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="diagnostic.updated",
+                old_value=None,
+                new_value=(
+                    f"{DIAGNOSTIC_TYPE_LABELS[profile.diagnostic_type]} · "
+                    f"OCR {DIAGNOSTIC_OCR_STATUS_LABELS[profile.ocr_status]} · "
+                    f"{DIAGNOSTIC_VALIDATION_STATUS_LABELS[profile.validation_status]}"
+                ),
+                user_id=user_id,
+            )
+        )
+        record_audit(
+            db,
+            action="diagnostic_document.updated",
+            entity_type="document",
+            entity_id=document.id,
+            detail=f"Metadados do diagnóstico atualizados: {document.title}.",
+            after_json={
+                "diagnostic_type": profile.diagnostic_type,
+                "diagnostic_status": profile.diagnostic_status,
+                "association_status": profile.association_status,
+                "ocr_status": profile.ocr_status,
+                "validation_status": profile.validation_status,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(f"/documents/{document_id}?updated=1", status_code=303)
 
 
 @web_router.get("/documents/{document_id}/email-original", response_class=HTMLResponse)
@@ -22014,6 +22343,8 @@ def document_update(
             document.archived_at = document.archived_at or datetime.now(UTC)
         else:
             document.archived = False
+        if document.document_type == "workshop_diagnostic":
+            ensure_diagnostic_profile(db, document)
 
         for field, old_value, new_value in changes:
             db.add(

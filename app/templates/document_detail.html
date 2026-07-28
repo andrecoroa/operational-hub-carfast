@@ -75,6 +75,104 @@
         {% endif %}
       </section>
 
+      {% if diagnostic or document.document_type == "workshop_diagnostic" %}
+      <section class="document-treatment-card diagnostic-treatment-card">
+        <div class="document-panel-heading">
+          <div>
+            <p class="eyebrow">Módulo de diagnósticos</p>
+            <h3>Relatório, OCR e validação</h3>
+            <span>Metadados técnicos separados do tratamento de faturas e restantes documentos.</span>
+          </div>
+          {% if diagnostic %}
+            <span class="pill status-{{ diagnostic.validation_status }}">
+              {{ diagnostic_validation_status_labels.get(diagnostic.validation_status, diagnostic.validation_status) }}
+            </span>
+          {% endif %}
+        </div>
+        <form method="post" action="/documents/{{ document.id }}/diagnostic" class="form-stack">
+          <div class="form-grid two-columns">
+            <label>
+              Tipo de diagnóstico
+              <select name="diagnostic_type">
+                {% for code, label in diagnostic_types %}
+                  <option value="{{ code }}" {% if diagnostic and diagnostic.diagnostic_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Estado do diagnóstico
+              <select name="diagnostic_status">
+                {% for code, label in diagnostic_statuses %}
+                  <option value="{{ code }}" {% if diagnostic and diagnostic.diagnostic_status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Nº do relatório
+              <input type="text" name="report_number" maxlength="160" value="{{ diagnostic.report_number if diagnostic else '' }}">
+            </label>
+            <label>
+              Quilometragem
+              <input type="number" name="odometer_km" min="0" value="{{ diagnostic.odometer_km if diagnostic and diagnostic.odometer_km is not none else '' }}">
+            </label>
+            <label>
+              Equipamento
+              <input type="text" name="diagnostic_tool" maxlength="160" value="{{ diagnostic.diagnostic_tool if diagnostic else '' }}">
+            </label>
+            <label>
+              Nº de série do equipamento
+              <input type="text" name="diagnostic_tool_serial" maxlength="160" value="{{ diagnostic.diagnostic_tool_serial if diagnostic else '' }}">
+            </label>
+            <label>
+              Técnico
+              <input type="text" name="technician_name" maxlength="160" value="{{ diagnostic.technician_name if diagnostic else '' }}">
+            </label>
+            <label>
+              Associação
+              <input type="text" value="{{ diagnostic_association_status_labels.get(diagnostic.association_status, diagnostic.association_status) if diagnostic else 'Sem viatura' }}" disabled>
+            </label>
+            <label>
+              Matrícula detetada
+              <input type="text" name="detected_plate" maxlength="40" value="{{ diagnostic.detected_plate if diagnostic else document.plate or '' }}">
+            </label>
+            <label>
+              VIN detetado
+              <input type="text" name="detected_vin" maxlength="80" value="{{ diagnostic.detected_vin if diagnostic else '' }}">
+            </label>
+            <label>
+              Estado OCR
+              <select name="ocr_status">
+                {% for code, label in diagnostic_ocr_statuses %}
+                  <option value="{{ code }}" {% if diagnostic and diagnostic.ocr_status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Confiança OCR (0–1)
+              <input type="number" name="ocr_confidence" min="0" max="1" step="0.01" value="{{ diagnostic.ocr_confidence if diagnostic and diagnostic.ocr_confidence is not none else '' }}">
+            </label>
+            <label>
+              Validação
+              <select name="validation_status">
+                {% for code, label in diagnostic_validation_statuses %}
+                  <option value="{{ code }}" {% if diagnostic and diagnostic.validation_status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <label>
+            Texto OCR
+            <textarea name="ocr_text" rows="6">{{ diagnostic.ocr_text if diagnostic else '' }}</textarea>
+          </label>
+          <label>
+            Notas de validação
+            <textarea name="validation_notes" rows="3">{{ diagnostic.validation_notes if diagnostic else '' }}</textarea>
+          </label>
+          <button type="submit">Guardar diagnóstico</button>
+        </form>
+      </section>
+      {% endif %}
+
       <section class="document-treatment-card">
         <div class="document-panel-heading">
           <div>

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -61,7 +61,9 @@ class DocumentEvent(Base):
     __tablename__ = "document_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
     action: Mapped[str] = mapped_column(String(120), index=True)
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
@@ -157,3 +159,46 @@ class VehicleDocumentAuditField(TimestampMixin, Base):
     document_basis: Mapped[str | None] = mapped_column(Text)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class DiagnosticDocument(TimestampMixin, Base):
+    """Diagnostic-specific metadata kept separate from generic document fields."""
+
+    __tablename__ = "diagnostic_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    diagnostic_type: Mapped[str] = mapped_column(String(120), index=True)
+    diagnostic_status: Mapped[str] = mapped_column(
+        String(40),
+        default="received",
+        index=True,
+    )
+    association_status: Mapped[str] = mapped_column(
+        String(40),
+        default="unassociated",
+        index=True,
+    )
+    report_number: Mapped[str | None] = mapped_column(String(160), index=True)
+    diagnostic_tool: Mapped[str | None] = mapped_column(String(160))
+    diagnostic_tool_serial: Mapped[str | None] = mapped_column(String(160))
+    technician_name: Mapped[str | None] = mapped_column(String(160))
+    odometer_km: Mapped[int | None] = mapped_column(Integer)
+    detected_plate: Mapped[str | None] = mapped_column(String(40), index=True)
+    detected_vin: Mapped[str | None] = mapped_column(String(80), index=True)
+    ocr_status: Mapped[str] = mapped_column(String(40), default="not_requested", index=True)
+    ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    ocr_text: Mapped[str | None] = mapped_column(Text)
+    ocr_payload_json: Mapped[dict | list | None] = mapped_column(JSON)
+    validation_status: Mapped[str] = mapped_column(
+        String(40),
+        default="pending",
+        index=True,
+    )
+    validation_notes: Mapped[str | None] = mapped_column(Text)
+    validated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

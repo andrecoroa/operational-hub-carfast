@@ -2,6 +2,7 @@ from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.documents import (
+    DiagnosticDocument,
     Document,
     DocumentEvent,
     DocumentLink,
@@ -80,6 +81,7 @@ __all__ = [
     "ClaimRefstroLine",
     "ClaimRentwayAR",
     "Document",
+    "DiagnosticDocument",
     "DocumentEvent",
     "DocumentLink",
     "VehicleDocumentAlert",

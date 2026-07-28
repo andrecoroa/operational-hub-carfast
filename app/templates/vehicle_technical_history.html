@@ -8,7 +8,7 @@
       <div>
         <p class="eyebrow">{{ technical_history_eyebrow if technical_history_eyebrow is defined else "Viatura permanente" }}</p>
         <h2>{{ vehicle.plate or "Sem matrícula" }}</h2>
-        <p class="topbar-subtitle">{{ technical_history_subtitle if technical_history_subtitle is defined else "Histórico técnico / Diagnósticos" }}</p>
+        <p class="topbar-subtitle">{{ technical_history_subtitle if technical_history_subtitle is defined else "Histórico técnico unificado / Diagnósticos" }}</p>
       </div>
       <div class="button-row">
         {% if technical_history_back_url is defined and technical_history_back_url %}
@@ -62,7 +62,8 @@
                     <th>
                       <span>{{ compact_reading_label(reading) }}</span>
                       <small>
-                        {% if reading.process_id %}Processo #{{ reading.process_id }}{% else %}Histórico importado{% endif %}
+                        {{ (reading.data_json or {}).get("origin_label") or ("Processo de oficina" if reading.process_id else "Histórico importado") }}
+                        {% if reading.process_id %} #{{ reading.process_id }}{% endif %}
                         {% if reading.odometer_km %} · {{ reading.odometer_km }} km{% endif %}
                       </small>
                       {% if reading.external_url %}

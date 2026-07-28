@@ -14,6 +14,7 @@ import zipfile
 from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
 from time import monotonic
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote_plus, urlencode
 
@@ -639,6 +640,174 @@ def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
     return label
 
 
+def _diagnostic_collection_date(*values: Any) -> date | None:
+    for value in values:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        text = str(value or "").strip()
+        if not text:
+            continue
+        for candidate in (text, text[:10]):
+            for format_code in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(candidate, format_code).date()
+                except ValueError:
+                    continue
+    return None
+
+
+def unified_vehicle_technical_readings(
+    db: Session,
+    vehicle_id: int,
+) -> list[WorkshopTechnicalReading | SimpleNamespace]:
+    """Combine archived and workshop diagnostics by their actual collection date."""
+    readings: list[WorkshopTechnicalReading | SimpleNamespace] = list(
+        db.scalars(
+            select(WorkshopTechnicalReading).where(
+                WorkshopTechnicalReading.vehicle_id == vehicle_id,
+                WorkshopTechnicalReading.status != "voided",
+            )
+        ).all()
+    )
+    represented_document_ids = {
+        int((reading.data_json or {}).get("document_id"))
+        for reading in readings
+        if str((reading.data_json or {}).get("document_id") or "").isdigit()
+    }
+
+    diagnostic_rows = db.execute(
+        select(Document, DiagnosticDocument)
+        .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
+        .where(Document.vehicle_id == vehicle_id)
+    ).all()
+    diagnostic_ids = [diagnostic.id for _, diagnostic in diagnostic_rows]
+    latest_extraction_by_diagnostic: dict[int, DiagnosticExtraction] = {}
+    if diagnostic_ids:
+        for extraction in db.scalars(
+            select(DiagnosticExtraction)
+            .where(DiagnosticExtraction.diagnostic_document_id.in_(diagnostic_ids))
+            .order_by(DiagnosticExtraction.created_at.desc(), DiagnosticExtraction.id.desc())
+        ).all():
+            latest_extraction_by_diagnostic.setdefault(extraction.diagnostic_document_id, extraction)
+
+    next_synthetic_id = -1
+    for document, diagnostic in diagnostic_rows:
+        if document.id in represented_document_ids:
+            continue
+        extraction = latest_extraction_by_diagnostic.get(diagnostic.id)
+        normalized = dict(extraction.normalized_data_json or {}) if extraction else {}
+        dynamic = dict(extraction.dynamic_fields_json or {}) if extraction else {}
+        collected_on = _diagnostic_collection_date(
+            normalized.get("test_datetime"),
+            normalized.get("capture_date"),
+            document.document_date,
+            document.created_at,
+        )
+        data_json = {
+            **dynamic,
+            **normalized,
+            "record_origin": "document_archive",
+            "origin_label": "Arquivo documental",
+            "document_id": document.id,
+            "diagnostic_profile_id": diagnostic.id,
+            "source_file": document.original_name,
+            "odometer_km": diagnostic.odometer_km or normalized.get("odometer"),
+        }
+        readings.append(
+            SimpleNamespace(
+                id=next_synthetic_id,
+                process_id=None,
+                vehicle_id=vehicle_id,
+                user_id=document.uploaded_by_id,
+                reading_type=diagnostic.diagnostic_type or "other",
+                reading_date=collected_on,
+                odometer_km=diagnostic.odometer_km,
+                summary=document.title or document.original_name,
+                data_json=data_json,
+                differences_json=None,
+                storage_provider=document.storage_provider,
+                external_url=f"/documents/{document.id}",
+                status=diagnostic.validation_status,
+                created_at=document.created_at,
+            )
+        )
+        represented_document_ids.add(document.id)
+        next_synthetic_id -= 1
+
+    phased_reports = db.execute(
+        select(WorkshopPhasedTechnicalReport, WorkshopPhasedProcess)
+        .join(
+            WorkshopPhasedProcess,
+            WorkshopPhasedProcess.id == WorkshopPhasedTechnicalReport.process_id,
+        )
+        .where(
+            WorkshopPhasedProcess.vehicle_id == vehicle_id,
+            WorkshopPhasedTechnicalReport.status.notin_({"voided", "superseded"}),
+        )
+    ).all()
+    for report, process in phased_reports:
+        if report.original_document_id and report.original_document_id in represented_document_ids:
+            continue
+        raw = dict(report.raw_values_json or {})
+        values = dict(report.validated_values_json or report.extracted_values_json or {})
+        collected_on = _diagnostic_collection_date(
+            values.get("test_datetime"),
+            values.get("report_date"),
+            raw.get("report_date"),
+            report.added_at,
+        )
+        data_json = {
+            **values,
+            "record_origin": "workshop_process",
+            "origin_label": "Processo de oficina",
+            "workshop_process_id": process.id,
+            "workshop_report_id": report.id,
+            "document_id": report.original_document_id,
+            "document_time": raw.get("report_time"),
+            "machine_source": report.reading_origin_detail or report.reading_origin,
+        }
+        readings.append(
+            SimpleNamespace(
+                id=next_synthetic_id,
+                process_id=process.id,
+                vehicle_id=vehicle_id,
+                user_id=report.added_by_id,
+                reading_type=report.report_code or "other",
+                reading_date=collected_on,
+                odometer_km=values.get("odometer_km") or values.get("odometer"),
+                summary=report.report_name,
+                data_json=data_json,
+                differences_json=None,
+                storage_provider="local",
+                external_url=f"/v2-clean/workshop/technical-reports/{report.id}/file",
+                status=report.status,
+                created_at=report.added_at,
+            )
+        )
+        if report.original_document_id:
+            represented_document_ids.add(report.original_document_id)
+        next_synthetic_id -= 1
+
+    for reading in readings:
+        data = dict(reading.data_json or {})
+        data.setdefault("record_origin", "workshop_process" if reading.process_id else "legacy_history")
+        data.setdefault(
+            "origin_label",
+            "Processo de oficina" if reading.process_id else "Histórico importado",
+        )
+        reading.data_json = data
+    readings.sort(
+        key=lambda item: (
+            item.reading_date or (item.created_at.date() if item.created_at else date.min),
+            item.created_at or datetime.min.replace(tzinfo=UTC),
+            item.id,
+        )
+    )
+    return readings
+
+
 def technical_history_tabs(readings: list[WorkshopTechnicalReading]) -> list[dict[str, str | int]]:
     counts = {code: 0 for code, _ in WORKSHOP_READING_TYPES}
     legacy_codes = [code for code, _ in WORKSHOP_LEGACY_READING_TYPES]
@@ -648,7 +817,8 @@ def technical_history_tabs(readings: list[WorkshopTechnicalReading]) -> list[dic
         counts[reading.reading_type] = counts.get(reading.reading_type, 0) + 1
 
     tabs = []
-    ordered_codes = [code for code, _ in WORKSHOP_READING_TYPES] + legacy_codes
+    known_codes = [code for code, _ in WORKSHOP_READING_TYPES] + legacy_codes
+    ordered_codes = known_codes + sorted(code for code, total in counts.items() if total and code not in known_codes)
     for code in ordered_codes:
         total = counts.get(code, 0)
         if total:
@@ -691,10 +861,19 @@ def technical_history_matrix(
 ) -> dict[str, list[dict] | list[WorkshopTechnicalReading]]:
     selected = [item for item in readings if item.reading_type == reading_type]
     selected.sort(key=lambda item: (item.reading_date or date.min, item.created_at.isoformat() if item.created_at else "", item.id))
+    configured_fields = TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type)
+    dynamic_fields = sorted(
+        {
+            key
+            for reading in selected
+            for key in (reading.data_json or {})
+            if key not in TECHNICAL_HISTORY_METADATA_FIELDS
+        }
+    )
     fields = [
         field
         for field in TECHNICAL_HISTORY_BASE_FIELDS
-        + TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type, TECHNICAL_HISTORY_FIELD_GROUPS["other"])
+        + (configured_fields or dynamic_fields)
         if field not in TECHNICAL_HISTORY_METADATA_FIELDS
     ]
 
@@ -15625,21 +15804,9 @@ def vehicle_detail(
             )
             .order_by(WorkshopProcess.id.desc())
         ).all()
-        technical_readings = db.scalars(
-            select(WorkshopTechnicalReading)
-            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
-            .order_by(
-                WorkshopTechnicalReading.reading_date.is_(None),
-                WorkshopTechnicalReading.reading_date.desc(),
-                WorkshopTechnicalReading.id.desc(),
-            )
-            .limit(20)
-        ).all()
-        technical_readings_count = db.scalar(
-            select(func.count()).select_from(WorkshopTechnicalReading).where(
-                WorkshopTechnicalReading.vehicle_id == vehicle.id
-            )
-        ) or 0
+        unified_technical_history = unified_vehicle_technical_readings(db, vehicle.id)
+        technical_readings = list(reversed(unified_technical_history[-20:]))
+        technical_readings_count = len(unified_technical_history)
         process_ids = {item.process_id for item in technical_readings if item.process_id}
         reading_process_by_id = {
             item.id: item
@@ -16384,14 +16551,7 @@ def vehicle_technical_history(
             .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
             .order_by(VehicleExternalSnapshot.updated_at.desc())
         )
-        readings = db.scalars(
-            select(WorkshopTechnicalReading)
-            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
-            .order_by(
-                WorkshopTechnicalReading.reading_date.asc(),
-                WorkshopTechnicalReading.id.asc(),
-            )
-        ).all()
+        readings = unified_vehicle_technical_readings(db, vehicle.id)
         tabs = technical_history_tabs(readings)
         selected_type = report_type if report_type in {item["code"] for item in tabs} else None
         if not selected_type and tabs:
@@ -16439,14 +16599,7 @@ def workshop_process_technical_history(
             .where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
             .order_by(VehicleExternalSnapshot.updated_at.desc())
         )
-        readings = db.scalars(
-            select(WorkshopTechnicalReading)
-            .where(WorkshopTechnicalReading.vehicle_id == vehicle.id)
-            .order_by(
-                WorkshopTechnicalReading.reading_date.asc(),
-                WorkshopTechnicalReading.id.asc(),
-            )
-        ).all()
+        readings = unified_vehicle_technical_readings(db, vehicle.id)
         tabs = technical_history_tabs(readings)
         selected_type = report_type if report_type in {item["code"] for item in tabs} else None
         if not selected_type and tabs:

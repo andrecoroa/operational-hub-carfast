@@ -215,12 +215,12 @@
           </details>
 
           <details class="workshop-record-group" {% if technical_readings_count %}open{% endif %}>
-            <summary>Histórico de leituras técnicas <span>{{ technical_readings_count }}</span></summary>
+            <summary>Histórico técnico unificado <span>{{ technical_readings_count }}</span></summary>
             <div class="technical-history-summary">
               {% if technical_readings_count %}
                 <div>
                   <strong>{{ technical_readings_count }} leituras técnicas associadas</strong>
-                  <p>Consulta a evolução por tipo de relatório, com cada leitura organizada em coluna.</p>
+                  <p>Inclui diagnósticos do arquivo documental e dos processos de oficina, ordenados pela data da recolha.</p>
                 </div>
                 <a class="button-link" href="/fleet/{{ vehicle.id }}/technical-history">Ver histórico técnico</a>
               {% else %}

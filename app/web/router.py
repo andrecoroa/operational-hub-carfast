@@ -21878,7 +21878,7 @@ def document_create(
         parsed_vehicle_id = parse_optional_int(vehicle_id)
         vehicle = db.get(Vehicle, parsed_vehicle_id) if parsed_vehicle_id else None
         if not vehicle and clean_plate:
-            vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == clean_plate))
+            vehicle = find_vehicle_by_plate(db, clean_plate)
         if vehicle:
             linked_vehicle_id = vehicle.id
             clean_plate = clean_plate or (vehicle.plate or "")

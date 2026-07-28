@@ -6,13 +6,12 @@
   <main class="content clean-content">
     <header class="clean-module-hero">
       <div>
-        <p class="eyebrow">Tarefas / experiência nova</p>
+        <p class="eyebrow">Operação</p>
         <h2>Centro de Tarefas</h2>
-        <p>Fila autónoma para criar, acompanhar e concluir trabalho da nova experiência. Problemas são exclusivos da Oficina.</p>
+        <p>Prioridades, prazos e trabalho pendente de todas as áreas.</p>
       </div>
       <div class="clean-module-hero-actions">
-        <a class="button-link secondary-link" href="/v2-clean">Início</a>
-        <a class="button-link secondary-link" href="/v2-clean/documents">Documentação</a>
+        <button class="button-link" type="button" data-task-create-open>Nova tarefa</button>
       </div>
     </header>
 
@@ -43,15 +42,12 @@
       <article><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></article>
     </section>
 
-    <section class="clean-task-command-grid">
-      <article class="clean-panel clean-card-wide">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Criar</p>
-            <h3>Novo registo</h3>
-            <p>Cria uma tarefa em qualquer área. Na Oficina também podes registar um problema.</p>
-          </div>
-        </div>
+    <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
+      <summary>
+        <span><b>Novo registo</b><small>Tarefa em qualquer área; problema apenas na Oficina.</small></span>
+        <span class="clean-task-summary-action">Criar</span>
+      </summary>
+      <div class="clean-task-create-body">
         <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
           <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">
           <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
@@ -96,35 +92,27 @@
             <button type="submit">Criar registo</button>
           </div>
         </form>
-      </article>
+      </div>
+    </details>
 
-      <aside class="clean-panel clean-panel-compact">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Filas</p>
-            <h3>Áreas de trabalho</h3>
-          </div>
-        </div>
-        <div class="clean-task-division-list">
-          {% for division in task_divisions %}
-            <a href="/v2-clean/tasks?workspace={{ division.code }}" class="{% if filters.workspace == division.code %}active{% endif %}">
-              <span class="clean-area-code">{{ division.short }}</span>
-              <strong>{{ division.label }}</strong>
-              <em>{{ division.open }} abertas · {{ division.due_today }} hoje</em>
-            </a>
-          {% endfor %}
-        </div>
-      </aside>
-    </section>
-
-    <section class="clean-panel clean-card-wide">
+    <section class="clean-panel clean-card-wide clean-task-queue-panel">
       <div class="table-heading flat-heading">
         <div>
-          <p class="eyebrow">Consulta</p>
           <h3>Fila de trabalho</h3>
-          <p>Consulta e trata os registos sem sair para o módulo antigo.</p>
+          <p>{{ tasks|length }} registos nos filtros atuais.</p>
         </div>
       </div>
+
+      <nav class="clean-task-workspace-tabs" aria-label="Áreas de trabalho">
+        <a href="/v2-clean/tasks?workspace=all" class="{% if filters.workspace == 'all' %}active{% endif %}">
+          <span>Todas</span><b>{{ task_metrics.open }}</b>
+        </a>
+        {% for division in task_divisions %}
+          <a href="/v2-clean/tasks?workspace={{ division.code }}" class="{% if filters.workspace == division.code %}active{% endif %}">
+            <span>{{ division.label }}</span><b>{{ division.open }}</b>
+          </a>
+        {% endfor %}
+      </nav>
 
       <form method="get" action="/v2-clean/tasks" class="clean-task-filter-row">
         <label>Área
@@ -173,9 +161,13 @@
           <tbody>
             {% for task in tasks %}
               {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
+              {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
               {% set task_is_closed = task.closed_at or task.status in ["closed", "cancelled", "no_action_needed", "resolved"] %}
               <tr>
                 <td>
+                  <span class="clean-task-kind {% if task_is_problem %}problem{% endif %}">
+                    {{ "Problema" if task_is_problem else "Tarefa" }}
+                  </span>
                   <strong>{{ task.title }}</strong>
                   <small>{{ task.description or "Sem descrição." }}</small>
                   {% if task.entity_type or task.entity_id %}
@@ -263,6 +255,18 @@
   };
   taskWorkspace?.addEventListener("change", syncProblemOption);
   syncProblemOption();
+
+  document.querySelector("[data-task-create-open]")?.addEventListener("click", () => {
+    const creator = document.getElementById("new-task");
+    if (!creator) return;
+    creator.open = true;
+    creator.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => creator.querySelector('input[name="title"]')?.focus(), 350);
+  });
+  if (window.location.hash === "#new-task") {
+    const creator = document.getElementById("new-task");
+    if (creator) creator.open = true;
+  }
 
   document.querySelectorAll("[data-task-detail-toggle]").forEach((button) => {
     button.addEventListener("click", () => {

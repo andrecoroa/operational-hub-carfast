@@ -4,26 +4,17 @@
   {% set active_menu = "clean" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-hero clean-home-hero">
+    <header class="clean-hero clean-home-hero clean-home-operational-hero">
       <div>
-        <p class="eyebrow">Experiência nova / beta</p>
-        <h2>CarFast v2-clean</h2>
-        <p>Entrada simples para operar por módulos, processos guiados e dados da frota.</p>
+        <p class="eyebrow">Operação</p>
+        <h2>Visão geral</h2>
+        <p>Trabalho em curso, prioridades e acessos principais da operação CarFast.</p>
       </div>
       <div class="button-row">
-        <a class="button-link" href="/v2-clean/workshop">Oficina</a>
+        <a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>
+        <a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>
       </div>
     </header>
-
-    <nav class="clean-home-module-grid" aria-label="Módulos principais">
-      <a href="/v2-clean"><b>Início</b><span>Entrada limpa da nova experiência</span></a>
-      <a href="/v2-clean/tasks"><b>Centro de Tarefas</b><span>Fila de trabalho a isolar nesta versão</span></a>
-      <a href="/v2-clean/processes"><b>Centro de Processos</b><span>Área, modelo e acompanhamento</span></a>
-      <a href="/v2-clean/workshop"><b>Oficina</b><span>Dashboard e fases de trabalho</span></a>
-      <a href="/v2-clean/fleet"><b>Frota</b><span>Ficha, regras e documentação</span></a>
-      <a href="/v2-clean/documents"><b>Documentação</b><span>Importações estruturadas e regras de arquivo</span></a>
-      <a href="/v2-clean/admin"><b>Administração</b><span>Zona reservada da nova experiência</span></a>
-    </nav>
 
     <section class="clean-home-metrics" aria-label="Indicadores principais">
       <article><span>Viaturas</span><strong>{{ quick_metrics.vehicles }}</strong><em>na frota</em></article>
@@ -36,22 +27,22 @@
       <article class="clean-panel clean-home-process-panel">
         <div class="table-heading flat-heading">
           <div>
-            <p class="eyebrow">Centro de Processos</p>
-            <h3>Começar por área</h3>
+            <p class="eyebrow">Prioridades</p>
+            <h3>Trabalho por área</h3>
           </div>
-          <a class="table-link" href="/v2-clean/processes">Abrir</a>
+          <a class="table-link" href="/v2-clean/processes">Ver processos</a>
         </div>
-        <div class="clean-area-grid">
+        <div class="clean-home-work-queue">
           {% for area in area_cards %}
-            <a class="clean-home-area-card" href="{{ area.href }}">
+            <a class="clean-home-work-row" href="{{ area.href }}">
               <span class="clean-area-code">{{ area.label[:2]|upper }}</span>
               <div>
                 <strong>{{ area.label }}</strong>
                 <small>{{ area.description }}</small>
               </div>
-              <div class="clean-card-meta">
+              <div class="clean-home-work-counts">
                 <span><b>{{ area.open }}</b> abertos</span>
-                <span><b>{{ area.critical }}</b> críticos</span>
+                <span class="{% if area.critical %}is-critical{% endif %}"><b>{{ area.critical }}</b> críticos</span>
               </div>
             </a>
           {% endfor %}
@@ -61,50 +52,28 @@
       <aside class="clean-home-side-stack">
         <article class="clean-panel clean-home-action-panel">
           <div>
-            <p class="eyebrow">Oficina</p>
-            <h3>Entrada rápida</h3>
-            <p>Fluxo visual em 7 fases para entrada, validação, diagnóstico, reparação e fecho.</p>
+            <p class="eyebrow">Acessos rápidos</p>
+            <h3>Operação diária</h3>
           </div>
-          <div class="clean-action-row">
-            <a class="button-link" href="/v2-clean/workshop">Abrir Oficina</a>
-            <a class="button-link secondary-link" href="/v2-clean/workshop-entry">Nova entrada</a>
-          </div>
-        </article>
-
-        <article class="clean-panel clean-home-action-panel soft">
-          <div>
-            <p class="eyebrow">Frota</p>
-            <h3>Consultar viatura</h3>
-            <p>Abrir ficha, documentação, alertas e regras de manutenção/IPO.</p>
-          </div>
-          <div class="clean-action-row">
-            <a class="button-link secondary-link" href="/v2-clean/fleet">Abrir frota</a>
+          <div class="clean-home-shortcuts">
+            <a href="/v2-clean/workshop"><span>Oficina</span><b>Dashboard</b></a>
+            <a href="/v2-clean/fleet"><span>Frota</span><b>Consultar viaturas</b></a>
+            <a href="/v2-clean/documents"><span>Documentação</span><b>Importar e validar</b></a>
+            <a href="/v2-clean/tasks"><span>Tarefas</span><b>Abrir fila</b></a>
           </div>
         </article>
 
-        <article class="clean-panel clean-home-action-panel soft">
+        <article class="clean-panel clean-home-action-panel clean-home-attention-panel">
           <div>
-            <p class="eyebrow">Publicação</p>
-            <h3>Em desenvolvimento</h3>
-            <p>Esta área já pode ser isolada por módulos, sem misturar acessos rápidos à operação antiga.</p>
+            <p class="eyebrow">Atenção</p>
+            <h3>{{ quick_metrics.workshop_alerts + quick_metrics.audits }} registos a rever</h3>
+            <p>{{ quick_metrics.workshop_alerts }} alertas de oficina e {{ quick_metrics.audits }} auditorias abertas.</p>
+          </div>
+          <div class="clean-action-row">
+            <a class="button-link secondary-link" href="/v2-clean/processes">Ver prioridades</a>
           </div>
         </article>
       </aside>
-    </section>
-
-    <section class="clean-panel clean-home-flow">
-      <div class="table-heading flat-heading">
-        <div>
-          <p class="eyebrow">Caminho base</p>
-          <h3>Como usar esta versão</h3>
-        </div>
-      </div>
-      <div class="clean-home-flow-grid">
-        <span><b>1</b><em>Escolher módulo</em></span>
-        <span><b>2</b><em>Abrir processo ou ficha</em></span>
-        <span><b>3</b><em>Anexar documentos</em></span>
-        <span><b>4</b><em>Validar e acompanhar</em></span>
-      </div>
     </section>
   </main>
 </div>

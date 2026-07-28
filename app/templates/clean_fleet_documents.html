@@ -665,7 +665,7 @@
 
     <section class="clean-doc-group-strip">
       {% for code, label in main_groups %}
-        <a class="clean-doc-group-card {% if main_group == code %}active{% endif %}" href="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}">
+        <a class="clean-doc-group-card {% if main_group == code %}active{% endif %}" href="{% if code == 'diagnostics' %}/v2-clean/fleet/{{ vehicle.id }}/diagnostics{% else %}/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ code }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}{% endif %}">
           <span class="clean-doc-group-badge">{{ label[:2]|upper }}</span>
           <div>
             <strong>{{ label }}</strong>

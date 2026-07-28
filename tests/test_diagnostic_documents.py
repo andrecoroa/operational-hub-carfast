@@ -207,6 +207,98 @@ def test_vehicle_page_has_separate_diagnostic_table_and_real_counts():
             assert diagnostic.validation_status == "needs_review"
 
 
+def test_clean_vehicle_diagnostics_has_dedicated_operational_page():
+    with diagnostic_test_context() as (testing_session, client):
+        with testing_session() as db:
+            vehicle = Vehicle(
+                plate="DI-24-GN",
+                vin="VF7DIAGNOSTICPAGE01",
+                rentway_unit_nr="485",
+                brand="Peugeot",
+                model="Partner",
+                lifecycle_status="active",
+                operational_status="free",
+            )
+            document = make_document(
+                title="Leitura de defeitos",
+                original_name="A_LD_VF7DIAGNOSTICPAGE01_260728_1425.pdf",
+                file_name="A_LD_VF7DIAGNOSTICPAGE01_260728_1425.pdf",
+                storage_path=r"C:\diagnostics\A_LD_example.pdf",
+                document_type="workshop_diagnostic",
+                vehicle_id=None,
+                plate=vehicle.plate,
+            )
+            db.add_all([vehicle, document])
+            db.flush()
+            document.vehicle_id = vehicle.id
+            profile = DiagnosticDocument(
+                document_id=document.id,
+                diagnostic_type="fault_codes_global_test",
+                diagnostic_status="completed",
+                association_status="confirmed",
+                diagnostic_tool="Autel",
+                report_datetime=datetime(2026, 7, 28, 14, 25),
+                odometer_km=64000,
+                ocr_status="extracted",
+                validation_status="needs_review",
+            )
+            db.add(profile)
+            db.flush()
+            db.add(
+                DiagnosticExtraction(
+                    diagnostic_document_id=profile.id,
+                    extractor_name="diagnostic_pdf",
+                    extractor_version="1",
+                    parser_name="autel_diagnostic_parser",
+                    parser_version="1",
+                    source_machine="autel",
+                    source_family="LD",
+                    source_filename=document.original_name,
+                    source_sha256="d" * 64,
+                    source_page_count=2,
+                    extraction_method="native_text",
+                    extraction_status="extracted",
+                    confidence=0.96,
+                    normalized_data_json={"vin": vehicle.vin},
+                    dynamic_fields_json={
+                        "observations": [
+                            {
+                                "label": "Tensão bateria",
+                                "value": "12.4",
+                                "unit": "V",
+                                "page": 1,
+                            }
+                        ],
+                        "dtcs": [
+                            {
+                                "code": "P0420",
+                                "raw_context": "Eficiência do catalisador",
+                                "page": 2,
+                            }
+                        ],
+                    },
+                    warnings_json=[],
+                )
+            )
+            db.commit()
+            vehicle_id = vehicle.id
+
+        page = client.get(f"/v2-clean/fleet/{vehicle_id}/diagnostics")
+        assert page.status_code == 200
+        assert "Histórico técnico" in page.text
+        assert "Arquivo documental" in page.text
+        assert "28/07/2026" in page.text
+        assert "14:25:00" in page.text
+        assert "P0420" in page.text
+        assert "Tensão bateria" in page.text
+        assert 'data-src="/documents/' in page.text
+        assert '<iframe title="Pré-visualização do diagnóstico" src=' not in page.text
+
+        documents_page = client.get(f"/v2-clean/fleet/{vehicle_id}/documents")
+        assert documents_page.status_code == 200
+        assert f"/v2-clean/fleet/{vehicle_id}/diagnostics" in documents_page.text
+
+
 def test_document_intake_normalizes_plate_and_creates_diagnostic_profile():
     with diagnostic_test_context() as (testing_session, client):
         with testing_session() as db:

@@ -6435,6 +6435,160 @@ def clean_fleet_documents(
         return response
 
 
+@web_router.get("/v2-clean/fleet/{vehicle_id}/diagnostics", response_class=HTMLResponse)
+def clean_fleet_diagnostics(
+    request: Request,
+    vehicle_id: int,
+    q: str = "",
+    diagnostic_type: str = "",
+    origin: str = "",
+    status: str = "",
+    selected: str = "",
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse("/v2-clean/fleet", status_code=303)
+
+        ctx = clean_vehicle_display_context(db, vehicle)
+        readings = list(reversed(unified_vehicle_technical_readings(db, vehicle.id)))
+        search = q.strip().lower()
+        rows: list[dict[str, Any]] = []
+        type_options: dict[str, str] = {}
+        for reading in readings:
+            data = dict(reading.data_json or {})
+            reading_type = str(reading.reading_type or "other")
+            type_label = DIAGNOSTIC_TYPE_LABELS.get(
+                reading_type,
+                str(
+                    data.get("report_type_label")
+                    or data.get("report_type")
+                    or reading_type
+                ).replace("_", " ").title(),
+            )
+            type_options[reading_type] = type_label
+            row_origin = str(data.get("record_origin") or "legacy_history")
+            origin_label = str(data.get("origin_label") or "Histórico importado")
+            machine = str(
+                data.get("machine_source")
+                or data.get("diagnostic_tool")
+                or data.get("tool")
+                or data.get("source_machine")
+                or ""
+            ).strip()
+            observations = (
+                data.get("observations")
+                if isinstance(data.get("observations"), list)
+                else []
+            )
+            dtcs = data.get("dtcs") if isinstance(data.get("dtcs"), list) else []
+            warnings = (
+                data.get("warnings") if isinstance(data.get("warnings"), list) else []
+            )
+            report_datetime = getattr(reading, "report_datetime", None)
+            if not report_datetime and reading.reading_date:
+                report_datetime = datetime.combine(reading.reading_date, time.min)
+            document_id = data.get("document_id")
+            file_url = ""
+            if document_id:
+                file_url = f"/documents/{document_id}/file?inline=1"
+            elif reading.external_url:
+                file_url = str(reading.external_url)
+            blob = " ".join(
+                str(value or "")
+                for value in (
+                    reading.summary,
+                    type_label,
+                    origin_label,
+                    machine,
+                    reading.status,
+                    data.get("vin"),
+                    data.get("plate"),
+                    " ".join(
+                        str(item.get("code") or "")
+                        for item in dtcs
+                        if isinstance(item, dict)
+                    ),
+                )
+            ).lower()
+            if search and search not in blob:
+                continue
+            if diagnostic_type and reading_type != diagnostic_type:
+                continue
+            if origin and row_origin != origin:
+                continue
+            if status and str(reading.status or "") != status:
+                continue
+            rows.append(
+                {
+                    "key": f"reading:{reading.id}",
+                    "type_label": type_label,
+                    "origin_label": origin_label,
+                    "machine": machine or "Não identificada",
+                    "date_display": (
+                        report_datetime.strftime("%d/%m/%Y")
+                        if report_datetime
+                        else "-"
+                    ),
+                    "time_display": (
+                        report_datetime.strftime("%H:%M:%S")
+                        if report_datetime and report_datetime.time() != time.min
+                        else "-"
+                    ),
+                    "status": str(reading.status or "pending"),
+                    "status_label": DIAGNOSTIC_VALIDATION_STATUS_LABELS.get(
+                        str(reading.status or ""),
+                        str(reading.status or "Pendente").replace("_", " ").title(),
+                    ),
+                    "observations": observations,
+                    "dtcs": dtcs,
+                    "warnings": warnings,
+                    "file_url": file_url,
+                    "document_id": document_id,
+                    "process_id": reading.process_id,
+                    "summary": reading.summary or type_label,
+                    "odometer_km": (
+                        reading.odometer_km
+                        or data.get("odometer_km")
+                        or data.get("odometer")
+                    ),
+                    "data": data,
+                }
+            )
+
+        selected_row = next((row for row in rows if row["key"] == selected), None)
+        if not selected_row and rows:
+            selected_row = rows[0]
+        return templates.TemplateResponse(
+            request,
+            "clean_fleet_diagnostics.html",
+            {
+                "vehicle": vehicle,
+                "ctx": ctx,
+                "rows": rows,
+                "selected_row": selected_row,
+                "q": q,
+                "selected_type": diagnostic_type,
+                "selected_origin": origin,
+                "selected_status": status,
+                "type_options": sorted(type_options.items(), key=lambda item: item[1]),
+                "all_dtcs": sum(len(row["dtcs"]) for row in rows),
+                "warning_count": sum(len(row["warnings"]) for row in rows),
+                "origin_options": [
+                    ("document_archive", "Arquivo documental"),
+                    ("workshop_process", "Processo de oficina"),
+                    ("legacy_history", "Histórico importado"),
+                ],
+            },
+        )
+
+
 @web_router.get("/v2-clean/fleet/{vehicle_id}/documents/new", response_class=HTMLResponse)
 def clean_fleet_documents_new(request: Request, vehicle_id: int):
     denied = clean_experience_denied(request)

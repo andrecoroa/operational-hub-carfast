@@ -20093,3 +20093,242 @@ body.clean-doc-modal-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* Dedicated diagnostic history */
+.clean-diagnostic-page {
+  max-width: 1680px;
+}
+
+.clean-diagnostic-header,
+.clean-diagnostic-detail-heading,
+.clean-diagnostic-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.clean-diagnostic-filter-grid {
+  grid-template-columns: minmax(240px, 1.6fr) repeat(3, minmax(160px, 1fr)) 140px;
+}
+
+.clean-diagnostic-workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.85fr) minmax(620px, 1.65fr);
+  gap: 12px;
+  min-height: 620px;
+}
+
+.clean-diagnostic-list,
+.clean-diagnostic-detail {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.clean-diagnostic-section-heading,
+.clean-diagnostic-detail-heading {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.clean-diagnostic-section-heading div,
+.clean-diagnostic-detail-heading > div:first-child,
+.clean-diagnostic-row time,
+.clean-diagnostic-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.clean-diagnostic-section-heading span,
+.clean-diagnostic-detail-heading span,
+.clean-diagnostic-row span,
+.clean-diagnostic-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.clean-diagnostic-list-scroll {
+  max-height: 700px;
+  overflow: auto;
+}
+
+.clean-diagnostic-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+
+.clean-diagnostic-row:hover,
+.clean-diagnostic-row.active {
+  background: #f3f6fa;
+}
+
+.clean-diagnostic-row.active {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.clean-diagnostic-row span,
+.clean-diagnostic-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-diagnostic-row-status {
+  justify-items: end;
+}
+
+.clean-diagnostic-row-status b {
+  color: var(--brand);
+  font-size: 11px;
+}
+
+.clean-diagnostic-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.clean-diagnostic-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  margin: 0 16px 14px;
+  border: 1px solid var(--line);
+}
+
+.clean-diagnostic-facts span {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-right: 1px solid var(--line);
+}
+
+.clean-diagnostic-facts span:last-child {
+  border-right: 0;
+}
+
+.clean-diagnostic-facts b {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.clean-diagnostic-facts em {
+  color: var(--ink);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.clean-diagnostic-data {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.clean-diagnostic-block,
+.clean-diagnostic-technical {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.clean-diagnostic-dtc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.clean-diagnostic-dtc-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-left: 3px solid #b54735;
+  background: #fff7f4;
+}
+
+.clean-diagnostic-empty {
+  margin: 0;
+  padding: 18px;
+  color: var(--muted);
+}
+
+.clean-diagnostic-preview {
+  height: 680px;
+  margin: 0 16px 16px;
+  border: 1px solid var(--line);
+}
+
+.clean-diagnostic-preview iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.clean-diagnostic-technical summary {
+  padding: 13px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.clean-diagnostic-technical p,
+.clean-diagnostic-technical dl {
+  margin: 0;
+  padding: 0 13px 13px;
+}
+
+.clean-diagnostic-technical dl div {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+
+.clean-diagnostic-technical dt {
+  color: var(--muted);
+}
+
+.clean-diagnostic-technical dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .clean-diagnostic-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-diagnostic-filter-grid,
+  .clean-diagnostic-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .clean-diagnostic-header,
+  .clean-diagnostic-detail-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .clean-diagnostic-filter-grid,
+  .clean-diagnostic-facts,
+  .clean-diagnostic-dtc-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-diagnostic-row {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .clean-diagnostic-row-status {
+    grid-column: 2;
+    justify-items: start;
+  }
+}

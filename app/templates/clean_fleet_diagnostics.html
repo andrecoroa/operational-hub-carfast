@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content clean-diagnostic-page">
+    <section class="clean-vehicle-header-card clean-vehicle-header-card-unified clean-vehicle-header-card-process">
+      <div class="clean-vehicle-header-main">
+        <div class="clean-vehicle-identity">
+          <strong>{{ ctx.identity.plate or "-" }}</strong>
+          <span>{{ ctx.identity.brand }} {{ ctx.identity.model }}{% if ctx.identity.version and ctx.identity.version != "-" %} · {{ ctx.identity.version }}{% endif %}</span>
+        </div>
+        <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
+          <span><b>Unit</b><em>{{ ctx.identity.unit or "-" }}</em></span>
+          <span><b>VIN</b><em>{{ ctx.identity.vin or "-" }}</em></span>
+          <span><b>KM atuais</b><em>{{ ctx.identity.current_km or "-" }}</em></span>
+          <span><b>Relatórios</b><em>{{ rows|length }}</em></span>
+          <span><b>DTC registados</b><em>{{ all_dtcs }}</em></span>
+          <span><b>Avisos</b><em>{{ warning_count }}</em></span>
+        </div>
+      </div>
+    </section>
+
+    <header class="clean-doc-page-header clean-card-wide clean-diagnostic-header">
+      <div>
+        <p class="eyebrow">Histórico técnico</p>
+        <h1>Diagnósticos</h1>
+        <p>Arquivo e processos de oficina, ordenados pela data e hora real de recolha.</p>
+      </div>
+      <div class="clean-header-actions">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Importar relatório</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentação</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
+      </div>
+    </header>
+
+    <form method="get" class="clean-doc-filter-panel clean-card-wide">
+      <div class="clean-doc-filter-grid clean-diagnostic-filter-grid">
+        <label>Pesquisar
+          <input name="q" value="{{ q }}" placeholder="Tipo, DTC, máquina, relatório...">
+        </label>
+        <label>Tipo
+          <select name="diagnostic_type">
+            <option value="">Todos</option>
+            {% for code, label in type_options %}
+              <option value="{{ code }}" {% if selected_type == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Origem
+          <select name="origin">
+            <option value="">Todas</option>
+            {% for code, label in origin_options %}
+              <option value="{{ code }}" {% if selected_origin == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Estado
+          <select name="status">
+            <option value="">Todos</option>
+            <option value="pending" {% if selected_status == "pending" %}selected{% endif %}>Pendente</option>
+            <option value="needs_review" {% if selected_status == "needs_review" %}selected{% endif %}>Requer revisão</option>
+            <option value="validated" {% if selected_status == "validated" %}selected{% endif %}>Validado</option>
+            <option value="rejected" {% if selected_status == "rejected" %}selected{% endif %}>Rejeitado</option>
+          </select>
+        </label>
+        <button type="submit">Filtrar</button>
+      </div>
+    </form>
+
+    <section class="clean-diagnostic-workbench">
+      <aside class="clean-diagnostic-list clean-card-wide">
+        <div class="clean-diagnostic-section-heading">
+          <div><strong>Linha cronológica</strong><span>{{ rows|length }} relatórios encontrados</span></div>
+        </div>
+        {% if rows %}
+          <div class="clean-diagnostic-list-scroll">
+            {% for row in rows %}
+              <a class="clean-diagnostic-row {% if selected_row and selected_row.key == row.key %}active{% endif %}"
+                 href="?q={{ q|urlencode }}&diagnostic_type={{ selected_type|urlencode }}&origin={{ selected_origin|urlencode }}&status={{ selected_status|urlencode }}&selected={{ row.key|urlencode }}">
+                <time><strong>{{ row.date_display }}</strong><span>{{ row.time_display }}</span></time>
+                <div>
+                  <strong>{{ row.type_label }}</strong>
+                  <span>{{ row.origin_label }} · {{ row.machine }}</span>
+                  <small>{{ row.summary }}</small>
+                </div>
+                <div class="clean-diagnostic-row-status">
+                  {% if row.dtcs %}<b>{{ row.dtcs|length }} DTC</b>{% endif %}
+                  <em class="pill status-{{ row.status }}">{{ row.status_label }}</em>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">Não existem diagnósticos para os filtros selecionados.</div>
+        {% endif %}
+      </aside>
+
+      <article class="clean-diagnostic-detail clean-card-wide">
+        {% if selected_row %}
+          <div class="clean-diagnostic-detail-heading">
+            <div>
+              <p class="eyebrow">{{ selected_row.origin_label }}</p>
+              <h2>{{ selected_row.type_label }}</h2>
+              <span>{{ selected_row.date_display }} · {{ selected_row.time_display }} · {{ selected_row.machine }}</span>
+            </div>
+            <div class="clean-diagnostic-detail-actions">
+              {% if selected_row.file_url %}
+                <button type="button" class="secondary" data-diagnostic-preview-toggle>Pré-visualizar PDF</button>
+              {% endif %}
+              {% if selected_row.document_id %}
+                <a class="button-link secondary-link" href="/documents/{{ selected_row.document_id }}">Dados e validação</a>
+              {% endif %}
+              {% if selected_row.process_id %}
+                <a class="button-link secondary-link" href="/v2-clean/workshop-entry?process_id={{ selected_row.process_id }}">Processo de oficina</a>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="clean-diagnostic-facts">
+            <span><b>Data/hora</b><em>{{ selected_row.date_display }} {{ selected_row.time_display }}</em></span>
+            <span><b>Origem</b><em>{{ selected_row.origin_label }}</em></span>
+            <span><b>Máquina</b><em>{{ selected_row.machine }}</em></span>
+            <span><b>KM</b><em>{{ selected_row.odometer_km or "-" }}</em></span>
+            <span><b>Estado</b><em>{{ selected_row.status_label }}</em></span>
+          </div>
+
+          {% if selected_row.file_url %}
+            <section class="clean-diagnostic-preview" data-diagnostic-preview hidden>
+              <iframe title="Pré-visualização do diagnóstico" data-src="{{ selected_row.file_url }}"></iframe>
+            </section>
+          {% endif %}
+
+          <section class="clean-diagnostic-data" data-diagnostic-data>
+            <div class="clean-diagnostic-block">
+              <div class="clean-diagnostic-section-heading">
+                <div><strong>Códigos de avaria</strong><span>{{ selected_row.dtcs|length }} códigos</span></div>
+              </div>
+              {% if selected_row.dtcs %}
+                <div class="clean-diagnostic-dtc-grid">
+                  {% for dtc in selected_row.dtcs %}
+                    <article>
+                      <strong>{{ dtc.get("code") or "Código não identificado" }}</strong>
+                      <span>{{ dtc.get("description") or dtc.get("raw_context") or "-" }}</span>
+                      {% if dtc.get("ecu") %}<small>{{ dtc.get("ecu") }}</small>{% endif %}
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="clean-diagnostic-empty">Nenhum DTC estruturado neste relatório.</p>
+              {% endif %}
+            </div>
+
+            <div class="clean-diagnostic-block">
+              <div class="clean-diagnostic-section-heading">
+                <div><strong>Parâmetros e medições</strong><span>{{ selected_row.observations|length }} valores</span></div>
+              </div>
+              {% if selected_row.observations %}
+                <div class="clean-doc-table-wrap">
+                  <table class="clean-doc-table">
+                    <thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Página</th></tr></thead>
+                    <tbody>
+                      {% for field in selected_row.observations %}
+                        <tr>
+                          <td><strong>{{ field.get("label") or "-" }}</strong>{% if field.get("help") %}<small>{{ field.get("help") }}</small>{% endif %}</td>
+                          <td>{{ field.get("value") or "-" }}</td>
+                          <td>{{ field.get("unit") or "-" }}</td>
+                          <td>{{ field.get("page") or "-" }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="clean-diagnostic-empty">Ainda não existem parâmetros estruturados. Em “Dados e validação” podes extrair ou reprocessar o PDF.</p>
+              {% endif %}
+            </div>
+
+            {% if selected_row.warnings %}
+              <details class="clean-diagnostic-technical">
+                <summary>Avisos da extração ({{ selected_row.warnings|length }})</summary>
+                {% for warning in selected_row.warnings %}<p>{{ warning }}</p>{% endfor %}
+              </details>
+            {% endif %}
+            <details class="clean-diagnostic-technical">
+              <summary>Dados técnicos completos</summary>
+              <dl>
+                {% for key, value in selected_row.data.items() %}
+                  {% if key not in ["observations", "dtcs", "warnings"] %}
+                    <div><dt>{{ key|replace("_", " ")|title }}</dt><dd>{{ value }}</dd></div>
+                  {% endif %}
+                {% endfor %}
+              </dl>
+            </details>
+          </section>
+        {% else %}
+          <div class="empty-state">Seleciona um diagnóstico para consultar os dados técnicos.</div>
+        {% endif %}
+      </article>
+    </section>
+  </main>
+</div>
+<script>
+(() => {
+  const button = document.querySelector("[data-diagnostic-preview-toggle]");
+  const preview = document.querySelector("[data-diagnostic-preview]");
+  const data = document.querySelector("[data-diagnostic-data]");
+  if (!button || !preview || !data) return;
+  button.addEventListener("click", () => {
+    const opening = preview.hidden;
+    preview.hidden = !opening;
+    data.hidden = opening;
+    button.textContent = opening ? "Voltar aos dados" : "Pré-visualizar PDF";
+    const frame = preview.querySelector("iframe");
+    if (opening && frame && !frame.getAttribute("src")) {
+      frame.setAttribute("src", frame.dataset.src);
+    }
+  });
+})();
+</script>
+{% endblock %}

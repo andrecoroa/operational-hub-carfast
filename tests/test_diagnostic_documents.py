@@ -706,6 +706,9 @@ def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
             }
 
             first = persist_diagnostic_extraction(db, profile, payload)
+            profile.ocr_status = "pending"
+            profile.diagnostic_status = "processing"
+            profile.validation_status = "pending"
             second = persist_diagnostic_extraction(db, profile, payload)
             db.flush()
 
@@ -717,6 +720,8 @@ def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
             assert profile.report_number == "MAXIA20260117095227"
             assert profile.report_datetime == datetime(2026, 1, 17, 9, 52, 27)
             assert profile.diagnostic_tool == "MaxiDAS DS900-BT"
+            assert profile.ocr_status == "extracted"
+            assert profile.diagnostic_status == "ready_for_review"
             assert profile.validation_status == "needs_review"
             assert document.vehicle_id == vehicle.id
             assert document.file_hash == "a" * 64
@@ -729,3 +734,93 @@ def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
         assert "Dados técnicos completos da extração" in detail.text
         assert "Taxa de diluição estimada" in detail.text
         assert "autel_diagnostic_parser" in detail.text
+
+
+def test_diagnostic_center_separates_health_from_operational_states():
+    with diagnostic_test_context() as (testing_session, client):
+        with testing_session() as db:
+            vehicle = Vehicle(
+                plate="AU-10-DI",
+                vin="VF7AUDITDIAGNOSTIC",
+                rentway_unit_nr="710",
+                lifecycle_status="active",
+                operational_status="free",
+            )
+            extracted_document = make_document(
+                title="Leitura de defeitos",
+                document_type="workshop_diagnostic",
+                vehicle_id=None,
+            )
+            pending_document = make_document(
+                title="Plano de manutenção",
+                document_type="workshop_diagnostic",
+                original_name="plano.pdf",
+                file_name="plano.pdf",
+                vehicle_id=None,
+            )
+            db.add_all([vehicle, extracted_document, pending_document])
+            db.flush()
+            extracted_document.vehicle_id = vehicle.id
+            pending_document.vehicle_id = vehicle.id
+            extracted_profile = DiagnosticDocument(
+                document_id=extracted_document.id,
+                diagnostic_type="fault_codes_global_test",
+                diagnostic_status="processing",
+                association_status="confirmed",
+                ocr_status="pending",
+                validation_status="pending",
+            )
+            pending_profile = DiagnosticDocument(
+                document_id=pending_document.id,
+                diagnostic_type="manufacturer_maintenance_plan",
+                diagnostic_status="processing",
+                association_status="confirmed",
+                ocr_status="pending",
+                validation_status="pending",
+            )
+            db.add_all([extracted_profile, pending_profile])
+            db.flush()
+            db.add(
+                DiagnosticExtraction(
+                    diagnostic_document_id=extracted_profile.id,
+                    extractor_name="diagnostic_pdf",
+                    extractor_version="1",
+                    parser_name="autel",
+                    parser_version="1",
+                    source_machine="autel",
+                    source_family="LD",
+                    source_filename="leitura.pdf",
+                    source_sha256="e" * 64,
+                    source_page_count=1,
+                    extraction_method="native_text",
+                    extraction_status="extracted",
+                    confidence=0.9,
+                    native_text="P0420",
+                    normalized_data_json={"vin": vehicle.vin},
+                    dynamic_fields_json={"dtcs": [{"code": "P0420"}]},
+                    warnings_json=[],
+                )
+            )
+            db.commit()
+
+        page = client.get("/v2-clean/diagnostics")
+        assert page.status_code == 200
+        assert "Auditoria de diagnósticos" in page.text
+        assert "Estado incoerente" in page.text
+        assert "Sem extração" in page.text
+
+        reconciled = client.post(
+            "/v2-clean/diagnostics/reconcile",
+            follow_redirects=False,
+        )
+        assert reconciled.status_code == 303
+        assert "reconciled=1" in reconciled.headers["location"]
+
+        with testing_session() as db:
+            profiles = db.scalars(
+                select(DiagnosticDocument).order_by(DiagnosticDocument.id)
+            ).all()
+            assert profiles[0].ocr_status == "extracted"
+            assert profiles[0].diagnostic_status == "ready_for_review"
+            assert profiles[0].validation_status == "needs_review"
+            assert profiles[1].ocr_status == "pending"

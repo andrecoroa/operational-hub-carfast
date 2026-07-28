@@ -182,6 +182,7 @@ from app.services.diagnostic_documents import (
 from app.services.diagnostic_ocr import (
     extract_diagnostic_pdf,
     persist_diagnostic_extraction,
+    synchronize_diagnostic_profile_from_extraction,
 )
 from app.services.users import create_user
 from app.services.vehicles import normalize_identifier
@@ -6433,6 +6434,168 @@ def clean_fleet_documents(
         )
         db.commit()
         return response
+
+
+def _diagnostic_extraction_has_data(extraction: DiagnosticExtraction | None) -> bool:
+    if not extraction:
+        return False
+    dynamic = extraction.dynamic_fields_json or {}
+    return bool(
+        (extraction.native_text or "").strip()
+        or (extraction.ocr_text or "").strip()
+        or extraction.normalized_data_json
+        or any(value for value in dynamic.values() if isinstance(value, list))
+    )
+
+
+def _diagnostic_audit_health(
+    profile: DiagnosticDocument,
+    extraction: DiagnosticExtraction | None,
+) -> str:
+    if not extraction:
+        return "missing_extraction"
+    if extraction.extraction_status != "extracted":
+        return "extraction_failed"
+    if not _diagnostic_extraction_has_data(extraction):
+        return "empty_extraction"
+    if profile.ocr_status != "extracted" or profile.diagnostic_status in {
+        "received",
+        "processing",
+    }:
+        return "state_mismatch"
+    return "ready"
+
+
+@web_router.get("/v2-clean/diagnostics", response_class=HTMLResponse)
+def clean_diagnostics_center(
+    request: Request,
+    health: str = "",
+    reconciled: int | None = None,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+
+    health_labels = {
+        "ready": "Com extração",
+        "missing_extraction": "Sem extração",
+        "extraction_failed": "Extração falhada",
+        "empty_extraction": "Extração vazia",
+        "state_mismatch": "Estado incoerente",
+    }
+    with SessionLocal() as db:
+        records = db.execute(
+            select(Document, DiagnosticDocument)
+            .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
+            .order_by(
+                DiagnosticDocument.report_datetime.is_(None),
+                DiagnosticDocument.report_datetime.desc(),
+                Document.id.desc(),
+            )
+        ).all()
+        profile_ids = [profile.id for _, profile in records]
+        latest_by_profile: dict[int, DiagnosticExtraction] = {}
+        if profile_ids:
+            for extraction in db.scalars(
+                select(DiagnosticExtraction)
+                .where(DiagnosticExtraction.diagnostic_document_id.in_(profile_ids))
+                .order_by(DiagnosticExtraction.created_at.desc(), DiagnosticExtraction.id.desc())
+            ).all():
+                latest_by_profile.setdefault(extraction.diagnostic_document_id, extraction)
+
+        counts = {key: 0 for key in health_labels}
+        rows = []
+        for document, profile in records:
+            extraction = latest_by_profile.get(profile.id)
+            health_code = _diagnostic_audit_health(profile, extraction)
+            counts[health_code] += 1
+            if health and health_code != health:
+                continue
+            rows.append(
+                {
+                    "document": document,
+                    "profile": profile,
+                    "extraction": extraction,
+                    "health": health_code,
+                    "health_label": health_labels[health_code],
+                    "type_label": DIAGNOSTIC_TYPE_LABELS.get(
+                        profile.diagnostic_type,
+                        profile.diagnostic_type or "Por identificar",
+                    ),
+                    "vehicle": db.get(Vehicle, document.vehicle_id) if document.vehicle_id else None,
+                    "field_count": sum(
+                        len(value)
+                        for value in ((extraction.dynamic_fields_json or {}) if extraction else {}).values()
+                        if isinstance(value, list)
+                    ),
+                }
+            )
+
+        return templates.TemplateResponse(
+            request,
+            "clean_diagnostics_center.html",
+            {
+                "rows": rows[:250],
+                "total_filtered": len(rows),
+                "total": len(records),
+                "counts": counts,
+                "health_labels": health_labels,
+                "selected_health": health,
+                "reconciled": reconciled,
+                "diagnostic_status_labels": DIAGNOSTIC_STATUS_LABELS,
+                "ocr_status_labels": DIAGNOSTIC_OCR_STATUS_LABELS,
+                "validation_status_labels": DIAGNOSTIC_VALIDATION_STATUS_LABELS,
+                "association_status_labels": DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
+            },
+        )
+
+
+@web_router.post("/v2-clean/diagnostics/reconcile", response_class=HTMLResponse)
+def reconcile_diagnostic_states(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse("/v2-clean/diagnostics", status_code=303)
+
+    changed = 0
+    with SessionLocal() as db:
+        profiles = db.scalars(select(DiagnosticDocument)).all()
+        profile_ids = [profile.id for profile in profiles]
+        latest_by_profile: dict[int, DiagnosticExtraction] = {}
+        if profile_ids:
+            for extraction in db.scalars(
+                select(DiagnosticExtraction)
+                .where(DiagnosticExtraction.diagnostic_document_id.in_(profile_ids))
+                .order_by(DiagnosticExtraction.created_at.desc(), DiagnosticExtraction.id.desc())
+            ).all():
+                latest_by_profile.setdefault(extraction.diagnostic_document_id, extraction)
+        for profile in profiles:
+            extraction = latest_by_profile.get(profile.id)
+            if not extraction:
+                continue
+            before = (
+                profile.diagnostic_status,
+                profile.ocr_status,
+                profile.validation_status,
+                profile.ocr_payload_json,
+            )
+            synchronize_diagnostic_profile_from_extraction(db, profile, extraction)
+            after = (
+                profile.diagnostic_status,
+                profile.ocr_status,
+                profile.validation_status,
+                profile.ocr_payload_json,
+            )
+            if before != after:
+                changed += 1
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/diagnostics?reconciled={changed}",
+        status_code=303,
+    )
 
 
 @web_router.get("/v2-clean/fleet/{vehicle_id}/diagnostics", response_class=HTMLResponse)

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content clean-diagnostics-center">
+    <header class="clean-doc-page-header clean-card-wide">
+      <div>
+        <p class="eyebrow">Documentação / relatórios técnicos</p>
+        <h1>Auditoria de diagnósticos</h1>
+        <p>Separa processamento, OCR, validação e associação. Um relatório pode estar extraído e continuar pendente de validação.</p>
+      </div>
+      <div class="clean-header-actions">
+        <a class="button-link secondary-link" href="/v2-clean/documents">Documentação</a>
+        <form method="post" action="/v2-clean/diagnostics/reconcile">
+          <button type="submit">Reconciliar estados</button>
+        </form>
+      </div>
+    </header>
+
+    {% if reconciled is not none %}
+      <div class="flash-success">{{ reconciled }} relatórios tiveram os estados técnicos reconciliados.</div>
+    {% endif %}
+
+    <nav class="clean-diagnostic-audit-counts" aria-label="Estado da extração">
+      <a href="/v2-clean/diagnostics" class="{% if not selected_health %}active{% endif %}">
+        <strong>{{ total }}</strong><span>Todos</span>
+      </a>
+      {% for code, label in health_labels.items() %}
+        <a href="/v2-clean/diagnostics?health={{ code }}" class="{% if selected_health == code %}active{% endif %}">
+          <strong>{{ counts[code] }}</strong><span>{{ label }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+
+    <section class="clean-card-wide clean-panel">
+      <div class="table-heading flat-heading">
+        <div>
+          <h2>{{ health_labels.get(selected_health, "Todos os relatórios") }}</h2>
+          <p>{{ total_filtered }} encontrados{% if total_filtered > 250 %}; são mostrados os 250 mais recentes{% endif %}.</p>
+        </div>
+      </div>
+      <div class="clean-doc-table-wrap clean-diagnostic-audit-table">
+        <table class="clean-doc-table">
+          <thead>
+            <tr>
+              <th>Data</th><th>Viatura</th><th>Tipo</th><th>Diagnóstico</th>
+              <th>OCR</th><th>Validação</th><th>Associação</th><th>Extração</th><th>Dados</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.profile.report_datetime.strftime("%d/%m/%Y %H:%M") if row.profile.report_datetime else (row.document.document_date.strftime("%d/%m/%Y") if row.document.document_date else "-") }}</td>
+                <td>
+                  {% if row.vehicle %}
+                    <strong>{{ row.vehicle.plate or row.vehicle.rentway_unit_nr or row.vehicle.id }}</strong>
+                    <small>Unit {{ row.vehicle.rentway_unit_nr or "-" }}</small>
+                  {% else %}<em>Por associar</em>{% endif %}
+                </td>
+                <td><strong>{{ row.type_label }}</strong><small>{{ row.extraction.source_machine if row.extraction else "-" }}{% if row.extraction and row.extraction.source_family %} · {{ row.extraction.source_family }}{% endif %}</small></td>
+                <td>{{ diagnostic_status_labels.get(row.profile.diagnostic_status, row.profile.diagnostic_status) }}</td>
+                <td>{{ ocr_status_labels.get(row.profile.ocr_status, row.profile.ocr_status) }}</td>
+                <td>{{ validation_status_labels.get(row.profile.validation_status, row.profile.validation_status) }}</td>
+                <td>{{ association_status_labels.get(row.profile.association_status, row.profile.association_status) }}</td>
+                <td><span class="pill diagnostic-health-{{ row.health }}">{{ row.health_label }}</span></td>
+                <td>{{ row.field_count }} campos{% if row.extraction %}<small>{{ row.extraction.source_page_count }} pág.</small>{% endif %}</td>
+                <td>
+                  {% if row.vehicle %}<a class="button-link secondary-link" href="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic-{{ row.profile.id }}">Ver dados</a>{% endif %}
+                  <a class="button-link secondary-link" href="/documents/{{ row.document.id }}">Validar</a>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="10"><em>Não existem relatórios neste estado.</em></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

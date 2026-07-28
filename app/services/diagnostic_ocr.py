@@ -921,6 +921,7 @@ def persist_diagnostic_extraction(
         )
     )
     if existing:
+        synchronize_diagnostic_profile_from_extraction(db, profile, existing)
         return existing
 
     extraction = DiagnosticExtraction(
@@ -948,7 +949,17 @@ def persist_diagnostic_extraction(
     db.add(extraction)
     db.flush()
 
-    normalized = payload.get("normalized") or {}
+    synchronize_diagnostic_profile_from_extraction(db, profile, extraction)
+    return extraction
+
+
+def synchronize_diagnostic_profile_from_extraction(
+    db: Session,
+    profile: DiagnosticDocument,
+    extraction: DiagnosticExtraction,
+) -> None:
+    """Make operational states agree with the latest immutable extraction."""
+    normalized = extraction.normalized_data_json or {}
     profile.report_number = normalized.get("report_number") or profile.report_number
     profile.diagnostic_tool = normalized.get("tool") or profile.diagnostic_tool
     profile.diagnostic_tool_serial = normalized.get("tool_serial") or profile.diagnostic_tool_serial
@@ -966,27 +977,31 @@ def persist_diagnostic_extraction(
     ):
         profile.diagnostic_type = parsed_type
     profile.ocr_status = (
-        "extracted" if payload["extraction_status"] == "extracted" else "failed"
+        "extracted" if extraction.extraction_status == "extracted" else "failed"
     )
-    profile.ocr_confidence = payload.get("confidence")
-    profile.ocr_text = payload.get("native_text") or payload.get("ocr_text")
+    profile.ocr_confidence = extraction.confidence
+    profile.ocr_text = extraction.native_text or extraction.ocr_text
     profile.ocr_payload_json = {
         "latest_extraction_id": extraction.id,
-        "extractor_version": payload["extractor_version"],
-        "parser_version": payload["parser_version"],
-        "source_machine": payload.get("source_machine"),
-        "source_family": payload.get("source_family"),
-        "source_sha256": payload["source_sha256"],
-        "page_count": payload["source_page_count"],
+        "extractor_version": extraction.extractor_version,
+        "parser_version": extraction.parser_version,
+        "source_machine": extraction.source_machine,
+        "source_family": extraction.source_family,
+        "source_sha256": extraction.source_sha256,
+        "page_count": extraction.source_page_count,
         "dynamic_field_count": sum(
             len(value)
-            for value in (payload.get("dynamic_fields") or {}).values()
+            for value in (extraction.dynamic_fields_json or {}).values()
             if isinstance(value, list)
         ),
-        "warnings": payload.get("warnings") or [],
+        "warnings": extraction.warnings_json or [],
     }
-    profile.validation_status = "needs_review"
-    if profile.diagnostic_status in {"received", "processing"}:
+    if profile.validation_status == "pending":
+        profile.validation_status = "needs_review"
+    if extraction.extraction_status == "extracted" and profile.diagnostic_status in {
+        "received",
+        "processing",
+    }:
         profile.diagnostic_status = "ready_for_review"
 
     document = db.get(Document, profile.document_id)
@@ -994,11 +1009,10 @@ def persist_diagnostic_extraction(
         if parsed_report_datetime and not document.document_date:
             document.document_date = parsed_report_datetime.date()
         if not document.file_hash:
-            document.file_hash = payload["source_sha256"]
+            document.file_hash = extraction.source_sha256
         ensure_diagnostic_profile(
             db,
             document,
             detected_plate=profile.detected_plate,
             detected_vin=profile.detected_vin,
         )
-    return extraction

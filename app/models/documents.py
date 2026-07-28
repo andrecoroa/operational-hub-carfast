@@ -188,6 +188,10 @@ class DiagnosticDocument(TimestampMixin, Base):
     diagnostic_tool_serial: Mapped[str | None] = mapped_column(String(160))
     technician_name: Mapped[str | None] = mapped_column(String(160))
     odometer_km: Mapped[int | None] = mapped_column(Integer)
+    report_datetime: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False),
+        index=True,
+    )
     detected_plate: Mapped[str | None] = mapped_column(String(40), index=True)
     detected_vin: Mapped[str | None] = mapped_column(String(80), index=True)
     ocr_status: Mapped[str] = mapped_column(String(40), default="not_requested", index=True)

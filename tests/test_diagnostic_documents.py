@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -21,6 +22,7 @@ from app.services.diagnostic_ocr import (
     extract_coordinate_observations,
     parse_diagnostic_filename,
     parse_diagnostic_payload,
+    parse_diagnostic_report_datetime,
     persist_diagnostic_extraction,
 )
 from app.services.users import create_user
@@ -369,6 +371,79 @@ def test_diagnostic_filename_preserves_numeric_family_code():
     assert without_date["capture_time"] is None
 
 
+def test_report_datetime_uses_machine_value_then_filename_fallback():
+    printed = parse_diagnostic_report_datetime("30/03/2026 16:19:54")
+    filename_fallback = parse_diagnostic_report_datetime(
+        None,
+        capture_date="260330",
+        capture_time="1619",
+    )
+
+    assert printed == datetime(2026, 3, 30, 16, 19, 54)
+    assert filename_fallback == datetime(2026, 3, 30, 16, 19)
+
+    parsed = parse_diagnostic_payload(
+        filename="A_RVC_VR3EDYHT1RJ643860_260330_1619.pdf",
+        pages=[
+            {
+                "number": 1,
+                "layout_text": "AUTEL MAXISYS\nVIN: VR3EDYHT1RJ643860",
+                "native_text": "",
+                "words": [],
+                "ocr": None,
+            }
+        ],
+    )
+    assert parsed["normalized"]["report_datetime"] == "2026-03-30 16:19:00"
+
+
+def test_same_vehicle_report_and_date_with_different_times_are_distinct():
+    with diagnostic_test_context() as (testing_session, client):
+        with testing_session() as db:
+            vehicle = Vehicle(
+                plate="BI-69-MF",
+                vin="VR3EDYHT1RJ643860",
+                rentway_unit_nr="485",
+                lifecycle_status="active",
+                operational_status="free",
+            )
+            db.add(vehicle)
+            db.commit()
+            vehicle_id = vehicle.id
+
+        for report_time, suffix in (("09:51:18", "before"), ("16:19:54", "after")):
+            response = client.post(
+                f"/fleet/{vehicle_id}/diagnostics",
+                data={
+                    "title": "Relatório de diagnóstico do veículo",
+                    "diagnostic_type": "vehicle_diagnostic_report",
+                    "document_date": "2026-03-30",
+                    "report_time": report_time,
+                    "url_original": f"https://example.com/{suffix}.pdf",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+
+        with testing_session() as db:
+            diagnostics = db.scalars(
+                select(DiagnosticDocument).order_by(
+                    DiagnosticDocument.report_datetime
+                )
+            ).all()
+            assert [item.report_datetime for item in diagnostics] == [
+                datetime(2026, 3, 30, 9, 51, 18),
+                datetime(2026, 3, 30, 16, 19, 54),
+            ]
+            assert len({item.document_id for item in diagnostics}) == 2
+
+        page = client.get(f"/fleet/{vehicle_id}")
+        assert page.status_code == 200
+        assert "Diagnósticos <span>2</span>" in page.text
+        assert "2026-03-30 09:51:18" in page.text
+        assert "2026-03-30 16:19:54" in page.text
+
+
 def test_ocr_only_page_recovers_spaced_vin_and_dtc():
     parsed = parse_diagnostic_payload(
         filename="relatorio_scan.pdf",
@@ -521,6 +596,7 @@ def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
                     "tool_serial": "VX2GR7V02050",
                     "technician_name": None,
                     "odometer": None,
+                    "report_datetime": "2026-01-17 09:52:27",
                     "diagnostic_type": "engine_lubrication_information",
                 },
                 "dynamic_fields": {
@@ -547,10 +623,12 @@ def test_extraction_history_is_lossless_idempotent_and_associates_by_vin():
             assert first.pages_json[0]["words"][0]["text"] == "todo"
             assert first.dynamic_fields_json["observations"][0]["value"] == "2.4"
             assert profile.report_number == "MAXIA20260117095227"
+            assert profile.report_datetime == datetime(2026, 1, 17, 9, 52, 27)
             assert profile.diagnostic_tool == "MaxiDAS DS900-BT"
             assert profile.validation_status == "needs_review"
             assert document.vehicle_id == vehicle.id
             assert document.file_hash == "a" * 64
+            assert document.document_date.isoformat() == "2026-01-17"
             document_id = document.id
             db.commit()
 

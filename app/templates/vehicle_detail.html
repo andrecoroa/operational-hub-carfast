@@ -134,7 +134,12 @@
                     &middot; {{ diagnostic_status_labels.get(diagnostic.diagnostic_status, diagnostic.diagnostic_status) }}
                   </p>
                   <p>
-                    Data {{ document.document_date or "-" }}
+                    Data
+                    {% if diagnostic.report_datetime %}
+                      {{ diagnostic.report_datetime.strftime("%Y-%m-%d %H:%M:%S") }}
+                    {% else %}
+                      {{ document.document_date or "-" }}
+                    {% endif %}
                     &middot; KM {{ diagnostic.odometer_km or "-" }}
                     &middot; OCR {{ diagnostic_ocr_status_labels.get(diagnostic.ocr_status, diagnostic.ocr_status) }}
                   </p>
@@ -345,6 +350,12 @@
                   Data do relatório
                   <input type="date" name="document_date">
                 </label>
+                <label>
+                  Hora do relatório
+                  <input type="time" name="report_time" step="1">
+                </label>
+              </div>
+              <div class="compact-form-grid two-col">
                 <label>
                   Quilometragem
                   <input type="number" name="odometer_km" min="0">

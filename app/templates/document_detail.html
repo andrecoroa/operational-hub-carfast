@@ -215,6 +215,14 @@
               <input type="text" name="report_number" maxlength="160" value="{{ diagnostic.report_number if diagnostic else '' }}">
             </label>
             <label>
+              Data do relatório
+              <input type="date" name="report_date" value="{{ document.document_date.isoformat() if document.document_date else '' }}">
+            </label>
+            <label>
+              Hora do relatório
+              <input type="time" name="report_time" step="1" value="{{ diagnostic.report_datetime.strftime('%H:%M:%S') if diagnostic and diagnostic.report_datetime else '' }}">
+            </label>
+            <label>
               Quilometragem
               <input type="number" name="odometer_km" min="0" value="{{ diagnostic.odometer_km if diagnostic and diagnostic.odometer_km is not none else '' }}">
             </label>

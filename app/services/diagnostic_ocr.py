@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import unicodedata
 from collections import defaultdict
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 EXTRACTOR_NAME = "carfast_diagnostic_pdf"
 EXTRACTOR_VERSION = "1.0.0"
-PARSER_VERSION = "1.0.0"
+PARSER_VERSION = "1.1.0"
 
 _FILENAME_PATTERN = re.compile(
     r"^(?P<machine>[AS])_(?P<family>[A-Z0-9]+)_"
@@ -85,6 +86,59 @@ def parse_diagnostic_filename(filename: str) -> dict[str, str | None]:
         "capture_date": values["date"],
         "capture_time": values["time"],
     }
+
+
+def parse_diagnostic_report_datetime(
+    value: str | None,
+    *,
+    capture_date: str | None = None,
+    capture_time: str | None = None,
+) -> datetime | None:
+    """Normalize the local timestamp printed by the diagnostic machine.
+
+    Reports do not carry a reliable timezone, so this deliberately stores a
+    timezone-naive local timestamp. The original string remains in the lossless
+    extraction payload.
+    """
+
+    clean_value = " ".join((value or "").strip().split())
+    if clean_value:
+        patterns = (
+            (
+                r"\b(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)\b",
+                ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"),
+            ),
+            (
+                r"\b(\d{2}/\d{2}/\d{4})[ ,T]+(\d{2}:\d{2}(?::\d{2})?)\b",
+                ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"),
+            ),
+            (
+                r"\b(\d{2}-\d{2}-\d{4})[ T](\d{2}:\d{2}(?::\d{2})?)\b",
+                ("%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"),
+            ),
+            (
+                r"\b(\d{4}/\d{2}/\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)\b",
+                ("%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"),
+            ),
+        )
+        for pattern, formats in patterns:
+            match = re.search(pattern, clean_value)
+            if not match:
+                continue
+            candidate = f"{match.group(1)} {match.group(2)}"
+            for date_format in formats:
+                try:
+                    return datetime.strptime(candidate, date_format)
+                except ValueError:
+                    continue
+
+    if capture_date:
+        compact_time = capture_time or "0000"
+        try:
+            return datetime.strptime(f"{capture_date}{compact_time}", "%y%m%d%H%M")
+        except ValueError:
+            return None
+    return None
 
 
 def detect_diagnostic_machine(filename: str, text: str) -> str:
@@ -615,6 +669,18 @@ def parse_diagnostic_payload(
     )
     source_machine = machine or detect_diagnostic_machine(filename, full_text)
     vin = _extract_vin(full_text, filename_data.get("vin"))
+    raw_test_datetime = _first_match(
+        full_text,
+        [
+            r"Tempo de teste\s*:\s*([^\r\n]+)",
+            r"Data impress[ãa]o\s*:\s*([^\r\n]+)",
+        ],
+    )
+    report_datetime = parse_diagnostic_report_datetime(
+        raw_test_datetime,
+        capture_date=filename_data.get("capture_date"),
+        capture_time=filename_data.get("capture_time"),
+    )
     normalized = {
         "source_machine": source_machine,
         "source_family": filename_data.get("family"),
@@ -630,12 +696,9 @@ def parse_diagnostic_payload(
             full_text,
             [r"N[úu]mero do relat[óo]rio\s*:\s*([^\s]+)"],
         ),
-        "test_datetime": _first_match(
-            full_text,
-            [
-                r"Tempo de teste\s*:\s*([^\r\n]+)",
-                r"Data impress[ãa]o\s*:\s*([^\r\n]+)",
-            ],
+        "test_datetime": raw_test_datetime,
+        "report_datetime": (
+            report_datetime.isoformat(sep=" ") if report_datetime else None
         ),
         "technician_name": _first_match(
             full_text,
@@ -834,6 +897,15 @@ def _integer_odometer(value: str | None) -> int | None:
     return int(digits) if digits else None
 
 
+def _normalized_report_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def persist_diagnostic_extraction(
     db: Session,
     profile: DiagnosticDocument,
@@ -882,6 +954,10 @@ def persist_diagnostic_extraction(
     profile.diagnostic_tool_serial = normalized.get("tool_serial") or profile.diagnostic_tool_serial
     profile.technician_name = normalized.get("technician_name") or profile.technician_name
     profile.odometer_km = _integer_odometer(normalized.get("odometer")) or profile.odometer_km
+    parsed_report_datetime = _normalized_report_datetime(
+        normalized.get("report_datetime")
+    )
+    profile.report_datetime = parsed_report_datetime or profile.report_datetime
     profile.detected_plate = normalized.get("plate") or profile.detected_plate
     profile.detected_vin = normalized.get("vin") or profile.detected_vin
     parsed_type = normalized.get("diagnostic_type")
@@ -915,6 +991,8 @@ def persist_diagnostic_extraction(
 
     document = db.get(Document, profile.document_id)
     if document:
+        if parsed_report_datetime and not document.document_date:
+            document.document_date = parsed_report_datetime.date()
         if not document.file_hash:
             document.file_hash = payload["source_sha256"]
         ensure_diagnostic_profile(

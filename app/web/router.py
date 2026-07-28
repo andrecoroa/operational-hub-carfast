@@ -1,6 +1,6 @@
 import csv
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
 import html
@@ -627,7 +627,10 @@ def next_history_audit_reference(db) -> str:
 
 
 def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
-    if reading.reading_date:
+    report_datetime = getattr(reading, "report_datetime", None)
+    if report_datetime:
+        label = report_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    elif reading.reading_date:
         label = reading.reading_date.strftime("%Y-%m-%d")
     elif reading.created_at:
         label = reading.created_at.strftime("%Y-%m-%d")
@@ -640,19 +643,32 @@ def compact_reading_label(reading: WorkshopTechnicalReading) -> str:
     return label
 
 
-def _diagnostic_collection_date(*values: Any) -> date | None:
+def _diagnostic_collection_datetime(*values: Any) -> datetime | None:
     for value in values:
         if isinstance(value, datetime):
-            return value.date()
+            return value if value.tzinfo else value.replace(tzinfo=UTC)
         if isinstance(value, date):
-            return value
+            return datetime.combine(value, time.min, tzinfo=UTC)
         text = str(value or "").strip()
         if not text:
             continue
-        for candidate in (text, text[:10]):
-            for format_code in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        except ValueError:
+            pass
+        for candidate in (text, text[:19], text[:10]):
+            for format_code in (
+                "%Y-%m-%d %H:%M:%S",
+                "%Y%m%d %H%M%S",
+                "%d/%m/%Y %H:%M:%S",
+                "%Y-%m-%d",
+                "%Y%m%d",
+                "%d/%m/%Y",
+                "%d-%m-%Y",
+            ):
                 try:
-                    return datetime.strptime(candidate, format_code).date()
+                    return datetime.strptime(candidate, format_code).replace(tzinfo=UTC)
                 except ValueError:
                     continue
     return None
@@ -699,7 +715,9 @@ def unified_vehicle_technical_readings(
         extraction = latest_extraction_by_diagnostic.get(diagnostic.id)
         normalized = dict(extraction.normalized_data_json or {}) if extraction else {}
         dynamic = dict(extraction.dynamic_fields_json or {}) if extraction else {}
-        collected_on = _diagnostic_collection_date(
+        collected_at = _diagnostic_collection_datetime(
+            diagnostic.report_datetime,
+            normalized.get("report_datetime"),
             normalized.get("test_datetime"),
             normalized.get("capture_date"),
             document.document_date,
@@ -722,7 +740,8 @@ def unified_vehicle_technical_readings(
                 vehicle_id=vehicle_id,
                 user_id=document.uploaded_by_id,
                 reading_type=diagnostic.diagnostic_type or "other",
-                reading_date=collected_on,
+                reading_date=collected_at.date() if collected_at else None,
+                report_datetime=collected_at,
                 odometer_km=diagnostic.odometer_km,
                 summary=document.title or document.original_name,
                 data_json=data_json,
@@ -752,7 +771,8 @@ def unified_vehicle_technical_readings(
             continue
         raw = dict(report.raw_values_json or {})
         values = dict(report.validated_values_json or report.extracted_values_json or {})
-        collected_on = _diagnostic_collection_date(
+        collected_at = _diagnostic_collection_datetime(
+            values.get("report_datetime"),
             values.get("test_datetime"),
             values.get("report_date"),
             raw.get("report_date"),
@@ -775,7 +795,8 @@ def unified_vehicle_technical_readings(
                 vehicle_id=vehicle_id,
                 user_id=report.added_by_id,
                 reading_type=report.report_code or "other",
-                reading_date=collected_on,
+                reading_date=collected_at.date() if collected_at else None,
+                report_datetime=collected_at,
                 odometer_km=values.get("odometer_km") or values.get("odometer"),
                 summary=report.report_name,
                 data_json=data_json,
@@ -798,10 +819,16 @@ def unified_vehicle_technical_readings(
             "Processo de oficina" if reading.process_id else "Histórico importado",
         )
         reading.data_json = data
+        if not hasattr(reading, "report_datetime"):
+            reading.report_datetime = _diagnostic_collection_datetime(
+                data.get("document_datetime"),
+                data.get("report_datetime"),
+                reading.reading_date,
+                reading.created_at,
+            )
     readings.sort(
         key=lambda item: (
-            item.reading_date or (item.created_at.date() if item.created_at else date.min),
-            item.created_at or datetime.min.replace(tzinfo=UTC),
+            item.report_datetime or datetime.min.replace(tzinfo=UTC),
             item.id,
         )
     )
@@ -860,7 +887,12 @@ def technical_history_matrix(
     reading_type: str,
 ) -> dict[str, list[dict] | list[WorkshopTechnicalReading]]:
     selected = [item for item in readings if item.reading_type == reading_type]
-    selected.sort(key=lambda item: (item.reading_date or date.min, item.created_at.isoformat() if item.created_at else "", item.id))
+    selected.sort(
+        key=lambda item: (
+            getattr(item, "report_datetime", None) or datetime.min.replace(tzinfo=UTC),
+            item.id,
+        )
+    )
     configured_fields = TECHNICAL_HISTORY_FIELD_GROUPS.get(reading_type)
     dynamic_fields = sorted(
         {
@@ -15845,6 +15877,8 @@ def vehicle_detail(
             .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
             .where(vehicle_document_match)
             .order_by(
+                DiagnosticDocument.report_datetime.is_(None),
+                DiagnosticDocument.report_datetime.desc(),
                 Document.document_date.is_(None),
                 Document.document_date.desc(),
                 Document.id.desc(),
@@ -16880,6 +16914,7 @@ def vehicle_create_diagnostic(
     diagnostic_type: str = Form("other_diagnostic"),
     diagnostic_status: str = Form("received"),
     document_date: str = Form(""),
+    report_time: str = Form(""),
     report_number: str = Form(""),
     diagnostic_tool: str = Form(""),
     diagnostic_tool_serial: str = Form(""),
@@ -16899,6 +16934,7 @@ def vehicle_create_diagnostic(
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
             return RedirectResponse("/fleet", status_code=303)
+        parsed_document_date = parse_optional_date(document_date)
         try:
             document = add_document_record(
                 db,
@@ -16906,7 +16942,7 @@ def vehicle_create_diagnostic(
                 classification="workshop",
                 document_type="workshop_diagnostic",
                 status="associated",
-                document_date=parse_optional_date(document_date),
+                document_date=parsed_document_date,
                 source="manual",
                 entry_channel="vehicle_diagnostic",
                 source_sender="",
@@ -16944,6 +16980,10 @@ def vehicle_create_diagnostic(
         profile.diagnostic_tool_serial = diagnostic_tool_serial.strip() or None
         profile.technician_name = technician_name.strip() or None
         profile.odometer_km = parse_optional_int(odometer_km)
+        profile.report_datetime = combine_report_datetime(
+            parsed_document_date,
+            parse_optional_time(report_time),
+        )
         profile.ocr_status = (
             ocr_status if ocr_status in DIAGNOSTIC_OCR_STATUS_LABELS else "not_requested"
         )
@@ -16964,6 +17004,11 @@ def vehicle_create_diagnostic(
             after_json={
                 "vehicle_id": vehicle.id,
                 "diagnostic_type": profile.diagnostic_type,
+                "report_datetime": (
+                    profile.report_datetime.isoformat()
+                    if profile.report_datetime
+                    else None
+                ),
                 "ocr_status": profile.ocr_status,
                 "validation_status": profile.validation_status,
             },
@@ -22279,6 +22324,8 @@ def document_diagnostic_update(
     document_id: int,
     diagnostic_type: str = Form("other_diagnostic"),
     diagnostic_status: str = Form("received"),
+    report_date: str = Form(""),
+    report_time: str = Form(""),
     report_number: str = Form(""),
     diagnostic_tool: str = Form(""),
     diagnostic_tool_serial: str = Form(""),
@@ -22317,6 +22364,18 @@ def document_diagnostic_update(
         profile.diagnostic_tool_serial = diagnostic_tool_serial.strip() or None
         profile.technician_name = technician_name.strip() or None
         profile.odometer_km = parse_optional_int(odometer_km)
+        if report_date.strip() or report_time.strip():
+            parsed_report_date = (
+                parse_optional_date(report_date)
+                if report_date.strip()
+                else document.document_date
+            )
+            if report_date.strip():
+                document.document_date = parsed_report_date
+            profile.report_datetime = combine_report_datetime(
+                parsed_report_date,
+                parse_optional_time(report_time),
+            )
         profile.ocr_status = (
             ocr_status if ocr_status in DIAGNOSTIC_OCR_STATUS_LABELS else "not_requested"
         )
@@ -25519,6 +25578,21 @@ def parse_optional_date(value: str | None) -> date | None:
     if not value or not value.strip():
         return None
     return date.fromisoformat(value.strip())
+
+
+def parse_optional_time(value: str | None) -> time | None:
+    if not value or not value.strip():
+        return None
+    return time.fromisoformat(value.strip())
+
+
+def combine_report_datetime(
+    report_date: date | None,
+    report_time: time | None,
+) -> datetime | None:
+    if not report_date or not report_time:
+        return None
+    return datetime.combine(report_date, report_time)
 
 
 def parse_optional_int(value: str | None) -> int | None:

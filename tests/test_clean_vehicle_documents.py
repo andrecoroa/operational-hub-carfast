@@ -9,8 +9,10 @@ import fitz
 from openpyxl import Workbook
 from sqlalchemy import select
 
+import app.web.router as web_router
 from app.core.config import settings
 from app.models.documents import (
+    DiagnosticDocument,
     Document,
     DocumentEvent,
     DocumentLink,
@@ -159,6 +161,52 @@ def test_historical_report_payloads_accept_files_and_safe_zip_entries():
         "manutencao.pdf",
         "diagnostico.pdf",
     ]
+
+
+def test_historical_report_batch_defers_deep_ocr(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "document_archive_root", str(tmp_path / "documents"))
+
+    def fail_if_deep_ocr_runs(*_args, **_kwargs):
+        raise AssertionError("batch import must defer deep OCR")
+
+    monkeypatch.setattr(
+        web_router,
+        "extract_workshop_report_values_from_bytes",
+        fail_if_deep_ocr_runs,
+    )
+    monkeypatch.setattr(web_router, "extract_diagnostic_pdf", fail_if_deep_ocr_runs)
+
+    archive = BytesIO()
+    with zipfile.ZipFile(archive, "w") as bundle:
+        for index in (1, 2):
+            pdf = fitz.open()
+            page = pdf.new_page()
+            page.insert_text((72, 72), f"Relatorio de diagnostico {index}")
+            bundle.writestr(f"relatorio_{index}.pdf", pdf.tobytes())
+            pdf.close()
+    archive.seek(0)
+
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/historical-reports",
+        files={"files": ("relatorios.zip", archive, "application/zip")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "report_imported=2" in response.headers["location"]
+    documents = db_session.scalars(
+        select(Document).where(Document.entry_channel == "historical_report_import")
+    ).all()
+    assert len(documents) == 2
+    assert {document.status for document in documents} == {"received"}
+    profiles = db_session.scalars(select(DiagnosticDocument)).all()
+    assert len(profiles) == 2
+    assert {profile.ocr_status for profile in profiles} == {"pending"}
 
 
 def test_historical_report_vehicle_prefers_extracted_vin():

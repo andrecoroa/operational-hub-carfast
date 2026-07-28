@@ -12215,6 +12215,10 @@ async def clean_document_import_historical_reports(
             status_code=303,
         )
 
+    # OCR de relatórios digitalizados pode demorar vários segundos por PDF.
+    # Em lote, arquiva e associa primeiro; a extração profunda fica pendente
+    # para não manter o pedido HTTP aberto até ao timeout do servidor.
+    defer_extraction = len(payloads) > 1
     user_id = get_web_user_id(request)
     counters = {"imported": 0, "matched": 0, "pending": 0, "duplicates": 0, "failed": 0}
     with SessionLocal() as db:
@@ -12249,13 +12253,21 @@ async def clean_document_import_historical_reports(
             report_code = str(report_meta.get("report_code") or "other_reading")
             if report_code not in CLEAN_WORKSHOP_REPORT_CODES:
                 report_code = "other_reading"
-            try:
-                extracted_values = extract_workshop_report_values_from_bytes(content, report_code, filename)
-                extraction_error = None
-            except (RuntimeError, ValueError) as exc:
+            if defer_extraction:
                 extracted_values = {}
-                extraction_error = str(exc)
-                counters["failed"] += 1
+                extraction_error = None
+            else:
+                try:
+                    extracted_values = extract_workshop_report_values_from_bytes(
+                        content,
+                        report_code,
+                        filename,
+                    )
+                    extraction_error = None
+                except (RuntimeError, ValueError) as exc:
+                    extracted_values = {}
+                    extraction_error = str(exc)
+                    counters["failed"] += 1
 
             match_metadata = _historical_report_match_metadata(report_meta, extracted_values)
             lookup_text = " ".join(
@@ -12321,7 +12333,11 @@ async def clean_document_import_historical_reports(
                 storage_path=str(stored_path),
                 storage_key=digest,
                 folder_path=folder_path,
-                status="pending_validation" if extracted_values else "unable_to_read",
+                status=(
+                    "received"
+                    if defer_extraction
+                    else ("pending_validation" if extracted_values else "unable_to_read")
+                ),
                 file_hash=digest,
                 vehicle_id=vehicle.id if vehicle else None,
                 plate=plate,
@@ -12334,8 +12350,22 @@ async def clean_document_import_historical_reports(
             db.add(document)
             db.flush()
             diagnostic_payload: dict[str, Any] | None = None
-            diagnostic_profile: DiagnosticDocument | None = None
-            if suffix.lower() == ".pdf":
+            diagnostic_profile = ensure_diagnostic_profile(
+                db,
+                document,
+                detected_plate=match_metadata.get("plate"),
+                detected_vin=match_metadata.get("vin"),
+            )
+            if defer_extraction:
+                diagnostic_profile.ocr_status = "pending"
+                diagnostic_profile.diagnostic_status = "processing"
+                if report_date and not diagnostic_profile.report_datetime:
+                    diagnostic_profile.report_datetime = datetime.combine(report_date, time.min)
+                metadata["diagnostic_extraction"] = {
+                    "status": "pending",
+                    "deferred": True,
+                }
+            elif suffix.lower() == ".pdf":
                 try:
                     diagnostic_payload = extract_diagnostic_pdf(stored_path)
                     normalized_diagnostic = diagnostic_payload.get("normalized") or {}
@@ -12404,7 +12434,7 @@ async def clean_document_import_historical_reports(
                     },
                     storage_provider="local",
                     external_url=f"/v2-clean/documents/{document.id}/file",
-                    status="pending_validation",
+                    status="pending_extraction" if defer_extraction else "pending_validation",
                     updated_by_id=user_id,
                 )
                 db.add(reading)

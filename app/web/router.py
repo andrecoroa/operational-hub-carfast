@@ -12308,6 +12308,41 @@ async def clean_document_import_historical_reports(
             )
             db.add(document)
             db.flush()
+            diagnostic_payload: dict[str, Any] | None = None
+            diagnostic_profile: DiagnosticDocument | None = None
+            if suffix.lower() == ".pdf":
+                try:
+                    diagnostic_payload = extract_diagnostic_pdf(stored_path)
+                    normalized_diagnostic = diagnostic_payload.get("normalized") or {}
+                    diagnostic_profile = ensure_diagnostic_profile(
+                        db,
+                        document,
+                        diagnostic_type=normalized_diagnostic.get("diagnostic_type"),
+                        detected_plate=normalized_diagnostic.get("plate"),
+                        detected_vin=normalized_diagnostic.get("vin"),
+                    )
+                    persist_diagnostic_extraction(
+                        db,
+                        diagnostic_profile,
+                        diagnostic_payload,
+                    )
+                    if diagnostic_profile.report_datetime:
+                        report_date = diagnostic_profile.report_datetime.date()
+                        document.document_date = report_date
+                    metadata["diagnostic_extraction"] = {
+                        "status": diagnostic_payload.get("extraction_status"),
+                        "machine": diagnostic_payload.get("source_machine"),
+                        "family": diagnostic_payload.get("source_family"),
+                        "confidence": diagnostic_payload.get("confidence"),
+                        "report_datetime": (
+                            diagnostic_profile.report_datetime.isoformat()
+                            if diagnostic_profile.report_datetime
+                            else None
+                        ),
+                    }
+                except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                    metadata["diagnostic_extraction_error"] = str(exc)
+                    counters["failed"] += 1
             db.add(
                 DocumentEvent(
                     document_id=document.id,
@@ -12316,9 +12351,12 @@ async def clean_document_import_historical_reports(
                     user_id=user_id,
                 )
             )
+            if diagnostic_profile and document.vehicle_id:
+                vehicle = db.get(Vehicle, document.vehicle_id) or vehicle
             if vehicle:
                 odometer_value = (
-                    extracted_values.get("odometer_km")
+                    (diagnostic_profile.odometer_km if diagnostic_profile else None)
+                    or extracted_values.get("odometer_km")
                     or extracted_values.get("km")
                     or extracted_values.get("mileage")
                 )

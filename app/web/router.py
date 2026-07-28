@@ -8295,6 +8295,66 @@ def _historical_report_date(value: Any) -> date | None:
     return None
 
 
+def _historical_report_metadata_from_filename(filename: str) -> dict[str, Any]:
+    stem = Path(filename).stem
+    normalized = re.sub(r"[^A-Z0-9]+", "_", stem.upper()).strip("_")
+    vin_match = re.search(r"(?:^|_)([A-HJ-NPR-Z0-9]{17})(?:_|$)", normalized)
+    compact_date_time = re.search(
+        r"(?:^|_)(\d{2})(\d{2})(\d{2})(?:_|$)(\d{2})(\d{2})(?:_|$)",
+        normalized,
+    )
+    report_date = ""
+    report_time = ""
+    if compact_date_time:
+        year, month, day, hour, minute = compact_date_time.groups()
+        try:
+            parsed = datetime(
+                2000 + int(year),
+                int(month),
+                int(day),
+                int(hour),
+                int(minute),
+            )
+            report_date = parsed.strftime("%d/%m/%Y")
+            report_time = parsed.strftime("%H:%M")
+        except ValueError:
+            pass
+
+    code_match = re.search(
+        r"(?:^|_)(ILDE|ILM|PLM|RVC0|TEL|CAM|RDV|SB|LD|PM|IM)(?:_|$)",
+        normalized,
+    )
+    source_code = code_match.group(1) if code_match else ""
+    report_codes = {
+        "ILM": "engine_lubrication",
+        "ILDE": "engine_lubrication",
+        "IM": "maintenance_information",
+        "SB": "maintenance_information",
+        "PM": "maintenance_programming",
+        "PLM": "maintenance_programming",
+        "LD": "fault_reading",
+        "TEL": "remote_download",
+        "CAM": "remote_download",
+        "RDV": "other_reading",
+        "RVC0": "other_reading",
+    }
+    report_code = report_codes.get(source_code, "other_reading")
+    vin = vin_match.group(1) if vin_match else ""
+    machine_prefix = "Aut" if normalized.startswith("A_") else ("Stl" if normalized.startswith("S_") else "Rel")
+    return {
+        "machine_prefix": machine_prefix,
+        "report_code": report_code,
+        "report_name": clean_workshop_report_display_label(report_code, "Relatório técnico"),
+        "vin_candidates": [vin] if vin else [],
+        "plate_candidates": [],
+        "vehicle_identifier": vin,
+        "report_date": report_date,
+        "report_time": report_time,
+        "text_source": "filename",
+        "suggested_file_name": filename,
+    }
+
+
 def _historical_report_vehicle(
     report_meta: dict[str, Any],
     path_text: str,
@@ -12191,6 +12251,14 @@ def _diagnostic_machine_and_type(document: Document) -> tuple[str, str]:
     return machine, report_type
 
 
+@web_router.get("/v2-clean/documents/import/historical-reports")
+def clean_document_import_historical_reports_page(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    return RedirectResponse("/v2-clean/documents#imports", status_code=303)
+
+
 @web_router.post("/v2-clean/documents/import/historical-reports")
 async def clean_document_import_historical_reports(
     request: Request,
@@ -12246,10 +12314,15 @@ async def clean_document_import_historical_reports(
             if digest in known_hashes:
                 counters["duplicates"] += 1
                 continue
-            try:
-                report_meta = classify_workshop_report_from_bytes(content, filename)
-            except (RuntimeError, ValueError):
-                report_meta = {}
+            if defer_extraction:
+                report_meta = _historical_report_metadata_from_filename(
+                    str(item["archive_name"] or filename)
+                )
+            else:
+                try:
+                    report_meta = classify_workshop_report_from_bytes(content, filename)
+                except (RuntimeError, ValueError):
+                    report_meta = _historical_report_metadata_from_filename(filename)
             report_code = str(report_meta.get("report_code") or "other_reading")
             if report_code not in CLEAN_WORKSHOP_REPORT_CODES:
                 report_code = "other_reading"

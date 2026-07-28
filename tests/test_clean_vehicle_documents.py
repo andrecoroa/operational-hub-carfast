@@ -179,6 +179,11 @@ def test_historical_report_batch_defers_deep_ocr(
         "extract_workshop_report_values_from_bytes",
         fail_if_deep_ocr_runs,
     )
+    monkeypatch.setattr(
+        web_router,
+        "classify_workshop_report_from_bytes",
+        fail_if_deep_ocr_runs,
+    )
     monkeypatch.setattr(web_router, "extract_diagnostic_pdf", fail_if_deep_ocr_runs)
 
     archive = BytesIO()
@@ -207,6 +212,28 @@ def test_historical_report_batch_defers_deep_ocr(
     profiles = db_session.scalars(select(DiagnosticDocument)).all()
     assert len(profiles) == 2
     assert {profile.ocr_status for profile in profiles} == {"pending"}
+
+
+def test_historical_report_import_get_redirects_to_document_center(authenticated_client):
+    response = authenticated_client.get(
+        "/v2-clean/documents/import/historical-reports",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/v2-clean/documents#imports"
+
+
+def test_historical_report_metadata_uses_batch_filename_without_opening_pdf():
+    metadata = web_router._historical_report_metadata_from_filename(
+        "VR3EDYHT9RJ968630/A_LD_VR3EDYHT9RJ968630_260728_1425.pdf"
+    )
+
+    assert metadata["vehicle_identifier"] == "VR3EDYHT9RJ968630"
+    assert metadata["vin_candidates"] == ["VR3EDYHT9RJ968630"]
+    assert metadata["report_code"] == "fault_reading"
+    assert metadata["report_date"] == "28/07/2026"
+    assert metadata["report_time"] == "14:25"
 
 
 def test_historical_report_vehicle_prefers_extracted_vin():

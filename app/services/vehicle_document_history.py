@@ -685,6 +685,186 @@ def add_quick_classification(
     return tag
 
 
+def _persist_suggested_classifications(
+    db: Session,
+    *,
+    vehicle_id: int,
+    suggestions: dict[str, list[str]],
+    existing_tags: list[VehicleDocumentRecordTag],
+    record_id: int | None = None,
+    document_id: int | None = None,
+    user_id: int | None = None,
+) -> int:
+    existing_categories = {tag.category for tag in existing_tags}
+    added = 0
+    for category, values in suggestions.items():
+        if category in existing_categories:
+            continue
+        for value in values:
+            db.add(
+                VehicleDocumentRecordTag(
+                    vehicle_id=vehicle_id,
+                    record_id=record_id,
+                    document_id=document_id,
+                    category=category,
+                    value=value,
+                    source_kind="auto_suggested",
+                    created_by_id=user_id,
+                )
+            )
+            added += 1
+    return added
+
+
+def preclassify_invoices_and_work_orders(
+    db: Session,
+    *,
+    user_id: int | None = None,
+) -> dict[str, int]:
+    """Persist service suggestions without validating or replacing human choices."""
+    result = {
+        "invoice_documents": 0,
+        "work_orders": 0,
+        "suggestions": 0,
+        "already_validated": 0,
+        "without_suggestions": 0,
+    }
+
+    documents = db.scalars(
+        select(Document)
+        .where(Document.vehicle_id.is_not(None))
+        .where(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
+        .where(v2_clean_document_visible_condition())
+        .where(Document.document_type == "workshop_supplier_invoice")
+        .order_by(Document.id)
+    ).all()
+    document_ids = [document.id for document in documents]
+    metadata_by_document = _document_extraction_metadata(db, document_ids)
+    tags_by_document: dict[int, list[VehicleDocumentRecordTag]] = {}
+    if document_ids:
+        for tag in db.scalars(
+            select(VehicleDocumentRecordTag).where(
+                VehicleDocumentRecordTag.document_id.in_(document_ids)
+            )
+        ).all():
+            if tag.document_id:
+                tags_by_document.setdefault(tag.document_id, []).append(tag)
+
+    for document in documents:
+        if document.status == "classified":
+            result["already_validated"] += 1
+            continue
+        metadata = metadata_by_document.get(document.id, {})
+        line_text = " ".join(
+            str(line.get("description") or "")
+            for line in _invoice_line_items(metadata)
+            if isinstance(line, dict)
+        )
+        source_text = " ".join(
+            str(part)
+            for part in (
+                document.title,
+                document.original_name,
+                document.supplier_name,
+                document.contract_number,
+                document.reservation_number,
+                line_text,
+            )
+            if part
+        )
+        tags = tags_by_document.get(document.id, [])
+        matrix = _service_matrix_from_text_and_tags(source_text, tags)
+        suggestions = _service_matrix_suggestion_codes(
+            matrix,
+            _service_matrix_codes_from_tags(tags),
+        )
+        added = _persist_suggested_classifications(
+            db,
+            vehicle_id=int(document.vehicle_id),
+            document_id=document.id,
+            suggestions=suggestions,
+            existing_tags=tags,
+            user_id=user_id,
+        )
+        if not added:
+            result["without_suggestions"] += 1
+            continue
+        document.status = "pending_validation"
+        result["invoice_documents"] += 1
+        result["suggestions"] += added
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.classification_suggested",
+                old_value=None,
+                new_value=json.dumps(suggestions, ensure_ascii=False),
+                user_id=user_id,
+            )
+        )
+
+    records = db.scalars(
+        select(VehicleDocumentRecord)
+        .where(VehicleDocumentRecord.main_group == "work_orders")
+        .where(VehicleDocumentRecord.source_record_type.in_(STRUCTURED_RECORD_TYPES))
+        .where(v2_clean_record_visible_condition())
+        .order_by(VehicleDocumentRecord.id)
+    ).all()
+    record_ids = [record.id for record in records]
+    tags_by_record: dict[int, list[VehicleDocumentRecordTag]] = {}
+    if record_ids:
+        for tag in db.scalars(
+            select(VehicleDocumentRecordTag).where(
+                VehicleDocumentRecordTag.record_id.in_(record_ids)
+            )
+        ).all():
+            if tag.record_id:
+                tags_by_record.setdefault(tag.record_id, []).append(tag)
+
+    for record in records:
+        if record.status == "classified" or record.comparison_state == "validado":
+            result["already_validated"] += 1
+            continue
+        tags = tags_by_record.get(record.id, [])
+        source_text = " ".join(
+            str(part)
+            for part in (
+                record.title,
+                record.raw_description,
+                record.external_reference,
+                " ".join(
+                    str(line.get("description") or "")
+                    for line in _work_order_line_items(record.metadata_json)
+                    if isinstance(line, dict)
+                ),
+            )
+            if part
+        )
+        matrix = _service_matrix_from_text_and_tags(source_text, tags)
+        suggestions = _service_matrix_suggestion_codes(
+            matrix,
+            _service_matrix_codes_from_tags(tags),
+        )
+        added = _persist_suggested_classifications(
+            db,
+            vehicle_id=record.vehicle_id,
+            record_id=record.id,
+            suggestions=suggestions,
+            existing_tags=tags,
+            user_id=user_id,
+        )
+        if not added:
+            result["without_suggestions"] += 1
+            continue
+        record.status = "pending_validation"
+        record.comparison_state = "por_validar"
+        record.updated_by_id = user_id
+        result["work_orders"] += 1
+        result["suggestions"] += added
+
+    db.flush()
+    return result
+
+
 def upsert_audit_field(
     db: Session,
     *,
@@ -1389,7 +1569,12 @@ def _service_matrix_from_text_and_tags(
         maintenance_suggestions: list[str] = []
         if "telecarreg" in normalized:
             maintenance_suggestions.append("Telecarregamento")
-        if "filtrohabitac" in normalized or "filtropolen" in normalized:
+        if (
+            "filtrohabitac" in normalized
+            or "filtrodohabitac" in normalized
+            or "filtropolen" in normalized
+            or "filtrodepolen" in normalized
+        ):
             maintenance_suggestions.append("Filtro de habitáculo")
         if "degrad" in normalized and ("oleo" in normalized or "oil" in normalized):
             maintenance_suggestions.append("Degradação")
@@ -1789,9 +1974,21 @@ def _build_archive_rows(
         metadata = extraction_metadata.get(document.id) or {}
         archive_group = _document_archive_group(document)
         tags = document_tags.get(document.id, [])
+        invoice_line_text = " ".join(
+            str(line.get("description") or "")
+            for line in _invoice_line_items(metadata)
+            if isinstance(line, dict)
+        )
         service_text = " ".join(
             part
-            for part in [document.title, document.original_name, document.supplier_name, document.contract_number, document.reservation_number]
+            for part in [
+                document.title,
+                document.original_name,
+                document.supplier_name,
+                document.contract_number,
+                document.reservation_number,
+                invoice_line_text,
+            ]
             if part
         )
         service_matrix = _service_matrix_from_text_and_tags(service_text, tags)

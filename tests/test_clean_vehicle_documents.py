@@ -22,6 +22,7 @@ from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
     document_center_module_context,
+    preclassify_invoices_and_work_orders,
     vehicle_document_module_context,
 )
 from app.web.router import (
@@ -3907,6 +3908,132 @@ def test_clean_vehicle_documents_service_choices_match_operational_vocabulary(
     context = vehicle_document_module_context(db_session, vehicle)
     assert "telecharge" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
     assert "cabin_filter" in context["structured_rows"][0]["service_suggestion_codes"]["maintenance"]
+
+
+def test_preclassify_invoices_and_work_orders_persists_suggestions_without_validation(
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    invoice = Document(
+        title="Fatura sem classificação",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="v2_clean_manual",
+        original_name="invoice.pdf",
+        file_name="invoice.pdf",
+        storage_provider="local",
+        storage_path="invoice.pdf",
+        status="extracted",
+        vehicle_id=vehicle.id,
+    )
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-1800",
+        raw_description="Substituição de pneus por furo",
+        status="structured",
+    )
+    db_session.add_all([invoice, work_order])
+    db_session.flush()
+    db_session.add(
+        DocumentEvent(
+            document_id=invoice.id,
+            action="invoice.ocr.extracted",
+            old_value=None,
+            new_value=json.dumps(
+                {
+                    "invoice_lines": [
+                        {"description": "Mudança de óleo e filtro do habitáculo"},
+                        {"description": "Telecarregamento"},
+                    ]
+                }
+            ),
+        )
+    )
+    db_session.commit()
+
+    result = preclassify_invoices_and_work_orders(db_session)
+    db_session.commit()
+
+    db_session.refresh(invoice)
+    db_session.refresh(work_order)
+    assert invoice.status == "pending_validation"
+    assert work_order.status == "pending_validation"
+    assert work_order.comparison_state == "por_validar"
+    assert result["invoice_documents"] == 1
+    assert result["work_orders"] == 1
+    invoice_tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == invoice.id
+        )
+    ).all()
+    assert {(tag.category, tag.value) for tag in invoice_tags} == {
+        ("maintenance", "telecharge"),
+        ("maintenance", "cabin_filter"),
+    }
+    assert {tag.source_kind for tag in invoice_tags} == {"auto_suggested"}
+    work_order_tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.record_id == work_order.id
+        )
+    ).all()
+    assert {(tag.category, tag.value) for tag in work_order_tags} == {
+        ("tyres", "puncture")
+    }
+
+
+def test_preclassify_preserves_validated_and_existing_human_classifications(db_session):
+    vehicle = _create_vehicle(db_session)
+    validated_invoice = Document(
+        title="Revisão",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="v2_clean_manual",
+        original_name="validated.pdf",
+        file_name="validated.pdf",
+        storage_provider="local",
+        storage_path="validated.pdf",
+        status="classified",
+        vehicle_id=vehicle.id,
+    )
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="Calços e reparação de furo",
+        status="structured",
+    )
+    db_session.add_all([validated_invoice, work_order])
+    db_session.flush()
+    db_session.add(
+        VehicleDocumentRecordTag(
+            vehicle_id=vehicle.id,
+            record_id=work_order.id,
+            category="pads",
+            value="rear",
+            source_kind="manual",
+        )
+    )
+    db_session.commit()
+
+    result = preclassify_invoices_and_work_orders(db_session)
+    db_session.commit()
+
+    db_session.refresh(validated_invoice)
+    assert validated_invoice.status == "classified"
+    assert result["already_validated"] == 1
+    tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.record_id == work_order.id
+        )
+    ).all()
+    assert ("pads", "rear", "manual") in {
+        (tag.category, tag.value, tag.source_kind) for tag in tags
+    }
+    assert ("tyres", "puncture", "auto_suggested") in {
+        (tag.category, tag.value, tag.source_kind) for tag in tags
+    }
 
 
 def test_clean_vehicle_documents_can_explicitly_validate_row_classification(

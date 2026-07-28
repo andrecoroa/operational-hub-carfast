@@ -500,6 +500,31 @@
       {% endif %}
 
       <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-table-heading-row">
+          <div>
+            <strong>Pré-classificação de serviços</strong>
+            <small>Analisa faturas e folhas de obra, grava sugestões a amarelo e mantém tudo por validar.</small>
+          </div>
+          <form
+            method="post"
+            action="/v2-clean/documents/preclassify-services"
+            onsubmit="return confirm('Pré-classificar todas as faturas e folhas de obra ainda não validadas?');"
+          >
+            <button type="submit">Pré-classificar tudo</button>
+          </form>
+        </div>
+        {% if request.query_params.get('preclassified_suggestions') %}
+          <p class="clean-doc-table-limit-note">
+            {{ request.query_params.get('preclassified_suggestions') }} sugestões gravadas:
+            {{ request.query_params.get('preclassified_invoices', '0') }} faturas e
+            {{ request.query_params.get('preclassified_work_orders', '0') }} folhas de obra.
+            {{ request.query_params.get('preclassified_validated', '0') }} registos validados preservados;
+            {{ request.query_params.get('preclassified_empty', '0') }} sem sugestão segura.
+          </p>
+        {% endif %}
+      </section>
+
+      <section class="clean-doc-filter-panel clean-card-wide">
         <form method="get" action="/v2-clean/documents" class="clean-doc-filter-grid">
           <label>
             Pesquisar

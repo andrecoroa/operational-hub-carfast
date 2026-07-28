@@ -151,6 +151,7 @@ from app.services.vehicle_document_history import (
     import_work_order_details_xlsx,
     import_work_orders_xlsx,
     is_structured_import_source,
+    preclassify_invoices_and_work_orders,
     save_uploaded_spreadsheet,
     sync_real_start_manual_field,
     upsert_audit_field,
@@ -7526,6 +7527,30 @@ def clean_documents_reprocess_ocr_batch(
             ocr_batch_failed=str(failed),
             ocr_batch_lines=str(extracted_lines),
             ocr_batch_label=clean_batch_label,
+        ),
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/documents/preclassify-services")
+def clean_documents_preclassify_services(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_fleet(request):
+        return RedirectResponse("/", status_code=303)
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        result = preclassify_invoices_and_work_orders(db, user_id=user_id)
+        db.commit()
+    return RedirectResponse(
+        _append_query_flag(
+            "/v2-clean/documents?main_group=invoices",
+            preclassified_invoices=str(result["invoice_documents"]),
+            preclassified_work_orders=str(result["work_orders"]),
+            preclassified_suggestions=str(result["suggestions"]),
+            preclassified_validated=str(result["already_validated"]),
+            preclassified_empty=str(result["without_suggestions"]),
         ),
         status_code=303,
     )

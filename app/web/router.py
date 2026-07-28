@@ -6663,7 +6663,6 @@ def reprocess_diagnostic_batch(
         records = db.execute(
             select(Document, DiagnosticDocument)
             .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
-            .where(Document.entry_channel == "historical_report_import")
             .order_by(Document.id)
         ).all()
         profile_ids = [profile.id for _, profile in records]
@@ -6718,7 +6717,9 @@ def reprocess_diagnostic_batch(
                     )
                 )
                 processed += 1
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:
+                db.rollback()
+                profile = db.get(DiagnosticDocument, profile.id)
                 profile.ocr_status = "failed"
                 db.add(
                     DocumentEvent(

@@ -808,6 +808,8 @@ def test_diagnostic_center_separates_health_from_operational_states():
         assert "Auditoria de diagnósticos" in page.text
         assert "Estado incoerente" in page.text
         assert "Sem extração" in page.text
+        assert "Lotes importados" in page.text
+        assert "Importação sem lote" in page.text
 
         reconciled = client.post(
             "/v2-clean/diagnostics/reconcile",

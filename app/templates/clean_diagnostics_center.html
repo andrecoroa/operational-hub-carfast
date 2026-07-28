@@ -21,6 +21,58 @@
     {% if reconciled is not none %}
       <div class="flash-success">{{ reconciled }} relatórios tiveram os estados técnicos reconciliados.</div>
     {% endif %}
+    {% if batch_processed is not none %}
+      <div class="flash-success">
+        {{ batch_processed }} relatórios processados neste bloco{% if batch_failed %}; {{ batch_failed }} falharam{% endif %}.
+        Os lotes são tratados em blocos de 20 para proteger o servidor.
+      </div>
+    {% endif %}
+
+    <details class="clean-card-wide clean-doc-collapsible clean-diagnostic-batches" open>
+      <summary>
+        <span><strong>Lotes importados</strong><small>Reprocessamento controlado pela versão atual do extrator.</small></span>
+        <span>{{ batches|length }} lotes</span>
+      </summary>
+      <div class="clean-doc-collapsible-body">
+        <div class="clean-doc-table-wrap">
+          <table class="clean-doc-table">
+            <thead>
+              <tr>
+                <th>Lote</th><th>Viaturas</th><th>Relatórios</th><th>Extraídos</th>
+                <th>Pendentes</th><th>Falhas</th><th>Versão antiga</th><th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for batch in batches %}
+                <tr>
+                  <td><strong>{{ batch.name }}</strong></td>
+                  <td>{{ batch.vehicle_count }}</td>
+                  <td>{{ batch.documents }}</td>
+                  <td>{{ batch.ready }}</td>
+                  <td>{{ batch.pending }}</td>
+                  <td>{{ batch.failed }}</td>
+                  <td>{{ batch.outdated }}</td>
+                  <td>
+                    {% if batch.processable %}
+                      <form method="post" action="/v2-clean/diagnostics/batches/reprocess">
+                        <input type="hidden" name="batch_name" value="{{ batch.name }}">
+                        <button type="submit">
+                          {% if batch.processable > 20 %}Reprocessar próximos 20{% else %}Reprocessar lote{% endif %}
+                        </button>
+                      </form>
+                    {% else %}
+                      <span class="pill diagnostic-health-ready">Atualizado</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="8"><em>Não existem lotes de relatórios importados.</em></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
 
     <nav class="clean-diagnostic-audit-counts" aria-label="Estado da extração">
       <a href="/v2-clean/diagnostics" class="{% if not selected_health %}active{% endif %}">

@@ -180,6 +180,8 @@ from app.services.diagnostic_documents import (
     find_vehicle_by_plate,
 )
 from app.services.diagnostic_ocr import (
+    EXTRACTOR_VERSION as DIAGNOSTIC_EXTRACTOR_VERSION,
+    PARSER_VERSION as DIAGNOSTIC_PARSER_VERSION,
     extract_diagnostic_pdf,
     persist_diagnostic_extraction,
     synchronize_diagnostic_profile_from_extraction,
@@ -6466,11 +6468,90 @@ def _diagnostic_audit_health(
     return "ready"
 
 
+def _diagnostic_import_batch_name(event_value: str | None) -> str:
+    if not event_value:
+        return "Importação sem lote"
+    try:
+        payload = json.loads(event_value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return "Importação sem lote"
+    archive_name = str(payload.get("archive_name") or "").replace("\\", "/").strip("/")
+    return archive_name.split("/", 1)[0] if archive_name else "Importação sem lote"
+
+
+def _diagnostic_batch_context(
+    db: Session,
+    records: list[tuple[Document, DiagnosticDocument]],
+    latest_by_profile: dict[int, DiagnosticExtraction],
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    document_ids = [document.id for document, _ in records]
+    events = (
+        db.scalars(
+            select(DocumentEvent)
+            .where(
+                DocumentEvent.document_id.in_(document_ids),
+                DocumentEvent.action == "historical_report.imported",
+            )
+            .order_by(DocumentEvent.created_at.desc(), DocumentEvent.id.desc())
+        ).all()
+        if document_ids
+        else []
+    )
+    batch_by_document: dict[int, str] = {}
+    for event in events:
+        batch_by_document.setdefault(
+            event.document_id,
+            _diagnostic_import_batch_name(event.new_value),
+        )
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for document, profile in records:
+        batch_name = batch_by_document.get(document.id, "Importação sem lote")
+        batch = grouped.setdefault(
+            batch_name,
+            {
+                "name": batch_name,
+                "documents": 0,
+                "vehicles": set(),
+                "ready": 0,
+                "pending": 0,
+                "failed": 0,
+                "outdated": 0,
+            },
+        )
+        batch["documents"] += 1
+        if document.vehicle_id:
+            batch["vehicles"].add(document.vehicle_id)
+        extraction = latest_by_profile.get(profile.id)
+        health_code = _diagnostic_audit_health(profile, extraction)
+        if health_code == "ready":
+            batch["ready"] += 1
+        elif health_code == "extraction_failed":
+            batch["failed"] += 1
+        else:
+            batch["pending"] += 1
+        if extraction and (
+            extraction.extractor_version != DIAGNOSTIC_EXTRACTOR_VERSION
+            or extraction.parser_version != DIAGNOSTIC_PARSER_VERSION
+        ):
+            batch["outdated"] += 1
+
+    batches = []
+    for batch in grouped.values():
+        batch["vehicle_count"] = len(batch.pop("vehicles"))
+        batch["processable"] = batch["pending"] + batch["failed"] + batch["outdated"]
+        batches.append(batch)
+    batches.sort(key=lambda item: (-item["processable"], item["name"].lower()))
+    return batches, batch_by_document
+
+
 @web_router.get("/v2-clean/diagnostics", response_class=HTMLResponse)
 def clean_diagnostics_center(
     request: Request,
     health: str = "",
     reconciled: int | None = None,
+    batch_processed: int | None = None,
+    batch_failed: int | None = None,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -6504,6 +6585,11 @@ def clean_diagnostics_center(
                 .order_by(DiagnosticExtraction.created_at.desc(), DiagnosticExtraction.id.desc())
             ).all():
                 latest_by_profile.setdefault(extraction.diagnostic_document_id, extraction)
+        batches, batch_by_document = _diagnostic_batch_context(
+            db,
+            records,
+            latest_by_profile,
+        )
 
         counts = {key: 0 for key in health_labels}
         rows = []
@@ -6530,6 +6616,10 @@ def clean_diagnostics_center(
                         for value in ((extraction.dynamic_fields_json or {}) if extraction else {}).values()
                         if isinstance(value, list)
                     ),
+                    "batch_name": batch_by_document.get(
+                        document.id,
+                        "Importação sem lote",
+                    ),
                 }
             )
 
@@ -6544,12 +6634,113 @@ def clean_diagnostics_center(
                 "health_labels": health_labels,
                 "selected_health": health,
                 "reconciled": reconciled,
+                "batch_processed": batch_processed,
+                "batch_failed": batch_failed,
+                "batches": batches,
                 "diagnostic_status_labels": DIAGNOSTIC_STATUS_LABELS,
                 "ocr_status_labels": DIAGNOSTIC_OCR_STATUS_LABELS,
                 "validation_status_labels": DIAGNOSTIC_VALIDATION_STATUS_LABELS,
                 "association_status_labels": DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
             },
         )
+
+
+@web_router.post("/v2-clean/diagnostics/batches/reprocess")
+def reprocess_diagnostic_batch(
+    request: Request,
+    batch_name: str = Form(...),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not can_manage_carfast_fleet(request):
+        return RedirectResponse("/v2-clean/diagnostics", status_code=303)
+
+    processed = 0
+    failed = 0
+    limit = 20
+    with SessionLocal() as db:
+        records = db.execute(
+            select(Document, DiagnosticDocument)
+            .join(DiagnosticDocument, DiagnosticDocument.document_id == Document.id)
+            .where(Document.entry_channel == "historical_report_import")
+            .order_by(Document.id)
+        ).all()
+        profile_ids = [profile.id for _, profile in records]
+        latest_by_profile: dict[int, DiagnosticExtraction] = {}
+        if profile_ids:
+            for extraction in db.scalars(
+                select(DiagnosticExtraction)
+                .where(DiagnosticExtraction.diagnostic_document_id.in_(profile_ids))
+                .order_by(DiagnosticExtraction.created_at.desc(), DiagnosticExtraction.id.desc())
+            ).all():
+                latest_by_profile.setdefault(extraction.diagnostic_document_id, extraction)
+        _, batch_by_document = _diagnostic_batch_context(db, records, latest_by_profile)
+
+        candidates = []
+        for document, profile in records:
+            if batch_by_document.get(document.id, "Importação sem lote") != batch_name:
+                continue
+            extraction = latest_by_profile.get(profile.id)
+            needs_processing = (
+                _diagnostic_audit_health(profile, extraction) != "ready"
+                or not extraction
+                or extraction.extractor_version != DIAGNOSTIC_EXTRACTOR_VERSION
+                or extraction.parser_version != DIAGNOSTIC_PARSER_VERSION
+            )
+            if needs_processing:
+                candidates.append((document, profile))
+
+        for document, profile in candidates[:limit]:
+            source_path = _document_resolved_file(document)
+            if not source_path or source_path.suffix.lower() != ".pdf":
+                profile.ocr_status = "failed"
+                failed += 1
+                continue
+            profile.ocr_status = "processing"
+            try:
+                payload = extract_diagnostic_pdf(source_path)
+                extraction = persist_diagnostic_extraction(db, profile, payload)
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="diagnostic.batch_reprocessed",
+                        new_value=json.dumps(
+                            {
+                                "batch": batch_name,
+                                "extraction_id": extraction.id,
+                                "extractor_version": extraction.extractor_version,
+                                "parser_version": extraction.parser_version,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        user_id=user_id,
+                    )
+                )
+                processed += 1
+            except (OSError, RuntimeError, ValueError) as exc:
+                profile.ocr_status = "failed"
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="diagnostic.extraction_failed",
+                        new_value=str(exc)[:1000],
+                        user_id=user_id,
+                    )
+                )
+                failed += 1
+            db.commit()
+
+    return RedirectResponse(
+        "/v2-clean/diagnostics?"
+        + urlencode(
+            {
+                "batch_processed": processed,
+                "batch_failed": failed,
+            }
+        ),
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/diagnostics/reconcile", response_class=HTMLResponse)

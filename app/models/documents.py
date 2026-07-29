@@ -75,7 +75,11 @@ class VehicleDocumentRecord(TimestampMixin, Base):
     __tablename__ = "vehicle_document_records"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    vehicle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicles.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
     document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
     source_record_type: Mapped[str] = mapped_column(String(40), default="archive", index=True)
     main_group: Mapped[str] = mapped_column(String(40), index=True)

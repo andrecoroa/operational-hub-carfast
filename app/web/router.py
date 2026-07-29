@@ -92,6 +92,7 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcessService,
     WorkshopPhasedTechnicalReport,
 )
+from app.services.pending_document_importer import import_pending_documents
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
@@ -8234,6 +8235,12 @@ def clean_document_import_center(
     inbox_pending: int | None = None,
     inbox_duplicates: int | None = None,
     inbox_error: str | None = None,
+    pending_created: int | None = None,
+    pending_associated: int | None = None,
+    pending_unmatched: int | None = None,
+    pending_duplicates: int | None = None,
+    pending_invalid: int | None = None,
+    pending_error: str | None = None,
     triage_saved: int | None = None,
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
@@ -8629,6 +8636,47 @@ def clean_document_import_center(
             )
             or 0
         )
+        unmatched_pending_records = db.scalars(
+            select(VehicleDocumentRecord)
+            .where(
+                VehicleDocumentRecord.vehicle_id.is_(None),
+                VehicleDocumentRecord.main_group == "invoices",
+                VehicleDocumentRecord.source_record_type == "pending_import",
+                VehicleDocumentRecord.status == "pending",
+            )
+            .order_by(
+                VehicleDocumentRecord.document_date.desc().nullslast(),
+                VehicleDocumentRecord.id.desc(),
+            )
+            .limit(100)
+        ).all()
+        unmatched_pending_rows = [
+            {
+                "id": record.id,
+                "number": record.external_reference or record.title or f"Pendente {record.id}",
+                "supplier_name": record.supplier_name or "-",
+                "supplier_nif": str((record.metadata_json or {}).get("supplier_nif") or ""),
+                "date_display": clean_date(record.document_date.isoformat()) if record.document_date else "-",
+                "vin": record.vin or "",
+                "plate": record.plate or "",
+                "unit_number": str((record.metadata_json or {}).get("unit_number") or ""),
+                "expected_total": str((record.metadata_json or {}).get("expected_total") or ""),
+            }
+            for record in unmatched_pending_records
+        ]
+        unmatched_pending_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(VehicleDocumentRecord)
+                .where(
+                    VehicleDocumentRecord.vehicle_id.is_(None),
+                    VehicleDocumentRecord.main_group == "invoices",
+                    VehicleDocumentRecord.source_record_type == "pending_import",
+                    VehicleDocumentRecord.status == "pending",
+                )
+            )
+            or 0
+        )
 
         response = templates.TemplateResponse(
             request,
@@ -8691,6 +8739,14 @@ def clean_document_import_center(
                 "triage_saved": triage_saved,
                 "triage_rows": triage_rows,
                 "triage_count": triage_count,
+                "unmatched_pending_rows": unmatched_pending_rows,
+                "unmatched_pending_count": unmatched_pending_count,
+                "pending_created": pending_created,
+                "pending_associated": pending_associated,
+                "pending_unmatched": pending_unmatched,
+                "pending_duplicates": pending_duplicates,
+                "pending_invalid": pending_invalid,
+                "pending_error": pending_error,
                 "ocr_reprocessed": ocr_reprocessed,
                 "ocr_lines": ocr_lines,
                 "ocr_error": ocr_error,
@@ -13720,6 +13776,94 @@ def reprocess_structured_import_file(
         )
     )
     return imported_count
+
+
+@web_router.post("/v2-clean/documents/import/pending-invoices")
+def clean_document_import_pending_invoices(request: Request, file: UploadFile = File(...)):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".xlsx", ".xls", ".csv"}:
+        return RedirectResponse(
+            "/v2-clean/documents?pending_error=Formato+não+suportado",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    tmp_path = save_uploaded_spreadsheet(file)
+    try:
+        with SessionLocal() as db:
+            try:
+                result = import_pending_documents(
+                    db,
+                    path=tmp_path,
+                    original_name=Path(file.filename or "lista_pendentes").name,
+                    user_id=user_id,
+                )
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                return RedirectResponse(
+                    f"/v2-clean/documents?pending_error={quote_plus(str(exc)[:180])}",
+                    status_code=303,
+                )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    query = urlencode(
+        {
+            "pending_created": result["created"],
+            "pending_associated": result["associated"],
+            "pending_unmatched": result["unmatched"],
+            "pending_duplicates": result["duplicates"],
+            "pending_invalid": result["invalid"],
+        }
+    )
+    return RedirectResponse(f"/v2-clean/documents?{query}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/pending/{record_id}/associate")
+def clean_document_pending_invoice_associate(
+    request: Request,
+    record_id: int,
+    identifier: str = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    clean_identifier = re.sub(r"[^A-Z0-9]", "", identifier.upper())
+    with SessionLocal() as db:
+        record = db.get(VehicleDocumentRecord, record_id)
+        if not record or record.vehicle_id is not None or record.source_record_type != "pending_import":
+            return RedirectResponse("/v2-clean/documents?pending_error=Pendente+inválido", status_code=303)
+        vehicles = db.scalars(select(Vehicle)).all()
+        vehicle = next(
+            (
+                item
+                for item in vehicles
+                if clean_identifier
+                in {
+                    re.sub(r"[^A-Z0-9]", "", str(item.vin or "").upper()),
+                    re.sub(r"[^A-Z0-9]", "", str(item.plate or "").upper()),
+                    re.sub(r"[^A-Z0-9]", "", str(item.rentway_unit_nr or "").upper()),
+                }
+            ),
+            None,
+        )
+        if not vehicle:
+            return RedirectResponse(
+                "/v2-clean/documents?pending_error=Viatura+não+encontrada",
+                status_code=303,
+            )
+        record.vehicle_id = vehicle.id
+        record.plate = vehicle.plate
+        record.vin = vehicle.vin
+        record.updated_by_id = get_web_user_id(request)
+        metadata = dict(record.metadata_json or {})
+        metadata["association_method"] = "manual"
+        metadata["association_identifier"] = identifier.strip()
+        record.metadata_json = metadata
+        db.commit()
+    return RedirectResponse("/v2-clean/documents?pending_associated=1", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/work-orders")

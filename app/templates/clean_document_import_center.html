@@ -62,6 +62,19 @@
       </section>
     {% endif %}
 
+    {% if pending_created is not none or pending_error %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <div class="clean-doc-inline-workbench-note {% if pending_error %}danger{% endif %}">
+          {% if pending_error %}
+            <strong>Não foi possível importar os documentos pendentes: {{ pending_error }}.</strong>
+          {% else %}
+            <strong>{{ pending_created or 0 }} faturas pendentes criadas.</strong>
+            <span>{{ pending_associated or 0 }} associadas automaticamente · {{ pending_unmatched or 0 }} por associar · {{ pending_duplicates or 0 }} já existentes ignoradas{% if pending_invalid %} · {{ pending_invalid }} linhas inválidas{% endif %}.</span>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
     {% if manifest_updated is not none or manifest_error %}
       <section class="clean-doc-filter-panel clean-card-wide">
         <div class="clean-doc-inline-workbench-note {% if manifest_error %}danger{% endif %}">
@@ -280,6 +293,18 @@
           </article>
 
           <article class="clean-doc-compact-import-card">
+            <span class="clean-doc-type-token">FA?</span>
+            <div>
+              <h4>Faturas pendentes</h4>
+              <p>Importa a lista esperada e associa por chassis, matrícula ou Unit.</p>
+            </div>
+            <form method="post" action="/v2-clean/documents/import/pending-invoices" enctype="multipart/form-data" class="clean-doc-compact-form">
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button type="submit">Importar lista</button>
+            </form>
+          </article>
+
+          <article class="clean-doc-compact-import-card">
             <span class="clean-doc-type-token">OCR</span>
             <div>
               <h4>Resultados OCR</h4>
@@ -316,6 +341,61 @@
           </article>
         </div>
       </article>
+
+      <details class="clean-doc-collapsible clean-card-wide" {% if pending_unmatched %}open{% endif %}>
+        <summary>
+          <span>
+            <b>Faturas pendentes por associar</b>
+            <small>Listadas como esperadas, mas sem chassis, matrícula ou Unit reconhecido.</small>
+          </span>
+          <em>{{ unmatched_pending_count }} pendentes</em>
+        </summary>
+        <div class="clean-doc-collapsible-body">
+          <div class="clean-doc-table-wrap">
+            <table class="clean-doc-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Nº</th>
+                  <th>Fornecedor</th>
+                  <th>NIF</th>
+                  <th>Identificadores recebidos</th>
+                  <th>Total esperado</th>
+                  <th>Associar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in unmatched_pending_rows %}
+                  <tr>
+                    <td>{{ row.date_display }}</td>
+                    <td><strong>{{ row.number }}</strong></td>
+                    <td>{{ row.supplier_name }}</td>
+                    <td>{{ row.supplier_nif or "-" }}</td>
+                    <td>
+                      {% if row.vin %}VIN {{ row.vin }}{% endif %}
+                      {% if row.plate %} · {{ row.plate }}{% endif %}
+                      {% if row.unit_number %} · Unit {{ row.unit_number }}{% endif %}
+                      {% if not row.vin and not row.plate and not row.unit_number %}-{% endif %}
+                    </td>
+                    <td>{{ row.expected_total or "-" }}</td>
+                    <td>
+                      <form method="post" action="/v2-clean/documents/pending/{{ row.id }}/associate" class="clean-inline-form">
+                        <input name="identifier" placeholder="Chassis, matrícula ou Unit" required>
+                        <button type="submit">Associar</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="7"><em>Sem faturas pendentes por associar.</em></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if unmatched_pending_count > unmatched_pending_rows|length %}
+            <p class="clean-doc-table-note">A mostrar as primeiras {{ unmatched_pending_rows|length }} de {{ unmatched_pending_count }} pendentes.</p>
+          {% endif %}
+        </div>
+      </details>
 
       <details class="clean-doc-collapsible clean-card-wide clean-doc-triage-card" {% if triage_saved or inbox_pending %}open{% endif %}>
         <summary>

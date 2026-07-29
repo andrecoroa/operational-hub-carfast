@@ -291,7 +291,8 @@ def test_clean_vehicle_diagnostics_has_dedicated_operational_page():
         assert "14:25:00" in page.text
         assert "P0420" in page.text
         assert "Tensão bateria" in page.text
-        assert 'data-src="/documents/' in page.text
+        assert 'data-src="/v2-clean/documents/' in page.text
+        assert 'data-src="/documents/' not in page.text
         assert '<iframe title="Pré-visualização do diagnóstico" src=' not in page.text
 
         documents_page = client.get(f"/v2-clean/fleet/{vehicle_id}/documents")

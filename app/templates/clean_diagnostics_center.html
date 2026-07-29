@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="app-shell clean-shell">
-  {% set active_menu = "documents" %}
+  {% set active_menu = "documentation_diagnostics" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content clean-diagnostics-center">
+    {% set doc_nav = "diagnostics" %}
+    {% include "_clean_documentation_nav.html" %}
     <header class="clean-doc-page-header clean-card-wide">
       <div>
         <p class="eyebrow">Documentação / relatórios técnicos</p>
@@ -11,7 +13,7 @@
         <p>Separa processamento, OCR, validação e associação. Um relatório pode estar extraído e continuar pendente de validação.</p>
       </div>
       <div class="clean-header-actions">
-        <a class="button-link secondary-link" href="/v2-clean/documents">Documentação</a>
+        <a class="button-link secondary-link" href="/v2-clean/documentation">Documentação</a>
         <form method="post" action="/v2-clean/diagnostics/reconcile">
           <button type="submit">Reconciliar estados</button>
         </form>
@@ -119,7 +121,7 @@
                 <td>{{ row.field_count }} campos{% if row.extraction %}<small>{{ row.extraction.source_page_count }} pág.</small>{% endif %}</td>
                 <td>
                   {% if row.vehicle %}<a class="button-link secondary-link" href="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic-{{ row.profile.id }}">Ver dados</a>{% endif %}
-                  <a class="button-link secondary-link" href="/documents/{{ row.document.id }}">Validar</a>
+                  <a class="button-link secondary-link" href="/v2-clean/documents/{{ row.document.id }}">Validar</a>
                 </td>
               </tr>
             {% else %}

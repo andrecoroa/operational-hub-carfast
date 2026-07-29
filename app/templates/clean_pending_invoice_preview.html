@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documents" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-doc-page-header clean-card-wide">
+      <div class="clean-doc-header-main">
+        <p class="eyebrow">Documentação / faturas pendentes</p>
+        <h1>Rever antes de importar</h1>
+        <p>{{ preview.original_name }}. Confirma as associações e escolhe as linhas que devem ser criadas.</p>
+      </div>
+    </header>
+
+    {% if request.query_params.get("error") %}
+      <section class="clean-doc-filter-panel clean-card-wide">
+        <strong>{{ request.query_params.get("error") }}</strong>
+      </section>
+    {% endif %}
+
+    <section class="clean-doc-context-grid">
+      <article class="clean-card-wide clean-panel">
+        <div class="clean-doc-summary-strip clean-pending-preview-summary">
+          <div><strong>{{ preview.summary.total }}</strong><span>Linhas lidas</span></div>
+          <div><strong>{{ preview.summary.ready }}</strong><span>Prontas</span></div>
+          <div><strong>{{ preview.summary.associated }}</strong><span>Com viatura</span></div>
+          <div><strong>{{ preview.summary.unmatched }}</strong><span>Por associar</span></div>
+          <div><strong>{{ preview.summary.duplicates }}</strong><span>Duplicadas</span></div>
+          <div><strong>{{ preview.summary.invalid }}</strong><span>Inválidas</span></div>
+        </div>
+
+        <form method="post" action="/v2-clean/documents/import/pending-invoices/confirm">
+          <input type="hidden" name="preview_token" value="{{ preview_token }}">
+          <div class="clean-doc-table-wrap clean-pending-preview-table-wrap">
+            <table class="clean-doc-table clean-pending-preview-table">
+              <thead>
+                <tr>
+                  <th><input id="pending-select-all" type="checkbox" checked aria-label="Selecionar todas as linhas válidas"></th>
+                  <th>Origem</th>
+                  <th>Fatura</th>
+                  <th>Fornecedor</th>
+                  <th>Data / total</th>
+                  <th>Identificação recebida</th>
+                  <th>Associação</th>
+                  <th>Resultado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in preview.rows %}
+                  <tr class="{% if row.status != 'ready' %}is-muted{% endif %}">
+                    <td>
+                      <input
+                        class="pending-row-checkbox"
+                        type="checkbox"
+                        name="selected_rows"
+                        value="{{ row.row_id }}"
+                        {% if row.selected %}checked{% endif %}
+                        {% if row.status != "ready" %}disabled{% endif %}
+                        aria-label="Selecionar linha {{ row.source_row }}"
+                      >
+                    </td>
+                    <td>{{ row.source_sheet }} · {{ row.source_row }}</td>
+                    <td><strong>{{ row.number or "Sem número" }}</strong></td>
+                    <td>
+                      {{ row.supplier_name or "Fornecedor não indicado" }}
+                      {% if row.supplier_nif %}<small>NIF {{ row.supplier_nif }}</small>{% endif %}
+                    </td>
+                    <td>
+                      {{ row.document_date or "Sem data" }}
+                      <small>{{ row.total or "Sem total" }}</small>
+                    </td>
+                    <td>
+                      {% if row.vin %}VIN {{ row.vin }}
+                      {% elif row.plate %}Matrícula {{ row.plate }}
+                      {% elif row.unit_number %}Unit {{ row.unit_number }}
+                      {% else %}Sem identificador{% endif %}
+                    </td>
+                    <td>
+                      {% if row.vehicle_id %}
+                        <strong>{{ row.vehicle_label }}</strong>
+                        <small>por {{ row.association_method|upper }}</small>
+                      {% else %}
+                        <span>Fica por associar</span>
+                      {% endif %}
+                    </td>
+                    <td><span class="clean-status-chip status-{{ row.status }}">{{ row.status_detail }}</span></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="clean-doc-preview-actions">
+            <button type="submit">Confirmar e criar selecionadas</button>
+          </div>
+        </form>
+        <form method="post" action="/v2-clean/documents/import/pending-invoices/cancel" class="clean-pending-preview-cancel">
+          <input type="hidden" name="preview_token" value="{{ preview_token }}">
+          <button type="submit" class="secondary-button">Cancelar</button>
+        </form>
+      </article>
+    </section>
+  </main>
+</div>
+<script>
+  const selectAll = document.getElementById("pending-select-all");
+  const rowCheckboxes = Array.from(document.querySelectorAll(".pending-row-checkbox:not(:disabled)"));
+  selectAll?.addEventListener("change", () => {
+    rowCheckboxes.forEach((checkbox) => { checkbox.checked = selectAll.checked; });
+  });
+  rowCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      selectAll.checked = rowCheckboxes.every((item) => item.checked);
+      selectAll.indeterminate = !selectAll.checked && rowCheckboxes.some((item) => item.checked);
+    });
+  });
+</script>
+{% endblock %}

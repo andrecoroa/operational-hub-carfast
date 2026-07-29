@@ -37,6 +37,17 @@ def _document_key(value: Any) -> str:
     return _key(value)
 
 
+def _supplier_nif(value: Any) -> str:
+    digits = re.sub(r"\D", "", _text(value))
+    return digits if len(digits) == 9 else ""
+
+
+def _invoice_key(number: Any, supplier_nif: Any) -> str:
+    number_key = _document_key(number)
+    nif_key = _supplier_nif(supplier_nif)
+    return f"{nif_key}:{number_key}" if nif_key else number_key
+
+
 def _plate_key(value: Any) -> str:
     return _key(value).upper()
 
@@ -140,26 +151,29 @@ def _vehicle_maps(db: Session) -> tuple[dict[str, Vehicle], dict[str, Vehicle], 
     return by_vin, by_plate, by_unit
 
 
-def import_pending_documents(
-    db: Session,
-    *,
-    path: Path,
-    original_name: str,
-    user_id: int | None,
-) -> dict[str, int]:
-    by_vin, by_plate, by_unit = _vehicle_maps(db)
-    existing_record_keys = {
-        _document_key(value)
-        for value in db.scalars(
-            select(VehicleDocumentRecord.external_reference).where(
-                VehicleDocumentRecord.main_group == "invoices",
-                VehicleDocumentRecord.external_reference.is_not(None),
-            )
-        ).all()
-        if value
-    }
-    existing_document_keys: set[str] = set()
-    for document in db.scalars(
+def _existing_invoice_keys(db: Session) -> tuple[set[str], set[str]]:
+    exact_keys: set[str] = set()
+    number_only_keys: set[str] = set()
+    records = db.scalars(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.external_reference.is_not(None),
+        )
+    ).all()
+    for record in records:
+        number_key = _document_key(record.external_reference)
+        if not number_key:
+            continue
+        nif = _supplier_nif(
+            (record.metadata_json or {}).get("supplier_nif")
+            or record.supplier_name
+        )
+        if nif:
+            exact_keys.add(_invoice_key(record.external_reference, nif))
+        else:
+            number_only_keys.add(number_key)
+
+    documents = db.scalars(
         select(Document).where(
             or_(
                 Document.document_type.in_(
@@ -169,14 +183,31 @@ def import_pending_documents(
                 Document.title.ilike("%factura%"),
             )
         )
-    ).all():
+    ).all()
+    for document in documents:
+        supplier_nif = _supplier_nif(document.supplier_name)
         for value in (document.contract_number, document.reservation_number, document.title):
-            if value:
-                existing_document_keys.add(_document_key(value))
+            number_key = _document_key(value)
+            if not number_key:
+                continue
+            if supplier_nif:
+                exact_keys.add(_invoice_key(value, supplier_nif))
+            else:
+                number_only_keys.add(number_key)
+    return exact_keys, number_only_keys
 
-    result = {"created": 0, "associated": 0, "unmatched": 0, "duplicates": 0, "invalid": 0}
+
+def _parsed_pending_rows(
+    db: Session,
+    *,
+    path: Path,
+    original_name: str,
+) -> list[dict[str, Any]]:
+    by_vin, by_plate, by_unit = _vehicle_maps(db)
+    exact_existing_keys, number_only_existing_keys = _existing_invoice_keys(db)
+    parsed_rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for sheet, row_number, row in _rows(path):
+    for index, (sheet, row_number, row) in enumerate(_rows(path), start=1):
         number = _text(
             _first(
                 row,
@@ -194,17 +225,27 @@ def import_pending_documents(
             )
         )
         number_key = _document_key(number)
+        supplier_name = _text(_first(row, ("Fornecedor", "Nome fornecedor", "Supplier")))
+        supplier_nif = _supplier_nif(
+            _first(row, ("NIF fornecedor", "NIF Fornecedor", "Supplier NIF", "VAT"))
+        )
+        duplicate_key = _invoice_key(number, supplier_nif)
         if not number_key:
-            result["invalid"] += 1
-            continue
-        if (
-            number_key in seen
-            or number_key in existing_record_keys
-            or number_key in existing_document_keys
-        ):
-            result["duplicates"] += 1
-            continue
-        seen.add(number_key)
+            status = "invalid"
+            status_detail = "Sem número de fatura"
+        elif duplicate_key in seen:
+            status = "duplicate"
+            status_detail = "Repetida no ficheiro"
+        elif duplicate_key in exact_existing_keys:
+            status = "duplicate"
+            status_detail = "Já existe para este NIF e número"
+        elif number_key in number_only_existing_keys:
+            status = "duplicate"
+            status_detail = "Possível duplicado antigo com este número"
+        else:
+            status = "ready"
+            status_detail = "Pronta para criar"
+            seen.add(duplicate_key)
 
         raw_vin = _text(_first(row, ("Chassi", "Chassis", "VIN", "Referência", "Referencia")))
         vin = _vin(raw_vin)
@@ -217,13 +258,112 @@ def import_pending_documents(
             or by_plate.get(_plate_key(plate))
             or by_unit.get(_key(unit))
         )
-        supplier_name = _text(_first(row, ("Fornecedor", "Nome fornecedor", "Supplier")))
-        supplier_nif = _text(
-            _first(row, ("NIF fornecedor", "NIF Fornecedor", "Supplier NIF", "VAT"))
-        )
         document_date = _date(_first(row, ("Data", "Data fatura", "Data factura", "Invoice date")))
         total = _decimal(_first(row, ("Total", "Valor", "Total com IVA", "Total c/ IVA")))
         description = _text(_first(row, ("Observações", "Observacoes", "Descrição", "Descricao")))
+        association_method = (
+            "vin"
+            if vehicle and vin and by_vin.get(vin) is vehicle
+            else "plate"
+            if vehicle and plate and by_plate.get(_plate_key(plate)) is vehicle
+            else "unit"
+            if vehicle
+            else None
+        )
+        parsed_rows.append(
+            {
+                "row_id": str(index),
+                "source_sheet": sheet,
+                "source_row": row_number,
+                "number": number,
+                "supplier_name": supplier_name,
+                "supplier_nif": supplier_nif,
+                "document_date": document_date.isoformat() if document_date else None,
+                "total": total,
+                "description": description,
+                "raw_vin": raw_vin,
+                "vin": vin,
+                "plate": plate,
+                "unit_number": unit,
+                "vehicle_id": vehicle.id if vehicle else None,
+                "vehicle_plate": vehicle.plate if vehicle else None,
+                "vehicle_label": (
+                    f"{vehicle.plate} · Unit {vehicle.rentway_unit_nr}"
+                    if vehicle and vehicle.rentway_unit_nr
+                    else vehicle.plate
+                    if vehicle
+                    else None
+                ),
+                "association_method": association_method,
+                "status": status,
+                "status_detail": status_detail,
+                "selected": status == "ready",
+                "original_name": original_name,
+            }
+        )
+    return parsed_rows
+
+
+def preview_pending_documents(
+    db: Session,
+    *,
+    path: Path,
+    original_name: str,
+) -> dict[str, Any]:
+    rows = _parsed_pending_rows(db, path=path, original_name=original_name)
+    return {
+        "schema": "carfast.pending-invoice-preview.v1",
+        "original_name": original_name,
+        "rows": rows,
+        "summary": {
+            "total": len(rows),
+            "ready": sum(row["status"] == "ready" for row in rows),
+            "associated": sum(
+                row["status"] == "ready" and row["vehicle_id"] is not None for row in rows
+            ),
+            "unmatched": sum(
+                row["status"] == "ready" and row["vehicle_id"] is None for row in rows
+            ),
+            "duplicates": sum(row["status"] == "duplicate" for row in rows),
+            "invalid": sum(row["status"] == "invalid" for row in rows),
+        },
+    }
+
+
+def create_pending_documents_from_preview(
+    db: Session,
+    *,
+    preview: dict[str, Any],
+    selected_row_ids: set[str],
+    user_id: int | None,
+) -> dict[str, int]:
+    result = {"created": 0, "associated": 0, "unmatched": 0, "duplicates": 0, "invalid": 0}
+    exact_existing_keys, number_only_existing_keys = _existing_invoice_keys(db)
+    selected_rows = [
+        row
+        for row in preview.get("rows", [])
+        if str(row.get("row_id")) in selected_row_ids
+    ]
+    seen: set[str] = set()
+    for row in selected_rows:
+        number = _text(row.get("number"))
+        number_key = _document_key(number)
+        supplier_nif = _supplier_nif(row.get("supplier_nif"))
+        duplicate_key = _invoice_key(number, supplier_nif)
+        if not number_key or row.get("status") == "invalid":
+            result["invalid"] += 1
+            continue
+        if (
+            duplicate_key in seen
+            or duplicate_key in exact_existing_keys
+            or number_key in number_only_existing_keys
+        ):
+            result["duplicates"] += 1
+            continue
+        seen.add(duplicate_key)
+
+        vehicle_id = row.get("vehicle_id")
+        vehicle = db.get(Vehicle, int(vehicle_id)) if vehicle_id else None
         record = VehicleDocumentRecord(
             vehicle_id=vehicle.id if vehicle else None,
             source_record_type="pending_import",
@@ -231,32 +371,53 @@ def import_pending_documents(
             status="pending",
             external_reference=number,
             title=f"Fatura pendente {number}",
-            plate=vehicle.plate if vehicle else plate or None,
-            vin=vehicle.vin if vehicle else vin or None,
-            supplier_name=supplier_name or None,
-            raw_description=description or None,
-            document_date=document_date,
+            plate=vehicle.plate if vehicle else _text(row.get("plate")) or None,
+            vin=vehicle.vin if vehicle else _text(row.get("vin")) or None,
+            supplier_name=_text(row.get("supplier_name")) or None,
+            raw_description=_text(row.get("description")) or None,
+            document_date=_date(row.get("document_date")),
             has_physical_file=False,
             source_system="pending_document_import",
             metadata_json={
                 "supplier_nif": supplier_nif or None,
-                "unit_number": unit or None,
-                "expected_total": total,
-                "source_file": original_name,
-                "source_sheet": sheet,
-                "source_row": row_number,
-                "association_method": (
-                    "vin" if vehicle and vin and by_vin.get(vin) is vehicle
-                    else "plate" if vehicle and plate and by_plate.get(_plate_key(plate)) is vehicle
-                    else "unit" if vehicle else None
-                ),
+                "unit_number": _text(row.get("unit_number")) or None,
+                "expected_total": row.get("total"),
+                "source_file": preview.get("original_name"),
+                "source_sheet": row.get("source_sheet"),
+                "source_row": row.get("source_row"),
+                "association_method": row.get("association_method"),
             },
             created_by_id=user_id,
             updated_by_id=user_id,
         )
         db.add(record)
-        existing_record_keys.add(number_key)
+        exact_existing_keys.add(duplicate_key)
         result["created"] += 1
         result["associated" if vehicle else "unmatched"] += 1
     db.flush()
+    return result
+
+
+def import_pending_documents(
+    db: Session,
+    *,
+    path: Path,
+    original_name: str,
+    user_id: int | None,
+) -> dict[str, int]:
+    """Compatibility wrapper for non-interactive callers and existing tests."""
+    preview = preview_pending_documents(db, path=path, original_name=original_name)
+    selected = {
+        str(row["row_id"])
+        for row in preview["rows"]
+        if row["status"] == "ready"
+    }
+    result = create_pending_documents_from_preview(
+        db,
+        preview=preview,
+        selected_row_ids=selected,
+        user_id=user_id,
+    )
+    result["duplicates"] += preview["summary"]["duplicates"]
+    result["invalid"] += preview["summary"]["invalid"]
     return result

@@ -10,6 +10,7 @@ import mimetypes
 from pathlib import Path
 import re
 import unicodedata
+import uuid
 import zipfile
 from tempfile import TemporaryDirectory
 from tempfile import NamedTemporaryFile
@@ -92,7 +93,10 @@ from app.models.workshop_phased import (
     WorkshopPhasedProcessService,
     WorkshopPhasedTechnicalReport,
 )
-from app.services.pending_document_importer import import_pending_documents
+from app.services.pending_document_importer import (
+    create_pending_documents_from_preview,
+    preview_pending_documents,
+)
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
@@ -194,6 +198,8 @@ templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
 INVOICE_OCR_MANIFEST_SCHEMA = "carfast.invoice-ocr-manifest.v1"
 INVOICE_OCR_MANIFEST_MAX_SIZE = 25 * 1024 * 1024
+PENDING_INVOICE_PREVIEW_SCHEMA = "carfast.pending-invoice-preview.v1"
+PENDING_INVOICE_PREVIEW_TTL = timedelta(hours=24)
 APP_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -205,6 +211,45 @@ def document_archive_root() -> Path:
     if not root.is_absolute():
         root = APP_PROJECT_ROOT / root
     return root
+
+
+def _pending_invoice_preview_path(token: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", token):
+        raise ValueError("Pré-visualização inválida.")
+    root = document_archive_root() / "_pending_invoice_previews"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"{token}.json"
+
+
+def _store_pending_invoice_preview(preview: dict[str, Any], user_id: int | None) -> str:
+    token = uuid.uuid4().hex
+    payload = dict(preview)
+    payload["owner_user_id"] = user_id
+    payload["created_at"] = datetime.now(UTC).isoformat()
+    _pending_invoice_preview_path(token).write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return token
+
+
+def _load_pending_invoice_preview(token: str, user_id: int | None) -> dict[str, Any]:
+    path = _pending_invoice_preview_path(token)
+    if not path.is_file():
+        raise ValueError("Esta pré-visualização já não está disponível.")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema") != PENDING_INVOICE_PREVIEW_SCHEMA:
+        raise ValueError("Formato de pré-visualização inválido.")
+    if payload.get("owner_user_id") != user_id:
+        raise ValueError("Esta pré-visualização pertence a outro utilizador.")
+    try:
+        created_at = datetime.fromisoformat(str(payload["created_at"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Data da pré-visualização inválida.") from exc
+    if datetime.now(UTC) - created_at.astimezone(UTC) > PENDING_INVOICE_PREVIEW_TTL:
+        path.unlink(missing_ok=True)
+        raise ValueError("A pré-visualização expirou. Importe novamente o ficheiro.")
+    return payload
 
 
 def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
@@ -13794,21 +13839,88 @@ def clean_document_import_pending_invoices(request: Request, file: UploadFile = 
     try:
         with SessionLocal() as db:
             try:
-                result = import_pending_documents(
+                preview = preview_pending_documents(
                     db,
                     path=tmp_path,
                     original_name=Path(file.filename or "lista_pendentes").name,
-                    user_id=user_id,
                 )
-                db.commit()
             except Exception as exc:
-                db.rollback()
                 return RedirectResponse(
                     f"/v2-clean/documents?pending_error={quote_plus(str(exc)[:180])}",
                     status_code=303,
                 )
     finally:
         tmp_path.unlink(missing_ok=True)
+    token = _store_pending_invoice_preview(preview, user_id)
+    return RedirectResponse(
+        f"/v2-clean/documents/import/pending-invoices/preview/{token}",
+        status_code=303,
+    )
+
+
+@web_router.get("/v2-clean/documents/import/pending-invoices/preview/{token}")
+def clean_document_pending_invoice_preview(request: Request, token: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    try:
+        preview = _load_pending_invoice_preview(token, get_web_user_id(request))
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/v2-clean/documents?pending_error={quote_plus(str(exc))}",
+            status_code=303,
+        )
+    return templates.TemplateResponse(
+        request,
+        "clean_pending_invoice_preview.html",
+        {
+            "title": "Rever faturas pendentes",
+            "preview": preview,
+            "preview_token": token,
+        },
+    )
+
+
+@web_router.post("/v2-clean/documents/import/pending-invoices/confirm")
+def clean_document_pending_invoice_confirm(
+    request: Request,
+    preview_token: str = Form(...),
+    selected_rows: list[str] = Form(default=[]),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    try:
+        preview = _load_pending_invoice_preview(preview_token, user_id)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/v2-clean/documents?pending_error={quote_plus(str(exc))}",
+            status_code=303,
+        )
+    if not selected_rows:
+        return RedirectResponse(
+            f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}?error="
+            "Selecione+pelo+menos+uma+linha",
+            status_code=303,
+        )
+    with SessionLocal() as db:
+        try:
+            result = create_pending_documents_from_preview(
+                db,
+                preview=preview,
+                selected_row_ids=set(selected_rows),
+                user_id=user_id,
+            )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            return RedirectResponse(
+                f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}"
+                f"?error={quote_plus(str(exc)[:180])}",
+                status_code=303,
+            )
+    _pending_invoice_preview_path(preview_token).unlink(missing_ok=True)
     query = urlencode(
         {
             "pending_created": result["created"],
@@ -13819,6 +13931,22 @@ def clean_document_import_pending_invoices(request: Request, file: UploadFile = 
         }
     )
     return RedirectResponse(f"/v2-clean/documents?{query}", status_code=303)
+
+
+@web_router.post("/v2-clean/documents/import/pending-invoices/cancel")
+def clean_document_pending_invoice_cancel(
+    request: Request,
+    preview_token: str = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    try:
+        _load_pending_invoice_preview(preview_token, get_web_user_id(request))
+        _pending_invoice_preview_path(preview_token).unlink(missing_ok=True)
+    except ValueError:
+        pass
+    return RedirectResponse("/v2-clean/documents", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/pending/{record_id}/associate")

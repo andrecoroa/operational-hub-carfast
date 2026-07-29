@@ -3,7 +3,11 @@ from sqlalchemy import select
 
 from app.models.documents import VehicleDocumentRecord
 from app.models.vehicles import Vehicle
-from app.services.pending_document_importer import import_pending_documents
+from app.services.pending_document_importer import (
+    create_pending_documents_from_preview,
+    import_pending_documents,
+    preview_pending_documents,
+)
 
 
 def _workbook(path, rows):
@@ -88,3 +92,83 @@ def test_pending_invoice_import_is_idempotent(db_session, tmp_path):
     assert first["created"] == 1
     assert second["created"] == 0
     assert second["duplicates"] == 1
+
+
+def test_pending_invoice_preview_does_not_write_and_confirmation_is_selective(
+    db_session,
+    tmp_path,
+):
+    vehicle = Vehicle(
+        plate="AA-11-AA",
+        vin="VF3YBBPFC12W31462",
+        rentway_unit_nr="101",
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    path = tmp_path / "rever.xlsx"
+    _workbook(
+        path,
+        [
+            ["FAC 20", "01/01/2025", "Fornecedor", "500000001", vehicle.vin, "", "", "10,00"],
+            ["FAC 21", "02/01/2025", "Fornecedor", "500000001", "", "", "", "20,00"],
+        ],
+    )
+
+    preview = preview_pending_documents(
+        db_session,
+        path=path,
+        original_name=path.name,
+    )
+
+    assert preview["summary"] == {
+        "total": 2,
+        "ready": 2,
+        "associated": 1,
+        "unmatched": 1,
+        "duplicates": 0,
+        "invalid": 0,
+    }
+    assert db_session.scalar(select(VehicleDocumentRecord)) is None
+
+    result = create_pending_documents_from_preview(
+        db_session,
+        preview=preview,
+        selected_row_ids={"2"},
+        user_id=None,
+    )
+
+    assert result["created"] == 1
+    record = db_session.scalar(select(VehicleDocumentRecord))
+    assert record.external_reference == "FAC 21"
+    assert record.vehicle_id is None
+
+
+def test_pending_invoice_duplicate_uses_supplier_nif_and_number(db_session, tmp_path):
+    first_path = tmp_path / "primeira.xlsx"
+    second_path = tmp_path / "segunda.xlsx"
+    _workbook(
+        first_path,
+        [["FAC 30", "01/01/2025", "Fornecedor A", "500000001", "", "", "", "10,00"]],
+    )
+    _workbook(
+        second_path,
+        [
+            ["FAC 30", "02/01/2025", "Fornecedor B", "500000002", "", "", "", "20,00"],
+            ["FAC 30", "03/01/2025", "Fornecedor A", "500000001", "", "", "", "30,00"],
+        ],
+    )
+    import_pending_documents(
+        db_session,
+        path=first_path,
+        original_name=first_path.name,
+        user_id=None,
+    )
+
+    preview = preview_pending_documents(
+        db_session,
+        path=second_path,
+        original_name=second_path.name,
+    )
+
+    assert [row["status"] for row in preview["rows"]] == ["ready", "duplicate"]
+    assert preview["rows"][1]["status_detail"] == "Já existe para este NIF e número"

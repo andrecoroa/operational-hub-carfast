@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -83,6 +83,47 @@ class TaskHistory(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskParticipant(Base):
+    __tablename__ = "task_participants"
+    __table_args__ = (UniqueConstraint("task_id", "user_id", "role", name="uq_task_participant_role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(40), default="participant", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskEmailOrigin(Base):
+    __tablename__ = "task_email_origins"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), unique=True, index=True)
+    message_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    sender: Mapped[str | None] = mapped_column(String(255), index=True)
+    recipients_json: Mapped[list | None] = mapped_column(JSON)
+    subject: Mapped[str | None] = mapped_column(String(500))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    mailbox: Mapped[str | None] = mapped_column(String(255), index=True)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    rule_code: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class TaskHelpRequest(Base):
+    __tablename__ = "task_help_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    requested_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    requested_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TaskGuidedFlowRun(TimestampMixin, Base):

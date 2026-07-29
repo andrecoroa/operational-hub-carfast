@@ -1,6 +1,18 @@
 from sqlalchemy import select
 
-from app.models import Task, TaskHistory, Vehicle, VehicleDocumentRecord, WorkshopPhasedProcess
+from app.models import (
+    Document,
+    Task,
+    TaskDocument,
+    TaskEmailOrigin,
+    TaskHelpRequest,
+    TaskHistory,
+    TaskParticipant,
+    User,
+    Vehicle,
+    VehicleDocumentRecord,
+    WorkshopPhasedProcess,
+)
 
 
 def test_clean_task_center_creates_document_task_with_audit(authenticated_client, db_session):
@@ -42,7 +54,7 @@ def test_clean_task_center_creates_document_task_with_audit(authenticated_client
     center = authenticated_client.get("/v2-clean/tasks?workspace=workshop")
     assert center.status_code == 200
     assert "Confirmar classificação da fatura" in center.text
-    assert f'task-detail-{task.id}' in center.text
+    assert f'task-preview-{task.id}' in center.text
     assert f'/task-board/{task.id}' not in center.text
 
 
@@ -174,6 +186,94 @@ def test_clean_task_center_prefills_document_context(authenticated_client, db_se
     assert "Fornecedor: Fornecedor Teste" in response.text
     assert "Descrição: Mudança de óleo" in response.text
     assert 'value="documentacao"' in response.text
+
+
+def test_clean_task_center_supports_mine_participants_email_and_documents(authenticated_client, db_session):
+    owner = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    participant = User(
+        name="Pessoa de apoio",
+        email="apoio.tasks@carfast.local",
+        password_hash="not-used",
+        active=True,
+    )
+    document = Document(
+        title="Pedido recebido",
+        original_name="pedido.pdf",
+        file_name="pedido.pdf",
+        storage_provider="local",
+        storage_path="/tmp/pedido.pdf",
+        status="received",
+    )
+    db_session.add_all([participant, document])
+    db_session.commit()
+
+    created = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Tratar pedido recebido por email",
+            "workspace": "operational",
+            "record_type": "task",
+            "assigned_to_id": str(owner.id),
+            "source": "email",
+            "email_message_id": "<message-42@carfast.test>",
+            "email_sender": "cliente@example.test",
+            "email_subject": "Pedido 42",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Tratar pedido recebido por email"))
+    assert task.assigned_to_id == owner.id
+    assert db_session.scalar(select(TaskEmailOrigin).where(TaskEmailOrigin.task_id == task.id))
+
+    linked = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/documents",
+        data={"document_id": str(document.id), "return_url": "/v2-clean/tasks?workspace=mine"},
+        follow_redirects=False,
+    )
+    assert linked.status_code == 303
+    assert db_session.scalar(select(TaskDocument).where(TaskDocument.task_id == task.id))
+
+    added = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/participants",
+        data={
+            "participant_user_id": str(participant.id),
+            "role": "follower",
+            "return_url": "/v2-clean/tasks?workspace=mine",
+        },
+        follow_redirects=False,
+    )
+    assert added.status_code == 303
+    assert db_session.scalar(
+        select(TaskParticipant).where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.user_id == participant.id,
+            TaskParticipant.role == "follower",
+        )
+    )
+
+    help_response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/help",
+        data={
+            "requested_user_id": str(participant.id),
+            "message": "Confirmar dados do pedido",
+            "return_url": "/v2-clean/tasks?workspace=mine",
+        },
+        follow_redirects=False,
+    )
+    assert help_response.status_code == 303
+    assert db_session.scalar(
+        select(TaskHelpRequest).where(
+            TaskHelpRequest.task_id == task.id,
+            TaskHelpRequest.requested_user_id == participant.id,
+            TaskHelpRequest.status == "pending",
+        )
+    )
+
+    mine = authenticated_client.get("/v2-clean/tasks?workspace=mine&mine_kind=assigned")
+    assert mine.status_code == 200
+    assert task.title in mine.text
+    assert "Pedido recebido" in mine.text
 
 
 def test_workshop_record_action_opens_prefilled_task_form(authenticated_client, db_session):

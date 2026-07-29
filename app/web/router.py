@@ -67,9 +67,13 @@ from app.models.tasks import (
     QuickRecord,
     Task,
     TaskComment,
+    TaskDocument,
+    TaskEmailOrigin,
     TaskGuidedFlowRun,
     TaskGuidedFlowStepRun,
+    TaskHelpRequest,
     TaskHistory,
+    TaskParticipant,
 )
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleManualField, VehicleOperationalStatusEvent
 from app.models.vehicle_history_audit import (
@@ -3502,7 +3506,8 @@ def clean_task_prefill_from_context(
 @web_router.get("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_center(
     request: Request,
-    workspace: str = "all",
+    workspace: str = "mine",
+    mine_kind: str = "all",
     status: str = "open",
     kind: str = "all",
     plate: str = "",
@@ -3524,10 +3529,19 @@ def clean_tasks_center(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    user_id = get_web_user_id(request)
     with SessionLocal() as db:
-        task_divisions = clean_task_division_cards(db)
-        workspace_codes = set(TASK_WORKSPACE_CONFIG)
-        active_workspace = workspace if workspace in workspace_codes else "all"
+        current_user = db.get(User, user_id) if user_id else None
+        readable_workspaces = user_task_workspace_codes(db, current_user)
+        writable_workspaces = user_task_workspace_codes(db, current_user, write=True)
+        task_divisions = [
+            item for item in clean_task_division_cards(db) if item["code"] in readable_workspaces
+        ]
+        workspace_codes = set(readable_workspaces)
+        active_workspace = workspace if workspace in workspace_codes | {"mine", "all"} else "mine"
+        if active_workspace == "all" and not readable_workspaces:
+            active_workspace = "mine"
+        active_mine_kind = mine_kind if mine_kind in {"all", "assigned", "identified", "following", "created"} else "all"
         active_status = status if status in {"open", "closed", "all"} else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
         effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
@@ -3549,10 +3563,54 @@ def clean_tasks_center(
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
-            if active_workspace == "all" or workspace_code == active_workspace
+            if workspace_code in readable_workspaces
+            and (active_workspace in {"all", "mine"} or workspace_code == active_workspace)
             for code in codes
         ]
         filters = [Task.task_type.in_(tuple(task_type_codes)), Task.source == "v2_clean"]
+        if active_workspace == "mine" and user_id:
+            participant_task_ids = select(TaskParticipant.task_id).where(
+                TaskParticipant.user_id == user_id,
+                TaskParticipant.status == "active",
+            )
+            if active_mine_kind == "assigned":
+                filters.append(Task.assigned_to_id == user_id)
+            elif active_mine_kind == "identified":
+                filters.append(
+                    Task.id.in_(
+                        select(TaskParticipant.task_id).where(
+                            TaskParticipant.user_id == user_id,
+                            TaskParticipant.role.in_(("mentioned", "participant")),
+                            TaskParticipant.status == "active",
+                        )
+                    )
+                )
+            elif active_mine_kind == "following":
+                filters.append(
+                    Task.id.in_(
+                        select(TaskParticipant.task_id).where(
+                            TaskParticipant.user_id == user_id,
+                            TaskParticipant.role == "follower",
+                            TaskParticipant.status == "active",
+                        )
+                    )
+                )
+            elif active_mine_kind == "created":
+                filters.append(Task.created_by_id == user_id)
+            else:
+                filters.append(
+                    or_(
+                        Task.assigned_to_id == user_id,
+                        Task.created_by_id == user_id,
+                        Task.id.in_(participant_task_ids),
+                        Task.id.in_(
+                            select(TaskHelpRequest.task_id).where(
+                                TaskHelpRequest.requested_user_id == user_id,
+                                TaskHelpRequest.status == "pending",
+                            )
+                        ),
+                    )
+                )
         if active_status == "open":
             filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
         elif active_status == "closed":
@@ -3580,6 +3638,55 @@ def clean_tasks_center(
             .order_by(Task.closed_at.is_not(None), Task.priority.desc(), Task.due_on.is_(None), Task.due_on, Task.id.desc())
             .limit(120)
         ).all()
+        task_ids = [task.id for task in tasks]
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        users_by_id = {user.id: user for user in users}
+        participants_by_task: dict[int, list[TaskParticipant]] = defaultdict(list)
+        comments_by_task: dict[int, list[TaskComment]] = defaultdict(list)
+        history_by_task: dict[int, list[TaskHistory]] = defaultdict(list)
+        help_requests_by_task: dict[int, list[TaskHelpRequest]] = defaultdict(list)
+        documents_by_task: dict[int, list[Document]] = defaultdict(list)
+        email_by_task: dict[int, TaskEmailOrigin] = {}
+        if task_ids:
+            for participant in db.scalars(
+                select(TaskParticipant)
+                .where(TaskParticipant.task_id.in_(task_ids), TaskParticipant.status == "active")
+                .order_by(TaskParticipant.created_at)
+            ):
+                participants_by_task[participant.task_id].append(participant)
+            for comment in db.scalars(
+                select(TaskComment)
+                .where(TaskComment.task_id.in_(task_ids))
+                .order_by(TaskComment.created_at.desc())
+            ):
+                comments_by_task[comment.task_id].append(comment)
+            for history_item in db.scalars(
+                select(TaskHistory)
+                .where(TaskHistory.task_id.in_(task_ids))
+                .order_by(TaskHistory.changed_at.desc())
+            ):
+                history_by_task[history_item.task_id].append(history_item)
+            for help_request in db.scalars(
+                select(TaskHelpRequest)
+                .where(TaskHelpRequest.task_id.in_(task_ids))
+                .order_by(TaskHelpRequest.created_at.desc())
+            ):
+                help_requests_by_task[help_request.task_id].append(help_request)
+            linked_documents = db.execute(
+                select(TaskDocument.task_id, Document)
+                .join(Document, Document.id == TaskDocument.document_id)
+                .where(TaskDocument.task_id.in_(task_ids))
+                .order_by(Document.created_at.desc())
+            ).all()
+            for linked_task_id, linked_document in linked_documents:
+                documents_by_task[linked_task_id].append(linked_document)
+            email_by_task = {
+                item.task_id: item
+                for item in db.scalars(select(TaskEmailOrigin).where(TaskEmailOrigin.task_id.in_(task_ids)))
+            }
+        recent_documents = db.scalars(
+            select(Document).order_by(Document.created_at.desc()).limit(80)
+        ).all()
         open_filter = [
             Task.task_type.in_(tuple([code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes])),
             Task.source == "v2_clean",
@@ -3601,7 +3708,11 @@ def clean_tasks_center(
             )
             or 0,
         }
-        task_workspace_options = [("all", "Todas"), *TASK_WORKSPACES]
+        task_workspace_options = [
+            ("mine", "Minhas"),
+            ("all", "Todas"),
+            *[(code, TASK_WORKSPACE_LABELS[code]) for code in readable_workspaces],
+        ]
         task_status_options = [("open", "Abertas"), ("closed", "Fechadas"), ("all", "Todas")]
         task_kind_options = [("all", "Tarefas e problemas"), ("task", "Só tarefas"), ("problem", "Só problemas")]
         task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
@@ -3620,8 +3731,21 @@ def clean_tasks_center(
                 "task_workspace_labels": task_workspace_labels,
                 "task_status_labels": task_status_labels,
                 "task_priority_labels": task_priority_labels,
+                "current_user_id": user_id,
+                "users": users,
+                "users_by_id": users_by_id,
+                "participants_by_task": participants_by_task,
+                "comments_by_task": comments_by_task,
+                "history_by_task": history_by_task,
+                "help_requests_by_task": help_requests_by_task,
+                "documents_by_task": documents_by_task,
+                "email_by_task": email_by_task,
+                "recent_documents": recent_documents,
+                "readable_workspaces": readable_workspaces,
+                "writable_workspaces": writable_workspaces,
                 "filters": {
                     "workspace": active_workspace,
+                    "mine_kind": active_mine_kind,
                     "status": active_status,
                     "kind": active_kind,
                     "plate": normalized_plate,
@@ -3629,7 +3753,11 @@ def clean_tasks_center(
                 },
                 "prefill": {
                     "record_type": effective_record_type,
-                    "workspace": active_workspace if active_workspace != "all" else "workshop",
+                    "workspace": (
+                        active_workspace
+                        if active_workspace in writable_workspaces
+                        else ("workshop" if "workshop" in writable_workspaces else writable_workspaces[0] if writable_workspaces else "")
+                    ),
                     "title": prefill_context["title"],
                     "description": prefill_context["description"],
                     "category": prefill_context["category"],
@@ -3658,20 +3786,21 @@ def clean_tasks_create(
     category: str = Form(""),
     entity_type: str = Form(""),
     entity_id: str = Form(""),
+    assigned_to_id: str = Form(""),
+    source: str = Form("manual"),
+    email_message_id: str = Form(""),
+    email_sender: str = Form(""),
+    email_recipients: str = Form(""),
+    email_subject: str = Form(""),
+    email_mailbox: str = Form(""),
+    email_source_url: str = Form(""),
     return_url: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     user_id = get_web_user_id(request)
-    if not user_id or not has_any_web_permission(
-        request,
-        "tasks.write",
-        "tasks.operational.write",
-        "tasks.workshop.write",
-        "tasks.administration.write",
-        "admin.manage",
-    ):
+    if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     clean_title = title.strip()
     if not clean_title:
@@ -3684,6 +3813,17 @@ def clean_tasks_create(
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, current_user, clean_workspace, write=True):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
+        clean_source = "email" if source == "email" and email_message_id.strip() else "v2_clean"
+        clean_message_id = email_message_id.strip()[:255]
+        if clean_message_id and db.scalar(
+            select(TaskEmailOrigin).where(TaskEmailOrigin.message_id == clean_message_id)
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=duplicate_email", status_code=303)
         task = Task(
             title=clean_title[:200],
             description=description.strip() or None,
@@ -3698,11 +3838,32 @@ def clean_tasks_create(
             entity_type=entity_type.strip()[:120] or None,
             entity_id=entity_id.strip()[:120] or None,
             team_id=default_team_id(db, workspace_config["default_team_code"]),
+            assigned_to_id=assignee.id if assignee and assignee.active else None,
             created_by_id=user_id,
-            external_source_id=f"v2_clean:{clean_workspace}:{effective_record_type}:{now.timestamp()}",
+            external_source_id=(
+                f"email:{clean_message_id}"
+                if clean_source == "email"
+                else f"v2_clean:{clean_workspace}:{effective_record_type}:{now.timestamp()}"
+            ),
         )
         db.add(task)
         db.flush()
+        if clean_source == "email":
+            db.add(
+                TaskEmailOrigin(
+                    task_id=task.id,
+                    message_id=clean_message_id,
+                    sender=email_sender.strip()[:255] or None,
+                    recipients_json=[
+                        value.strip()
+                        for value in re.split(r"[;,]", email_recipients)
+                        if value.strip()
+                    ],
+                    subject=email_subject.strip()[:500] or clean_title[:500],
+                    mailbox=email_mailbox.strip()[:255] or None,
+                    source_url=email_source_url.strip() or None,
+                )
+            )
         db.add(
             TaskHistory(
                 task_id=task.id,
@@ -3743,20 +3904,16 @@ def clean_tasks_update(
     due_on: str = Form(""),
     category: str = Form(""),
     plate: str = Form(""),
+    assigned_to_id: str = Form(""),
+    waiting_reason: str = Form(""),
+    waiting_reason_detail: str = Form(""),
     return_url: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     user_id = get_web_user_id(request)
-    if not user_id or not has_any_web_permission(
-        request,
-        "tasks.write",
-        "tasks.operational.write",
-        "tasks.workshop.write",
-        "tasks.administration.write",
-        "admin.manage",
-    ):
+    if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     clean_title = title.strip()
     if not clean_title:
@@ -3771,6 +3928,12 @@ def clean_tasks_update(
         task = db.get(Task, task_id)
         if not task or task.source != "v2_clean":
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
+        current_user = db.get(User, user_id)
+        task_workspace = workspace_for_task_type(task.task_type)
+        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
         changes = {
             "title": (task.title, clean_title[:200]),
             "description": (task.description, description.strip() or None),
@@ -3779,6 +3942,9 @@ def clean_tasks_update(
             "due_on": (task.due_on, parsed_due),
             "category": (task.category, category.strip()[:80] or None),
             "plate": (task.plate, normalized_plate),
+            "assigned_to_id": (task.assigned_to_id, assignee.id if assignee and assignee.active else None),
+            "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
+            "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
         }
         for field_name, (old_value, new_value) in changes.items():
             if old_value == new_value:
@@ -3824,17 +3990,15 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
     if denied:
         return denied
     user_id = get_web_user_id(request)
-    if not user_id or not has_any_web_permission(
-        request,
-        "tasks.write",
-        "tasks.operational.write",
-        "tasks.workshop.write",
-        "tasks.administration.write",
-        "admin.manage",
-    ):
+    if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
+        current_user = db.get(User, user_id)
+        if task and not user_can_access_task_workspace(
+            db, current_user, workspace_for_task_type(task.task_type), write=True
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
             task.status = "closed"
@@ -3869,17 +4033,15 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
     if denied:
         return denied
     user_id = get_web_user_id(request)
-    if not user_id or not has_any_web_permission(
-        request,
-        "tasks.write",
-        "tasks.operational.write",
-        "tasks.workshop.write",
-        "tasks.administration.write",
-        "admin.manage",
-    ):
+    if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
+        current_user = db.get(User, user_id)
+        if task and not user_can_access_task_workspace(
+            db, current_user, workspace_for_task_type(task.task_type), write=True
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
             task.status = "new"
@@ -3906,6 +4068,190 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
     target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/tasks?reopened=1"
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}reopened=1", status_code=303)
+
+
+def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> RedirectResponse:
+    target = (
+        return_url.strip()
+        if return_url.strip().startswith("/") and not return_url.strip().startswith("//")
+        else "/v2-clean/tasks"
+    )
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}{flag}=1&open_task={task_id}", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/comments", response_class=HTMLResponse)
+def clean_tasks_comment(
+    request: Request,
+    task_id: int,
+    comment: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    clean_comment = comment.strip()
+    if not user_id or not clean_comment:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if not task or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type)):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="commented")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/participants", response_class=HTMLResponse)
+def clean_tasks_participant(
+    request: Request,
+    task_id: int,
+    participant_user_id: str = Form(""),
+    role: str = Form("participant"),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    parsed_user_id = parse_int_from_text(participant_user_id)
+    clean_role = role if role in {"participant", "mentioned", "follower"} else "participant"
+    if not user_id or not parsed_user_id:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        participant_user = db.get(User, parsed_user_id)
+        if (
+            not task
+            or not participant_user
+            or not participant_user.active
+            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        exists = db.scalar(
+            select(TaskParticipant).where(
+                TaskParticipant.task_id == task.id,
+                TaskParticipant.user_id == participant_user.id,
+                TaskParticipant.role == clean_role,
+            )
+        )
+        if exists:
+            exists.status = "active"
+        else:
+            db.add(
+                TaskParticipant(
+                    task_id=task.id,
+                    user_id=participant_user.id,
+                    role=clean_role,
+                    created_by_id=user_id,
+                )
+            )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="participant_added")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/help", response_class=HTMLResponse)
+def clean_tasks_help_request(
+    request: Request,
+    task_id: int,
+    requested_user_id: str = Form(""),
+    message: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    parsed_user_id = parse_int_from_text(requested_user_id)
+    if not user_id or not parsed_user_id:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        requested_user = db.get(User, parsed_user_id)
+        if (
+            not task
+            or not requested_user
+            or not requested_user.active
+            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        db.add(
+            TaskHelpRequest(
+                task_id=task.id,
+                requested_user_id=requested_user.id,
+                requested_by_id=user_id,
+                message=message.strip() or None,
+            )
+        )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="help_requested")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/help/{help_id}", response_class=HTMLResponse)
+def clean_tasks_help_response(
+    request: Request,
+    task_id: int,
+    help_id: int,
+    response: str = Form("accepted"),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    clean_response = response if response in {"accepted", "rejected"} else "accepted"
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        help_request = db.get(TaskHelpRequest, help_id)
+        if not help_request or help_request.task_id != task_id or help_request.requested_user_id != user_id:
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        help_request.status = clean_response
+        help_request.responded_at = datetime.now(UTC)
+        if clean_response == "accepted":
+            exists = db.scalar(
+                select(TaskParticipant).where(
+                    TaskParticipant.task_id == task_id,
+                    TaskParticipant.user_id == user_id,
+                    TaskParticipant.role == "participant",
+                )
+            )
+            if not exists:
+                db.add(
+                    TaskParticipant(
+                        task_id=task_id,
+                        user_id=user_id,
+                        role="participant",
+                        created_by_id=user_id,
+                    )
+                )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="help_answered")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/documents", response_class=HTMLResponse)
+def clean_tasks_link_document(
+    request: Request,
+    task_id: int,
+    document_id: str = Form(""),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    parsed_document_id = parse_int_from_text(document_id)
+    if not user_id or not parsed_document_id:
+        return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        document = db.get(Document, parsed_document_id)
+        if (
+            not task
+            or not document
+            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        exists = db.scalar(
+            select(TaskDocument).where(
+                TaskDocument.task_id == task.id,
+                TaskDocument.document_id == document.id,
+            )
+        )
+        if not exists:
+            db.add(TaskDocument(task_id=task.id, document_id=document.id, category="attachment"))
+            db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="document_linked")
 
 
 @web_router.get("/v2-clean/admin", response_class=HTMLResponse)

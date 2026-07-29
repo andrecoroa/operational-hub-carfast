@@ -4,277 +4,321 @@
   {% set active_menu = "clean_tasks" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content">
-    <header class="clean-module-hero">
+    <header class="clean-module-hero clean-task-hero">
       <div>
         <p class="eyebrow">Operação</p>
         <h2>Centro de Tarefas</h2>
-        <p>Prioridades, prazos e trabalho pendente de todas as áreas.</p>
+        <p>Uma fila de cada vez, com responsabilidade, colaboração e contexto visíveis.</p>
       </div>
-      <div class="clean-module-hero-actions">
-        <button class="button-link" type="button" data-task-create-open>Nova tarefa</button>
-      </div>
+      {% if writable_workspaces %}
+        <div class="clean-module-hero-actions">
+          <button class="button-link" type="button" data-task-create-open>Nova tarefa</button>
+        </div>
+      {% endif %}
     </header>
 
-    {% if created %}
+    {% if created or request.query_params.get("task_created") %}
       <div class="clean-alert-success">Tarefa criada com sucesso.</div>
-    {% endif %}
-    {% if updated %}
-      <div class="clean-alert-success">Registo atualizado.</div>
-    {% endif %}
-    {% if closed %}
+    {% elif updated or request.query_params.get("commented") or request.query_params.get("participant_added") or request.query_params.get("document_linked") %}
+      <div class="clean-alert-success">Tarefa atualizada.</div>
+    {% elif closed %}
       <div class="clean-alert-success">Tarefa fechada.</div>
-    {% endif %}
-    {% if reopened %}
+    {% elif reopened %}
       <div class="clean-alert-success">Tarefa reaberta.</div>
     {% endif %}
     {% if request.query_params.get("error") == "missing_title" %}
       <div class="clean-alert-warning">Indica um título antes de criar o registo.</div>
+    {% elif request.query_params.get("error") == "duplicate_email" %}
+      <div class="clean-alert-warning">Este email já deu origem a uma tarefa.</div>
     {% elif request.query_params.get("error") == "forbidden" %}
-      <div class="clean-alert-warning">Não tens permissão para alterar tarefas.</div>
-    {% elif request.query_params.get("error") == "not_found" %}
-      <div class="clean-alert-warning">O registo não existe nesta fila.</div>
+      <div class="clean-alert-warning">Não tens permissão para esta fila ou ação.</div>
     {% endif %}
 
-    <section class="clean-process-kpi-row" aria-label="Indicadores do centro de tarefas">
-      <article><span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>ativas</em></article>
+    <section class="clean-process-kpi-row" aria-label="Indicadores">
+      <article><span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>visíveis</em></article>
       <article><span>Abertas</span><strong>{{ task_metrics.open }}</strong><em>tarefas</em></article>
-      <article><span>Problemas</span><strong>{{ task_metrics.problems }}</strong><em>por resolver</em></article>
+      <article><span>Problemas</span><strong>{{ task_metrics.problems }}</strong><em>da oficina</em></article>
       <article><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></article>
     </section>
 
-    <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
-      <summary>
-        <span><b>Novo registo</b><small>Tarefa em qualquer área; problema apenas na Oficina.</small></span>
-        <span class="clean-task-summary-action">Criar</span>
-      </summary>
-      <div class="clean-task-create-body">
-        <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
-          <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">
-          <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
-          <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
-          <label class="span-2">Título
-            <input name="title" value="{{ prefill.title }}" required placeholder="Ex.: Classificar FO 1682 / confirmar intervenção">
-          </label>
-          <label>Tipo
-            <select name="record_type">
-              <option value="task" {% if prefill.record_type != "problem" %}selected{% endif %}>Tarefa</option>
-              <option value="problem" data-workshop-only {% if prefill.record_type == "problem" %}selected{% endif %}>Problema de Oficina</option>
-            </select>
-          </label>
-          <label>Área
-            <select name="workspace">
-              {% for code, label in task_workspace_options if code != "all" %}
-                <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>Matrícula
-            <input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE">
-          </label>
-          <label>Prioridade
-            <select name="priority">
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
-              <option value="urgent">Urgente</option>
-              <option value="low">Baixa</option>
-            </select>
-          </label>
-          <label>Prazo
-            <input type="date" name="due_on">
-          </label>
-          <label>Categoria
-            <input name="category" value="{{ prefill.category }}" placeholder="documentacao, oficina, auditoria...">
-          </label>
-          <label class="span-2">Descrição
-            <textarea name="description" rows="3" placeholder="O que tem de ser feito, origem, documento ou evidência...">{{ prefill.description }}</textarea>
-          </label>
-          <div class="clean-task-create-actions span-2">
-            <button type="submit">Criar registo</button>
-          </div>
-        </form>
-      </div>
-    </details>
+    {% if writable_workspaces %}
+      <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
+        <summary>
+          <span><b>Nova tarefa</b><small>Criação curta; o restante acompanhamento é feito no detalhe.</small></span>
+          <span class="clean-task-summary-action">Criar</span>
+        </summary>
+        <div class="clean-task-create-body">
+          <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
+            <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">
+            <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
+            <input type="hidden" name="category" value="{{ prefill.category }}">
+            <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
+            <label class="span-2">Título<input name="title" value="{{ prefill.title }}" required></label>
+            <label>Área
+              <select name="workspace">
+                {% for code, label in task_workspace_options if code in writable_workspaces %}
+                  <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Responsável
+              <select name="assigned_to_id">
+                <option value="">Por atribuir</option>
+                {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Prioridade
+              <select name="priority">
+                <option value="normal">Normal</option><option value="high">Alta</option>
+                <option value="urgent">Urgente</option><option value="low">Baixa</option>
+              </select>
+            </label>
+            <label>Prazo<input type="date" name="due_on"></label>
+            <label>Matrícula<input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE"></label>
+            <label>Tipo
+              <select name="record_type">
+                <option value="task">Tarefa</option>
+                <option value="problem" data-workshop-only {% if prefill.record_type == "problem" %}selected{% endif %}>Problema de Oficina</option>
+              </select>
+            </label>
+            <label class="span-2">Descrição<textarea name="description" rows="3">{{ prefill.description }}</textarea></label>
+            <details class="clean-task-email-origin span-2">
+              <summary>Criada a partir de email</summary>
+              <div class="clean-task-email-grid">
+                <input type="hidden" name="source" value="manual" data-task-source>
+                <label>ID da mensagem<input name="email_message_id" data-email-field></label>
+                <label>Remetente<input name="email_sender"></label>
+                <label>Destinatários<input name="email_recipients"></label>
+                <label>Caixa de correio<input name="email_mailbox"></label>
+                <label class="span-2">Assunto<input name="email_subject"></label>
+                <label class="span-2">Ligação ao email<input name="email_source_url"></label>
+              </div>
+            </details>
+            <div class="clean-task-create-actions span-2"><button type="submit">Criar tarefa</button></div>
+          </form>
+        </div>
+      </details>
+    {% endif %}
 
     <section class="clean-panel clean-card-wide clean-task-queue-panel">
       <div class="table-heading flat-heading">
-        <div>
-          <h3>Fila de trabalho</h3>
-          <p>{{ tasks|length }} registos nos filtros atuais.</p>
-        </div>
+        <div><h3>Fila de trabalho</h3><p>{{ tasks|length }} registos nos filtros atuais.</p></div>
       </div>
-
-      <nav class="clean-task-workspace-tabs" aria-label="Áreas de trabalho">
-        <a href="/v2-clean/tasks?workspace=all" class="{% if filters.workspace == 'all' %}active{% endif %}">
-          <span>Todas</span><b>{{ task_metrics.open }}</b>
-        </a>
+      <nav class="clean-task-workspace-tabs" aria-label="Filas">
+        <a href="/v2-clean/tasks?workspace=mine" class="{% if filters.workspace == 'mine' %}active{% endif %}"><span>Minhas</span></a>
+        <a href="/v2-clean/tasks?workspace=all" class="{% if filters.workspace == 'all' %}active{% endif %}"><span>Todas</span><b>{{ task_metrics.open }}</b></a>
         {% for division in task_divisions %}
           <a href="/v2-clean/tasks?workspace={{ division.code }}" class="{% if filters.workspace == division.code %}active{% endif %}">
             <span>{{ division.label }}</span><b>{{ division.open }}</b>
           </a>
         {% endfor %}
       </nav>
-
+      {% if filters.workspace == "mine" %}
+        <nav class="clean-task-mine-tabs" aria-label="Relação com a tarefa">
+          {% for code, label in [("all","Todas as minhas"),("assigned","Atribuídas"),("identified","Identificado"),("following","A acompanhar"),("created","Criadas por mim")] %}
+            <a href="/v2-clean/tasks?workspace=mine&mine_kind={{ code }}" class="{% if filters.mine_kind == code %}active{% endif %}">{{ label }}</a>
+          {% endfor %}
+        </nav>
+      {% endif %}
       <form method="get" action="/v2-clean/tasks" class="clean-task-filter-row">
-        <label>Área
-          <select name="workspace">
-            {% for code, label in task_workspace_options %}
-              <option value="{{ code }}" {% if filters.workspace == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Estado
-          <select name="status">
-            {% for code, label in task_status_options %}
-              <option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Tipo
-          <select name="kind">
-            {% for code, label in task_kind_options %}
-              <option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Matrícula
-          <input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE">
-        </label>
-        <label>Pesquisar
-          <input name="q" value="{{ filters.q }}" placeholder="Documento, fornecedor, tarefa...">
-        </label>
+        <input type="hidden" name="workspace" value="{{ filters.workspace }}">
+        <input type="hidden" name="mine_kind" value="{{ filters.mine_kind }}">
+        <label>Estado<select name="status">{% for code, label in task_status_options %}<option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Tipo<select name="kind">{% for code, label in task_kind_options %}<option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
+        <label>Pesquisar<input name="q" value="{{ filters.q }}" placeholder="Tarefa, documento, contexto..."></label>
         <button type="submit">Filtrar</button>
       </form>
-
       <div class="clean-task-table-wrap">
         <table class="clean-doc-table clean-task-table">
-          <thead>
-            <tr>
-              <th>Tarefa / problema</th>
-              <th>Área</th>
-              <th>Matrícula</th>
-              <th>Prioridade</th>
-              <th>Prazo</th>
-              <th>Estado</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Prioridade</th><th>Tarefa</th><th>Contexto</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead>
           <tbody>
-            {% for task in tasks %}
-              {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
-              {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
-              {% set task_is_closed = task.closed_at or task.status in ["closed", "cancelled", "no_action_needed", "resolved"] %}
-              <tr>
-                <td>
-                  <span class="clean-task-kind {% if task_is_problem %}problem{% endif %}">
-                    {{ "Problema" if task_is_problem else "Tarefa" }}
-                  </span>
-                  <strong>{{ task.title }}</strong>
-                  <small>{{ task.description or "Sem descrição." }}</small>
-                  {% if task.entity_type or task.entity_id %}
-                    <small>{{ task.entity_type or "-" }} · {{ task.entity_id or "-" }}</small>
-                  {% endif %}
-                </td>
-                <td>{{ task_workspace_labels.get(task_workspace, task_workspace) }}</td>
-                <td>{{ task.plate or "-" }}</td>
-                <td>{{ task_priority_labels.get(task.priority, task.priority or "Normal") }}</td>
-                <td>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}</td>
-                <td>
-                  <span class="clean-task-status {% if task_is_closed %}closed{% elif task.subcategory == 'problem' %}problem{% endif %}">
-                    {{ task_status_labels.get(task.status, task.status) }}
-                  </span>
-                </td>
-                <td>
-                  <div class="clean-task-row-actions">
-                    <button class="button-link secondary-link" type="button" data-task-detail-toggle="task-detail-{{ task.id }}">Detalhes</button>
-                  {% if task_is_closed %}
-                    <form method="post" action="/v2-clean/tasks/{{ task.id }}/reopen">
-                      <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                      <button class="button-link secondary-link" type="submit">Reabrir</button>
-                    </form>
-                  {% else %}
-                    <form method="post" action="/v2-clean/tasks/{{ task.id }}/close">
-                      <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                      <button class="button-link secondary-link" type="submit">Fechar</button>
-                    </form>
-                  {% endif %}
-                  </div>
-                </td>
-              </tr>
-              <tr class="clean-task-detail-row" id="task-detail-{{ task.id }}" hidden>
-                <td colspan="7">
-                  <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
-                    <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                    <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
-                    <label>Estado
-                      <select name="status">
-                        {% for code, label in [("new", "Nova"), ("in_execution", "Em curso"), ("waiting", "Em espera"), ("resolved", "Resolvida"), ("closed", "Fechada"), ("cancelled", "Cancelada")] %}
-                          <option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                      </select>
-                    </label>
-                    <label>Prioridade
-                      <select name="priority">
-                        {% for code, label in [("low", "Baixa"), ("normal", "Normal"), ("high", "Alta"), ("urgent", "Urgente")] %}
-                          <option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                      </select>
-                    </label>
-                    <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
-                    <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
-                    <label>Categoria<input name="category" value="{{ task.category or '' }}"></label>
-                    <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
-                    <div class="clean-task-edit-meta span-2">
-                      <span>Origem: {{ task.entity_type or "registo manual" }}{% if task.entity_id %} · {{ task.entity_id }}{% endif %}</span>
-                      <button type="submit">Guardar alterações</button>
-                    </div>
-                  </form>
-                </td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="7">Sem tarefas para os filtros selecionados.</td>
-              </tr>
-            {% endfor %}
+          {% for task in tasks %}
+            {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
+            {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
+            <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
+              <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
+              <td><strong>{{ task.title }}</strong><small>{{ "Problema" if task_is_problem else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small></td>
+              <td><strong>{{ task.plate or task.entity_type or "-" }}</strong><small>{{ task.category or "Sem categoria" }}</small></td>
+              <td>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</td>
+              <td>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}</td>
+              <td><span class="clean-task-status {% if task.closed_at %}closed{% endif %}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
+              <td><button class="button-link secondary-link" type="button">Abrir</button></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7">Sem tarefas para os filtros selecionados.</td></tr>
+          {% endfor %}
           </tbody>
         </table>
       </div>
     </section>
   </main>
 </div>
+
+{% for task in tasks %}
+  {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
+  {% set can_write = task_workspace in writable_workspaces %}
+  <section class="clean-task-preview" id="task-preview-{{ task.id }}" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="clean-task-preview-backdrop" data-task-close></div>
+    <article class="clean-task-preview-dialog">
+      <header>
+        <div><small>{{ task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
+        <div class="clean-task-preview-actions">
+          <span class="clean-task-status">{{ task_status_labels.get(task.status, task.status) }}</span>
+          <button type="button" class="button-link secondary-link" data-task-close>Fechar</button>
+        </div>
+      </header>
+      <div class="clean-task-preview-body">
+        <div class="clean-task-preview-main">
+          <section>
+            <h3>Descrição e contexto</h3>
+            <p class="clean-task-description">{{ task.description or "Sem descrição." }}</p>
+            <div class="clean-task-context-line">
+              <span>Matrícula <b>{{ task.plate or "-" }}</b></span>
+              <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
+              {% if task.entity_id %}<span>Referência <b>{{ task.entity_id }}</b></span>{% endif %}
+            </div>
+            {% if email_by_task.get(task.id) %}
+              {% set email = email_by_task.get(task.id) %}
+              <div class="clean-task-email-summary"><b>Email:</b> {{ email.subject or task.title }} · {{ email.sender or "remetente desconhecido" }}{% if email.mailbox %} · {{ email.mailbox }}{% endif %}</div>
+            {% endif %}
+          </section>
+          {% if can_write %}
+          <section>
+            <h3>Gestão</h3>
+            <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
+              <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+              <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
+              <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+              <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
+              <label>Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
+              <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
+              <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
+              <label class="span-2">Detalhe da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
+              <input type="hidden" name="category" value="{{ task.category or '' }}">
+              <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span><button type="submit">Guardar</button></div>
+            </form>
+          </section>
+          {% endif %}
+          <section>
+            <h3>Comentários</h3>
+            <div class="clean-task-timeline">
+              {% for comment in comments_by_task.get(task.id, [])[:8] %}
+                <article><b>{{ users_by_id.get(comment.user_id).name if users_by_id.get(comment.user_id) else "Utilizador" }}</b><time>{{ comment.created_at.strftime("%d/%m/%Y %H:%M") }}</time><p>{{ comment.comment }}</p></article>
+              {% else %}<p>Sem comentários.</p>{% endfor %}
+            </div>
+            {% if can_write %}
+              <form method="post" action="/v2-clean/tasks/{{ task.id }}/comments" class="clean-task-inline-form">
+                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                <textarea name="comment" required placeholder="Adicionar atualização ou decisão..."></textarea><button>Comentar</button>
+              </form>
+            {% endif %}
+          </section>
+          <details class="clean-task-history">
+            <summary>Histórico ({{ history_by_task.get(task.id, [])|length }})</summary>
+            {% for item in history_by_task.get(task.id, [])[:12] %}<p><b>{{ item.field_name }}</b> · {{ item.new_value or "-" }} <time>{{ item.changed_at.strftime("%d/%m/%Y %H:%M") }}</time></p>{% endfor %}
+          </details>
+        </div>
+        <aside class="clean-task-preview-side">
+          <section><h3>Responsabilidade</h3><dl><dt>Responsável</dt><dd>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd><dt>Prazo</dt><dd>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "Sem prazo" }}</dd></dl></section>
+          <section>
+            <h3>Intervenientes</h3>
+            {% for participant in participants_by_task.get(task.id, []) %}<p>{{ users_by_id.get(participant.user_id).name if users_by_id.get(participant.user_id) else "Utilizador" }} <small>{{ {"participant":"Participante","mentioned":"Identificado","follower":"A acompanhar"}.get(participant.role, participant.role) }}</small></p>{% else %}<p>Sem intervenientes.</p>{% endfor %}
+            {% if can_write %}
+              <form method="post" action="/v2-clean/tasks/{{ task.id }}/participants" class="clean-task-side-form">
+                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                <select name="participant_user_id" required><option value="">Selecionar utilizador</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
+                <select name="role"><option value="participant">Participante</option><option value="mentioned">Pedir ajuda / identificar</option><option value="follower">A acompanhar</option></select>
+                <button>Adicionar</button>
+              </form>
+              <form method="post" action="/v2-clean/tasks/{{ task.id }}/help" class="clean-task-side-form">
+                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                <select name="requested_user_id" required><option value="">Pedir ajuda a...</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
+                <input name="message" placeholder="Ajuda necessária">
+                <button>Pedir ajuda</button>
+              </form>
+            {% endif %}
+            {% for help in help_requests_by_task.get(task.id, []) %}
+              <div class="clean-task-help-request">
+                <b>{{ users_by_id.get(help.requested_user_id).name if users_by_id.get(help.requested_user_id) else "Utilizador" }}</b>
+                <span>{{ {"pending":"Pedido pendente","accepted":"Ajuda aceite","rejected":"Pedido recusado"}.get(help.status, help.status) }}</span>
+                {% if help.message %}<p>{{ help.message }}</p>{% endif %}
+                {% if help.requested_user_id == current_user_id and help.status == "pending" %}
+                  <form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}">
+                    <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                    <button name="response" value="accepted">Aceitar</button>
+                    <button name="response" value="rejected" class="secondary">Recusar</button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </section>
+          <section>
+            <h3>Documentos</h3>
+            {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
+            {% if can_write %}
+              <form method="post" action="/v2-clean/tasks/{{ task.id }}/documents" class="clean-task-side-form">
+                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                <select name="document_id" required><option value="">Associar documento existente</option>{% for document in recent_documents %}<option value="{{ document.id }}">{{ document.title or document.original_name }}</option>{% endfor %}</select>
+                <button>Associar</button>
+              </form>
+              <a class="clean-task-document-upload-link" href="/v2-clean/documents/triage">Importar novo documento na Triagem</a>
+            {% endif %}
+          </section>
+          <section class="clean-task-close-zone">
+            {% if can_write %}
+              {% if task.closed_at or task.status in ["closed","resolved","cancelled"] %}
+                <form method="post" action="/v2-clean/tasks/{{ task.id }}/reopen"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Reabrir tarefa</button></form>
+              {% else %}
+                <form method="post" action="/v2-clean/tasks/{{ task.id }}/close"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Fechar tarefa</button></form>
+              {% endif %}
+            {% endif %}
+          </section>
+        </aside>
+      </div>
+    </article>
+  </section>
+{% endfor %}
+
 <script>
-  const taskWorkspace = document.querySelector('.clean-task-create-form select[name="workspace"]');
-  const taskRecordType = document.querySelector('.clean-task-create-form select[name="record_type"]');
-  const syncProblemOption = () => {
-    if (!taskWorkspace || !taskRecordType) return;
-    const problemOption = taskRecordType.querySelector("[data-workshop-only]");
-    if (!problemOption) return;
-    const allowed = taskWorkspace.value === "workshop";
-    problemOption.hidden = !allowed;
-    problemOption.disabled = !allowed;
-    if (!allowed && taskRecordType.value === "problem") taskRecordType.value = "task";
+  const workspace = document.querySelector('.clean-task-create-form select[name="workspace"]');
+  const recordType = document.querySelector('.clean-task-create-form select[name="record_type"]');
+  const syncProblem = () => {
+    const option = recordType?.querySelector("[data-workshop-only]");
+    if (!option || !workspace) return;
+    option.hidden = workspace.value !== "workshop";
+    option.disabled = workspace.value !== "workshop";
+    if (option.disabled && recordType.value === "problem") recordType.value = "task";
   };
-  taskWorkspace?.addEventListener("change", syncProblemOption);
-  syncProblemOption();
-
+  workspace?.addEventListener("change", syncProblem); syncProblem();
   document.querySelector("[data-task-create-open]")?.addEventListener("click", () => {
-    const creator = document.getElementById("new-task");
-    if (!creator) return;
-    creator.open = true;
-    creator.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => creator.querySelector('input[name="title"]')?.focus(), 350);
+    const creator = document.getElementById("new-task"); if (!creator) return;
+    creator.open = true; creator.scrollIntoView({behavior:"smooth", block:"start"});
   });
-  if (window.location.hash === "#new-task") {
-    const creator = document.getElementById("new-task");
-    if (creator) creator.open = true;
-  }
-
-  document.querySelectorAll("[data-task-detail-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const row = document.getElementById(button.dataset.taskDetailToggle || "");
-      if (!row) return;
-      row.hidden = !row.hidden;
-      button.textContent = row.hidden ? "Detalhes" : "Fechar detalhe";
-    });
+  document.querySelector(".clean-task-email-origin")?.addEventListener("toggle", (event) => {
+    document.querySelector("[data-task-source]").value = event.currentTarget.open ? "email" : "manual";
   });
+  const closeTaskPreview = (preview) => {
+    preview?.classList.remove("is-open"); preview?.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("clean-task-preview-open");
+  };
+  const openTaskPreview = (id) => {
+    const preview = document.getElementById(id); if (!preview) return;
+    preview.classList.add("is-open"); preview.setAttribute("aria-hidden", "false");
+    document.body.classList.add("clean-task-preview-open");
+    history.replaceState(null, "", `#${id}`);
+  };
+  document.querySelectorAll("[data-task-open]").forEach((row) => {
+    row.addEventListener("click", (event) => { if (!event.target.closest("a,button,input,select,textarea")) openTaskPreview(row.dataset.taskOpen); });
+    row.addEventListener("keydown", (event) => { if (event.key === "Enter") openTaskPreview(row.dataset.taskOpen); });
+    row.querySelector("button")?.addEventListener("click", () => openTaskPreview(row.dataset.taskOpen));
+  });
+  document.querySelectorAll("[data-task-close]").forEach((button) => button.addEventListener("click", () => closeTaskPreview(button.closest(".clean-task-preview"))));
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeTaskPreview(document.querySelector(".clean-task-preview.is-open")); });
+  const requested = new URLSearchParams(location.search).get("open_task");
+  if (requested) openTaskPreview(`task-preview-${requested}`);
+  else if (location.hash.startsWith("#task-preview-")) openTaskPreview(location.hash.slice(1));
 </script>
 {% endblock %}

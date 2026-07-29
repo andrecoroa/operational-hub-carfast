@@ -150,7 +150,7 @@ def upgrade() -> None:
                     WHEN document_type = 'workshop_supplier_invoice' THEN 'operacional'
                     ELSE NULL
                 END,
-                CASE WHEN status IN ('classified','archived') THEN 1 ELSE 0 END
+                CASE WHEN status IN ('classified','archived') THEN TRUE ELSE FALSE END
             FROM documents
             """
         )

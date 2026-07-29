@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_admin" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content clean-admin-content">
+    <header class="clean-header-shell clean-card-wide">
+      <div class="clean-header-topbar">
+        <div>
+          <p class="eyebrow">Nova experiência / sistema</p>
+          <h2>Administração</h2>
+          <p>Utilizadores, perfis, configuração, auditoria e integrações da experiência Clean.</p>
+        </div>
+        <span class="pill muted-pill">{{ current_admin_user.email if current_admin_user else "" }}</span>
+      </div>
+      <nav class="clean-admin-nav" aria-label="Secções de administração">
+        {% for item in admin_nav %}
+          <a href="{{ item.href }}" {% if admin_section == item.code %}class="active"{% endif %}>{{ item.label }}</a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    {% if request.query_params.get("error") %}
+      <div class="alert clean-card-wide">Não foi possível concluir a operação: {{ request.query_params.get("error") }}.</div>
+    {% endif %}
+    {% if request.query_params.get("created") or request.query_params.get("saved") or request.query_params.get("password_saved") %}
+      <div class="success clean-card-wide">Alteração guardada e registada na auditoria.</div>
+    {% endif %}
+
+    {% if admin_section == "overview" %}
+      <section class="metric-grid clean-card-wide clean-admin-metrics">
+        <div class="metric"><span>Utilizadores ativos</span><strong>{{ metrics.active_users }}</strong><small>{{ metrics.users }} no total</small></div>
+        <div class="metric"><span>Perfis ativos</span><strong>{{ metrics.roles }}</strong><small>Controlo por função</small></div>
+        <div class="metric"><span>Configurações</span><strong>{{ metrics.catalogs }}</strong><small>Catálogos ativos</small></div>
+        <div class="metric"><span>Modelos Oficina</span><strong>{{ metrics.workshop_models }}</strong><small>Modelos ativos</small></div>
+        <div class="metric"><span>Auditoria 24 h</span><strong>{{ metrics.audit_24h }}</strong><small>Ações registadas</small></div>
+        <div class="metric"><span>Erros integração</span><strong>{{ metrics.integration_errors }}</strong><small>Entradas a rever</small></div>
+      </section>
+
+      <section class="clean-admin-overview-grid clean-card-wide">
+        <article class="clean-panel">
+          <p class="eyebrow">Autenticação</p>
+          <h3>Modo local</h3>
+          <p>O acesso continua a usar e-mail e password guardados pela CarFast. Não existe dependência de Microsoft Entra ID.</p>
+          <a class="button-link secondary-link" href="/v2-clean/admin/security">Rever acessos privilegiados</a>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Oficina</p>
+          <h3>Modelos versionados</h3>
+          <p>Uma nova publicação aplica-se apenas a processos futuros. Os processos iniciados mantêm o snapshot original.</p>
+          <a class="button-link secondary-link" href="/v2-clean/admin/workshop-models">Gerir modelos</a>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Integrações</p>
+          <h3>Segredos fora da interface</h3>
+          <p>As chaves continuam em variáveis de ambiente. A Administração mostra apenas se estão configuradas.</p>
+          <a class="button-link secondary-link" href="/v2-clean/admin/integrations">Ver estado</a>
+        </article>
+      </section>
+
+      <section class="clean-panel clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div><p class="eyebrow">Rastreabilidade</p><h3>Atividade administrativa recente</h3></div>
+          <a class="button-link secondary-link" href="/v2-clean/admin/audit">Abrir auditoria</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Utilizador</th><th>Ação</th><th>Entidade</th><th>Detalhe</th></tr></thead>
+            <tbody>
+              {% for entry in recent_audit %}
+                <tr>
+                  <td>{{ entry.created_at.strftime("%d/%m/%Y %H:%M") if entry.created_at else "-" }}</td>
+                  <td>{{ audit_users.get(entry.user_id).email if entry.user_id and audit_users.get(entry.user_id) else "Sistema" }}</td>
+                  <td><code>{{ entry.action }}</code></td>
+                  <td>{{ entry.entity_type or "-" }}{% if entry.entity_id %} #{{ entry.entity_id }}{% endif %}</td>
+                  <td>{{ entry.detail or "-" }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="5">Sem atividade registada.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "users" %}
+      <section class="clean-admin-split clean-card-wide">
+        {% if can_manage_credentials %}
+          <form class="clean-panel clean-admin-form" method="post" action="/v2-clean/admin/users">
+            <div><p class="eyebrow">Novo acesso local</p><h3>Criar utilizador</h3></div>
+            <label>Nome<input name="name" maxlength="160" required></label>
+            <label>E-mail<input name="email" type="email" required></label>
+            <label>Password temporária<input name="password" type="password" minlength="10" required></label>
+            <fieldset>
+              <legend>Perfis</legend>
+              <div class="clean-admin-check-grid">
+                {% for role in roles if role.active %}
+                  <label><input type="checkbox" name="role_codes" value="{{ role.code }}"> {{ role.name }}</label>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Áreas autorizadas</legend>
+              <div class="clean-admin-check-grid">
+                {% for unit in units if unit.active %}
+                  <label><input type="checkbox" name="unit_codes" value="{{ unit.code }}"> {{ unit.name }}</label>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Equipas</legend>
+              <div class="clean-admin-check-grid">
+                {% for team in teams if team.active %}
+                  <label><input type="checkbox" name="team_codes" value="{{ team.code }}"> {{ team.name }}</label>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <button type="submit">Criar utilizador</button>
+            <small>A password é local e nunca aparece na auditoria.</small>
+          </form>
+        {% endif %}
+
+        <article class="clean-panel">
+          <p class="eyebrow">Proteção administrativa</p>
+          <h3>{{ active_admin_count }} Super Admin ativo{% if active_admin_count != 1 %}s{% endif %}</h3>
+          <p>O último Super Admin não pode ser desativado nem perder o perfil Admin.</p>
+          <p>Desativar um utilizador preserva tarefas, documentos, processos, diagnósticos, fotografias e registos de auditoria associados.</p>
+        </article>
+      </section>
+
+      <section class="clean-panel clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div><p class="eyebrow">Acessos</p><h3>Utilizadores</h3><p>{{ users|length }} registos apresentados</p></div>
+        </div>
+        <div class="clean-admin-user-grid">
+          {% for item in users %}
+            <article class="clean-admin-user-card">
+              <div class="clean-admin-card-heading">
+                <div><strong>{{ item.name }}</strong><span>{{ item.email }}</span></div>
+                <span class="pill {{ 'priority-high' if item.active else 'muted-pill' }}">{{ "Ativo" if item.active else "Inativo" }}</span>
+              </div>
+              <dl>
+                <div><dt>Último acesso</dt><dd>{{ item.last_login_at.strftime("%d/%m/%Y %H:%M") if item.last_login_at else "Nunca" }}</dd></div>
+                <div><dt>Perfis</dt><dd>{{ user_roles.get(item.id, [])|sort|join(", ") or "Sem perfil" }}</dd></div>
+                <div><dt>Áreas</dt><dd>{{ user_units.get(item.id, [])|sort|join(", ") or "Sem âmbito" }}</dd></div>
+                <div><dt>Equipas</dt><dd>{{ user_teams.get(item.id, [])|sort|join(", ") or "-" }}</dd></div>
+              </dl>
+              {% if can_manage %}
+                <details>
+                  <summary>Gerir acessos</summary>
+                  <form class="clean-admin-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/access">
+                    <label class="checkbox-label"><input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}> Utilizador ativo</label>
+                    <fieldset>
+                      <legend>Perfis</legend>
+                      <div class="clean-admin-check-grid">
+                        {% for role in roles %}
+                          <label><input type="checkbox" name="role_codes" value="{{ role.code }}" {% if role.code in user_roles.get(item.id, []) %}checked{% endif %}> {{ role.name }}</label>
+                        {% endfor %}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend>Áreas</legend>
+                      <div class="clean-admin-check-grid">
+                        {% for unit in units %}
+                          <label><input type="checkbox" name="unit_codes" value="{{ unit.code }}" {% if unit.code in user_units.get(item.id, []) %}checked{% endif %}> {{ unit.name }}</label>
+                        {% endfor %}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend>Equipas</legend>
+                      <div class="clean-admin-check-grid">
+                        {% for team in teams %}
+                          <label><input type="checkbox" name="team_codes" value="{{ team.code }}" {% if team.code in user_teams.get(item.id, []) %}checked{% endif %}> {{ team.name }}</label>
+                        {% endfor %}
+                      </div>
+                    </fieldset>
+                    <button type="submit">Guardar acessos</button>
+                  </form>
+                </details>
+              {% endif %}
+              {% if can_manage_credentials %}
+                <details>
+                  <summary>Redefinir password local</summary>
+                  <form class="clean-admin-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/password">
+                    <label>Nova password temporária<input type="password" name="password" minlength="10" required></label>
+                    <button class="secondary" type="submit">Redefinir password</button>
+                  </form>
+                </details>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "roles" %}
+      {% if can_manage %}
+        <form class="clean-panel clean-card-wide clean-admin-inline-form" method="post" action="/v2-clean/admin/roles">
+          <div><p class="eyebrow">Novo perfil</p><h3>Criar perfil funcional</h3></div>
+          <label>Código<input name="code" placeholder="ex.: gestor_frota" required></label>
+          <label>Nome<input name="name" required></label>
+          <label>Descrição<input name="description"></label>
+          <button type="submit">Criar perfil</button>
+        </form>
+      {% endif %}
+      <section class="clean-admin-role-grid clean-card-wide">
+        {% for role in roles %}
+          <article class="clean-panel clean-admin-role-card">
+            <div class="clean-admin-card-heading">
+              <div><strong>{{ role.name }}</strong><span><code>{{ role.code }}</code> · {{ "Sistema" if role.is_system else "Personalizado" }}</span></div>
+              <span class="pill {{ 'priority-high' if role.active else 'muted-pill' }}">{{ "Ativo" if role.active else "Inativo" }}</span>
+            </div>
+            <p>{{ role.description or "Sem descrição." }}</p>
+            <p><strong>{{ role_permissions.get(role.id, [])|length }}</strong> permissões</p>
+            <details>
+              <summary>Ver matriz de permissões</summary>
+              <form class="clean-admin-permission-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/permissions">
+                {% for group, group_permissions in permission_groups.items() %}
+                  <fieldset>
+                    <legend>{{ group }}</legend>
+                    <div class="clean-admin-check-grid">
+                      {% for permission in group_permissions %}
+                        <label title="{{ permission.name }}">
+                          <input type="checkbox" name="permission_codes" value="{{ permission.code }}"
+                            {% if role.code == "admin" or permission.code in role_permissions.get(role.id, []) %}checked{% endif %}
+                            {% if role.code == "admin" or not can_manage %}disabled{% endif %}>
+                          {{ permission.code }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </fieldset>
+                {% endfor %}
+                {% if can_manage and role.code != "admin" %}<button type="submit">Guardar permissões</button>{% endif %}
+              </form>
+            </details>
+            {% if can_manage and role.code != "admin" %}
+              <form method="post" action="/v2-clean/admin/roles/{{ role.id }}/toggle">
+                <button class="secondary" type="submit">{{ "Desativar perfil" if role.active else "Ativar perfil" }}</button>
+              </form>
+            {% endif %}
+            {% if role.code == "admin" %}<small>Perfil protegido: mantém todas as permissões.</small>{% endif %}
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {% if admin_section == "organization" %}
+      {% if can_manage %}
+        <section class="clean-admin-split clean-card-wide">
+          <form class="clean-panel clean-admin-form" method="post" action="/v2-clean/admin/organization/units">
+            <div><p class="eyebrow">Estrutura</p><h3>Nova área</h3></div>
+            <label>Código<input name="code" required></label>
+            <label>Nome<input name="name" required></label>
+            <label>Tipo<select name="unit_type"><option value="business_area">Área de negócio</option><option value="workspace_area">Área de trabalho</option><option value="location">Localização / estação</option></select></label>
+            <label>Área superior<select name="parent_id"><option value="">Sem superior</option>{% for unit in units %}<option value="{{ unit.id }}">{{ unit.name }}</option>{% endfor %}</select></label>
+            <button type="submit">Criar área</button>
+          </form>
+          <form class="clean-panel clean-admin-form" method="post" action="/v2-clean/admin/organization/teams">
+            <div><p class="eyebrow">Responsabilidade</p><h3>Nova equipa</h3></div>
+            <label>Código<input name="code" required></label>
+            <label>Nome<input name="name" required></label>
+            <label>Área<select name="organizational_unit_id"><option value="">Sem área</option>{% for unit in units %}<option value="{{ unit.id }}">{{ unit.name }}</option>{% endfor %}</select></label>
+            <button type="submit">Criar equipa</button>
+          </form>
+        </section>
+      {% endif %}
+      <section class="clean-admin-split clean-card-wide">
+        <article class="clean-panel">
+          <div><p class="eyebrow">Âmbitos</p><h3>Áreas organizacionais</h3></div>
+          <div class="clean-admin-record-list">
+            {% for unit in units %}
+              <details>
+                <summary><strong>{{ unit.name }}</strong><span>{{ unit.code }} · {{ unit.unit_type }}</span></summary>
+                <form class="clean-admin-form" method="post" action="/v2-clean/admin/organization/units/{{ unit.id }}">
+                  <label>Nome<input name="name" value="{{ unit.name }}" required></label>
+                  <label>Tipo<input name="unit_type" value="{{ unit.unit_type }}" required></label>
+                  <label>Superior<select name="parent_id"><option value="">Sem superior</option>{% for parent in units if parent.id != unit.id %}<option value="{{ parent.id }}" {% if unit.parent_id == parent.id %}selected{% endif %}>{{ parent.name }}</option>{% endfor %}</select></label>
+                  <label>Ordem<input type="number" name="sort_order" value="{{ unit.sort_order }}"></label>
+                  <label class="checkbox-label"><input type="checkbox" name="active" {% if unit.active %}checked{% endif %}> Ativa</label>
+                  {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
+                </form>
+              </details>
+            {% endfor %}
+          </div>
+        </article>
+        <article class="clean-panel">
+          <div><p class="eyebrow">Equipas</p><h3>Equipas operacionais</h3></div>
+          <div class="clean-admin-record-list">
+            {% for team in teams %}
+              <details>
+                <summary><strong>{{ team.name }}</strong><span>{{ team_member_counts.get(team.id, 0) }} membros</span></summary>
+                <form class="clean-admin-form" method="post" action="/v2-clean/admin/organization/teams/{{ team.id }}">
+                  <label>Nome<input name="name" value="{{ team.name }}" required></label>
+                  <label>Área<select name="organizational_unit_id"><option value="">Sem área</option>{% for unit in units %}<option value="{{ unit.id }}" {% if team.organizational_unit_id == unit.id %}selected{% endif %}>{{ unit.name }}</option>{% endfor %}</select></label>
+                  <label class="checkbox-label"><input type="checkbox" name="active" {% if team.active %}checked{% endif %}> Ativa</label>
+                  {% if can_manage %}<button type="submit">Guardar</button>{% endif %}
+                </form>
+              </details>
+            {% endfor %}
+          </div>
+        </article>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "settings" %}
+      {% if can_manage %}
+        <form class="clean-panel clean-card-wide clean-admin-inline-form" method="post" action="/v2-clean/admin/settings/catalogs">
+          <div><p class="eyebrow">Parametrização</p><h3>Novo catálogo</h3></div>
+          <label>Código<input name="code" required></label>
+          <label>Nome<input name="name" required></label>
+          <label>Descrição<input name="description"></label>
+          <button type="submit">Criar catálogo</button>
+        </form>
+      {% endif %}
+      <section class="clean-admin-catalog-grid clean-card-wide">
+        {% for catalog in catalogs %}
+          <article class="clean-panel clean-admin-catalog-card">
+            <div class="clean-admin-card-heading">
+              <div><strong>{{ catalog.name }}</strong><span><code>{{ catalog.code }}</code></span></div>
+              <span class="pill {{ 'priority-high' if catalog.active else 'muted-pill' }}">{{ "Ativo" if catalog.active else "Inativo" }}</span>
+            </div>
+            <p>{{ catalog.description or "Sem descrição." }}</p>
+            {% if can_manage %}
+              <details>
+                <summary>Editar catálogo</summary>
+                <form class="clean-admin-form" method="post" action="/v2-clean/admin/settings/catalogs/{{ catalog.id }}">
+                  <label>Nome<input name="name" value="{{ catalog.name }}" required></label>
+                  <label>Descrição<input name="description" value="{{ catalog.description or '' }}"></label>
+                  <label class="checkbox-label"><input type="checkbox" name="active" {% if catalog.active %}checked{% endif %}> Ativo</label>
+                  <button type="submit">Guardar</button>
+                </form>
+              </details>
+            {% endif %}
+            <div class="clean-admin-record-list">
+              {% for value in values_by_catalog.get(catalog.id, []) %}
+                <details>
+                  <summary><strong>{{ value.label }}</strong><span>{{ value.code }} · {{ "ativo" if value.active else "inativo" }}</span></summary>
+                  <form class="clean-admin-form" method="post" action="/v2-clean/admin/settings/values/{{ value.id }}">
+                    <label>Etiqueta<input name="label" value="{{ value.label }}" required></label>
+                    <label>Descrição<input name="description" value="{{ value.description or '' }}"></label>
+                    <label>Cor<input name="color" value="{{ value.color or '' }}" placeholder="#RRGGBB ou nome"></label>
+                    <label>Ordem<input type="number" name="sort_order" value="{{ value.sort_order }}"></label>
+                    <label class="checkbox-label"><input type="checkbox" name="active" {% if value.active %}checked{% endif %}> Ativo</label>
+                    {% if can_manage %}<button type="submit">Guardar valor</button>{% endif %}
+                  </form>
+                </details>
+              {% else %}
+                <p class="muted">Sem valores.</p>
+              {% endfor %}
+            </div>
+            {% if can_manage %}
+              <details>
+                <summary>Adicionar valor</summary>
+                <form class="clean-admin-form" method="post" action="/v2-clean/admin/settings/catalogs/{{ catalog.id }}/values">
+                  <label>Código<input name="code" required></label>
+                  <label>Etiqueta<input name="label" required></label>
+                  <label>Descrição<input name="description"></label>
+                  <label>Cor<input name="color"></label>
+                  <label>Ordem<input type="number" name="sort_order" value="0"></label>
+                  <button type="submit">Adicionar valor</button>
+                </form>
+              </details>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    {% if admin_section == "audit" %}
+      <section class="clean-panel clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div><p class="eyebrow">Registo imutável</p><h3>Auditoria do sistema</h3><p>Os resultados estão limitados aos 300 registos mais recentes; a exportação inclui até 5 000.</p></div>
+        </div>
+        <form class="clean-admin-filter-form" method="get" action="/v2-clean/admin/audit">
+          <label>Pesquisa<input name="q" value="{{ audit_filters.q }}" placeholder="ação, detalhe ou entidade"></label>
+          <label>Ação<select name="action"><option value="">Todas</option>{% for item in audit_actions %}<option value="{{ item }}" {% if audit_filters.action == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+          <label>Entidade<select name="entity_type"><option value="">Todas</option>{% for item in audit_entity_types %}<option value="{{ item }}" {% if audit_filters.entity_type == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+          <label>Utilizador<select name="audit_user_id"><option value="">Todos</option>{% for item in audit_users %}<option value="{{ item.id }}" {% if audit_filters.audit_user_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>De<input type="date" name="date_from" value="{{ audit_filters.date_from or '' }}"></label>
+          <label>Até<input type="date" name="date_to" value="{{ audit_filters.date_to or '' }}"></label>
+          <button type="submit">Filtrar</button>
+          {% if can_export %}
+            <button class="secondary" type="submit" formaction="/v2-clean/admin/audit/export">Exportar CSV</button>
+          {% endif %}
+        </form>
+      </section>
+      <section class="clean-panel clean-card-wide">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Utilizador</th><th>Ação</th><th>Entidade</th><th>Detalhe</th><th>Alteração</th></tr></thead>
+            <tbody>
+              {% for entry in audit_entries %}
+                <tr>
+                  <td>{{ entry.created_at.strftime("%d/%m/%Y %H:%M:%S") if entry.created_at else "-" }}</td>
+                  <td>{{ audit_user_by_id.get(entry.user_id).email if entry.user_id and audit_user_by_id.get(entry.user_id) else "Sistema" }}</td>
+                  <td><code>{{ entry.action }}</code></td>
+                  <td>{{ entry.entity_type or "-" }}{% if entry.entity_id %} #{{ entry.entity_id }}{% endif %}</td>
+                  <td>{{ entry.detail or "-" }}</td>
+                  <td>
+                    {% if entry.before_json or entry.after_json %}
+                      <details><summary>Ver antes/depois</summary><pre>ANTES
+{{ entry.before_json | tojson(indent=2) if entry.before_json else "-" }}
+
+DEPOIS
+{{ entry.after_json | tojson(indent=2) if entry.after_json else "-" }}</pre></details>
+                    {% else %}-{% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6">Sem registos para os filtros selecionados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "integrations" %}
+      <section class="clean-admin-overview-grid clean-card-wide">
+        <article class="clean-panel">
+          <p class="eyebrow">Entrada de e-mail</p>
+          <h3>{{ "Configurada" if integration_key_configured else "Chave em falta" }}</h3>
+          <p>{{ integration_auth_mode }}. O valor nunca é mostrado pela aplicação.</p>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Anexos recebidos</p>
+          <h3>{{ integration_attachment_count }}</h3>
+          <p>Os anexos mantêm a ligação ao documento e ao e-mail de origem.</p>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Estados</p>
+          <div class="pill-row">{% for key, count in integration_status_counts.items() %}<a class="pill muted-pill" href="/v2-clean/admin/integrations?status={{ key }}">{{ key }} · {{ count }}</a>{% endfor %}</div>
+        </article>
+      </section>
+      <section class="clean-panel clean-card-wide">
+        <div class="table-heading flat-heading">
+          <div><p class="eyebrow">Monitorização</p><h3>Entradas de integração</h3></div>
+          {% if integration_filter %}<a class="button-link secondary-link" href="/v2-clean/admin/integrations">Limpar filtro</a>{% endif %}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Receção</th><th>Origem</th><th>Assunto</th><th>Estado</th><th>Destino</th><th>Erro / encaminhamento</th></tr></thead>
+            <tbody>
+              {% for intake in email_intakes %}
+                <tr>
+                  <td>{{ intake.received_at.strftime("%d/%m/%Y %H:%M") if intake.received_at else "-" }}</td>
+                  <td>{{ intake.source_mailbox }}<br><small>{{ intake.sender or "-" }}</small></td>
+                  <td>{{ intake.subject or "-" }}</td>
+                  <td><span class="pill {{ 'priority-high' if intake.status == 'error' else 'muted-pill' }}">{{ intake.status }}</span></td>
+                  <td>{% if intake.target_url %}<a href="{{ intake.target_url }}">{{ intake.target_entity_type }} #{{ intake.target_entity_id }}</a>{% else %}-{% endif %}</td>
+                  <td>{{ intake.error_message or intake.routing_note or "-" }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6">Sem entradas de integração.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if admin_section == "security" %}
+      <section class="clean-admin-overview-grid clean-card-wide">
+        <article class="clean-panel">
+          <p class="eyebrow">Autenticação</p>
+          <h3>Local</h3>
+          <p>{{ auth_mode }}. Não foi adicionada integração com Entra ID.</p>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Super Admin</p>
+          <h3>{{ active_admin_count }} ativo{% if active_admin_count != 1 %}s{% endif %}</h3>
+          <p>O sistema bloqueia a desativação ou remoção do último perfil Admin.</p>
+        </article>
+        <article class="clean-panel">
+          <p class="eyebrow">Sessões</p>
+          <h3>{{ local_auth_users }} contas ativas</h3>
+          <p>{{ session_mode }}.</p>
+        </article>
+      </section>
+
+      <section class="clean-admin-split clean-card-wide">
+        <article class="clean-panel">
+          <div><p class="eyebrow">Privilégio</p><h3>Utilizadores administrativos</h3></div>
+          <div class="clean-admin-record-list">
+            {% for row in privileged_users %}
+              <details>
+                <summary><strong>{{ row.user.name }}</strong><span>{{ row.user.email }}</span></summary>
+                <p><strong>Perfis:</strong> {{ row.roles|join(", ") or "-" }}</p>
+                <div class="pill-row">{% for permission in row.permissions %}<span class="pill muted-pill">{{ permission }}</span>{% endfor %}</div>
+              </details>
+            {% else %}
+              <p class="muted">Sem utilizadores privilegiados.</p>
+            {% endfor %}
+          </div>
+        </article>
+        <article class="clean-panel">
+          <div><p class="eyebrow">Revisão</p><h3>Achados de acesso</h3></div>
+          <h4>Ativos sem perfil</h4>
+          <ul>{% for item in users_without_roles %}<li>{{ item.name }} · {{ item.email }}</li>{% else %}<li>Sem ocorrências.</li>{% endfor %}</ul>
+          <h4>Ativos sem área autorizada</h4>
+          <ul>{% for item in users_without_scope %}<li>{{ item.name }} · {{ item.email }}</li>{% else %}<li>Sem ocorrências.</li>{% endfor %}</ul>
+          <a class="button-link secondary-link" href="/v2-clean/admin/users">Corrigir acessos</a>
+        </article>
+      </section>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

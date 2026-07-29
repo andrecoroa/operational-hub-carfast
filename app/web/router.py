@@ -229,6 +229,7 @@ from app.services.diagnostic_ocr import (
 )
 from app.services.users import create_user
 from app.services.vehicles import normalize_identifier
+from app.web.clean_admin import clean_admin_router, clean_admin_user_has
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
@@ -3233,6 +3234,24 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
         "tasks.read",
         "management_center.read",
         "documents.read",
+        "admin.dashboard.read",
+        "admin.users.read",
+        "admin.users.manage",
+        "admin.roles.read",
+        "admin.roles.manage",
+        "admin.organization.read",
+        "admin.organization.manage",
+        "admin.settings.read",
+        "admin.settings.manage",
+        "admin.workshop_models.read",
+        "admin.workshop_models.manage",
+        "admin.workshop_models.publish",
+        "admin.audit.read",
+        "admin.audit.export",
+        "admin.integrations.read",
+        "admin.integrations.manage",
+        "admin.security.read",
+        "admin.security.manage",
         "admin.manage",
     ):
         return RedirectResponse("/", status_code=303)
@@ -4277,44 +4296,7 @@ def clean_admin_center(request: Request):
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    return templates.TemplateResponse(
-        request,
-        "clean_module_placeholder.html",
-        {
-            "active_menu": "clean_admin",
-            "eyebrow": "Nova experiência / administração",
-            "title": "Administração",
-            "description": "Zona reservada para regras, permissões e controlos próprios da nova experiência.",
-            "panel_title": "Preparação segura",
-            "cards": [
-                {
-                    "code": "AC",
-                    "title": "Acessos",
-                    "text": "Perfis e permissões da v2-clean devem ser separados antes de uso real.",
-                },
-                {
-                    "code": "MO",
-                    "title": "Modelos de Oficina",
-                    "text": "Fases, campos, validações e diagnósticos versionados com snapshot por processo.",
-                },
-                {
-                    "code": "LG",
-                    "title": "Auditoria",
-                    "text": "As ações sensíveis, como cancelar e reabrir processos, ficam melhor centralizadas aqui.",
-                },
-            ],
-            "next_title": "Sem risco operacional",
-            "next_text": "Por agora deixamos a área preparada e visível, mas sem ligar nenhum fluxo crítico à administração antiga.",
-            "actions": [
-                {
-                    "href": "/v2-clean/admin/workshop-models",
-                    "label": "Gerir Modelos de Oficina",
-                    "secondary": False,
-                },
-                {"href": "/v2-clean", "label": "Voltar ao início", "secondary": False},
-            ],
-        },
-    )
+    return RedirectResponse("/v2-clean/admin/overview", status_code=303)
 
 
 
@@ -4326,8 +4308,17 @@ def clean_workshop_models_admin(request: Request):
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
-        if not can_manage_admin(db, current_user):
+        if not clean_admin_user_has(
+            db,
+            current_user,
+            "admin.workshop_models.read",
+            "admin.workshop_models.manage",
+            "admin.workshop_models.publish",
+            "settings.manage",
+            "admin.manage",
+        ):
             return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        admin_permissions = get_user_permission_codes(db, current_user) if current_user else set()
         ensure_workshop_configuration_defaults(db)
         db.commit()
         template_rows: list[dict[str, object]] = []
@@ -4359,6 +4350,25 @@ def clean_workshop_models_admin(request: Request):
         {
             "template_rows": template_rows,
             "diagnostics": diagnostics,
+            "can_manage_models": bool(
+                admin_permissions.intersection(
+                    {
+                        "admin.workshop_models.manage",
+                        "admin.workshop_models.publish",
+                        "settings.manage",
+                        "admin.manage",
+                    }
+                )
+            ),
+            "can_publish_models": bool(
+                admin_permissions.intersection(
+                    {
+                        "admin.workshop_models.publish",
+                        "settings.manage",
+                        "admin.manage",
+                    }
+                )
+            ),
         },
     )
 
@@ -4371,7 +4381,13 @@ async def clean_workshop_model_new_version(request: Request, template_id: int):
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
-        if not can_manage_admin(db, current_user):
+        if not clean_admin_user_has(
+            db,
+            current_user,
+            "admin.workshop_models.publish",
+            "settings.manage",
+            "admin.manage",
+        ):
             return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
         template = db.get(WorkshopTemplate, template_id)
         if not template:
@@ -4425,7 +4441,13 @@ def clean_workshop_model_toggle(request: Request, template_id: int):
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
-        if not can_manage_admin(db, current_user):
+        if not clean_admin_user_has(
+            db,
+            current_user,
+            "admin.workshop_models.manage",
+            "settings.manage",
+            "admin.manage",
+        ):
             return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
         template = db.get(WorkshopTemplate, template_id)
         if not template or template.code == "general_minimum":
@@ -4459,7 +4481,13 @@ async def clean_workshop_diagnostic_catalog_update(
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
-        if not can_manage_admin(db, current_user):
+        if not clean_admin_user_has(
+            db,
+            current_user,
+            "admin.workshop_models.manage",
+            "settings.manage",
+            "admin.manage",
+        ):
             return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
         item = db.get(WorkshopDiagnosticCatalogItem, catalog_item_id)
         if not item:
@@ -29161,3 +29189,6 @@ def parse_optional_int(value: str | None) -> int | None:
 def add_query_flag(url: str, key: str, value: str) -> str:
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{key}={value}"
+
+
+web_router.include_router(clean_admin_router)

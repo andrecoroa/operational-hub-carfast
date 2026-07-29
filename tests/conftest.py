@@ -12,6 +12,7 @@ from app.main import app
 from app.models import Base
 from app.services.bootstrap import seed_initial_data
 from app.services.users import create_user
+import app.web.clean_admin as clean_admin
 import app.web.router as web_router
 
 
@@ -30,8 +31,10 @@ def db_session() -> Generator[Session]:
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
     original_web_session_local = web_router.SessionLocal
+    original_clean_admin_session_local = clean_admin.SessionLocal
     original_main_session_local = app_main.SessionLocal
     web_router.SessionLocal = TestingSessionLocal
+    clean_admin.SessionLocal = TestingSessionLocal
     app_main.SessionLocal = TestingSessionLocal
 
     def override_get_db():
@@ -58,6 +61,7 @@ def db_session() -> Generator[Session]:
     finally:
         app.dependency_overrides.clear()
         web_router.SessionLocal = original_web_session_local
+        clean_admin.SessionLocal = original_clean_admin_session_local
         app_main.SessionLocal = original_main_session_local
 
 

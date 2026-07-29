@@ -52,6 +52,129 @@ PERMISSION_ALLOWED_PATHS = {
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
+    (
+        ("/v2-clean/admin",),
+        {
+            "GET": {
+                "admin.dashboard.read",
+                "admin.users.read",
+                "admin.users.manage",
+                "admin.roles.read",
+                "admin.roles.manage",
+                "admin.organization.read",
+                "admin.organization.manage",
+                "admin.settings.read",
+                "admin.settings.manage",
+                "admin.workshop_models.read",
+                "admin.workshop_models.manage",
+                "admin.workshop_models.publish",
+                "admin.audit.read",
+                "admin.audit.export",
+                "admin.integrations.read",
+                "admin.integrations.manage",
+                "admin.security.read",
+                "admin.security.manage",
+                "admin.manage",
+                "users.manage",
+                "settings.manage",
+            },
+            "POST": {
+                "admin.users.manage",
+                "admin.users.credentials",
+                "admin.roles.manage",
+                "admin.organization.manage",
+                "admin.settings.manage",
+                "admin.workshop_models.manage",
+                "admin.workshop_models.publish",
+                "admin.integrations.manage",
+                "admin.security.manage",
+                "admin.manage",
+                "users.manage",
+                "settings.manage",
+            },
+        },
+    ),
+    (
+        ("/v2-clean/tasks",),
+        {
+            "GET": {
+                "tasks.read",
+                "tasks.operational.read",
+                "tasks.operational.write",
+                "tasks.workshop.read",
+                "tasks.workshop.write",
+                "tasks.administration.read",
+                "tasks.administration.write",
+                "admin.manage",
+            },
+            "POST": {
+                "tasks.write",
+                "tasks.operational.write",
+                "tasks.workshop.write",
+                "tasks.administration.write",
+                "admin.manage",
+            },
+        },
+    ),
+    (
+        ("/v2-clean/workshop", "/v2-clean/workshop-entry"),
+        {
+            "GET": {"workshop.read", "workshop.write", "admin.manage"},
+            "POST": {"workshop.write", "admin.manage"},
+        },
+    ),
+    (
+        ("/v2-clean/fleet",),
+        {
+            "GET": {"vehicles.read", "vehicles.write", "admin.manage"},
+            "POST": {"vehicles.write", "fleet.commerce.manage", "admin.manage"},
+        },
+    ),
+    (
+        (
+            "/v2-clean/documentation",
+            "/v2-clean/documents",
+            "/v2-clean/diagnostics",
+        ),
+        {
+            "GET": {"documents.read", "documents.write", "admin.manage"},
+            "POST": {"documents.write", "admin.manage"},
+        },
+    ),
+    (
+        ("/v2-clean/processes",),
+        {
+            "GET": {
+                "management_center.read",
+                "management_center.write",
+                "admin.manage",
+            },
+            "POST": {"management_center.write", "admin.manage"},
+        },
+    ),
+    (
+        ("/v2-clean",),
+        {
+            "GET": {
+                "dashboard.read",
+                "vehicles.read",
+                "workshop.read",
+                "tasks.read",
+                "management_center.read",
+                "documents.read",
+                "admin.dashboard.read",
+                "admin.manage",
+            },
+            "POST": {
+                "vehicles.write",
+                "workshop.write",
+                "tasks.write",
+                "management_center.write",
+                "documents.write",
+                "admin.manage",
+            },
+        },
+    ),
     (("/admin",), {"GET": {"admin.manage", "users.manage", "settings.manage"}, "POST": {"admin.manage", "users.manage"}}),
     (
         ("/task-board",),

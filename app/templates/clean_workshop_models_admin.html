@@ -40,16 +40,18 @@
               <div><dt>Estado</dt><dd>{{ "Ativo" if row.template.active else "Inativo" }}</dd></div>
             </dl>
             <div class="clean-admin-model-actions">
-              <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/new-version">
-                <input name="change_note" placeholder="Nota da nova versão" required>
-                <details>
-                  <summary>Editar configuração JSON</summary>
-                  <p class="clean-field-help">A publicação cria sempre uma nova versão. Fases, campos, evidências, regras, diagnósticos e pontos de materiais podem ser ajustados neste contrato.</p>
-                  <textarea name="config_json" rows="18" spellcheck="false">{{ row.latest.config_json | tojson(indent=2) if row.latest else "{}" }}</textarea>
-                </details>
-                <button type="submit">Publicar nova versão</button>
-              </form>
-              {% if row.template.code != "general_minimum" %}
+              {% if can_publish_models %}
+                <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/new-version">
+                  <input name="change_note" placeholder="Nota da nova versão" required>
+                  <details>
+                    <summary>Editar configuração JSON</summary>
+                    <p class="clean-field-help">A publicação cria sempre uma nova versão. Fases, campos, evidências, regras, diagnósticos e pontos de materiais podem ser ajustados neste contrato.</p>
+                    <textarea name="config_json" rows="18" spellcheck="false">{{ row.latest.config_json | tojson(indent=2) if row.latest else "{}" }}</textarea>
+                  </details>
+                  <button type="submit">Publicar nova versão</button>
+                </form>
+              {% endif %}
+              {% if can_manage_models and row.template.code != "general_minimum" %}
                 <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/toggle">
                   <button class="secondary" type="submit">{{ "Desativar" if row.template.active else "Ativar" }}</button>
                 </form>
@@ -91,6 +93,7 @@
                 <td>
                   <details class="clean-admin-diagnostic-editor">
                     <summary>Editar</summary>
+                    {% if can_manage_models %}
                     <form method="post" action="/v2-clean/admin/workshop-diagnostics/{{ item.id }}">
                       <label>Nome<input name="name" value="{{ item.name }}" required></label>
                       <label>Família<input name="family" value="{{ item.family }}" required></label>
@@ -111,6 +114,9 @@
                       <label class="checkbox-label"><input name="active" type="checkbox" {% if item.active %}checked{% endif %}> Ativo</label>
                       <button type="submit">Guardar diagnóstico</button>
                     </form>
+                    {% else %}
+                      <p class="muted">Permissão de consulta: edição indisponível.</p>
+                    {% endif %}
                   </details>
                 </td>
               </tr>

@@ -21827,3 +21827,318 @@ body.clean-task-preview-open {
     flex-direction: column;
   }
 }
+.clean-admin-content {
+  --clean-admin-border: #dbe4ea;
+  --clean-admin-ink: #17333d;
+  --clean-admin-soft: #f4f8fa;
+}
+
+.clean-admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.clean-admin-nav a {
+  border: 1px solid var(--clean-admin-border);
+  border-radius: 999px;
+  color: #45626c;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 13px;
+  text-decoration: none;
+}
+
+.clean-admin-nav a:hover,
+.clean-admin-nav a.active {
+  background: #17333d;
+  border-color: #17333d;
+  color: #fff;
+}
+
+.clean-admin-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.clean-admin-metrics .metric {
+  min-height: 118px;
+}
+
+.clean-admin-metrics .metric span,
+.clean-admin-metrics .metric small {
+  display: block;
+}
+
+.clean-admin-metrics .metric strong {
+  display: block;
+  font-size: 30px;
+  margin: 8px 0 4px;
+}
+
+.clean-admin-overview-grid,
+.clean-admin-role-grid,
+.clean-admin-catalog-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.clean-admin-split {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-admin-form,
+.clean-admin-permission-form {
+  display: grid;
+  gap: 12px;
+}
+
+.clean-admin-form label,
+.clean-admin-inline-form label,
+.clean-admin-filter-form label {
+  color: #45626c;
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 5px;
+}
+
+.clean-admin-form input,
+.clean-admin-form select,
+.clean-admin-form textarea,
+.clean-admin-inline-form input,
+.clean-admin-inline-form select,
+.clean-admin-filter-form input,
+.clean-admin-filter-form select {
+  background: #fff;
+  border: 1px solid #cbd8de;
+  border-radius: 9px;
+  color: var(--clean-admin-ink);
+  font: inherit;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.clean-admin-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.clean-admin-form fieldset,
+.clean-admin-permission-form fieldset {
+  border: 1px solid var(--clean-admin-border);
+  border-radius: 12px;
+  margin: 0;
+  padding: 12px;
+}
+
+.clean-admin-form legend,
+.clean-admin-permission-form legend {
+  color: #6b858e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  padding: 0 6px;
+  text-transform: uppercase;
+}
+
+.clean-admin-check-grid {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-admin-check-grid label {
+  align-items: flex-start;
+  color: #36545e;
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+  overflow-wrap: anywhere;
+}
+
+.clean-admin-check-grid input {
+  flex: 0 0 auto;
+  min-height: auto;
+  padding: 0;
+}
+
+.clean-admin-inline-form,
+.clean-admin-filter-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.2fr repeat(3, minmax(140px, 1fr)) auto;
+}
+
+.clean-admin-filter-form {
+  grid-template-columns: 1.4fr repeat(5, minmax(120px, 1fr)) auto auto;
+}
+
+.clean-admin-user-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-admin-user-card,
+.clean-admin-role-card,
+.clean-admin-catalog-card {
+  background: var(--clean-admin-soft);
+  border: 1px solid var(--clean-admin-border);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.clean-admin-card-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.clean-admin-card-heading strong,
+.clean-admin-card-heading span {
+  display: block;
+}
+
+.clean-admin-card-heading span {
+  color: #6b858e;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.clean-admin-user-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.clean-admin-user-card dl div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 105px 1fr;
+}
+
+.clean-admin-user-card dt {
+  color: #6b858e;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clean-admin-user-card dd {
+  margin: 0;
+}
+
+.clean-admin-user-card details,
+.clean-admin-role-card details,
+.clean-admin-catalog-card details,
+.clean-admin-record-list details {
+  border-top: 1px solid var(--clean-admin-border);
+  padding-top: 10px;
+}
+
+.clean-admin-user-card summary,
+.clean-admin-role-card summary,
+.clean-admin-catalog-card summary,
+.clean-admin-record-list summary {
+  color: #315864;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.clean-admin-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.clean-admin-record-list summary {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.clean-admin-record-list summary span {
+  color: #789099;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.clean-admin-role-card {
+  align-content: start;
+}
+
+.clean-admin-role-card pre,
+.clean-admin-content td pre {
+  background: #102a33;
+  border-radius: 9px;
+  color: #e9f4f6;
+  font-size: 11px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.clean-admin-catalog-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-admin-content .table-wrap {
+  overflow-x: auto;
+}
+
+.clean-admin-content table {
+  min-width: 900px;
+}
+
+.clean-admin-content td {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+@media (max-width: 1180px) {
+  .clean-admin-overview-grid,
+  .clean-admin-role-grid,
+  .clean-admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clean-admin-filter-form,
+  .clean-admin-inline-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .clean-admin-overview-grid,
+  .clean-admin-role-grid,
+  .clean-admin-catalog-grid,
+  .clean-admin-split,
+  .clean-admin-user-grid,
+  .clean-admin-metrics,
+  .clean-admin-filter-form,
+  .clean-admin-inline-form,
+  .clean-admin-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-admin-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .clean-admin-nav a {
+    white-space: nowrap;
+  }
+}

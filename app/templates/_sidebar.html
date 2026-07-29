@@ -38,7 +38,32 @@
         </div>
       </details>
       <span class="nav-section-label">Sistema</span>
-      <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
+      {% if nav_has_permission(
+        request,
+        "admin.dashboard.read",
+        "admin.users.read",
+        "admin.users.manage",
+        "admin.roles.read",
+        "admin.roles.manage",
+        "admin.organization.read",
+        "admin.organization.manage",
+        "admin.settings.read",
+        "admin.settings.manage",
+        "admin.workshop_models.read",
+        "admin.workshop_models.manage",
+        "admin.workshop_models.publish",
+        "admin.audit.read",
+        "admin.audit.export",
+        "admin.integrations.read",
+        "admin.integrations.manage",
+        "admin.security.read",
+        "admin.security.manage",
+        "admin.manage",
+        "users.manage",
+        "settings.manage"
+      ) %}
+        <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
+      {% endif %}
     {% else %}
       <span class="nav-section-label">Operações</span>
       {% if "dashboard.read" in nav_perms %}

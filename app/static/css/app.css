@@ -474,8 +474,8 @@ button:hover,
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 22px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 14px;
   padding: 24px 18px;
   background: var(--nav);
   color: var(--ink);
@@ -523,6 +523,8 @@ button:hover,
   gap: 8px;
   align-content: start;
   margin-top: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar a {
@@ -556,6 +558,82 @@ button:hover,
 
 .sidebar a.sidebar-sub-link:hover {
   color: var(--ink);
+}
+
+.sidebar-nav-group {
+  min-width: 0;
+}
+
+.sidebar-nav-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  color: var(--nav-ink);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.sidebar-nav-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-nav-group > summary::after {
+  content: "›";
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 150ms ease;
+}
+
+.sidebar-nav-group[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.sidebar-nav-group > summary:hover,
+.sidebar-nav-group > summary:focus-visible,
+.sidebar-nav-group > summary.active {
+  background: var(--nav-soft);
+  border-left-color: var(--brand);
+  color: var(--ink);
+  outline: none;
+}
+
+.sidebar-nav-children {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0 2px;
+}
+
+.sidebar-logout {
+  margin: 0;
+}
+
+.sidebar-logout button {
+  width: 100%;
+  border: 1px solid #e3b9ae;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: #fff7f4;
+  color: #8f321f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.sidebar-logout button:hover,
+.sidebar-logout button:focus-visible {
+  border-color: var(--brand);
+  background: #ffede7;
+  outline: none;
 }
 
 .nav-badge {

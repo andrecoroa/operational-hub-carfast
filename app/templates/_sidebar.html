@@ -13,19 +13,30 @@
       <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
       <a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>
       <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
-      <a href="/v2-clean/workshop" {% if active_menu == "workshop" %}class="active"{% endif %}>Oficina</a>
-      <a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a>
-      <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+      {% set workshop_menu_open = active_menu == "workshop" or request.url.path.startswith('/v2-clean/workshop') %}
+      <details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
+        <summary {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
+        <div class="sidebar-nav-children">
+          <a class="sidebar-sub-link" href="/v2-clean/workshop">Visão geral</a>
+          <a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a>
+          <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+        </div>
+      </details>
       <a href="/v2-clean/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
-      <span class="nav-section-label">Documentação</span>
-      <a href="/v2-clean/documentation" {% if active_menu == "documentation_center" %}class="active"{% endif %}>Centro de documentação</a>
-      <a href="/v2-clean/documentation/triage" {% if active_menu == "documentation_triage" %}class="active"{% endif %}>Triagem</a>
-      <a href="/v2-clean/documentation/imports" {% if active_menu == "documentation_imports" %}class="active"{% endif %}>Importações</a>
-      <a href="/v2-clean/documentation/invoices" {% if active_menu == "documentation_invoices" %}class="active"{% endif %}>Faturas</a>
-      <a href="/v2-clean/diagnostics" {% if active_menu == "documentation_diagnostics" %}class="active"{% endif %}>Diagnósticos</a>
-      <a href="/v2-clean/documentation/archive" {% if active_menu == "documentation_archive" %}class="active"{% endif %}>Arquivo</a>
-      <a href="/v2-clean/documentation/extraction-models" {% if active_menu == "documentation_models" %}class="active"{% endif %}>Modelos de extração</a>
-      <a class="sidebar-sub-link" href="/v2-clean/documents" {% if active_menu in ["documents", "documents_center"] %}class="active"{% endif %}>Centro anterior (compatibilidade)</a>
+      {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
+      <details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
+        <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>
+        <div class="sidebar-nav-children">
+          <a class="sidebar-sub-link" href="/v2-clean/documentation">Centro</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/triage">Triagem</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/imports">Importações</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/invoices">Faturas</a>
+          <a class="sidebar-sub-link" href="/v2-clean/diagnostics">Diagnósticos</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/archive">Arquivo</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/extraction-models">Modelos de extração</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documents">Centro anterior</a>
+        </div>
+      </details>
       <span class="nav-section-label">Sistema</span>
       <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
     {% else %}
@@ -40,12 +51,17 @@
         </a>
       {% endif %}
       {% if "workshop.read" in nav_perms %}
-        <a href="/workshop" {% if active_menu == "workshop" %}class="active"{% endif %}>
-          Oficina
-          {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
-        </a>
-        <a class="sidebar-sub-link" href="/workshop/processes-ui">Processos por fases</a>
-        <a class="sidebar-sub-link" href="/workshop/new-process">Novo por fases</a>
+        <details class="sidebar-nav-group" {% if active_menu == "workshop" %}open{% endif %}>
+          <summary {% if active_menu == "workshop" %}class="active"{% endif %}>
+            Oficina
+            {% if nav_workshop_count is defined %}<span class="nav-badge warning">{{ nav_workshop_count }}</span>{% endif %}
+          </summary>
+          <div class="sidebar-nav-children">
+            <a class="sidebar-sub-link" href="/workshop">Visão geral</a>
+            <a class="sidebar-sub-link" href="/workshop/processes-ui">Processos por fases</a>
+            <a class="sidebar-sub-link" href="/workshop/new-process">Novo por fases</a>
+          </div>
+        </details>
       {% endif %}
       {% if "vehicles.read" in nav_perms %}
         <a href="/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
@@ -65,6 +81,9 @@
       {% endif %}
     {% endif %}
   </nav>
+  <form class="sidebar-logout" method="post" action="/logout">
+    <button type="submit">Terminar sessão</button>
+  </form>
   <div class="sidebar-status">
     <span class="status-dot"></span>
     <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>

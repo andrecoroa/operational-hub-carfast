@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_triage" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "triage" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div><p class="eyebrow">Documentação</p><h1>Triagem documental</h1><p>Classificar entradas sem destino seguro e definir o seu tratamento.</p></div>
+      <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Reprocessar reconhecimento</a>
+    </header>
+
+    <section class="doc-arch-kpis doc-arch-kpis-three">
+      <a href="?confidence=high"><strong>{{ counts.suggested }}</strong><span>Com sugestão</span></a>
+      <a href="?confidence=low"><strong>{{ counts.unassociated }}</strong><span>Sem associação</span></a>
+      <a class="warning" href="/v2-clean/documentation/triage"><strong>{{ counts.total }}</strong><span>Total por decidir</span></a>
+    </section>
+
+    {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Decisão guardada e auditada.</div>{% endif %}
+    {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">Não foi possível concluir a decisão: {{ request.query_params.get("error") }}.</div>{% endif %}
+
+    <form class="doc-arch-filters" method="get">
+      <input name="q" value="{{ q }}" placeholder="Pesquisar documento, origem, viatura…">
+      <select name="origin">
+        <option value="">Origem: todas</option>
+        {% for value, label in [("upload", "Upload"), ("document_inbox", "Caixa de entrada"), ("email", "Email"), ("workshop", "Oficina")] %}
+          <option value="{{ value }}" {% if origin == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="confidence">
+        <option value="">Confiança: todas</option>
+        <option value="high" {% if confidence == "high" %}selected{% endif %}>Alta (≥ 90%)</option>
+        <option value="medium" {% if confidence == "medium" %}selected{% endif %}>Média (60–89%)</option>
+        <option value="low" {% if confidence == "low" %}selected{% endif %}>Baixa / desconhecida</option>
+      </select>
+      <button type="submit">Filtrar</button>
+    </form>
+
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Entrada</th><th>Ficheiro</th><th>Origem</th><th>Sugestão</th><th>Associação</th><th>Destino</th><th>Ações</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.date_display }}</td>
+                <td><a href="{{ row.detail_href }}">{{ row.title }}</a></td>
+                <td>{{ row.origin }}</td>
+                <td>
+                  {% if row.workflow.suggested_invoice_nature %}
+                    <span class="doc-arch-badge warning">{{ workflow_labels.get(row.workflow.suggested_invoice_nature, row.workflow.suggested_invoice_nature) }} · {{ ((row.workflow.suggestion_confidence or 0) * 100)|round|int }}%</span>
+                  {% else %}<span class="doc-arch-badge neutral">Desconhecido</span>{% endif %}
+                </td>
+                <td>{{ workflow_labels.get(row.workflow.association_status, row.workflow.association_status) }}</td>
+                <td>{{ workflow_labels.get(row.workflow.destination_status, row.workflow.destination_status) }}</td>
+                <td>
+                  <details class="doc-arch-action-menu">
+                    <summary>Triar</summary>
+                    <form method="post" action="/v2-clean/documentation/triage/{{ row.document.id }}">
+                      <label>Destino
+                        <select name="destination" required>
+                          <option value="invoices">Faturas</option>
+                          <option value="diagnostics">Diagnósticos</option>
+                          <option value="archive">Arquivo</option>
+                          <option value="imports">Importações</option>
+                        </select>
+                      </label>
+                      <label>Natureza, se for fatura
+                        <select name="invoice_nature">
+                          <option value="por_classificar">Por classificar</option>
+                          <option value="operacional">Operacional</option>
+                          <option value="financeira">Financeira</option>
+                        </select>
+                      </label>
+                      <label>Justificação<input name="decision_reason" placeholder="Motivo da decisão"></label>
+                      <button type="submit">Confirmar</button>
+                    </form>
+                  </details>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="doc-arch-empty">Nenhum documento corresponde aos filtros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&origin={{ origin|urlencode }}&confidence={{ confidence|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+  </main>
+</div>
+{% endblock %}

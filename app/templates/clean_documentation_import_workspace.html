@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "imports" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div><p class="eyebrow">Documentação / Importações</p><h1>{{ workspace_context.title }}</h1><p>{{ workspace_context.subtitle }}</p></div>
+      <div class="doc-arch-header-actions">
+        <a class="button-link secondary-link" href="#batch-history">Histórico</a>
+        {% if workspace == "rentway" %}
+          <button type="button" onclick="document.getElementById('rentway-import-dialog').showModal()">+ Importar</button>
+        {% elif workspace == "reports" %}
+          <a class="button-link" href="/v2-clean/documents/import/historical-reports">+ Importar relatórios</a>
+        {% elif workspace == "invoices" %}
+          <a class="button-link" href="/v2-clean/documents#invoice-import">+ Importar faturas</a>
+        {% else %}
+          <a class="button-link" href="/v2-clean/documentation">+ Adicionar documentos</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if request.query_params.get("confirmed") %}<div class="doc-arch-notice success">Lote #{{ request.query_params.get("batch_id") }} confirmado: {{ request.query_params.get("confirmed") }} registos tratados.</div>{% endif %}
+    {% if request.query_params.get("reprocessed") %}<div class="doc-arch-notice success">Reprocessamento criado no lote #{{ request.query_params.get("reprocessed") }}.</div>{% endif %}
+    {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">Não foi possível concluir a operação: {{ request.query_params.get("error") }}.</div>{% endif %}
+
+    {% if workspace == "rentway" %}
+      <nav class="doc-arch-tabs">
+        <a href="?tab=work_orders" {% if tab == "work_orders" %}class="active"{% endif %}>Folhas de obra</a>
+        <a href="?tab=fleet" {% if tab == "fleet" %}class="active"{% endif %}>Frota</a>
+        <a href="?tab=contracts" {% if tab == "contracts" %}class="active"{% endif %}>Contratos</a>
+        <a href="?tab=impros" {% if tab == "impros" %}class="active"{% endif %}>Impros</a>
+      </nav>
+      <section class="doc-arch-section-heading">
+        <div>
+          <h2>{% if tab == "work_orders" %}Folhas de obra e detalhes{% elif tab == "fleet" %}Atualização da frota{% elif tab == "contracts" %}Contratos{% else %}Impros{% endif %}</h2>
+          <p>{% if tab == "work_orders" %}Cabeçalho e intervenções na mesma área, com importações separadas.{% else %}Dados Rentway considerados validados por natureza na origem.{% endif %}</p>
+        </div>
+        <div class="doc-arch-header-actions">
+          {% if tab == "work_orders" %}
+            <button type="button" class="secondary" data-import-kind="work_order_details">Importar detalhes</button>
+            <button type="button" data-import-kind="work_orders">Importar folhas</button>
+          {% else %}
+            <button type="button" data-import-kind="{{ tab }}">Importar {{ tab }}</button>
+          {% endif %}
+        </div>
+      </section>
+    {% else %}
+      <nav class="doc-arch-tabs">
+        {% if workspace == "reports" %}
+          <a class="active" href="/v2-clean/documentation/imports/reports">Diagnósticos</a><a href="/v2-clean/documentation/imports/reports?tab=service_box">Service Box</a><a href="/v2-clean/documentation/imports/reports?tab=maintenance">Planos de manutenção</a><a href="/v2-clean/documentation/imports/reports?tab=technical">Relatórios técnicos</a>
+        {% elif workspace == "invoices" %}
+          <a class="active" href="/v2-clean/documentation/imports/invoices">Lotes</a><a href="/v2-clean/documents#pending-invoices">Faturas esperadas / pendentes</a>
+        {% else %}
+          <a class="active" href="/v2-clean/documentation/imports/other">Conhecidos</a><a href="/v2-clean/documentation/triage">Desconhecidos na Triagem</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+    <form class="doc-arch-filters" method="get">
+      {% if tab %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
+      <input name="q" value="{{ q }}" placeholder="Pesquisar referência, matrícula, fornecedor…">
+      <input type="hidden" name="page_size" value="{{ pagination.page_size }}">
+      <button type="submit">Filtrar</button>
+    </form>
+
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          {% if workspace == "rentway" and tab == "fleet" %}
+            <thead><tr><th>Unidade</th><th>Matrícula</th><th>VIN</th><th>Marca / modelo</th><th>Estado</th><th>Ação</th></tr></thead>
+            <tbody>{% for row in data_rows %}{% set vehicle = row.vehicle %}<tr><td>{{ vehicle.rentway_unit_nr or "-" }}</td><td>{{ vehicle.plate or "-" }}</td><td>{{ vehicle.vin or "-" }}</td><td>{{ vehicle.brand or "" }} {{ vehicle.model or "" }}</td><td>{{ vehicle.operational_status or vehicle.lifecycle_status }}</td><td><a href="/v2-clean/fleet/{{ vehicle.id }}">Abrir</a></td></tr>{% else %}<tr><td colspan="6" class="doc-arch-empty">Sem dados.</td></tr>{% endfor %}</tbody>
+          {% elif workspace == "rentway" %}
+            <thead><tr><th>Data</th><th>Viatura</th><th>Referência</th><th>Fornecedor</th><th>KM</th><th>Resumo</th><th>Estado</th></tr></thead>
+            <tbody>{% for row in data_rows %}{% set record = row.record %}<tr><td>{{ record.document_date.strftime("%d/%m/%Y") if record.document_date else "-" }}</td><td>{{ record.plate or "-" }}</td><td>{{ record.external_reference or record.process_reference or "-" }}</td><td>{{ record.supplier_name or "-" }}</td><td>{{ record.km or "-" }}</td><td>{{ record.title or record.raw_description or "-" }}</td><td><span class="doc-arch-badge success">{{ record.status }}</span></td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Sem dados.</td></tr>{% endfor %}</tbody>
+          {% else %}
+            <thead><tr><th>Data</th><th>Documento</th><th>Origem</th><th>Associação</th><th>Extração</th><th>Validação</th><th>Ação</th></tr></thead>
+            <tbody>{% for row in data_rows %}<tr><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.origin }}</td><td>{{ row.workflow.association_status }}</td><td>{{ row.workflow.extraction_status }}</td><td>{{ row.workflow.validation_status }}</td><td><a href="{{ row.detail_href }}">Abrir</a></td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Sem dados.</td></tr>{% endfor %}</tbody>
+          {% endif %}
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?tab={{ tab }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      {% if pagination.has_next %}<a href="?tab={{ tab }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+
+    <section class="doc-arch-card" id="batch-history">
+      <div class="doc-arch-card-heading"><div><h2>Histórico de lotes</h2><p>O reprocessamento parte sempre da linha do lote e cria uma nova tentativa auditável.</p></div></div>
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Lote</th><th>Tipo</th><th>Data</th><th>Total</th><th>Criados</th><th>Atualizados</th><th>Erros</th><th>Estado</th><th>Ação</th></tr></thead>
+          <tbody>
+            {% for batch in batches %}
+              <tr><td>#{{ batch.id }}</td><td>{{ batch.import_type }}</td><td>{{ batch.started_at.strftime("%d/%m/%Y %H:%M") if batch.started_at else "-" }}</td><td>{{ batch.total_rows }}</td><td>{{ batch.created_rows }}</td><td>{{ batch.updated_rows }}</td><td>{{ batch.error_rows }}</td><td><span class="doc-arch-badge {% if batch.status == 'completed' %}success{% elif batch.status == 'failed' %}danger{% else %}warning{% endif %}">{{ batch.status }}</span></td><td>{% if workspace == "rentway" %}<form method="post" action="/v2-clean/documentation/imports/rentway/batches/{{ batch.id }}/reprocess"><button type="submit" class="link-button">Reprocessar</button></form>{% else %}—{% endif %}</td></tr>
+            {% else %}<tr><td colspan="9" class="doc-arch-empty">Sem lotes para esta área.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% if workspace == "rentway" %}
+      <dialog id="rentway-import-dialog" class="doc-arch-dialog">
+        <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
+        <h2>Importar dados Rentway</h2>
+        <p>O ficheiro será analisado primeiro. Nenhum dado é gravado antes da confirmação.</p>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documentation/imports/rentway/preview">
+          <label>Tipo
+            <select name="import_kind" id="rentway-import-kind" required>
+              {% for code, label in rentway_import_kinds.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Ficheiro<input type="file" name="file" accept=".xlsx,.xls,.csv" required></label>
+          <div class="doc-arch-dialog-actions"><button type="submit">Pré-visualizar</button><button type="button" class="secondary" onclick="document.getElementById('rentway-import-dialog').close()">Cancelar</button></div>
+        </form>
+      </dialog>
+      <script>
+        document.querySelectorAll("[data-import-kind]").forEach((button) => {
+          button.addEventListener("click", () => {
+            document.getElementById("rentway-import-kind").value = button.dataset.importKind;
+            document.getElementById("rentway-import-dialog").showModal();
+          });
+        });
+      </script>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

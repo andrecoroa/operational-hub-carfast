@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_archive" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "archive" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header"><div><p class="eyebrow">Documentação</p><h1>Arquivo global</h1><p>Pesquisa transversal sobre o arquivo documental único, sem separação artificial por experiência.</p></div></header>
+    <form class="doc-arch-filters" method="get"><input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula, remetente…"><button type="submit">Pesquisar</button></form>
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Data</th><th>Documento</th><th>Tipo</th><th>Origem</th><th>Viatura</th><th>Ingestão</th><th>Destino</th><th>Ação</th></tr></thead>
+          <tbody>{% for row in rows %}<tr><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.document.document_type or "-" }}</td><td>{{ row.origin }}</td><td>{{ row.document.plate or "-" }}</td><td>{{ row.workflow.ingestion_status }}</td><td>{{ row.workflow.destination_status }}</td><td><a href="{{ row.detail_href }}">Abrir</a></td></tr>{% else %}<tr><td colspan="8" class="doc-arch-empty">Nenhum documento encontrado.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+  </main>
+</div>
+{% endblock %}

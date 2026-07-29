@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_invoices" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "invoices" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div><p class="eyebrow">Documentação</p><h1>Faturas</h1><p>Consulta, associação e classificação das faturas da frota.</p></div>
+      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documents?audit_export=1">Exportar auditoria</a><a class="button-link" href="/v2-clean/documentation/imports/invoices">+ Adicionar fatura</a></div>
+    </header>
+    {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Natureza confirmada e derivados recalculados, preservando o histórico.</div>{% endif %}
+    {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("error") }}</div>{% endif %}
+
+    <section class="doc-arch-kpis">
+      <a href="/v2-clean/documentation/invoices"><strong>{{ pagination.total }}</strong><span>Total filtrado</span></a>
+      <a class="warning" href="?nature=por_classificar"><strong>{{ nature_counts.get("por_classificar", 0) }}</strong><span>Por classificar</span></a>
+      <a href="?nature=operacional"><strong>{{ nature_counts.get("operacional", 0) + nature_counts.get("legacy", 0) }}</strong><span>Operacionais / legadas</span></a>
+      <a href="?nature=financeira"><strong>{{ nature_counts.get("financeira", 0) }}</strong><span>Financeiras</span></a>
+      <a class="danger" href="/v2-clean/documentation/triage"><strong>—</strong><span>Sem associação</span></a>
+    </section>
+    <nav class="doc-arch-tabs">
+      <a href="/v2-clean/documentation/invoices" {% if not nature %}class="active"{% endif %}>Todas</a>
+      <a href="?nature=por_classificar" {% if nature == "por_classificar" %}class="active"{% endif %}>Por tratar</a>
+      <a href="?nature=operacional" {% if nature == "operacional" %}class="active"{% endif %}>Operacionais</a>
+      <a href="?nature=financeira" {% if nature == "financeira" %}class="active"{% endif %}>Financeiras</a>
+    </nav>
+    <form class="doc-arch-filters" method="get">
+      <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula…">
+      <select name="nature">
+        <option value="">Natureza: todas</option>
+        {% for value in invoice_natures|sort %}<option value="{{ value }}" {% if nature == value %}selected{% endif %}>{{ workflow_labels.get(value, value) }}</option>{% endfor %}
+      </select>
+      <button type="submit">Filtrar</button>
+    </form>
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Viatura</th><th>Data</th><th>Documento</th><th>Fornecedor</th><th>Natureza</th><th>Associação</th><th>Validação</th><th>Ação</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.document.plate or "Por associar" }}</td><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.document.supplier_name or "-" }}</td>
+                <td><span class="doc-arch-badge {% if row.workflow.invoice_nature == 'operacional' %}success{% elif row.workflow.invoice_nature == 'financeira' %}neutral{% else %}warning{% endif %}">{{ workflow_labels.get(row.workflow.invoice_nature or "por_classificar", "Por classificar") }}</span></td>
+                <td>{{ workflow_labels.get(row.workflow.association_status, row.workflow.association_status) }}</td><td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td>
+                <td>
+                  <details class="doc-arch-action-menu">
+                    <summary>Classificar</summary>
+                    <form method="post" action="/v2-clean/documentation/invoices/{{ row.document.id }}/nature">
+                      <label>Natureza obrigatória<select name="nature" required><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option></select></label>
+                      <label>Sugestão<select name="suggested_nature"><option value="">Sem sugestão</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="por_classificar">Por classificar</option></select></label>
+                      <label>Confiança (0–1)<input name="suggestion_confidence" inputmode="decimal" placeholder="0,84"></label>
+                      <label>Justificação<input name="decision_reason" placeholder="Motivo / observação"></label>
+                      <button type="submit">Confirmar decisão</button>
+                    </form>
+                  </details>
+                </td>
+              </tr>
+            {% else %}<tr><td colspan="8" class="doc-arch-empty">Nenhuma fatura corresponde aos filtros.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&nature={{ nature }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&nature={{ nature }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+  </main>
+</div>
+{% endblock %}

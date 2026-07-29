@@ -9,6 +9,7 @@ import json
 import mimetypes
 from pathlib import Path
 import re
+import shutil
 import unicodedata
 import uuid
 import zipfile
@@ -41,12 +42,13 @@ from app.models.documents import (
     Document,
     DocumentEvent,
     DocumentLink,
+    DocumentWorkflowState,
     VehicleDocumentAuditField,
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
 )
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
-from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
+from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.management_center import (
     ClaimIncident,
@@ -97,7 +99,20 @@ from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
     preview_pending_documents,
 )
-from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
+from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx, preview_rentway_fleet_xlsx
+from app.services.document_import_preview import (
+    RENTWAY_IMPORT_KINDS,
+    preview_structured_spreadsheet,
+)
+from app.services.document_workflow import (
+    INVOICE_NATURES,
+    WORKFLOW_LABELS,
+    classify_invoice_nature,
+    confident_destination,
+    get_or_create_workflow_state,
+    transition_document_workflow,
+    workflow_values,
+)
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
@@ -200,6 +215,8 @@ INVOICE_OCR_MANIFEST_SCHEMA = "carfast.invoice-ocr-manifest.v1"
 INVOICE_OCR_MANIFEST_MAX_SIZE = 25 * 1024 * 1024
 PENDING_INVOICE_PREVIEW_SCHEMA = "carfast.pending-invoice-preview.v1"
 PENDING_INVOICE_PREVIEW_TTL = timedelta(hours=24)
+DOCUMENT_IMPORT_PREVIEW_SCHEMA = "carfast.document-import-preview.v1"
+DOCUMENT_IMPORT_PREVIEW_TTL = timedelta(hours=24)
 APP_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -250,6 +267,82 @@ def _load_pending_invoice_preview(token: str, user_id: int | None) -> dict[str, 
         path.unlink(missing_ok=True)
         raise ValueError("A pré-visualização expirou. Importe novamente o ficheiro.")
     return payload
+
+
+def _documentation_import_preview_paths(token: str) -> tuple[Path, Path]:
+    if not re.fullmatch(r"[a-f0-9]{32}", token):
+        raise ValueError("Pré-visualização inválida.")
+    root = document_archive_root() / "_document_import_previews" / token
+    return root / "preview.json", root / "source"
+
+
+def _store_documentation_import_preview(
+    *,
+    content: bytes,
+    original_name: str,
+    import_kind: str,
+    user_id: int | None,
+    preview: dict[str, Any],
+) -> str:
+    token = uuid.uuid4().hex
+    metadata_path, source_stub = _documentation_import_preview_paths(token)
+    metadata_path.parent.mkdir(parents=True, exist_ok=False)
+    suffix = Path(original_name).suffix.lower()
+    source_path = source_stub.with_suffix(suffix)
+    source_path.write_bytes(content)
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "schema": DOCUMENT_IMPORT_PREVIEW_SCHEMA,
+                "created_at": datetime.now(UTC).isoformat(),
+                "owner_user_id": user_id,
+                "original_name": Path(original_name).name,
+                "import_kind": import_kind,
+                "source_name": source_path.name,
+                "preview": preview,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return token
+
+
+def _load_documentation_import_preview(
+    token: str,
+    user_id: int | None,
+) -> tuple[dict[str, Any], Path]:
+    metadata_path, _source_stub = _documentation_import_preview_paths(token)
+    if not metadata_path.is_file():
+        raise ValueError("Esta pré-visualização já não está disponível.")
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if payload.get("schema") != DOCUMENT_IMPORT_PREVIEW_SCHEMA:
+        raise ValueError("Pré-visualização incompatível.")
+    if payload.get("owner_user_id") != user_id:
+        raise ValueError("A pré-visualização pertence a outro utilizador.")
+    try:
+        created_at = datetime.fromisoformat(str(payload["created_at"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Pré-visualização inválida.") from exc
+    if datetime.now(UTC) - created_at.astimezone(UTC) > DOCUMENT_IMPORT_PREVIEW_TTL:
+        raise ValueError("A pré-visualização expirou.")
+    source_path = metadata_path.parent / Path(str(payload.get("source_name") or "")).name
+    if not source_path.is_file():
+        raise ValueError("O ficheiro da pré-visualização já não está disponível.")
+    return payload, source_path
+
+
+def _discard_documentation_import_preview(token: str) -> None:
+    metadata_path, _source_stub = _documentation_import_preview_paths(token)
+    if not metadata_path.parent.exists():
+        return
+    for item in metadata_path.parent.iterdir():
+        if item.is_file():
+            item.unlink(missing_ok=True)
+    try:
+        metadata_path.parent.rmdir()
+    except OSError:
+        pass
 
 
 def rentway_unit_sort_key(vehicle: Vehicle) -> tuple[int, int, str]:
@@ -638,6 +731,34 @@ def can_manage_carfast_fleet(request: Request) -> bool:
 
 def can_view_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "vehicles.read", "vehicles.write", "admin.manage")
+
+
+def can_view_documentation(request: Request) -> bool:
+    return has_any_web_permission(
+        request,
+        "documents.read",
+        "documents.write",
+        "vehicles.read",
+        "admin.manage",
+    )
+
+
+def can_manage_documentation(request: Request) -> bool:
+    return has_any_web_permission(
+        request,
+        "documents.write",
+        "vehicles.write",
+        "admin.manage",
+    )
+
+
+def can_run_document_imports(request: Request) -> bool:
+    return has_any_web_permission(
+        request,
+        "imports.run",
+        "documents.write",
+        "admin.manage",
+    )
 
 
 def ensure_history_audit_process_type(db) -> ManagementProcessType:
@@ -6898,7 +7019,7 @@ def clean_fleet_diagnostics(
             document_id = data.get("document_id")
             file_url = ""
             if document_id:
-                file_url = f"/documents/{document_id}/file?inline=1"
+                file_url = f"/v2-clean/documents/{document_id}/file?inline=1"
             elif reading.external_url:
                 file_url = str(reading.external_url)
             blob = " ".join(
@@ -8820,6 +8941,1274 @@ def clean_document_import_center(
         )
         db.commit()
         return response
+
+
+def _documentation_page(page: int, page_size: int, *, maximum: int = 100) -> tuple[int, int, int]:
+    clean_page = max(int(page or 1), 1)
+    clean_page_size = max(10, min(int(page_size or 25), maximum))
+    return clean_page, clean_page_size, (clean_page - 1) * clean_page_size
+
+
+def _documentation_pagination(total: int, page: int, page_size: int) -> dict[str, Any]:
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    clean_page = min(page, total_pages)
+    return {
+        "page": clean_page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+        "has_previous": clean_page > 1,
+        "has_next": clean_page < total_pages,
+        "previous_page": max(clean_page - 1, 1),
+        "next_page": min(clean_page + 1, total_pages),
+    }
+
+
+def _documentation_triage_condition() -> Any:
+    return or_(
+        DocumentWorkflowState.destination_status == "triage",
+        Document.status.in_({"pending_triage", "unclassified"}),
+    )
+
+
+def _documentation_invoice_condition() -> Any:
+    return or_(
+        DocumentWorkflowState.invoice_nature.is_not(None),
+        Document.document_type.in_({"workshop_supplier_invoice", "finance_supplier_invoice"}),
+    )
+
+
+def _documentation_row(
+    document: Document,
+    state: DocumentWorkflowState | None,
+) -> dict[str, Any]:
+    workflow = workflow_values(document, state)
+    return {
+        "document": document,
+        "workflow": workflow,
+        "title": document.title or document.original_name or f"Documento {document.id}",
+        "date_display": clean_date(
+            (document.document_date or document.created_at).isoformat()
+            if (document.document_date or document.created_at)
+            else None
+        ),
+        "origin": document.entry_channel or document.source or "Desconhecida",
+        "detail_href": f"/v2-clean/documents/{document.id}",
+        "preview_href": f"/v2-clean/documents/{document.id}/file?inline=1",
+    }
+
+
+@web_router.get("/v2-clean/documentation", response_class=HTMLResponse)
+def clean_documentation_center(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        document_base = select(func.count()).select_from(Document).outerjoin(
+            DocumentWorkflowState,
+            DocumentWorkflowState.document_id == Document.id,
+        )
+        triage_count = int(
+            db.scalar(document_base.where(_documentation_triage_condition())) or 0
+        )
+        invoice_count = int(
+            db.scalar(document_base.where(_documentation_invoice_condition())) or 0
+        )
+        error_count = int(
+            db.scalar(
+                document_base.where(
+                    or_(
+                        DocumentWorkflowState.ingestion_status == "failed",
+                        DocumentWorkflowState.extraction_status == "failed",
+                        Document.status.in_({"failed", "ocr_issue", "unable_to_read", "error"}),
+                    )
+                )
+            )
+            or 0
+        )
+        diagnostic_pending = int(
+            db.scalar(
+                select(func.count())
+                .select_from(DiagnosticDocument)
+                .where(
+                    or_(
+                        DiagnosticDocument.validation_status != "validated",
+                        DiagnosticDocument.ocr_status.in_({"not_requested", "processing", "failed"}),
+                    )
+                )
+            )
+            or 0
+        )
+        recent_imports = int(
+            db.scalar(
+                select(func.count())
+                .select_from(ImportBatch)
+                .where(ImportBatch.started_at >= datetime.now(UTC) - timedelta(days=30))
+            )
+            or 0
+        )
+        inbox_records = db.execute(
+            select(Document, DocumentWorkflowState)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(_documentation_triage_condition())
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(5)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_center.html",
+            {
+                "counts": {
+                    "triage": triage_count,
+                    "imports": recent_imports,
+                    "invoices": invoice_count,
+                    "diagnostics": diagnostic_pending,
+                    "errors": error_count,
+                },
+                "inbox_rows": [
+                    _documentation_row(document, state)
+                    for document, state in inbox_records
+                ],
+            },
+        )
+
+
+@web_router.get("/v2-clean/documentation/triage", response_class=HTMLResponse)
+def clean_documentation_triage(
+    request: Request,
+    q: str = "",
+    origin: str = "",
+    confidence: str = "",
+    page: int = 1,
+    page_size: int = 25,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    conditions: list[Any] = [_documentation_triage_condition()]
+    search = q.strip()
+    if search:
+        token = f"%{search}%"
+        conditions.append(
+            or_(
+                Document.title.ilike(token),
+                Document.original_name.ilike(token),
+                Document.plate.ilike(token),
+                Document.source_sender.ilike(token),
+            )
+        )
+    if origin:
+        conditions.append(or_(Document.entry_channel == origin, Document.source == origin))
+    if confidence == "high":
+        conditions.append(DocumentWorkflowState.suggestion_confidence >= 0.90)
+    elif confidence == "medium":
+        conditions.append(
+            DocumentWorkflowState.suggestion_confidence.between(0.60, 0.899999)
+        )
+    elif confidence == "low":
+        conditions.append(
+            or_(
+                DocumentWorkflowState.suggestion_confidence < 0.60,
+                DocumentWorkflowState.suggestion_confidence.is_(None),
+            )
+        )
+    with SessionLocal() as db:
+        base = (
+            select(Document, DocumentWorkflowState)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(*conditions)
+        )
+        total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+            )
+            or 0
+        )
+        records = db.execute(
+            base.order_by(Document.created_at.desc(), Document.id.desc())
+            .offset(offset)
+            .limit(clean_page_size)
+        ).all()
+        counts = {
+            "total": int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(Document)
+                    .outerjoin(
+                        DocumentWorkflowState,
+                        DocumentWorkflowState.document_id == Document.id,
+                    )
+                    .where(_documentation_triage_condition())
+                )
+                or 0
+            ),
+            "suggested": int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(DocumentWorkflowState)
+                    .where(
+                        DocumentWorkflowState.destination_status == "triage",
+                        DocumentWorkflowState.suggestion_confidence.is_not(None),
+                    )
+                )
+                or 0
+            ),
+            "unassociated": int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(DocumentWorkflowState)
+                    .where(
+                        DocumentWorkflowState.destination_status == "triage",
+                        DocumentWorkflowState.association_status == "unassociated",
+                    )
+                )
+                or 0
+            ),
+        }
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_triage.html",
+            {
+                "rows": [
+                    _documentation_row(document, state)
+                    for document, state in records
+                ],
+                "counts": counts,
+                "pagination": _documentation_pagination(
+                    total,
+                    clean_page,
+                    clean_page_size,
+                ),
+                "q": q,
+                "origin": origin,
+                "confidence": confidence,
+                "workflow_labels": WORKFLOW_LABELS,
+            },
+        )
+
+
+@web_router.post("/v2-clean/documentation/triage/{document_id}")
+def clean_documentation_triage_decide(
+    request: Request,
+    document_id: int,
+    destination: str = Form(...),
+    decision_reason: str = Form(""),
+    invoice_nature: str = Form("por_classificar"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse("/v2-clean/documentation/triage?error=permission", status_code=303)
+    user_id = get_web_user_id(request)
+    clean_destination = destination.strip().lower()
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse("/v2-clean/documentation/triage?error=missing", status_code=303)
+        if clean_destination == "invoices":
+            classify_invoice_nature(
+                db,
+                document=document,
+                nature=invoice_nature,
+                user_id=user_id,
+                decision_reason=decision_reason or "Decisão manual na Triagem",
+            )
+        else:
+            target_types = {
+                "diagnostics": ("workshop_diagnostic", "technical"),
+                "archive": (document.document_type or "other_document", "general"),
+                "imports": (document.document_type or "structured_import", "fleet"),
+            }
+            if clean_destination not in target_types:
+                return RedirectResponse(
+                    "/v2-clean/documentation/triage?error=destination",
+                    status_code=303,
+                )
+            document.document_type, document.classification = target_types[clean_destination]
+            document.status = (
+                "pending_validation"
+                if clean_destination == "diagnostics"
+                else "archived"
+            )
+            if clean_destination == "archive":
+                document.archived = True
+                document.archived_at = document.archived_at or datetime.now(UTC)
+                document.archived_by_id = user_id
+            transition_document_workflow(
+                db,
+                document=document,
+                user_id=user_id,
+                reason=decision_reason or "Decisão manual na Triagem",
+                ingestion_status="completed",
+                association_status="associated" if document.vehicle_id else "unassociated",
+                validation_status="human_validated",
+                destination_status=clean_destination,
+            )
+        db.commit()
+    return RedirectResponse("/v2-clean/documentation/triage?saved=1", status_code=303)
+
+
+@web_router.get("/v2-clean/documentation/imports", response_class=HTMLResponse)
+def clean_documentation_imports(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    with SessionLocal() as db:
+        batches = db.scalars(
+            select(ImportBatch)
+            .order_by(ImportBatch.started_at.desc(), ImportBatch.id.desc())
+            .limit(12)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_imports.html",
+            {"batches": batches},
+        )
+
+
+DOCUMENTATION_IMPORT_WORKSPACES = {
+    "rentway": {
+        "title": "Rentway",
+        "subtitle": "Dados estruturados validados por natureza na origem.",
+    },
+    "reports": {
+        "title": "Relatórios",
+        "subtitle": "Diagnósticos, Service Box, planos de manutenção e relatórios técnicos.",
+    },
+    "invoices": {
+        "title": "Importação de faturas",
+        "subtitle": "Lotes documentais e listas de faturas esperadas ou pendentes.",
+    },
+    "other": {
+        "title": "Outros documentos",
+        "subtitle": "Documentos conhecidos seguem para o arquivo; desconhecidos para a Triagem.",
+    },
+}
+
+RENTWAY_TAB_IMPORT_TYPES = {
+    "fleet": {"rentway_fleet"},
+    "work_orders": {"rentway_work_orders", "work_orders"},
+    "contracts": {"rentway_contracts", "contracts"},
+    "impros": {"rentway_impros", "impros"},
+}
+
+
+@web_router.get(
+    "/v2-clean/documentation/imports/{workspace}",
+    response_class=HTMLResponse,
+)
+def clean_documentation_import_workspace(
+    request: Request,
+    workspace: str,
+    tab: str = "",
+    q: str = "",
+    page: int = 1,
+    page_size: int = 25,
+    history_page: int = 1,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    workspace_context = DOCUMENTATION_IMPORT_WORKSPACES.get(workspace)
+    if not workspace_context:
+        return RedirectResponse("/v2-clean/documentation/imports", status_code=303)
+    if workspace == "rentway" and tab not in RENTWAY_TAB_IMPORT_TYPES:
+        tab = "work_orders"
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    clean_history_page, history_page_size, history_offset = _documentation_page(
+        history_page,
+        10,
+        maximum=25,
+    )
+    with SessionLocal() as db:
+        batch_conditions: list[Any] = []
+        if workspace == "rentway":
+            batch_conditions.append(
+                ImportBatch.import_type.in_(RENTWAY_TAB_IMPORT_TYPES[tab])
+            )
+        elif workspace == "reports":
+            batch_conditions.append(
+                or_(
+                    ImportBatch.import_type.ilike("%report%"),
+                    ImportBatch.import_type.ilike("%diagnostic%"),
+                    ImportBatch.import_type.ilike("%service%"),
+                    ImportBatch.import_type.ilike("%maintenance%"),
+                )
+            )
+        elif workspace == "invoices":
+            batch_conditions.append(ImportBatch.import_type.ilike("%invoice%"))
+        else:
+            batch_conditions.append(
+                or_(
+                    ImportBatch.import_type.ilike("%document%"),
+                    ImportBatch.import_type.ilike("%archive%"),
+                )
+            )
+        history_total = int(
+            db.scalar(
+                select(func.count()).select_from(ImportBatch).where(*batch_conditions)
+            )
+            or 0
+        )
+        batches = db.scalars(
+            select(ImportBatch)
+            .where(*batch_conditions)
+            .order_by(ImportBatch.started_at.desc(), ImportBatch.id.desc())
+            .offset(history_offset)
+            .limit(history_page_size)
+        ).all()
+
+        data_rows: list[dict[str, Any]] = []
+        data_total = 0
+        if workspace == "rentway" and tab == "fleet":
+            vehicle_conditions: list[Any] = []
+            if q.strip():
+                token = f"%{q.strip()}%"
+                vehicle_conditions.append(
+                    or_(
+                        Vehicle.plate.ilike(token),
+                        Vehicle.vin.ilike(token),
+                        Vehicle.rentway_unit_nr.ilike(token),
+                        Vehicle.brand.ilike(token),
+                        Vehicle.model.ilike(token),
+                    )
+                )
+            data_total = int(
+                db.scalar(
+                    select(func.count()).select_from(Vehicle).where(*vehicle_conditions)
+                )
+                or 0
+            )
+            vehicles = db.scalars(
+                select(Vehicle)
+                .where(*vehicle_conditions)
+                .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+                .offset(offset)
+                .limit(clean_page_size)
+            ).all()
+            data_rows = [{"kind": "vehicle", "vehicle": vehicle} for vehicle in vehicles]
+        elif workspace == "rentway":
+            group = {
+                "work_orders": "work_orders",
+                "contracts": "contracts",
+                "impros": "impros",
+            }[tab]
+            record_conditions: list[Any] = [VehicleDocumentRecord.main_group == group]
+            if q.strip():
+                token = f"%{q.strip()}%"
+                record_conditions.append(
+                    or_(
+                        VehicleDocumentRecord.title.ilike(token),
+                        VehicleDocumentRecord.plate.ilike(token),
+                        VehicleDocumentRecord.external_reference.ilike(token),
+                        VehicleDocumentRecord.supplier_name.ilike(token),
+                    )
+                )
+            data_total = int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(VehicleDocumentRecord)
+                    .where(*record_conditions)
+                )
+                or 0
+            )
+            records = db.scalars(
+                select(VehicleDocumentRecord)
+                .where(*record_conditions)
+                .order_by(
+                    VehicleDocumentRecord.document_date.desc().nullslast(),
+                    VehicleDocumentRecord.id.desc(),
+                )
+                .offset(offset)
+                .limit(clean_page_size)
+            ).all()
+            data_rows = [{"kind": "record", "record": record} for record in records]
+        else:
+            document_conditions: list[Any] = []
+            if workspace == "reports":
+                document_conditions.append(
+                    Document.document_type.in_(
+                        {
+                            "workshop_diagnostic",
+                            "workshop_report",
+                            "diagnostic_report",
+                            "technical_report",
+                        }
+                    )
+                )
+            elif workspace == "invoices":
+                document_conditions.append(_documentation_invoice_condition())
+            else:
+                document_conditions.append(
+                    ~Document.document_type.in_(
+                        {
+                            "workshop_supplier_invoice",
+                            "finance_supplier_invoice",
+                            "workshop_diagnostic",
+                            "workshop_report",
+                            "diagnostic_report",
+                            "technical_report",
+                        }
+                    )
+                )
+            if q.strip():
+                token = f"%{q.strip()}%"
+                document_conditions.append(
+                    or_(
+                        Document.title.ilike(token),
+                        Document.original_name.ilike(token),
+                        Document.plate.ilike(token),
+                    )
+                )
+            document_base = select(Document, DocumentWorkflowState).outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            data_total = int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(Document)
+                    .outerjoin(
+                        DocumentWorkflowState,
+                        DocumentWorkflowState.document_id == Document.id,
+                    )
+                    .where(*document_conditions)
+                )
+                or 0
+            )
+            documents = db.execute(
+                document_base.where(*document_conditions)
+                .order_by(Document.created_at.desc(), Document.id.desc())
+                .offset(offset)
+                .limit(clean_page_size)
+            ).all()
+            data_rows = [
+                {
+                    "kind": "document",
+                    **_documentation_row(document, state),
+                }
+                for document, state in documents
+            ]
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_import_workspace.html",
+            {
+                "workspace": workspace,
+                "workspace_context": workspace_context,
+                "tab": tab,
+                "q": q,
+                "data_rows": data_rows,
+                "pagination": _documentation_pagination(
+                    data_total,
+                    clean_page,
+                    clean_page_size,
+                ),
+                "batches": batches,
+                "history_pagination": _documentation_pagination(
+                    history_total,
+                    clean_history_page,
+                    history_page_size,
+                ),
+                "rentway_import_kinds": RENTWAY_IMPORT_KINDS,
+            },
+        )
+
+
+@web_router.post("/v2-clean/documentation/imports/rentway/preview")
+def clean_documentation_rentway_preview_submit(
+    request: Request,
+    import_kind: str = Form(...),
+    file: UploadFile = File(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_run_document_imports(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=permission",
+            status_code=303,
+        )
+    clean_kind = import_kind.strip().lower()
+    if clean_kind not in RENTWAY_IMPORT_KINDS:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=kind",
+            status_code=303,
+        )
+    original_name = Path(file.filename or "importacao.xlsx").name
+    suffix = Path(original_name).suffix.lower()
+    allowed_suffixes = {".xlsx"} if clean_kind == "fleet" else {".xlsx", ".xls", ".csv"}
+    if suffix not in allowed_suffixes:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=format",
+            status_code=303,
+        )
+    content = file.file.read()
+    if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=size",
+            status_code=303,
+        )
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        with SessionLocal() as db:
+            preview = (
+                preview_rentway_fleet_xlsx(db, tmp_path)
+                if clean_kind == "fleet"
+                else preview_structured_spreadsheet(
+                    tmp_path,
+                    import_kind=clean_kind,
+                )
+            )
+        token = _store_documentation_import_preview(
+            content=content,
+            original_name=original_name,
+            import_kind=clean_kind,
+            user_id=get_web_user_id(request),
+            preview=preview,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?"
+            + urlencode({"error": f"preview_{exc.__class__.__name__}"}),
+            status_code=303,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(
+        f"/v2-clean/documentation/imports/rentway/preview/{token}",
+        status_code=303,
+    )
+
+
+@web_router.get(
+    "/v2-clean/documentation/imports/rentway/preview/{token}",
+    response_class=HTMLResponse,
+)
+def clean_documentation_rentway_preview(request: Request, token: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    try:
+        payload, _source_path = _load_documentation_import_preview(
+            token,
+            get_web_user_id(request),
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?"
+            + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    return templates.TemplateResponse(
+        request,
+        "clean_documentation_import_preview.html",
+        {"payload": payload, "preview_token": token},
+    )
+
+
+def _persist_rentway_import_source(
+    source_path: Path,
+    *,
+    import_kind: str,
+    original_name: str,
+) -> Path:
+    now = datetime.now(UTC)
+    target_dir = (
+        document_archive_root()
+        / "Importacoes"
+        / "Rentway"
+        / import_kind
+        / now.strftime("%Y")
+        / now.strftime("%m")
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(original_name).stem).strip("._") or "importacao"
+    suffix = source_path.suffix.lower()
+    target_path = target_dir / f"{now.strftime('%Y%m%d-%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem}{suffix}"
+    shutil.copy2(source_path, target_path)
+    return target_path
+
+
+def _create_structured_import_batch(
+    db: Session,
+    *,
+    import_kind: str,
+    imported_count: int,
+    total_rows: int,
+    source_document: Document,
+    original_name: str,
+    user_id: int | None,
+    reprocessed_from: int | None = None,
+) -> ImportBatch:
+    batch = ImportBatch(
+        source_system="rentway",
+        import_type=f"rentway_{import_kind}",
+        status="completed",
+        imported_by_id=user_id,
+        finished_at=datetime.now(UTC),
+        total_rows=total_rows,
+        created_rows=imported_count,
+        updated_rows=0,
+        skipped_rows=max(total_rows - imported_count, 0),
+        error_rows=0,
+        detail=json.dumps(
+            {
+                "source_document_id": source_document.id,
+                "reprocessed_from": reprocessed_from,
+                "validated_at_source": True,
+            },
+            ensure_ascii=False,
+        ),
+    )
+    db.add(batch)
+    db.flush()
+    db.add(
+        ImportFile(
+            batch_id=batch.id,
+            original_name=original_name[:255],
+            file_name=Path(source_document.storage_path).name[:255],
+            storage_path=source_document.storage_path,
+            columns_json=[],
+        )
+    )
+    record_audit(
+        db,
+        action="import.rentway_structured.completed",
+        entity_type="import_batch",
+        entity_id=batch.id,
+        after_json={
+            "import_kind": import_kind,
+            "imported_count": imported_count,
+            "total_rows": total_rows,
+            "validated_at_source": True,
+            "reprocessed_from": reprocessed_from,
+        },
+        user_id=user_id,
+    )
+    return batch
+
+
+@web_router.post("/v2-clean/documentation/imports/rentway/confirm")
+def clean_documentation_rentway_confirm(
+    request: Request,
+    preview_token: str = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_run_document_imports(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=permission",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    try:
+        payload, source_path = _load_documentation_import_preview(
+            preview_token,
+            user_id,
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?"
+            + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    import_kind = str(payload["import_kind"])
+    original_name = str(payload["original_name"])
+    preview = dict(payload.get("preview") or {})
+    try:
+        if import_kind == "fleet":
+            durable_path = _persist_rentway_import_source(
+                source_path,
+                import_kind=import_kind,
+                original_name=original_name,
+            )
+            with SessionLocal() as db:
+                stats = import_rentway_fleet_xlsx(
+                    db,
+                    durable_path,
+                    original_name=original_name,
+                    imported_by_id=user_id,
+                    storage_path=durable_path,
+                )
+            imported_count = stats["created_rows"] + stats["updated_rows"]
+            batch_id = stats["batch_id"]
+        else:
+            with SessionLocal() as db:
+                source_document = archive_structured_import_file(
+                    db,
+                    tmp_path=source_path,
+                    original_filename=original_name,
+                    import_kind=import_kind,
+                    imported_count=0,
+                    user_id=user_id,
+                )
+                importer = {
+                    "work_orders": import_work_orders_xlsx,
+                    "work_order_details": import_work_order_details_xlsx,
+                    "contracts": import_contracts_xlsx,
+                    "impros": import_impros_xlsx,
+                }[import_kind]
+                imported_count = importer(
+                    db,
+                    path=source_path,
+                    source_document=source_document,
+                    user_id=user_id,
+                )
+                source_document.source_subject = f"{import_kind}:{imported_count}"
+                batch = _create_structured_import_batch(
+                    db,
+                    import_kind=import_kind,
+                    imported_count=imported_count,
+                    total_rows=int(preview.get("total_rows") or 0),
+                    source_document=source_document,
+                    original_name=original_name,
+                    user_id=user_id,
+                )
+                batch_id = batch.id
+                db.commit()
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?"
+            + urlencode({"error": f"confirm_{exc.__class__.__name__}"}),
+            status_code=303,
+        )
+    _discard_documentation_import_preview(preview_token)
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/rentway?"
+        + urlencode(
+            {
+                "tab": "fleet" if import_kind == "fleet" else (
+                    "work_orders" if import_kind == "work_order_details" else import_kind
+                ),
+                "confirmed": imported_count,
+                "batch_id": batch_id,
+            }
+        ),
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/documentation/imports/rentway/cancel")
+def clean_documentation_rentway_cancel(
+    request: Request,
+    preview_token: str = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    try:
+        _load_documentation_import_preview(preview_token, get_web_user_id(request))
+        _discard_documentation_import_preview(preview_token)
+    except ValueError:
+        pass
+    return RedirectResponse("/v2-clean/documentation/imports/rentway", status_code=303)
+
+
+@web_router.post(
+    "/v2-clean/documentation/imports/rentway/batches/{batch_id}/reprocess"
+)
+def clean_documentation_rentway_reprocess(request: Request, batch_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_run_document_imports(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?error=permission",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    try:
+        with SessionLocal() as db:
+            original_batch = db.get(ImportBatch, batch_id)
+            import_file = db.scalar(
+                select(ImportFile)
+                .where(ImportFile.batch_id == batch_id)
+                .order_by(ImportFile.id)
+            )
+            if (
+                not original_batch
+                or original_batch.source_system != "rentway"
+                or not import_file
+            ):
+                raise ValueError("Lote Rentway inválido.")
+            source_path = Path(import_file.storage_path)
+            if not source_path.is_file():
+                raise FileNotFoundError(source_path)
+            import_type = original_batch.import_type
+            if import_type == "rentway_fleet":
+                stats = import_rentway_fleet_xlsx(
+                    db,
+                    source_path,
+                    original_name=import_file.original_name,
+                    imported_by_id=user_id,
+                    storage_path=source_path,
+                )
+                new_batch_id = stats["batch_id"]
+                db.get(ImportBatch, new_batch_id).detail = json.dumps(
+                    {"reprocessed_from": batch_id, "validated_at_source": True},
+                    ensure_ascii=False,
+                )
+                db.commit()
+                tab = "fleet"
+            else:
+                import_kind = import_type.removeprefix("rentway_")
+                source_document = db.scalar(
+                    select(Document).where(Document.storage_path == str(source_path))
+                )
+                if not source_document:
+                    raise ValueError("Documento fonte do lote não encontrado.")
+                importer = {
+                    "work_orders": import_work_orders_xlsx,
+                    "work_order_details": import_work_order_details_xlsx,
+                    "contracts": import_contracts_xlsx,
+                    "impros": import_impros_xlsx,
+                }[import_kind]
+                imported_count = importer(
+                    db,
+                    path=source_path,
+                    source_document=source_document,
+                    user_id=user_id,
+                )
+                new_batch = _create_structured_import_batch(
+                    db,
+                    import_kind=import_kind,
+                    imported_count=imported_count,
+                    total_rows=original_batch.total_rows,
+                    source_document=source_document,
+                    original_name=import_file.original_name,
+                    user_id=user_id,
+                    reprocessed_from=batch_id,
+                )
+                new_batch_id = new_batch.id
+                db.commit()
+                tab = "work_orders" if import_kind == "work_order_details" else import_kind
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/rentway?"
+            + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/rentway?"
+        + urlencode({"tab": tab, "reprocessed": new_batch_id}),
+        status_code=303,
+    )
+
+
+@web_router.get("/v2-clean/documentation/invoices", response_class=HTMLResponse)
+def clean_documentation_invoices(
+    request: Request,
+    q: str = "",
+    nature: str = "",
+    page: int = 1,
+    page_size: int = 25,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    conditions: list[Any] = [_documentation_invoice_condition()]
+    if q.strip():
+        token = f"%{q.strip()}%"
+        conditions.append(
+            or_(
+                Document.title.ilike(token),
+                Document.original_name.ilike(token),
+                Document.supplier_name.ilike(token),
+                Document.plate.ilike(token),
+                Document.contract_number.ilike(token),
+            )
+        )
+    if nature in INVOICE_NATURES:
+        if nature == "operacional":
+            conditions.append(
+                or_(
+                    DocumentWorkflowState.invoice_nature == "operacional",
+                    (
+                        DocumentWorkflowState.id.is_(None)
+                        & (Document.document_type == "workshop_supplier_invoice")
+                    ),
+                )
+            )
+        elif nature == "financeira":
+            conditions.append(
+                or_(
+                    DocumentWorkflowState.invoice_nature == "financeira",
+                    (
+                        DocumentWorkflowState.id.is_(None)
+                        & (Document.document_type == "finance_supplier_invoice")
+                    ),
+                )
+            )
+        else:
+            conditions.append(DocumentWorkflowState.invoice_nature == nature)
+    with SessionLocal() as db:
+        total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+            )
+            or 0
+        )
+        records = db.execute(
+            select(Document, DocumentWorkflowState)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(*conditions)
+            .order_by(
+                Document.document_date.desc().nullslast(),
+                Document.id.desc(),
+            )
+            .offset(offset)
+            .limit(clean_page_size)
+        ).all()
+        count_rows = db.execute(
+            select(DocumentWorkflowState.invoice_nature, func.count())
+            .select_from(Document)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(_documentation_invoice_condition())
+            .group_by(DocumentWorkflowState.invoice_nature)
+        ).all()
+        nature_counts = {key or "legacy": int(value) for key, value in count_rows}
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_invoices.html",
+            {
+                "rows": [
+                    _documentation_row(document, state)
+                    for document, state in records
+                ],
+                "nature_counts": nature_counts,
+                "pagination": _documentation_pagination(
+                    total,
+                    clean_page,
+                    clean_page_size,
+                ),
+                "q": q,
+                "nature": nature,
+                "invoice_natures": INVOICE_NATURES,
+                "workflow_labels": WORKFLOW_LABELS,
+            },
+        )
+
+
+@web_router.post("/v2-clean/documentation/invoices/{document_id}/nature")
+def clean_documentation_invoice_nature(
+    request: Request,
+    document_id: int,
+    nature: str = Form(...),
+    suggested_nature: str = Form(""),
+    suggestion_confidence: str = Form(""),
+    decision_reason: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/invoices?error=permission",
+            status_code=303,
+        )
+    try:
+        confidence_value = (
+            float(suggestion_confidence.replace(",", "."))
+            if suggestion_confidence.strip()
+            else None
+        )
+        with SessionLocal() as db:
+            document = db.get(Document, document_id)
+            if not document:
+                raise ValueError("Fatura não encontrada.")
+            classify_invoice_nature(
+                db,
+                document=document,
+                nature=nature,
+                user_id=get_web_user_id(request),
+                suggested_nature=suggested_nature or None,
+                suggestion_confidence=confidence_value,
+                decision_reason=decision_reason,
+            )
+            db.commit()
+    except ValueError as exc:
+        return RedirectResponse(
+            "/v2-clean/documentation/invoices?"
+            + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/v2-clean/documentation/invoices?saved={document_id}",
+        status_code=303,
+    )
+
+
+@web_router.get("/v2-clean/documentation/archive", response_class=HTMLResponse)
+def clean_documentation_archive(
+    request: Request,
+    q: str = "",
+    page: int = 1,
+    page_size: int = 25,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    conditions: list[Any] = [
+        or_(
+            Document.archived.is_(True),
+            DocumentWorkflowState.destination_status == "archive",
+        )
+    ]
+    if q.strip():
+        token = f"%{q.strip()}%"
+        conditions.append(
+            or_(
+                Document.title.ilike(token),
+                Document.original_name.ilike(token),
+                Document.plate.ilike(token),
+                Document.supplier_name.ilike(token),
+                Document.source_sender.ilike(token),
+            )
+        )
+    with SessionLocal() as db:
+        total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+            )
+            or 0
+        )
+        records = db.execute(
+            select(Document, DocumentWorkflowState)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(*conditions)
+            .order_by(Document.updated_at.desc(), Document.id.desc())
+            .offset(offset)
+            .limit(clean_page_size)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_archive.html",
+            {
+                "rows": [
+                    _documentation_row(document, state)
+                    for document, state in records
+                ],
+                "pagination": _documentation_pagination(
+                    total,
+                    clean_page,
+                    clean_page_size,
+                ),
+                "q": q,
+            },
+        )
+
+
+@web_router.get(
+    "/v2-clean/documentation/extraction-models",
+    response_class=HTMLResponse,
+)
+def clean_documentation_extraction_models(
+    request: Request,
+    q: str = "",
+    page: int = 1,
+    page_size: int = 25,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/", status_code=303)
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    conditions: list[Any] = []
+    if q.strip():
+        token = f"%{q.strip()}%"
+        conditions.append(
+            or_(
+                ImportMapping.name.ilike(token),
+                ImportMapping.source_system.ilike(token),
+                ImportMapping.import_type.ilike(token),
+            )
+        )
+    with SessionLocal() as db:
+        total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(ImportMapping)
+                .where(*conditions)
+            )
+            or 0
+        )
+        mappings = db.scalars(
+            select(ImportMapping)
+            .where(*conditions)
+            .order_by(
+                ImportMapping.active.desc(),
+                ImportMapping.updated_at.desc(),
+                ImportMapping.id.desc(),
+            )
+            .offset(offset)
+            .limit(clean_page_size)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_extraction_models.html",
+            {
+                "mappings": mappings,
+                "pagination": _documentation_pagination(
+                    total,
+                    clean_page,
+                    clean_page_size,
+                ),
+                "q": q,
+            },
+        )
 
 
 BATCH_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".tif", ".tiff"}
@@ -12600,6 +13989,41 @@ def _archive_document_payloads(
                     user_id=user_id,
                 )
             )
+        workflow_state = get_or_create_workflow_state(db, document)
+        suggested_destination = (
+            "triage"
+            if is_unknown
+            else "invoices"
+            if document_type == "workshop_supplier_invoice"
+            else "diagnostics"
+            if document_type in {"workshop_diagnostic", "workshop_report"}
+            else "archive"
+        )
+        routing_confidence = None if is_unknown else 0.99
+        workflow_state.ingestion_status = "completed"
+        workflow_state.association_status = "associated" if vehicle else "unassociated"
+        workflow_state.extraction_status = (
+            "extracted"
+            if document.status == "extracted"
+            else "failed"
+            if document.status in {"ocr_empty", "ocr_issue", "unable_to_read"}
+            else "not_requested"
+        )
+        workflow_state.validation_status = "pending"
+        workflow_state.destination_status = confident_destination(
+            suggested_destination,
+            routing_confidence,
+        )
+        if document_type == "workshop_supplier_invoice":
+            workflow_state.invoice_nature = "por_classificar"
+            workflow_state.suggested_invoice_nature = "operacional"
+            workflow_state.suggestion_confidence = 0.70
+        workflow_state.human_confirmed = False
+        workflow_state.decision_reason = (
+            "Encaminhamento automático por regra conhecida"
+            if workflow_state.destination_status != "triage"
+            else "Confiança insuficiente; aguarda decisão manual"
+        )
         known_documents[digest] = document
         counters["imported"] += 1
         counters["matched" if vehicle else "pending"] += 1
@@ -20252,8 +21676,19 @@ def fleet_import_submit(request: Request, file: UploadFile):
         tmp_path = Path(tmp.name)
 
     try:
+        durable_path = _persist_rentway_import_source(
+            tmp_path,
+            import_kind="fleet",
+            original_name=file.filename,
+        )
         with SessionLocal() as db:
-            stats = import_rentway_fleet_xlsx(db, tmp_path, original_name=file.filename)
+            stats = import_rentway_fleet_xlsx(
+                db,
+                durable_path,
+                original_name=file.filename,
+                imported_by_id=get_web_user_id(request),
+                storage_path=durable_path,
+            )
     finally:
         tmp_path.unlink(missing_ok=True)
 

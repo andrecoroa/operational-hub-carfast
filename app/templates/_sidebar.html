@@ -17,7 +17,16 @@
       <a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a>
       <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
       <a href="/v2-clean/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
-      <a href="/v2-clean/documents" {% if active_menu in ["documents", "documents_center"] %}class="active"{% endif %}>Documentação</a>
+      <span class="nav-section-label">Documentação</span>
+      <a href="/v2-clean/documentation" {% if active_menu == "documentation_center" %}class="active"{% endif %}>Centro de documentação</a>
+      <a href="/v2-clean/documentation/triage" {% if active_menu == "documentation_triage" %}class="active"{% endif %}>Triagem</a>
+      <a href="/v2-clean/documentation/imports" {% if active_menu == "documentation_imports" %}class="active"{% endif %}>Importações</a>
+      <a href="/v2-clean/documentation/invoices" {% if active_menu == "documentation_invoices" %}class="active"{% endif %}>Faturas</a>
+      <a href="/v2-clean/diagnostics" {% if active_menu == "documentation_diagnostics" %}class="active"{% endif %}>Diagnósticos</a>
+      <a href="/v2-clean/documentation/archive" {% if active_menu == "documentation_archive" %}class="active"{% endif %}>Arquivo</a>
+      <a href="/v2-clean/documentation/extraction-models" {% if active_menu == "documentation_models" %}class="active"{% endif %}>Modelos de extração</a>
+      <a class="sidebar-sub-link" href="/v2-clean/documents" {% if active_menu in ["documents", "documents_center"] %}class="active"{% endif %}>Centro anterior (compatibilidade)</a>
+      <span class="nav-section-label">Sistema</span>
       <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
     {% else %}
       <span class="nav-section-label">Operações</span>

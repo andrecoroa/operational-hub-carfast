@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page doc-arch-preview-backdrop">
+    <section class="doc-arch-preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+      <div class="doc-arch-card-heading">
+        <div><p class="eyebrow">Pré-visualização</p><h1 id="preview-title">{{ payload.preview.import_label or payload.import_kind }}</h1><p>{{ payload.original_name }} · nenhum dado foi gravado.</p></div>
+      </div>
+      <section class="doc-arch-kpis doc-arch-kpis-three">
+        <div><strong>{{ payload.preview.total_rows or 0 }}</strong><span>Linhas lidas</span></div>
+        <div><strong>{{ payload.preview.created_rows or 0 }}</strong><span>A criar</span></div>
+        <div><strong>{{ payload.preview.updated_rows or 0 }}</strong><span>A atualizar</span></div>
+      </section>
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          {% if payload.import_kind == "fleet" %}
+            <thead><tr><th>Linha</th><th>Identificador</th><th>Ação</th><th>Marca / modelo</th><th>Alterações</th></tr></thead>
+            <tbody>{% for row in payload.preview.rows %}<tr><td>{{ row.row_number }}</td><td>{{ row.identifier }}</td><td><span class="doc-arch-badge {% if row.action == 'created' %}success{% elif row.action == 'updated' %}warning{% else %}neutral{% endif %}">{{ row.action }}</span></td><td>{{ row.brand or "" }} {{ row.model or "" }}</td><td>{{ row.changes|length }}</td></tr>{% else %}<tr><td colspan="5" class="doc-arch-empty">O ficheiro não contém linhas importáveis.</td></tr>{% endfor %}</tbody>
+          {% else %}
+            <thead><tr><th>Linha</th>{% for header in payload.preview.headers[:6] %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+            <tbody>{% for row in payload.preview.rows %}<tr><td>{{ row.row_number }}</td>{% for header in payload.preview.headers[:6] %}<td>{{ row.values.get(header, "") }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">O ficheiro não contém linhas importáveis.</td></tr>{% endfor %}</tbody>
+          {% endif %}
+        </table>
+      </div>
+      {% if payload.preview.preview_truncated %}<p class="doc-arch-muted">Amostra limitada; a confirmação processará as {{ payload.preview.total_rows }} linhas.</p>{% endif %}
+      <div class="doc-arch-preview-actions">
+        <form method="post" action="/v2-clean/documentation/imports/rentway/confirm"><input type="hidden" name="preview_token" value="{{ preview_token }}"><button type="submit">Confirmar e gravar</button></form>
+        <form method="post" action="/v2-clean/documentation/imports/rentway/cancel"><input type="hidden" name="preview_token" value="{{ preview_token }}"><button type="submit" class="secondary">Cancelar</button></form>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

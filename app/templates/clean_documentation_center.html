@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_center" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "center" %}
+    {% include "_clean_documentation_nav.html" %}
+
+    <header class="doc-arch-header">
+      <div>
+        <p class="eyebrow">Documentação</p>
+        <h1>Centro de documentação</h1>
+        <p>Entrada, encaminhamento e controlo de toda a documentação CarFast.</p>
+      </div>
+      <button type="button" class="button-link" onclick="document.getElementById('doc-upload-dialog').showModal()">+ Adicionar documentos</button>
+    </header>
+
+    <section class="doc-arch-kpis" aria-label="Resumo documental">
+      <a class="warning" href="/v2-clean/documentation/triage"><strong>{{ counts.triage }}</strong><span>Por triar</span></a>
+      <a href="/v2-clean/documentation/imports"><strong>{{ counts.imports }}</strong><span>Importações recentes</span></a>
+      <a href="/v2-clean/documentation/invoices?nature=por_classificar"><strong>{{ counts.invoices }}</strong><span>Faturas por tratar</span></a>
+      <a href="/v2-clean/diagnostics"><strong>{{ counts.diagnostics }}</strong><span>Diagnósticos pendentes</span></a>
+      <a class="danger" href="/v2-clean/documentation/triage"><strong>{{ counts.errors }}</strong><span>Com erro</span></a>
+    </section>
+
+    <section class="doc-arch-center-grid">
+      <article class="doc-arch-card">
+        <div class="doc-arch-card-heading">
+          <div><h2>Caixa de entrada</h2><p>Documentos sem destino seguro ou que precisam de confirmação.</p></div>
+          <a class="doc-arch-count-pill" href="/v2-clean/documentation/triage">{{ counts.triage }} pendentes</a>
+        </div>
+        <div class="doc-arch-table-wrap">
+          <table class="doc-arch-table">
+            <thead><tr><th>Recebido</th><th>Documento</th><th>Origem</th><th>Sugestão</th><th>Ação</th></tr></thead>
+            <tbody>
+              {% for row in inbox_rows %}
+                <tr>
+                  <td>{{ row.date_display }}</td>
+                  <td><a href="{{ row.detail_href }}">{{ row.title }}</a></td>
+                  <td>{{ row.origin }}</td>
+                  <td>
+                    {% if row.workflow.suggested_invoice_nature %}
+                      <span class="doc-arch-badge warning">{{ row.workflow.suggested_invoice_nature|replace("_", " ") }}{% if row.workflow.suggestion_confidence is not none %} · {{ (row.workflow.suggestion_confidence * 100)|round|int }}%{% endif %}</span>
+                    {% else %}
+                      <span class="doc-arch-badge neutral">Por reconhecer</span>
+                    {% endif %}
+                  </td>
+                  <td><a href="/v2-clean/documentation/triage?q={{ row.title|urlencode }}">Triar</a></td>
+                </tr>
+              {% else %}
+                <tr><td colspan="5" class="doc-arch-empty">A caixa de entrada está tratada.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <aside class="doc-arch-card">
+        <div class="doc-arch-card-heading"><div><h2>Filas de trabalho</h2><p>Só o que ainda requer intervenção.</p></div></div>
+        <ul class="doc-arch-queue-list">
+          <li><a href="/v2-clean/documentation/invoices?nature=por_classificar">Faturas por classificar</a><strong>{{ counts.invoices }}</strong></li>
+          <li><a href="/v2-clean/documentation/triage">Entradas sem destino</a><strong>{{ counts.triage }}</strong></li>
+          <li><a href="/v2-clean/diagnostics">Diagnósticos por validar</a><strong>{{ counts.diagnostics }}</strong></li>
+          <li><a href="/v2-clean/documentation/triage">Processamentos com erro</a><strong>{{ counts.errors }}</strong></li>
+        </ul>
+        <div class="doc-arch-rule-note">
+          <strong>Encaminhamento automático</strong>
+          <span>Reconhecido com ≥ 90% → módulo responsável. Confiança inferior → Triagem.</span>
+        </div>
+      </aside>
+    </section>
+
+    <dialog id="doc-upload-dialog" class="doc-arch-dialog">
+      <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
+      <h2>Adicionar documentos</h2>
+      <p>Os uploads universais entram na caixa de entrada e só são encaminhados automaticamente com confiança suficiente.</p>
+      <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox">
+        <label>Ficheiros<input type="file" name="files" multiple required></label>
+        <div class="doc-arch-dialog-actions">
+          <button type="submit">Receber documentos</button>
+          <button type="button" class="secondary" onclick="document.getElementById('doc-upload-dialog').close()">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+</div>
+{% endblock %}

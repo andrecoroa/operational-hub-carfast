@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_models" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "models" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div><p class="eyebrow">Documentação / área técnica</p><h1>Modelos de extração</h1><p>Mapeamentos versionados utilizados pelos importadores e extratores documentais.</p></div>
+      <a class="button-link secondary-link" href="/v2-clean/documents/ocr-validation">Validação OCR</a>
+    </header>
+    <form class="doc-arch-filters" method="get"><input name="q" value="{{ q }}" placeholder="Modelo, origem ou tipo…"><button type="submit">Filtrar</button></form>
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Modelo</th><th>Origem</th><th>Família</th><th>Versão</th><th>Campos</th><th>Estado</th><th>Atualização</th></tr></thead>
+          <tbody>{% for mapping in mappings %}<tr><td>{{ mapping.name }}</td><td>{{ mapping.source_system }}</td><td>{{ mapping.import_type }}</td><td>v{{ mapping.version }}</td><td>{{ mapping.mapping_json|length }}</td><td><span class="doc-arch-badge {% if mapping.active %}success{% else %}neutral{% endif %}">{{ "Ativo" if mapping.active else "Inativo" }}</span></td><td>{{ mapping.updated_at.strftime("%d/%m/%Y %H:%M") if mapping.updated_at else "-" }}</td></tr>{% else %}<tr><td colspan="7" class="doc-arch-empty">Ainda não existem modelos configurados.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} modelos</span>
+      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+  </main>
+</div>
+{% endblock %}

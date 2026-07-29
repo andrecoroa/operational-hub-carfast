@@ -116,6 +116,7 @@ def import_rentway_fleet_xlsx(
     path: str | Path,
     original_name: str | None = None,
     imported_by_id: int | None = None,
+    storage_path: str | Path | None = None,
 ) -> dict[str, int]:
     file_path = Path(path)
     stats = {
@@ -144,7 +145,7 @@ def import_rentway_fleet_xlsx(
                         batch_id=batch.id,
                         original_name=original_name or file_path.name,
                         file_name=file_path.name,
-                        storage_path=str(file_path),
+                        storage_path=str(storage_path or file_path),
                         sheet_name=sheet_name,
                         columns_json=headers,
                     )
@@ -217,6 +218,79 @@ def import_rentway_fleet_xlsx(
         raise
 
     return {"batch_id": batch.id, **stats}
+
+
+def preview_rentway_fleet_xlsx(
+    db: Session,
+    path: str | Path,
+    *,
+    sample_limit: int = 25,
+) -> dict[str, Any]:
+    """Inspect a Rentway fleet sheet without creating or updating any row."""
+
+    file_path = Path(path)
+    preview_rows: list[dict[str, Any]] = []
+    counts = {"total_rows": 0, "created_rows": 0, "updated_rows": 0, "skipped_rows": 0}
+    headers: list[str] = []
+    sheet_name = ""
+    for current_sheet, current_headers, row_number, row, _raw in iter_xlsx_rows(
+        file_path,
+        preferred_sheet="Vehicles",
+    ):
+        sheet_name = current_sheet
+        headers = current_headers
+        counts["total_rows"] += 1
+        payload = build_vehicle_payload(row, build_column_lookup(headers))
+        if not payload:
+            counts["skipped_rows"] += 1
+            if len(preview_rows) < sample_limit:
+                preview_rows.append(
+                    {
+                        "row_number": row_number,
+                        "identifier": "-",
+                        "action": "ignored",
+                        "changes": [],
+                    }
+                )
+            continue
+        vehicle = find_vehicle_by_any_identifier(
+            db,
+            plate=payload["plate"],
+            vin=payload["vin"],
+            rentway_unit_nr=payload["rentway_unit_nr"],
+        )
+        action = "updated" if vehicle else "created"
+        counts[f"{action}_rows"] += 1
+        changes = []
+        if vehicle:
+            for field, value in payload.items():
+                old_value = getattr(vehicle, field, None)
+                if old_value != value:
+                    changes.append(
+                        {
+                            "field": field,
+                            "before": old_value,
+                            "after": value,
+                        }
+                    )
+        if len(preview_rows) < sample_limit:
+            preview_rows.append(
+                {
+                    "row_number": row_number,
+                    "identifier": payload["plate"] or payload["vin"] or payload["rentway_unit_nr"],
+                    "action": action,
+                    "changes": changes,
+                    "brand": payload.get("brand"),
+                    "model": payload.get("model"),
+                }
+            )
+    return {
+        **counts,
+        "sheet_name": sheet_name,
+        "headers": headers,
+        "rows": preview_rows,
+        "preview_truncated": counts["total_rows"] > len(preview_rows),
+    }
 
 
 def upsert_external_snapshot(

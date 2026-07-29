@@ -69,6 +69,9 @@ from app.models.workshop import (
     WorkshopTechnicalReading,
 )
 from app.models.workshop_phased import (
+    WorkshopDiagnosticCatalogItem,
+    WorkshopDiagnosticSuggestion,
+    WorkshopMaterialNeed,
     WorkshopPhasedClosureCheck,
     WorkshopPhasedProcess,
     WorkshopPhasedProcessAlert,
@@ -77,6 +80,9 @@ from app.models.workshop_phased import (
     WorkshopPhasedTechnicalCheck,
     WorkshopPhasedTechnicalIncident,
     WorkshopPhasedTechnicalReport,
+    WorkshopPublicCounter,
+    WorkshopTemplate,
+    WorkshopTemplateVersion,
 )
 
 __all__ = [
@@ -153,6 +159,9 @@ __all__ = [
     "WorkshopProcessNote",
     "WorkshopProcessService",
     "WorkshopTechnicalReading",
+    "WorkshopDiagnosticCatalogItem",
+    "WorkshopDiagnosticSuggestion",
+    "WorkshopMaterialNeed",
     "WorkshopPhasedClosureCheck",
     "WorkshopPhasedProcess",
     "WorkshopPhasedProcessAlert",
@@ -161,4 +170,7 @@ __all__ = [
     "WorkshopPhasedTechnicalCheck",
     "WorkshopPhasedTechnicalIncident",
     "WorkshopPhasedTechnicalReport",
+    "WorkshopPublicCounter",
+    "WorkshopTemplate",
+    "WorkshopTemplateVersion",
 ]

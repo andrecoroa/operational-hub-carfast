@@ -5,6 +5,7 @@ from app.models.admin import Permission, Role, RolePermission
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.services.management_center import ensure_management_defaults
+from app.services.workshop_configuration import ensure_workshop_configuration_defaults
 
 INITIAL_PERMISSIONS = [
     ("dashboard.read", "Ver dashboard"),
@@ -146,6 +147,7 @@ def seed_initial_data(db: Session) -> None:
     seed_teams(db)
     seed_catalogs(db)
     ensure_management_defaults(db)
+    ensure_workshop_configuration_defaults(db)
     db.commit()
 
 

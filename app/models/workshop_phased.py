@@ -1,6 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -11,6 +21,8 @@ class WorkshopPhasedProcess(TimestampMixin, Base):
     __tablename__ = "workshop_phased_processes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    public_reference: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     process_type: Mapped[str] = mapped_column(String(80), index=True)
     title: Mapped[str] = mapped_column(String(240), index=True)
     creation_mode: Mapped[str] = mapped_column(String(80), index=True)
@@ -25,10 +37,129 @@ class WorkshopPhasedProcess(TimestampMixin, Base):
     initial_observation: Mapped[str | None] = mapped_column(Text)
     responsible_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    template_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workshop_template_versions.id", ondelete="SET NULL")
+    )
+    template_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
+
+
+class WorkshopPublicCounter(Base):
+    """Transactional yearly counter used by public workshop references."""
+
+    __tablename__ = "workshop_public_counters"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class WorkshopTemplate(TimestampMixin, Base):
+    __tablename__ = "workshop_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str | None] = mapped_column(Text)
+    entry_reason_code: Mapped[str | None] = mapped_column(String(80), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class WorkshopTemplateVersion(TimestampMixin, Base):
+    __tablename__ = "workshop_template_versions"
+    __table_args__ = (UniqueConstraint("template_id", "version_number"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_templates.id", ondelete="CASCADE"),
+        index=True,
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), default="published", index=True)
+    change_note: Mapped[str | None] = mapped_column(Text)
+    config_json: Mapped[dict] = mapped_column(JSON)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    stock_template_code: Mapped[str | None] = mapped_column(String(120))
+    stock_template_version: Mapped[str | None] = mapped_column(String(80))
+
+
+class WorkshopDiagnosticCatalogItem(TimestampMixin, Base):
+    __tablename__ = "workshop_diagnostic_catalog_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    family: Mapped[str] = mapped_column(String(120), index=True)
+    equipment: Mapped[str | None] = mapped_column(String(160))
+    applicability_json: Mapped[dict | None] = mapped_column(JSON)
+    phase_code: Mapped[str] = mapped_column(String(120), default="diagnostico", index=True)
+    requirement: Mapped[str] = mapped_column(String(40), default="recommended", index=True)
+    validity_days: Mapped[int | None] = mapped_column(Integer)
+    history_rules_json: Mapped[dict | None] = mapped_column(JSON)
+    expected_document_type: Mapped[str | None] = mapped_column(String(120))
+    extraction_fields_json: Mapped[list | dict | None] = mapped_column(JSON)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class WorkshopDiagnosticSuggestion(TimestampMixin, Base):
+    __tablename__ = "workshop_diagnostic_suggestions"
+    __table_args__ = (UniqueConstraint("process_id", "catalog_item_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_phased_processes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    catalog_item_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_diagnostic_catalog_items.id", ondelete="CASCADE"),
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), default="suggested", index=True)
+    origin: Mapped[str] = mapped_column(String(80), default="rules_engine", index=True)
+    explanation: Mapped[str] = mapped_column(Text)
+    rule_context_json: Mapped[dict | None] = mapped_column(JSON)
+    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkshopMaterialNeed(TimestampMixin, Base):
+    """Workshop-side material request; inventory and movements remain owned by Stock."""
+
+    __tablename__ = "workshop_material_needs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    process_id: Mapped[int] = mapped_column(
+        ForeignKey("workshop_phased_processes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    phase_code: Mapped[str] = mapped_column(String(120), index=True)
+    origin: Mapped[str] = mapped_column(String(40), index=True)
+    operation_code: Mapped[str] = mapped_column(String(120), index=True)
+    operation_label: Mapped[str] = mapped_column(String(180))
+    vehicle_id: Mapped[int | None] = mapped_column(ForeignKey("vehicles.id"))
+    vehicle_variant: Mapped[str | None] = mapped_column(String(180))
+    technician_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("organizational_units.id"))
+    material_code: Mapped[str | None] = mapped_column(String(120), index=True)
+    material_description: Mapped[str] = mapped_column(String(240))
+    requested_quantity: Mapped[str | None] = mapped_column(String(80))
+    stock_status: Mapped[str] = mapped_column(
+        String(40),
+        default="unavailable",
+        index=True,
+    )
+    stock_request_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    applied_confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    applied_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detail_json: Mapped[dict | None] = mapped_column(JSON)
 
 
 class WorkshopPhasedProcessService(TimestampMixin, Base):

@@ -1,7 +1,7 @@
 """Add Workshop Clean references, templates, diagnostics and Stock contract.
 
-Revision ID: 5b6c7d8e9f0a
-Revises: 4a5b6c7d8e9f
+Revision ID: 7d8e9f0a1b2c
+Revises: 6c7d8e9f0a1b
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "5b6c7d8e9f0a"
-down_revision: str | Sequence[str] | None = "4a5b6c7d8e9f"
+revision: str = "7d8e9f0a1b2c"
+down_revision: str | Sequence[str] | None = "6c7d8e9f0a1b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

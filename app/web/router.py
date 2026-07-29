@@ -93,11 +93,16 @@ from app.models.workshop import (
     WorkshopTechnicalReading,
 )
 from app.models.workshop_phased import (
+    WorkshopDiagnosticCatalogItem,
+    WorkshopDiagnosticSuggestion,
+    WorkshopMaterialNeed,
     WorkshopPhasedProcess,
     WorkshopPhasedProcessAlert,
     WorkshopPhasedProcessPhase,
     WorkshopPhasedProcessService,
     WorkshopPhasedTechnicalReport,
+    WorkshopTemplate,
+    WorkshopTemplateVersion,
 )
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
@@ -187,6 +192,18 @@ from app.services.workshop_report_extractor import (
     extract_workshop_report_values_from_bytes,
 )
 from app.services.workshop_templates import STELLANTIS_REPORTS
+from app.services.workshop_configuration import (
+    WORKSHOP_STOCK_STATUSES,
+    allocate_workshop_public_reference,
+    apply_workshop_template,
+    clone_published_template_version,
+    ensure_workshop_configuration_defaults,
+    generate_diagnostic_suggestions,
+    latest_published_template_version,
+    normalize_workshop_reasons,
+    suggest_workshop_template,
+    validate_workshop_template_config,
+)
 from app.services.audit import record_audit
 from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
 from app.services.diagnostic_documents import (
@@ -381,6 +398,7 @@ def snapshot_data(snapshot: VehicleExternalSnapshot | None) -> dict:
 
 def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
     data = snapshot_data(snapshot)
+
     return {
         "groupid": snapshot_value(data, ["groupid", "group_id", "categoria_grupo", "grupo"]),
         "category": snapshot_value(data, ["category", "categoria", "tipo_categoria"]),
@@ -4269,18 +4287,244 @@ def clean_admin_center(request: Request):
             "description": "Zona reservada para regras, permissões e controlos próprios da nova experiência.",
             "panel_title": "Preparação segura",
             "cards": [
-                {"code": "AC", "title": "Acessos", "text": "Perfis e permissões da v2-clean devem ser separados antes de uso real."},
-                {"code": "RG", "title": "Regras", "text": "Aqui vamos consolidar configurações sem contaminar a base operacional antiga."},
-                {"code": "LG", "title": "Auditoria", "text": "As ações sensíveis, como cancelar e reabrir processos, ficam melhor centralizadas aqui."},
+                {
+                    "code": "AC",
+                    "title": "Acessos",
+                    "text": "Perfis e permissões da v2-clean devem ser separados antes de uso real.",
+                },
+                {
+                    "code": "MO",
+                    "title": "Modelos de Oficina",
+                    "text": "Fases, campos, validações e diagnósticos versionados com snapshot por processo.",
+                },
+                {
+                    "code": "LG",
+                    "title": "Auditoria",
+                    "text": "As ações sensíveis, como cancelar e reabrir processos, ficam melhor centralizadas aqui.",
+                },
             ],
             "next_title": "Sem risco operacional",
             "next_text": "Por agora deixamos a área preparada e visível, mas sem ligar nenhum fluxo crítico à administração antiga.",
             "actions": [
+                {
+                    "href": "/v2-clean/admin/workshop-models",
+                    "label": "Gerir Modelos de Oficina",
+                    "secondary": False,
+                },
                 {"href": "/v2-clean", "label": "Voltar ao início", "secondary": False},
             ],
         },
     )
 
+
+
+@web_router.get("/v2-clean/admin/workshop-models", response_class=HTMLResponse)
+def clean_workshop_models_admin(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id) if user_id else None
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        ensure_workshop_configuration_defaults(db)
+        db.commit()
+        template_rows: list[dict[str, object]] = []
+        for template in db.scalars(select(WorkshopTemplate).order_by(WorkshopTemplate.name)).all():
+            versions = db.scalars(
+                select(WorkshopTemplateVersion)
+                .where(WorkshopTemplateVersion.template_id == template.id)
+                .order_by(WorkshopTemplateVersion.version_number.desc())
+            ).all()
+            latest = versions[0] if versions else None
+            phase_count = len((latest.config_json or {}).get("phases", [])) if latest else 0
+            template_rows.append(
+                {
+                    "template": template,
+                    "latest": latest,
+                    "versions": versions,
+                    "phase_count": phase_count,
+                }
+            )
+        diagnostics = db.scalars(
+            select(WorkshopDiagnosticCatalogItem).order_by(
+                WorkshopDiagnosticCatalogItem.family,
+                WorkshopDiagnosticCatalogItem.name,
+            )
+        ).all()
+    return templates.TemplateResponse(
+        request,
+        "clean_workshop_models_admin.html",
+        {
+            "template_rows": template_rows,
+            "diagnostics": diagnostics,
+        },
+    )
+
+@web_router.post("/v2-clean/admin/workshop-models/{template_id}/new-version")
+async def clean_workshop_model_new_version(request: Request, template_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id) if user_id else None
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        template = db.get(WorkshopTemplate, template_id)
+        if not template:
+            return RedirectResponse(
+                "/v2-clean/admin/workshop-models?error=missing", status_code=303
+            )
+        try:
+            supplied_config = str(form.get("config_json") or "").strip()
+            config_json = (
+                validate_workshop_template_config(json.loads(supplied_config))
+                if supplied_config
+                else None
+            )
+            version = clone_published_template_version(
+                db,
+                template,
+                user_id=user_id,
+                change_note=str(form.get("change_note") or ""),
+                config_json=config_json,
+            )
+        except (json.JSONDecodeError, ValueError) as exc:
+            db.rollback()
+            return RedirectResponse(
+                "/v2-clean/admin/workshop-models?error=" + quote_plus(str(exc)),
+                status_code=303,
+            )
+        record_audit(
+            db,
+            action="workshop.template.version_published",
+            entity_type="workshop_template",
+            entity_id=template.id,
+            detail=f"{template.name} v{version.version_number}",
+            after_json={
+                "version_id": version.id,
+                "version_number": version.version_number,
+            },
+            user_id=user_id,
+        )
+        published_version_number = version.version_number
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/admin/workshop-models?published={published_version_number}",
+        status_code=303,
+    )
+
+@web_router.post("/v2-clean/admin/workshop-models/{template_id}/toggle")
+def clean_workshop_model_toggle(request: Request, template_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id) if user_id else None
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        template = db.get(WorkshopTemplate, template_id)
+        if not template or template.code == "general_minimum":
+            return RedirectResponse(
+                "/v2-clean/admin/workshop-models?error=protected", status_code=303
+            )
+        before = template.active
+        template.active = not template.active
+        record_audit(
+            db,
+            action="workshop.template.activation_changed",
+            entity_type="workshop_template",
+            entity_id=template.id,
+            detail=f"{template.name}: {'ativo' if template.active else 'inativo'}",
+            before_json={"active": before},
+            after_json={"active": template.active},
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/admin/workshop-models?saved=1", status_code=303)
+
+@web_router.post("/v2-clean/admin/workshop-diagnostics/{catalog_item_id}")
+async def clean_workshop_diagnostic_catalog_update(
+    request: Request,
+    catalog_item_id: int,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        current_user = db.get(User, user_id) if user_id else None
+        if not can_manage_admin(db, current_user):
+            return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        item = db.get(WorkshopDiagnosticCatalogItem, catalog_item_id)
+        if not item:
+            return RedirectResponse(
+                "/v2-clean/admin/workshop-models?error=diagnostic_missing",
+                status_code=303,
+            )
+        try:
+            applicability = json.loads(str(form.get("applicability_json") or "{}"))
+            history_rules = json.loads(str(form.get("history_rules_json") or "{}"))
+            extraction_fields = json.loads(str(form.get("extraction_fields_json") or "[]"))
+            if not isinstance(applicability, dict) or not isinstance(history_rules, dict):
+                raise ValueError("Aplicabilidade e regras históricas devem ser objetos JSON.")
+            if not isinstance(extraction_fields, (list, dict)):
+                raise ValueError("Os campos de extração devem ser uma lista ou objeto JSON.")
+            requirement = str(form.get("requirement") or "").strip()
+            if requirement not in {"required", "recommended", "conditional"}:
+                raise ValueError("Obrigatoriedade de diagnóstico inválida.")
+            validity_raw = str(form.get("validity_days") or "").strip()
+            validity_days = int(validity_raw) if validity_raw else None
+            if validity_days is not None and validity_days < 0:
+                raise ValueError("A validade não pode ser negativa.")
+        except (json.JSONDecodeError, ValueError) as exc:
+            db.rollback()
+            return RedirectResponse(
+                "/v2-clean/admin/workshop-models?error=" + quote_plus(str(exc)),
+                status_code=303,
+            )
+        before = {
+            "name": item.name,
+            "family": item.family,
+            "active": item.active,
+            "applicability_json": item.applicability_json,
+        }
+        item.name = str(form.get("name") or "").strip() or item.name
+        item.family = str(form.get("family") or "").strip() or item.family
+        item.equipment = str(form.get("equipment") or "").strip() or None
+        item.phase_code = str(form.get("phase_code") or "").strip() or "diagnostico"
+        item.requirement = requirement
+        item.validity_days = validity_days
+        item.expected_document_type = str(form.get("expected_document_type") or "").strip() or None
+        item.applicability_json = applicability
+        item.history_rules_json = history_rules
+        item.extraction_fields_json = extraction_fields
+        item.active = "active" in form
+        record_audit(
+            db,
+            action="workshop.diagnostic_catalog.updated",
+            entity_type="workshop_diagnostic_catalog_item",
+            entity_id=item.id,
+            detail=item.name,
+            before_json=before,
+            after_json={
+                "name": item.name,
+                "family": item.family,
+                "active": item.active,
+                "applicability_json": item.applicability_json,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(
+        "/v2-clean/admin/workshop-models?diagnostic_saved=1",
+        status_code=303,
+    )
 
 @web_router.get("/v2-clean/workshop", response_class=HTMLResponse)
 def clean_workshop_dashboard(request: Request, scope: str = "open"):
@@ -4290,12 +4534,13 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
     if scope not in {"open", "closed", "cancelled", "all"}:
         scope = "open"
     with SessionLocal() as db:
-        v2_process_filter = WorkshopPhasedProcess.origin == "v2_clean"
+        v2_process_filter = or_(
+            WorkshopPhasedProcess.origin == "v2_clean",
+            WorkshopPhasedProcess.origin.is_(None),
+        )
         all_processes = (
             db.scalar(
-                select(func.count())
-                .select_from(WorkshopPhasedProcess)
-                .where(v2_process_filter)
+                select(func.count()).select_from(WorkshopPhasedProcess).where(v2_process_filter)
             )
             or 0
         )
@@ -4303,7 +4548,9 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcess)
-                .where(v2_process_filter, WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+                .where(
+                    v2_process_filter, WorkshopPhasedProcess.status.notin_(("closed", "cancelled"))
+                )
             )
             or 0
         )
@@ -4339,7 +4586,10 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
             db.scalar(
                 select(func.count())
                 .select_from(WorkshopPhasedProcessAlert)
-                .join(WorkshopPhasedProcess, WorkshopPhasedProcess.id == WorkshopPhasedProcessAlert.process_id)
+                .join(
+                    WorkshopPhasedProcess,
+                    WorkshopPhasedProcess.id == WorkshopPhasedProcessAlert.process_id,
+                )
                 .where(WorkshopPhasedProcessAlert.status == "open", v2_process_filter)
             )
             or 0
@@ -4350,7 +4600,9 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 .select_from(WorkshopPhasedProcess)
                 .where(
                     v2_process_filter,
-                    WorkshopPhasedProcess.current_phase_code.in_(("entrada", "validacao", "diagnostico")),
+                    WorkshopPhasedProcess.current_phase_code.in_(
+                        ("entrada", "validacao", "diagnostico")
+                    ),
                     WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
                 )
             )
@@ -4358,15 +4610,17 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
         )
         recent_query = select(WorkshopPhasedProcess).where(v2_process_filter)
         if scope == "open":
-            recent_query = recent_query.where(WorkshopPhasedProcess.status.notin_(("closed", "cancelled")))
+            recent_query = recent_query.where(
+                WorkshopPhasedProcess.status.notin_(("closed", "cancelled"))
+            )
         elif scope == "closed":
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "closed")
         elif scope == "cancelled":
             recent_query = recent_query.where(WorkshopPhasedProcess.status == "cancelled")
         recent_processes = db.scalars(
-            recent_query
-            .order_by(WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc())
-            .limit(40)
+            recent_query.order_by(
+                WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc()
+            ).limit(40)
         ).all()
         return templates.TemplateResponse(
             request,
@@ -4388,14 +4642,17 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
 
 
 
+
 CLEAN_WORKSHOP_CONTEXT = {
     "process_ref": "Novo processo",
     "plate": "Sem matrícula",
     "vehicle": "Selecionar viatura",
+    "unit": "-",
     "vin": "-",
     "fuel": "-",
     "entry_date": "-",
     "entry_km": "",
+    "current_km": "-",
     "expected_exit": "-",
     "registration_date": "-",
     "purchase_date": "-",
@@ -4403,12 +4660,15 @@ CLEAN_WORKSHOP_CONTEXT = {
     "next_ipo": "-",
     "last_service_km": "-",
     "next_service_km": "-",
+    "next_service_value": "-",
+    "next_service_date": "-",
     "maintenance_status": "Por validar após seleção da viatura",
     "history_audit_status": "Auditoria histórico: por validar",
     "sale_status": "Venda: por validar",
     "brand_rule": "Por validar",
     "alerts": [],
 }
+
 
 CLEAN_WORKSHOP_STEP_DEFS = [
     {"key": "entrada", "number": 1, "label": "Entrada", "path": "/v2-clean/workshop-entry"},
@@ -4712,8 +4972,11 @@ def clean_workshop_query_suffix(
 
 
 def clean_workshop_process_reference(process: WorkshopPhasedProcess) -> str:
+    if process.public_reference:
+        return process.public_reference
     reference_date = process.received_at or process.created_at or datetime.now(UTC)
     return f"OFI-{reference_date.year}-{process.id:06d}"
+
 
 
 def clean_workshop_process_url(process: WorkshopPhasedProcess) -> str:
@@ -4730,8 +4993,15 @@ def clean_workshop_admin_context(
 ) -> dict[str, object]:
     user_id = get_web_user_id(request)
     current_user = db.get(User, user_id) if user_id else None
-    metadata = dict(process.metadata_json or {}) if process and isinstance(process.metadata_json, dict) else {}
-    cancellation = metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
+    metadata = (
+        dict(process.metadata_json or {})
+        if process and isinstance(process.metadata_json, dict)
+        else {}
+    )
+    cancellation = (
+        metadata.get("cancellation") if isinstance(metadata.get("cancellation"), dict) else {}
+    )
+    creator = db.get(User, process.created_by_id) if process and process.created_by_id else None
     open_task_count = 0
     if process:
         open_task_count = (
@@ -4753,7 +5023,12 @@ def clean_workshop_admin_context(
         "is_closed": bool(process and process.status == "closed"),
         "cancellation": cancellation,
         "open_task_count": int(open_task_count),
+        "creator_name": (creator.name or creator.email) if creator else "-",
+        "opened_at": (
+            process.opened_at or process.received_at or process.created_at if process else None
+        ),
     }
+
 
 
 def clean_workshop_process_is_readonly(process: WorkshopPhasedProcess | None) -> bool:
@@ -4780,13 +5055,45 @@ def clean_workshop_create_process(
     vehicle_id: int | None = None,
     plate: str | None = None,
     historical: bool = False,
+    entry_reasons: list[str] | None = None,
+    external_repair: bool = False,
+    template_code: str | None = None,
 ) -> WorkshopPhasedProcess:
     user_id = get_web_user_id(request)
     vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
-    plate_snapshot = vehicle.plate if vehicle and vehicle.plate else normalize_identifier(plate) if plate else None
+    plate_snapshot = (
+        vehicle.plate
+        if vehicle and vehicle.plate
+        else normalize_identifier(plate)
+        if plate
+        else None
+    )
     display_plate = plate_snapshot or "Sem matrícula"
     now = datetime.now(UTC)
+    ensure_workshop_configuration_defaults(db)
+    template = None
+    version = None
+    template_explanation = ""
+    if template_code:
+        template = db.scalar(
+            select(WorkshopTemplate).where(
+                WorkshopTemplate.code == template_code,
+                WorkshopTemplate.active.is_(True),
+            )
+        )
+        if template:
+            version = latest_published_template_version(db, template)
+            template_explanation = "Modelo confirmado manualmente na entrada."
+    if not template or not version:
+        template, version, template_explanation = suggest_workshop_template(
+            db,
+            entry_reasons,
+            external_repair=external_repair,
+        )
+    public_reference = allocate_workshop_public_reference(db, now)
     process = WorkshopPhasedProcess(
+        public_reference=public_reference,
+        opened_at=now,
         process_type="workshop",
         title=f"Oficina {display_plate}",
         creation_mode="historical" if historical else "operational",
@@ -4798,7 +5105,9 @@ def clean_workshop_create_process(
         origin="v2_clean",
         origin_detail="Criado na experiência v2-clean.",
         initial_km=None,
-        initial_observation="Processo histórico criado para reconstrução." if historical else "Entrada criada na experiência v2-clean.",
+        initial_observation="Processo histórico criado para reconstrução."
+        if historical
+        else "Entrada criada na experiência v2-clean.",
         responsible_user_id=user_id,
         created_by_id=user_id,
         received_at=now,
@@ -4806,26 +5115,29 @@ def clean_workshop_create_process(
             "v2_clean": True,
             "historical": historical,
             "source": "v2_clean_workshop_entry",
+            "template_suggestion_explanation": template_explanation,
         },
     )
     db.add(process)
     db.flush()
     process.title = f"{clean_workshop_process_reference(process)} · {display_plate}"
-    for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1):
-        db.add(
-            WorkshopPhasedProcessPhase(
-                process_id=process.id,
-                phase_code=str(step["key"]),
-                name=str(step["label"]),
-                status="pending_review" if step["key"] == "entrada" else "not_started",
-                sort_order=index,
-                started_at=now if step["key"] == "entrada" else None,
-                data_json={},
-            )
-        )
+    apply_workshop_template(
+        db,
+        process,
+        template,
+        version,
+        explanation=template_explanation,
+        started_at=now,
+    )
+    generate_diagnostic_suggestions(
+        db,
+        process,
+        reason_codes=normalize_workshop_reasons(entry_reasons),
+    )
     db.commit()
     db.refresh(process)
     return process
+
 
 
 def clean_workshop_context_for_process(db: Session, process: WorkshopPhasedProcess) -> dict[str, object]:
@@ -4838,6 +5150,78 @@ def clean_workshop_context_for_process(db: Session, process: WorkshopPhasedProce
     context["process_id"] = process.id
     return context
 
+
+def clean_workshop_history_preview(
+    db: Session,
+    process: WorkshopPhasedProcess | None,
+    *,
+    vehicle_id: int | None = None,
+) -> dict[str, list[dict[str, object]]]:
+    resolved_vehicle_id = process.vehicle_id if process else vehicle_id
+    if not resolved_vehicle_id:
+        return {"processes": [], "records": [], "diagnostics": []}
+
+    process_query = select(WorkshopPhasedProcess).where(
+        WorkshopPhasedProcess.vehicle_id == resolved_vehicle_id
+    )
+    if process:
+        process_query = process_query.where(WorkshopPhasedProcess.id != process.id)
+    previous_processes = db.scalars(
+        process_query.order_by(
+            WorkshopPhasedProcess.opened_at.desc(),
+            WorkshopPhasedProcess.created_at.desc(),
+        ).limit(6)
+    ).all()
+    records = db.scalars(
+        select(VehicleDocumentRecord)
+        .where(VehicleDocumentRecord.vehicle_id == resolved_vehicle_id)
+        .order_by(
+            VehicleDocumentRecord.document_date.desc(),
+            VehicleDocumentRecord.created_at.desc(),
+        )
+        .limit(8)
+    ).all()
+    diagnostic_rows = db.execute(
+        select(DiagnosticDocument, Document)
+        .join(Document, Document.id == DiagnosticDocument.document_id)
+        .where(Document.vehicle_id == resolved_vehicle_id)
+        .order_by(
+            DiagnosticDocument.report_datetime.desc(),
+            Document.created_at.desc(),
+        )
+        .limit(8)
+    ).all()
+    return {
+        "processes": [
+            {
+                "reference": clean_workshop_process_reference(item),
+                "date": item.opened_at or item.received_at or item.created_at,
+                "status": item.status,
+                "title": item.title,
+            }
+            for item in previous_processes
+        ],
+        "records": [
+            {
+                "type": item.subtype or item.main_group,
+                "date": item.document_date or item.created_at,
+                "km": item.km,
+                "title": item.title or item.raw_description or item.process_reference or "-",
+                "source": item.source_system or item.source_record_type,
+            }
+            for item in records
+        ],
+        "diagnostics": [
+            {
+                "type": diagnostic.diagnostic_type,
+                "date": diagnostic.report_datetime or document.created_at,
+                "km": diagnostic.odometer_km,
+                "status": diagnostic.validation_status,
+                "source": document.source or "arquivo_documental",
+            }
+            for diagnostic, document in diagnostic_rows
+        ],
+    }
 
 def clean_workshop_get_phase(
     db: Session,
@@ -5156,7 +5540,58 @@ def clean_workshop_entry_substep_status(entry_data: dict[str, object]) -> dict[s
     }
 
 
-def clean_workshop_steps(query_suffix: str = "") -> list[dict[str, str | int]]:
+def clean_workshop_step_defs_for_process(
+    process: WorkshopPhasedProcess | None,
+) -> list[dict[str, str | int]]:
+    snapshot = process.template_snapshot_json if process else None
+    phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
+    if not phases:
+        return [dict(step) for step in CLEAN_WORKSHOP_STEP_DEFS]
+    defaults = {str(step["key"]): step for step in CLEAN_WORKSHOP_STEP_DEFS}
+    result: list[dict[str, str | int]] = []
+    for number, phase in enumerate(phases, start=1):
+        code = str(phase.get("code") or "")
+        default = defaults.get(code)
+        if not default:
+            continue
+        result.append(
+            {
+                "key": code,
+                "number": number,
+                "label": str(phase.get("name") or default["label"]),
+                "path": str(default["path"]),
+            }
+        )
+    metadata = process.metadata_json if process and isinstance(process.metadata_json, dict) else {}
+    additions = metadata.get("manual_phase_additions", []) if isinstance(metadata, dict) else []
+    existing_codes = {str(step["key"]) for step in result}
+    for addition in additions if isinstance(additions, list) else []:
+        code = str(addition.get("phase_code") or "") if isinstance(addition, dict) else ""
+        default = defaults.get(code)
+        if not default or code in existing_codes:
+            continue
+        insert_at = next(
+            (index for index, step in enumerate(result) if step["key"] == "fecho"),
+            len(result),
+        )
+        result.insert(
+            insert_at,
+            {
+                "key": code,
+                "number": 0,
+                "label": str(default["label"]),
+                "path": str(default["path"]),
+            },
+        )
+        existing_codes.add(code)
+    for number, step in enumerate(result, start=1):
+        step["number"] = number
+    return result or [dict(step) for step in CLEAN_WORKSHOP_STEP_DEFS]
+
+def clean_workshop_steps(
+    query_suffix: str = "",
+    process: WorkshopPhasedProcess | None = None,
+) -> list[dict[str, str | int]]:
     return [
         {
             "key": step["key"],
@@ -5164,44 +5599,67 @@ def clean_workshop_steps(query_suffix: str = "") -> list[dict[str, str | int]]:
             "label": step["label"],
             "href": f"{step['path']}{query_suffix}",
         }
-        for step in CLEAN_WORKSHOP_STEP_DEFS
+        for step in clean_workshop_step_defs_for_process(process)
     ]
 
 
-def clean_workshop_phase_nav(active_key: str, query_suffix: str = "") -> dict[str, str | None]:
+
+def clean_workshop_phase_nav(
+    active_key: str,
+    query_suffix: str = "",
+    process: WorkshopPhasedProcess | None = None,
+) -> dict[str, str | None]:
+    steps = clean_workshop_step_defs_for_process(process)
     step_index = next(
-        (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS) if step["key"] == active_key),
+        (index for index, step in enumerate(steps) if step["key"] == active_key),
         None,
     )
     if step_index is None:
         return {"previous_phase_url": None, "next_phase_url": None}
     previous_phase_url = (
-        f"{CLEAN_WORKSHOP_STEP_DEFS[step_index - 1]['path']}{query_suffix}" if step_index > 0 else None
+        f"{steps[step_index - 1]['path']}{query_suffix}" if step_index > 0 else None
     )
     next_phase_url = (
-        f"{CLEAN_WORKSHOP_STEP_DEFS[step_index + 1]['path']}{query_suffix}"
-        if step_index < len(CLEAN_WORKSHOP_STEP_DEFS) - 1
-        else None
+        f"{steps[step_index + 1]['path']}{query_suffix}" if step_index < len(steps) - 1 else None
     )
     return {"previous_phase_url": previous_phase_url, "next_phase_url": next_phase_url}
 
 
-def clean_workshop_next_phase_key(active_key: str) -> str | None:
+
+def clean_workshop_next_phase_key(
+    active_key: str,
+    process: WorkshopPhasedProcess | None = None,
+) -> str | None:
+    steps = clean_workshop_step_defs_for_process(process)
     step_index = next(
-        (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS) if step["key"] == active_key),
+        (index for index, step in enumerate(steps) if step["key"] == active_key),
         None,
     )
-    if step_index is None or step_index >= len(CLEAN_WORKSHOP_STEP_DEFS) - 1:
+    if step_index is None or step_index >= len(steps) - 1:
         return None
-    return str(CLEAN_WORKSHOP_STEP_DEFS[step_index + 1]["key"])
+    return str(steps[step_index + 1]["key"])
 
 
-def clean_workshop_substeps(phase_key: str) -> tuple[str, ...]:
+
+def clean_workshop_substeps(
+    phase_key: str,
+    process: WorkshopPhasedProcess | None = None,
+) -> tuple[str, ...]:
+    snapshot = process.template_snapshot_json if process else None
+    phases = snapshot.get("config", {}).get("phases", []) if isinstance(snapshot, dict) else []
+    for phase in phases:
+        if str(phase.get("code") or "") == phase_key and phase.get("substeps"):
+            return tuple(str(item) for item in phase["substeps"])
     return tuple(CLEAN_WORKSHOP_SUBSTEP_FLOW.get(phase_key, ()))
 
 
-def clean_workshop_next_substep_key(phase_key: str, current_substep: str) -> str | None:
-    substeps = clean_workshop_substeps(phase_key)
+
+def clean_workshop_next_substep_key(
+    phase_key: str,
+    current_substep: str,
+    process: WorkshopPhasedProcess | None = None,
+) -> str | None:
+    substeps = clean_workshop_substeps(phase_key, process)
     if not substeps:
         return None
     try:
@@ -5211,6 +5669,7 @@ def clean_workshop_next_substep_key(phase_key: str, current_substep: str) -> str
     if step_index >= len(substeps) - 1:
         return None
     return substeps[step_index + 1]
+
 
 
 def clean_workshop_phase_path(phase_key: str) -> str:
@@ -6120,7 +6579,9 @@ def clean_workshop_closure_form_status(
     }
 
 
-def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, plate: str | None = None) -> dict[str, object]:
+def clean_workshop_vehicle_context(
+    db: Session, vehicle_id: int | None = None, plate: str | None = None
+) -> dict[str, object]:
     vehicle: Vehicle | None = None
     if vehicle_id:
         vehicle = db.get(Vehicle, vehicle_id)
@@ -6139,7 +6600,9 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
     commercial_context = rentway_commercial_context(snapshot)
     manual_fields = {
         item.field_code: item.value_json
-        for item in db.scalars(select(VehicleManualField).where(VehicleManualField.vehicle_id == vehicle.id)).all()
+        for item in db.scalars(
+            select(VehicleManualField).where(VehicleManualField.vehicle_id == vehicle.id)
+        ).all()
     }
     rules = vehicle_rule_context(snapshot, manual_fields)
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
@@ -6149,7 +6612,9 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
     real_start_date = str(manual_fields.get("real_start_date") or "").strip() or "Por validar"
     is_stellantis = brand.strip().upper() in STELLANTIS_BRANDS
 
-    current_km = parse_decimal_text(commercial_context.get("km") or snapshot_value(data, ["kms", "km"]))
+    current_km = parse_decimal_text(
+        commercial_context.get("km") or snapshot_value(data, ["kms", "km"])
+    )
     rentway_next_service_km = parse_decimal_text(rules.get("rentway_next_service_km"))
     calculated_ipo = rules.get("calculated_ipo")
     rentway_ipo = rules.get("rentway_ipo")
@@ -6229,12 +6694,20 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
                 }
             )
 
+    last_service_value = clean_km(snapshot_value(data, ["last_service", "lastservice"]))
+    next_service_value = clean_km(snapshot_value(data, ["next_service", "nextservice"]))
+
     return {
         "process_ref": CLEAN_WORKSHOP_CONTEXT["process_ref"],
         "plate": vehicle.plate or snapshot_value(data, ["platenr", "matricula", "plate"]) or "-",
         "vehicle": " ".join(part for part in [brand, model, version] if part).strip() or "-",
         "vin": vehicle.vin or snapshot_value(data, ["chassinr", "vin", "chassis"]) or "-",
         "groupid": vehicle_context.get("groupid") or "-",
+        "unit": vehicle.rentway_unit_nr
+        or vehicle_context.get("unit")
+        or vehicle_context.get("groupid")
+        or "-",
+        "current_km": clean_km(commercial_context.get("km") or snapshot_value(data, ["kms", "km"])),
         "fuel": fuel,
         "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
         "entry_date": datetime.now().strftime("%d/%m/%Y"),
@@ -6242,10 +6715,17 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
         "expected_exit": "-",
         "registration_date": clean_date(vehicle_context.get("plate_date")),
         "purchase_date": clean_date(vehicle_context.get("purchase_date")),
-        "real_start_date": clean_date(real_start_date) if real_start_date != "Por validar" else real_start_date,
-        "next_ipo": clean_date((rules.get("calculated_ipo") or rules.get("rentway_ipo")).isoformat() if rules.get("calculated_ipo") or rules.get("rentway_ipo") else None),
-        "last_service_km": f"{clean_km(snapshot_value(data, ['last_service', 'lastservice']))} km",
-        "next_service_km": f"{clean_km(snapshot_value(data, ['next_service', 'nextservice']))} km",
+        "real_start_date": clean_date(real_start_date)
+        if real_start_date != "Por validar"
+        else real_start_date,
+        "next_ipo": clean_date(
+            (rules.get("calculated_ipo") or rules.get("rentway_ipo")).isoformat()
+            if rules.get("calculated_ipo") or rules.get("rentway_ipo")
+            else None
+        ),
+        "last_service_km": f"{last_service_value} km" if last_service_value != "-" else "-",
+        "next_service_km": f"{next_service_value} km" if next_service_value != "-" else "-",
+        "next_service_value": f"{next_service_value} km" if next_service_value != "-" else "-",
         "next_service_date": clean_date(str(rules.get("rentway_next_service_date") or "")),
         "maintenance_status": f"Manutenção: {rules.get('maintenance_status')}",
         "history_audit_status": "Auditoria histórico: por validar",
@@ -6253,6 +6733,7 @@ def clean_workshop_vehicle_context(db: Session, vehicle_id: int | None = None, p
         "brand_rule": "Service Box aplicável" if is_stellantis else "Service Box não aplicável",
         "alerts": alerts,
     }
+
 
 
 
@@ -16487,11 +16968,16 @@ async def clean_workshop_entry_save(request: Request):
     user_id = get_web_user_id(request)
     is_historical = str(form.get("process_mode") or "").strip().lower() == "historical"
     submitted_plate = normalize_identifier(str(form.get("plate") or ""))
+    entry_reasons = [str(value) for value in form.getlist("entry_reasons") if str(value).strip()]
+    external_repair = str(form.get("external_repair") or "no").strip()
+    template_code = str(form.get("template_code") or "").strip() or None
 
     if not process_id and not submitted_plate:
         suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
         separator = "&" if suffix else "?"
-        return RedirectResponse(f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate", status_code=303)
+        return RedirectResponse(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate", status_code=303
+        )
 
     with SessionLocal() as db:
         process: WorkshopPhasedProcess | None = None
@@ -16501,13 +16987,18 @@ async def clean_workshop_entry_save(request: Request):
                 suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
                 return RedirectResponse(f"/v2-clean/workshop-entry{suffix}", status_code=303)
             if clean_workshop_process_is_readonly(process):
-                return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
+                return RedirectResponse(
+                    f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+                )
         else:
             process = clean_workshop_create_process(
                 db,
                 request=request,
                 plate=submitted_plate,
                 historical=is_historical,
+                entry_reasons=entry_reasons,
+                external_repair=external_repair == "yes",
+                template_code=template_code,
             )
             process_id = process.id
 
@@ -16531,7 +17022,6 @@ async def clean_workshop_entry_save(request: Request):
             db.add(phase)
             db.flush()
 
-        entry_reasons = [str(value) for value in form.getlist("entry_reasons") if str(value).strip()]
         physical_checks = {
             code: str(form.get(code) or "not_checked")
             for code in CLEAN_WORKSHOP_ENTRY_PHYSICAL_CHECKS
@@ -16556,7 +17046,9 @@ async def clean_workshop_entry_save(request: Request):
                 "reported_by": str(form.get("reported_by") or "").strip(),
                 "priority": str(form.get("priority") or "").strip(),
                 "can_drive": str(form.get("can_drive") or "").strip(),
-                "historical_intervention_date": str(form.get("historical_intervention_date") or "").strip(),
+                "historical_intervention_date": str(
+                    form.get("historical_intervention_date") or ""
+                ).strip(),
                 "historical_km": str(form.get("historical_km") or "").strip(),
                 "historical_supplier": str(form.get("historical_supplier") or "").strip(),
                 "historical_confidence": str(form.get("historical_confidence") or "").strip(),
@@ -16564,7 +17056,7 @@ async def clean_workshop_entry_save(request: Request):
                 "physical_check_note": str(form.get("physical_check_note") or "").strip(),
                 "expected_exit": str(form.get("expected_exit") or "").strip(),
                 "validation_notes": str(form.get("validation_notes") or "").strip(),
-                "external_repair": str(form.get("external_repair") or "no").strip(),
+                "external_repair": external_repair,
                 "minimum_checks": minimum_checks,
                 "uploads": [*existing_uploads, *stored_uploads],
                 "saved_at": now.isoformat(),
@@ -16576,7 +17068,10 @@ async def clean_workshop_entry_save(request: Request):
             phase.status = "in_progress"
             process.current_phase_code = "entrada"
             db.commit()
-            return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km", status_code=303)
+            return RedirectResponse(
+                f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km",
+                status_code=303,
+            )
         phase.data_json = entry_data
         phase.status = "completed" if action == "advance" else "in_progress"
         phase.started_at = phase.started_at or now
@@ -16596,7 +17091,9 @@ async def clean_workshop_entry_save(request: Request):
             process.initial_km = entry_km
         process.priority = str(entry_data.get("priority") or "Normal").lower()
         process.initial_observation = (
-            str(entry_data.get("short_description") or entry_data.get("requested_service") or "").strip()
+            str(
+                entry_data.get("short_description") or entry_data.get("requested_service") or ""
+            ).strip()
             or process.initial_observation
         )
         process.metadata_json = {
@@ -16608,8 +17105,13 @@ async def clean_workshop_entry_save(request: Request):
         db.commit()
 
     if action == "advance":
-        return RedirectResponse(f"/v2-clean/workshop/validacao?process_id={process_id}", status_code=303)
-    return RedirectResponse(f"/v2-clean/workshop-entry?process_id={process_id}&saved=1", status_code=303)
+        return RedirectResponse(
+            f"/v2-clean/workshop/validacao?process_id={process_id}", status_code=303
+        )
+    return RedirectResponse(
+        f"/v2-clean/workshop-entry?process_id={process_id}&saved=1", status_code=303
+    )
+
 
 
 @web_router.get("/v2-clean/workshop-entry", response_class=HTMLResponse)
@@ -16627,6 +17129,7 @@ def clean_workshop_entry(
     if denied:
         return denied
     user_name = "Utilizador atual"
+    current_entry_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
     user_id = get_web_user_id(request)
     if user_id:
         with SessionLocal() as db:
@@ -16634,22 +17137,61 @@ def clean_workshop_entry(
             if user:
                 user_name = user.name or user.email
     with SessionLocal() as db:
+        ensure_workshop_configuration_defaults(db)
+        db.commit()
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
+        template_options = db.scalars(
+            select(WorkshopTemplate)
+            .where(WorkshopTemplate.active.is_(True))
+            .order_by(WorkshopTemplate.name)
+        ).all()
+        selected_template_code = ""
+        available_phase_defs: list[dict[str, object]] = []
         saved_entry: dict[str, object] = {}
         if process:
+            creator = db.get(User, process.created_by_id) if process.created_by_id else None
+            if creator:
+                user_name = creator.name or creator.email
+            opened_at = process.opened_at or process.received_at or process.created_at
+            if opened_at:
+                current_entry_timestamp = opened_at.strftime("%d/%m/%Y %H:%M")
+            if isinstance(process.template_snapshot_json, dict):
+                selected_template_code = str(
+                    process.template_snapshot_json.get("template_code") or "general_minimum"
+                )
             historical = process.creation_mode == "historical"
             query_suffix = clean_workshop_query_suffix(process_id=process.id)
             vehicle_context = clean_workshop_context_for_process(db, process)
-            vehicle_detail_href = f"/v2-clean/fleet/{process.vehicle_id}" if process.vehicle_id else "/v2-clean/fleet"
+            vehicle_detail_href = (
+                f"/v2-clean/fleet/{process.vehicle_id}" if process.vehicle_id else "/v2-clean/fleet"
+            )
             vehicle_documents_href = (
-                f"/v2-clean/fleet/{process.vehicle_id}/documents" if process.vehicle_id else "/v2-clean/documents"
+                f"/v2-clean/fleet/{process.vehicle_id}/documents"
+                if process.vehicle_id
+                else "/v2-clean/documents"
             )
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
-            saved_entry = dict(entry_phase.data_json or {}) if entry_phase and entry_phase.data_json else {}
+            existing_phase_codes = set(
+                db.scalars(
+                    select(WorkshopPhasedProcessPhase.phase_code).where(
+                        WorkshopPhasedProcessPhase.process_id == process.id
+                    )
+                ).all()
+            )
+            available_phase_defs = [
+                step
+                for step in CLEAN_WORKSHOP_STEP_DEFS
+                if step["key"] not in existing_phase_codes
+                and step["key"] not in {"entrada", "fecho"}
+            ]
+            saved_entry = (
+                dict(entry_phase.data_json or {}) if entry_phase and entry_phase.data_json else {}
+            )
             if (
                 saved_entry.get("entry_km")
                 and saved_entry.get("entry_km_source") != "manual"
-                and clean_km(saved_entry.get("entry_km")) == clean_km(vehicle_context.get("entry_km"))
+                and clean_km(saved_entry.get("entry_km"))
+                == clean_km(vehicle_context.get("entry_km"))
             ):
                 saved_entry["entry_km"] = ""
         else:
@@ -16660,19 +17202,28 @@ def clean_workshop_entry(
             )
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             resolved_vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
-            vehicle_detail_href = f"/v2-clean/fleet/{resolved_vehicle.id}" if resolved_vehicle else "/v2-clean/fleet"
-            vehicle_documents_href = (
-                f"/v2-clean/fleet/{resolved_vehicle.id}/documents" if resolved_vehicle else "/v2-clean/documents"
+            vehicle_detail_href = (
+                f"/v2-clean/fleet/{resolved_vehicle.id}" if resolved_vehicle else "/v2-clean/fleet"
             )
+            vehicle_documents_href = (
+                f"/v2-clean/fleet/{resolved_vehicle.id}/documents"
+                if resolved_vehicle
+                else "/v2-clean/documents"
+            )
+        history_preview = clean_workshop_history_preview(
+            db,
+            process,
+            vehicle_id=resolved_vehicle.id if not process and resolved_vehicle else None,
+        )
         workshop_admin = clean_workshop_admin_context(db, request, process)
     return templates.TemplateResponse(
         request,
         "clean_workshop_entry.html",
         {
             "entry_reasons": CLEAN_WORKSHOP_ENTRY_REASONS,
-            "current_entry_timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "current_entry_timestamp": current_entry_timestamp,
             "current_user_name": user_name,
-            "workshop_steps": clean_workshop_steps(query_suffix),
+            "workshop_steps": clean_workshop_steps(query_suffix, process),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
             "is_new_entry": False,
@@ -16687,10 +17238,15 @@ def clean_workshop_entry(
             "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True)}",
             "saved_entry": saved_entry,
             "entry_substep_status": clean_workshop_entry_substep_status(saved_entry),
+            "template_options": template_options,
+            "selected_template_code": selected_template_code,
+            "available_phase_defs": available_phase_defs,
+            "history_preview": history_preview,
             "saved": saved,
             "error": error,
         },
     )
+
 
 
 @web_router.get("/v2-clean/workshop/{phase}", response_class=HTMLResponse)
@@ -16709,9 +17265,13 @@ def clean_workshop_phase(
     if denied:
         return denied
     if new and not process_id:
-        query_suffix = clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=True)
+        query_suffix = clean_workshop_query_suffix(
+            vehicle_id=vehicle_id, plate=plate, historical=historical, new_entry=True
+        )
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
-    query_suffix = clean_workshop_query_suffix(process_id=process_id, vehicle_id=vehicle_id, plate=plate, historical=historical)
+    query_suffix = clean_workshop_query_suffix(
+        process_id=process_id, vehicle_id=vehicle_id, plate=plate, historical=historical
+    )
     if phase in {"entrada", "entry"}:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     phase = CLEAN_WORKSHOP_PHASE_ALIASES.get(phase, phase)
@@ -16728,6 +17288,9 @@ def clean_workshop_phase(
     vehicle_documents_href = "/v2-clean/fleet"
     task_board_href = "/task-board/manage"
     audit_href = "/v2-clean/processes"
+    history_preview = {"processes": [], "records": [], "diagnostics": []}
+    diagnostic_suggestions: list[dict[str, object]] = []
+    material_needs: list[WorkshopMaterialNeed] = []
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
@@ -16739,11 +17302,16 @@ def clean_workshop_phase(
                 vehicle_documents_href = f"/v2-clean/fleet/{process.vehicle_id}/documents"
                 history_audit = db.scalar(
                     select(VehicleHistoryAudit)
-                    .where(VehicleHistoryAudit.vehicle_id == process.vehicle_id, VehicleHistoryAudit.status != "closed")
+                    .where(
+                        VehicleHistoryAudit.vehicle_id == process.vehicle_id,
+                        VehicleHistoryAudit.status != "closed",
+                    )
                     .order_by(VehicleHistoryAudit.updated_at.desc(), VehicleHistoryAudit.id.desc())
                 )
                 if history_audit:
-                    audit_href = f"/fleet/{history_audit.vehicle_id}/history-audits/{history_audit.id}"
+                    audit_href = (
+                        f"/fleet/{history_audit.vehicle_id}/history-audits/{history_audit.id}"
+                    )
             technical_reports = db.scalars(
                 select(WorkshopPhasedTechnicalReport)
                 .where(WorkshopPhasedTechnicalReport.process_id == process.id)
@@ -16758,30 +17326,63 @@ def clean_workshop_phase(
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
             if entry_phase and isinstance(entry_phase.data_json, dict):
                 entry_form = dict(entry_phase.data_json)
-            validation_prerequisites = clean_workshop_validation_prerequisites(db, process, vehicle_context)
+            validation_prerequisites = clean_workshop_validation_prerequisites(
+                db, process, vehicle_context
+            )
+            history_preview = clean_workshop_history_preview(db, process)
+            suggestion_rows = db.execute(
+                select(WorkshopDiagnosticSuggestion, WorkshopDiagnosticCatalogItem)
+                .join(
+                    WorkshopDiagnosticCatalogItem,
+                    WorkshopDiagnosticCatalogItem.id
+                    == WorkshopDiagnosticSuggestion.catalog_item_id,
+                )
+                .where(WorkshopDiagnosticSuggestion.process_id == process.id)
+                .order_by(WorkshopDiagnosticCatalogItem.family, WorkshopDiagnosticCatalogItem.name)
+            ).all()
+            diagnostic_suggestions = [
+                {"suggestion": suggestion, "catalog": catalog}
+                for suggestion, catalog in suggestion_rows
+            ]
+            material_needs = db.scalars(
+                select(WorkshopMaterialNeed)
+                .where(WorkshopMaterialNeed.process_id == process.id)
+                .order_by(WorkshopMaterialNeed.created_at.desc())
+            ).all()
         else:
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
-            validation_prerequisites = clean_workshop_validation_prerequisites(db, None, vehicle_context)
+            validation_prerequisites = clean_workshop_validation_prerequisites(
+                db, None, vehicle_context
+            )
+            resolved_vehicle = clean_workshop_find_vehicle(db, vehicle_id=vehicle_id, plate=plate)
+            history_preview = clean_workshop_history_preview(
+                db,
+                None,
+                vehicle_id=resolved_vehicle.id if resolved_vehicle else None,
+            )
         workshop_admin = clean_workshop_admin_context(db, request, process)
     technical_reading_groups = clean_workshop_technical_reading_groups(technical_reports)
     saved_substeps = clean_workshop_saved_substeps(phase_data)
     phase_uploads = phase_data.get("uploads") if isinstance(phase_data.get("uploads"), list) else []
     selected_reading_report_id = str(selected_report_id) if selected_report_id else ""
     if selected_reading_report_id and not any(
-        str(group.get("report_id")) == selected_reading_report_id for group in technical_reading_groups
+        str(group.get("report_id")) == selected_reading_report_id
+        for group in technical_reading_groups
     ):
         selected_reading_report_id = ""
     if not selected_reading_report_id and technical_reading_groups:
         selected_reading_report_id = str(technical_reading_groups[0].get("report_id") or "")
-    phase_nav = clean_workshop_phase_nav(phase, query_suffix)
-    prerequisite_warning_count = sum(1 for item in validation_prerequisites if item.get("impact_class") == "warn")
+    phase_nav = clean_workshop_phase_nav(phase, query_suffix, process)
+    prerequisite_warning_count = sum(
+        1 for item in validation_prerequisites if item.get("impact_class") == "warn"
+    )
     return templates.TemplateResponse(
         request,
         "clean_workshop_phase.html",
         {
             "phase_key": phase,
             "phase": phase_config,
-            "workshop_steps": clean_workshop_steps(query_suffix),
+            "workshop_steps": clean_workshop_steps(query_suffix, process),
             "vehicle_context": vehicle_context,
             "is_historical": historical,
             "workshop_process": process,
@@ -16804,13 +17405,17 @@ def clean_workshop_phase(
             "technical_reading_rows": clean_workshop_technical_reading_rows(technical_reports),
             "technical_reading_groups": technical_reading_groups,
             "selected_reading_report_id": selected_reading_report_id,
-            "diagnostic_substep_status": clean_workshop_diagnostic_substep_status(technical_reports),
+            "diagnostic_substep_status": clean_workshop_diagnostic_substep_status(
+                technical_reports
+            ),
             "diagnostic_form_status": clean_workshop_diagnostic_form_status(
                 phase_form,
                 technical_reports,
                 saved_substeps,
             ),
-            "inspection_form_status": clean_workshop_inspection_form_status(phase_form, saved_substeps),
+            "inspection_form_status": clean_workshop_inspection_form_status(
+                phase_form, saved_substeps
+            ),
             "audit_form_status": clean_workshop_audit_form_status(phase_form, saved_substeps),
             "repair_form_status": clean_workshop_repair_form_status(phase_form, saved_substeps),
             "closure_form_status": clean_workshop_closure_form_status(phase_form, saved_substeps),
@@ -16818,6 +17423,10 @@ def clean_workshop_phase(
             "vehicle_documents_href": vehicle_documents_href,
             "task_board_href": task_board_href,
             "audit_href": audit_href,
+            "history_preview": history_preview,
+            "diagnostic_suggestions": diagnostic_suggestions,
+            "material_needs": material_needs,
+            "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
             "phase_print_report": {
                 "validacao": ("diagnostic-order", "Imprimir ordem de diagnóstico"),
@@ -16828,6 +17437,7 @@ def clean_workshop_phase(
             **phase_nav,
         },
     )
+
 
 
 CLEAN_WORKSHOP_PRINT_REPORTS = {
@@ -17159,6 +17769,205 @@ def clean_workshop_create_record(
     return RedirectResponse(f"/v2-clean/tasks?{query}", status_code=303)
 
 
+@web_router.post("/v2-clean/workshop/diagnostic-suggestions/{suggestion_id}/confirm")
+async def clean_workshop_confirm_diagnostic_suggestion(request: Request, suggestion_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    decision = str(form.get("decision") or "").strip()
+    if decision not in {"confirmed", "dismissed"}:
+        decision = "suggested"
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        suggestion = db.get(WorkshopDiagnosticSuggestion, suggestion_id)
+        if not suggestion:
+            return RedirectResponse("/v2-clean/workshop?error=suggestion_missing", status_code=303)
+        process = db.get(WorkshopPhasedProcess, suggestion.process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(
+                f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            )
+        before = suggestion.status
+        suggestion.status = decision
+        suggestion.confirmed_by_id = user_id
+        suggestion.confirmed_at = datetime.now(UTC)
+        record_audit(
+            db,
+            action="workshop.diagnostic_suggestion.decided",
+            entity_type="workshop_diagnostic_suggestion",
+            entity_id=suggestion.id,
+            detail=f"{before} -> {decision}",
+            before_json={"status": before},
+            after_json={"status": decision, "confirmed_by_id": user_id},
+            user_id=user_id,
+        )
+        process_id = process.id
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop/diagnostico?process_id={process_id}&suggestion_saved=1#relatorios",
+        status_code=303,
+    )
+
+@web_router.post("/v2-clean/workshop/{process_id}/material-needs")
+async def clean_workshop_create_material_need(request: Request, process_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    origin = str(form.get("origin") or "repair").strip()
+    if origin not in {"entry", "diagnostic", "inspection", "repair"}:
+        origin = "repair"
+    description = str(form.get("material_description") or "").strip()
+    if not description:
+        return RedirectResponse(
+            f"/v2-clean/workshop/reparacao?process_id={process_id}&error=material_required",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if clean_workshop_process_is_readonly(process):
+            return RedirectResponse(
+                f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            )
+        vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
+        need = WorkshopMaterialNeed(
+            process_id=process.id,
+            phase_code="reparacao",
+            origin=origin,
+            operation_code=str(form.get("operation_code") or "repair_material").strip(),
+            operation_label=str(form.get("operation_label") or "Material para reparação").strip(),
+            vehicle_id=process.vehicle_id,
+            vehicle_variant=vehicle.version if vehicle else None,
+            technician_user_id=user_id,
+            location_id=vehicle.current_location_id if vehicle else None,
+            material_code=str(form.get("material_code") or "").strip() or None,
+            material_description=description,
+            requested_quantity=str(form.get("requested_quantity") or "").strip() or None,
+            stock_status="unavailable",
+            detail_json={
+                "stock_contract_version": 1,
+                "availability_requested": False,
+                "neutral_message": "Stock ainda não disponível",
+            },
+        )
+        db.add(need)
+        db.flush()
+        record_audit(
+            db,
+            action="workshop.material_need.created",
+            entity_type="workshop_material_need",
+            entity_id=need.id,
+            detail=description,
+            after_json={
+                "origin": origin,
+                "stock_status": "unavailable",
+                "process_id": process.id,
+            },
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_saved=1#ordem-reparacao",
+        status_code=303,
+    )
+
+@web_router.post("/v2-clean/workshop/{process_id}/phases")
+async def clean_workshop_add_optional_phase(request: Request, process_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    phase_code = str(form.get("phase_code") or "").strip()
+    phase_definition = next(
+        (item for item in CLEAN_WORKSHOP_STEP_DEFS if item["key"] == phase_code),
+        None,
+    )
+    if not phase_definition or phase_code in {"entrada", "fecho"}:
+        return RedirectResponse(
+            f"/v2-clean/workshop-entry?process_id={process_id}&phase_error=invalid",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process or clean_workshop_process_is_readonly(process):
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        existing = clean_workshop_get_phase(db, process.id, phase_code)
+        if existing:
+            return RedirectResponse(clean_workshop_process_url(process), status_code=303)
+        max_order = (
+            db.scalar(
+                select(func.max(WorkshopPhasedProcessPhase.sort_order)).where(
+                    WorkshopPhasedProcessPhase.process_id == process.id
+                )
+            )
+            or 0
+        )
+        db.add(
+            WorkshopPhasedProcessPhase(
+                process_id=process.id,
+                phase_code=phase_code,
+                name=str(phase_definition["label"]),
+                status="not_started",
+                sort_order=max_order + 1,
+                data_json={
+                    "manually_added": True,
+                    "added_by_id": user_id,
+                    "added_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        )
+        metadata = dict(process.metadata_json or {})
+        additions = list(metadata.get("manual_phase_additions") or [])
+        additions.append(
+            {
+                "phase_code": phase_code,
+                "added_by_id": user_id,
+                "added_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        metadata["manual_phase_additions"] = additions
+        process.metadata_json = metadata
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop-entry?process_id={process_id}&phase_added={phase_code}",
+        status_code=303,
+    )
+
+@web_router.post("/v2-clean/workshop/material-needs/{need_id}/confirm-applied")
+def clean_workshop_confirm_material_applied(request: Request, need_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    with SessionLocal() as db:
+        need = db.get(WorkshopMaterialNeed, need_id)
+        if not need:
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        process = db.get(WorkshopPhasedProcess, need.process_id)
+        if not process or clean_workshop_process_is_readonly(process):
+            return RedirectResponse("/v2-clean/workshop", status_code=303)
+        if need.stock_status != "delivered":
+            return RedirectResponse(
+                f"/v2-clean/workshop/reparacao?process_id={process.id}&stock_error=not_delivered",
+                status_code=303,
+            )
+        need.stock_status = "applied"
+        need.applied_confirmed_by_id = user_id
+        need.applied_confirmed_at = datetime.now(UTC)
+        process_id = process.id
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop/reparacao?process_id={process_id}&material_applied=1",
+        status_code=303,
+    )
+
 @web_router.post("/v2-clean/workshop/{phase}/save", response_class=HTMLResponse)
 async def clean_workshop_phase_save(request: Request, phase: str):
     denied = clean_experience_denied(request)
@@ -17188,12 +17997,21 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         if not process:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
         if clean_workshop_process_is_readonly(process):
-            return RedirectResponse(f"{clean_workshop_process_url(process)}&readonly=1", status_code=303)
+            return RedirectResponse(
+                f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
+            )
+        known_substeps = clean_workshop_substeps(phase, process)
+        if current_substep not in known_substeps:
+            current_substep = known_substeps[0] if known_substeps else ""
 
         phase_row = clean_workshop_get_phase(db, process.id, phase)
         if not phase_row:
             step_index = next(
-                (index for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1) if step["key"] == phase),
+                (
+                    index
+                    for index, step in enumerate(CLEAN_WORKSHOP_STEP_DEFS, start=1)
+                    if step["key"] == phase
+                ),
                 1,
             )
             phase_row = WorkshopPhasedProcessPhase(
@@ -17302,7 +18120,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             phase_row.status = "completed"
             phase_row.completed_at = now
             phase_row.completed_by_id = user_id
-            next_phase = clean_workshop_next_phase_key(phase)
+            next_phase = clean_workshop_next_phase_key(phase, process)
             if next_phase:
                 process.current_phase_code = next_phase
                 next_phase_row = clean_workshop_get_phase(db, process.id, next_phase)
@@ -17315,7 +18133,11 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 process.closed_at = now
                 redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
         elif action in {"save_substep", "advance_substep"}:
-            target_substep = clean_workshop_next_substep_key(phase, current_substep) if current_substep else None
+            target_substep = (
+                clean_workshop_next_substep_key(phase, current_substep, process)
+                if current_substep
+                else None
+            )
             if target_substep:
                 phase_row.status = "in_progress"
                 process.current_phase_code = phase
@@ -17330,7 +18152,9 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                     if phase == "diagnostico"
                     else []
                 )
-                advance_error = clean_workshop_phase_advance_error(phase, form_snapshot, phase_reports)
+                advance_error = clean_workshop_phase_advance_error(
+                    phase, form_snapshot, phase_reports
+                )
                 if advance_error:
                     phase_row.status = "in_progress"
                     process.current_phase_code = phase
@@ -17349,18 +18173,22 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 phase_row.status = "completed"
                 phase_row.completed_at = now
                 phase_row.completed_by_id = user_id
-                next_phase = clean_workshop_next_phase_key(phase)
+                next_phase = clean_workshop_next_phase_key(phase, process)
                 if next_phase:
                     process.current_phase_code = next_phase
                     next_phase_row = clean_workshop_get_phase(db, process.id, next_phase)
                     if next_phase_row and next_phase_row.status == "not_started":
                         next_phase_row.status = "pending_review"
                         next_phase_row.started_at = now
-                    redirect_url = f"{clean_workshop_phase_path(next_phase)}?process_id={process.id}"
+                    redirect_url = (
+                        f"{clean_workshop_phase_path(next_phase)}?process_id={process.id}"
+                    )
                 else:
                     process.status = "closed"
                     process.closed_at = now
-                    redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+                    redirect_url = (
+                        f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+                    )
         else:
             phase_row.status = "in_progress"
             process.current_phase_code = phase
@@ -17371,6 +18199,7 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         db.commit()
 
     return RedirectResponse(redirect_url, status_code=303)
+
 
 
 @web_router.post("/v2-clean/workshop/{process_id}/technical-reports/upload", response_class=HTMLResponse)

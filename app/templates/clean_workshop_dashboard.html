@@ -75,7 +75,7 @@
             <a class="clean-workshop-process-item" href="{{ process_url }}">
               <div>
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
-                <span>{{ process.title or "Processo de oficina" }}</span>
+                <span>{{ process.public_reference or process.title or "Processo de oficina" }}</span>
               </div>
               <em>{{ "Histórico" if process.creation_mode == "historical" else "Operacional" }}</em>
               <em>{{ phase|replace("_", " ")|title }}</em>

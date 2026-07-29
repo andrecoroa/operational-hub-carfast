@@ -34,6 +34,7 @@ from app.models.workshop_phased import (
 from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
+from app.services.workshop_configuration import WORKSHOP_STOCK_STATUSES
 from app.services.workshop_report_extractor import (
     extract_workshop_report_values,
     extract_workshop_report_values_from_bytes,
@@ -1027,6 +1028,62 @@ def get_process_config() -> dict[str, Any]:
         "phases": WORKSHOP_PHASE_TEMPLATE,
         "stellantis_reports": STELLANTIS_REPORTS,
         "technical_checks": TECHNICAL_CHECKS,
+    }
+
+
+@router.get("/stock-contract")
+def get_workshop_stock_contract() -> dict[str, Any]:
+    """Describe the future Stock boundary without reporting fictitious inventory."""
+
+    return {
+        "schema": "carfast.workshop-stock.v1",
+        "available": False,
+        "message": "Stock ainda não disponível",
+        "ownership": {
+            "workshop": [
+                "material_need",
+                "operation",
+                "need_origin",
+                "vehicle",
+                "variant",
+                "technician",
+                "location",
+                "application_confirmation",
+            ],
+            "stock": [
+                "suggestions",
+                "availability",
+                "reservations",
+                "inventory_movements",
+                "costs",
+                "consumption",
+                "returns",
+            ],
+        },
+        "request_fields": [
+            "workshop_process_reference",
+            "material_need_id",
+            "operation_code",
+            "origin",
+            "vehicle_id",
+            "vehicle_variant",
+            "technician_user_id",
+            "location_code",
+            "material_code",
+            "material_description",
+            "requested_quantity",
+        ],
+        "future_response_fields": [
+            "stock_request_reference",
+            "suggestions",
+            "availability",
+            "reservation_status",
+        ],
+        "visual_states": sorted(WORKSHOP_STOCK_STATUSES),
+        "template_link": {
+            "independent_versioning": True,
+            "workshop_fields": ["stock_template_code", "stock_template_version"],
+        },
     }
 
 

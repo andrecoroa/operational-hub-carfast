@@ -9333,6 +9333,9 @@ a.metric:hover {
 
 .clean-chip-grid input {
   position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -20866,7 +20869,6 @@ body.clean-task-preview-open {
     grid-template-columns: repeat(2, minmax(110px, 1fr));
   }
 }
-
 /* Clean documentation architecture: scoped to avoid changing fleet/workshop pages. */
 .doc-arch-page {
   --doc-accent: #c64f32;
@@ -21469,5 +21471,281 @@ body.clean-task-preview-open {
   .doc-arch-header-actions > * {
     flex: 1;
     text-align: center;
+  }
+}
+
+.clean-admin-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.clean-admin-model-card {
+  border: 1px solid #d9e2e8;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+}
+
+.clean-admin-model-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.clean-admin-model-card > div:first-child strong {
+  font-size: 1.05rem;
+}
+
+.clean-admin-model-card > div:first-child span,
+.clean-stock-neutral span {
+  color: #55646d;
+}
+
+.clean-admin-model-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.clean-admin-model-card dl div {
+  background: #f5f8fa;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.clean-admin-model-card dt {
+  color: #687780;
+  font-size: .72rem;
+  text-transform: uppercase;
+}
+
+.clean-admin-model-card dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.clean-admin-model-actions,
+.clean-admin-model-actions form {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-admin-model-actions textarea,
+.clean-admin-diagnostic-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .78rem;
+}
+
+.clean-admin-diagnostic-editor {
+  min-width: 280px;
+}
+
+.clean-admin-diagnostic-editor form {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #d9e2e8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.clean-admin-diagnostic-editor .checkbox-label {
+  display: flex;
+  align-items: center;
+}
+
+.clean-admin-diagnostic-editor .checkbox-label input {
+  width: 18px;
+  height: 18px;
+}
+
+.clean-stock-neutral {
+  display: grid;
+  gap: 5px;
+}
+
+.clean-stock-neutral em {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #eef2f4;
+  color: #54636c;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.clean-field-help {
+  margin: 6px 0 12px;
+  color: #62717a;
+  font-size: .86rem;
+}
+
+@media (max-width: 720px) {
+  .clean-admin-model-card dl {
+    grid-template-columns: 1fr;
+  }
+}
+
+.clean-history-preview > summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clean-history-preview > summary span {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.clean-history-preview > summary em,
+.clean-history-preview > summary small {
+  color: #63727b;
+  font-style: normal;
+}
+
+.clean-history-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.clean-history-preview-grid section,
+.clean-diagnostic-suggestions,
+.clean-stock-contract {
+  border: 1px solid #dbe3e8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f9fbfc;
+}
+
+.clean-history-preview-grid article {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid #e3e9ed;
+}
+
+.clean-history-preview-grid article span,
+.clean-history-preview-grid article em {
+  color: #62717a;
+  font-size: .8rem;
+  font-style: normal;
+}
+
+.clean-diagnostic-suggestions {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.clean-diagnostic-suggestions article,
+.clean-stock-needs-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e0e7eb;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.clean-diagnostic-suggestions article > div,
+.clean-stock-needs-list article > div {
+  display: grid;
+  gap: 2px;
+}
+
+.clean-diagnostic-suggestions article span,
+.clean-diagnostic-suggestions article em,
+.clean-stock-needs-list article span {
+  color: #62717a;
+  font-size: .8rem;
+  font-style: normal;
+}
+
+.clean-diagnostic-suggestions form {
+  display: flex;
+  gap: 6px;
+}
+
+.clean-diagnostic-operational-exit {
+  border-top: 1px solid #dbe3e8;
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.clean-stock-contract {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.clean-stock-state-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.clean-stock-state-line span {
+  background: #eef2f4;
+  color: #65737b;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: .76rem;
+}
+
+.clean-stock-unavailable {
+  color: #58666e;
+}
+
+.clean-stock-needs-list {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-add-phase,
+.clean-add-phase form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clean-add-phase {
+  justify-content: space-between;
+}
+
+.clean-add-phase > div {
+  display: grid;
+  gap: 3px;
+}
+
+.clean-add-phase span {
+  color: #62717a;
+  font-size: .84rem;
+}
+
+@media (max-width: 900px) {
+  .clean-history-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-diagnostic-suggestions article,
+  .clean-stock-needs-list article,
+  .clean-history-preview > summary,
+  .clean-add-phase,
+  .clean-add-phase form {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

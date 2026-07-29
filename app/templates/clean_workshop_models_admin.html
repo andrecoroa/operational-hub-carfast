@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_admin" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-header-shell clean-card-wide">
+      <div class="clean-header-topbar">
+        <p class="eyebrow">Administração / Oficina</p>
+        <a class="button-link secondary-link" href="/v2-clean/admin">Voltar</a>
+      </div>
+      <div class="clean-header-hero-row single">
+        <div class="clean-header-hero-main">
+          <h2>Modelos de Oficina</h2>
+          <p>Configuração versionada de fases, campos, evidências, validações, responsáveis, diagnósticos e pontos de materiais.</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Modelos publicados</p>
+          <h3>Versões aplicáveis a novos processos</h3>
+          <p>Publicar uma nova versão não altera processos já iniciados: cada processo guarda um snapshot imutável.</p>
+        </div>
+      </div>
+      <div class="clean-admin-model-grid">
+        {% for row in template_rows %}
+          <article class="clean-admin-model-card">
+            <div>
+              <strong>{{ row.template.name }}</strong>
+              <span>{{ row.template.description }}</span>
+            </div>
+            <dl>
+              <div><dt>Código</dt><dd>{{ row.template.code }}</dd></div>
+              <div><dt>Motivo</dt><dd>{{ row.template.entry_reason_code or "Fallback" }}</dd></div>
+              <div><dt>Versão</dt><dd>v{{ row.latest.version_number if row.latest else "-" }}</dd></div>
+              <div><dt>Fases</dt><dd>{{ row.phase_count }}</dd></div>
+              <div><dt>Estado</dt><dd>{{ "Ativo" if row.template.active else "Inativo" }}</dd></div>
+            </dl>
+            <div class="clean-admin-model-actions">
+              <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/new-version">
+                <input name="change_note" placeholder="Nota da nova versão" required>
+                <details>
+                  <summary>Editar configuração JSON</summary>
+                  <p class="clean-field-help">A publicação cria sempre uma nova versão. Fases, campos, evidências, regras, diagnósticos e pontos de materiais podem ser ajustados neste contrato.</p>
+                  <textarea name="config_json" rows="18" spellcheck="false">{{ row.latest.config_json | tojson(indent=2) if row.latest else "{}" }}</textarea>
+                </details>
+                <button type="submit">Publicar nova versão</button>
+              </form>
+              {% if row.template.code != "general_minimum" %}
+                <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/toggle">
+                  <button class="secondary" type="submit">{{ "Desativar" if row.template.active else "Ativar" }}</button>
+                </form>
+              {% endif %}
+            </div>
+            <details>
+              <summary>Histórico de versões</summary>
+              <ul>
+                {% for version in row.versions %}
+                  <li>v{{ version.version_number }} · {{ version.status }} · {{ version.change_note or "Sem nota" }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading">
+        <div>
+          <p class="eyebrow">Motor de regras</p>
+          <h3>Catálogo de diagnósticos</h3>
+          <p>As sugestões registam a regra que as originou e exigem confirmação humana no processo.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Diagnóstico</th><th>Família</th><th>Equipamento</th><th>Aplicação</th><th>Validade</th><th>Documento</th><th>Gestão</th></tr></thead>
+          <tbody>
+            {% for item in diagnostics %}
+              <tr>
+                <td><strong>{{ item.name }}</strong><br><small>{{ item.requirement }} · {{ "ativo" if item.active else "inativo" }}</small></td>
+                <td>{{ item.family }}</td>
+                <td>{{ item.equipment or "-" }}</td>
+                <td><code>{{ item.applicability_json }}</code></td>
+                <td>{{ item.validity_days or "-" }} dias</td>
+                <td>{{ item.expected_document_type or "-" }}</td>
+                <td>
+                  <details class="clean-admin-diagnostic-editor">
+                    <summary>Editar</summary>
+                    <form method="post" action="/v2-clean/admin/workshop-diagnostics/{{ item.id }}">
+                      <label>Nome<input name="name" value="{{ item.name }}" required></label>
+                      <label>Família<input name="family" value="{{ item.family }}" required></label>
+                      <label>Equipamento<input name="equipment" value="{{ item.equipment or '' }}"></label>
+                      <label>Fase<input name="phase_code" value="{{ item.phase_code }}" required></label>
+                      <label>Obrigatoriedade
+                        <select name="requirement">
+                          {% for requirement in ["required", "recommended", "conditional"] %}
+                            <option value="{{ requirement }}" {% if item.requirement == requirement %}selected{% endif %}>{{ requirement }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+                      <label>Validade (dias)<input name="validity_days" type="number" min="0" value="{{ item.validity_days if item.validity_days is not none else '' }}"></label>
+                      <label>Documento esperado<input name="expected_document_type" value="{{ item.expected_document_type or '' }}"></label>
+                      <label>Aplicabilidade JSON<textarea name="applicability_json" rows="5">{{ item.applicability_json | tojson(indent=2) }}</textarea></label>
+                      <label>Regras históricas JSON<textarea name="history_rules_json" rows="4">{{ (item.history_rules_json or {}) | tojson(indent=2) }}</textarea></label>
+                      <label>Campos de extração JSON<textarea name="extraction_fields_json" rows="4">{{ (item.extraction_fields_json or []) | tojson(indent=2) }}</textarea></label>
+                      <label class="checkbox-label"><input name="active" type="checkbox" {% if item.active %}checked{% endif %}> Ativo</label>
+                      <button type="submit">Guardar diagnóstico</button>
+                    </form>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="clean-panel clean-card-wide clean-stock-neutral">
+      <strong>Integração Stock</strong>
+      <span>Modelos de Oficina e modelos de revisão do Stock são independentes e versionados. A ligação é apenas por referência externa.</span>
+      <em>Stock ainda não disponível</em>
+    </section>
+  </main>
+</div>
+{% endblock %}

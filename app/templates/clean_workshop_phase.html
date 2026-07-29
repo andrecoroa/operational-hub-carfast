@@ -16,9 +16,13 @@
         <div class="clean-header-hero-main">
           <h2>{{ vehicle_context.process_ref }} | {{ phase.title }}</h2>
           <p>{% if is_historical %}Reconstrução histórica: validar documentos e evidências antigas com flexibilidade nos campos indisponíveis.{% else %}{{ phase.subtitle }}{% endif %}</p>
-          {% if is_historical %}
+          {% if workshop_process %}
             <div class="clean-header-meta">
+              <span><b>Aberto em</b><em>{{ workshop_admin.opened_at.strftime("%d/%m/%Y %H:%M") if workshop_admin.opened_at else "-" }}</em></span>
+              <span><b>Autor</b><em>{{ workshop_admin.creator_name }}</em></span>
+              {% if is_historical %}
               <span class="clean-history-badge"><b>Modo</b><em>Histórico - não operacional</em></span>
+              {% endif %}
             </div>
           {% endif %}
         </div>
@@ -34,7 +38,7 @@
       <article class="clean-context-action-group">
         <div class="clean-context-action-copy">
           <strong>Ações rápidas</strong>
-          <span>Operações rápidas ligadas a este processo, à viatura e à documentação de suporte.</span>
+          <span>Operações essenciais ligadas ao processo e à viatura.</span>
         </div>
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
@@ -43,17 +47,10 @@
               <input type="hidden" name="phase" value="{{ phase_key }}">
               <button type="submit" class="button-link secondary-link">Criar tarefa</button>
             </form>
-            <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
-              <input type="hidden" name="record_type" value="problem">
-              <input type="hidden" name="phase" value="{{ phase_key }}">
-              <button type="submit" class="button-link danger-link">Criar problema</button>
-            </form>
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}
           <a class="button-link secondary-link" href="{{ vehicle_detail_href }}">Ficha da viatura</a>
-          <a class="button-link secondary-link" href="{{ vehicle_documents_href }}">Documentos</a>
-          <a class="button-link secondary-link" href="{{ task_board_href }}">Tarefas e problemas</a>
         </div>
       </article>
     </section>
@@ -67,10 +64,12 @@
         </div>
         <div class="clean-vehicle-quick-facts clean-vehicle-quick-facts-unified">
           <span><b>Unit</b><em>{{ vehicle_context.unit or "-" }}</em></span>
-          <span><b>Fornecedor</b><em>{{ vehicle_context.purchase_supplier }}</em></span>
+          <span><b>KM atuais Rentway</b><em>{{ vehicle_context.current_km }}</em></span>
+          <span><b>KM entrada</b><em>{{ workshop_process.initial_km or "-" }}</em></span>
           <span><b>Combustível</b><em>{{ vehicle_context.fuel }}</em></span>
           <span><b>Compra</b><em>{{ vehicle_context.purchase_date }}</em></span>
-          <span><b>Próx. manutenção</b><em>{{ vehicle_context.next_service_date }} · {{ vehicle_context.next_service_km }}</em></span>
+          <span><b>Próx. manutenção Rentway</b><em>{{ vehicle_context.next_service_value }}</em></span>
+          <span><b>Data manutenção</b><em>{{ vehicle_context.next_service_date }}</em></span>
           <span><b>Próxima IPO</b><em>{{ vehicle_context.next_ipo }}</em></span>
           <span><b>Chassi</b><em>{{ vehicle_context.vin }}</em></span>
         </div>
@@ -105,6 +104,9 @@
         <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
       {% endfor %}
     </section>
+    {% if phase_key in ["validacao", "diagnostico"] %}
+      {% include "_clean_workshop_history_preview.html" %}
+    {% endif %}
 
     <form class="clean-workshop-final-grid" method="post" action="/v2-clean/workshop/{{ phase_key }}/save" enctype="multipart/form-data">
       {% if workshop_process %}<input type="hidden" name="process_id" value="{{ workshop_process.id }}">{% endif %}
@@ -123,13 +125,9 @@
         {% endif %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
-            <button class="clean-substep-card active" type="button" data-target="pedido">
-              <span><b>Validação do pedido</b><em>Serviço validado após histórico</em></span>
+            <button class="clean-substep-card active" type="button" data-target="pedido_orientacao">
+              <span><b>Pedido e orientação</b><em>Decisão, prioridade, instruções e reservas</em></span>
               <strong>{{ validation_substep_status.pedido }}</strong>
-            </button>
-            <button class="clean-substep-card" type="button" data-target="orientacao">
-              <span><b>Orientação diagnóstico</b><em>Relatórios e próxima fase</em></span>
-              <strong>{{ validation_substep_status.orientacao }}</strong>
             </button>
           </aside>
 
@@ -162,14 +160,9 @@
               <p class="clean-rule-note">Regra: campanhas por executar não bloqueiam; ficam como aviso/tarefa e permitem avançar com reserva. Só risco técnico crítico impede a passagem.</p>
             </article>
 
-            <article class="clean-substep-panel active" id="clean-substep-pedido">
+            <article class="clean-substep-panel active" id="clean-substep-pedido_orientacao">
               <div class="table-heading flat-heading"><div><p class="eyebrow">Pedido</p><h3>Validação do serviço pedido</h3><p>Depois de consultar histórico, confirmas que serviço ou serviços devem seguir para diagnóstico/decisão. O pedido de entrada não é alterado.</p></div></div>
               <div class="clean-phase-field-grid">
-                <div class="clean-history-quick-actions">
-                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=work_orders" data-history-title="Folhas de obra">Consultar folhas de obra</button>
-                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=invoices" data-history-title="Faturas">Consultar faturas</button>
-                  <button type="button" data-history-preview="{{ vehicle_documents_href }}?doc_group=technical_reports" data-history-title="Relatórios anteriores">Consultar relatórios anteriores</button>
-                </div>
                 <div class="clean-service-validation-list">
                   <div class="clean-service-validation-head">
                     <strong>Serviços a validar</strong>
@@ -207,13 +200,12 @@
                     </div>
                   {% endfor %}
                 </div>
-                <label>Motivo / observação da validação<textarea name="validation_observation" rows="3" placeholder="Ex.: serviço feito há pouco tempo, km incoerente, pedido recorrente...">{{ validation_observation }}</textarea></label>
+                <label class="clean-full-label">Motivo / observação da validação<textarea name="validation_observation" rows="3" placeholder="Ex.: serviço feito há pouco tempo, km incoerente, pedido recorrente...">{{ validation_observation }}</textarea></label>
               </div>
-            </article>
-            <article class="clean-substep-panel" id="clean-substep-orientacao">
+              <div class="clean-diagnostic-operational-exit">
               <div class="table-heading flat-heading">
                 <div>
-                  <p class="eyebrow">Saída da fase</p>
+                  <p class="eyebrow">Decisão e instruções</p>
                   <h3>Orientação para Diagnóstico Técnico</h3>
                   <p>Fechar a validação administrativa com instrução clara para o técnico.</p>
                 </div>
@@ -226,6 +218,7 @@
                 </div>
                 <label class="clean-phase-exit-main">O que o técnico deve despistar<textarea name="validation_diagnostic_focus" rows="5" placeholder="Ex.: confirmar degradação do óleo, histórico BSI, telecarregamento e divergência de manutenção...">{{ phase_form.get("validation_diagnostic_focus", "") }}</textarea></label>
                 <label class="clean-phase-exit-reserve">Motivo da reserva<textarea name="validation_reserve_reason" rows="3" placeholder="Ex.: campanha por executar fica em tarefa, auditoria histórica em curso ou outra pendência operacional...">{{ phase_form.get("validation_reserve_reason", "") }}</textarea></label>
+              </div>
               </div>
             </article>
           </div>
@@ -246,10 +239,6 @@
               <span><b>Problemas identificados</b><em>Registar evidências</em></span>
               <strong class="warn">{{ diagnostic_form_status.problemas }}</strong>
             </button>
-            <button class="clean-substep-card" type="button" data-target="saida-diagnostico">
-              <span><b>Saída diagnóstico</b><em>Orientar inspeção técnica</em></span>
-              <strong>{{ diagnostic_form_status.saida }}</strong>
-            </button>
           </aside>
 
           <div class="clean-substep-detail">
@@ -265,6 +254,24 @@
               {% if not technical_reports %}
                 <div class="clean-rule-note">
                   Este processo ainda não tem relatórios carregados. Começa por anexar pelo menos um relatório técnico para abrir a validação de dados.
+                </div>
+              {% endif %}
+              {% if diagnostic_suggestions %}
+                <div class="clean-diagnostic-suggestions">
+                  <strong>Sugestões do motor de regras</strong>
+                  {% for row in diagnostic_suggestions %}
+                    <article>
+                      <div>
+                        <b>{{ row.catalog.name }}</b>
+                        <span>{{ row.catalog.requirement }} · {{ row.catalog.family }} · validade {{ row.catalog.validity_days or "-" }} dias</span>
+                        <em>{{ row.suggestion.explanation }}</em>
+                      </div>
+                      <form method="post" action="/v2-clean/workshop/diagnostic-suggestions/{{ row.suggestion.id }}/confirm">
+                        <button type="submit" name="decision" value="confirmed" {% if row.suggestion.status == "confirmed" %}disabled{% endif %}>Confirmar</button>
+                        <button class="secondary" type="submit" name="decision" value="dismissed" {% if row.suggestion.status == "dismissed" %}disabled{% endif %}>Não aplicar</button>
+                      </form>
+                    </article>
+                  {% endfor %}
                 </div>
               {% endif %}
               <div class="clean-report-list">
@@ -415,13 +422,12 @@
                 <label>Evidência<textarea name="diagnostic_problem_evidence" rows="3" placeholder="Campo, valor, página ou documento que prova o problema...">{{ phase_form.get("diagnostic_problem_evidence", "") }}</textarea></label>
                 <label>Ação proposta<textarea name="diagnostic_problem_action" rows="3" placeholder="Abrir problema, criar tarefa, discutir com Stellantis, etc.">{{ phase_form.get("diagnostic_problem_action", "") }}</textarea></label>
               </div>
-            </article>
-            <article class="clean-substep-panel" id="clean-substep-saida-diagnostico">
+              <div class="clean-diagnostic-operational-exit">
               <div class="table-heading flat-heading">
                 <div>
-                  <p class="eyebrow">Saída da fase</p>
-                  <h3>Orientação para Inspeção Técnica</h3>
-                  <p>Transformar o diagnóstico em instruções objetivas para a inspeção física.</p>
+                  <p class="eyebrow">Fecho operacional</p>
+                  <h3>Conclusão e orientação para Inspeção Técnica</h3>
+                  <p>Fechar o diagnóstico e transformar o resultado em instruções objetivas no mesmo ecrã.</p>
                 </div>
               </div>
               <div class="clean-phase-exit-standard">
@@ -432,6 +438,7 @@
                 </div>
                 <label class="clean-phase-exit-reserve">Conclusão do diagnóstico<textarea name="diagnostic_conclusion" rows="4" placeholder="O que ficou provado, o que falta confirmar e quais os pontos que devem seguir para inspeção...">{{ phase_form.get("diagnostic_conclusion", "") }}</textarea></label>
                 <label class="clean-phase-exit-reserve">Reserva / pendência<textarea name="diagnostic_reserve_reason" rows="3" placeholder="Registar motivo da reserva, pendência, responsável ou condição para avançar...">{{ phase_form.get("diagnostic_reserve_reason", "") }}</textarea></label>
+              </div>
               </div>
             </article>
           </div>
@@ -695,6 +702,43 @@
                     </div>
                   {% endfor %}
                 </div>
+                <section class="clean-stock-contract">
+                  <div>
+                    <h4>Necessidade estruturada de material</h4>
+                    <p>A Oficina regista a operação e a origem. Disponibilidade, reserva, custos e movimentos serão responsabilidade do futuro Stock.</p>
+                  </div>
+                  <div class="clean-phase-field-grid">
+                    <label>Origem<select name="origin">
+                      <option value="entry">Entrada</option>
+                      <option value="diagnostic">Diagnóstico</option>
+                      <option value="inspection">Inspeção</option>
+                      <option value="repair" selected>Reparação</option>
+                    </select></label>
+                    <label>Operação<input name="operation_label" value="Material para reparação"></label>
+                    <label>Código da operação<input name="operation_code" value="repair_material"></label>
+                    <label>Código/referência<input name="material_code"></label>
+                    <label>Material<input name="material_description" placeholder="Descrição objetiva"></label>
+                    <label>Quantidade<input name="requested_quantity" placeholder="Ex.: 2 un."></label>
+                  </div>
+                  <button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Registar necessidade</button>
+                  <div class="clean-stock-state-line" aria-label="Estados previstos da integração Stock">
+                    <span>Solicitado</span><span>Reserva parcial</span><span>Reserva total</span><span>Entregue</span><span>Aplicado</span><span>Devolvido</span>
+                  </div>
+                  <strong class="clean-stock-unavailable">Stock ainda não disponível</strong>
+                  {% if material_needs %}
+                    <div class="clean-stock-needs-list">
+                      {% for need in material_needs %}
+                        <article>
+                          <div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · origem {{ need.origin }} · {{ need.operation_label }}</span></div>
+                          <em>{{ "Stock ainda não disponível" if need.stock_status == "unavailable" else need.stock_status }}</em>
+                          {% if need.stock_status == "delivered" %}
+                            <button type="submit" formmethod="post" formaction="/v2-clean/workshop/material-needs/{{ need.id }}/confirm-applied" formnovalidate>Confirmar aplicação</button>
+                          {% endif %}
+                        </article>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </section>
                 <label>Fora da autorização / trabalhos adicionais não autorizados<textarea name="repair_outside_authorization" rows="5" placeholder="Registar exclusões, material não autorizado ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
               </div>
             </article>

@@ -1,0 +1,31 @@
+{% set history_count = history_preview.processes|length + history_preview.records|length + history_preview.diagnostics|length %}
+<details class="clean-panel clean-card-wide clean-history-preview" data-history-preview="integrated" {% if history_count and phase_key in ["validacao", "diagnostico"] %}open{% endif %}>
+  <summary>
+    <span><strong>Histórico integrado da viatura</strong><em>{{ history_count }} registos recentes</em></span>
+    <small>Processos, folhas de obra/faturas/relatórios e diagnósticos por data real</small>
+  </summary>
+  {% if history_count %}
+    <div class="clean-history-preview-grid">
+      <section>
+        <h4>Processos anteriores</h4>
+        {% for item in history_preview.processes %}
+          <article><strong>{{ item.reference }}</strong><span>{{ item.date.strftime("%d/%m/%Y %H:%M") if item.date else "-" }} · {{ item.status }}</span><em>{{ item.title }}</em></article>
+        {% else %}<p>Sem processos anteriores.</p>{% endfor %}
+      </section>
+      <section>
+        <h4>Registos documentais</h4>
+        {% for item in history_preview.records %}
+          <article><strong>{{ item.type }}</strong><span>{{ item.date.strftime("%d/%m/%Y") if item.date else "-" }}{% if item.km %} · {{ item.km }} km{% endif %}</span><em>{{ item.title }} · {{ item.source }}</em></article>
+        {% else %}<p>Sem registos documentais recentes.</p>{% endfor %}
+      </section>
+      <section>
+        <h4>Diagnósticos</h4>
+        {% for item in history_preview.diagnostics %}
+          <article><strong>{{ item.type }}</strong><span>{{ item.date.strftime("%d/%m/%Y %H:%M") if item.date else "-" }}{% if item.km %} · {{ item.km }} km{% endif %}</span><em>{{ item.status }} · {{ item.source }}</em></article>
+        {% else %}<p>Sem diagnósticos anteriores.</p>{% endfor %}
+      </section>
+    </div>
+  {% else %}
+    <p class="clean-empty-state">Ainda não existem processos, registos documentais ou diagnósticos anteriores associados à viatura.</p>
+  {% endif %}
+</details>

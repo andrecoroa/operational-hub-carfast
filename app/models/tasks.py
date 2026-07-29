@@ -26,6 +26,7 @@ class Task(TimestampMixin, Base):
     plate: Mapped[str | None] = mapped_column(String(40), index=True)
     reservation_number: Mapped[str | None] = mapped_column(String(120), index=True)
     contract_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    invoice_number: Mapped[str | None] = mapped_column(String(120), index=True)
     station: Mapped[str | None] = mapped_column(String(120), index=True)
     department: Mapped[str | None] = mapped_column(String(120), index=True)
     external_source_id: Mapped[str | None] = mapped_column(String(255), index=True)

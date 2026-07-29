@@ -306,3 +306,51 @@ def test_workshop_record_action_opens_prefilled_task_form(authenticated_client, 
     assert "Revisão programada" in center.text
     assert "Ruído no motor" in center.text
     assert 'value="CC-22-DD"' in center.text
+
+
+def test_clean_task_can_move_to_audit_and_keeps_business_context(authenticated_client, db_session):
+    created = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Auditar fatura",
+            "workspace": "operational",
+            "plate": "AA-22-CC",
+            "reservation_number": "RES-42",
+            "contract_number": "CONT-9",
+            "invoice_number": "FAC/2026/88",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Auditar fatura"))
+    assert task.reservation_number == "RES-42"
+    assert task.contract_number == "CONT-9"
+    assert task.invoice_number == "FAC/2026/88"
+
+    updated = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/update",
+        data={
+            "title": task.title,
+            "workspace": "audit",
+            "category": "documents",
+            "subcategory": "invoice",
+            "plate": task.plate,
+            "reservation_number": task.reservation_number,
+            "contract_number": task.contract_number,
+            "invoice_number": task.invoice_number,
+            "status": "new",
+            "priority": "normal",
+            "return_url": "/v2-clean/tasks?workspace=audit",
+        },
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    db_session.refresh(task)
+    assert task.task_type == "audit_task"
+    assert task.category == "documents"
+    assert task.subcategory == "invoice"
+
+    audit_page = authenticated_client.get("/v2-clean/tasks?workspace=audit")
+    assert audit_page.status_code == 200
+    assert "Auditar fatura" in audit_page.text
+    assert "FAC/2026/88" in audit_page.text

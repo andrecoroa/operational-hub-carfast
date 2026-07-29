@@ -32,12 +32,14 @@
       <div class="clean-alert-warning">Este email já deu origem a uma tarefa.</div>
     {% elif request.query_params.get("error") == "forbidden" %}
       <div class="clean-alert-warning">Não tens permissão para esta fila ou ação.</div>
+    {% elif request.query_params.get("error") == "assignment_not_allowed" or request.query_params.get("assignment_not_allowed") %}
+      <div class="clean-alert-warning">A atribuição não respeita a hierarquia ou as permissões da fila. Usa Solicitar suporte para pedir intervenção a um nível superior.</div>
     {% endif %}
 
-    <section class="clean-process-kpi-row" aria-label="Indicadores">
+    <section class="clean-process-kpi-row clean-task-kpis-compact" aria-label="Indicadores">
       <article><span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>visíveis</em></article>
       <article><span>Abertas</span><strong>{{ task_metrics.open }}</strong><em>tarefas</em></article>
-      <article><span>Problemas</span><strong>{{ task_metrics.problems }}</strong><em>da oficina</em></article>
+      <article><span>Auditoria</span><strong>{{ task_metrics.audit }}</strong><em>por tratar</em></article>
       <article><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></article>
     </section>
 
@@ -75,12 +77,9 @@
             </label>
             <label>Prazo<input type="date" name="due_on"></label>
             <label>Matrícula<input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE"></label>
-            <label>Tipo
-              <select name="record_type">
-                <option value="task">Tarefa</option>
-                <option value="problem" data-workshop-only {% if prefill.record_type == "problem" %}selected{% endif %}>Problema de Oficina</option>
-              </select>
-            </label>
+            <label>Reserva<input name="reservation_number"></label>
+            <label>Contrato<input name="contract_number"></label>
+            <label>N.º fatura<input name="invoice_number"></label>
             <label class="span-2">Descrição<textarea name="description" rows="3">{{ prefill.description }}</textarea></label>
             <details class="clean-task-email-origin span-2">
               <summary>Criada a partir de email</summary>
@@ -134,7 +133,7 @@
           <thead><tr><th>Prioridade</th><th>Tarefa</th><th>Contexto</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead>
           <tbody>
           {% for task in tasks %}
-            {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
+            {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "administration" if task.task_type == "administration_task" else "operational" %}
             {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
             <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
               <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
@@ -156,7 +155,7 @@
 </div>
 
 {% for task in tasks %}
-  {% set task_workspace = "workshop" if task.task_type in ["workshop_task", "workshop_audit"] else "administration" if task.task_type == "administration_task" else "operational" %}
+  {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "administration" if task.task_type == "administration_task" else "operational" %}
   {% set can_write = task_workspace in writable_workspaces %}
   <section class="clean-task-preview" id="task-preview-{{ task.id }}" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="clean-task-preview-backdrop" data-task-close></div>
@@ -176,7 +175,10 @@
             <div class="clean-task-context-line">
               <span>Matrícula <b>{{ task.plate or "-" }}</b></span>
               <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
-              {% if task.entity_id %}<span>Referência <b>{{ task.entity_id }}</b></span>{% endif %}
+              <span>Fila <b>{{ task_workspace_labels.get(task_workspace) }}</b></span>
+              <span>Reserva <b>{{ task.reservation_number or "-" }}</b></span>
+              <span>Contrato <b>{{ task.contract_number or "-" }}</b></span>
+              <span>Fatura <b>{{ task.invoice_number or "-" }}</b></span>
             </div>
             {% if email_by_task.get(task.id) %}
               {% set email = email_by_task.get(task.id) %}
@@ -189,15 +191,20 @@
             <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
               <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
               <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
+              <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
+              <label class="span-2">Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
+              <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
               <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
               <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
-              <label>Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
+              <label>Fila<select name="workspace">{% for code, label in task_workspace_options if code in writable_workspaces %}<option value="{{ code }}" {% if code == task_workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Área<input name="category" value="{{ task.category or '' }}"></label>
+              <label>Categoria<input name="subcategory" value="{{ task.subcategory or '' }}"></label>
               <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
-              <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
-              <label class="span-2">Detalhe da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
-              <input type="hidden" name="category" value="{{ task.category or '' }}">
+              <label>Reserva<input name="reservation_number" value="{{ task.reservation_number or '' }}"></label>
+              <label>Contrato<input name="contract_number" value="{{ task.contract_number or '' }}"></label>
+              <label>N.º fatura<input name="invoice_number" value="{{ task.invoice_number or '' }}"></label>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span><button type="submit">Guardar</button></div>
             </form>
           </section>
@@ -224,48 +231,46 @@
         <aside class="clean-task-preview-side">
           <section><h3>Responsabilidade</h3><dl><dt>Responsável</dt><dd>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd><dt>Prazo</dt><dd>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "Sem prazo" }}</dd></dl></section>
           <section>
-            <h3>Intervenientes</h3>
-            {% for participant in participants_by_task.get(task.id, []) %}<p>{{ users_by_id.get(participant.user_id).name if users_by_id.get(participant.user_id) else "Utilizador" }} <small>{{ {"participant":"Participante","mentioned":"Identificado","follower":"A acompanhar"}.get(participant.role, participant.role) }}</small></p>{% else %}<p>Sem intervenientes.</p>{% endfor %}
+            <h3>Colaboração</h3>
+            <p><b>Criador:</b> {{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</p>
+            {% for participant in participants_by_task.get(task.id, []) %}<p>{{ users_by_id.get(participant.user_id).name if users_by_id.get(participant.user_id) else "Utilizador" }} <small>Colaborador</small></p>{% else %}<p>Sem colaboradores.</p>{% endfor %}
+            <form method="post" action="/v2-clean/tasks/{{ task.id }}/participants/self" class="clean-task-side-form">
+              <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+              {% set current_is_follower = participants_by_task.get(task.id, [])|selectattr("user_id", "equalto", current_user_id)|list %}
+              <button name="action" value="{{ 'leave' if current_is_follower else 'join' }}">{{ "Deixar de acompanhar" if current_is_follower else "Acompanhar tarefa" }}</button>
+            </form>
             {% if can_write %}
               <form method="post" action="/v2-clean/tasks/{{ task.id }}/participants" class="clean-task-side-form">
                 <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                <select name="participant_user_id" required><option value="">Selecionar utilizador</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
-                <select name="role"><option value="participant">Participante</option><option value="mentioned">Pedir ajuda / identificar</option><option value="follower">A acompanhar</option></select>
-                <button>Adicionar</button>
+                <select name="participant_user_id" required><option value="">Acrescentar colaborador</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
+                <input type="hidden" name="role" value="follower">
+                <button>Acrescentar</button>
               </form>
               <form method="post" action="/v2-clean/tasks/{{ task.id }}/help" class="clean-task-side-form">
                 <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                <select name="requested_user_id" required><option value="">Pedir ajuda a...</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
-                <input name="message" placeholder="Ajuda necessária">
-                <button>Pedir ajuda</button>
+                <select name="requested_user_id" required><option value="">Solicitar suporte a...</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
+                <input name="message" placeholder="Suporte necessário">
+                <button>Solicitar suporte</button>
               </form>
             {% endif %}
             {% for help in help_requests_by_task.get(task.id, []) %}
               <div class="clean-task-help-request">
                 <b>{{ users_by_id.get(help.requested_user_id).name if users_by_id.get(help.requested_user_id) else "Utilizador" }}</b>
-                <span>{{ {"pending":"Pedido pendente","accepted":"Ajuda aceite","rejected":"Pedido recusado"}.get(help.status, help.status) }}</span>
+                <span>{{ {"pending":"Suporte pendente","responded":"Respondido","cancelled":"Cancelado","accepted":"Respondido","rejected":"Cancelado"}.get(help.status, help.status) }}</span>
                 {% if help.message %}<p>{{ help.message }}</p>{% endif %}
                 {% if help.requested_user_id == current_user_id and help.status == "pending" %}
                   <form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}">
                     <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                    <button name="response" value="accepted">Aceitar</button>
-                    <button name="response" value="rejected" class="secondary">Recusar</button>
+                    <button name="response" value="responded">Marcar respondido</button>
+                    <button name="response" value="cancelled" class="secondary">Cancelar</button>
                   </form>
                 {% endif %}
               </div>
             {% endfor %}
           </section>
-          <section>
+          <section {% if not documents_by_task.get(task.id) %}hidden{% endif %}>
             <h3>Documentos</h3>
             {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
-            {% if can_write %}
-              <form method="post" action="/v2-clean/tasks/{{ task.id }}/documents" class="clean-task-side-form">
-                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                <select name="document_id" required><option value="">Associar documento existente</option>{% for document in recent_documents %}<option value="{{ document.id }}">{{ document.title or document.original_name }}</option>{% endfor %}</select>
-                <button>Associar</button>
-              </form>
-              <a class="clean-task-document-upload-link" href="/v2-clean/documents/triage">Importar novo documento na Triagem</a>
-            {% endif %}
           </section>
           <section class="clean-task-close-zone">
             {% if can_write %}
@@ -283,16 +288,6 @@
 {% endfor %}
 
 <script>
-  const workspace = document.querySelector('.clean-task-create-form select[name="workspace"]');
-  const recordType = document.querySelector('.clean-task-create-form select[name="record_type"]');
-  const syncProblem = () => {
-    const option = recordType?.querySelector("[data-workshop-only]");
-    if (!option || !workspace) return;
-    option.hidden = workspace.value !== "workshop";
-    option.disabled = workspace.value !== "workshop";
-    if (option.disabled && recordType.value === "problem") recordType.value = "task";
-  };
-  workspace?.addEventListener("change", syncProblem); syncProblem();
   document.querySelector("[data-task-create-open]")?.addEventListener("click", () => {
     const creator = document.getElementById("new-task"); if (!creator) return;
     creator.open = true; creator.scrollIntoView({behavior:"smooth", block:"start"});

@@ -2022,6 +2022,7 @@ RECURRENCE_RULE_LABELS = dict(RECURRENCE_RULES)
 TASK_TYPES = [
     ("operational_task", "Tarefa operacional"),
     ("workshop_task", "Tarefa da oficina"),
+    ("audit_task", "Tarefa de auditoria"),
     ("management_task", "Tarefa de gestão"),
     ("administration_task", "Tarefa de administração"),
     ("request_info", "Pedido / Informação"),
@@ -2058,11 +2059,13 @@ TASK_BOARD_TYPE_LABELS = {
     "technical_incident": "Incidentes técnicos",
     "entity_incident": "Incidentes entidade",
     "workshop_audit": "Tarefas de auditoria",
+    "audit_task": "Tarefas de auditoria",
 }
 
 TASK_WORKSPACES = [
     ("operational", "Operacional"),
     ("workshop", "Oficina"),
+    ("audit", "Auditoria"),
     ("administration", "Administração"),
 ]
 TASK_WORKSPACE_LABELS = dict(TASK_WORKSPACES)
@@ -2099,9 +2102,21 @@ TASK_WORKSPACE_CONFIG = {
         "description": "Tarefas técnicas, registos rápidos e auditoria da oficina.",
         "default_task_type": "workshop_task",
         "primary_task_types": ["workshop_task"],
-        "secondary_task_types": ["workshop_audit"],
+        "secondary_task_types": [],
         "default_category": "workshop",
         "default_team_code": "workshop",
+    },
+    "audit": {
+        "label": "Auditoria",
+        "eyebrow": "Controlo e conformidade",
+        "title": "Fila de auditoria",
+        "breadcrumb": "Centro de Tarefas > Auditoria",
+        "description": "Validação documental, faturas, folhas de obra e verificações de conformidade.",
+        "default_task_type": "audit_task",
+        "primary_task_types": ["audit_task", "workshop_audit"],
+        "secondary_task_types": [],
+        "default_category": "documents",
+        "default_team_code": "support",
     },
     "administration": {
         "label": "Administração",
@@ -2135,6 +2150,13 @@ QUICK_RECORD_TYPES_BY_WORKSPACE = {
         ("anomaly_incident", "Anomalia / Incidente"),
         ("material", "Material"),
         ("evidence", "Evidência"),
+        ("other", "Outro"),
+    ],
+    "audit": [
+        ("document_check", "Validação documental"),
+        ("invoice_check", "Fatura"),
+        ("work_order_check", "Folha de obra"),
+        ("compliance", "Conformidade"),
         ("other", "Outro"),
     ],
     "administration": [
@@ -3331,6 +3353,14 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
             "Ligado ao modulo",
         ),
         (
+            "audit",
+            "AU",
+            "Auditoria",
+            "Validação documental, faturas, folhas de obra e conformidade.",
+            ["Faturas", "Folhas de obra", "Conformidade"],
+            "Controlo",
+        ),
+        (
             "administration",
             "AD",
             "Administração",
@@ -3744,6 +3774,17 @@ def clean_tasks_center(
                 )
             )
             or 0,
+            "audit": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES["audit"])),
+                    Task.source == "v2_clean",
+                    Task.closed_at.is_(None),
+                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                )
+            )
+            or 0,
         }
         task_workspace_options = [
             ("mine", "Minhas"),
@@ -3791,7 +3832,14 @@ def clean_tasks_center(
                 "prefill": {
                     "record_type": effective_record_type,
                     "workspace": (
-                        active_workspace
+                        "audit"
+                        if "audit" in writable_workspaces
+                        and (
+                            "invoice" in entity_type.lower()
+                            or "document" in entity_type.lower()
+                            or "work_order" in entity_type.lower()
+                        )
+                        else active_workspace
                         if active_workspace in writable_workspaces
                         else ("workshop" if "workshop" in writable_workspaces else writable_workspaces[0] if writable_workspaces else "")
                     ),
@@ -3819,6 +3867,9 @@ def clean_tasks_create(
     record_type: str = Form("task"),
     priority: str = Form("normal"),
     plate: str = Form(""),
+    reservation_number: str = Form(""),
+    contract_number: str = Form(""),
+    invoice_number: str = Form(""),
     due_on: str = Form(""),
     category: str = Form(""),
     entity_type: str = Form(""),
@@ -3855,6 +3906,10 @@ def clean_tasks_create(
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
         assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
+        if assignee and not is_assignment_allowed_for_workspace(
+            db, assignee.id, clean_workspace, actor_user_id=user_id
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
         clean_source = "email" if source == "email" and email_message_id.strip() else "v2_clean"
         clean_message_id = email_message_id.strip()[:255]
         if clean_message_id and db.scalar(
@@ -3871,6 +3926,9 @@ def clean_tasks_create(
             status="new",
             priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
             plate=normalized_plate,
+            reservation_number=reservation_number.strip()[:120] or None,
+            contract_number=contract_number.strip()[:120] or None,
+            invoice_number=invoice_number.strip()[:120] or None,
             due_on=parsed_due,
             entity_type=entity_type.strip()[:120] or None,
             entity_id=entity_id.strip()[:120] or None,
@@ -3940,7 +3998,12 @@ def clean_tasks_update(
     priority: str = Form("normal"),
     due_on: str = Form(""),
     category: str = Form(""),
+    subcategory: str = Form(""),
+    workspace: str = Form(""),
     plate: str = Form(""),
+    reservation_number: str = Form(""),
+    contract_number: str = Form(""),
+    invoice_number: str = Form(""),
     assigned_to_id: str = Form(""),
     waiting_reason: str = Form(""),
     waiting_reason_detail: str = Form(""),
@@ -3969,8 +4032,18 @@ def clean_tasks_update(
         task_workspace = workspace_for_task_type(task.task_type)
         if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        target_workspace = normalize_task_workspace(workspace or task_workspace)
+        if target_workspace != task_workspace and not user_can_access_task_workspace(
+            db, current_user, target_workspace, write=True
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
         assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
+        if assignee and not is_assignment_allowed_for_workspace(
+            db, assignee.id, target_workspace, actor_user_id=user_id
+        ):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="assignment_not_allowed")
+        target_config = TASK_WORKSPACE_CONFIG[target_workspace]
         changes = {
             "title": (task.title, clean_title[:200]),
             "description": (task.description, description.strip() or None),
@@ -3978,7 +4051,12 @@ def clean_tasks_update(
             "priority": (task.priority, clean_priority),
             "due_on": (task.due_on, parsed_due),
             "category": (task.category, category.strip()[:80] or None),
+            "subcategory": (task.subcategory, subcategory.strip()[:120] or None),
+            "task_type": (task.task_type, target_config["default_task_type"]),
             "plate": (task.plate, normalized_plate),
+            "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
+            "contract_number": (task.contract_number, contract_number.strip()[:120] or None),
+            "invoice_number": (task.invoice_number, invoice_number.strip()[:120] or None),
             "assigned_to_id": (task.assigned_to_id, assignee.id if assignee and assignee.active else None),
             "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
             "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
@@ -4148,7 +4226,7 @@ def clean_tasks_participant(
 ):
     user_id = get_web_user_id(request)
     parsed_user_id = parse_int_from_text(participant_user_id)
-    clean_role = role if role in {"participant", "mentioned", "follower"} else "participant"
+    clean_role = "follower"
     if not user_id or not parsed_user_id:
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
@@ -4182,6 +4260,46 @@ def clean_tasks_participant(
             )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="participant_added")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/participants/self", response_class=HTMLResponse)
+def clean_tasks_participant_self(
+    request: Request,
+    task_id: int,
+    action: str = Form("join"),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if not task or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type)):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        participant = db.scalar(
+            select(TaskParticipant).where(
+                TaskParticipant.task_id == task.id,
+                TaskParticipant.user_id == user_id,
+                TaskParticipant.role == "follower",
+            )
+        )
+        if action == "leave":
+            if participant:
+                participant.status = "inactive"
+        elif participant:
+            participant.status = "active"
+        else:
+            db.add(
+                TaskParticipant(
+                    task_id=task.id,
+                    user_id=user_id,
+                    role="follower",
+                    created_by_id=user_id,
+                )
+            )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="participant_updated")
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/help", response_class=HTMLResponse)
@@ -4228,7 +4346,7 @@ def clean_tasks_help_response(
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
-    clean_response = response if response in {"accepted", "rejected"} else "accepted"
+    clean_response = response if response in {"responded", "cancelled"} else "responded"
     if not user_id:
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
@@ -4237,23 +4355,6 @@ def clean_tasks_help_response(
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         help_request.status = clean_response
         help_request.responded_at = datetime.now(UTC)
-        if clean_response == "accepted":
-            exists = db.scalar(
-                select(TaskParticipant).where(
-                    TaskParticipant.task_id == task_id,
-                    TaskParticipant.user_id == user_id,
-                    TaskParticipant.role == "participant",
-                )
-            )
-            if not exists:
-                db.add(
-                    TaskParticipant(
-                        task_id=task_id,
-                        user_id=user_id,
-                        role="participant",
-                        created_by_id=user_id,
-                    )
-                )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_answered")
 
@@ -28861,7 +28962,9 @@ def assignable_users_for_workspace(users: list[User], workspace: str) -> list[Us
     ]
 
 
-def is_assignment_allowed_for_workspace(db, user_id: int | None, workspace: str) -> bool:
+def is_assignment_allowed_for_workspace(
+    db, user_id: int | None, workspace: str, *, actor_user_id: int | None = None
+) -> bool:
     if not user_id:
         return True
     user = db.get(User, user_id)
@@ -28869,6 +28972,32 @@ def is_assignment_allowed_for_workspace(db, user_id: int | None, workspace: str)
         return False
     if user.name.strip().lower() in TASK_NEVER_ASSIGNMENT_NAMES:
         return False
+    if actor_user_id and actor_user_id != user_id:
+        actor = db.get(User, actor_user_id)
+        if not actor:
+            return False
+        role_rank = {
+            "admin": 50,
+            "user_admin": 45,
+            "functional_admin": 40,
+            "manager": 30,
+            "auditor": 25,
+            "operator": 20,
+            "viewer": 10,
+        }
+        actor_roles = db.scalars(
+            select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == actor.id)
+        ).all()
+        target_roles = db.scalars(
+            select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id)
+        ).all()
+        actor_rank = max((role_rank.get(code, 0) for code in actor_roles), default=0)
+        target_rank = max((role_rank.get(code, 0) for code in target_roles), default=0)
+        actor_permissions = get_user_permission_codes(db, actor)
+        if target_rank > actor_rank:
+            return False
+        if target_rank == actor_rank and "tasks.assign.peer" not in actor_permissions and "admin.manage" not in actor_permissions:
+            return False
     if normalize_task_workspace(workspace) == "administration":
         return True
     return user.email.strip().lower() not in TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS

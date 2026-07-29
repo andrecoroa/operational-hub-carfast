@@ -71,6 +71,37 @@ class DocumentEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DocumentWorkflowState(TimestampMixin, Base):
+    """Independent operational dimensions for the document lifecycle.
+
+    ``Document.status`` remains available while the Clean experience is rolled
+    out.  New code should use these dimensions instead of overloading that
+    legacy field with ingestion, extraction and validation meanings.
+    """
+
+    __tablename__ = "document_workflow_states"
+    __table_args__ = (UniqueConstraint("document_id", name="uq_document_workflow_state_document"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ingestion_status: Mapped[str] = mapped_column(String(40), default="received", index=True)
+    association_status: Mapped[str] = mapped_column(String(40), default="unassociated", index=True)
+    extraction_status: Mapped[str] = mapped_column(String(40), default="not_requested", index=True)
+    validation_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    destination_status: Mapped[str] = mapped_column(String(40), default="triage", index=True)
+    invoice_nature: Mapped[str | None] = mapped_column(String(40), index=True)
+    suggested_invoice_nature: Mapped[str | None] = mapped_column(String(40), index=True)
+    suggestion_confidence: Mapped[float | None] = mapped_column(Float)
+    human_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+
+
 class VehicleDocumentRecord(TimestampMixin, Base):
     __tablename__ = "vehicle_document_records"
 

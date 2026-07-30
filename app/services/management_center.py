@@ -35,6 +35,7 @@ from app.services.spreadsheets import (
     iter_xlsx_rows,
     normalize_header,
 )
+from app.services.storage import persistent_import_storage_root
 
 MANAGEMENT_CENTER_TYPE_CODE = "claims_ar"
 MANAGEMENT_CENTER_TYPE_NAME = "Sinistros / AR"
@@ -42,7 +43,6 @@ MANAGEMENT_CENTER_SOURCE_SYSTEM = "carfast_management_center"
 AR_IMPORT_TYPE = "claims_ar_rentway_ar"
 CRAR_PER_VEHICLE_IMPORT_TYPE = "claims_ar_rentway_per_vehicle"
 REFSTRO_IMPORT_TYPE = "claims_ar_refstro"
-MANAGEMENT_STORAGE_DIR = Path("data/imports/management_center")
 
 CARFAST_CLAIM_PHASES = [
     "1.0 ABERTO",
@@ -191,8 +191,7 @@ def row_hash(raw: dict[str, Any]) -> str:
 
 
 def management_storage_root() -> Path:
-    MANAGEMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    return MANAGEMENT_STORAGE_DIR
+    return persistent_import_storage_root("management_center")
 
 
 def store_management_upload(source_path: Path, original_name: str) -> Path:

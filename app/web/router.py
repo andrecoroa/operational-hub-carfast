@@ -771,6 +771,19 @@ def can_view_documentation(request: Request) -> bool:
     )
 
 
+def can_view_workshop(request: Request) -> bool:
+    return has_any_web_permission(request, "workshop.read", "workshop.write", "admin.manage")
+
+
+def can_view_management_documents(request: Request) -> bool:
+    return has_any_web_permission(
+        request,
+        "management_center.read",
+        "management_center.write",
+        "admin.manage",
+    )
+
+
 def can_manage_documentation(request: Request) -> bool:
     return has_any_web_permission(
         request,
@@ -5508,8 +5521,11 @@ async def clean_workshop_store_phase_uploads(
 
     vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
     plate_value = normalize_identifier(str(process.plate_snapshot or ""))
-    plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
-    upload_root = APP_PROJECT_ROOT / "uploads" / "vehicle_documents" / plate_folder / phase
+    upload_root = local_document_storage_folder(
+        suggest_workshop_process_document_folder(process, vehicle, f"03_Fotos_Evidencias/{phase}"),
+        plate=plate_value,
+        vin=vehicle.vin if vehicle else None,
+    )
     stored: list[dict[str, object]] = []
 
     for form_field, (category, label) in field_map.items():
@@ -5623,33 +5639,17 @@ def clean_workshop_entry_upload_file(request: Request, process_id: int, stored_n
         original_name = str(upload.get("original_name") or safe_name)
         raw_path = Path(str(upload.get("path") or ""))
 
-    root_candidates = [
-        local_document_storage_folder(
-            f"Oficina/Entradas/{process_id}/Fotos_Evidencias",
-            plate=None,
-            vin=None,
-        ).resolve(),
-        (APP_PROJECT_ROOT / "uploads" / "workshop_entry" / str(process_id)).resolve(),
-    ]
-    allowed_roots = [
-        *root_candidates,
-        document_archive_root().resolve(),
-        (APP_PROJECT_ROOT / "uploads").resolve(),
-    ]
-    possible_paths: list[Path] = []
-    if raw_path:
-        possible_paths.append(raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path)
-    possible_paths.extend(root_path / safe_name for root_path in root_candidates)
+    archive_entry_root = local_document_storage_folder(
+        f"Oficina/Entradas/{process_id}/Fotos_Evidencias",
+        plate=None,
+        vin=None,
+    )
+    possible_paths: list[Path] = [raw_path, archive_entry_root / safe_name]
 
     resolved_path: Path | None = None
     for candidate in possible_paths:
-        try:
-            candidate_path = candidate.resolve()
-            if not any(candidate_path == root or root in candidate_path.parents for root in allowed_roots):
-                continue
-        except (OSError, ValueError):
-            continue
-        if candidate_path.exists() and candidate_path.is_file():
+        candidate_path = _resolved_archive_file(candidate)
+        if candidate_path:
             resolved_path = candidate_path
             break
 
@@ -5697,15 +5697,8 @@ def clean_workshop_phase_upload_file(request: Request, process_id: int, stored_n
 
     if not upload:
         return RedirectResponse(f"/v2-clean/workshop?file_missing=1", status_code=303)
-    raw_path = Path(str(upload.get("path") or ""))
-    file_path = raw_path if raw_path.is_absolute() else APP_PROJECT_ROOT / raw_path
-    root_path = (APP_PROJECT_ROOT / "uploads" / "vehicle_documents").resolve()
-    try:
-        resolved_path = file_path.resolve()
-        resolved_path.relative_to(root_path)
-    except (OSError, ValueError):
-        return RedirectResponse("/v2-clean/workshop?file_missing=1", status_code=303)
-    if not resolved_path.exists() or not resolved_path.is_file():
+    resolved_path = _resolved_archive_file(str(upload.get("path") or ""))
+    if not resolved_path:
         return RedirectResponse("/v2-clean/workshop?file_missing=1", status_code=303)
     original_name = str(upload.get("original_name") or safe_name)
     return FileResponse(resolved_path, filename=original_name)
@@ -8783,14 +8776,20 @@ def _document_resolved_file(document: Document) -> Path | None:
     raw_path = (document.storage_path or "").strip()
     if not raw_path:
         return None
+    return _resolved_archive_file(raw_path)
+
+
+def _resolved_archive_file(raw_path: str | Path) -> Path | None:
+    root = document_archive_root().resolve()
     source_path = Path(raw_path)
     if not source_path.is_absolute():
-        source_path = APP_PROJECT_ROOT / source_path
+        source_path = root / source_path
     try:
-        resolved_path = source_path.resolve()
+        resolved_path = source_path.resolve(strict=True)
+        resolved_path.relative_to(root)
     except (OSError, ValueError):
         return None
-    if not resolved_path.exists() or not resolved_path.is_file():
+    if not resolved_path.is_file():
         return None
     return resolved_path
 
@@ -8800,12 +8799,14 @@ def clean_document_file(request: Request, document_id: int, inline: int = 1):
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    if not can_view_fleet(request):
+    if not can_view_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document or document.source not in V2_CLEAN_DOCUMENT_SOURCES:
             return RedirectResponse("/v2-clean/documents?file_missing=1", status_code=303)
+        if document.confidentiality_level == "management" and not can_view_management_documents(request):
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
         resolved_path = _document_resolved_file(document)
         if not resolved_path:
             return RedirectResponse(f"/v2-clean/documents/{document_id}?file_missing=1", status_code=303)
@@ -18636,8 +18637,11 @@ async def clean_workshop_technical_report_upload(
         vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
 
         plate_value = (process.plate_snapshot or "").strip().upper()
-        plate_folder = re.sub(r"[^A-Z0-9_-]+", "_", plate_value or f"PROCESSO_{process.id}")
-        upload_dir = APP_PROJECT_ROOT / "uploads" / "vehicle_documents" / plate_folder / "diagnosticos"
+        upload_dir = local_document_storage_folder(
+            suggest_workshop_process_document_folder(process, vehicle, "02_Relatorios_Diagnostico"),
+            plate=plate_value,
+            vin=vehicle.vin if vehicle else None,
+        )
         upload_dir.mkdir(parents=True, exist_ok=True)
         stored_name = Path(stored_name).name
         stored_path = upload_dir / stored_name
@@ -18805,15 +18809,15 @@ def clean_workshop_technical_report_file(request: Request, report_id: int):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if not can_view_workshop(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
 
     with SessionLocal() as db:
         report = db.get(WorkshopPhasedTechnicalReport, report_id)
         if not report or not report.original_link:
             return RedirectResponse("/v2-clean/workshop", status_code=303)
-        file_path = Path(str(report.original_link))
-        if not file_path.is_absolute():
-            file_path = APP_PROJECT_ROOT / file_path
-        if not file_path.exists() or not file_path.is_file():
+        file_path = _resolved_archive_file(str(report.original_link))
+        if not file_path:
             return RedirectResponse(
                 f"/v2-clean/workshop/diagnostico?process_id={report.process_id}&file_missing=1#leituras",
                 status_code=303,

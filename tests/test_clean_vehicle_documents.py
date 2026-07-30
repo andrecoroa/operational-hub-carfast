@@ -528,7 +528,8 @@ def test_clean_document_batch_vehicle_match_falls_back_to_vin(db_session):
     assert matched == vehicle
 
 
-def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, tmp_path):
+def test_clean_document_reprocess_invoice_ocr(authenticated_client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(web_router.settings, "document_archive_root", str(tmp_path))
     vehicle = _create_vehicle(db_session)
     invoice_path = tmp_path / "fatura_2026-05-15.pdf"
     invoice_path.write_bytes(
@@ -585,7 +586,9 @@ def test_clean_document_reprocess_invoice_ocr_batch_and_replace_old_metadata(
     authenticated_client,
     db_session,
     tmp_path,
+    monkeypatch,
 ):
+    monkeypatch.setattr(web_router.settings, "document_archive_root", str(tmp_path))
     vehicle = _create_vehicle(db_session)
     batch_label = "ZIP faturas-filinto.zip [20260724-010203]"
     documents = []
@@ -654,7 +657,9 @@ def test_clean_document_detail_previews_invoice_and_identifies_batch(
     authenticated_client,
     db_session,
     tmp_path,
+    monkeypatch,
 ):
+    monkeypatch.setattr(web_router.settings, "document_archive_root", str(tmp_path))
     invoice_path = tmp_path / "fatura-preview.pdf"
     pdf_content = _make_pdf("Fatura FT-8899\nData 15/05/2026\nServico 25,00")
     invoice_path.write_bytes(pdf_content)
@@ -3677,7 +3682,13 @@ B APV TX NORMAL 23,00 -61,75 -14,20 -61,75 -14,20 -75,95
     assert payload["invoice_lines"][0]["amount"] == "-44,25"
 
 
-def test_clean_document_reprocess_invoice_ocr_reports_empty_text(authenticated_client, db_session, tmp_path):
+def test_clean_document_reprocess_invoice_ocr_reports_empty_text(
+    authenticated_client,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(web_router.settings, "document_archive_root", str(tmp_path))
     vehicle = _create_vehicle(db_session)
     invoice_path = tmp_path / "fatura_scanner.jpg"
     invoice_path.write_bytes(b"not an image with readable text")

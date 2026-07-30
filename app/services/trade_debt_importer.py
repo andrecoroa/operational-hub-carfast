@@ -15,18 +15,17 @@ from sqlalchemy.orm import Session
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportRawRow
 from app.models.vehicles import Vehicle, VehicleManualField
 from app.services.audit import record_audit
+from app.services.storage import persistent_import_storage_root
 
 
 TRADE_DEBT_IMPORT_TYPE = "trade_debt"
 TRADE_DEBT_SOURCE_SYSTEM = "carfast_sales_map"
-TRADE_DEBT_STORAGE_DIR = Path("data/imports/trade_debt")
 TRADE_DEBT_SHEET = "Mapa_Base"
 FIELD_DEBT_VALUE = "debt_value"
 
 
 def trade_debt_storage_root() -> Path:
-    TRADE_DEBT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    return TRADE_DEBT_STORAGE_DIR
+    return persistent_import_storage_root("trade_debt")
 
 
 def store_trade_debt_upload(source_path: Path, original_name: str) -> Path:

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from openpyxl import Workbook
 from sqlalchemy import select
 
@@ -11,6 +13,7 @@ from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx
+from app.web import router as web_router
 from app.web.router import clean_workshop_phase_advance_error
 from app.web.router import clean_workshop_technical_reading_rows
 from app.services.users import create_user
@@ -525,8 +528,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert report is not None
     assert report.status == "unable_to_read"
     assert report.original_document_id is not None
-    assert "uploads" in str(report.original_link)
-    assert "vehicle_documents" in str(report.original_link)
+    report_path = Path(str(report.original_link)).resolve()
+    report_path.relative_to(web_router.document_archive_root().resolve())
+    assert "02_Relatorios_Diagnostico" in report_path.parts
     assert "BB-13-PT" in str(report.original_link)
 
     document = db_session.get(Document, report.original_document_id)

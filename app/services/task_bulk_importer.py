@@ -22,11 +22,11 @@ from app.services.spreadsheets import (
     iter_xlsx_rows,
     normalize_header,
 )
+from app.services.storage import persistent_import_storage_root
 
 
 TASK_BULK_IMPORT_TYPE = "task_bulk"
 TASK_BULK_SOURCE_SYSTEM = "carfast_imports"
-TASK_BULK_STORAGE_DIR = Path("data/imports/task_bulk")
 
 TASK_BULK_FIELDS = [
     ("subject", "Assunto"),
@@ -94,8 +94,7 @@ CATEGORY_ALIASES = {
 
 
 def task_bulk_storage_root() -> Path:
-    TASK_BULK_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    return TASK_BULK_STORAGE_DIR
+    return persistent_import_storage_root("task_bulk")
 
 
 def store_task_bulk_upload(source_path: Path, original_name: str) -> Path:

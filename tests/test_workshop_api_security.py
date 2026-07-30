@@ -4,6 +4,9 @@ import pytest
 from fastapi import HTTPException
 
 import app.api.routes.workshop as workshop_api
+import app.web.router as web_router
+from app.models.documents import Document
+from app.services import storage
 
 
 def test_workshop_api_rejects_anonymous_read_and_write(client):
@@ -93,3 +96,118 @@ def test_workshop_report_upload_enforces_size_limit(
 
     assert response.status_code == 413
     assert response.json()["detail"] == "O relatório excede o limite de 25 MB."
+
+
+def test_archive_file_resolution_rejects_paths_outside_configured_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    archive_root = tmp_path / "archive"
+    archive_root.mkdir()
+    inside = archive_root / "inside.pdf"
+    inside.write_bytes(b"%PDF-1.4")
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(
+        web_router.settings,
+        "document_archive_root",
+        str(archive_root),
+    )
+
+    assert web_router._resolved_archive_file(inside) == inside.resolve()
+    assert web_router._resolved_archive_file("inside.pdf") == inside.resolve()
+    assert web_router._resolved_archive_file(outside) is None
+    assert web_router._resolved_archive_file("../outside.pdf") is None
+
+
+def test_clean_document_file_rejects_outside_archive(
+    authenticated_client,
+    db_session,
+    tmp_path: Path,
+    monkeypatch,
+):
+    archive_root = tmp_path / "archive"
+    archive_root.mkdir()
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(
+        web_router.settings,
+        "document_archive_root",
+        str(archive_root),
+    )
+    document = Document(
+        title="Documento fora do arquivo",
+        document_type="workshop_supplier_invoice",
+        classification="workshop",
+        source="v2_clean_manual",
+        entry_channel="upload",
+        original_name="outside.pdf",
+        file_name="outside.pdf",
+        storage_provider="local",
+        storage_path=str(outside),
+        status="received",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.get(
+        f"/v2-clean/documents/{document.id}/file",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith(f"/v2-clean/documents/{document.id}?file_missing=1")
+
+
+def test_management_document_requires_management_permission(
+    authenticated_client,
+    db_session,
+    tmp_path: Path,
+    monkeypatch,
+):
+    archive_root = tmp_path / "archive"
+    archive_root.mkdir()
+    document_path = archive_root / "management.pdf"
+    document_path.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(
+        web_router.settings,
+        "document_archive_root",
+        str(archive_root),
+    )
+    monkeypatch.setattr(web_router, "can_view_management_documents", lambda _request: False)
+    document = Document(
+        title="Plano financeiro",
+        document_type="financial_plan",
+        classification="management",
+        source="v2_clean_manual",
+        entry_channel="upload",
+        original_name=document_path.name,
+        file_name=document_path.name,
+        storage_provider="local",
+        storage_path=str(document_path),
+        confidentiality_level="management",
+        status="received",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.get(
+        f"/v2-clean/documents/{document.id}/file",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/v2-clean?error=forbidden"
+
+
+def test_import_storage_uses_configured_persistent_archive(
+    tmp_path: Path,
+    monkeypatch,
+):
+    archive_root = tmp_path / "archive"
+    monkeypatch.setattr(storage.settings, "document_archive_root", str(archive_root))
+
+    import_root = storage.persistent_import_storage_root("task bulk")
+
+    assert import_root == (archive_root / "_imports" / "task_bulk").resolve()
+    assert import_root.is_dir()

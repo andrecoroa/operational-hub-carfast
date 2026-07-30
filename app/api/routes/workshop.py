@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -6,6 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_method_permission
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.documents import Document, DocumentEvent, DocumentLink
 from app.models.tasks import Task
@@ -52,8 +55,15 @@ from app.services.workshop_templates import (
     service_label_by_code,
 )
 
-router = APIRouter(prefix="/workshop", tags=["workshop"])
+router = APIRouter(
+    prefix="/workshop",
+    tags=["workshop"],
+    dependencies=[
+        Depends(require_method_permission("workshop.read", "workshop.write"))
+    ],
+)
 DbSession = Annotated[Session, Depends(get_db)]
+MAX_TECHNICAL_REPORT_UPLOAD_BYTES = 25 * 1024 * 1024
 
 SERVICE_CODES = {service["code"] for service in WORKSHOP_SERVICE_OPTIONS}
 ORIGIN_CODES = {origin["code"] for origin in WORKSHOP_ENTRY_ORIGINS}
@@ -105,6 +115,44 @@ REPORT_STATUSES = {
     "unable_to_read",
     "not_applicable",
 }
+
+
+def _authorized_report_source(original_link: str) -> str:
+    clean = str(original_link or "").strip().strip('"')
+    if not clean:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Seleciona um documento PDF já arquivado ou carrega o ficheiro.",
+        )
+    if "://" in clean:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A extração por URL externa não é permitida. Importa primeiro o documento.",
+        )
+    configured_root = str(settings.document_archive_root or "").strip()
+    if not configured_root:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="O arquivo documental autorizado não está configurado.",
+        )
+    root = Path(configured_root).expanduser().resolve()
+    candidate = Path(clean).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="O relatório não pertence ao arquivo documental autorizado.",
+        ) from exc
+    if not resolved.is_file() or resolved.suffix.lower() != ".pdf":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="O documento autorizado deve ser um ficheiro PDF.",
+        )
+    return str(resolved)
 
 
 def _snapshot_value(data: dict[str, Any], keys: list[str]) -> Any:
@@ -1705,7 +1753,7 @@ def extract_technical_report_values(
     _get_process_or_404(db, process_id)
     try:
         values = extract_workshop_report_values(
-            report_input.original_link,
+            _authorized_report_source(report_input.original_link),
             report_input.report_code,
         )
     except (RuntimeError, ValueError) as exc:
@@ -1734,9 +1782,20 @@ async def extract_uploaded_technical_report_values(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Relatório técnico inválido.",
         )
+    if not str(file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A extração automática só aceita ficheiros PDF.",
+        )
+    content = await file.read(MAX_TECHNICAL_REPORT_UPLOAD_BYTES + 1)
+    if len(content) > MAX_TECHNICAL_REPORT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="O relatório excede o limite de 25 MB.",
+        )
     try:
         values = extract_workshop_report_values_from_bytes(
-            await file.read(),
+            content,
             report_code,
             file.filename,
         )

@@ -8,18 +8,6 @@
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
       <div><p class="eyebrow">Documentação / Importações</p><h1>{{ workspace_context.title }}</h1><p>{{ workspace_context.subtitle }}</p></div>
-      <div class="doc-arch-header-actions">
-        <a class="button-link secondary-link" href="#batch-history">Histórico</a>
-        {% if workspace == "rentway" %}
-          <button type="button" onclick="document.getElementById('rentway-import-dialog').showModal()">+ Importar</button>
-        {% elif workspace == "reports" %}
-          <a class="button-link" href="/v2-clean/documents/import/historical-reports">+ Importar relatórios</a>
-        {% elif workspace == "invoices" %}
-          <a class="button-link" href="/v2-clean/documents#invoice-import">+ Importar faturas</a>
-        {% else %}
-          <a class="button-link" href="/v2-clean/documentation">+ Adicionar documentos</a>
-        {% endif %}
-      </div>
     </header>
 
     {% if request.query_params.get("confirmed") %}<div class="doc-arch-notice success">Lote #{{ request.query_params.get("batch_id") }} confirmado: {{ request.query_params.get("confirmed") }} registos tratados.</div>{% endif %}
@@ -50,16 +38,39 @@
     {% else %}
       <nav class="doc-arch-tabs">
         {% if workspace == "reports" %}
-          <a class="active" href="/v2-clean/documentation/imports/reports">Diagnósticos</a><a href="/v2-clean/documentation/imports/reports?tab=service_box">Service Box</a><a href="/v2-clean/documentation/imports/reports?tab=maintenance">Planos de manutenção</a><a href="/v2-clean/documentation/imports/reports?tab=technical">Relatórios técnicos</a>
+          <a {% if tab == "diagnostics" %}class="active"{% endif %} href="/v2-clean/documentation/imports/reports?tab=diagnostics">Diagnósticos</a><a {% if tab == "service_box" %}class="active"{% endif %} href="/v2-clean/documentation/imports/reports?tab=service_box">Service Box</a><a {% if tab == "maintenance" %}class="active"{% endif %} href="/v2-clean/documentation/imports/reports?tab=maintenance">Planos de manutenção</a><a {% if tab == "technical" %}class="active"{% endif %} href="/v2-clean/documentation/imports/reports?tab=technical">Relatórios técnicos</a>
         {% elif workspace == "invoices" %}
           <a class="active" href="/v2-clean/documentation/imports/invoices">Lotes</a><a href="/v2-clean/documents#pending-invoices">Faturas esperadas / pendentes</a>
         {% else %}
           <a class="active" href="/v2-clean/documentation/imports/other">Conhecidos</a><a href="/v2-clean/documentation/triage">Desconhecidos na Triagem</a>
         {% endif %}
       </nav>
+      <section class="doc-arch-section-heading">
+        <div>
+          {% if workspace == "reports" %}
+            <h2>{{ {"diagnostics": "Diagnósticos", "service_box": "Service Box", "maintenance": "Planos de manutenção", "technical": "Relatórios técnicos"}.get(tab, "Diagnósticos") }}</h2>
+            <p>Importação limitada a relatórios desta área documental.</p>
+          {% elif workspace == "invoices" %}
+            <h2>Lotes de faturas</h2>
+            <p>Importação exclusiva de faturas e listas esperadas ou pendentes.</p>
+          {% else %}
+            <h2>Documentos conhecidos</h2>
+            <p>Outros documentos seguem para o arquivo ou para Triagem quando não reconhecidos.</p>
+          {% endif %}
+        </div>
+        <div class="doc-arch-header-actions">
+          {% if workspace == "reports" %}
+            <a class="button-link" href="/v2-clean/documents/import/historical-reports">Importar relatórios</a>
+          {% elif workspace == "invoices" %}
+            <a class="button-link" href="/v2-clean/documents#invoice-import">Importar faturas</a>
+          {% else %}
+            <button type="button" onclick="document.getElementById('other-documents-import-dialog').showModal()">Importar outros documentos</button>
+          {% endif %}
+        </div>
+      </section>
     {% endif %}
 
-    <form class="doc-arch-filters" method="get">
+    <form class="doc-arch-filters doc-arch-filters-compact" method="get">
       {% if tab %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
       <input name="q" value="{{ q }}" placeholder="Pesquisar referência, matrícula, fornecedor…">
       <input type="hidden" name="page_size" value="{{ pagination.page_size }}">
@@ -108,11 +119,7 @@
         <h2>Importar dados Rentway</h2>
         <p>O ficheiro será analisado primeiro. Nenhum dado é gravado antes da confirmação.</p>
         <form method="post" enctype="multipart/form-data" action="/v2-clean/documentation/imports/rentway/preview">
-          <label>Tipo
-            <select name="import_kind" id="rentway-import-kind" required>
-              {% for code, label in rentway_import_kinds.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
-            </select>
-          </label>
+          <input type="hidden" name="import_kind" id="rentway-import-kind" value="{{ 'work_orders' if tab == 'work_orders' else tab }}">
           <label>Ficheiro<input type="file" name="file" accept=".xlsx,.xls,.csv" required></label>
           <div class="doc-arch-dialog-actions"><button type="submit">Pré-visualizar</button><button type="button" class="secondary" onclick="document.getElementById('rentway-import-dialog').close()">Cancelar</button></div>
         </form>
@@ -125,6 +132,17 @@
           });
         });
       </script>
+    {% endif %}
+    {% if workspace == "other" %}
+      <dialog id="other-documents-import-dialog" class="doc-arch-dialog">
+        <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
+        <h2>Importar outros documentos</h2>
+        <p>Os documentos conhecidos seguem para arquivo; os restantes entram na Triagem.</p>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox">
+          <label>Documentos<input type="file" name="files" multiple required></label>
+          <div class="doc-arch-dialog-actions"><button type="submit">Importar documentos</button><button type="button" class="secondary" onclick="document.getElementById('other-documents-import-dialog').close()">Cancelar</button></div>
+        </form>
+      </dialog>
     {% endif %}
   </main>
 </div>

@@ -103,6 +103,89 @@ def test_documentation_workspaces_render(authenticated_client, path):
     assert "Centro de documentação" in response.text
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v2-clean/documentation",
+        "/v2-clean/documentation/triage",
+        "/v2-clean/documentation/imports",
+        "/v2-clean/documentation/imports/rentway",
+        "/v2-clean/documentation/imports/reports",
+        "/v2-clean/documentation/imports/invoices",
+        "/v2-clean/documentation/imports/other",
+        "/v2-clean/documentation/invoices",
+        "/v2-clean/diagnostics",
+        "/v2-clean/documentation/archive",
+        "/v2-clean/documentation/extraction-models",
+    ],
+)
+def test_documentation_pages_use_compact_module_header(authenticated_client, path):
+    response = authenticated_client.get(path)
+
+    assert response.status_code == 200
+    assert '<header class="doc-arch-header">' in response.text
+
+
+def test_documentation_headers_keep_only_essential_metrics(authenticated_client):
+    center = authenticated_client.get("/v2-clean/documentation")
+    invoices = authenticated_client.get("/v2-clean/documentation/invoices")
+
+    assert 'aria-label="Indicadores essenciais"' in center.text
+    assert "Importações recentes" not in center.text
+    assert "Diagnósticos pendentes" not in center.text
+    assert 'class="doc-arch-kpis doc-arch-kpis-four"' in invoices.text
+    assert "Sem associação" not in invoices.text
+
+
+def test_rentway_import_actions_are_scoped_to_active_page(authenticated_client):
+    work_orders = authenticated_client.get(
+        "/v2-clean/documentation/imports/rentway?tab=work_orders"
+    )
+    fleet = authenticated_client.get(
+        "/v2-clean/documentation/imports/rentway?tab=fleet"
+    )
+
+    assert ">+ Importar<" not in work_orders.text
+    assert 'data-import-kind="work_order_details"' in work_orders.text
+    assert 'data-import-kind="work_orders"' in work_orders.text
+    assert '<select name="import_kind"' not in work_orders.text
+    assert 'data-import-kind="fleet"' in fleet.text
+    assert 'data-import-kind="work_orders"' not in fleet.text
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_action", "excluded_action"),
+    [
+        (
+            "/v2-clean/documentation/imports/reports?tab=service_box",
+            "Importar relatórios",
+            "Importar faturas",
+        ),
+        (
+            "/v2-clean/documentation/imports/invoices",
+            "Importar faturas",
+            "Importar relatórios",
+        ),
+        (
+            "/v2-clean/documentation/imports/other",
+            "Importar outros documentos",
+            "Importar faturas",
+        ),
+    ],
+)
+def test_each_import_workspace_exposes_only_its_own_import_action(
+    authenticated_client,
+    path,
+    expected_action,
+    excluded_action,
+):
+    response = authenticated_client.get(path)
+
+    assert response.status_code == 200
+    assert expected_action in response.text
+    assert excluded_action not in response.text
+
+
 def test_triage_is_universal_and_server_paginated(
     authenticated_client,
     db_session,

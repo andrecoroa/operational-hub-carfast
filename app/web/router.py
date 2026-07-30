@@ -10408,6 +10408,17 @@ def clean_documentation_import_workspace(
         return RedirectResponse("/v2-clean/documentation/imports", status_code=303)
     if workspace == "rentway" and tab not in RENTWAY_TAB_IMPORT_TYPES:
         tab = "work_orders"
+    elif workspace == "reports" and tab not in {
+        "diagnostics",
+        "service_box",
+        "maintenance",
+        "technical",
+    }:
+        tab = "diagnostics"
+    elif workspace == "invoices":
+        tab = "batches"
+    elif workspace == "other":
+        tab = "known"
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
     clean_history_page, history_page_size, history_offset = _documentation_page(
         history_page,

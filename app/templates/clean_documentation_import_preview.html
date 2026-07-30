@@ -5,9 +5,9 @@
   {% include "_sidebar.html" %}
   <main class="content clean-content doc-arch-page doc-arch-preview-backdrop">
     <section class="doc-arch-preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
-      <div class="doc-arch-card-heading">
+      <header class="doc-arch-header">
         <div><p class="eyebrow">Pré-visualização</p><h1 id="preview-title">{{ payload.preview.import_label or payload.import_kind }}</h1><p>{{ payload.original_name }} · nenhum dado foi gravado.</p></div>
-      </div>
+      </header>
       <section class="doc-arch-kpis doc-arch-kpis-three">
         <div><strong>{{ payload.preview.total_rows or 0 }}</strong><span>Linhas lidas</span></div>
         <div><strong>{{ payload.preview.created_rows or 0 }}</strong><span>A criar</span></div>

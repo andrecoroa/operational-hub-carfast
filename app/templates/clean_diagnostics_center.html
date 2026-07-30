@@ -3,17 +3,16 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_diagnostics" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content clean-diagnostics-center">
+  <main class="content clean-content clean-diagnostics-center doc-arch-page">
     {% set doc_nav = "diagnostics" %}
     {% include "_clean_documentation_nav.html" %}
-    <header class="clean-doc-page-header clean-card-wide">
+    <header class="doc-arch-header">
       <div>
         <p class="eyebrow">Documentação / relatórios técnicos</p>
         <h1>Auditoria de diagnósticos</h1>
         <p>Separa processamento, OCR, validação e associação. Um relatório pode estar extraído e continuar pendente de validação.</p>
       </div>
-      <div class="clean-header-actions">
-        <a class="button-link secondary-link" href="/v2-clean/documentation">Documentação</a>
+      <div class="doc-arch-header-actions">
         <form method="post" action="/v2-clean/diagnostics/reconcile">
           <button type="submit">Reconciliar estados</button>
         </form>

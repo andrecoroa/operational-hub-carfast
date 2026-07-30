@@ -13,14 +13,12 @@
         <h1>Centro de documentação</h1>
         <p>Entrada, encaminhamento e controlo de toda a documentação CarFast.</p>
       </div>
-      <button type="button" class="button-link" onclick="document.getElementById('doc-upload-dialog').showModal()">+ Adicionar documentos</button>
+      <button type="button" class="button-link" onclick="document.getElementById('doc-upload-dialog').showModal()">Adicionar documentos</button>
     </header>
 
-    <section class="doc-arch-kpis" aria-label="Resumo documental">
+    <section class="doc-arch-kpis doc-arch-kpis-three" aria-label="Indicadores essenciais">
       <a class="warning" href="/v2-clean/documentation/triage"><strong>{{ counts.triage }}</strong><span>Por triar</span></a>
-      <a href="/v2-clean/documentation/imports"><strong>{{ counts.imports }}</strong><span>Importações recentes</span></a>
       <a href="/v2-clean/documentation/invoices?nature=por_classificar"><strong>{{ counts.invoices }}</strong><span>Faturas por tratar</span></a>
-      <a href="/v2-clean/diagnostics"><strong>{{ counts.diagnostics }}</strong><span>Diagnósticos pendentes</span></a>
       <a class="danger" href="/v2-clean/documentation/triage"><strong>{{ counts.errors }}</strong><span>Com erro</span></a>
     </section>
 

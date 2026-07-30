@@ -8,17 +8,16 @@
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
       <div><p class="eyebrow">Documentação</p><h1>Faturas</h1><p>Consulta, associação e classificação das faturas da frota.</p></div>
-      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documents?audit_export=1">Exportar auditoria</a><a class="button-link" href="/v2-clean/documentation/imports/invoices">+ Adicionar fatura</a></div>
+      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documents?audit_export=1">Exportar auditoria</a><a class="button-link" href="/v2-clean/documentation/imports/invoices">Importar faturas</a></div>
     </header>
     {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Natureza confirmada e derivados recalculados, preservando o histórico.</div>{% endif %}
     {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("error") }}</div>{% endif %}
 
-    <section class="doc-arch-kpis">
+    <section class="doc-arch-kpis doc-arch-kpis-four" aria-label="Indicadores essenciais">
       <a href="/v2-clean/documentation/invoices"><strong>{{ pagination.total }}</strong><span>Total filtrado</span></a>
       <a class="warning" href="?nature=por_classificar"><strong>{{ nature_counts.get("por_classificar", 0) }}</strong><span>Por classificar</span></a>
       <a href="?nature=operacional"><strong>{{ nature_counts.get("operacional", 0) + nature_counts.get("legacy", 0) }}</strong><span>Operacionais / legadas</span></a>
       <a href="?nature=financeira"><strong>{{ nature_counts.get("financeira", 0) }}</strong><span>Financeiras</span></a>
-      <a class="danger" href="/v2-clean/documentation/triage"><strong>—</strong><span>Sem associação</span></a>
     </section>
     <nav class="doc-arch-tabs">
       <a href="/v2-clean/documentation/invoices" {% if not nature %}class="active"{% endif %}>Todas</a>

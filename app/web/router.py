@@ -75,7 +75,12 @@ from app.models.tasks import (
     TaskHistory,
     TaskParticipant,
 )
-from app.models.vehicles import Vehicle, VehicleExternalSnapshot, VehicleManualField, VehicleOperationalStatusEvent
+from app.models.vehicles import (
+    Vehicle,
+    VehicleExternalSnapshot,
+    VehicleManualField,
+    VehicleOperationalStatusEvent,
+)
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -10333,6 +10338,45 @@ DOCUMENTATION_IMPORT_WORKSPACES = {
     },
 }
 
+BUILTIN_EXTRACTION_MODELS = (
+    {
+        "name": "Diagnósticos Autel",
+        "source_system": "Autel / MaxiDAS / MaxiSys",
+        "import_type": "diagnostic_report",
+        "version": f"{DIAGNOSTIC_EXTRACTOR_VERSION} / {DIAGNOSTIC_PARSER_VERSION}",
+        "fields": "Campos técnicos, DTC, VIN, data/hora e quilómetros",
+        "status": "active",
+        "manage_href": "/v2-clean/diagnostics",
+    },
+    {
+        "name": "Diagnósticos Stellantis",
+        "source_system": "DiagBox / PSA-DIAG / Stellantis",
+        "import_type": "diagnostic_report",
+        "version": f"{DIAGNOSTIC_EXTRACTOR_VERSION} / {DIAGNOSTIC_PARSER_VERSION}",
+        "fields": "Tabelas por coordenadas, DTC, VIN, data/hora e leituras",
+        "status": "active",
+        "manage_href": "/v2-clean/diagnostics",
+    },
+    {
+        "name": "OCR de faturas",
+        "source_system": "Fornecedores reconhecidos",
+        "import_type": "supplier_invoice",
+        "version": "invoice-ocr-2026-07-24-v4",
+        "fields": "Cabeçalho, fornecedor, viatura, FO, KM, total e linhas",
+        "status": "active",
+        "manage_href": "/v2-clean/documentation/invoices",
+    },
+    {
+        "name": "Importações Rentway",
+        "source_system": "Rentway",
+        "import_type": "structured_data",
+        "version": "Estruturado",
+        "fields": "Frota, folhas de obra, detalhes, contratos e impros",
+        "status": "active",
+        "manage_href": "/v2-clean/documentation/imports/rentway",
+    },
+)
+
 RENTWAY_TAB_IMPORT_TYPES = {
     "fleet": {"rentway_fleet"},
     "work_orders": {"rentway_work_orders", "work_orders"},
@@ -10371,6 +10415,8 @@ def clean_documentation_import_workspace(
         maximum=25,
     )
     with SessionLocal() as db:
+        diagnostic_batches: list[dict[str, Any]] = []
+        diagnostic_counts: dict[str, int] = {}
         batch_conditions: list[Any] = []
         if workspace == "rentway":
             batch_conditions.append(
@@ -10539,6 +10585,56 @@ def clean_documentation_import_workspace(
                 }
                 for document, state in documents
             ]
+        if workspace == "reports":
+            diagnostic_records = db.execute(
+                select(Document, DiagnosticDocument)
+                .join(
+                    DiagnosticDocument,
+                    DiagnosticDocument.document_id == Document.id,
+                )
+                .order_by(Document.id.desc())
+            ).all()
+            profile_ids = [profile.id for _, profile in diagnostic_records]
+            latest_by_profile: dict[int, DiagnosticExtraction] = {}
+            if profile_ids:
+                for extraction in db.scalars(
+                    select(DiagnosticExtraction)
+                    .where(
+                        DiagnosticExtraction.diagnostic_document_id.in_(
+                            profile_ids
+                        )
+                    )
+                    .order_by(
+                        DiagnosticExtraction.created_at.desc(),
+                        DiagnosticExtraction.id.desc(),
+                    )
+                ).all():
+                    latest_by_profile.setdefault(
+                        extraction.diagnostic_document_id,
+                        extraction,
+                    )
+            diagnostic_batches, _ = _diagnostic_batch_context(
+                db,
+                diagnostic_records,
+                latest_by_profile,
+            )
+            diagnostic_counts = {
+                "total": len(diagnostic_records),
+                "ready": 0,
+                "pending": 0,
+                "failed": 0,
+            }
+            for _, profile in diagnostic_records:
+                health = _diagnostic_audit_health(
+                    profile,
+                    latest_by_profile.get(profile.id),
+                )
+                if health == "ready":
+                    diagnostic_counts["ready"] += 1
+                elif health == "extraction_failed":
+                    diagnostic_counts["failed"] += 1
+                else:
+                    diagnostic_counts["pending"] += 1
         return templates.TemplateResponse(
             request,
             "clean_documentation_import_workspace.html",
@@ -10560,6 +10656,8 @@ def clean_documentation_import_workspace(
                     history_page_size,
                 ),
                 "rentway_import_kinds": RENTWAY_IMPORT_KINDS,
+                "diagnostic_batches": diagnostic_batches,
+                "diagnostic_counts": diagnostic_counts,
             },
         )
 
@@ -10998,6 +11096,45 @@ def clean_documentation_invoices(
         else:
             conditions.append(DocumentWorkflowState.invoice_nature == nature)
     with SessionLocal() as db:
+        pending_conditions: list[Any] = [
+            VehicleDocumentRecord.source_record_type == "pending_import",
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.status == "pending",
+        ]
+        if q.strip():
+            token = f"%{q.strip()}%"
+            pending_conditions.append(
+                or_(
+                    VehicleDocumentRecord.external_reference.ilike(token),
+                    VehicleDocumentRecord.supplier_name.ilike(token),
+                    VehicleDocumentRecord.plate.ilike(token),
+                    VehicleDocumentRecord.vin.ilike(token),
+                )
+            )
+        pending_records = db.scalars(
+            select(VehicleDocumentRecord)
+            .where(*pending_conditions)
+            .order_by(
+                VehicleDocumentRecord.document_date.desc().nullslast(),
+                VehicleDocumentRecord.id.desc(),
+            )
+            .limit(250)
+        ).all()
+        pending_rows = []
+        for record in pending_records:
+            vehicle = db.get(Vehicle, record.vehicle_id) if record.vehicle_id else None
+            metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
+            pending_rows.append(
+                {
+                    "record": record,
+                    "vehicle": vehicle,
+                    "supplier_nif": str(metadata.get("supplier_nif") or ""),
+                    "unit_number": str(metadata.get("unit_number") or ""),
+                    "expected_total": metadata.get("expected_total"),
+                }
+            )
+        pending_associated = sum(row["record"].vehicle_id is not None for row in pending_rows)
+        pending_unassociated = len(pending_rows) - pending_associated
         total = int(
             db.scalar(
                 select(func.count())
@@ -11043,6 +11180,9 @@ def clean_documentation_invoices(
                     _documentation_row(document, state)
                     for document, state in records
                 ],
+                "pending_rows": pending_rows,
+                "pending_associated": pending_associated,
+                "pending_unassociated": pending_unassociated,
                 "nature_counts": nature_counts,
                 "pagination": _documentation_pagination(
                     total,
@@ -11194,6 +11334,21 @@ def clean_documentation_extraction_models(
     if not can_view_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    normalized_query = q.strip().casefold()
+    builtin_models = [
+        model
+        for model in BUILTIN_EXTRACTION_MODELS
+        if not normalized_query
+        or normalized_query
+        in " ".join(
+            (
+                model["name"],
+                model["source_system"],
+                model["import_type"],
+                model["fields"],
+            )
+        ).casefold()
+    ]
     conditions: list[Any] = []
     if q.strip():
         token = f"%{q.strip()}%"
@@ -11229,6 +11384,7 @@ def clean_documentation_extraction_models(
             "clean_documentation_extraction_models.html",
             {
                 "mappings": mappings,
+                "builtin_models": builtin_models,
                 "pagination": _documentation_pagination(
                     total,
                     clean_page,
@@ -16406,6 +16562,7 @@ def clean_document_pending_invoice_associate(
     request: Request,
     record_id: int,
     identifier: str = Form(...),
+    return_to: str = Form("clean"),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -16414,7 +16571,12 @@ def clean_document_pending_invoice_associate(
     with SessionLocal() as db:
         record = db.get(VehicleDocumentRecord, record_id)
         if not record or record.vehicle_id is not None or record.source_record_type != "pending_import":
-            return RedirectResponse("/v2-clean/documents?pending_error=Pendente+inválido", status_code=303)
+            target = (
+                "/v2-clean/documentation/invoices"
+                if return_to == "clean"
+                else "/v2-clean/documents"
+            )
+            return RedirectResponse(f"{target}?pending_error=Pendente+inválido", status_code=303)
         vehicles = db.scalars(select(Vehicle)).all()
         vehicle = next(
             (
@@ -16430,10 +16592,12 @@ def clean_document_pending_invoice_associate(
             None,
         )
         if not vehicle:
-            return RedirectResponse(
-                "/v2-clean/documents?pending_error=Viatura+não+encontrada",
-                status_code=303,
+            target = (
+                "/v2-clean/documentation/invoices"
+                if return_to == "clean"
+                else "/v2-clean/documents"
             )
+            return RedirectResponse(f"{target}?pending_error=Viatura+não+encontrada", status_code=303)
         record.vehicle_id = vehicle.id
         record.plate = vehicle.plate
         record.vin = vehicle.vin
@@ -16443,7 +16607,12 @@ def clean_document_pending_invoice_associate(
         metadata["association_identifier"] = identifier.strip()
         record.metadata_json = metadata
         db.commit()
-    return RedirectResponse("/v2-clean/documents?pending_associated=1", status_code=303)
+    target = (
+        "/v2-clean/documentation/invoices"
+        if return_to == "clean"
+        else "/v2-clean/documents"
+    )
+    return RedirectResponse(f"{target}?pending_associated=1", status_code=303)
 
 
 @web_router.post("/v2-clean/documents/import/work-orders")

@@ -112,6 +112,7 @@ from app.models.workshop_phased import (
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
     preview_pending_documents,
+    reconcile_pending_invoices,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx, preview_rentway_fleet_xlsx
 from app.services.document_import_preview import (
@@ -11256,6 +11257,36 @@ def clean_documentation_invoice_nature(
     )
 
 
+@web_router.post("/v2-clean/documentation/invoices/reconcile-pending")
+def clean_documentation_reconcile_pending_invoices(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/invoices?error=permission",
+            status_code=303,
+        )
+    with SessionLocal() as db:
+        result = reconcile_pending_invoices(
+            db,
+            user_id=get_web_user_id(request),
+        )
+        db.commit()
+    return RedirectResponse(
+        "/v2-clean/documentation/invoices?"
+        + urlencode(
+            {
+                "reconciled": result["fulfilled"],
+                "associated": result["associated"],
+                "ambiguous": result["ambiguous"],
+                "unmatched": result["unmatched"],
+            }
+        ),
+        status_code=303,
+    )
+
+
 @web_router.get("/v2-clean/documentation/archive", response_class=HTMLResponse)
 def clean_documentation_archive(
     request: Request,
@@ -15003,7 +15034,9 @@ def _archive_document_payloads(
         "reprocess_failed": 0,
         "routed": 0,
         "triage": 0,
+        "pending_reconciled": 0,
     }
+    touched_invoice_ids: set[int] = set()
     vehicles = db.scalars(select(Vehicle).where(or_(Vehicle.plate.is_not(None), Vehicle.vin.is_not(None)))).all()
     vehicles_by_plate = {
         re.sub(r"[^A-Z0-9]", "", (vehicle.plate or "").upper()): vehicle
@@ -15087,6 +15120,7 @@ def _archive_document_payloads(
                         )
                     )
                     counters["reprocessed"] += 1
+                    touched_invoice_ids.add(existing_document.id)
                 elif force_invoice_reprocess:
                     counters["reprocess_failed"] += 1
             continue
@@ -15183,6 +15217,7 @@ def _archive_document_payloads(
                     user_id=user_id,
                 )
             )
+            touched_invoice_ids.add(document.id)
         workflow_state = get_or_create_workflow_state(db, document)
         suggested_destination = (
             "triage"
@@ -15222,6 +15257,13 @@ def _archive_document_payloads(
         counters["imported"] += 1
         counters["matched" if vehicle else "pending"] += 1
         counters["triage" if is_unknown else "routed"] += 1
+    if touched_invoice_ids:
+        reconciliation = reconcile_pending_invoices(
+            db,
+            user_id=user_id,
+            document_ids=touched_invoice_ids,
+        )
+        counters["pending_reconciled"] = reconciliation["fulfilled"]
     return counters
 
 
@@ -16056,6 +16098,11 @@ def clean_document_complete_triage(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse(
+            "/v2-clean/documents?inbox_error=Sem+permissão",
+            status_code=303,
+        )
     clean_title = title.strip()[:200]
     clean_type = re.sub(r"[^a-z0-9_]+", "_", document_type.strip().lower()).strip("_")[:80]
     allowed_destinations = {
@@ -16147,6 +16194,36 @@ def clean_document_complete_triage(
             except (OSError, RuntimeError, ValueError) as exc:
                 document.status = "unable_to_read"
                 extraction_result = {"error": exc.__class__.__name__}
+        workflow_destination = {
+            "invoices": "invoices",
+            "reports": "diagnostics",
+            "work_orders": "imports",
+            "vehicle_archive": "archive",
+            "other": "archive",
+        }[destination]
+        extraction_status = (
+            "extracted"
+            if document.status in {"extracted", "pending_validation"}
+            else "failed"
+            if document.status in {"unable_to_read", "ocr_empty", "ocr_issue"}
+            else "not_requested"
+        )
+        workflow_state = transition_document_workflow(
+            db,
+            document=document,
+            user_id=get_web_user_id(request),
+            reason="Triagem concluída na área documental anterior",
+            ingestion_status="completed",
+            association_status="associated" if document.vehicle_id else "unassociated",
+            extraction_status=extraction_status,
+            validation_status="human_validated" if workflow_destination == "archive" else "pending",
+            destination_status=workflow_destination,
+        )
+        if workflow_destination == "invoices":
+            workflow_state.invoice_nature = workflow_state.invoice_nature or "por_classificar"
+            workflow_state.suggested_invoice_nature = (
+                workflow_state.suggested_invoice_nature or "operacional"
+            )
         db.add(
             DocumentEvent(
                 document_id=document.id,

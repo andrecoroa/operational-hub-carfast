@@ -1,12 +1,15 @@
 from openpyxl import Workbook
 from sqlalchemy import select
 
-from app.models.documents import VehicleDocumentRecord
+import json
+
+from app.models.documents import Document, DocumentEvent, VehicleDocumentRecord
 from app.models.vehicles import Vehicle
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
     import_pending_documents,
     preview_pending_documents,
+    reconcile_pending_invoices,
 )
 
 
@@ -172,3 +175,98 @@ def test_pending_invoice_duplicate_uses_supplier_nif_and_number(db_session, tmp_
 
     assert [row["status"] for row in preview["rows"]] == ["ready", "duplicate"]
     assert preview["rows"][1]["status_detail"] == "Já existe para este NIF e número"
+
+
+def test_reconcile_pending_invoice_uses_ocr_identity_and_links_vehicle(db_session):
+    vehicle = Vehicle(
+        plate="AA-11-AA",
+        vin="VF3YBBPFC12W31462",
+        rentway_unit_nr="101",
+    )
+    pending = VehicleDocumentRecord(
+        source_record_type="pending_import",
+        main_group="invoices",
+        status="pending",
+        external_reference="HFO/3081/2025",
+        supplier_name="Caetano Gamobar",
+        metadata_json={
+            "supplier_nif": "500112967",
+            "unit_number": "101",
+        },
+    )
+    document = Document(
+        title="Fatura oficina",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_batch",
+        original_name="hfo_3081.pdf",
+        file_name="hfo_3081.pdf",
+        storage_provider="local",
+        storage_path="Frota/AA11AA/hfo_3081.pdf",
+        status="extracted",
+        archived=True,
+    )
+    db_session.add_all([vehicle, pending, document])
+    db_session.flush()
+    db_session.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.extracted",
+            old_value=None,
+            new_value=json.dumps(
+                {
+                    "document_number": "HFO/3081/2025",
+                    "supplier_nif": "500112967",
+                }
+            ),
+            user_id=None,
+        )
+    )
+    db_session.flush()
+
+    result = reconcile_pending_invoices(db_session, user_id=None)
+
+    assert result["associated"] == 1
+    assert result["fulfilled"] == 1
+    assert pending.vehicle_id == vehicle.id
+    assert pending.document_id == document.id
+    assert pending.status == "fulfilled"
+    assert document.vehicle_id == vehicle.id
+
+
+def test_reconcile_pending_invoice_keeps_ambiguous_number_for_manual_review(db_session):
+    pending = VehicleDocumentRecord(
+        source_record_type="pending_import",
+        main_group="invoices",
+        status="pending",
+        external_reference="FAC 50",
+        metadata_json={},
+    )
+    documents = [
+        Document(
+            title=f"Fatura {index}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="v2_clean_manual",
+            entry_channel="v2_clean_batch",
+            original_name=f"fac_50_{index}.pdf",
+            file_name=f"fac_50_{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Frota/fac_50_{index}.pdf",
+            contract_number="FAC 50",
+            status="extracted",
+            archived=True,
+        )
+        for index in (1, 2)
+    ]
+    db_session.add_all([pending, *documents])
+    db_session.flush()
+
+    result = reconcile_pending_invoices(db_session, user_id=None)
+
+    assert result["ambiguous"] == 1
+    assert result["fulfilled"] == 0
+    assert pending.status == "pending"
+    assert pending.document_id is None
+    assert pending.metadata_json["reconciliation_state"] == "ambiguous"

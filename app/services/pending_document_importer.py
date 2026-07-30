@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
+import json
 from pathlib import Path
 import re
 import unicodedata
@@ -13,8 +14,9 @@ from openpyxl import load_workbook
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.documents import Document, VehicleDocumentRecord
+from app.models.documents import Document, DocumentEvent, VehicleDocumentRecord
 from app.models.vehicles import Vehicle
+from app.services.document_workflow import get_or_create_workflow_state
 
 
 VIN_RE = re.compile(r"(?<![A-Z0-9])([A-HJ-NPR-Z0-9]{17})(?![A-Z0-9])", re.IGNORECASE)
@@ -151,6 +153,73 @@ def _vehicle_maps(db: Session) -> tuple[dict[str, Vehicle], dict[str, Vehicle], 
     return by_vin, by_plate, by_unit
 
 
+INVOICE_EXTRACTION_ACTIONS = {
+    "invoice.ocr.extracted",
+    "invoice.ocr.reprocessed",
+    "invoice.lines.extracted",
+    "invoice.extracted",
+}
+
+
+def _invoice_document_metadata(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
+    if not document_ids:
+        return {}
+    metadata: dict[int, dict[str, Any]] = {}
+    events = db.scalars(
+        select(DocumentEvent)
+        .where(
+            DocumentEvent.document_id.in_(document_ids),
+            DocumentEvent.action.in_(INVOICE_EXTRACTION_ACTIONS),
+        )
+        .order_by(DocumentEvent.created_at.desc(), DocumentEvent.id.desc())
+    ).all()
+    for event in events:
+        if event.document_id in metadata or not event.new_value:
+            continue
+        try:
+            payload = json.loads(event.new_value)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(payload, dict):
+            metadata[event.document_id] = payload
+    return metadata
+
+
+def _invoice_documents(db: Session) -> list[Document]:
+    return db.scalars(
+        select(Document).where(
+            or_(
+                Document.document_type.in_(
+                    {"workshop_supplier_invoice", "finance_supplier_invoice"}
+                ),
+                Document.title.ilike("%fatura%"),
+                Document.title.ilike("%factura%"),
+            )
+        )
+    ).all()
+
+
+def _document_invoice_identity(
+    document: Document,
+    metadata: dict[str, Any],
+) -> tuple[str, str]:
+    number = (
+        metadata.get("document_number")
+        or metadata.get("invoice_number")
+        or document.contract_number
+        or document.reservation_number
+        or ""
+    )
+    supplier_nif = (
+        metadata.get("supplier_nif")
+        or metadata.get("nif_fornecedor")
+        or metadata.get("tax_id")
+        or document.supplier_name
+        or ""
+    )
+    return _document_key(number), _supplier_nif(supplier_nif)
+
+
 def _existing_invoice_keys(db: Session) -> tuple[set[str], set[str]]:
     exact_keys: set[str] = set()
     number_only_keys: set[str] = set()
@@ -173,28 +242,182 @@ def _existing_invoice_keys(db: Session) -> tuple[set[str], set[str]]:
         else:
             number_only_keys.add(number_key)
 
-    documents = db.scalars(
-        select(Document).where(
-            or_(
-                Document.document_type.in_(
-                    {"workshop_supplier_invoice", "finance_supplier_invoice"}
-                ),
-                Document.title.ilike("%fatura%"),
-                Document.title.ilike("%factura%"),
-            )
+    documents = _invoice_documents(db)
+    metadata_by_document = _invoice_document_metadata(
+        db,
+        [document.id for document in documents],
+    )
+    for document in documents:
+        number_key, supplier_nif = _document_invoice_identity(
+            document,
+            metadata_by_document.get(document.id, {}),
+        )
+        if not number_key:
+            continue
+        if supplier_nif:
+            exact_keys.add(_invoice_key(number_key, supplier_nif))
+        else:
+            number_only_keys.add(number_key)
+    return exact_keys, number_only_keys
+
+
+def _pending_vehicle(
+    row: VehicleDocumentRecord,
+    by_vin: dict[str, Vehicle],
+    by_plate: dict[str, Vehicle],
+    by_unit: dict[str, Vehicle],
+) -> tuple[Vehicle | None, str | None]:
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    vin = _vin(row.vin or metadata.get("vin"))
+    plate = _plate_key(row.plate or metadata.get("plate"))
+    unit = _key(metadata.get("unit_number"))
+    if vin and vin in by_vin:
+        return by_vin[vin], "vin"
+    if plate and plate in by_plate:
+        return by_plate[plate], "plate"
+    if unit and unit in by_unit:
+        return by_unit[unit], "unit"
+    return None, None
+
+
+def reconcile_pending_invoices(
+    db: Session,
+    *,
+    user_id: int | None,
+    document_ids: set[int] | None = None,
+) -> dict[str, int]:
+    """Link expected invoices to real documents without accepting ambiguous matches."""
+    result = {
+        "reviewed": 0,
+        "associated": 0,
+        "fulfilled": 0,
+        "ambiguous": 0,
+        "unmatched": 0,
+    }
+    pending = db.scalars(
+        select(VehicleDocumentRecord).where(
+            VehicleDocumentRecord.source_record_type == "pending_import",
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.status == "pending",
         )
     ).all()
+    if not pending:
+        return result
+
+    by_vin, by_plate, by_unit = _vehicle_maps(db)
+    for record in pending:
+        if record.vehicle_id is not None:
+            continue
+        vehicle, method = _pending_vehicle(record, by_vin, by_plate, by_unit)
+        if not vehicle:
+            continue
+        record.vehicle_id = vehicle.id
+        record.plate = vehicle.plate
+        record.vin = vehicle.vin
+        metadata = dict(record.metadata_json or {})
+        metadata["association_method"] = method
+        metadata["association_reconciled_at"] = datetime.now(UTC).isoformat()
+        record.metadata_json = metadata
+        record.updated_by_id = user_id
+        result["associated"] += 1
+
+    documents = _invoice_documents(db)
+    if document_ids is not None:
+        documents = [document for document in documents if document.id in document_ids]
+    metadata_by_document = _invoice_document_metadata(
+        db,
+        [document.id for document in documents],
+    )
+    by_number: dict[str, list[tuple[Document, str]]] = {}
     for document in documents:
-        supplier_nif = _supplier_nif(document.supplier_name)
-        for value in (document.contract_number, document.reservation_number, document.title):
-            number_key = _document_key(value)
-            if not number_key:
-                continue
-            if supplier_nif:
-                exact_keys.add(_invoice_key(value, supplier_nif))
+        number_key, supplier_nif = _document_invoice_identity(
+            document,
+            metadata_by_document.get(document.id, {}),
+        )
+        if number_key:
+            by_number.setdefault(number_key, []).append((document, supplier_nif))
+
+    used_documents = {
+        int(record.document_id)
+        for record in db.scalars(
+            select(VehicleDocumentRecord).where(
+                VehicleDocumentRecord.document_id.is_not(None),
+                VehicleDocumentRecord.source_record_type == "pending_import",
+            )
+        ).all()
+        if record.document_id is not None
+    }
+    for record in pending:
+        result["reviewed"] += 1
+        number_key = _document_key(record.external_reference)
+        metadata = dict(record.metadata_json or {})
+        supplier_nif = _supplier_nif(metadata.get("supplier_nif"))
+        candidates = [
+            (document, nif)
+            for document, nif in by_number.get(number_key, [])
+            if document.id not in used_documents
+            and (not supplier_nif or not nif or supplier_nif == nif)
+            and (
+                not record.vehicle_id
+                or not document.vehicle_id
+                or document.vehicle_id == record.vehicle_id
+            )
+        ]
+        exact = [
+            (document, nif)
+            for document, nif in candidates
+            if supplier_nif and nif and supplier_nif == nif
+        ]
+        eligible = exact if exact else candidates
+        if len(eligible) != 1:
+            if len(eligible) > 1:
+                result["ambiguous"] += 1
+                metadata["reconciliation_state"] = "ambiguous"
+                metadata["reconciliation_candidates"] = [item[0].id for item in eligible]
+                record.metadata_json = metadata
             else:
-                number_only_keys.add(number_key)
-    return exact_keys, number_only_keys
+                result["unmatched"] += 1
+            continue
+
+        document = eligible[0][0]
+        if record.vehicle_id and not document.vehicle_id:
+            document.vehicle_id = record.vehicle_id
+            vehicle = db.get(Vehicle, record.vehicle_id)
+            document.plate = vehicle.plate if vehicle else record.plate
+            state = get_or_create_workflow_state(db, document)
+            state.association_status = "associated"
+        elif document.vehicle_id and not record.vehicle_id:
+            record.vehicle_id = document.vehicle_id
+            record.plate = document.plate
+
+        record.document_id = document.id
+        record.status = "fulfilled"
+        record.has_physical_file = True
+        record.storage_path = document.storage_path
+        record.updated_by_id = user_id
+        metadata["reconciliation_state"] = "fulfilled"
+        metadata["fulfilled_document_id"] = document.id
+        metadata["fulfilled_at"] = datetime.now(UTC).isoformat()
+        record.metadata_json = metadata
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="pending_invoice.reconciled",
+                old_value=None,
+                new_value=json.dumps(
+                    {
+                        "pending_record_id": record.id,
+                        "invoice_number": record.external_reference,
+                    },
+                    ensure_ascii=False,
+                ),
+                user_id=user_id,
+            )
+        )
+        used_documents.add(document.id)
+        result["fulfilled"] += 1
+    db.flush()
+    return result
 
 
 def _parsed_pending_rows(

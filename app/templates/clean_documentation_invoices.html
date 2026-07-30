@@ -12,6 +12,14 @@
     </header>
     {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Natureza confirmada e derivados recalculados, preservando o histórico.</div>{% endif %}
     {% if request.query_params.get("pending_associated") %}<div class="doc-arch-notice success">Fatura pendente associada à viatura.</div>{% endif %}
+    {% if request.query_params.get("reconciled") is not none %}
+      <div class="doc-arch-notice success">
+        Reconciliação concluída: {{ request.query_params.get("reconciled", "0") }} faturas encontradas,
+        {{ request.query_params.get("associated", "0") }} pendentes associados a viaturas,
+        {{ request.query_params.get("ambiguous", "0") }} casos ambíguos e
+        {{ request.query_params.get("unmatched", "0") }} ainda sem documento.
+      </div>
+    {% endif %}
     {% if request.query_params.get("pending_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("pending_error") }}</div>{% endif %}
     {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("error") }}</div>{% endif %}
 
@@ -41,6 +49,9 @@
           <h2>Faturas esperadas</h2>
           <p>{{ pending_associated }} associadas a viaturas · {{ pending_unassociated }} por associar. Estes registos aguardam a chegada do documento real.</p>
         </div>
+        <form method="post" action="/v2-clean/documentation/invoices/reconcile-pending">
+          <button type="submit">Reconciliar documentos</button>
+        </form>
       </div>
       <div class="doc-arch-table-wrap">
         <table class="doc-arch-table">

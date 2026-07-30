@@ -1,4 +1,4 @@
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
@@ -11,6 +11,7 @@ from app.core.change_notice import CHANGE_NOTICE_SESSION_KEY, CHANGE_NOTICE_VERS
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.admin import User
+from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.web.router import web_router
 
@@ -49,6 +50,13 @@ PERMISSION_ALLOWED_PATHS = {
     "/admin/roles",
     "/admin/permissions",
 }
+
+LEGACY_EXPERIENCE_PERMISSION = "experience.legacy.access"
+EXPERIENCE_NEUTRAL_PREFIXES = (
+    *PERMISSION_ALLOWED_PREFIXES,
+    "/choose-experience",
+    "/switch-experience",
+)
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
@@ -247,6 +255,15 @@ def has_required_permission(request: Request, required_permissions: set[str]) ->
     return bool(permissions.intersection(required_permissions))
 
 
+def is_legacy_experience_path(path: str) -> bool:
+    if path == "/v2-clean" or path.startswith("/v2-clean/"):
+        return False
+    return not any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in EXPERIENCE_NEUTRAL_PREFIXES
+    )
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
@@ -267,12 +284,52 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def permission_gate(request: Request, call_next):
         path = request.url.path
+        if path == "/v2-clean" or path.startswith("/v2-clean/"):
+            request.session["carfast_experience"] = "clean"
         if (
             request.method == "HEAD"
             or path in PERMISSION_ALLOWED_PATHS
             or any(path == prefix or path.startswith(f"{prefix}/") for prefix in PERMISSION_ALLOWED_PREFIXES)
         ):
             return await call_next(request)
+        if is_legacy_experience_path(path) and request.session.get("user_id"):
+            if not has_required_permission(request, {LEGACY_EXPERIENCE_PERMISSION}):
+                request.session["carfast_experience"] = "clean"
+                return RedirectResponse(
+                    "/v2-clean?error=legacy_access_denied",
+                    status_code=303,
+                )
+            if request.session.get("carfast_experience") != "current":
+                destination = path
+                if request.url.query:
+                    destination = f"{destination}?{request.url.query}"
+                origin = "/direct"
+                referer = request.headers.get("referer", "")
+                if referer:
+                    parsed_referer = urlsplit(referer)
+                    referer_route = parsed_referer.path or "/direct"
+                    if parsed_referer.query:
+                        referer_route = f"{referer_route}?{parsed_referer.query}"
+                    if referer_route == "/v2-clean" or referer_route.startswith("/v2-clean/"):
+                        origin = referer_route
+                with SessionLocal() as db:
+                    record_audit(
+                        db,
+                        action="web.legacy_experience.open",
+                        entity_type="experience",
+                        entity_id="current",
+                        detail=(
+                            f"Entrada direta na versão anterior a partir de {origin}; "
+                            f"destino {destination}"
+                        ),
+                        user_id=int(request.session["user_id"]),
+                        after_json={
+                            "origin": origin,
+                            "destination_route": destination,
+                        },
+                    )
+                    db.commit()
+                request.session["carfast_experience"] = "current"
         required_permissions = route_required_permissions(path, request.method)
         if required_permissions and not has_required_permission(request, required_permissions):
             if not request.session.get("user_id"):
@@ -282,6 +339,8 @@ def create_app() -> FastAPI:
                 return RedirectResponse(f"/login?next={quote(next_url, safe='')}", status_code=303)
             if path == "/":
                 return RedirectResponse("/manual", status_code=303)
+            if path == "/v2-clean" or path.startswith("/v2-clean/"):
+                return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
             return RedirectResponse("/", status_code=303)
         return await call_next(request)
 

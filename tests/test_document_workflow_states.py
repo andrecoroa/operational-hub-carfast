@@ -139,4 +139,4 @@ def test_automatic_destination_requires_known_high_confidence(
 def test_alembic_document_workflow_revision_is_the_only_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["9f0a1b2c3d4e"]
+    assert script.get_heads() == ["a0b1c2d3e4f5"]

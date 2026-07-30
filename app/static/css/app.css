@@ -474,7 +474,7 @@ button:hover,
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
   padding: 24px 18px;
   background: var(--nav);
@@ -488,6 +488,35 @@ button:hover,
 .sidebar > div:first-child {
   display: block;
   align-items: center;
+}
+
+.sidebar-brand {
+  position: relative;
+}
+
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sidebar-collapse-toggle:hover,
+.sidebar-collapse-toggle:focus-visible {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  outline: none;
 }
 
 .sidebar > div:first-child::before {
@@ -613,6 +642,7 @@ button:hover,
 }
 
 .sidebar-logout {
+  flex: 1 1 auto;
   margin: 0;
 }
 
@@ -634,6 +664,48 @@ button:hover,
   border-color: var(--brand);
   background: #ffede7;
   outline: none;
+}
+
+.sidebar-footer {
+  display: grid;
+  gap: 12px;
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.sidebar a.sidebar-legacy-link {
+  flex: 0 0 42px;
+  display: inline-grid;
+  place-items: center;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-left-width: 1px;
+  border-radius: var(--radius);
+  padding: 0;
+  background: #fff;
+  color: var(--muted);
+}
+
+.sidebar a.sidebar-legacy-link:hover,
+.sidebar a.sidebar-legacy-link:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--nav-soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.sidebar-legacy-link svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .nav-badge {
@@ -699,6 +771,51 @@ button:hover,
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+@media (min-width: 921px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  padding-inline: 12px;
+}
+
+.app-shell.sidebar-collapsed .sidebar > .sidebar-brand::before {
+  min-width: 0;
+  width: 42px;
+  padding: 0;
+  justify-content: center;
+  content: "CF";
+  letter-spacing: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar h1,
+.app-shell.sidebar-collapsed .sidebar nav,
+.app-shell.sidebar-collapsed .sidebar-status,
+.app-shell.sidebar-collapsed .sidebar-action-label {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-collapse-toggle {
+  top: 51px;
+  left: 8px;
+  right: auto;
+}
+
+.app-shell.sidebar-collapsed .sidebar-footer-actions {
+  display: grid;
+  justify-items: center;
+}
+
+.app-shell.sidebar-collapsed .sidebar-logout {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar a.sidebar-legacy-link {
+  width: 42px;
 }
 
 .content {
@@ -7943,6 +8060,10 @@ a.metric:hover {
 
 @media (max-width: 920px) {
   .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.sidebar-collapsed {
     grid-template-columns: 1fr;
   }
 

@@ -1,14 +1,25 @@
+{% set nav_perms = nav_permissions(request) %}
+{% set is_clean_experience = request.url.path.startswith('/v2-clean') %}
 <aside class="sidebar">
-  {% set nav_perms = nav_permissions(request) %}
-  <div>
+  <div class="sidebar-brand">
     <p class="eyebrow">CarFast</p>
     <h1>Operational Hub</h1>
+    {% if is_clean_experience %}
+      <button
+        class="sidebar-collapse-toggle"
+        type="button"
+        aria-label="Recolher barra lateral"
+        aria-expanded="true"
+        title="Recolher barra lateral"
+      >
+        <span aria-hidden="true">‹</span>
+      </button>
+    {% endif %}
   </div>
   <nav>
-    {% set is_clean_experience = request.url.path.startswith('/v2-clean') %}
-    <a class="sidebar-experience-switch" href="{% if is_clean_experience %}/switch-experience/current{% else %}/switch-experience/clean{% endif %}">
-      {% if is_clean_experience %}CarFast atual{% else %}Nova experiência{% endif %}
-    </a>
+    {% if not is_clean_experience %}
+      <a class="sidebar-experience-switch" href="/switch-experience/clean">Nova experiência</a>
+    {% endif %}
     {% if is_clean_experience %}
       <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
       <a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>
@@ -106,11 +117,53 @@
       {% endif %}
     {% endif %}
   </nav>
-  <form class="sidebar-logout" method="post" action="/logout">
-    <button type="submit">Terminar sessão</button>
-  </form>
-  <div class="sidebar-status">
-    <span class="status-dot"></span>
-    <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-actions">
+      <form class="sidebar-logout" method="post" action="/logout">
+        <button type="submit"><span class="sidebar-action-label">Terminar sessão</span></button>
+      </form>
+      {% if is_clean_experience and nav_has_permission(request, "experience.legacy.access") %}
+        <a
+          class="sidebar-legacy-link"
+          href="/switch-experience/current?origin={{ request.url.path | urlencode }}&destination=%2F"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abrir versão anterior"
+          aria-label="Abrir versão anterior"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5M12 8v5l3 2" />
+          </svg>
+        </a>
+      {% endif %}
+    </div>
+    <div class="sidebar-status">
+      <span class="status-dot"></span>
+      <span><strong>Operação normal</strong><span>Tudo a funcionar dentro dos parâmetros.</span></span>
+    </div>
   </div>
 </aside>
+
+{% if is_clean_experience %}
+  <script>
+    (() => {
+      const shell = document.querySelector(".app-shell");
+      const toggle = document.querySelector(".sidebar-collapse-toggle");
+      if (!shell || !toggle) return;
+      const storageKey = "carfast-clean-sidebar-collapsed";
+      const applyState = (collapsed) => {
+        shell.classList.toggle("sidebar-collapsed", collapsed);
+        toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        toggle.setAttribute("aria-label", collapsed ? "Expandir barra lateral" : "Recolher barra lateral");
+        toggle.setAttribute("title", collapsed ? "Expandir barra lateral" : "Recolher barra lateral");
+        toggle.querySelector("span").textContent = collapsed ? "›" : "‹";
+      };
+      applyState(window.localStorage.getItem(storageKey) === "1");
+      toggle.addEventListener("click", () => {
+        const collapsed = !shell.classList.contains("sidebar-collapsed");
+        applyState(collapsed);
+        window.localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      });
+    })();
+  </script>
+{% endif %}

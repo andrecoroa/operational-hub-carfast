@@ -32,6 +32,7 @@ INITIAL_PERMISSIONS = [
     ("admin.integrations.credentials", "Gerir credenciais de integrações"),
     ("admin.security.read", "Ver revisão de acessos"),
     ("admin.security.manage", "Gerir controlos de segurança"),
+    ("experience.legacy.access", "Abrir versão anterior da CarFast"),
     ("vehicles.read", "Ver viaturas"),
     ("vehicles.write", "Editar viaturas"),
     ("fleet.commerce.manage", "Gerir lista para comercio"),
@@ -81,6 +82,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     },
     "functional_admin": {
         "dashboard.read",
+        "experience.legacy.access",
         "admin.dashboard.read",
         "admin.settings.read",
         "admin.settings.manage",

@@ -3276,7 +3276,7 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
         "admin.security.manage",
         "admin.manage",
     ):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     return None
 
 
@@ -3996,11 +3996,9 @@ def clean_tasks_create(
         )
         db.commit()
         task_id = task.id
-    clean_return_url = return_url.strip()
-    target = (
-        clean_return_url
-        if clean_return_url.startswith("/") and not clean_return_url.startswith("//")
-        else f"/v2-clean/tasks?workspace={clean_workspace}&created=1"
+    target = _clean_v2_return_url(
+        return_url,
+        f"/v2-clean/tasks?workspace={clean_workspace}&created=1",
     )
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}task_created=1&task_id={task_id}", status_code=303)
@@ -4107,12 +4105,7 @@ def clean_tasks_update(
             user_id=user_id,
         )
         db.commit()
-    clean_return_url = return_url.strip()
-    target = (
-        clean_return_url
-        if clean_return_url.startswith("/") and not clean_return_url.startswith("//")
-        else "/v2-clean/tasks"
-    )
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}updated=1", status_code=303)
 
@@ -4220,8 +4213,7 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
                 user_id=user_id,
             )
             db.commit()
-    clean_return_url = return_url.strip()
-    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/tasks?closed=1"
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks?closed=1")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}closed=1", status_code=303)
 
@@ -4263,18 +4255,13 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
                 user_id=user_id,
             )
             db.commit()
-    clean_return_url = return_url.strip()
-    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/tasks?reopened=1"
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks?reopened=1")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}reopened=1", status_code=303)
 
 
 def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> RedirectResponse:
-    target = (
-        return_url.strip()
-        if return_url.strip().startswith("/") and not return_url.strip().startswith("//")
-        else "/v2-clean/tasks"
-    )
+    target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}{flag}=1&open_task={task_id}", status_code=303)
 
@@ -7221,7 +7208,7 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     raw_query = (q or "").strip()
     normalized_query = normalize_identifier(raw_query) if raw_query else ""
     with SessionLocal() as db:
@@ -7321,7 +7308,7 @@ def clean_fleet_documents(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     search = (q or "").strip().lower()
     clean_main_group = (main_group or doc_group or "").strip()
     clean_main_group = {
@@ -7764,7 +7751,7 @@ def clean_diagnostics_center(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
 
     health_labels = {
         "ready": "Com extração",
@@ -8011,7 +7998,7 @@ def clean_fleet_diagnostics(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
 
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
@@ -8157,7 +8144,7 @@ def clean_fleet_documents_new(request: Request, vehicle_id: int):
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -8200,7 +8187,7 @@ def clean_documents_new_page(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     return documents_new_page(
         request,
         error=error,
@@ -8293,7 +8280,7 @@ def clean_document_ocr_validation(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     search = (q or "").strip().lower()
     clean_scope = (scope or "").strip()
     with SessionLocal() as db:
@@ -8560,9 +8547,8 @@ def clean_document_ocr_template_status(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
-    clean_return_url = return_url.strip()
-    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/documents/ocr-validation"
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    target = _clean_v2_return_url(return_url, "/v2-clean/documents/ocr-validation")
     clean_key = template_key.strip()
     clean_status = validation_status.strip().lower()
     if clean_status not in {"validated", "review_needed", "pending"}:
@@ -8636,10 +8622,9 @@ def clean_document_ocr_validation_status(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     user_id = get_web_user_id(request)
-    clean_return_url = return_url.strip()
-    target = clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "/v2-clean/documents/ocr-validation"
+    target = _clean_v2_return_url(return_url, "/v2-clean/documents/ocr-validation")
     clean_status = validation_status.strip().lower()
     if clean_status not in {"validated", "error", "ignored", "pending"}:
         clean_status = "pending"
@@ -8711,7 +8696,7 @@ def clean_document_detail(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
@@ -8769,7 +8754,11 @@ def clean_document_detail(
 
 def _clean_v2_return_url(return_url: str | None, fallback: str = "/v2-clean/documents") -> str:
     candidate = (return_url or "").strip()
-    if candidate.startswith("/") and not candidate.startswith("//"):
+    if (
+        candidate == "/v2-clean"
+        or candidate.startswith("/v2-clean/")
+        or candidate.startswith("/v2-clean?")
+    ) and not candidate.startswith("//"):
         return candidate
     return fallback
 
@@ -8809,7 +8798,7 @@ def clean_document_file(request: Request, document_id: int, inline: int = 1):
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document or document.source not in V2_CLEAN_DOCUMENT_SOURCES:
@@ -8837,7 +8826,7 @@ def clean_document_remove(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     target = _clean_v2_return_url(return_url)
     clean_reason = reason.strip()
     if not clean_reason:
@@ -8895,7 +8884,7 @@ def clean_vehicle_document_record_remove(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     target = _clean_v2_return_url(return_url, f"/v2-clean/fleet/{vehicle_id}/documents")
     clean_reason = reason.strip()
     if not clean_reason:
@@ -8945,12 +8934,11 @@ def clean_document_reprocess_ocr(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
-        clean_return_url = return_url.strip()
-        target = (clean_return_url if clean_return_url.startswith("/") and not clean_return_url.startswith("//") else "") or (
+        target = _clean_v2_return_url(return_url, "") or (
             f"/v2-clean/fleet/{document.vehicle_id}/documents?main_group=invoices"
             if document and document.vehicle_id
             else "/v2-clean/documents"
@@ -9192,7 +9180,7 @@ def clean_documents_reprocess_ocr_batch(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_batch_label = batch_label.strip()
     target = _clean_v2_return_url(return_url, "/v2-clean/documents?main_group=invoices")
     if not clean_batch_label:
@@ -9254,7 +9242,7 @@ def clean_documents_preclassify_services(request: Request):
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         result = preclassify_invoices_and_work_orders(db, user_id=user_id)
@@ -9280,7 +9268,7 @@ def clean_document_invoices_export(request: Request, inline: bool = False):
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
 
     invoice_token = "%fatura%"
     factura_token = "%factura%"
@@ -9465,7 +9453,7 @@ def clean_document_import_center(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     if audit_export:
         return clean_document_invoices_export(request, inline=True)
     search = (q or "").strip().lower()
@@ -10044,7 +10032,7 @@ def clean_documentation_center(request: Request):
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         document_base = select(func.count()).select_from(Document).outerjoin(
             DocumentWorkflowState,
@@ -10131,7 +10119,7 @@ def clean_documentation_triage(
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
     conditions: list[Any] = [_documentation_triage_condition()]
     search = q.strip()
@@ -10312,7 +10300,7 @@ def clean_documentation_imports(request: Request):
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         batches = db.scalars(
             select(ImportBatch)
@@ -10370,7 +10358,7 @@ def clean_documentation_import_workspace(
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     workspace_context = DOCUMENTATION_IMPORT_WORKSPACES.get(workspace)
     if not workspace_context:
         return RedirectResponse("/v2-clean/documentation/imports", status_code=303)
@@ -10972,7 +10960,7 @@ def clean_documentation_invoices(
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
     conditions: list[Any] = [_documentation_invoice_condition()]
     if q.strip():
@@ -11129,7 +11117,7 @@ def clean_documentation_archive(
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
     conditions: list[Any] = [
         or_(
@@ -11204,7 +11192,7 @@ def clean_documentation_extraction_models(
     if denied:
         return denied
     if not can_view_documentation(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
     conditions: list[Any] = []
     if q.strip():
@@ -15670,7 +15658,7 @@ def clean_documents_import_invoice_ocr_manifest(
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     filename = Path(file.filename or "resultados-ocr.json").name
     content = file.file.read(INVOICE_OCR_MANIFEST_MAX_SIZE + 1)
     if not content or len(content) > INVOICE_OCR_MANIFEST_MAX_SIZE:
@@ -17052,7 +17040,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
     if denied:
         return denied
     if not can_view_fleet(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -28800,6 +28788,7 @@ def login_submit(
                 status_code=401,
             )
         request.session["user_id"] = user.id
+        request.session["carfast_experience"] = "clean"
         record_audit(
             db,
             action="web.login",
@@ -28809,8 +28798,8 @@ def login_submit(
             user_id=user.id,
         )
         db.commit()
-    if clean_next_url == "/":
-        return RedirectResponse("/choose-experience", status_code=303)
+    if clean_next_url in {"/", "/choose-experience"}:
+        return RedirectResponse("/v2-clean", status_code=303)
     return RedirectResponse(clean_next_url, status_code=303)
 
 
@@ -28819,30 +28808,56 @@ def choose_experience(request: Request):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        if not user:
-            return RedirectResponse("/login", status_code=303)
-        return templates.TemplateResponse(
-            request,
-            "choose_experience.html",
-            {
-                "user": user,
-                "can_use_clean": True,
-            },
-        )
+    request.session["carfast_experience"] = "clean"
+    return RedirectResponse("/v2-clean", status_code=303)
 
 
 @web_router.get("/switch-experience/{experience}", response_class=HTMLResponse)
-def switch_experience(request: Request, experience: str):
+def switch_experience(
+    request: Request,
+    experience: str,
+    origin: str = "/v2-clean",
+    destination: str = "/",
+):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
     if experience == "clean":
         request.session["carfast_experience"] = "clean"
         return RedirectResponse("/v2-clean", status_code=303)
+    if experience != "current":
+        request.session["carfast_experience"] = "clean"
+        return RedirectResponse("/v2-clean", status_code=303)
+
+    origin_route = safe_clean_origin(origin)
+    destination_route = safe_legacy_destination(destination)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        permissions = get_user_permission_codes(db, user) if user and user.active else set()
+        if "experience.legacy.access" not in permissions:
+            request.session["carfast_experience"] = "clean"
+            return RedirectResponse(
+                "/v2-clean?error=legacy_access_denied",
+                status_code=303,
+            )
+        record_audit(
+            db,
+            action="web.legacy_experience.open",
+            entity_type="experience",
+            entity_id="current",
+            detail=(
+                f"Entrada na versão anterior a partir de {origin_route}; "
+                f"destino {destination_route}"
+            ),
+            user_id=user_id,
+            after_json={
+                "origin": origin_route,
+                "destination_route": destination_route,
+            },
+        )
+        db.commit()
     request.session["carfast_experience"] = "current"
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(destination_route, status_code=303)
 
 
 def safe_internal_next(value: str | None) -> str:
@@ -28852,6 +28867,36 @@ def safe_internal_next(value: str | None) -> str:
     if clean_value.startswith("/login") or clean_value.startswith("/change-notice"):
         return "/"
     return clean_value
+
+
+def safe_clean_origin(value: str | None) -> str:
+    candidate = safe_internal_next(value)
+    if candidate == "/v2-clean" or candidate.startswith("/v2-clean/") or candidate.startswith("/v2-clean?"):
+        return candidate
+    return "/v2-clean"
+
+
+def safe_legacy_destination(value: str | None) -> str:
+    candidate = safe_internal_next(value)
+    blocked_prefixes = (
+        "/v2-clean",
+        "/login",
+        "/logout",
+        "/change-notice",
+        "/choose-experience",
+        "/switch-experience",
+        "/portal",
+        "/api",
+        "/static",
+    )
+    if candidate != "/" and any(
+        candidate == prefix
+        or candidate.startswith(f"{prefix}/")
+        or candidate.startswith(f"{prefix}?")
+        for prefix in blocked_prefixes
+    ):
+        return "/"
+    return candidate
 
 
 @web_router.get("/change-notice", response_class=HTMLResponse)
@@ -28934,6 +28979,8 @@ def has_any_web_permission(request: Request, *permission_codes: str) -> bool:
 def permission_denied_redirect(request: Request) -> RedirectResponse:
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
+    if request.url.path == "/v2-clean" or request.url.path.startswith("/v2-clean/"):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     return RedirectResponse("/", status_code=303)
 
 
@@ -28941,7 +28988,7 @@ def require_any_web_permission(request: Request, *permission_codes: str) -> Redi
     if not get_web_user_id(request):
         return RedirectResponse("/login", status_code=303)
     if not has_any_web_permission(request, *permission_codes):
-        return RedirectResponse("/", status_code=303)
+        return permission_denied_redirect(request)
     return None
 
 

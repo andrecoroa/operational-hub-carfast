@@ -6,7 +6,12 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.models.documents import Document, DocumentWorkflowState, VehicleDocumentRecord
+from app.models.documents import (
+    DiagnosticDocument,
+    Document,
+    DocumentWorkflowState,
+    VehicleDocumentRecord,
+)
 from app.models.imports import ImportBatch, ImportFile
 from app.models.vehicles import Vehicle
 
@@ -101,6 +106,95 @@ def test_documentation_workspaces_render(authenticated_client, path):
 
     assert response.status_code == 200
     assert "Centro de documentação" in response.text
+
+
+def test_clean_invoices_lists_expected_records_and_allows_manual_association(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(
+        plate="AA-10-BB",
+        vin="VF3EXPECTED0000001",
+        rentway_unit_nr="9901",
+    )
+    pending = VehicleDocumentRecord(
+        source_record_type="pending_import",
+        main_group="invoices",
+        status="pending",
+        external_reference="HFO/3000/2026",
+        supplier_name="Fornecedor Teste",
+        source_system="pending_document_import",
+        metadata_json={"supplier_nif": "500000000", "expected_total": "123,45"},
+    )
+    db_session.add_all([vehicle, pending])
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/documentation/invoices")
+    associated = authenticated_client.post(
+        f"/v2-clean/documents/pending/{pending.id}/associate",
+        data={"identifier": "9901", "return_to": "clean"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert page.status_code == 200
+    assert "Faturas esperadas" in page.text
+    assert "HFO/3000/2026" in page.text
+    assert "500000000" in page.text
+    assert associated.status_code == 303
+    assert associated.headers["location"].startswith(
+        "/v2-clean/documentation/invoices"
+    )
+    assert db_session.get(VehicleDocumentRecord, pending.id).vehicle_id == vehicle.id
+
+
+def test_reports_workspace_exposes_batch_reprocessing(
+    authenticated_client,
+    db_session,
+):
+    document = Document(
+        title="Diagnóstico pendente",
+        document_type="diagnostic_report",
+        original_name="diagnostico.pdf",
+        file_name="diagnostico.pdf",
+        storage_provider="local",
+        storage_path="diagnostico.pdf",
+        status="received",
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DiagnosticDocument(
+            document_id=document.id,
+            diagnostic_type="vehicle_diagnostic",
+            diagnostic_status="received",
+            association_status="unassociated",
+            ocr_status="not_requested",
+            validation_status="pending",
+        )
+    )
+    db_session.commit()
+
+    page = authenticated_client.get(
+        "/v2-clean/documentation/imports/reports?tab=diagnostics"
+    )
+
+    assert page.status_code == 200
+    assert "Lotes de diagnósticos" in page.text
+    assert "Extração pendente" in page.text
+    assert "/v2-clean/diagnostics/batches/reprocess" in page.text
+
+
+def test_extraction_models_lists_builtin_extractors_without_database_mappings(
+    authenticated_client,
+):
+    page = authenticated_client.get("/v2-clean/documentation/extraction-models")
+
+    assert page.status_code == 200
+    assert "Extratores incorporados" in page.text
+    assert "Diagnósticos Autel" in page.text
+    assert "Diagnósticos Stellantis" in page.text
+    assert "OCR de faturas" in page.text
 
 
 @pytest.mark.parametrize(

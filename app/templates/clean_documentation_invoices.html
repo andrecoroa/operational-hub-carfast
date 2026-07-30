@@ -11,6 +11,8 @@
       <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documents?audit_export=1">Exportar auditoria</a><a class="button-link" href="/v2-clean/documentation/imports/invoices">Importar faturas</a></div>
     </header>
     {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Natureza confirmada e derivados recalculados, preservando o histórico.</div>{% endif %}
+    {% if request.query_params.get("pending_associated") %}<div class="doc-arch-notice success">Fatura pendente associada à viatura.</div>{% endif %}
+    {% if request.query_params.get("pending_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("pending_error") }}</div>{% endif %}
     {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("error") }}</div>{% endif %}
 
     <section class="doc-arch-kpis doc-arch-kpis-four" aria-label="Indicadores essenciais">
@@ -33,7 +35,50 @@
       </select>
       <button type="submit">Filtrar</button>
     </form>
+    <section class="doc-arch-card" id="pending-invoices">
+      <div class="doc-arch-card-heading">
+        <div>
+          <h2>Faturas esperadas</h2>
+          <p>{{ pending_associated }} associadas a viaturas · {{ pending_unassociated }} por associar. Estes registos aguardam a chegada do documento real.</p>
+        </div>
+      </div>
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Data</th><th>N.º fatura</th><th>Fornecedor</th><th>NIF</th><th>Viatura</th><th>Valor esperado</th><th>Tratamento</th></tr></thead>
+          <tbody>
+            {% for row in pending_rows %}
+              <tr>
+                <td>{{ row.record.document_date.strftime("%d/%m/%Y") if row.record.document_date else "-" }}</td>
+                <td>{{ row.record.external_reference or "-" }}</td>
+                <td>{{ row.record.supplier_name or "-" }}</td>
+                <td>{{ row.supplier_nif or "-" }}</td>
+                <td>
+                  {% if row.vehicle %}
+                    <a href="/v2-clean/fleet/{{ row.vehicle.id }}/documents?main_group=invoices">{{ row.vehicle.plate or row.unit_number or row.vehicle.vin }}</a>
+                  {% else %}
+                    <span class="doc-arch-badge warning">Por associar</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.expected_total if row.expected_total is not none else "-" }}</td>
+                <td>
+                  {% if row.vehicle %}
+                    <a href="/v2-clean/fleet/{{ row.vehicle.id }}/documents?main_group=invoices">Abrir ficha</a>
+                  {% else %}
+                    <form method="post" action="/v2-clean/documents/pending/{{ row.record.id }}/associate">
+                      <input type="hidden" name="return_to" value="clean">
+                      <input name="identifier" required placeholder="Matrícula, VIN ou unit">
+                      <button type="submit" class="link-button">Associar</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}<tr><td colspan="7" class="doc-arch-empty">Não existem faturas esperadas nos filtros atuais.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
     <section class="doc-arch-card">
+      <div class="doc-arch-card-heading"><div><h2>Faturas recebidas</h2><p>Documentos reais disponíveis para consulta e classificação.</p></div></div>
       <div class="doc-arch-table-wrap">
         <table class="doc-arch-table">
           <thead><tr><th>Viatura</th><th>Data</th><th>Documento</th><th>Fornecedor</th><th>Natureza</th><th>Associação</th><th>Validação</th><th>Ação</th></tr></thead>

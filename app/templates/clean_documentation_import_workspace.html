@@ -70,6 +70,31 @@
       </section>
     {% endif %}
 
+    {% if workspace == "reports" %}
+      <section class="doc-arch-kpis doc-arch-kpis-four" aria-label="Estado das extrações">
+        <a href="/v2-clean/diagnostics"><strong>{{ diagnostic_counts.get("total", 0) }}</strong><span>Relatórios</span></a>
+        <a href="/v2-clean/diagnostics?health=ready"><strong>{{ diagnostic_counts.get("ready", 0) }}</strong><span>Com extração</span></a>
+        <a class="warning" href="/v2-clean/diagnostics?health=missing_extraction"><strong>{{ diagnostic_counts.get("pending", 0) }}</strong><span>Extração pendente</span></a>
+        <a class="danger" href="/v2-clean/diagnostics?health=extraction_failed"><strong>{{ diagnostic_counts.get("failed", 0) }}</strong><span>Falharam</span></a>
+      </section>
+      <section class="doc-arch-card">
+        <div class="doc-arch-card-heading">
+          <div><h2>Lotes de diagnósticos</h2><p>Reprocessa até 20 relatórios pendentes, falhados ou desatualizados de cada vez.</p></div>
+          <a class="button-link secondary-link" href="/v2-clean/diagnostics">Auditar todas as extrações</a>
+        </div>
+        <div class="doc-arch-table-wrap">
+          <table class="doc-arch-table">
+            <thead><tr><th>Lote</th><th>Documentos</th><th>Viaturas</th><th>Extraídos</th><th>Pendentes</th><th>Falhas</th><th>Desatualizados</th><th>Ação</th></tr></thead>
+            <tbody>
+              {% for batch in diagnostic_batches %}
+                <tr><td>{{ batch.name }}</td><td>{{ batch.documents }}</td><td>{{ batch.vehicle_count }}</td><td>{{ batch.ready }}</td><td>{{ batch.pending }}</td><td>{{ batch.failed }}</td><td>{{ batch.outdated }}</td><td>{% if batch.processable %}<form method="post" action="/v2-clean/diagnostics/batches/reprocess"><input type="hidden" name="batch_name" value="{{ batch.name }}"><button type="submit" class="link-button">Reprocessar 20</button></form>{% else %}<span class="doc-arch-badge success">Completo</span>{% endif %}</td></tr>
+              {% else %}<tr><td colspan="8" class="doc-arch-empty">Ainda não existem lotes de diagnósticos.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
     <form class="doc-arch-filters doc-arch-filters-compact" method="get">
       {% if tab %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
       <input name="q" value="{{ q }}" placeholder="Pesquisar referência, matrícula, fornecedor…">

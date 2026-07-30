@@ -142,6 +142,21 @@ def test_invoice_import_errors_return_to_new_workspace(authenticated_client):
     )
 
 
+def test_clean_document_navigation_does_not_link_back_to_legacy_center(
+    authenticated_client,
+):
+    home = authenticated_client.get("/v2-clean")
+    ocr_validation = authenticated_client.get(
+        "/v2-clean/documents/ocr-validation"
+    )
+
+    assert home.status_code == 200
+    assert 'href="/v2-clean/documentation"' in home.text
+    assert 'href="/v2-clean/documents"><span>Documentação' not in home.text
+    assert ocr_validation.status_code == 200
+    assert 'href="/v2-clean/documentation/extraction-models"' in ocr_validation.text
+
+
 def test_clean_invoices_lists_expected_records_and_allows_manual_association(
     authenticated_client,
     db_session,

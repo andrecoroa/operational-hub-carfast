@@ -76,13 +76,13 @@
         <span>Entrada manual focada no essencial, com ligação imediata à viatura quando ela já estiver identificada.</span>
       </div>
       <div class="clean-page-action-strip-row">
-        <a class="button-link secondary-link" href="{{ prefill.return_url or ('/v2-clean/documents' if is_clean_mode else '/documents') }}">Voltar</a>
+        <a class="button-link secondary-link" href="{{ prefill.return_url or ('/v2-clean/documentation' if is_clean_mode else '/documents') }}">Voltar</a>
         {% if vehicle_ctx %}
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}/documents">Documentação da viatura</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle_ctx.vehicle.id }}">Ficha v2-clean</a>
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle_ctx.vehicle.id }}">Oficina</a>
         {% elif is_clean_mode %}
-          <a class="button-link secondary-link" href="/v2-clean/documents">Documentação global</a>
+          <a class="button-link secondary-link" href="/v2-clean/documentation">Centro de documentação</a>
         {% else %}
           <a class="button-link secondary-link" href="/v2-clean/documentation">Centro de documentação</a>
         {% endif %}

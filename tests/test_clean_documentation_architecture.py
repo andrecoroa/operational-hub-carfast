@@ -506,6 +506,88 @@ def test_triage_is_universal_and_server_paginated(
     assert "Email" in first.text
 
 
+def test_triage_decision_preserves_filters_and_queues_diagnostic_extraction(
+    authenticated_client,
+    db_session,
+):
+    document = _triage_document(80)
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={
+            "destination": "diagnostics",
+            "decision_reason": "Relatório técnico confirmado",
+            "q": "entrada",
+            "origin": "email",
+            "confidence": "low",
+            "page": "2",
+            "page_size": "10",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "/v2-clean/documentation/triage?"
+    )
+    assert "q=entrada" in response.headers["location"]
+    assert "origin=email" in response.headers["location"]
+    assert "confidence=low" in response.headers["location"]
+    assert "page=2" in response.headers["location"]
+    assert "page_size=10" in response.headers["location"]
+    assert "saved=1" in response.headers["location"]
+
+    stored = db_session.get(Document, document.id)
+    profile = db_session.scalar(
+        select(DiagnosticDocument).where(
+            DiagnosticDocument.document_id == document.id
+        )
+    )
+    workflow = db_session.scalar(
+        select(DocumentWorkflowState).where(
+            DocumentWorkflowState.document_id == document.id
+        )
+    )
+    assert stored.document_type == "workshop_diagnostic"
+    assert stored.status == "pending_extraction"
+    assert profile.ocr_status == "pending"
+    assert profile.validation_status == "pending"
+    assert workflow.extraction_status == "queued"
+    assert workflow.validation_status == "pending"
+    assert workflow.destination_status == "diagnostics"
+
+
+def test_triage_rejects_invalid_invoice_nature_without_server_error(
+    authenticated_client,
+    db_session,
+):
+    document = _triage_document(81)
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/documentation/triage/{document.id}",
+        data={
+            "destination": "invoices",
+            "invoice_nature": "operacional,financeira",
+            "page": "3",
+            "page_size": "25",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "error=invoice_nature" in response.headers["location"]
+    assert "page=3" in response.headers["location"]
+    stored = db_session.get(Document, document.id)
+    assert stored.document_type == "unknown_document"
+    assert stored.status == "unclassified"
+
+
 def test_invoice_nature_endpoint_requires_single_valid_nature(
     authenticated_client,
     db_session,

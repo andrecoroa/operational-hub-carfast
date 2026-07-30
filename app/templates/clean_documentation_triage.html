@@ -58,6 +58,11 @@
                   <details class="doc-arch-action-menu">
                     <summary>Triar</summary>
                     <form method="post" action="/v2-clean/documentation/triage/{{ row.document.id }}">
+                      <input type="hidden" name="q" value="{{ q }}">
+                      <input type="hidden" name="origin" value="{{ origin }}">
+                      <input type="hidden" name="confidence" value="{{ confidence }}">
+                      <input type="hidden" name="page" value="{{ pagination.page }}">
+                      <input type="hidden" name="page_size" value="{{ pagination.page_size }}">
                       <label>Destino
                         <select name="destination" required>
                           <option value="invoices">Faturas</option>

@@ -10408,26 +10408,51 @@ def clean_documentation_triage_decide(
     destination: str = Form(...),
     decision_reason: str = Form(""),
     invoice_nature: str = Form("por_classificar"),
+    q: str = Form(""),
+    origin: str = Form(""),
+    confidence: str = Form(""),
+    page: int = Form(1),
+    page_size: int = Form(25),
 ):
+    return_params = {
+        "q": q.strip(),
+        "origin": origin.strip(),
+        "confidence": confidence.strip(),
+        "page": max(page, 1),
+        "page_size": min(max(page_size, 10), 100),
+    }
+
+    def triage_redirect(**notice: str) -> RedirectResponse:
+        query = {key: value for key, value in return_params.items() if value}
+        query.update(notice)
+        return RedirectResponse(
+            f"/v2-clean/documentation/triage?{urlencode(query)}",
+            status_code=303,
+        )
+
     denied = clean_experience_denied(request)
     if denied:
         return denied
     if not can_manage_documentation(request):
-        return RedirectResponse("/v2-clean/documentation/triage?error=permission", status_code=303)
+        return triage_redirect(error="permission")
     user_id = get_web_user_id(request)
     clean_destination = destination.strip().lower()
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
-            return RedirectResponse("/v2-clean/documentation/triage?error=missing", status_code=303)
+            return triage_redirect(error="missing")
         if clean_destination == "invoices":
-            classify_invoice_nature(
-                db,
-                document=document,
-                nature=invoice_nature,
-                user_id=user_id,
-                decision_reason=decision_reason or "Decisão manual na Triagem",
-            )
+            try:
+                classify_invoice_nature(
+                    db,
+                    document=document,
+                    nature=invoice_nature,
+                    user_id=user_id,
+                    decision_reason=decision_reason or "Decisão manual na Triagem",
+                )
+            except ValueError:
+                db.rollback()
+                return triage_redirect(error="invoice_nature")
         else:
             target_types = {
                 "diagnostics": ("workshop_diagnostic", "technical"),
@@ -10435,16 +10460,15 @@ def clean_documentation_triage_decide(
                 "imports": (document.document_type or "structured_import", "fleet"),
             }
             if clean_destination not in target_types:
-                return RedirectResponse(
-                    "/v2-clean/documentation/triage?error=destination",
-                    status_code=303,
-                )
+                return triage_redirect(error="destination")
             document.document_type, document.classification = target_types[clean_destination]
-            document.status = (
-                "pending_validation"
-                if clean_destination == "diagnostics"
-                else "archived"
-            )
+            needs_extraction = clean_destination == "diagnostics"
+            document.status = "pending_extraction" if needs_extraction else "archived"
+            if needs_extraction:
+                profile = ensure_diagnostic_profile(db, document)
+                profile.diagnostic_status = "processing"
+                profile.ocr_status = "pending"
+                profile.validation_status = "pending"
             if clean_destination == "archive":
                 document.archived = True
                 document.archived_at = document.archived_at or datetime.now(UTC)
@@ -10456,11 +10480,12 @@ def clean_documentation_triage_decide(
                 reason=decision_reason or "Decisão manual na Triagem",
                 ingestion_status="completed",
                 association_status="associated" if document.vehicle_id else "unassociated",
-                validation_status="human_validated",
+                extraction_status="queued" if needs_extraction else "not_requested",
+                validation_status="pending" if needs_extraction else "human_validated",
                 destination_status=clean_destination,
             )
         db.commit()
-    return RedirectResponse("/v2-clean/documentation/triage?saved=1", status_code=303)
+    return triage_redirect(saved="1")
 
 
 @web_router.get("/v2-clean/documentation/imports", response_class=HTMLResponse)

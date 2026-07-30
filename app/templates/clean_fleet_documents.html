@@ -777,34 +777,67 @@
               <b>Comparação FO vs Fatura</b>
               <small>Coerência financeira</small>
             </span>
-            <em>{{ comparison_rows_total }} pares</em>
+            <em>{{ comparison_rows_total }} linhas</em>
           </summary>
           <div class="clean-doc-collapsible-body">
             <div class="clean-doc-table-wrap clean-doc-table-scroll-3">
-              <table class="clean-doc-table">
+              <table class="clean-doc-table clean-doc-comparison-table">
                 <thead>
                   <tr>
                     <th>Folha de obra</th>
-                    <th>Fatura associada</th>
-                    <th>Estado</th>
+                    <th class="clean-doc-comparison-action-heading">Correspondência</th>
+                    <th>Fatura</th>
                   </tr>
                 </thead>
                 <tbody>
                   {% for row in comparison_rows %}
                     <tr>
-                      <td>{{ row.work_order.title }}</td>
-                      <td>{{ row.invoice.title if row.invoice else "Sem fatura associada" }}</td>
-                      <td>{{ row.state_label }}</td>
+                      <td class="{% if not row.work_order %}clean-doc-comparison-missing{% endif %}">
+                        {% if row.work_order %}
+                          <span class="clean-doc-comparison-date">{{ row.work_order.date_display }}</span>
+                          <strong>{{ row.work_order.title }}</strong>
+                          <small>{{ row.work_order.supplier_name or "-" }}{% if row.work_order.km %} · {{ row.work_order.km }} km{% endif %}</small>
+                        {% else %}
+                          <span>Sem folha de obra sugerida</span>
+                        {% endif %}
+                      </td>
+                      <td class="clean-doc-comparison-action">
+                        <span class="clean-doc-status-pill status-{{ row.state }}">{{ row.state_label }}</span>
+                        {% if row.work_order and row.invoice and row.invoice.kind == "document" %}
+                          {% if row.match_kind == "confirmed" %}
+                            <span class="clean-doc-comparison-confirmed">Associado</span>
+                          {% else %}
+                            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/link-work-order">
+                              <input type="hidden" name="document_id" value="{{ row.invoice.id }}">
+                              <input type="hidden" name="work_order_record_id" value="{{ row.work_order.id }}">
+                              <input type="hidden" name="return_group" value="invoices">
+                              <button type="submit" class="button-link secondary-link">Associar</button>
+                            </form>
+                            <small>Match sugerido</small>
+                          {% endif %}
+                        {% elif row.work_order and row.invoice %}
+                          <small>Fatura pendente</small>
+                        {% else %}
+                          <small>Sem correspondência</small>
+                        {% endif %}
+                      </td>
+                      <td class="{% if not row.invoice %}clean-doc-comparison-missing{% endif %}">
+                        {% if row.invoice %}
+                          <span class="clean-doc-comparison-date">{{ row.invoice.date_display }}</span>
+                          {% if row.invoice.open_href %}<a href="{{ row.invoice.open_href }}"><strong>{{ row.invoice.title }}</strong></a>{% else %}<strong>{{ row.invoice.title }}</strong>{% endif %}
+                          <small>{{ row.invoice.supplier_name or "-" }}{% if row.invoice.total_with_vat %} · {{ row.invoice.total_with_vat }} €{% endif %}</small>
+                        {% else %}
+                          <span>Sem fatura sugerida</span>
+                        {% endif %}
+                      </td>
                     </tr>
                   {% else %}
-                    <tr><td colspan="3" class="clean-empty-cell">Sem pares FO x Fatura para comparar.</td></tr>
+                    <tr><td colspan="3" class="clean-empty-cell">Sem folhas de obra ou faturas para comparar.</td></tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
-            {% if compact_initial_view and comparison_rows_total > comparison_rows|length %}
-              <p class="clean-doc-filter-note">Vista compacta: mostrados {{ comparison_rows|length }} de {{ comparison_rows_total }} pares. Usa filtros para análise completa.</p>
-            {% endif %}
+            <p class="clean-doc-filter-note">{{ comparison_rows_total }} linhas ordenadas da data mais recente para a mais antiga. Pares confirmados prevalecem sobre sugestões automáticas.</p>
           </div>
         </details>
       </section>

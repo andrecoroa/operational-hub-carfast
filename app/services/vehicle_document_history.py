@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.documents import (
     Document,
     DocumentEvent,
+    DocumentLink,
     VehicleDocumentAlert,
     VehicleDocumentAuditField,
     VehicleDocumentPendingAction,
@@ -2136,20 +2137,69 @@ def _build_comparison_rows(
     archive_rows: list[dict[str, Any]],
     record_tags: dict[int, list[VehicleDocumentRecordTag]],
     document_tags: dict[int, list[VehicleDocumentRecordTag]],
+    confirmed_invoice_by_work_order: dict[int, int] | None = None,
 ) -> list[dict[str, Any]]:
     work_orders = [row for row in structured_rows if row["main_group"] == "work_orders"]
     invoices = [row for row in archive_rows if row["archive_group"] == "invoices"]
+    invoices_by_id = {row["id"]: row for row in invoices if row["kind"] == "document"}
+    confirmed_invoice_by_work_order = confirmed_invoice_by_work_order or {}
     comparison_rows: list[dict[str, Any]] = []
+    used_invoice_keys: set[tuple[str, int]] = set()
+
     for work_order in work_orders:
-        best_invoice = None
-        best_score = None
-        for invoice in invoices:
-            date_gap = abs(((work_order["date"] or date.min) - (invoice["date"] or date.min)).days)
-            if best_score is None or date_gap < best_score:
-                best_score = date_gap
-                best_invoice = invoice
+        confirmed_invoice_id = confirmed_invoice_by_work_order.get(work_order["id"])
+        best_invoice = invoices_by_id.get(confirmed_invoice_id)
+        match_kind = "confirmed" if best_invoice else ""
+        if best_invoice:
+            used_invoice_keys.add((best_invoice["kind"], best_invoice["id"]))
+
+        work_order_signature = (
+            _signature_from_tags(record_tags.get(work_order["id"], []))
+            if work_order["kind"] == "record"
+            else set()
+        )
+        if not best_invoice:
+            candidates = []
+            for invoice in invoices:
+                if (invoice["kind"], invoice["id"]) in used_invoice_keys:
+                    continue
+                invoice_signature = (
+                    _signature_from_tags(document_tags.get(invoice["id"], []))
+                    if invoice["kind"] == "document"
+                    else set()
+                )
+                date_gap = abs(
+                    (
+                        (work_order["date"] or date.min)
+                        - (invoice["date"] or date.min)
+                    ).days
+                )
+                signature_rank = 2
+                if work_order_signature and invoice_signature:
+                    if work_order_signature == invoice_signature:
+                        signature_rank = 0
+                    elif (
+                        work_order_signature.issubset(invoice_signature)
+                        or invoice_signature.issubset(work_order_signature)
+                    ):
+                        signature_rank = 1
+                    else:
+                        continue
+                if date_gap <= 31:
+                    candidates.append((signature_rank, date_gap, invoice))
+            if candidates:
+                _, _, best_invoice = min(
+                    candidates,
+                    key=lambda candidate: (
+                        candidate[0],
+                        candidate[1],
+                        candidate[2]["id"],
+                    ),
+                )
+                used_invoice_keys.add((best_invoice["kind"], best_invoice["id"]))
+                match_kind = "suggested"
+
         state = "por_validar"
-        work_order_signature = _signature_from_tags(record_tags.get(work_order["id"], [])) if work_order["kind"] == "record" else set()
         invoice_signature = (
             _signature_from_tags(document_tags.get(best_invoice["id"], []))
             if best_invoice and best_invoice["kind"] == "document"
@@ -2170,8 +2220,34 @@ def _build_comparison_rows(
                 "invoice": best_invoice,
                 "state": state,
                 "state_label": DOCUMENT_HISTORY_COMPARISON_LABELS.get(state, state),
+                "match_kind": match_kind,
+                "sort_date": max(
+                    work_order["date"] or date.min,
+                    (best_invoice or {}).get("date") or date.min,
+                ),
             }
         )
+    for invoice in invoices:
+        if (invoice["kind"], invoice["id"]) in used_invoice_keys:
+            continue
+        comparison_rows.append(
+            {
+                "work_order": None,
+                "invoice": invoice,
+                "state": "por_validar",
+                "state_label": DOCUMENT_HISTORY_COMPARISON_LABELS["por_validar"],
+                "match_kind": "",
+                "sort_date": invoice["date"] or date.min,
+            }
+        )
+    comparison_rows.sort(
+        key=lambda row: (
+            row["sort_date"],
+            (row["work_order"] or {}).get("id", 0),
+            (row["invoice"] or {}).get("id", 0),
+        ),
+        reverse=True,
+    )
     return comparison_rows
 
 
@@ -2488,7 +2564,31 @@ def vehicle_document_module_context(
     extraction_metadata = _document_extraction_metadata(db, [document.id for document in documents])
     archive_rows = _build_archive_rows(documents, document_tags, pending_archive_records, extraction_metadata)
     import_rows = _build_import_rows(documents)
-    comparison_rows = _build_comparison_rows(structured_rows, archive_rows, record_tags, document_tags)
+    invoice_document_ids = [
+        row["id"]
+        for row in archive_rows
+        if row["archive_group"] == "invoices" and row["kind"] == "document"
+    ]
+    confirmed_invoice_by_work_order: dict[int, int] = {}
+    if invoice_document_ids:
+        for link in db.scalars(
+            select(DocumentLink).where(
+                DocumentLink.document_id.in_(invoice_document_ids),
+                DocumentLink.entity_type == "vehicle_document_record",
+                DocumentLink.category == "invoice_work_order",
+            )
+        ).all():
+            try:
+                confirmed_invoice_by_work_order[int(link.entity_id)] = link.document_id
+            except (TypeError, ValueError):
+                continue
+    comparison_rows = _build_comparison_rows(
+        structured_rows,
+        archive_rows,
+        record_tags,
+        document_tags,
+        confirmed_invoice_by_work_order,
+    )
     timeline_events, timeline_ticks, timeline_segments, timeline_board = _build_timeline(structured_rows, archive_rows)
     alerts = _alert_rows(db, vehicle.id)
     pendings = _pending_rows(db, vehicle.id)
@@ -2516,7 +2616,11 @@ def vehicle_document_module_context(
             )
     for compare_row in comparison_rows:
         if compare_row["state"] == "divergente":
-            work_order = compare_row["work_order"]["title"]
+            work_order = (
+                compare_row["work_order"]["title"]
+                if compare_row["work_order"]
+                else "sem folha de obra"
+            )
             invoice = compare_row["invoice"]["title"] if compare_row["invoice"] else "sem fatura"
             alerts.append(
                 {

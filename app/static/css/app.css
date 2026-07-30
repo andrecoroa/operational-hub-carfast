@@ -14772,6 +14772,73 @@ button.clean-upload-preview-card {
   line-height: 1.4;
 }
 
+.clean-doc-comparison-table {
+  table-layout: fixed;
+  min-width: 760px;
+}
+
+.clean-doc-comparison-table th:first-child,
+.clean-doc-comparison-table th:last-child {
+  width: 40%;
+}
+
+.clean-doc-comparison-table th.clean-doc-comparison-action-heading {
+  width: 20%;
+  text-align: center;
+}
+
+.clean-doc-comparison-table td {
+  vertical-align: middle;
+}
+
+.clean-doc-comparison-table td:first-child {
+  text-align: right;
+}
+
+.clean-doc-comparison-table td:last-child {
+  text-align: left;
+}
+
+.clean-doc-comparison-table td > strong,
+.clean-doc-comparison-table td > a,
+.clean-doc-comparison-table td > small,
+.clean-doc-comparison-table td > span {
+  display: block;
+}
+
+.clean-doc-comparison-date {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-bottom: 0.2rem;
+}
+
+.clean-doc-comparison-action {
+  border-inline: 1px solid var(--line);
+  text-align: center;
+}
+
+.clean-doc-comparison-action form {
+  margin: 0.35rem 0 0;
+}
+
+.clean-doc-comparison-action .button-link {
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+}
+
+.clean-doc-comparison-action small,
+.clean-doc-comparison-confirmed {
+  color: var(--muted);
+  font-size: 0.74rem;
+  margin-top: 0.25rem;
+}
+
+.clean-doc-comparison-missing {
+  background: #fafbfc;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .clean-doc-structured-block {
   display: grid;
   gap: 10px;

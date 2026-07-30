@@ -7559,7 +7559,7 @@ def clean_fleet_documents(
                 for row in comparison_rows
                 if matches_search(
                     [
-                        row["work_order"]["title"],
+                        row["work_order"]["title"] if row["work_order"] else "",
                         row["invoice"]["title"] if row["invoice"] else "",
                         row["state_label"],
                     ]
@@ -7568,7 +7568,6 @@ def clean_fleet_documents(
 
         compact_initial_view = not any([search, clean_main_group, archive_group, status, open_item])
         table_preview_limit = 8
-        comparison_preview_limit = 3
         archive_classification_rows_total = len(archive_classification_rows)
         invoice_classification_rows_total = len(invoice_classification_rows)
         other_archive_classification_rows_total = len(other_archive_classification_rows)
@@ -7578,7 +7577,6 @@ def clean_fleet_documents(
             invoice_classification_rows = invoice_classification_rows[:table_preview_limit]
             other_archive_classification_rows = other_archive_classification_rows[:table_preview_limit]
             structured_classification_rows = structured_classification_rows[:table_preview_limit]
-            comparison_rows = comparison_rows[:comparison_preview_limit]
 
         all_statuses = [
             ("", "Todos"),

@@ -23,6 +23,7 @@ from app.models.documents import (
 from app.models.vehicles import Vehicle, VehicleIdentifier, VehicleManualField
 from app.services.vehicle_document_history import (
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+    _build_comparison_rows,
     document_center_module_context,
     preclassify_invoices_and_work_orders,
     vehicle_document_module_context,
@@ -4371,6 +4372,71 @@ def test_clean_vehicle_documents_links_invoice_to_work_order_once(authenticated_
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices")
     assert page.status_code == 200
     assert "FO 1608" in page.text
+
+
+def test_fo_invoice_comparison_uses_each_suggested_invoice_once():
+    structured_rows = [
+        {
+            "id": 10,
+            "kind": "record",
+            "main_group": "work_orders",
+            "date": date(2025, 6, 18),
+        },
+        {
+            "id": 11,
+            "kind": "record",
+            "main_group": "work_orders",
+            "date": date(2025, 6, 17),
+        },
+    ]
+    archive_rows = [
+        {
+            "id": 20,
+            "kind": "document",
+            "archive_group": "invoices",
+            "date": date(2025, 6, 18),
+        }
+    ]
+
+    rows = _build_comparison_rows(structured_rows, archive_rows, {}, {})
+
+    assert len(rows) == 2
+    assert sum(row["invoice"] is not None for row in rows) == 1
+    assert sum(row["invoice"] is None for row in rows) == 1
+    assert next(row for row in rows if row["invoice"])["work_order"]["id"] == 10
+    assert next(row for row in rows if row["invoice"])["match_kind"] == "suggested"
+
+
+def test_fo_invoice_comparison_keeps_unmatched_invoice_as_incomplete_row():
+    structured_rows = [
+        {
+            "id": 10,
+            "kind": "record",
+            "main_group": "work_orders",
+            "date": date(2025, 6, 18),
+        }
+    ]
+    archive_rows = [
+        {
+            "id": 20,
+            "kind": "document",
+            "archive_group": "invoices",
+            "date": date(2025, 6, 18),
+        },
+        {
+            "id": 21,
+            "kind": "document",
+            "archive_group": "invoices",
+            "date": date(2024, 1, 1),
+        },
+    ]
+
+    rows = _build_comparison_rows(structured_rows, archive_rows, {}, {})
+
+    assert len(rows) == 2
+    unmatched = next(row for row in rows if row["work_order"] is None)
+    assert unmatched["invoice"]["id"] == 21
+    assert unmatched["match_kind"] == ""
 
 
 def test_clean_vehicle_documents_keeps_detail_open_after_classification(authenticated_client, db_session):

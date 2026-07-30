@@ -113,6 +113,35 @@ def test_documentation_workspaces_render(authenticated_client, path):
     assert "Centro de documentação" in response.text
 
 
+def test_invoice_workspace_owns_import_actions_and_hides_legacy_center(
+    authenticated_client,
+):
+    page = authenticated_client.get("/v2-clean/documentation/imports/invoices")
+
+    assert page.status_code == 200
+    assert 'action="/v2-clean/documents/import/archive-batch"' in page.text
+    assert 'action="/v2-clean/documents/import/pending-invoices"' in page.text
+    assert 'action="/v2-clean/documents/import/invoice-ocr-manifest"' in page.text
+    assert 'name="return_to" value="documentation"' in page.text
+    assert "/v2-clean/documentation/invoices#pending-invoices" in page.text
+    assert "/v2-clean/documents#invoice-import" not in page.text
+    assert "Centro anterior" not in page.text
+
+
+def test_invoice_import_errors_return_to_new_workspace(authenticated_client):
+    response = authenticated_client.post(
+        "/v2-clean/documents/import/archive-batch",
+        data={"return_to": "documentation"},
+        files={"file": ("faturas.txt", b"invalid", "text/plain")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "/v2-clean/documentation/imports/invoices?batch_error="
+    )
+
+
 def test_clean_invoices_lists_expected_records_and_allows_manual_association(
     authenticated_client,
     db_session,

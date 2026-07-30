@@ -16040,10 +16040,28 @@ def _apply_invoice_ocr_payload(
     return extracted_lines
 
 
+def _invoice_import_return_url(
+    return_to: str,
+    *,
+    pending: bool = False,
+    query: str = "",
+) -> str:
+    if return_to == "documentation":
+        path = (
+            "/v2-clean/documentation/invoices"
+            if pending
+            else "/v2-clean/documentation/imports/invoices"
+        )
+    else:
+        path = "/v2-clean/documents"
+    return f"{path}?{query}" if query else path
+
+
 @web_router.post("/v2-clean/documents/import/invoice-ocr-manifest")
 def clean_documents_import_invoice_ocr_manifest(
     request: Request,
     file: UploadFile = File(...),
+    return_to: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -16054,14 +16072,20 @@ def clean_documents_import_invoice_ocr_manifest(
     content = file.file.read(INVOICE_OCR_MANIFEST_MAX_SIZE + 1)
     if not content or len(content) > INVOICE_OCR_MANIFEST_MAX_SIZE:
         return RedirectResponse(
-            "/v2-clean/documents?manifest_error=Manifesto+vazio+ou+demasiado+grande",
+            _invoice_import_return_url(
+                return_to,
+                query="manifest_error=Manifesto+vazio+ou+demasiado+grande",
+            ),
             status_code=303,
         )
     try:
         manifest = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return RedirectResponse(
-            "/v2-clean/documents?manifest_error=Manifesto+JSON+inválido",
+            _invoice_import_return_url(
+                return_to,
+                query="manifest_error=Manifesto+JSON+inválido",
+            ),
             status_code=303,
         )
     if (
@@ -16070,7 +16094,10 @@ def clean_documents_import_invoice_ocr_manifest(
         or not isinstance(manifest.get("documents"), list)
     ):
         return RedirectResponse(
-            "/v2-clean/documents?manifest_error=Formato+de+manifesto+incompatível",
+            _invoice_import_return_url(
+                return_to,
+                query="manifest_error=Formato+de+manifesto+incompatível",
+            ),
             status_code=303,
         )
     entries = manifest["documents"]
@@ -16133,7 +16160,10 @@ def clean_documents_import_invoice_ocr_manifest(
             "manifest_lines": lines,
         }
     )
-    return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
+    return RedirectResponse(
+        _invoice_import_return_url(return_to, query=params),
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documents/import/archive-batch")
@@ -16141,28 +16171,53 @@ def clean_document_import_archive_batch(
     request: Request,
     file: UploadFile = File(...),
     operation: str = Form("import"),
+    return_to: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     filename = Path(file.filename or "documentos.zip").name
     if Path(filename).suffix.lower() != ".zip":
-        return RedirectResponse("/v2-clean/documents?batch_error=O+ficheiro+tem+de+ser+ZIP", status_code=303)
+        return RedirectResponse(
+            _invoice_import_return_url(
+                return_to,
+                query="batch_error=O+ficheiro+tem+de+ser+ZIP",
+            ),
+            status_code=303,
+        )
     content = file.file.read()
     if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
-        return RedirectResponse("/v2-clean/documents?batch_error=ZIP+vazio+ou+demasiado+grande", status_code=303)
+        return RedirectResponse(
+            _invoice_import_return_url(
+                return_to,
+                query="batch_error=ZIP+vazio+ou+demasiado+grande",
+            ),
+            status_code=303,
+        )
 
     user_id = get_web_user_id(request)
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
     except (zipfile.BadZipFile, OSError):
-        return RedirectResponse("/v2-clean/documents?batch_error=ZIP+invalido", status_code=303)
+        return RedirectResponse(
+            _invoice_import_return_url(
+                return_to,
+                query="batch_error=ZIP+invalido",
+            ),
+            status_code=303,
+        )
 
     try:
         with archive, SessionLocal() as db:
             entries = [entry for entry in archive.infolist() if not entry.is_dir()]
             if len(entries) > BATCH_DOCUMENT_MAX_FILES:
-                return RedirectResponse("/v2-clean/documents?batch_error=O+ZIP+tem+demasiados+ficheiros", status_code=303)
+                return RedirectResponse(
+                    _invoice_import_return_url(
+                        return_to,
+                        query="batch_error=O+ZIP+tem+demasiados+ficheiros",
+                    ),
+                    status_code=303,
+                )
             payloads: list[dict[str, Any]] = []
             total_uncompressed = 0
             for entry in entries:
@@ -16181,7 +16236,13 @@ def clean_document_import_archive_batch(
                 total_uncompressed += entry.file_size
                 if total_uncompressed > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
                     db.rollback()
-                    return RedirectResponse("/v2-clean/documents?batch_error=Conteúdo+extraído+demasiado+grande", status_code=303)
+                    return RedirectResponse(
+                        _invoice_import_return_url(
+                            return_to,
+                            query="batch_error=Conteúdo+extraído+demasiado+grande",
+                        ),
+                        status_code=303,
+                    )
                 payloads.append(
                     {
                         "archive_name": archive_name,
@@ -16201,7 +16262,13 @@ def clean_document_import_archive_batch(
             db.commit()
     except Exception as exc:  # noqa: BLE001
         message = f"Erro ao arquivar lote ({exc.__class__.__name__})"
-        return RedirectResponse(f"/v2-clean/documents?{urlencode({'batch_error': message})}", status_code=303)
+        return RedirectResponse(
+            _invoice_import_return_url(
+                return_to,
+                query=urlencode({"batch_error": message}),
+            ),
+            status_code=303,
+        )
 
     params = urlencode(
         {
@@ -16214,7 +16281,10 @@ def clean_document_import_archive_batch(
             "batch_operation": operation,
         }
     )
-    return RedirectResponse(f"/v2-clean/documents?{params}", status_code=303)
+    return RedirectResponse(
+        _invoice_import_return_url(return_to, query=params),
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documents/import/inbox")
@@ -16702,14 +16772,22 @@ def reprocess_structured_import_file(
 
 
 @web_router.post("/v2-clean/documents/import/pending-invoices")
-def clean_document_import_pending_invoices(request: Request, file: UploadFile = File(...)):
+def clean_document_import_pending_invoices(
+    request: Request,
+    file: UploadFile = File(...),
+    return_to: str = Form(""),
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".xlsx", ".xls", ".csv"}:
         return RedirectResponse(
-            "/v2-clean/documents?pending_error=Formato+não+suportado",
+            _invoice_import_return_url(
+                return_to,
+                pending=True,
+                query="pending_error=Formato+não+suportado",
+            ),
             status_code=303,
         )
     user_id = get_web_user_id(request)
@@ -16724,20 +16802,30 @@ def clean_document_import_pending_invoices(request: Request, file: UploadFile = 
                 )
             except Exception as exc:
                 return RedirectResponse(
-                    f"/v2-clean/documents?pending_error={quote_plus(str(exc)[:180])}",
+                    _invoice_import_return_url(
+                        return_to,
+                        pending=True,
+                        query=f"pending_error={quote_plus(str(exc)[:180])}",
+                    ),
                     status_code=303,
                 )
     finally:
         tmp_path.unlink(missing_ok=True)
     token = _store_pending_invoice_preview(preview, user_id)
+    query = urlencode({"return_to": return_to}) if return_to else ""
     return RedirectResponse(
-        f"/v2-clean/documents/import/pending-invoices/preview/{token}",
+        f"/v2-clean/documents/import/pending-invoices/preview/{token}"
+        f"{f'?{query}' if query else ''}",
         status_code=303,
     )
 
 
 @web_router.get("/v2-clean/documents/import/pending-invoices/preview/{token}")
-def clean_document_pending_invoice_preview(request: Request, token: str):
+def clean_document_pending_invoice_preview(
+    request: Request,
+    token: str,
+    return_to: str = "",
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -16745,7 +16833,11 @@ def clean_document_pending_invoice_preview(request: Request, token: str):
         preview = _load_pending_invoice_preview(token, get_web_user_id(request))
     except ValueError as exc:
         return RedirectResponse(
-            f"/v2-clean/documents?pending_error={quote_plus(str(exc))}",
+            _invoice_import_return_url(
+                return_to,
+                pending=True,
+                query=f"pending_error={quote_plus(str(exc))}",
+            ),
             status_code=303,
         )
     return templates.TemplateResponse(
@@ -16755,6 +16847,7 @@ def clean_document_pending_invoice_preview(request: Request, token: str):
             "title": "Rever faturas pendentes",
             "preview": preview,
             "preview_token": token,
+            "return_to": return_to if return_to == "documentation" else "",
         },
     )
 
@@ -16764,6 +16857,7 @@ def clean_document_pending_invoice_confirm(
     request: Request,
     preview_token: str = Form(...),
     selected_rows: list[str] = Form(default=[]),
+    return_to: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -16773,13 +16867,22 @@ def clean_document_pending_invoice_confirm(
         preview = _load_pending_invoice_preview(preview_token, user_id)
     except ValueError as exc:
         return RedirectResponse(
-            f"/v2-clean/documents?pending_error={quote_plus(str(exc))}",
+            _invoice_import_return_url(
+                return_to,
+                pending=True,
+                query=f"pending_error={quote_plus(str(exc))}",
+            ),
             status_code=303,
         )
     if not selected_rows:
+        query = urlencode(
+            {
+                "error": "Selecione pelo menos uma linha",
+                **({"return_to": "documentation"} if return_to == "documentation" else {}),
+            }
+        )
         return RedirectResponse(
-            f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}?error="
-            "Selecione+pelo+menos+uma+linha",
+            f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}?{query}",
             status_code=303,
         )
     with SessionLocal() as db:
@@ -16793,9 +16896,14 @@ def clean_document_pending_invoice_confirm(
             db.commit()
         except Exception as exc:
             db.rollback()
+            query = urlencode(
+                {
+                    "error": str(exc)[:180],
+                    **({"return_to": "documentation"} if return_to == "documentation" else {}),
+                }
+            )
             return RedirectResponse(
-                f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}"
-                f"?error={quote_plus(str(exc)[:180])}",
+                f"/v2-clean/documents/import/pending-invoices/preview/{preview_token}?{query}",
                 status_code=303,
             )
     _pending_invoice_preview_path(preview_token).unlink(missing_ok=True)
@@ -16808,13 +16916,17 @@ def clean_document_pending_invoice_confirm(
             "pending_invalid": result["invalid"],
         }
     )
-    return RedirectResponse(f"/v2-clean/documents?{query}", status_code=303)
+    return RedirectResponse(
+        _invoice_import_return_url(return_to, pending=True, query=query),
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documents/import/pending-invoices/cancel")
 def clean_document_pending_invoice_cancel(
     request: Request,
     preview_token: str = Form(...),
+    return_to: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -16824,7 +16936,10 @@ def clean_document_pending_invoice_cancel(
         _pending_invoice_preview_path(preview_token).unlink(missing_ok=True)
     except ValueError:
         pass
-    return RedirectResponse("/v2-clean/documents", status_code=303)
+    return RedirectResponse(
+        _invoice_import_return_url(return_to, pending=True),
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documents/pending/{record_id}/associate")

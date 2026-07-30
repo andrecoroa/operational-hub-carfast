@@ -31,6 +31,7 @@
 
         <form method="post" action="/v2-clean/documents/import/pending-invoices/confirm">
           <input type="hidden" name="preview_token" value="{{ preview_token }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
           <div class="clean-doc-table-wrap clean-pending-preview-table-wrap">
             <table class="clean-doc-table clean-pending-preview-table">
               <thead>
@@ -95,6 +96,7 @@
         </form>
         <form method="post" action="/v2-clean/documents/import/pending-invoices/cancel" class="clean-pending-preview-cancel">
           <input type="hidden" name="preview_token" value="{{ preview_token }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
           <button type="submit" class="secondary-button">Cancelar</button>
         </form>
       </article>

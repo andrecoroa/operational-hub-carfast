@@ -56,7 +56,7 @@
             <input type="hidden" name="category" value="{{ prefill.category }}">
             <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
             <label class="span-2">Título<input name="title" value="{{ prefill.title }}" required></label>
-            <label>Área
+            <label>Natureza
               <select name="workspace">
                 {% for code, label in task_workspace_options if code in writable_workspaces %}
                   <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
@@ -123,7 +123,12 @@
         <input type="hidden" name="workspace" value="{{ filters.workspace }}">
         <input type="hidden" name="mine_kind" value="{{ filters.mine_kind }}">
         <label>Estado<select name="status">{% for code, label in task_status_options %}<option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-        <label>Tipo<select name="kind">{% for code, label in task_kind_options %}<option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Natureza
+          <select name="nature">
+            <option value="">Todas</option>
+            {% for value in task_nature_options %}<option value="{{ value }}" {% if filters.nature == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          </select>
+        </label>
         <label>Matrícula<input name="plate" value="{{ filters.plate }}"></label>
         <label>Pesquisar<input name="q" value="{{ filters.q }}" placeholder="Tarefa, documento, contexto..."></label>
         <button type="submit">Filtrar</button>
@@ -171,15 +176,31 @@
         <div class="clean-task-preview-main">
           <section>
             <h3>Descrição e contexto</h3>
-            <p class="clean-task-description">{{ task.description or "Sem descrição." }}</p>
-            <div class="clean-task-context-line">
-              <span>Matrícula <b>{{ task.plate or "-" }}</b></span>
-              <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
-              <span>Fila <b>{{ task_workspace_labels.get(task_workspace) }}</b></span>
-              <span>Reserva <b>{{ task.reservation_number or "-" }}</b></span>
-              <span>Contrato <b>{{ task.contract_number or "-" }}</b></span>
-              <span>Fatura <b>{{ task.invoice_number or "-" }}</b></span>
-            </div>
+            {% if can_write %}
+              <form method="post" action="/v2-clean/tasks/{{ task.id }}/context" class="clean-task-context-form">
+                <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+                <label class="span-all">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
+                <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
+                <label>Reserva<input name="reservation_number" value="{{ task.reservation_number or '' }}"></label>
+                <label>Contrato<input name="contract_number" value="{{ task.contract_number or '' }}"></label>
+                <label>N.º fatura<input name="invoice_number" value="{{ task.invoice_number or '' }}"></label>
+                <div class="clean-task-context-static">
+                  <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
+                  <span>Fila <b>{{ task_workspace_labels.get(task_workspace) }}</b></span>
+                </div>
+                <div class="clean-task-context-actions"><button type="submit">Guardar contexto</button></div>
+              </form>
+            {% else %}
+              <p class="clean-task-description">{{ task.description or "Sem descrição." }}</p>
+              <div class="clean-task-context-line">
+                <span>Matrícula <b>{{ task.plate or "-" }}</b></span>
+                <span>Reserva <b>{{ task.reservation_number or "-" }}</b></span>
+                <span>Contrato <b>{{ task.contract_number or "-" }}</b></span>
+                <span>Fatura <b>{{ task.invoice_number or "-" }}</b></span>
+                <span>Origem <b>{{ task.entity_type or ("Email" if email_by_task.get(task.id) else "Manual") }}</b></span>
+                <span>Fila <b>{{ task_workspace_labels.get(task_workspace) }}</b></span>
+              </div>
+            {% endif %}
             {% if email_by_task.get(task.id) %}
               {% set email = email_by_task.get(task.id) %}
               <div class="clean-task-email-summary"><b>Email:</b> {{ email.subject or task.title }} · {{ email.sender or "remetente desconhecido" }}{% if email.mailbox %} · {{ email.mailbox }}{% endif %}</div>
@@ -190,8 +211,12 @@
             <h3>Gestão</h3>
             <form method="post" action="/v2-clean/tasks/{{ task.id }}/update" class="clean-task-edit-form">
               <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+              <input type="hidden" name="description" value="{{ task.description or '' }}">
+              <input type="hidden" name="plate" value="{{ task.plate or '' }}">
+              <input type="hidden" name="reservation_number" value="{{ task.reservation_number or '' }}">
+              <input type="hidden" name="contract_number" value="{{ task.contract_number or '' }}">
+              <input type="hidden" name="invoice_number" value="{{ task.invoice_number or '' }}">
               <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
-              <label class="span-2">Descrição<textarea name="description" rows="3">{{ task.description or '' }}</textarea></label>
               <label class="span-2">Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
               <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
               <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
@@ -199,12 +224,8 @@
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
               <label>Fila<select name="workspace">{% for code, label in task_workspace_options if code in writable_workspaces %}<option value="{{ code }}" {% if code == task_workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-              <label>Área<input name="category" value="{{ task.category or '' }}"></label>
+              <label>Natureza<input name="category" value="{{ task.category or '' }}"></label>
               <label>Categoria<input name="subcategory" value="{{ task.subcategory or '' }}"></label>
-              <label>Matrícula<input name="plate" value="{{ task.plate or '' }}"></label>
-              <label>Reserva<input name="reservation_number" value="{{ task.reservation_number or '' }}"></label>
-              <label>Contrato<input name="contract_number" value="{{ task.contract_number or '' }}"></label>
-              <label>N.º fatura<input name="invoice_number" value="{{ task.invoice_number or '' }}"></label>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span><button type="submit">Guardar</button></div>
             </form>
           </section>

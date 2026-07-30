@@ -3577,6 +3577,7 @@ def clean_tasks_center(
     mine_kind: str = "all",
     status: str = "open",
     kind: str = "all",
+    nature: str = "",
     plate: str = "",
     q: str = "",
     record_type: str = "",
@@ -3688,6 +3689,9 @@ def clean_tasks_center(
             filters.append(~or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")))
         if normalized_plate:
             filters.append(Task.plate == normalized_plate)
+        clean_nature = nature.strip()[:80]
+        if clean_nature:
+            filters.append(Task.category == clean_nature)
         if q.strip():
             search = f"%{q.strip()}%"
             filters.append(
@@ -3792,7 +3796,20 @@ def clean_tasks_center(
             *[(code, TASK_WORKSPACE_LABELS[code]) for code in readable_workspaces],
         ]
         task_status_options = [("open", "Abertas"), ("closed", "Fechadas"), ("all", "Todas")]
-        task_kind_options = [("all", "Tarefas e problemas"), ("task", "Só tarefas"), ("problem", "Só problemas")]
+        task_nature_options = [
+            value
+            for value in db.scalars(
+                select(Task.category)
+                .where(
+                    Task.source == "v2_clean",
+                    Task.category.is_not(None),
+                    Task.category != "",
+                )
+                .distinct()
+                .order_by(Task.category)
+            )
+            if value
+        ]
         task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
         task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
@@ -3805,7 +3822,7 @@ def clean_tasks_center(
                 "tasks": tasks,
                 "task_workspace_options": task_workspace_options,
                 "task_status_options": task_status_options,
-                "task_kind_options": task_kind_options,
+                "task_nature_options": task_nature_options,
                 "task_workspace_labels": task_workspace_labels,
                 "task_status_labels": task_status_labels,
                 "task_priority_labels": task_priority_labels,
@@ -3826,6 +3843,7 @@ def clean_tasks_center(
                     "mine_kind": active_mine_kind,
                     "status": active_status,
                     "kind": active_kind,
+                    "nature": clean_nature,
                     "plate": normalized_plate,
                     "q": q.strip(),
                 },
@@ -4097,6 +4115,72 @@ def clean_tasks_update(
     )
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}updated=1", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/context", response_class=HTMLResponse)
+def clean_tasks_update_context(
+    request: Request,
+    task_id: int,
+    description: str = Form(""),
+    plate: str = Form(""),
+    reservation_number: str = Form(""),
+    contract_number: str = Form(""),
+    invoice_number: str = Form(""),
+    return_url: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        if not task or task.source != "v2_clean":
+            return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
+        current_user = db.get(User, user_id)
+        task_workspace = workspace_for_task_type(task.task_type)
+        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        changes = {
+            "description": (task.description, description.strip() or None),
+            "plate": (task.plate, normalize_identifier(plate) if plate.strip() else None),
+            "reservation_number": (
+                task.reservation_number,
+                reservation_number.strip()[:120] or None,
+            ),
+            "contract_number": (
+                task.contract_number,
+                contract_number.strip()[:120] or None,
+            ),
+            "invoice_number": (
+                task.invoice_number,
+                invoice_number.strip()[:120] or None,
+            ),
+        }
+        for field_name, (old_value, new_value) in changes.items():
+            if old_value == new_value:
+                continue
+            setattr(task, field_name, new_value)
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name=field_name,
+                    old_value=str(old_value) if old_value is not None else None,
+                    new_value=str(new_value) if new_value is not None else None,
+                )
+            )
+        record_audit(
+            db,
+            action="task.context.update",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Contexto atualizado no Centro de Tarefas: {task.title}",
+            user_id=user_id,
+        )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="updated")
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/close", response_class=HTMLResponse)

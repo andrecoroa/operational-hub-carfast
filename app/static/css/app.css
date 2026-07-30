@@ -19672,6 +19672,95 @@ body.clean-doc-modal-open {
   grid-column: 1 / -1;
 }
 
+.clean-task-context-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.clean-task-context-form label {
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 6px;
+}
+
+.clean-task-context-form input,
+.clean-task-context-form textarea {
+  background: #fff;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  color: #07142f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.clean-task-context-form textarea {
+  resize: vertical;
+}
+
+.clean-task-context-form .span-all {
+  grid-column: 1 / -1;
+}
+
+.clean-task-context-static {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  grid-column: 1 / -2;
+}
+
+.clean-task-context-static span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.clean-task-context-static b {
+  color: #0f2a5f;
+  display: block;
+  margin-top: 2px;
+}
+
+.clean-task-context-actions {
+  align-items: end;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clean-task-context-actions button {
+  background: #9f470f;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 40px;
+  padding: 9px 16px;
+}
+
+@media (max-width: 760px) {
+  .clean-task-context-form {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-task-context-form .span-all,
+  .clean-task-context-static,
+  .clean-task-context-actions {
+    grid-column: 1;
+  }
+
+  .clean-task-context-actions button {
+    width: 100%;
+  }
+}
+
 .clean-task-hero {
   min-height: 0;
   padding: 18px 20px;

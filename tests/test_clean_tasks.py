@@ -354,3 +354,49 @@ def test_clean_task_can_move_to_audit_and_keeps_business_context(authenticated_c
     assert audit_page.status_code == 200
     assert "Auditar fatura" in audit_page.text
     assert "FAC/2026/88" in audit_page.text
+
+
+def test_clean_task_context_is_editable_without_changing_management(authenticated_client, db_session):
+    task = Task(
+        title="Confirmar documentação",
+        description="Descrição inicial",
+        source="v2_clean",
+        task_type="operational_task",
+        status="in_execution",
+        priority="high",
+        category="Documentação",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/context",
+        data={
+            "description": "Descrição revista no contexto.",
+            "plate": "bc-27-ac",
+            "reservation_number": "RES-17",
+            "contract_number": "CONT-44",
+            "invoice_number": "FAC/2026/91",
+            "return_url": "/v2-clean/tasks?workspace=operational",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.refresh(task)
+    assert task.description == "Descrição revista no contexto."
+    assert task.plate == "BC-27-AC"
+    assert task.reservation_number == "RES-17"
+    assert task.contract_number == "CONT-44"
+    assert task.invoice_number == "FAC/2026/91"
+    assert task.status == "in_execution"
+    assert task.priority == "high"
+    assert task.category == "Documentação"
+
+    page = authenticated_client.get(
+        "/v2-clean/tasks?workspace=operational&nature=Documenta%C3%A7%C3%A3o"
+    )
+    assert page.status_code == 200
+    assert "Confirmar documentação" in page.text
+    assert ">Natureza<" in page.text
+    assert "Tarefas e problemas" not in page.text

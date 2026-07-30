@@ -15709,13 +15709,29 @@ def clean_document_import_historical_reports_page(request: Request):
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    return RedirectResponse("/v2-clean/documents#imports", status_code=303)
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/reports?tab=diagnostics",
+        status_code=303,
+    )
+
+
+def _historical_reports_return_url(return_to: str, query: str = "") -> str:
+    path = (
+        "/v2-clean/documentation/imports/reports?tab=diagnostics"
+        if return_to == "documentation"
+        else "/v2-clean/documents"
+    )
+    if not query:
+        return path
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}{query}"
 
 
 @web_router.post("/v2-clean/documents/import/historical-reports")
 async def clean_document_import_historical_reports(
     request: Request,
     files: list[UploadFile] = File(...),
+    return_to: str = Form(""),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -15727,12 +15743,18 @@ async def clean_document_import_historical_reports(
     payloads, payload_error = _historical_report_payloads(uploads)
     if payload_error:
         return RedirectResponse(
-            f"/v2-clean/documents?{urlencode({'report_error': payload_error})}",
+            _historical_reports_return_url(
+                return_to,
+                urlencode({"report_error": payload_error}),
+            ),
             status_code=303,
         )
     if not payloads:
         return RedirectResponse(
-            "/v2-clean/documents?report_error=Nenhum+relatorio+compativel",
+            _historical_reports_return_url(
+                return_to,
+                "report_error=Nenhum+relatorio+compativel",
+            ),
             status_code=303,
         )
 
@@ -15980,8 +16002,9 @@ async def clean_document_import_historical_reports(
             counters["imported"] += 1
         db.commit()
 
+    query = urlencode({f"report_{key}": value for key, value in counters.items()})
     return RedirectResponse(
-        f"/v2-clean/documents?{urlencode({f'report_{key}': value for key, value in counters.items()})}",
+        _historical_reports_return_url(return_to, query),
         status_code=303,
     )
 

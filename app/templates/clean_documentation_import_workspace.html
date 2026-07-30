@@ -17,6 +17,8 @@
     {% if request.query_params.get("batch_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("batch_error") }}</div>{% endif %}
     {% if request.query_params.get("manifest_updated") is not none %}<div class="doc-arch-notice success">{{ request.query_params.get("manifest_updated") }} faturas atualizadas pelo manifesto OCR, com {{ request.query_params.get("manifest_lines", "0") }} linhas.</div>{% endif %}
     {% if request.query_params.get("manifest_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("manifest_error") }}</div>{% endif %}
+    {% if request.query_params.get("report_imported") is not none %}<div class="doc-arch-notice success">{{ request.query_params.get("report_imported") }} relatórios importados, {{ request.query_params.get("report_matched", "0") }} associados e {{ request.query_params.get("report_pending", "0") }} por associar.</div>{% endif %}
+    {% if request.query_params.get("report_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("report_error") }}</div>{% endif %}
 
     {% if workspace == "rentway" %}
       <nav class="doc-arch-tabs">
@@ -64,7 +66,7 @@
         </div>
         <div class="doc-arch-header-actions">
           {% if workspace == "reports" %}
-            <a class="button-link" href="/v2-clean/documents/import/historical-reports">Importar relatórios</a>
+            <button type="button" onclick="document.getElementById('reports-import-dialog').showModal()">Importar relatórios</button>
           {% elif workspace == "invoices" %}
             <button type="button" onclick="document.getElementById('invoice-import-dialog').showModal()">Importar faturas</button>
           {% else %}
@@ -205,6 +207,21 @@
             <div class="doc-arch-dialog-actions"><button type="submit">Aplicar resultados</button></div>
           </form>
         </section>
+      </dialog>
+    {% endif %}
+    {% if workspace == "reports" %}
+      <dialog id="reports-import-dialog" class="doc-arch-dialog">
+        <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
+        <h2>Importar relatórios</h2>
+        <p>Podes selecionar vários PDFs ou um ZIP. Em lotes, os ficheiros são associados primeiro e extraídos em blocos de 20.</p>
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/historical-reports">
+          <input type="hidden" name="return_to" value="documentation">
+          <label>Relatórios ou arquivo ZIP<input type="file" name="files" accept=".pdf,.zip,application/pdf,application/zip" multiple required></label>
+          <div class="doc-arch-dialog-actions">
+            <button type="submit">Importar relatórios</button>
+            <button type="button" class="secondary" onclick="document.getElementById('reports-import-dialog').close()">Cancelar</button>
+          </div>
+        </form>
       </dialog>
     {% endif %}
   </main>

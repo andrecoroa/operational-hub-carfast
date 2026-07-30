@@ -232,6 +232,9 @@ def test_reports_workspace_exposes_batch_reprocessing(
     assert "Lotes de diagnósticos" in page.text
     assert "Extração pendente" in page.text
     assert "/v2-clean/diagnostics/batches/reprocess" in page.text
+    assert 'id="reports-import-dialog"' in page.text
+    assert 'action="/v2-clean/documents/import/historical-reports"' in page.text
+    assert 'name="return_to" value="documentation"' in page.text
 
 
 def test_extraction_models_lists_builtin_extractors_without_database_mappings(

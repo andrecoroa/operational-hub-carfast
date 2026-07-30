@@ -215,14 +215,16 @@ def test_historical_report_batch_defers_deep_ocr(
     assert {profile.ocr_status for profile in profiles} == {"pending"}
 
 
-def test_historical_report_import_get_redirects_to_document_center(authenticated_client):
+def test_historical_report_import_get_redirects_to_clean_reports(authenticated_client):
     response = authenticated_client.get(
         "/v2-clean/documents/import/historical-reports",
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/v2-clean/documents#imports"
+    assert response.headers["location"] == (
+        "/v2-clean/documentation/imports/reports?tab=diagnostics"
+    )
 
 
 def test_historical_report_metadata_uses_batch_filename_without_opening_pdf():

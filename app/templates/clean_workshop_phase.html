@@ -980,8 +980,13 @@
 <div class="clean-image-preview-modal" id="clean-history-preview-modal" hidden>
   <div class="clean-image-preview-backdrop" data-history-preview-close></div>
   <section class="clean-image-preview-dialog clean-history-preview-dialog" role="dialog" aria-modal="true">
-    <header><strong id="clean-history-preview-title">Histórico da viatura</strong><button type="button" data-history-preview-close>Fechar</button></header>
-    <iframe id="clean-history-preview-frame" title="Histórico da viatura"></iframe>
+    <header>
+      <span><strong>Histórico da viatura</strong><small>Processos, documentos e diagnósticos por data real</small></span>
+      <button type="button" data-history-preview-close>Fechar</button>
+    </header>
+    <div class="clean-history-preview-body">
+      {% include "_clean_workshop_history_content.html" %}
+    </div>
   </section>
 </div>
 <script>
@@ -1056,22 +1061,17 @@
     });
   });
   const historyPreviewModal = document.getElementById("clean-history-preview-modal");
-  const historyPreviewFrame = document.getElementById("clean-history-preview-frame");
-  const historyPreviewTitle = document.getElementById("clean-history-preview-title");
-  document.querySelectorAll("[data-history-preview]").forEach((button) => {
+  document.querySelectorAll("[data-history-preview-open]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (!historyPreviewModal || !historyPreviewFrame) return;
-      historyPreviewFrame.src = button.dataset.historyPreview || "";
-      if (historyPreviewTitle) historyPreviewTitle.textContent = button.dataset.historyTitle || "Histórico da viatura";
+      if (!historyPreviewModal) return;
       historyPreviewModal.hidden = false;
       document.body.classList.add("clean-modal-open");
     });
   });
   document.querySelectorAll("[data-history-preview-close]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (!historyPreviewModal || !historyPreviewFrame) return;
+      if (!historyPreviewModal) return;
       historyPreviewModal.hidden = true;
-      historyPreviewFrame.removeAttribute("src");
       document.body.classList.remove("clean-modal-open");
     });
   });

@@ -416,6 +416,7 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Notas finais" in entry_page.text
     assert "Guardar fase" in entry_page.text
     assert 'value="not_applicable"' in entry_page.text
+    assert "data-history-preview-open" not in entry_page.text
 
     created_problem = client.post(
         f"/v2-clean/workshop/{process_id}/records",
@@ -470,8 +471,9 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     )
     assert validation_page.status_code == 200
     assert 'data-target="prerequisitos"' not in validation_page.text
-    assert 'data-history-preview="' in validation_page.text
+    assert "data-history-preview-open" in validation_page.text
     assert "clean-history-preview-modal" in validation_page.text
+    assert "clean-history-preview-body" in validation_page.text
     assert "Guardar fase" in validation_page.text
 
     saved_validation = client.post(
@@ -555,6 +557,8 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert 'data-target="comparacao"' not in diagnosis_page.text
     assert 'name="inspection_required_oil"' not in diagnosis_page.text
     assert 'class="clean-phase-exit-reserve">Conclusão do diagnóstico' in diagnosis_page.text
+    assert "data-history-preview-open" in diagnosis_page.text
+    assert "clean-history-preview-modal" in diagnosis_page.text
 
     report.extracted_values_json = {
         "km_before_next_maintenance": "40000",

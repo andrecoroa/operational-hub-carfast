@@ -90,8 +90,6 @@
         <a class="{% if step.key == active_step %}active{% endif %}" href="{{ step.href }}"><b>{{ step.number }}</b>{{ step.label }}</a>
       {% endfor %}
     </section>
-    {% set phase_key = "entrada" %}
-    {% include "_clean_workshop_history_preview.html" %}
     {% if workshop_process and available_phase_defs %}
       <section class="clean-panel clean-card-wide clean-add-phase">
         <div><strong>Acrescentar fase</strong><span>Use quando o modelo aplicado não cobre um trabalho distinto ou uma decisão que possa ficar pendente.</span></div>

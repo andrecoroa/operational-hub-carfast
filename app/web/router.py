@@ -16311,10 +16311,22 @@ def clean_document_import_archive_batch(
 
 
 @web_router.post("/v2-clean/documents/import/inbox")
-def clean_document_import_inbox(request: Request, files: list[UploadFile] = File(...)):
+def clean_document_import_inbox(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    return_to: str = Form(""),
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    return_path = {
+        "documentation_center": "/v2-clean/documentation",
+        "documentation_other": "/v2-clean/documentation/imports/other",
+    }.get(return_to, "/v2-clean/documents")
+
+    def inbox_return(query: str) -> RedirectResponse:
+        return RedirectResponse(f"{return_path}?{query}", status_code=303)
+
     uploads: list[tuple[str, bytes]] = []
     total_size = 0
     for upload in files[:HISTORICAL_REPORT_MAX_FILES]:
@@ -16322,17 +16334,13 @@ def clean_document_import_inbox(request: Request, files: list[UploadFile] = File
         content = upload.file.read()
         total_size += len(content)
         if total_size > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
-            return RedirectResponse(
-                "/v2-clean/documents?inbox_error=Ficheiros+demasiado+grandes",
-                status_code=303,
-            )
+            return inbox_return("inbox_error=Ficheiros+demasiado+grandes")
         uploads.append((filename, content))
     payloads, payload_error = _historical_report_payloads(uploads)
     if payload_error:
-        return RedirectResponse(
-            f"/v2-clean/documents?{urlencode({'inbox_error': payload_error})}",
-            status_code=303,
-        )
+        return inbox_return(urlencode({"inbox_error": payload_error}))
+    if not payloads:
+        return inbox_return("inbox_error=Nenhum+documento+compativel")
     try:
         with SessionLocal() as db:
             counters = _archive_document_payloads(
@@ -16344,21 +16352,24 @@ def clean_document_import_inbox(request: Request, files: list[UploadFile] = File
             )
             db.commit()
     except Exception as exc:  # noqa: BLE001
-        return RedirectResponse(
-            f"/v2-clean/documents?{urlencode({'inbox_error': f'Erro ao importar ({exc.__class__.__name__})'})}",
-            status_code=303,
+        return inbox_return(
+            urlencode(
+                {
+                    "inbox_error": (
+                        f"Erro ao importar ({exc.__class__.__name__})"
+                    )
+                }
+            )
         )
-    return RedirectResponse(
-        "/v2-clean/documents?"
-        + urlencode(
+    return inbox_return(
+        urlencode(
             {
                 "inbox_imported": counters["imported"],
                 "inbox_routed": counters["routed"],
                 "inbox_pending": counters["triage"],
                 "inbox_duplicates": counters["duplicates"],
             }
-        ),
-        status_code=303,
+        )
     )
 
 

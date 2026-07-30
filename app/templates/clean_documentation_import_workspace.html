@@ -19,6 +19,8 @@
     {% if request.query_params.get("manifest_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("manifest_error") }}</div>{% endif %}
     {% if request.query_params.get("report_imported") is not none %}<div class="doc-arch-notice success">{{ request.query_params.get("report_imported") }} relatórios importados, {{ request.query_params.get("report_matched", "0") }} associados e {{ request.query_params.get("report_pending", "0") }} por associar.</div>{% endif %}
     {% if request.query_params.get("report_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("report_error") }}</div>{% endif %}
+    {% if request.query_params.get("inbox_imported") is not none %}<div class="doc-arch-notice success">{{ request.query_params.get("inbox_imported") }} documentos importados, {{ request.query_params.get("inbox_routed", "0") }} encaminhados e {{ request.query_params.get("inbox_pending", "0") }} enviados para Triagem.</div>{% endif %}
+    {% if request.query_params.get("inbox_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("inbox_error") }}</div>{% endif %}
 
     {% if workspace == "rentway" %}
       <nav class="doc-arch-tabs">
@@ -170,6 +172,7 @@
         <h2>Importar outros documentos</h2>
         <p>Os documentos conhecidos seguem para arquivo; os restantes entram na Triagem.</p>
         <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox">
+          <input type="hidden" name="return_to" value="documentation_other">
           <label>Documentos<input type="file" name="files" multiple required></label>
           <div class="doc-arch-dialog-actions"><button type="submit">Importar documentos</button><button type="button" class="secondary" onclick="document.getElementById('other-documents-import-dialog').close()">Cancelar</button></div>
         </form>

@@ -7,6 +7,11 @@
     {% set doc_nav = "center" %}
     {% include "_clean_documentation_nav.html" %}
 
+    {% if request.query_params.get("inbox_imported") is not none %}
+      <div class="doc-arch-notice success">{{ request.query_params.get("inbox_imported") }} documentos recebidos, {{ request.query_params.get("inbox_routed", "0") }} encaminhados e {{ request.query_params.get("inbox_pending", "0") }} por triar.</div>
+    {% endif %}
+    {% if request.query_params.get("inbox_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("inbox_error") }}</div>{% endif %}
+
     <header class="doc-arch-header">
       <div>
         <p class="eyebrow">Documentação</p>
@@ -74,6 +79,7 @@
       <h2>Adicionar documentos</h2>
       <p>Os uploads universais entram na caixa de entrada e só são encaminhados automaticamente com confiança suficiente.</p>
       <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox">
+        <input type="hidden" name="return_to" value="documentation_center">
         <label>Ficheiros<input type="file" name="files" multiple required></label>
         <div class="doc-arch-dialog-actions">
           <button type="submit">Receber documentos</button>

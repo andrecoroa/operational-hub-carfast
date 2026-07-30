@@ -157,6 +157,29 @@ def test_clean_document_navigation_does_not_link_back_to_legacy_center(
     assert 'href="/v2-clean/documentation/extraction-models"' in ocr_validation.text
 
 
+def test_document_inbox_forms_return_to_their_clean_workspaces(
+    authenticated_client,
+):
+    center = authenticated_client.get("/v2-clean/documentation")
+    other = authenticated_client.get("/v2-clean/documentation/imports/other")
+
+    assert center.status_code == 200
+    assert 'name="return_to" value="documentation_center"' in center.text
+    assert other.status_code == 200
+    assert 'name="return_to" value="documentation_other"' in other.text
+
+    invalid = authenticated_client.post(
+        "/v2-clean/documents/import/inbox",
+        data={"return_to": "documentation_other"},
+        files={"files": ("ficheiro.txt", b"unsupported", "text/plain")},
+        follow_redirects=False,
+    )
+    assert invalid.status_code == 303
+    assert invalid.headers["location"].startswith(
+        "/v2-clean/documentation/imports/other?inbox_error="
+    )
+
+
 def test_clean_invoices_lists_expected_records_and_allows_manual_association(
     authenticated_client,
     db_session,

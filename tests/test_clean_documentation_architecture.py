@@ -1,19 +1,24 @@
 from io import BytesIO
+import json
 from pathlib import Path
 
 from openpyxl import Workbook
 import pytest
 from sqlalchemy import func, select
 
+import app.web.router as web_router
 from app.core.config import settings
 from app.models.documents import (
     DiagnosticDocument,
     Document,
+    DocumentEvent,
+    DocumentLink,
     DocumentWorkflowState,
     VehicleDocumentRecord,
 )
 from app.models.imports import ImportBatch, ImportFile
 from app.models.vehicles import Vehicle
+from app.models.workshop import WorkshopTechnicalReading
 
 
 def _rentway_workbook() -> bytes:
@@ -195,6 +200,134 @@ def test_extraction_models_lists_builtin_extractors_without_database_mappings(
     assert "Diagnósticos Autel" in page.text
     assert "Diagnósticos Stellantis" in page.text
     assert "OCR de faturas" in page.text
+    assert "Famílias de diagnóstico reconhecidas" in page.text
+    assert "Plano de manutenção do construtor" in page.text
+
+
+def test_diagnostic_batch_reprocessing_synchronizes_clean_and_reading_states(
+    authenticated_client,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    source_path = tmp_path / "A_ILM_VF3YBBPFBPG057051_260117_0952.pdf"
+    source_path.write_bytes(b"%PDF-1.4 diagnostic")
+    vehicle = Vehicle(
+        plate="AA-10-BB",
+        vin="VF3YBBPFBPG057051",
+        brand="PEUGEOT",
+        model="208",
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Diagnóstico pendente",
+        document_type="diagnostic_report",
+        original_name=source_path.name,
+        file_name=source_path.name,
+        storage_provider="local",
+        storage_path=str(source_path),
+        status="received",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.flush()
+    profile = DiagnosticDocument(
+        document_id=document.id,
+        diagnostic_type="other_diagnostic",
+        diagnostic_status="processing",
+        association_status="unassociated",
+        ocr_status="pending",
+        validation_status="pending",
+    )
+    db_session.add(profile)
+    db_session.flush()
+    reading = WorkshopTechnicalReading(
+        process_id=None,
+        vehicle_id=vehicle.id,
+        user_id=1,
+        reading_type="ILM",
+        summary="Informação de lubrificação",
+        data_json={"document_id": document.id},
+        storage_provider="local",
+        external_url=f"/v2-clean/documents/{document.id}/file",
+        status="pending_extraction",
+        updated_by_id=1,
+    )
+    db_session.add(reading)
+    db_session.flush()
+    db_session.add(
+        DocumentLink(
+            document_id=document.id,
+            entity_type="workshop_technical_reading",
+            entity_id=str(reading.id),
+            category="ILM",
+        )
+    )
+    db_session.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="historical_report.imported",
+            new_value=json.dumps({"archive_name": "Lote diagnóstico/relatorio.pdf"}),
+            user_id=1,
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        web_router,
+        "extract_diagnostic_pdf",
+        lambda _path: {
+            "source_sha256": "a" * 64,
+            "extractor_name": "carfast_diagnostic_pdf",
+            "extractor_version": web_router.DIAGNOSTIC_EXTRACTOR_VERSION,
+            "parser_name": "diagnostic_parser",
+            "parser_version": web_router.DIAGNOSTIC_PARSER_VERSION,
+            "source_machine": "Autel",
+            "source_family": "ILM",
+            "source_filename": source_path.name,
+            "source_page_count": 1,
+            "extraction_method": "native_text",
+            "extraction_status": "extracted",
+            "confidence": 0.98,
+            "native_text": "Informações de lubrificação",
+            "ocr_text": None,
+            "raw_metadata": {},
+            "pages": [],
+            "normalized": {
+                "vin": "VF3YBBPFBPG057051",
+                "report_datetime": "2026-01-17 09:52:00",
+                "diagnostic_type": "engine_lubrication_information",
+            },
+            "dynamic_fields": {"observations": [], "label_values": [], "dtcs": []},
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(web_router, "_document_resolved_file", lambda _document: source_path)
+
+    response = authenticated_client.post(
+        "/v2-clean/diagnostics/batches/reprocess",
+        data={"batch_name": "Lote diagnóstico"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    refreshed_document = db_session.get(Document, document.id)
+    refreshed_profile = db_session.get(DiagnosticDocument, profile.id)
+    refreshed_reading = db_session.get(WorkshopTechnicalReading, reading.id)
+    workflow = db_session.scalar(
+        select(DocumentWorkflowState).where(
+            DocumentWorkflowState.document_id == document.id
+        )
+    )
+    assert refreshed_document.status == "pending_validation"
+    assert refreshed_profile.ocr_status == "extracted"
+    assert refreshed_profile.diagnostic_status == "ready_for_review"
+    assert refreshed_reading.status == "pending_validation"
+    assert workflow.extraction_status == "extracted"
+    assert workflow.destination_status == "diagnostics"
 
 
 @pytest.mark.parametrize(

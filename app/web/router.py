@@ -7670,6 +7670,21 @@ def _diagnostic_import_batch_name(event_value: str | None) -> str:
     return archive_name.split("/", 1)[0] if archive_name else "Importação sem lote"
 
 
+def _diagnostic_fallback_batch_name(document: Document) -> str:
+    if document.entry_channel == "historical_report_import":
+        import_date = (
+            document.created_at.strftime("%d/%m/%Y")
+            if document.created_at
+            else "data desconhecida"
+        )
+        return f"Importação histórica · {import_date}"
+    if document.source_subject:
+        return document.source_subject[:120]
+    if document.entry_channel:
+        return f"Entrada · {document.entry_channel}"
+    return "Importação sem lote"
+
+
 def _diagnostic_batch_context(
     db: Session,
     records: list[tuple[Document, DiagnosticDocument]],
@@ -7697,7 +7712,11 @@ def _diagnostic_batch_context(
 
     grouped: dict[str, dict[str, Any]] = {}
     for document, profile in records:
-        batch_name = batch_by_document.get(document.id, "Importação sem lote")
+        batch_name = batch_by_document.get(
+            document.id,
+            _diagnostic_fallback_batch_name(document),
+        )
+        batch_by_document[document.id] = batch_name
         batch = grouped.setdefault(
             batch_name,
             {
@@ -7734,6 +7753,58 @@ def _diagnostic_batch_context(
         batches.append(batch)
     batches.sort(key=lambda item: (-item["processable"], item["name"].lower()))
     return batches, batch_by_document
+
+
+def _sync_diagnostic_processing_state(
+    db: Session,
+    *,
+    document: Document,
+    profile: DiagnosticDocument,
+    user_id: int | None,
+    success: bool,
+    reason: str,
+) -> None:
+    profile.ocr_status = "extracted" if success else "failed"
+    if success and profile.diagnostic_status in {"received", "processing"}:
+        profile.diagnostic_status = "ready_for_review"
+    document.status = "pending_validation" if success else "unable_to_read"
+    expected_workflow = {
+        "ingestion_status": "completed" if success else "failed",
+        "association_status": "associated" if document.vehicle_id else "unassociated",
+        "extraction_status": "extracted" if success else "failed",
+        "validation_status": "pending",
+        "destination_status": "diagnostics",
+    }
+    workflow = get_or_create_workflow_state(db, document)
+    if any(
+        getattr(workflow, field) != value
+        for field, value in expected_workflow.items()
+    ):
+        transition_document_workflow(
+            db,
+            document=document,
+            user_id=user_id,
+            reason=reason,
+            **expected_workflow,
+        )
+    reading_ids = []
+    for link in db.scalars(
+        select(DocumentLink).where(
+            DocumentLink.document_id == document.id,
+            DocumentLink.entity_type == "workshop_technical_reading",
+        )
+    ).all():
+        try:
+            reading_ids.append(int(link.entity_id))
+        except (TypeError, ValueError):
+            continue
+    if reading_ids:
+        for reading in db.scalars(
+            select(WorkshopTechnicalReading).where(
+                WorkshopTechnicalReading.id.in_(reading_ids)
+            )
+        ).all():
+            reading.status = "pending_validation" if success else "extraction_failed"
 
 
 @web_router.get("/v2-clean/diagnostics", response_class=HTMLResponse)
@@ -7844,7 +7915,7 @@ def reprocess_diagnostic_batch(
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
-    if not can_manage_carfast_fleet(request):
+    if not can_manage_documentation(request):
         return RedirectResponse("/v2-clean/diagnostics", status_code=303)
 
     processed = 0
@@ -7881,16 +7952,85 @@ def reprocess_diagnostic_batch(
             if needs_processing:
                 candidates.append((document, profile))
 
-        for document, profile in candidates[:limit]:
+        for document_record, profile_record in candidates[:limit]:
+            document_id = document_record.id
+            profile_id = profile_record.id
+            document = db.get(Document, document_id)
+            profile = db.get(DiagnosticDocument, profile_id)
+            if not document or not profile:
+                failed += 1
+                continue
+            current_extraction = latest_by_profile.get(profile.id)
+            if (
+                current_extraction
+                and current_extraction.extraction_status == "extracted"
+                and _diagnostic_extraction_has_data(current_extraction)
+                and current_extraction.extractor_version == DIAGNOSTIC_EXTRACTOR_VERSION
+                and current_extraction.parser_version == DIAGNOSTIC_PARSER_VERSION
+            ):
+                synchronize_diagnostic_profile_from_extraction(
+                    db,
+                    profile,
+                    current_extraction,
+                )
+                _sync_diagnostic_processing_state(
+                    db,
+                    document=document,
+                    profile=profile,
+                    user_id=user_id,
+                    success=True,
+                    reason="Estados reconciliados a partir da extração atual existente.",
+                )
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="diagnostic.states_reconciled",
+                        new_value=json.dumps(
+                            {
+                                "batch": batch_name,
+                                "extraction_id": current_extraction.id,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        user_id=user_id,
+                    )
+                )
+                processed += 1
+                db.commit()
+                continue
             source_path = _document_resolved_file(document)
             if not source_path or source_path.suffix.lower() != ".pdf":
-                profile.ocr_status = "failed"
+                _sync_diagnostic_processing_state(
+                    db,
+                    document=document,
+                    profile=profile,
+                    user_id=user_id,
+                    success=False,
+                    reason="Ficheiro PDF indisponível para reprocessamento do diagnóstico.",
+                )
+                db.add(
+                    DocumentEvent(
+                        document_id=document.id,
+                        action="diagnostic.extraction_failed",
+                        new_value="Ficheiro PDF indisponível.",
+                        user_id=user_id,
+                    )
+                )
                 failed += 1
+                db.commit()
                 continue
             profile.ocr_status = "processing"
             try:
                 payload = extract_diagnostic_pdf(source_path)
                 extraction = persist_diagnostic_extraction(db, profile, payload)
+                _sync_diagnostic_processing_state(
+                    db,
+                    document=document,
+                    profile=profile,
+                    user_id=user_id,
+                    success=True,
+                    reason="Diagnóstico reprocessado com o extrator atual.",
+                )
                 db.add(
                     DocumentEvent(
                         document_id=document.id,
@@ -7910,8 +8050,19 @@ def reprocess_diagnostic_batch(
                 processed += 1
             except Exception as exc:
                 db.rollback()
-                profile = db.get(DiagnosticDocument, profile.id)
-                profile.ocr_status = "failed"
+                document = db.get(Document, document_id)
+                profile = db.get(DiagnosticDocument, profile_id)
+                if not document or not profile:
+                    failed += 1
+                    continue
+                _sync_diagnostic_processing_state(
+                    db,
+                    document=document,
+                    profile=profile,
+                    user_id=user_id,
+                    success=False,
+                    reason="Falha ao reprocessar o diagnóstico.",
+                )
                 db.add(
                     DocumentEvent(
                         document_id=document.id,
@@ -7940,7 +8091,7 @@ def reconcile_diagnostic_states(request: Request):
     user_id = get_web_user_id(request)
     if not user_id:
         return RedirectResponse("/login", status_code=303)
-    if not can_manage_carfast_fleet(request):
+    if not can_manage_documentation(request):
         return RedirectResponse("/v2-clean/diagnostics", status_code=303)
 
     changed = 0
@@ -7959,18 +8110,31 @@ def reconcile_diagnostic_states(request: Request):
             extraction = latest_by_profile.get(profile.id)
             if not extraction:
                 continue
+            document = db.get(Document, profile.document_id)
+            if not document:
+                continue
             before = (
                 profile.diagnostic_status,
                 profile.ocr_status,
                 profile.validation_status,
                 profile.ocr_payload_json,
+                document.status,
             )
             synchronize_diagnostic_profile_from_extraction(db, profile, extraction)
+            _sync_diagnostic_processing_state(
+                db,
+                document=document,
+                profile=profile,
+                user_id=user_id,
+                success=extraction.extraction_status == "extracted",
+                reason="Reconciliação técnica dos estados do diagnóstico.",
+            )
             after = (
                 profile.diagnostic_status,
                 profile.ocr_status,
                 profile.validation_status,
                 profile.ocr_payload_json,
+                document.status,
             )
             if before != after:
                 changed += 1
@@ -11401,6 +11565,24 @@ def clean_documentation_extraction_models(
             )
         )
     with SessionLocal() as db:
+        diagnostic_type_counts = dict(
+            db.execute(
+                select(
+                    DiagnosticDocument.diagnostic_type,
+                    func.count(DiagnosticDocument.id),
+                ).group_by(DiagnosticDocument.diagnostic_type)
+            ).all()
+        )
+        diagnostic_families = [
+            {
+                "code": code,
+                "label": label,
+                "documents": int(diagnostic_type_counts.get(code, 0) or 0),
+            }
+            for code, label in DIAGNOSTIC_TYPES
+            if not normalized_query
+            or normalized_query in f"{code} {label}".casefold()
+        ]
         total = int(
             db.scalar(
                 select(func.count())
@@ -11426,6 +11608,7 @@ def clean_documentation_extraction_models(
             {
                 "mappings": mappings,
                 "builtin_models": builtin_models,
+                "diagnostic_families": diagnostic_families,
                 "pagination": _documentation_pagination(
                     total,
                     clean_page,

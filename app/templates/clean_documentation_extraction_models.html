@@ -33,6 +33,32 @@
         </table>
       </div>
     </section>
+    <section class="doc-arch-card">
+      <div class="doc-arch-card-heading">
+        <div>
+          <h2>Famílias de diagnóstico reconhecidas</h2>
+          <p>Tipos documentais que o classificador consegue identificar. Zero documentos significa que o modelo está disponível, mas ainda não foi observado.</p>
+        </div>
+        <strong>{{ diagnostic_families|length }} famílias</strong>
+      </div>
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Família</th><th>Código técnico</th><th>Documentos</th><th>Estado</th></tr></thead>
+          <tbody>
+            {% for family in diagnostic_families %}
+              <tr>
+                <td><strong>{{ family.label }}</strong></td>
+                <td>{{ family.code }}</td>
+                <td>{{ family.documents }}</td>
+                <td><span class="doc-arch-badge success">Reconhecida</span></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="doc-arch-empty">Nenhuma família de diagnóstico corresponde à pesquisa.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
     <nav class="doc-arch-pagination">
       {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
       <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} modelos</span>

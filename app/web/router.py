@@ -643,21 +643,33 @@ def current_cost_from_snapshot(
 ) -> dict[str, float | int | str | None]:
     context = rentway_commercial_context(snapshot)
     initial_cost = parse_decimal_text(context.get("acquisition_value"))
+    initial_cost_with_vat = parse_decimal_text(context.get("value_with_tax"))
+    if initial_cost_with_vat is None and initial_cost is not None:
+        initial_cost_with_vat = round(initial_cost * 1.23, 2)
     purchase = parse_iso_or_dmy_date(context.get("purchase_date"))
     month = amortization_month(purchase)
     if initial_cost is None or month is None:
         return {
             "initial_cost": initial_cost,
+            "initial_cost_with_vat": initial_cost_with_vat,
             "purchase_date": context.get("purchase_date"),
             "amortization_month": month,
             "current_cost": None,
+            "current_cost_with_vat": None,
         }
     current_cost = max(0, initial_cost - ((initial_cost / 96) * month))
+    current_cost_with_vat = (
+        max(0, initial_cost_with_vat - ((initial_cost_with_vat / 96) * month))
+        if initial_cost_with_vat is not None
+        else None
+    )
     return {
         "initial_cost": initial_cost,
+        "initial_cost_with_vat": initial_cost_with_vat,
         "purchase_date": context.get("purchase_date"),
         "amortization_month": month,
         "current_cost": current_cost,
+        "current_cost_with_vat": current_cost_with_vat,
     }
 
 
@@ -7182,8 +7194,8 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "status": rules.get("maintenance_status") or "Por configurar",
         },
         "finance": {
-            "initial_cost": format_eur(current_cost.get("initial_cost")),
-            "current_cost": format_eur(current_cost.get("current_cost")),
+            "initial_cost_with_vat": format_eur(current_cost.get("initial_cost_with_vat")),
+            "current_cost_with_vat": format_eur(current_cost.get("current_cost_with_vat")),
             "amortization_month": (
                 f"{current_cost.get('amortization_month')} de 96"
                 if current_cost.get("amortization_month")

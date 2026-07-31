@@ -122,9 +122,9 @@
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
             <div><span>Capital em dívida com IVA</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo de capital acrescido de IVA à taxa de 23%.</small></div>
             <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
-            <div><span>Custo inicial sem IVA</span><strong>{{ ctx.finance.initial_cost }}</strong><small>Capital inicial do plano; Rentway apenas como alternativa.</small></div>
+            <div><span>Custo inicial com IVA</span><strong>{{ ctx.finance.initial_cost_with_vat }}</strong><small>Valor de aquisição Rentway com IVA.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
-            <div class="clean-finance-current-cost"><span>Custo atual sem IVA</span><strong>{{ ctx.finance.current_cost }}</strong><small>Amortização contabilística do custo inicial em 96 meses.</small></div>
+            <div class="clean-finance-current-cost"><span>Valor atual com IVA</span><strong>{{ ctx.finance.current_cost_with_vat }}</strong><small>Amortização do custo com IVA em 96 meses.</small></div>
           </div>
           {% if ctx.finance.plan_count > 1 %}
             <details class="clean-inline-details">

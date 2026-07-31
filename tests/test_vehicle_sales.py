@@ -40,6 +40,7 @@ def create_sale_vehicle(db_session) -> Vehicle:
             data_json={
                 "plate_date": "2022-01-15",
                 "purchase_date": "2026-07-01",
+                "acquisition_value": "15609.76",
                 "value_with_tax": "19200",
                 "km": "98450",
                 "current_status": "Contrato",
@@ -79,7 +80,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
             "registration_to": "2022-12-31",
             "return_from": "2026-10-01",
             "return_to": "2026-10-31",
-            "financial_margin_min": "3000",
+            "financial_margin_min": "400",
         },
     )
     assert page.status_code == 200

@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.models import (
     Vehicle,
     VehicleExternalSnapshot,
+    VehicleFinancialPlan,
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
@@ -170,12 +171,15 @@ def _sale_row(
     snapshot: VehicleExternalSnapshot | None,
     manual: dict[str, Any],
     profile: VehicleSaleProfile | None,
+    financial_plan: VehicleFinancialPlan | None,
 ) -> dict[str, Any]:
     commercial = base_router.rentway_commercial_context(snapshot)
     vehicle_context = base_router.rentway_vehicle_context(snapshot)
     finance = base_router.current_cost_from_snapshot(snapshot)
     cost = decimal_value(finance.get("current_cost"))
-    debt = decimal_value(manual.get("debt_value"))
+    debt = decimal_value(
+        financial_plan.outstanding_amount if financial_plan else manual.get("debt_value")
+    )
     market_trade = decimal_value(profile.market_trade_value) if profile else None
     market_retail = decimal_value(profile.market_retail_value) if profile else None
     financial_margin = margin(cost, debt)
@@ -197,7 +201,10 @@ def _sale_row(
         "registration": registration,
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
         "finance_entity": str(
-            manual.get("finance_entity") or commercial.get("finance_entity") or ""
+            (financial_plan.finance_entity if financial_plan else None)
+            or manual.get("finance_entity")
+            or commercial.get("finance_entity")
+            or ""
         ).strip(),
         "cost": cost,
         "debt": debt,
@@ -211,6 +218,18 @@ def _sale_row(
         "sale_notes": profile.sale_notes if profile else "",
         "money": money,
     }
+
+
+def _active_financial_plan(db, vehicle_id: int) -> VehicleFinancialPlan | None:
+    return db.scalar(
+        select(VehicleFinancialPlan)
+        .where(
+            VehicleFinancialPlan.vehicle_id == vehicle_id,
+            VehicleFinancialPlan.active.is_(True),
+        )
+        .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
+        .limit(1)
+    )
 
 
 def _load_sale_rows(db) -> list[dict[str, Any]]:
@@ -238,6 +257,16 @@ def _load_sale_rows(db) -> list[dict[str, Any]]:
             select(VehicleSaleProfile).where(VehicleSaleProfile.vehicle_id.in_(vehicle_ids))
         ).all()
     }
+    financial_plans: dict[int, VehicleFinancialPlan] = {}
+    for plan in db.scalars(
+        select(VehicleFinancialPlan)
+        .where(
+            VehicleFinancialPlan.vehicle_id.in_(vehicle_ids),
+            VehicleFinancialPlan.active.is_(True),
+        )
+        .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
+    ).all():
+        financial_plans.setdefault(plan.vehicle_id, plan)
     manual_by_vehicle: dict[int, dict[str, Any]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
     for field in db.scalars(
         select(VehicleManualField).where(
@@ -252,6 +281,7 @@ def _load_sale_rows(db) -> list[dict[str, Any]]:
             snapshots.get(vehicle.id),
             manual_by_vehicle.get(vehicle.id, {}),
             profiles.get(vehicle.id),
+            financial_plans.get(vehicle.id),
         )
         for vehicle in vehicles
     ]
@@ -534,7 +564,13 @@ def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", erro
         profile = _get_or_create_profile(db, vehicle)
         snapshot = base_router.latest_vehicle_snapshot(db, vehicle.id)
         manual = base_router.vehicle_manual_values(db, vehicle.id)
-        row = _sale_row(vehicle, snapshot, manual, profile)
+        row = _sale_row(
+            vehicle,
+            snapshot,
+            manual,
+            profile,
+            _active_financial_plan(db, vehicle.id),
+        )
         images = db.scalars(
             select(VehicleImage)
             .where(VehicleImage.vehicle_id == vehicle.id, VehicleImage.active.is_(True))
@@ -831,7 +867,13 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
         profile = _get_or_create_profile(db, vehicle)
         snapshot = base_router.latest_vehicle_snapshot(db, vehicle.id)
         manual = base_router.vehicle_manual_values(db, vehicle.id)
-        row = _sale_row(vehicle, snapshot, manual, profile)
+        row = _sale_row(
+            vehicle,
+            snapshot,
+            manual,
+            profile,
+            _active_financial_plan(db, vehicle.id),
+        )
         allowed_image_ids = set(
             db.scalars(
                 select(VehicleImage.id).where(

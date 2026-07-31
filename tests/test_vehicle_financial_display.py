@@ -1,4 +1,3 @@
-from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,7 +21,7 @@ def test_rentway_acquisition_value_is_not_treated_as_value_with_tax():
     assert result["initial_cost"] == 20000.0
 
 
-def test_financial_plan_initial_cost_overrides_rentway_value():
+def test_financial_plan_cost_always_uses_rentway_value():
     snapshot = SimpleNamespace(
         data_json={
             "valor_aquisicao": "20.000,00",
@@ -30,12 +29,9 @@ def test_financial_plan_initial_cost_overrides_rentway_value():
         }
     )
 
-    result = current_cost_from_snapshot(
-        snapshot,
-        initial_cost_override=Decimal("18500.00"),
-    )
+    result = current_cost_from_snapshot(snapshot)
 
-    assert result["initial_cost"] == 18500.0
+    assert result["initial_cost"] == 20000.0
     assert result["current_cost"] is not None
     assert result["current_cost"] < result["initial_cost"]
 

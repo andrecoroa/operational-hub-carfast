@@ -634,15 +634,9 @@ def amortization_month(purchase_date: date | None, reference_date: date | None =
 
 def current_cost_from_snapshot(
     snapshot: VehicleExternalSnapshot | None,
-    *,
-    initial_cost_override: Decimal | float | None = None,
 ) -> dict[str, float | int | str | None]:
     context = rentway_commercial_context(snapshot)
-    initial_cost = (
-        float(initial_cost_override)
-        if initial_cost_override is not None
-        else parse_decimal_text(context.get("acquisition_value"))
-    )
+    initial_cost = parse_decimal_text(context.get("acquisition_value"))
     purchase = parse_iso_or_dmy_date(context.get("purchase_date"))
     month = amortization_month(purchase)
     if initial_cost is None or month is None:
@@ -6989,14 +6983,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         (plan for plan in financial_plans if plan.active),
         financial_plans[0] if financial_plans else None,
     )
-    current_cost = current_cost_from_snapshot(
-        snapshot,
-        initial_cost_override=(
-            active_financial_plan.initial_amount
-            if active_financial_plan
-            else None
-        ),
-    )
+    current_cost = current_cost_from_snapshot(snapshot)
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
     model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
@@ -7088,11 +7075,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "status": rules.get("maintenance_status") or "Por configurar",
         },
         "finance": {
-            "initial_cost": format_eur(
-                active_financial_plan.initial_amount
-                if active_financial_plan
-                else current_cost.get("initial_cost")
-            ),
+            "initial_cost": format_eur(current_cost.get("initial_cost")),
             "current_cost": format_eur(current_cost.get("current_cost")),
             "amortization_month": (
                 f"{current_cost.get('amortization_month')} de 96"

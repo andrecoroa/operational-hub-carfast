@@ -1,0 +1,28 @@
+<header class="portal-header">
+  <a class="portal-brand" href="/portal">
+    <span class="public-logo">CARFAST</span>
+    <small>Portal externo</small>
+  </a>
+  <nav aria-label="Navegação do portal">
+    {% if portal_context %}
+      {% if portal_context.has("vehicles.catalog.view") %}
+        <a href="/portal/viaturas">Viaturas</a>
+      {% endif %}
+      <a href="/portal/interacoes">As nossas interações</a>
+      {% if portal_context.has("support_requests.create") %}
+        <a href="/portal/pedido">Novo pedido</a>
+      {% endif %}
+      <span class="portal-user-chip">
+        <strong>{{ portal_context.user.name }}</strong>
+        <small>{{ portal_context.organization.name }}</small>
+      </span>
+      <form method="post" action="/portal/sair">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="portal-link-button">Sair</button>
+      </form>
+    {% else %}
+      <a href="/portal/pedido">Registar pedido</a>
+      <a class="portal-login-link" href="/portal/entrar">Entrar</a>
+    {% endif %}
+  </nav>
+</header>

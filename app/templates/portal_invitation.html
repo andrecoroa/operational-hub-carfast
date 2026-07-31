@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="portal-shell">
+  {% set portal_context = none %}
+  {% include "_portal_header.html" %}
+  <main class="portal-auth-main">
+    <section class="portal-auth-card">
+      {% if invitation and organization %}
+        <p class="eyebrow">Convite CarFast</p>
+        <h1>Ativar acesso ao portal</h1>
+        <p>Conta de <strong>{{ invitation.name }}</strong> para <strong>{{ organization.name }}</strong>.</p>
+        <p class="muted">{{ invitation.email }}</p>
+        {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+        <form method="post" action="/portal/convite/{{ token }}" class="form-stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Definir palavra-passe
+            <input type="password" name="password" minlength="12" required autocomplete="new-password">
+          </label>
+          <label>Confirmar palavra-passe
+            <input type="password" name="password_confirmation" minlength="12" required autocomplete="new-password">
+          </label>
+          <small>Utilize pelo menos 12 caracteres.</small>
+          <button type="submit">Ativar conta</button>
+        </form>
+      {% else %}
+        <p class="eyebrow">Convite CarFast</p>
+        <h1>Este convite já não está disponível</h1>
+        <p>O convite expirou, foi utilizado ou foi revogado. Solicite um novo convite à equipa CarFast.</p>
+        <a class="button-link" href="/portal">Voltar ao portal</a>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -139,4 +139,4 @@ def test_automatic_destination_requires_known_high_confidence(
 def test_alembic_vehicle_sales_revision_is_the_only_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["b0c1d2e3f4a5"]
+    assert script.get_heads() == ["c0d1e2f3a4b5"]

@@ -76,6 +76,9 @@ class VehicleSalePublication(TimestampMixin, Base):
     )
     token: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     audience: Mapped[str] = mapped_column(String(40), default="retail", index=True)
+    visibility: Mapped[str] = mapped_column(
+        String(40), default="public_link", index=True
+    )
     status: Mapped[str] = mapped_column(String(40), default="published", index=True)
     snapshot_json: Mapped[dict] = mapped_column(JSON)
     selected_image_ids_json: Mapped[list] = mapped_column(JSON)
@@ -111,4 +114,10 @@ class VehicleSaleLead(TimestampMixin, Base):
     message: Mapped[str | None] = mapped_column(Text)
     consent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     source_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    portal_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portal_users.id", ondelete="SET NULL"), index=True
+    )
+    portal_organization_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portal_organizations.id", ondelete="SET NULL"), index=True
+    )
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

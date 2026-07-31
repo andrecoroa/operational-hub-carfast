@@ -31,6 +31,12 @@ from app.models.management_center import (
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
+from app.models.portal import (
+    PortalInvitation,
+    PortalOrganization,
+    PortalPublicationAccess,
+    PortalUser,
+)
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.tasks import (
     QuickRecord,
@@ -129,6 +135,10 @@ __all__ = [
     "OrganizationalUnit",
     "Permission",
     "PilotFeedback",
+    "PortalInvitation",
+    "PortalOrganization",
+    "PortalPublicationAccess",
+    "PortalUser",
     "QuickRecord",
     "Role",
     "RolePermission",

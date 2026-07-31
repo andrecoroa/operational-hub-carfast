@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -13,6 +13,8 @@ from sqlalchemy import func, select
 import app.web.router as base_router
 from app.core.config import settings
 from app.models import (
+    PortalOrganization,
+    PortalPublicationAccess,
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
@@ -23,6 +25,14 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.audit import record_audit
+from app.services.portal_access import (
+    PORTAL_VISIBILITIES,
+    PORTAL_VISIBILITY_LABELS,
+    portal_context,
+    portal_csrf_token,
+    publication_allowed_for_portal,
+    valid_portal_csrf,
+)
 from app.services.vehicle_sales import (
     IMAGE_CATEGORIES,
     IMAGE_CATEGORY_LABELS,
@@ -72,6 +82,21 @@ def _sales_access_denied(request: Request):
     if not base_router.can_manage_carfast_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     return None
+
+
+def _publication_request_context(request: Request, db, publication):
+    context = portal_context(request, db)
+    allowed = publication_allowed_for_portal(db, publication, context)
+    if allowed and context:
+        required_price_permission = (
+            "vehicles.trade_price.view"
+            if publication.audience == "trade"
+            else "vehicles.retail_price.view"
+        )
+        allowed = context.has(required_price_permission)
+    if not allowed and base_router.can_manage_carfast_fleet(request):
+        allowed = True
+    return context, allowed
 
 
 def _media_root() -> Path:
@@ -588,6 +613,11 @@ def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", erro
             .order_by(VehicleSaleLead.id.desc())
             .limit(100)
         ).all()
+        portal_organizations = db.scalars(
+            select(PortalOrganization)
+            .where(PortalOrganization.status == "active")
+            .order_by(PortalOrganization.name.asc())
+        ).all()
         public_urls = {
             publication.id: _public_url(request, publication.token) for publication in publications
         }
@@ -610,6 +640,9 @@ def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", erro
             "image_category_labels": IMAGE_CATEGORY_LABELS,
             "publication_audiences": PUBLICATION_AUDIENCES,
             "publication_audience_labels": PUBLICATION_AUDIENCE_LABELS,
+            "publication_visibilities": PORTAL_VISIBILITIES,
+            "publication_visibility_labels": PORTAL_VISIBILITY_LABELS,
+            "portal_organizations": portal_organizations,
             "lead_kind_labels": LEAD_KIND_LABELS,
             "lead_statuses": LEAD_STATUSES,
             "lead_status_labels": LEAD_STATUS_LABELS,
@@ -853,11 +886,20 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
     audience = str(form.get("audience") or "retail")
     if audience not in PUBLICATION_AUDIENCE_LABELS:
         audience = "retail"
+    visibility = str(form.get("visibility") or "")
+    if visibility not in PORTAL_VISIBILITY_LABELS:
+        visibility = "authenticated_trade" if audience == "trade" else "public_link"
     expires_on = date_value(form.get("expires_on"))
     selected_ids: set[int] = set()
     for raw_id in form.getlist("image_ids"):
         try:
             selected_ids.add(int(str(raw_id)))
+        except ValueError:
+            continue
+    selected_organization_ids: set[int] = set()
+    for raw_id in form.getlist("organization_ids"):
+        try:
+            selected_organization_ids.add(int(str(raw_id)))
         except ValueError:
             continue
     with base_router.SessionLocal() as db:
@@ -883,10 +925,28 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
                 )
             ).all()
         )
+        allowed_organization_ids = set(
+            db.scalars(
+                select(PortalOrganization.id).where(
+                    PortalOrganization.id.in_(
+                        selected_organization_ids or {-1}
+                    ),
+                    PortalOrganization.status == "active",
+                )
+            ).all()
+        )
+        if visibility != "selected_organizations":
+            allowed_organization_ids = set()
+        if visibility == "selected_organizations" and not allowed_organization_ids:
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/{vehicle_id}?error=publication_organizations",
+                status_code=303,
+            )
         publication = VehicleSalePublication(
             vehicle_id=vehicle.id,
             token=secrets.token_urlsafe(18),
             audience=audience,
+            visibility=visibility,
             status="published",
             snapshot_json=_public_snapshot(vehicle, profile, row, audience),
             selected_image_ids_json=sorted(allowed_image_ids),
@@ -896,6 +956,14 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
         )
         db.add(publication)
         db.flush()
+        for organization_id in sorted(allowed_organization_ids):
+            db.add(
+                PortalPublicationAccess(
+                    publication_id=publication.id,
+                    organization_id=organization_id,
+                    created_by_id=user_id,
+                )
+            )
         record_audit(
             db,
             action="vehicle.sale.published",
@@ -905,6 +973,8 @@ async def vehicle_sale_publish(request: Request, vehicle_id: int):
             after_json={
                 "vehicle_id": vehicle.id,
                 "audience": audience,
+                "visibility": visibility,
+                "organization_ids": sorted(allowed_organization_ids),
                 "expires_on": expires_on.isoformat() if expires_on else None,
                 "image_count": len(allowed_image_ids),
             },
@@ -957,6 +1027,21 @@ def _publication_is_available(publication: VehicleSalePublication | None) -> boo
     )
 
 
+def _portal_lead_kinds(context) -> list[tuple[str, str]]:
+    if not context:
+        return list(LEAD_KINDS)
+    permission_by_kind = {
+        "question": "vehicles.questions.create",
+        "offer": "offers.create",
+        "purchase": "purchase_requests.create",
+    }
+    return [
+        (code, label)
+        for code, label in LEAD_KINDS
+        if context.has(permission_by_kind[code])
+    ]
+
+
 @vehicle_sales_router.get("/portal/viaturas/{token}", response_class=HTMLResponse)
 def public_vehicle_sale(
     request: Request,
@@ -975,11 +1060,30 @@ def public_vehicle_sale(
                 "public_vehicle_sale_unavailable.html",
                 status_code=410,
             )
+        context, allowed = _publication_request_context(request, db, publication)
+        if not allowed:
+            if not context:
+                destination = quote(f"/portal/viaturas/{token}", safe="")
+                return RedirectResponse(
+                    f"/portal/entrar?next={destination}", status_code=303
+                )
+            return base_router.templates.TemplateResponse(
+                request,
+                "portal_forbidden.html",
+                {
+                    "portal_context": context,
+                    "csrf_token": portal_csrf_token(request),
+                },
+                status_code=403,
+            )
         now = datetime.now(UTC)
         publication.view_count = (publication.view_count or 0) + 1
         publication.first_viewed_at = publication.first_viewed_at or now
         publication.last_viewed_at = now
         db.commit()
+        if context:
+            db.refresh(context.user)
+            db.refresh(context.organization)
         selected_ids = [
             int(value)
             for value in (publication.selected_image_ids_json or [])
@@ -1007,6 +1111,8 @@ def public_vehicle_sale(
             "Tenta novamente dentro de alguns minutos."
         ),
         "spam": "Não foi possível registar o pedido.",
+        "forbidden_action": "O seu perfil não permite realizar esta ação.",
+        "csrf": "A sessão expirou. Atualiza a página e tenta novamente.",
     }
     return base_router.templates.TemplateResponse(
         request,
@@ -1015,7 +1121,9 @@ def public_vehicle_sale(
             "publication": publication,
             "snapshot": snapshot,
             "images": images,
-            "lead_kinds": LEAD_KINDS,
+            "lead_kinds": _portal_lead_kinds(context),
+            "portal_context": context,
+            "csrf_token": portal_csrf_token(request),
             "sent": sent == "1",
             "reference": ref,
             "error": error_messages.get(error),
@@ -1025,12 +1133,15 @@ def public_vehicle_sale(
 
 
 @vehicle_sales_router.get("/portal/viaturas/{token}/imagens/{image_id}")
-def public_vehicle_sale_image(token: str, image_id: int):
+def public_vehicle_sale_image(request: Request, token: str, image_id: int):
     with base_router.SessionLocal() as db:
         publication = db.scalar(
             select(VehicleSalePublication).where(VehicleSalePublication.token == token)
         )
         if not _publication_is_available(publication):
+            return HTMLResponse("Imagem não disponível.", status_code=404)
+        _context, allowed = _publication_request_context(request, db, publication)
+        if not allowed:
             return HTMLResponse("Imagem não disponível.", status_code=404)
         selected_ids = {
             int(value)
@@ -1072,6 +1183,7 @@ def public_vehicle_sale_interest(
     message: str = Form(""),
     consent: str = Form(""),
     company: str = Form(""),
+    csrf_token: str = Form(""),
 ):
     if company.strip():
         return RedirectResponse(f"/portal/viaturas/{token}?error=spam", status_code=303)
@@ -1079,25 +1191,56 @@ def public_vehicle_sale_interest(
         return RedirectResponse(f"/portal/viaturas/{token}?error=rate_limit", status_code=303)
     if not consent:
         return RedirectResponse(f"/portal/viaturas/{token}?error=consent", status_code=303)
-    clean_kind = kind if kind in LEAD_KIND_LABELS else "question"
-    clean_name = name.strip()
-    clean_email = email.strip().lower()
-    clean_phone = phone.strip()
-    clean_message = message.strip()
-    parsed_offer = decimal_value(offer_value)
-    if not clean_name or not (clean_email or clean_phone):
-        return RedirectResponse(f"/portal/viaturas/{token}?error=required", status_code=303)
-    if clean_kind == "question" and not clean_message:
-        return RedirectResponse(f"/portal/viaturas/{token}?error=required", status_code=303)
-    if clean_kind == "offer" and (parsed_offer is None or parsed_offer <= 0):
-        return RedirectResponse(f"/portal/viaturas/{token}?error=offer", status_code=303)
-
     with base_router.SessionLocal() as db:
         publication = db.scalar(
             select(VehicleSalePublication).where(VehicleSalePublication.token == token)
         )
         if not _publication_is_available(publication):
             return RedirectResponse(f"/portal/viaturas/{token}", status_code=303)
+        context, allowed = _publication_request_context(request, db, publication)
+        if not allowed:
+            if not context:
+                destination = quote(f"/portal/viaturas/{token}", safe="")
+                return RedirectResponse(
+                    f"/portal/entrar?next={destination}", status_code=303
+                )
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=forbidden_action", status_code=303
+            )
+        clean_kind = kind if kind in LEAD_KIND_LABELS else "question"
+        required_permission = {
+            "question": "vehicles.questions.create",
+            "offer": "offers.create",
+            "purchase": "purchase_requests.create",
+        }[clean_kind]
+        if context and not context.has(required_permission):
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=forbidden_action", status_code=303
+            )
+        if context and not valid_portal_csrf(request, csrf_token):
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=csrf", status_code=303
+            )
+        clean_name = context.user.name if context else name.strip()
+        clean_email = context.user.email if context else email.strip().lower()
+        clean_phone = phone.strip()
+        clean_company = (
+            context.organization.name if context else buyer_company.strip()
+        )
+        clean_message = message.strip()
+        parsed_offer = decimal_value(offer_value)
+        if not clean_name or not (clean_email or clean_phone):
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=required", status_code=303
+            )
+        if clean_kind == "question" and not clean_message:
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=required", status_code=303
+            )
+        if clean_kind == "offer" and (parsed_offer is None or parsed_offer <= 0):
+            return RedirectResponse(
+                f"/portal/viaturas/{token}?error=offer", status_code=303
+            )
         lead = VehicleSaleLead(
             publication_id=publication.id,
             vehicle_id=publication.vehicle_id,
@@ -1106,10 +1249,12 @@ def public_vehicle_sale_interest(
             name=clean_name[:200],
             email=clean_email[:255] or None,
             phone=clean_phone[:80] or None,
-            company=buyer_company.strip()[:200] or None,
+            company=clean_company[:200] or None,
             offer_value=parsed_offer if clean_kind == "offer" else None,
             message=clean_message[:5000] or None,
             source_fingerprint=_source_fingerprint(request),
+            portal_user_id=context.user.id if context else None,
+            portal_organization_id=context.organization.id if context else None,
         )
         db.add(lead)
         db.flush()
@@ -1123,6 +1268,8 @@ def public_vehicle_sale_interest(
                 "publication_id": publication.id,
                 "vehicle_id": publication.vehicle_id,
                 "kind": clean_kind,
+                "portal_user_id": context.user.id if context else None,
+                "portal_organization_id": context.organization.id if context else None,
             },
             user_id=None,
         )

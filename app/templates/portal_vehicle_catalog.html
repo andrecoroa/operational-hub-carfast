@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="portal-shell">
+  {% include "_portal_header.html" %}
+  <main class="portal-main">
+    <section class="portal-page-heading">
+      <div>
+        <p class="eyebrow">Comércio de usados</p>
+        <h1>Viaturas disponíveis</h1>
+        <p>O catálogo apresenta apenas as publicações disponibilizadas à {{ portal_context.organization.name }}.</p>
+      </div>
+      <form method="get" action="/portal/viaturas" class="portal-search">
+        <label for="portal-catalog-search">Pesquisar</label>
+        <input id="portal-catalog-search" type="search" name="q" value="{{ query }}" placeholder="Marca, modelo ou referência">
+        <button type="submit">Pesquisar</button>
+      </form>
+    </section>
+
+    <section class="portal-catalog-grid">
+      {% for row in rows %}
+        <a class="portal-vehicle-card" href="/portal/viaturas/{{ row.publication.token }}">
+          {% if row.cover_image_id %}
+            <img class="portal-vehicle-cover" src="/portal/viaturas/{{ row.publication.token }}/imagens/{{ row.cover_image_id }}" alt="{{ row.vehicle.get('brand') }} {{ row.vehicle.get('model') }}">
+          {% else %}
+            <div class="portal-vehicle-placeholder">CARFAST</div>
+          {% endif %}
+          <div>
+            <span>{{ row.vehicle.get("reference") }} · {{ row.sale.get("audience_label") }}</span>
+            <h2>{{ row.vehicle.get("brand") }} {{ row.vehicle.get("model") }}</h2>
+            <p>{{ row.vehicle.get("version") }}</p>
+            <dl>
+              <div><dt>Ano</dt><dd>{{ row.vehicle.get("year") or "-" }}</dd></div>
+              <div><dt>Quilómetros</dt><dd>{{ row.vehicle.get("km") or "-" }}</dd></div>
+            </dl>
+            <strong>{{ money(row.sale.get("price")) }}</strong>
+          </div>
+        </a>
+      {% else %}
+        <div class="portal-empty-state">
+          <h2>Sem viaturas disponíveis</h2>
+          <p>Não existem publicações compatíveis com o seu perfil ou com a pesquisa realizada.</p>
+        </div>
+      {% endfor %}
+    </section>
+  </main>
+</div>
+{% endblock %}

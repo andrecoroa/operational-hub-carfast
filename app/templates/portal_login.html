@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="portal-shell">
+  {% set portal_context = none %}
+  {% include "_portal_header.html" %}
+  <main class="portal-auth-main">
+    <section class="portal-auth-card">
+      <p class="eyebrow">Área reservada</p>
+      <h1>Entrar no portal</h1>
+      <p class="muted">Acesso exclusivo a empresas e utilizadores convidados pela CarFast.</p>
+      {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+      <form method="post" action="/portal/entrar" class="form-stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next_url" value="{{ next_url }}">
+        <label>E-mail
+          <input type="email" name="email" maxlength="255" required autocomplete="username">
+        </label>
+        <label>Palavra-passe
+          <input type="password" name="password" required autocomplete="current-password">
+        </label>
+        <button type="submit">Entrar</button>
+      </form>
+      <p class="portal-auth-help">Ainda não tem acesso? Solicite um convite à equipa comercial CarFast.</p>
+      <a href="/login" class="portal-internal-entry">Entrada interna CarFast</a>
+    </section>
+  </main>
+</div>
+{% endblock %}

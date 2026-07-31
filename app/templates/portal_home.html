@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="portal-shell">
+  {% include "_portal_header.html" %}
+  <main class="portal-main">
+    <section class="portal-hero">
+      <div>
+        <p class="eyebrow">Portal CarFast</p>
+        {% if portal_context %}
+          <h1>Olá, {{ portal_context.user.name }}</h1>
+          <p>Acompanhe viaturas, propostas e pedidos da {{ portal_context.organization.name }}.</p>
+        {% else %}
+          <h1>Um ponto único para comunicar com a CarFast</h1>
+          <p>Registe um pedido geral ou entre na área reservada a parceiros e comerciantes.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="portal-module-grid">
+      {% if portal_context %}
+        {% if portal_context.has("vehicles.catalog.view") %}
+          <a href="/portal/viaturas" class="portal-module-card portal-module-featured">
+            <span>Comércio de usados</span>
+            <h2>Viaturas disponíveis</h2>
+            <p>Consulte as viaturas e os relatórios comerciais disponibilizados à sua empresa.</p>
+          </a>
+        {% endif %}
+        <a href="/portal/interacoes" class="portal-module-card">
+          <span>Acompanhamento</span>
+          <h2>Propostas e pedidos</h2>
+          <p>Veja o estado das questões, propostas e pedidos de compra registados.</p>
+        </a>
+        {% if portal_context.has("support_requests.create") %}
+          <a href="/portal/pedido" class="portal-module-card">
+            <span>Suporte</span>
+            <h2>Novo pedido</h2>
+            <p>Contacte a equipa CarFast sobre reservas, contratos, faturação ou assistência.</p>
+          </a>
+        {% endif %}
+      {% else %}
+        <a href="/portal/pedido" class="portal-module-card portal-module-featured">
+          <span>Disponível sem conta</span>
+          <h2>Registar pedido</h2>
+          <p>Envie um pedido geral à equipa CarFast e receba uma referência de acompanhamento.</p>
+        </a>
+        <a href="/portal/entrar" class="portal-module-card">
+          <span>Área reservada</span>
+          <h2>Parceiros e comerciantes</h2>
+          <p>Entre para consultar as oportunidades e condições atribuídas à sua empresa.</p>
+        </a>
+      {% endif %}
+    </section>
+  </main>
+  <footer class="portal-footer">CarFast · Portal externo</footer>
+</div>
+{% endblock %}

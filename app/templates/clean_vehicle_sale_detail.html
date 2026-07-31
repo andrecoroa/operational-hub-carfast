@@ -11,6 +11,7 @@
         <p>Valorização, imagens, publicação externa e oportunidades.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales-access">Acessos ao portal</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar à seleção</a>
       </div>
@@ -20,6 +21,7 @@
     {% if error == "image_too_large" %}<div class="alert">A imagem excede o limite de 10 MB.</div>{% endif %}
     {% if error == "invalid_image" %}<div class="alert">Formato inválido. São aceites imagens JPEG, PNG e WebP.</div>{% endif %}
     {% if error == "storage" %}<div class="alert">Não foi possível guardar a imagem no armazenamento configurado.</div>{% endif %}
+    {% if error == "publication_organizations" %}<div class="alert">Seleciona pelo menos uma entidade para esta publicação reservada.</div>{% endif %}
 
     <section class="sale-vehicle-summary">
       <div><span>Estado</span><strong>{{ row.status_label }}</strong></div>
@@ -127,7 +129,16 @@
         <label>Destinatário
           <select name="audience">{% for code, label in publication_audiences %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
         </label>
+        <label>Visibilidade
+          <select name="visibility">{% for code, label in publication_visibilities %}<option value="{{ code }}" {% if code == "authenticated_trade" %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </label>
         <label>Válido até<input type="date" name="expires_on"></label>
+        <label class="sale-form-full">Entidades selecionadas
+          <select name="organization_ids" multiple size="5">
+            {% for organization in portal_organizations %}<option value="{{ organization.id }}">{{ organization.name }}</option>{% endfor %}
+          </select>
+          <small>Usado apenas quando a visibilidade é “Entidades selecionadas”.</small>
+        </label>
         <fieldset>
           <legend>Imagens a publicar</legend>
           <div class="sale-publish-image-list">
@@ -145,7 +156,7 @@
         {% for publication in publications %}
           <article>
             <div>
-              <strong>{{ publication_audience_labels.get(publication.audience, publication.audience) }} · {{ publication.status }}</strong>
+              <strong>{{ publication_audience_labels.get(publication.audience, publication.audience) }} · {{ publication_visibility_labels.get(publication.visibility or "public_link", publication.visibility) }} · {{ publication.status }}</strong>
               <a href="{{ public_urls[publication.id] }}" target="_blank" rel="noopener noreferrer">{{ public_urls[publication.id] }}</a>
               <span>{{ publication.view_count or 0 }} visualizações · validade {{ publication.expires_on.strftime('%d/%m/%Y') if publication.expires_on else 'sem limite' }}</span>
             </div>
@@ -167,6 +178,7 @@
             <div>
               <strong>{{ lead_kind_labels.get(lead.kind, lead.kind) }} · {{ lead.name }}</strong>
               <span>{{ lead.email or lead.phone }}{% if lead.company %} · {{ lead.company }}{% endif %}</span>
+              {% if lead.portal_organization_id %}<span>Utilizador autenticado do portal · entidade #{{ lead.portal_organization_id }}</span>{% endif %}
               {% if lead.offer_value is not none %}<b>Proposta: {{ money(lead.offer_value) }}</b>{% endif %}
               {% if lead.message %}<p>{{ lead.message }}</p>{% endif %}
             </div>

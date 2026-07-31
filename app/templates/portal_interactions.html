@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="portal-shell">
+  {% include "_portal_header.html" %}
+  <main class="portal-main">
+    <section class="portal-page-heading">
+      <div>
+        <p class="eyebrow">Acompanhamento</p>
+        <h1>Questões, propostas e pedidos de compra</h1>
+        <p>
+          {% if portal_context.has("offers.view_organization") %}
+            Interações registadas pela {{ portal_context.organization.name }}.
+          {% else %}
+            Interações registadas pela sua conta.
+          {% endif %}
+        </p>
+      </div>
+    </section>
+    <section class="portal-interaction-list">
+      {% for lead in leads %}
+        {% set publication = publications.get(lead.publication_id) %}
+        <article>
+          <div>
+            <span>{{ lead_kind_labels.get(lead.kind, lead.kind) }}</span>
+            <h2>CF-VENDA-{{ "%05d"|format(lead.id) }}</h2>
+            <p>{{ lead.message or "Sem mensagem adicional." }}</p>
+            {% if lead.offer_value is not none %}<strong>{{ money(lead.offer_value) }}</strong>{% endif %}
+          </div>
+          <div class="portal-interaction-status">
+            <span>{{ lead_status_labels.get(lead.status, lead.status) }}</span>
+            <small>{{ lead.created_at.strftime("%d/%m/%Y %H:%M") }}</small>
+            {% if publication and publication.status == "published" %}
+              <a href="/portal/viaturas/{{ publication.token }}">Ver viatura</a>
+            {% endif %}
+          </div>
+        </article>
+      {% else %}
+        <div class="portal-empty-state">
+          <h2>Ainda não existem interações</h2>
+          <p>As questões, propostas e pedidos de compra irão aparecer aqui.</p>
+        </div>
+      {% endfor %}
+    </section>
+  </main>
+</div>
+{% endblock %}

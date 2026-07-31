@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block body %}
-<main class="public-page">
+<div class="portal-shell">
+  {% include "_portal_header.html" %}
+<main class="public-page portal-request-page">
   <section class="public-card">
     <div class="public-brand">
       <span class="public-logo">CARFAST</span>
@@ -17,7 +19,7 @@
       <p class="muted">A equipa CarFast irá analisar o pedido e contactar através dos dados indicados.</p>
       <div class="button-row public-actions">
         <a class="button-link" href="/portal/pedido">Registar novo pedido</a>
-        <a class="button-link secondary-link" href="/login">Entrada interna</a>
+        <a class="button-link secondary-link" href="/portal">Voltar ao portal</a>
       </div>
     {% else %}
       {% if error %}
@@ -25,6 +27,7 @@
       {% endif %}
 
       <form method="post" action="/portal/pedido" class="form-stack public-form">
+        {% if portal_context %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <label class="hidden-field" aria-hidden="true">
           Empresa
           <input type="text" name="company" tabindex="-1" autocomplete="off">
@@ -33,7 +36,7 @@
         <div class="form-grid">
           <label>
             Nome
-            <input type="text" name="name" maxlength="200" autocomplete="name">
+            <input type="text" name="name" maxlength="200" autocomplete="name" value="{{ portal_context.user.name if portal_context else '' }}" {% if portal_context %}readonly{% endif %}>
           </label>
           <label>
             Tipo de pedido
@@ -48,7 +51,7 @@
         <div class="form-grid">
           <label>
             E-mail
-            <input type="email" name="email" maxlength="255" autocomplete="email">
+            <input type="email" name="email" maxlength="255" autocomplete="email" value="{{ portal_context.user.email if portal_context else '' }}" {% if portal_context %}readonly{% endif %}>
           </label>
           <label>
             Telefone
@@ -94,11 +97,12 @@
         </label>
 
         <div class="button-row public-actions">
-          <a class="button-link secondary-link" href="/login">Entrada interna</a>
+          <a class="button-link secondary-link" href="/portal">Voltar ao portal</a>
           <button type="submit">Enviar pedido</button>
         </div>
       </form>
     {% endif %}
   </section>
 </main>
+</div>
 {% endblock %}

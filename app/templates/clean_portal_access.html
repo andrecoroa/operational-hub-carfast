@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content sale-page">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Frota / comércio de usados</p>
+        <h2>Acessos ao portal externo</h2>
+        <p>Empresas, convites, utilizadores e permissões do catálogo profissional.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+      </div>
+    </header>
+
+    {% if request.query_params.get("saved") %}<div class="success">Alteração guardada.</div>{% endif %}
+    {% if created_invitation_url %}
+      <div class="success portal-invitation-result">
+        <strong>Convite criado. Este link só é apresentado agora:</strong>
+        <input type="text" readonly value="{{ created_invitation_url }}" aria-label="Link do convite">
+      </div>
+    {% endif %}
+    {% if error %}
+      <div class="alert">
+        {% if error == "csrf" %}A sessão expirou. Repete a operação.
+        {% elif error == "organization_required" %}Indica o nome da entidade.
+        {% elif error == "tax_number_exists" %}Já existe uma entidade com este NIF.
+        {% elif error == "invitation_required" %}Indica nome e e-mail válidos.
+        {% elif error == "organization_invalid" %}Seleciona uma entidade ativa.
+        {% elif error == "email_exists" %}Já existe um utilizador com este e-mail.
+        {% else %}Não foi possível concluir a operação.{% endif %}
+      </div>
+    {% endif %}
+
+    <section class="portal-admin-grid">
+      <article class="clean-panel">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Entidades</p><h3>Criar empresa</h3></div></div>
+        <form method="post" action="/v2-clean/fleet/sales-access/organizations" class="form-stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Nome<input name="name" maxlength="200" required></label>
+          <label>NIF<input name="tax_number" maxlength="40"></label>
+          <label>Tipo
+            <select name="organization_type">
+              <option value="trade">Comerciante</option>
+              <option value="partner">Parceiro</option>
+              <option value="customer">Cliente</option>
+            </select>
+          </label>
+          <label>Notas<textarea name="notes" rows="3" maxlength="5000"></textarea></label>
+          <button type="submit">Criar entidade</button>
+        </form>
+      </article>
+
+      <article class="clean-panel">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Acesso</p><h3>Criar convite</h3></div></div>
+        <form method="post" action="/v2-clean/fleet/sales-access/invitations" class="form-stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Entidade
+            <select name="organization_id" required>
+              <option value="">Selecionar</option>
+              {% for organization in organizations if organization.status == "active" %}
+                <option value="{{ organization.id }}">{{ organization.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Nome<input name="name" maxlength="160" required></label>
+          <label>E-mail<input type="email" name="email" maxlength="255" required></label>
+          <label>Validade do convite
+            <select name="expires_days"><option value="3">3 dias</option><option value="7" selected>7 dias</option><option value="14">14 dias</option><option value="30">30 dias</option></select>
+          </label>
+          <fieldset class="portal-permission-fieldset">
+            <legend>Permissões</legend>
+            {% for code, label in permission_catalog %}
+              <label><input type="checkbox" name="permissions" value="{{ code }}" {% if code in default_permissions %}checked{% endif %}>{{ label }}</label>
+            {% endfor %}
+          </fieldset>
+          <button type="submit">Criar convite</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading"><div><p class="eyebrow">Empresas</p><h3>Entidades autorizadas</h3></div></div>
+      <div class="portal-organization-list">
+        {% for organization in organizations %}
+          <article>
+            <div>
+              <strong>{{ organization.name }}</strong>
+              <span>{{ organization.tax_number or "Sem NIF" }} · {{ organization.organization_type }} · {{ organization.status }}</span>
+            </div>
+            <form method="post" action="/v2-clean/fleet/sales-access/organizations/{{ organization.id }}/status">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="status" value="{{ 'suspended' if organization.status == 'active' else 'active' }}">
+              <button type="submit" class="{{ 'danger-button' if organization.status == 'active' else '' }}">{{ "Suspender" if organization.status == "active" else "Reativar" }}</button>
+            </form>
+          </article>
+          {% for user in users_by_organization.get(organization.id, []) %}
+            <form method="post" action="/v2-clean/fleet/sales-access/users/{{ user.id }}" class="portal-user-access">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div>
+              <label class="checkbox-label"><input type="checkbox" name="active" value="1" {% if user.active %}checked{% endif %}><span>Ativo</span></label>
+              <details>
+                <summary>Permissões</summary>
+                <div class="portal-permission-grid">
+                  {% for code, label in permission_catalog %}
+                    <label><input type="checkbox" name="permissions" value="{{ code }}" {% if code in (user.permissions_json or []) %}checked{% endif %}>{{ label }}</label>
+                  {% endfor %}
+                </div>
+              </details>
+              <button type="submit">Guardar acesso</button>
+            </form>
+          {% endfor %}
+        {% else %}
+          <p class="muted">Ainda não existem entidades externas.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading"><div><p class="eyebrow">Convites</p><h3>Histórico recente</h3></div></div>
+      <div class="portal-invitation-list">
+        {% for invitation in invitations %}
+          <article>
+            <div>
+              <strong>{{ invitation.name }} · {{ invitation.email }}</strong>
+              <span>{{ organization_by_id.get(invitation.organization_id).name if organization_by_id.get(invitation.organization_id) else "Entidade removida" }} · {{ invitation.status }} · expira {{ invitation.expires_at.strftime("%d/%m/%Y %H:%M") }}</span>
+            </div>
+            {% if invitation.status == "pending" %}
+              <form method="post" action="/v2-clean/fleet/sales-access/invitations/{{ invitation.id }}/revoke">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="danger-button">Revogar</button>
+              </form>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Ainda não existem convites.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

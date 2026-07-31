@@ -116,6 +116,11 @@ from app.services.pending_document_importer import (
     preview_pending_documents,
     reconcile_pending_invoices,
 )
+from app.services.portal_access import (
+    portal_context,
+    portal_csrf_token,
+    valid_portal_csrf,
+)
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx, preview_rentway_fleet_xlsx
 from app.services.structured_financial_plan_importer import (
     apply_financial_plan_preview,
@@ -2939,7 +2944,6 @@ DOCUMENT_SOURCES = [
 ]
 
 
-@web_router.get("/portal", response_class=HTMLResponse)
 @web_router.get("/portal/pedido", response_class=HTMLResponse)
 def external_portal_request_form(
     request: Request,
@@ -2952,7 +2956,20 @@ def external_portal_request_form(
         "consent": "Confirma que podemos usar os dados enviados para tratar o pedido.",
         "rate_limit": "Foram enviados vários pedidos recentemente. Tenta novamente dentro de alguns minutos.",
         "spam": "Não foi possível registar o pedido.",
+        "csrf": "A sessão expirou. Atualiza a página e tenta novamente.",
     }
+    with SessionLocal() as db:
+        context = portal_context(request, db)
+    if context and not context.has("support_requests.create"):
+        return templates.TemplateResponse(
+            request,
+            "portal_forbidden.html",
+            {
+                "portal_context": context,
+                "csrf_token": portal_csrf_token(request),
+            },
+            status_code=403,
+        )
     return templates.TemplateResponse(
         request,
         "external_request.html",
@@ -2961,6 +2978,8 @@ def external_portal_request_form(
             "sent": sent == "1",
             "reference": ref,
             "error": error_messages.get(error),
+            "portal_context": context,
+            "csrf_token": portal_csrf_token(request),
         },
     )
 
@@ -2980,6 +2999,7 @@ def external_portal_request_create(
     station: str = Form(""),
     consent: str = Form(""),
     company: str = Form(""),
+    csrf_token: str = Form(""),
 ):
     if company.strip():
         return RedirectResponse("/portal/pedido?error=spam", status_code=303)
@@ -2988,11 +3008,26 @@ def external_portal_request_create(
     if not consent:
         return RedirectResponse("/portal/pedido?error=consent", status_code=303)
 
+    with SessionLocal() as db:
+        context = portal_context(request, db)
+    if context and not context.has("support_requests.create"):
+        return templates.TemplateResponse(
+            request,
+            "portal_forbidden.html",
+            {
+                "portal_context": context,
+                "csrf_token": portal_csrf_token(request),
+            },
+            status_code=403,
+        )
+    if context and not valid_portal_csrf(request, csrf_token):
+        return RedirectResponse("/portal/pedido?error=csrf", status_code=303)
+
     clean_subject = subject.strip()
     clean_message = message.strip()
-    clean_email = email.strip().lower()
+    clean_email = context.user.email if context else email.strip().lower()
     clean_phone = phone.strip()
-    clean_name = name.strip()
+    clean_name = context.user.name if context else name.strip()
     if not clean_subject or not clean_message or not (clean_email or clean_phone):
         return RedirectResponse("/portal/pedido?error=required", status_code=303)
     if category not in EXTERNAL_PORTAL_CATEGORY_LABELS:

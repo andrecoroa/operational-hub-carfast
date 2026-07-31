@@ -2,11 +2,9 @@
 {% block body %}
 {% set vehicle = snapshot.get("vehicle", {}) %}
 {% set sale = snapshot.get("sale", {}) %}
+<div class="portal-shell">
+  {% include "_portal_header.html" %}
 <main class="public-sale-page">
-  <header class="public-sale-header">
-    <span class="public-logo">CARFAST</span>
-    <span>Viatura selecionada · {{ vehicle.get("reference") }}</span>
-  </header>
   <section class="public-sale-hero">
     <div class="public-sale-gallery">
       {% if images %}
@@ -47,27 +45,33 @@
       {% if sent %}
         <div class="success">Pedido registado com sucesso: <strong>{{ reference }}</strong>.</div>
         <p>A equipa CarFast irá analisar e contactar através dos dados indicados.</p>
-      {% else %}
+      {% elif lead_kinds %}
         {% if error %}<div class="alert">{{ error }}</div>{% endif %}
         <form method="post" action="/portal/viaturas/{{ publication.token }}/interesse" class="public-sale-form">
+          {% if portal_context %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
           <label class="hidden-field" aria-hidden="true">Empresa<input type="text" name="company" tabindex="-1" autocomplete="off"></label>
           <label>O que pretende?
             <select name="kind" data-public-lead-kind>{% for code, label in lead_kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
           </label>
-          <label>Nome<input type="text" name="name" maxlength="200" required autocomplete="name"></label>
-          <label>E-mail<input type="email" name="email" maxlength="255" autocomplete="email"></label>
+          <label>Nome<input type="text" name="name" maxlength="200" required autocomplete="name" value="{{ portal_context.user.name if portal_context else '' }}" {% if portal_context %}readonly{% endif %}></label>
+          <label>E-mail<input type="email" name="email" maxlength="255" autocomplete="email" value="{{ portal_context.user.email if portal_context else '' }}" {% if portal_context %}readonly{% endif %}></label>
           <label>Telefone<input type="tel" name="phone" maxlength="80" autocomplete="tel"></label>
-          <label>Empresa<input type="text" name="buyer_company" maxlength="200" autocomplete="organization"></label>
+          <label>Empresa<input type="text" name="buyer_company" maxlength="200" autocomplete="organization" value="{{ portal_context.organization.name if portal_context else '' }}" {% if portal_context %}readonly{% endif %}></label>
           <label class="public-offer-field" data-public-offer-field>Valor da proposta<input type="number" name="offer_value" min="1" step="0.01"></label>
           <label class="public-sale-message">Mensagem<textarea name="message" rows="5" maxlength="5000" placeholder="Indique a sua questão ou informação adicional."></textarea></label>
           <label class="checkbox-label public-sale-consent"><input type="checkbox" name="consent" value="1" required><span>Autorizo a CarFast a usar estes dados para analisar e responder ao pedido.</span></label>
           <button type="submit">Enviar à CarFast</button>
         </form>
+      {% else %}
+        <div class="portal-empty-state">
+          <p>O seu perfil permite consultar esta viatura, mas não registar interações.</p>
+        </div>
       {% endif %}
     </div>
   </section>
   <footer class="public-sale-footer">CarFast · Informação comercial sujeita a confirmação.</footer>
 </main>
+</div>
 <script>
   (() => {
     const mainImage = document.querySelector(".public-sale-main-image");

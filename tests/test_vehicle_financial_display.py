@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.web.router import current_cost_from_snapshot, rentway_commercial_context
@@ -37,3 +38,31 @@ def test_financial_plan_initial_cost_overrides_rentway_value():
     assert result["initial_cost"] == 18500.0
     assert result["current_cost"] is not None
     assert result["current_cost"] < result["initial_cost"]
+
+
+def test_financial_panel_uses_requested_four_column_order():
+    template = (
+        Path(__file__).parents[1] / "app" / "templates" / "clean_fleet_detail.html"
+    ).read_text(encoding="utf-8")
+    panel = template.split('id="clean-substep-financeiro"', 1)[1].split(
+        'id="clean-substep-historico"', 1
+    )[0]
+    labels = [
+        "Entidade financeira",
+        "N.º contrato",
+        "Início",
+        "Fim",
+        "Prestação / renda",
+        "Valor residual com IVA",
+        "Valor em dívida",
+        "Data do valor",
+        "Custo inicial sem IVA",
+        "Mês amortização",
+        "Custo atual sem IVA",
+    ]
+
+    positions = [panel.index(label) for label in labels]
+
+    assert positions == sorted(positions)
+    assert "clean-detail-facts clean-finance-facts" in panel
+    assert "clean-finance-current-cost" in panel

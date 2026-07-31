@@ -12683,6 +12683,15 @@ button.clean-upload-preview-card {
   grid-template-columns: 1fr;
 }
 
+.clean-finance-facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: none;
+}
+
+.clean-finance-facts .clean-finance-current-cost {
+  grid-column: span 2;
+}
+
 .clean-detail-facts div {
   display: grid;
   gap: 4px;
@@ -12802,6 +12811,20 @@ button.clean-upload-preview-card {
   }
 
   .clean-detail-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-detail-facts.clean-finance-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clean-finance-facts .clean-finance-current-cost {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 650px) {
+  .clean-detail-facts.clean-finance-facts {
     grid-template-columns: 1fr;
   }
 }

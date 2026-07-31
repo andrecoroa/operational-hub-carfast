@@ -163,7 +163,7 @@ def test_clean_financial_plan_import_requires_preview_before_confirm(
     db_session.commit()
 
     response = authenticated_client.post(
-        "/v2-clean/documentation/imports/financial-plans/preview",
+        "/v2-clean/documentation/financial-plans/preview",
         files={
             "file": (
                 "plans.xlsx",
@@ -175,7 +175,7 @@ def test_clean_financial_plan_import_requires_preview_before_confirm(
     )
 
     assert response.status_code == 303
-    assert "/v2-clean/documentation/imports/financial-plans/preview/" in response.headers["location"]
+    assert "/v2-clean/documentation/financial-plans/preview/" in response.headers["location"]
     assert db_session.scalar(select(func.count()).select_from(VehicleFinancialPlan)) == 0
     preview_page = authenticated_client.get(response.headers["location"])
     assert preview_page.status_code == 200

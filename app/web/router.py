@@ -10933,7 +10933,7 @@ def clean_documentation_import_workspace(
 
 
 @web_router.get(
-    "/v2-clean/documentation/imports/financial-plans",
+    "/v2-clean/documentation/financial-plans",
     response_class=HTMLResponse,
 )
 def clean_financial_plan_import_page(request: Request):
@@ -10954,7 +10954,7 @@ def clean_financial_plan_import_page(request: Request):
     )
 
 
-@web_router.post("/v2-clean/documentation/imports/financial-plans/preview")
+@web_router.post("/v2-clean/documentation/financial-plans/preview")
 def clean_financial_plan_import_preview_submit(
     request: Request,
     file: UploadFile = File(...),
@@ -10964,19 +10964,19 @@ def clean_financial_plan_import_preview_submit(
         return denied
     if not can_run_document_imports(request):
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?error=permission",
+            "/v2-clean/documentation/financial-plans?error=permission",
             status_code=303,
         )
     original_name = Path(file.filename or "planos_financeiros.xlsx").name
     if Path(original_name).suffix.lower() != ".xlsx":
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?error=format",
+            "/v2-clean/documentation/financial-plans?error=format",
             status_code=303,
         )
     content = file.file.read()
     if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?error=size",
+            "/v2-clean/documentation/financial-plans?error=size",
             status_code=303,
         )
     with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -10994,20 +10994,20 @@ def clean_financial_plan_import_preview_submit(
         )
     except Exception as exc:  # noqa: BLE001
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?"
+            "/v2-clean/documentation/financial-plans?"
             + urlencode({"error": f"preview_{exc.__class__.__name__}"}),
             status_code=303,
         )
     finally:
         tmp_path.unlink(missing_ok=True)
     return RedirectResponse(
-        f"/v2-clean/documentation/imports/financial-plans/preview/{token}",
+        f"/v2-clean/documentation/financial-plans/preview/{token}",
         status_code=303,
     )
 
 
 @web_router.get(
-    "/v2-clean/documentation/imports/financial-plans/preview/{token}",
+    "/v2-clean/documentation/financial-plans/preview/{token}",
     response_class=HTMLResponse,
 )
 def clean_financial_plan_import_preview(request: Request, token: str):
@@ -11018,7 +11018,7 @@ def clean_financial_plan_import_preview(request: Request, token: str):
         payload, _ = _load_documentation_import_preview(token, get_web_user_id(request))
     except ValueError as exc:
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?"
+            "/v2-clean/documentation/financial-plans?"
             + urlencode({"error": str(exc)}),
             status_code=303,
         )
@@ -11029,7 +11029,7 @@ def clean_financial_plan_import_preview(request: Request, token: str):
     )
 
 
-@web_router.post("/v2-clean/documentation/imports/financial-plans/confirm")
+@web_router.post("/v2-clean/documentation/financial-plans/confirm")
 def clean_financial_plan_import_confirm(
     request: Request,
     preview_token: str = Form(...),
@@ -11039,7 +11039,7 @@ def clean_financial_plan_import_confirm(
         return denied
     if not can_run_document_imports(request):
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?error=permission",
+            "/v2-clean/documentation/financial-plans?error=permission",
             status_code=303,
         )
     user_id = get_web_user_id(request)
@@ -11069,13 +11069,13 @@ def clean_financial_plan_import_confirm(
             db.commit()
     except Exception as exc:  # noqa: BLE001
         return RedirectResponse(
-            "/v2-clean/documentation/imports/financial-plans?"
+            "/v2-clean/documentation/financial-plans?"
             + urlencode({"error": f"confirm_{exc.__class__.__name__}"}),
             status_code=303,
         )
     _discard_documentation_import_preview(preview_token)
     return RedirectResponse(
-        "/v2-clean/documentation/imports/financial-plans?"
+        "/v2-clean/documentation/financial-plans?"
         + urlencode(
             {
                 "confirmed": result["created"] + result["updated"],
@@ -11086,7 +11086,7 @@ def clean_financial_plan_import_confirm(
     )
 
 
-@web_router.post("/v2-clean/documentation/imports/financial-plans/cancel")
+@web_router.post("/v2-clean/documentation/financial-plans/cancel")
 def clean_financial_plan_import_cancel(
     request: Request,
     preview_token: str = Form(...),
@@ -11097,7 +11097,7 @@ def clean_financial_plan_import_cancel(
     except ValueError:
         pass
     return RedirectResponse(
-        "/v2-clean/documentation/imports/financial-plans",
+        "/v2-clean/documentation/financial-plans",
         status_code=303,
     )
 

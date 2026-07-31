@@ -49,11 +49,11 @@
       </table>
     </div>
     <div class="clean-context-action-grid">
-      <form method="post" action="/v2-clean/documentation/imports/financial-plans/cancel">
+      <form method="post" action="/v2-clean/documentation/financial-plans/cancel">
         <input type="hidden" name="preview_token" value="{{ preview_token }}">
         <button type="submit" class="secondary-button">Cancelar</button>
       </form>
-      <form method="post" action="/v2-clean/documentation/imports/financial-plans/confirm">
+      <form method="post" action="/v2-clean/documentation/financial-plans/confirm">
         <input type="hidden" name="preview_token" value="{{ preview_token }}">
         <button type="submit" {% if not preview.matched %}disabled{% endif %}>Confirmar {{ preview.matched }} associações</button>
       </form>
@@ -62,7 +62,7 @@
 {% else %}
   <section class="clean-panel clean-card-wide">
     <div class="table-heading flat-heading"><div><h2>Nova importação</h2><p>Ficheiro consolidado com os separadores “Todos os contratos” e “Viaturas associadas”.</p></div></div>
-    <form method="post" action="/v2-clean/documentation/imports/financial-plans/preview" enctype="multipart/form-data" class="clean-filter-row">
+    <form method="post" action="/v2-clean/documentation/financial-plans/preview" enctype="multipart/form-data" class="clean-filter-row">
       <label>Ficheiro Excel<input type="file" name="file" accept=".xlsx" required></label>
       <button type="submit">Pré-visualizar</button>
     </form>

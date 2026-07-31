@@ -82,6 +82,7 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
+from app.models.vehicle_sales import VehicleSaleProfile
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -7296,9 +7297,23 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
                 Vehicle.active.is_(True),
                 or_(Vehicle.lifecycle_status.is_(None), Vehicle.lifecycle_status != "sold"),
                 or_(Vehicle.operational_status.is_(None), Vehicle.operational_status != "sold"),
+                Vehicle.id.not_in(
+                    select(VehicleSaleProfile.vehicle_id).where(
+                        VehicleSaleProfile.status.in_(["sold", "delivered"])
+                    )
+                ),
             )
         elif scope == "for_sale":
-            stmt = stmt.where(Vehicle.lifecycle_status == "for_sale")
+            stmt = stmt.where(
+                or_(
+                    Vehicle.lifecycle_status == "for_sale",
+                    Vehicle.id.in_(
+                        select(VehicleSaleProfile.vehicle_id).where(
+                            VehicleSaleProfile.status == "for_sale"
+                        )
+                    ),
+                )
+            )
         if raw_query:
             normalized_plate = func.replace(func.replace(func.upper(Vehicle.plate), "-", ""), " ", "")
             stmt = stmt.where(
@@ -7343,6 +7358,7 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
                 VehicleManualField.field_code == "sale_blocked",
             )
         ).all()
+        profile_vehicle_ids = select(VehicleSaleProfile.vehicle_id)
         counts = {
             "active": db.scalar(
                 select(func.count())
@@ -7351,9 +7367,32 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
                     Vehicle.active.is_(True),
                     or_(Vehicle.lifecycle_status.is_(None), Vehicle.lifecycle_status != "sold"),
                     or_(Vehicle.operational_status.is_(None), Vehicle.operational_status != "sold"),
+                    Vehicle.id.not_in(
+                        select(VehicleSaleProfile.vehicle_id).where(
+                            VehicleSaleProfile.status.in_(["sold", "delivered"])
+                        )
+                    ),
                 )
             ) or 0,
-            "for_sale": db.scalar(select(func.count()).select_from(Vehicle).where(Vehicle.lifecycle_status == "for_sale")) or 0,
+            "for_sale": (
+                db.scalar(
+                    select(func.count())
+                    .select_from(VehicleSaleProfile)
+                    .where(VehicleSaleProfile.status == "for_sale")
+                )
+                or 0
+            )
+            + (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Vehicle)
+                    .where(
+                        Vehicle.lifecycle_status == "for_sale",
+                        Vehicle.id.not_in(profile_vehicle_ids),
+                    )
+                )
+                or 0
+            ),
             "blocked_sale": sum(1 for value in sale_block_fields if value is True or str(value).lower() == "true"),
             "total": db.scalar(select(func.count()).select_from(Vehicle)) or 0,
         }

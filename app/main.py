@@ -14,6 +14,7 @@ from app.models.admin import User
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.web.router import web_router
+from app.web.vehicle_sales import vehicle_sales_router
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
     "/api",
@@ -134,7 +135,7 @@ WEB_PERMISSION_RULES = (
     (
         ("/v2-clean/fleet",),
         {
-            "GET": {"vehicles.read", "vehicles.write", "admin.manage"},
+            "GET": {"vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage"},
             "POST": {"vehicles.write", "fleet.commerce.manage", "admin.manage"},
         },
     ),
@@ -353,6 +354,7 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.include_router(api_router)
+    app.include_router(vehicle_sales_router)
     app.include_router(web_router)
     return app
 

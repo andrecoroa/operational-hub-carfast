@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content sale-page">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Frota / processo comercial</p>
+        <h2>Venda de viaturas</h2>
+        <p>Selecionar, valorizar e preparar viaturas para venda.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet">Ver frota</a>
+      </div>
+    </header>
+
+    {% if updated is not none %}
+      <div class="success">{{ updated }} viatura{% if updated != 1 %}s{% endif %} atualizada{% if updated != 1 %}s{% endif %}.</div>
+    {% endif %}
+    {% if error == "no_selection" %}
+      <div class="alert">Seleciona pelo menos uma viatura antes de aplicar uma ação.</div>
+    {% endif %}
+
+    <section class="sale-kpi-grid" aria-label="Resumo do processo de venda">
+      <a href="/v2-clean/fleet/sales?sale_status=for_sale"><span>Para venda</span><strong>{{ counts.for_sale }}</strong></a>
+      <a href="/v2-clean/fleet/sales?market_state=missing_trade"><span>Sem valores de mercado</span><strong>{{ counts.missing_market }}</strong></a>
+      <a href="/v2-clean/fleet/sales"><span>Com bloqueios</span><strong>{{ counts.blocked }}</strong></a>
+      <a href="/v2-clean/fleet/sales?sale_status=reserved"><span>Reservadas</span><strong>{{ counts.reserved }}</strong></a>
+      <a href="/v2-clean/fleet/sales?sale_status=sold"><span>Vendidas por entregar</span><strong>{{ counts.sold }}</strong></a>
+    </section>
+
+    <section class="clean-panel clean-card-wide sale-filter-panel">
+      <div class="table-heading flat-heading">
+        <div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div>
+      </div>
+      <form method="get" action="/v2-clean/fleet/sales" class="sale-filter-grid">
+        <label class="sale-filter-wide">Matrícula, Unit ou modelo
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar viatura">
+        </label>
+        <label>Estado de venda
+          <select name="sale_status">
+            <option value="">Todos</option>
+            {% for code, label in sale_statuses %}
+              <option value="{{ code }}" {% if filters.sale_status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Entidade de financiamento
+          <select name="finance_entity">
+            <option value="">Todas</option>
+            {% for value in finance_options %}
+              <option value="{{ value }}" {% if filters.finance_entity == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Estado da viatura
+          <select name="vehicle_state">
+            <option value="">Livre, IMPRO ou Contrato</option>
+            {% for code, label in vehicle_states %}
+              <option value="{{ code }}" {% if filters.vehicle_state == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <fieldset>
+          <legend>Data da matrícula</legend>
+          <span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span>
+        </fieldset>
+        <fieldset>
+          <legend>Margem financeira <small>Custo CarFast − valor em dívida</small></legend>
+          <span><input type="number" step="0.01" name="financial_margin_min" value="{{ filters.financial_margin_min }}" placeholder="Mín."><em>até</em><input type="number" step="0.01" name="financial_margin_max" value="{{ filters.financial_margin_max }}" placeholder="Máx."></span>
+        </fieldset>
+        <fieldset>
+          <legend>Margem comercial <small>Valor comércio − custo CarFast</small></legend>
+          <span><input type="number" step="0.01" name="commercial_margin_min" value="{{ filters.commercial_margin_min }}" placeholder="Mín."><em>até</em><input type="number" step="0.01" name="commercial_margin_max" value="{{ filters.commercial_margin_max }}" placeholder="Máx."></span>
+        </fieldset>
+        <fieldset class="sale-contract-filter">
+          <legend>Devolução do contrato <small>Aplicável a contratos</small></legend>
+          <span><input type="date" name="return_from" value="{{ filters.return_from }}" aria-label="Devolução desde"><em>até</em><input type="date" name="return_to" value="{{ filters.return_to }}" aria-label="Devolução até"></span>
+        </fieldset>
+        <label>Valores em falta
+          <select name="market_state">
+            <option value="">Todos</option>
+            <option value="missing_trade" {% if filters.market_state == "missing_trade" %}selected{% endif %}>Sem valor comércio</option>
+            <option value="missing_retail" {% if filters.market_state == "missing_retail" %}selected{% endif %}>Sem valor cliente final</option>
+          </select>
+        </label>
+        <div class="sale-filter-actions">
+          <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Limpar</a>
+          <button type="submit">Aplicar filtros</button>
+        </div>
+      </form>
+    </section>
+
+    <form method="post" action="/v2-clean/fleet/sales/bulk" class="sale-list-form" data-sale-bulk-form>
+      <input type="hidden" name="return_url" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <section class="sale-bulk-bar">
+        <strong><span data-sale-selected-count>0</span> viaturas selecionadas</strong>
+        <details>
+          <summary>Alterar estado</summary>
+          <div class="sale-bulk-popover">
+            <label>Novo estado
+              <select name="bulk_status">{% for code, label in sale_statuses %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+            </label>
+            <button type="submit" name="action" value="status">Aplicar estado</button>
+          </div>
+        </details>
+        <details>
+          <summary>Definir valores</summary>
+          <div class="sale-bulk-popover sale-bulk-popover-wide">
+            <label>Valor comércio<input type="number" step="0.01" min="0" name="market_trade_value" placeholder="€"></label>
+            <label>Valor cliente final<input type="number" step="0.01" min="0" name="market_retail_value" placeholder="€"></label>
+            <label>Origem<input type="text" name="market_value_source" maxlength="200" placeholder="Avaliação ou referência"></label>
+            <button type="submit" name="action" value="market_values">Aplicar valores</button>
+          </div>
+        </details>
+        <details>
+          <summary>Aplicar regra de preço</summary>
+          <div class="sale-bulk-popover sale-price-rule-popover">
+            <label>Base<select name="price_base">{% for code, label in price_bases %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Margem<select name="margin_mode">{% for code, label in margin_modes %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Valor da margem<input type="number" step="0.01" name="margin_value" value="0"></label>
+            <label>Arredondamento<select name="rounding_mode">{% for code, label in rounding_modes %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Múltiplo<input type="number" step="0.01" min="0" name="rounding_increment" value="100"></label>
+            <button type="submit" name="action" value="price_rule">Aplicar regra</button>
+          </div>
+        </details>
+        <span class="sale-bulk-spacer"></span>
+        <span>Vista: <b>Comercial e financeira</b></span>
+      </section>
+
+      <section class="clean-panel clean-card-wide sale-table-panel">
+        <div class="sale-table-scroll">
+          <table class="sale-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" data-sale-select-all aria-label="Selecionar todas as viaturas visíveis"></th>
+                <th>Viatura</th><th>Situação</th><th>Financiamento</th><th>Custo CarFast</th><th>Em dívida</th><th>Margem financeira</th><th>Valor comércio</th><th>Margem comercial</th><th>Valor cliente final</th><th>Preço proposto</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+                <tr>
+                  <td><input type="checkbox" name="vehicle_ids" value="{{ row.vehicle.id }}" data-sale-row-checkbox aria-label="Selecionar {{ row.vehicle.plate or row.vehicle.id }}"></td>
+                  <td><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small></td>
+                  <td><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span>{% if row.vehicle_state == "contract" %}<small>Devolução {{ row.return_on_display }}</small>{% endif %}<span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></td>
+                  <td>{{ row.finance_entity or "Sem financiamento" }}</td>
+                  <td>{{ money(row.cost) }}</td>
+                  <td>{{ money(row.debt) }}</td>
+                  <td class="{% if row.financial_margin is not none %}{% if row.financial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}">{{ money(row.financial_margin) }}</td>
+                  <td>{{ money(row.market_trade) }}</td>
+                  <td class="{% if row.commercial_margin is not none %}{% if row.commercial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}">{{ money(row.commercial_margin) }}</td>
+                  <td>{{ money(row.market_retail) }}</td>
+                  <td>{{ money(row.selling_price) }}</td>
+                  <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}">Preparar</a></td>
+                </tr>
+              {% else %}
+                <tr><td colspan="12" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <footer class="sale-table-footer">
+          <span>{{ total_filtered }} viatura{% if total_filtered != 1 %}s{% endif %}</span>
+          <nav aria-label="Paginação">
+            {% if page > 1 %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page - 1 }}">Anterior</a>{% endif %}
+            <strong>Página {{ page }} de {{ total_pages }}</strong>
+            {% if page < total_pages %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page + 1 }}">Seguinte</a>{% endif %}
+          </nav>
+        </footer>
+      </section>
+    </form>
+  </main>
+</div>
+<script>
+  (() => {
+    const form = document.querySelector("[data-sale-bulk-form]");
+    if (!form) return;
+    const boxes = Array.from(form.querySelectorAll("[data-sale-row-checkbox]"));
+    const selectAll = form.querySelector("[data-sale-select-all]");
+    const count = form.querySelector("[data-sale-selected-count]");
+    const refresh = () => {
+      const selected = boxes.filter((box) => box.checked).length;
+      count.textContent = String(selected);
+      selectAll.checked = selected > 0 && selected === boxes.length;
+      selectAll.indeterminate = selected > 0 && selected < boxes.length;
+    };
+    boxes.forEach((box) => box.addEventListener("change", refresh));
+    selectAll.addEventListener("change", () => {
+      boxes.forEach((box) => { box.checked = selectAll.checked; });
+      refresh();
+    });
+    form.querySelectorAll("details").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        form.querySelectorAll("details").forEach((other) => { if (other !== details) other.open = false; });
+      });
+    });
+    refresh();
+  })();
+</script>
+{% endblock %}

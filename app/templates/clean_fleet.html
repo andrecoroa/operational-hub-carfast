@@ -11,13 +11,16 @@
         <p>Lista limpa para abrir a ficha v2-clean, ver alertas e confirmar dados base.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
+          <a class="button-link" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+        {% endif %}
         <a class="button-link secondary-link" href="/v2-clean">Início v2-clean</a>
       </div>
     </header>
 
     <section class="clean-metric-grid clean-fleet-metrics">
       <a href="/v2-clean/fleet?scope=active"><span>Ativas</span><strong>{{ counts.active }}</strong></a>
-      <a href="/v2-clean/fleet?scope=for_sale"><span>Para comércio</span><strong>{{ counts.for_sale }}</strong></a>
+      <a href="/v2-clean/fleet/sales?sale_status=for_sale"><span>Para venda</span><strong>{{ counts.for_sale }}</strong></a>
       <a href="/v2-clean/fleet"><span>Bloqueio venda</span><strong>{{ counts.blocked_sale }}</strong></a>
       <a href="/v2-clean/fleet?scope=all"><span>Total</span><strong>{{ counts.total }}</strong></a>
     </section>
@@ -25,7 +28,7 @@
     <section class="clean-panel clean-card-wide clean-fleet-list-panel">
       <form method="get" action="/v2-clean/fleet" class="clean-fleet-toolbar" data-clean-fleet-search>
         <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off" list="clean-fleet-plate-suggestions" data-clean-fleet-query aria-describedby="clean-fleet-search-help"></label>
-        <label>Âmbito<select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para comércio</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select></label>
+        <label>Âmbito<select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para venda</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select></label>
         <div class="clean-fleet-search-actions">
           <button type="submit">Pesquisar</button>
           {% if q %}

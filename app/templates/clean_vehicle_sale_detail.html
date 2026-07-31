@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content sale-page">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Frota / venda de viaturas</p>
+        <h2>{{ vehicle.plate or "Viatura" }} · {{ vehicle.brand or "" }} {{ vehicle.model or "" }}</h2>
+        <p>Valorização, imagens, publicação externa e oportunidades.</p>
+      </div>
+      <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar à seleção</a>
+      </div>
+    </header>
+
+    {% if saved %}<div class="success">Alterações guardadas com sucesso.</div>{% endif %}
+    {% if error == "image_too_large" %}<div class="alert">A imagem excede o limite de 10 MB.</div>{% endif %}
+    {% if error == "invalid_image" %}<div class="alert">Formato inválido. São aceites imagens JPEG, PNG e WebP.</div>{% endif %}
+    {% if error == "storage" %}<div class="alert">Não foi possível guardar a imagem no armazenamento configurado.</div>{% endif %}
+
+    <section class="sale-vehicle-summary">
+      <div><span>Estado</span><strong>{{ row.status_label }}</strong></div>
+      <div><span>Situação</span><strong>{{ row.vehicle_state_label }}{% if row.vehicle_state == "contract" %} · {{ row.return_on_display }}{% endif %}</strong></div>
+      <div><span>Financiamento</span><strong>{{ row.finance_entity or "Sem financiamento" }}</strong></div>
+      <div><span>Margem financeira</span><strong class="{% if row.financial_margin is not none and row.financial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}">{{ money(row.financial_margin) }}</strong></div>
+      <div><span>Margem comercial</span><strong class="{% if row.commercial_margin is not none and row.commercial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}">{{ money(row.commercial_margin) }}</strong></div>
+    </section>
+
+    <div class="sale-detail-grid">
+      <section class="clean-panel clean-card-wide">
+        <div class="table-heading flat-heading"><div><p class="eyebrow">Preparação</p><h3>Ficha comercial interna</h3><p>As notas e valores abaixo não são alterados pelas importações da frota.</p></div></div>
+        <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}" class="sale-profile-form">
+          <label>Estado da venda
+            <select name="status">{% for code, label in sale_statuses %}<option value="{{ code }}" {% if profile.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Valor mercado — comércio
+            <input type="number" step="0.01" min="0" name="market_trade_value" value="{{ profile.market_trade_value if profile.market_trade_value is not none else '' }}">
+          </label>
+          <label>Valor mercado — cliente final
+            <input type="number" step="0.01" min="0" name="market_retail_value" value="{{ profile.market_retail_value if profile.market_retail_value is not none else '' }}">
+          </label>
+          <label>Preço proposto
+            <input type="number" step="0.01" min="0" name="selling_price" value="{{ profile.selling_price if profile.selling_price is not none else '' }}">
+          </label>
+          <label>Origem da avaliação
+            <input type="text" maxlength="200" name="market_value_source" value="{{ profile.market_value_source or '' }}" placeholder="Ex.: avaliação interna">
+          </label>
+          <label>Data da avaliação
+            <input type="date" name="market_valued_on" value="{{ profile.market_valued_on.isoformat() if profile.market_valued_on else '' }}">
+          </label>
+          <label>Base da regra de preço
+            <select name="price_base"><option value="">Sem regra</option>{% for code, label in price_bases %}<option value="{{ code }}" {% if profile.price_base == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Tipo de margem
+            <select name="margin_mode"><option value="">Sem regra</option>{% for code, label in margin_modes %}<option value="{{ code }}" {% if profile.margin_mode == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Margem
+            <input type="number" step="0.01" name="margin_value" value="{{ profile.margin_value if profile.margin_value is not none else '' }}">
+          </label>
+          <label>Arredondamento
+            <select name="rounding_mode">{% for code, label in rounding_modes %}<option value="{{ code }}" {% if (profile.rounding_mode or 'none') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Múltiplo de arredondamento
+            <input type="number" step="0.01" min="0" name="rounding_increment" value="{{ profile.rounding_increment if profile.rounding_increment is not none else '100' }}">
+          </label>
+          <div class="sale-calculation-note">
+            <span>Custo CarFast</span><strong>{{ money(row.cost) }}</strong>
+            <span>Valor em dívida</span><strong>{{ money(row.debt) }}</strong>
+          </div>
+          <label class="sale-form-full">Notas internas de venda
+            <textarea name="sale_notes" rows="5" maxlength="10000" placeholder="Informação operacional permanente da viatura">{{ profile.sale_notes or '' }}</textarea>
+            <small>Nunca é publicada no portal externo.</small>
+          </label>
+          <label class="sale-form-full">Descrição comercial pública
+            <textarea name="public_notes" rows="4" maxlength="5000" placeholder="Estado, equipamento e observações aprovadas para comercialização">{{ profile.public_notes or '' }}</textarea>
+          </label>
+          <div class="sale-form-actions sale-form-full"><button type="submit">Guardar ficha comercial</button></div>
+        </form>
+      </section>
+
+      <aside class="clean-panel sale-readiness-panel">
+        <p class="eyebrow">Resumo financeiro</p>
+        <dl>
+          <div><dt>Custo CarFast</dt><dd>{{ money(row.cost) }}</dd></div>
+          <div><dt>Em dívida</dt><dd>{{ money(row.debt) }}</dd></div>
+          <div><dt>Margem financeira</dt><dd>{{ money(row.financial_margin) }}</dd></div>
+          <div><dt>Valor comércio</dt><dd>{{ money(row.market_trade) }}</dd></div>
+          <div><dt>Margem comercial</dt><dd>{{ money(row.commercial_margin) }}</dd></div>
+          <div><dt>Valor cliente final</dt><dd>{{ money(row.market_retail) }}</dd></div>
+          <div><dt>Preço proposto</dt><dd>{{ money(row.selling_price) }}</dd></div>
+        </dl>
+        {% if row.sale_blocked %}<div class="alert">Existe um bloqueio de venda na ficha da viatura.</div>{% endif %}
+      </aside>
+    </div>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading">
+        <div><p class="eyebrow">Ficha da viatura</p><h3>Galeria permanente</h3><p>As imagens ficam associadas à viatura e podem ser escolhidas em cada publicação.</p></div>
+      </div>
+      <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}/images" enctype="multipart/form-data" class="sale-image-upload">
+        <label>Imagem<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
+        <label>Categoria<select name="category">{% for code, label in image_categories %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+        <label>Legenda<input type="text" name="caption" maxlength="500"></label>
+        <button type="submit">Adicionar imagem</button>
+      </form>
+      <div class="sale-image-grid">
+        {% for image in images %}
+          <article>
+            <a href="/v2-clean/fleet/sales/{{ vehicle.id }}/images/{{ image.id }}" target="_blank" rel="noopener"><img src="/v2-clean/fleet/sales/{{ vehicle.id }}/images/{{ image.id }}" alt="{{ image.caption or image.original_name }}"></a>
+            <div><strong>{{ image_category_labels.get(image.category, image.category) }}</strong><span>{{ image.caption or image.original_name }}</span></div>
+            <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}/images/{{ image.id }}/archive"><button type="submit" class="danger-button">Retirar da galeria</button></form>
+          </article>
+        {% else %}
+          <p class="muted">Ainda não existem imagens associadas a esta viatura.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading">
+        <div><p class="eyebrow">Portal externo</p><h3>Publicar relatório comercial</h3><p>Cada publicação é um snapshot. Não inclui custos, dívida, margens nem notas internas.</p></div>
+      </div>
+      <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}/publish" class="sale-publication-form">
+        <label>Destinatário
+          <select name="audience">{% for code, label in publication_audiences %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Válido até<input type="date" name="expires_on"></label>
+        <fieldset>
+          <legend>Imagens a publicar</legend>
+          <div class="sale-publish-image-list">
+            {% for image in images %}
+              <label><input type="checkbox" name="image_ids" value="{{ image.id }}" checked><img src="/v2-clean/fleet/sales/{{ vehicle.id }}/images/{{ image.id }}" alt=""><span>{{ image.caption or image.original_name }}</span></label>
+            {% else %}
+              <span class="muted">A publicação será criada sem imagens.</span>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <button type="submit">Criar link externo</button>
+      </form>
+
+      <div class="sale-publication-list">
+        {% for publication in publications %}
+          <article>
+            <div>
+              <strong>{{ publication_audience_labels.get(publication.audience, publication.audience) }} · {{ publication.status }}</strong>
+              <a href="{{ public_urls[publication.id] }}" target="_blank" rel="noopener noreferrer">{{ public_urls[publication.id] }}</a>
+              <span>{{ publication.view_count or 0 }} visualizações · validade {{ publication.expires_on.strftime('%d/%m/%Y') if publication.expires_on else 'sem limite' }}</span>
+            </div>
+            {% if publication.status == "published" %}
+              <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}/publications/{{ publication.id }}/revoke"><button type="submit" class="danger-button">Revogar link</button></form>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted">Ainda não foi publicado nenhum relatório externo.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading"><div><p class="eyebrow">Oportunidades</p><h3>Questões, propostas e pedidos de compra</h3><p>A aceitação de uma oportunidade não reserva automaticamente a viatura.</p></div></div>
+      <div class="sale-lead-list">
+        {% for lead in leads %}
+          <article>
+            <div>
+              <strong>{{ lead_kind_labels.get(lead.kind, lead.kind) }} · {{ lead.name }}</strong>
+              <span>{{ lead.email or lead.phone }}{% if lead.company %} · {{ lead.company }}{% endif %}</span>
+              {% if lead.offer_value is not none %}<b>Proposta: {{ money(lead.offer_value) }}</b>{% endif %}
+              {% if lead.message %}<p>{{ lead.message }}</p>{% endif %}
+            </div>
+            <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}/leads/{{ lead.id }}">
+              <select name="status">{% for code, label in lead_statuses %}<option value="{{ code }}" {% if lead.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+              <button type="submit">Atualizar</button>
+            </form>
+          </article>
+        {% else %}
+          <p class="muted">Ainda não existem interações recebidas pelo portal.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

@@ -47,6 +47,9 @@
           <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
+          {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
+            <a class="button-link secondary-link" href="/v2-clean/fleet/sales/{{ vehicle.id }}">Preparar venda</a>
+          {% endif %}
           <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}">Tarefas e problemas</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
         </div>

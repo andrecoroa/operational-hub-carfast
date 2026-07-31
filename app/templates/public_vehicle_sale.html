@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block body %}
+{% set vehicle = snapshot.get("vehicle", {}) %}
+{% set sale = snapshot.get("sale", {}) %}
+<main class="public-sale-page">
+  <header class="public-sale-header">
+    <span class="public-logo">CARFAST</span>
+    <span>Viatura selecionada · {{ vehicle.get("reference") }}</span>
+  </header>
+  <section class="public-sale-hero">
+    <div class="public-sale-gallery">
+      {% if images %}
+        <img class="public-sale-main-image" src="/portal/viaturas/{{ publication.token }}/imagens/{{ images[0].id }}" alt="{{ images[0].caption or 'Imagem da viatura' }}">
+        {% if images|length > 1 %}
+          <div class="public-sale-thumbnails">
+            {% for image in images %}
+              <button type="button" data-public-image="/portal/viaturas/{{ publication.token }}/imagens/{{ image.id }}" aria-label="Ver imagem {{ loop.index }}"><img src="/portal/viaturas/{{ publication.token }}/imagens/{{ image.id }}" alt=""></button>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="public-sale-no-image">Imagem não disponível</div>
+      {% endif %}
+    </div>
+    <div class="public-sale-summary">
+      <p class="eyebrow">{{ sale.get("audience_label") }}</p>
+      <h1>{{ vehicle.get("brand") }} {{ vehicle.get("model") }}</h1>
+      <p class="public-sale-version">{{ vehicle.get("version") }}</p>
+      <span class="public-sale-availability">{{ sale.get("availability_label") }}</span>
+      <strong class="public-sale-price">{{ money(sale.get("price")) }}</strong>
+      <dl>
+        <div><dt>Ano</dt><dd>{{ vehicle.get("year") or "-" }}</dd></div>
+        <div><dt>Matrícula</dt><dd>{{ vehicle.get("plate") }}</dd></div>
+        <div><dt>Quilometragem</dt><dd>{{ vehicle.get("km") or "-" }}{% if vehicle.get("km") %} km{% endif %}</dd></div>
+      </dl>
+      {% if sale.get("public_notes") %}<div class="public-sale-description">{{ sale.get("public_notes") }}</div>{% endif %}
+    </div>
+  </section>
+
+  <section class="public-sale-contact" id="interesse">
+    <div>
+      <p class="eyebrow">Falar com a CarFast</p>
+      <h2>Questões, propostas ou pedido de compra</h2>
+      <p>O envio deste formulário não reserva automaticamente a viatura.</p>
+    </div>
+    <div>
+      {% if sent %}
+        <div class="success">Pedido registado com sucesso: <strong>{{ reference }}</strong>.</div>
+        <p>A equipa CarFast irá analisar e contactar através dos dados indicados.</p>
+      {% else %}
+        {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+        <form method="post" action="/portal/viaturas/{{ publication.token }}/interesse" class="public-sale-form">
+          <label class="hidden-field" aria-hidden="true">Empresa<input type="text" name="company" tabindex="-1" autocomplete="off"></label>
+          <label>O que pretende?
+            <select name="kind" data-public-lead-kind>{% for code, label in lead_kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Nome<input type="text" name="name" maxlength="200" required autocomplete="name"></label>
+          <label>E-mail<input type="email" name="email" maxlength="255" autocomplete="email"></label>
+          <label>Telefone<input type="tel" name="phone" maxlength="80" autocomplete="tel"></label>
+          <label>Empresa<input type="text" name="buyer_company" maxlength="200" autocomplete="organization"></label>
+          <label class="public-offer-field" data-public-offer-field>Valor da proposta<input type="number" name="offer_value" min="1" step="0.01"></label>
+          <label class="public-sale-message">Mensagem<textarea name="message" rows="5" maxlength="5000" placeholder="Indique a sua questão ou informação adicional."></textarea></label>
+          <label class="checkbox-label public-sale-consent"><input type="checkbox" name="consent" value="1" required><span>Autorizo a CarFast a usar estes dados para analisar e responder ao pedido.</span></label>
+          <button type="submit">Enviar à CarFast</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+  <footer class="public-sale-footer">CarFast · Informação comercial sujeita a confirmação.</footer>
+</main>
+<script>
+  (() => {
+    const mainImage = document.querySelector(".public-sale-main-image");
+    document.querySelectorAll("[data-public-image]").forEach((button) => {
+      button.addEventListener("click", () => { if (mainImage) mainImage.src = button.dataset.publicImage; });
+    });
+    const kind = document.querySelector("[data-public-lead-kind]");
+    const offer = document.querySelector("[data-public-offer-field]");
+    if (kind && offer) {
+      const refresh = () => offer.classList.toggle("is-visible", kind.value === "offer");
+      kind.addEventListener("change", refresh);
+      refresh();
+    }
+  })();
+</script>
+{% endblock %}

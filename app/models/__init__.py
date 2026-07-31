@@ -53,6 +53,12 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
+from app.models.vehicle_sales import (
+    VehicleImage,
+    VehicleSaleLead,
+    VehicleSaleProfile,
+    VehicleSalePublication,
+)
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -145,6 +151,10 @@ __all__ = [
     "Vehicle",
     "VehicleExternalSnapshot",
     "VehicleFinancialPlan",
+    "VehicleImage",
+    "VehicleSaleLead",
+    "VehicleSaleProfile",
+    "VehicleSalePublication",
     "VehicleHistoryAudit",
     "VehicleHistoryAuditDocument",
     "VehicleHistoryAuditIssue",

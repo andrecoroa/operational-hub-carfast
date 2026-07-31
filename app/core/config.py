@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://carfast:carfast@localhost:5432/carfast_v2"
     document_archive_root: str | None = None
     document_invoice_inbox_path: str | None = None
+    vehicle_sale_media_root: str | None = None
+    vehicle_sales_public_base_url: str | None = None
 
     @property
     def enable_docs(self) -> bool:

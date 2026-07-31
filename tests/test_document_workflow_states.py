@@ -136,7 +136,7 @@ def test_automatic_destination_requires_known_high_confidence(
     assert confident_destination(suggestion, confidence) == expected
 
 
-def test_alembic_document_workflow_revision_is_the_only_head():
+def test_alembic_vehicle_sales_revision_is_the_only_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["a0b1c2d3e4f5"]
+    assert script.get_heads() == ["b0c1d2e3f4a5"]

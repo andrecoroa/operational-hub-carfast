@@ -33,7 +33,16 @@
           <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
         </div>
       </details>
-      <a href="/v2-clean/fleet" {% if active_menu == "fleet" %}class="active"{% endif %}>Frota</a>
+      {% set fleet_menu_open = active_menu in ["fleet", "fleet_sales"] or request.url.path.startswith('/v2-clean/fleet') %}
+      <details class="sidebar-nav-group" {% if fleet_menu_open %}open{% endif %}>
+        <summary {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
+        <div class="sidebar-nav-children">
+          <a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>
+          {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
+            <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+          {% endif %}
+        </div>
+      </details>
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       <details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
         <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>

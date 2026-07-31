@@ -1,7 +1,12 @@
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.web.router import current_cost_from_snapshot, rentway_commercial_context
+from app.web.router import (
+    amount_with_standard_vat,
+    current_cost_from_snapshot,
+    rentway_commercial_context,
+)
 
 
 def test_rentway_acquisition_value_is_not_treated_as_value_with_tax():
@@ -36,6 +41,11 @@ def test_financial_plan_cost_always_uses_rentway_value():
     assert result["current_cost"] < result["initial_cost"]
 
 
+def test_outstanding_capital_is_displayed_with_standard_vat():
+    assert amount_with_standard_vat("1000") == 1230
+    assert amount_with_standard_vat("1.234,56") == Decimal("1518.51")
+
+
 def test_financial_panel_uses_requested_four_column_order():
     template = (
         Path(__file__).parents[1] / "app" / "templates" / "clean_fleet_detail.html"
@@ -50,7 +60,7 @@ def test_financial_panel_uses_requested_four_column_order():
         "Fim",
         "Prestação / renda",
         "Valor residual com IVA",
-        "Valor em dívida",
+        "Capital em dívida com IVA",
         "Data do valor",
         "Custo inicial sem IVA",
         "Mês amortização",

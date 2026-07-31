@@ -778,6 +778,13 @@ def format_eur(value: str | int | float | None) -> str:
     return f"{text} €"
 
 
+def amount_with_standard_vat(value: object) -> Decimal | None:
+    number = parse_decimal_text(value)
+    if number is None:
+        return None
+    return (Decimal(str(number)) * Decimal("1.23")).quantize(Decimal("0.01"))
+
+
 def can_manage_carfast_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")
 
@@ -7182,10 +7189,12 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
                 if current_cost.get("amortization_month")
                 else "-"
             ),
-            "debt_value": format_eur(
-                active_financial_plan.outstanding_amount
-                if active_financial_plan
-                else debt_value
+            "debt_with_vat": format_eur(
+                amount_with_standard_vat(
+                    active_financial_plan.outstanding_amount
+                    if active_financial_plan
+                    else debt_value
+                )
             ),
             "debt_reference_date": clean_date(
                 active_financial_plan.amount_reference_date.isoformat()

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,6 +61,19 @@ def test_current_value_uses_real_accumulated_financial_amortization():
     )
 
     assert result == Decimal("13665.34")
+
+
+def test_current_value_falls_back_to_plan_dates_when_financial_amounts_are_missing():
+    result = current_value_with_financial_amortization(
+        "24.600,00",
+        None,
+        None,
+        None,
+        date(2026, 1, 1),
+        date(2026, 7, 31),
+    )
+
+    assert result == Decimal("22806.25")
 
 
 def test_financial_panel_uses_requested_four_column_order():

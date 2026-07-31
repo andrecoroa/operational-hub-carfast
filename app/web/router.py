@@ -802,16 +802,27 @@ def current_value_with_financial_amortization(
     financed_initial_amount: object,
     outstanding_amount: object,
     fallback: object = None,
+    plan_start_date: object = None,
+    reference_date: object = None,
 ) -> Decimal | None:
     acquisition = parse_decimal_text(acquisition_with_vat)
     financed_initial = parse_decimal_text(financed_initial_amount)
     outstanding = parse_decimal_text(outstanding_amount)
-    if acquisition is None or financed_initial is None or outstanding is None:
-        fallback_value = parse_decimal_text(fallback)
-        return Decimal(str(fallback_value)).quantize(Decimal("0.01")) if fallback_value is not None else None
-    accumulated_amortization = max(0.0, financed_initial - outstanding)
-    accumulated_with_vat = accumulated_amortization * 1.23
-    return Decimal(str(max(0.0, acquisition - accumulated_with_vat))).quantize(Decimal("0.01"))
+    if acquisition is None:
+        return None
+    if financed_initial is not None and outstanding is not None:
+        accumulated_amortization = max(0.0, financed_initial - outstanding)
+        accumulated_with_vat = accumulated_amortization * 1.23
+        return Decimal(str(max(0.0, acquisition - accumulated_with_vat))).quantize(Decimal("0.01"))
+    fallback_value = parse_decimal_text(fallback)
+    if fallback_value is not None:
+        return Decimal(str(fallback_value)).quantize(Decimal("0.01"))
+    start = plan_start_date if isinstance(plan_start_date, date) else parse_iso_or_dmy_date(str(plan_start_date or ""))
+    reference = reference_date if isinstance(reference_date, date) else parse_iso_or_dmy_date(str(reference_date or ""))
+    month = amortization_month(start, reference) if start else None
+    if month is None:
+        return None
+    return Decimal(str(max(0.0, acquisition - ((acquisition / 96) * month)))).quantize(Decimal("0.01"))
 
 
 def can_manage_carfast_fleet(request: Request) -> bool:
@@ -7125,6 +7136,8 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         active_financial_plan.initial_amount if active_financial_plan else None,
         active_financial_plan.outstanding_amount if active_financial_plan else None,
         current_cost.get("current_cost_with_vat"),
+        active_financial_plan.start_date if active_financial_plan else None,
+        active_financial_plan.amount_reference_date if active_financial_plan else None,
     )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""

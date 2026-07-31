@@ -2178,6 +2178,21 @@ TASK_WORKSPACE_TASK_TYPES = {
     workspace: [*config["primary_task_types"], *config["secondary_task_types"]]
     for workspace, config in TASK_WORKSPACE_CONFIG.items()
 }
+TASK_NATURE_OPTIONS = {
+    "operational": ["Operação", "Cliente", "Reserva", "Contrato", "Sinistro", "Outro"],
+    "workshop": ["Manutenção", "Reparação", "Diagnóstico", "Material", "Outro"],
+    "audit": ["Faturas", "Folhas de obra", "Documentação", "Dados", "Outro"],
+    "administration": ["Utilizadores", "Configuração", "Financeiro", "Integrações", "Outro"],
+}
+TASK_CATEGORY_OPTIONS = [
+    "Análise",
+    "Correção",
+    "Informação",
+    "Pedido",
+    "Validação",
+    "Acompanhamento",
+    "Outro",
+]
 
 QUICK_RECORD_TYPES_BY_WORKSPACE = {
     "operational": [
@@ -3651,6 +3666,7 @@ def clean_tasks_center(
     status: str = "open",
     kind: str = "all",
     nature: str = "",
+    due: str = "",
     plate: str = "",
     q: str = "",
     record_type: str = "",
@@ -3682,7 +3698,7 @@ def clean_tasks_center(
         active_workspace = workspace if workspace in workspace_codes | {"mine", "all"} else "mine"
         if active_workspace == "all" and not readable_workspaces:
             active_workspace = "mine"
-        active_mine_kind = mine_kind if mine_kind in {"all", "assigned", "identified", "following", "created"} else "all"
+        active_mine_kind = mine_kind if mine_kind in {"all", "assigned", "identified", "following", "created", "support"} else "all"
         active_status = status if status in {"open", "closed", "all"} else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
         effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
@@ -3738,6 +3754,15 @@ def clean_tasks_center(
                 )
             elif active_mine_kind == "created":
                 filters.append(Task.created_by_id == user_id)
+            elif active_mine_kind == "support":
+                filters.append(
+                    Task.id.in_(
+                        select(TaskHelpRequest.task_id).where(
+                            TaskHelpRequest.requested_user_id == user_id,
+                            TaskHelpRequest.status == "pending",
+                        )
+                    )
+                )
             else:
                 filters.append(
                     or_(
@@ -3765,6 +3790,9 @@ def clean_tasks_center(
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
+        active_due = due if due == "today" else ""
+        if active_due == "today":
+            filters.append(Task.due_on == datetime.now().date())
         if q.strip():
             search = f"%{q.strip()}%"
             filters.append(
@@ -3883,6 +3911,30 @@ def clean_tasks_center(
             )
             if value
         ]
+        task_nature_edit_options = sorted(
+            {
+                *task_nature_options,
+                *(value for values in TASK_NATURE_OPTIONS.values() for value in values),
+            }
+        )
+        task_category_options = sorted(
+            {
+                *TASK_CATEGORY_OPTIONS,
+                *(
+                    value
+                    for value in db.scalars(
+                        select(Task.subcategory)
+                        .where(
+                            Task.source == "v2_clean",
+                            Task.subcategory.is_not(None),
+                            Task.subcategory != "",
+                        )
+                        .distinct()
+                    )
+                    if value and value != "problem"
+                ),
+            }
+        )
         task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
         task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
@@ -3896,6 +3948,8 @@ def clean_tasks_center(
                 "task_workspace_options": task_workspace_options,
                 "task_status_options": task_status_options,
                 "task_nature_options": task_nature_options,
+                "task_nature_edit_options": task_nature_edit_options,
+                "task_category_options": task_category_options,
                 "task_workspace_labels": task_workspace_labels,
                 "task_status_labels": task_status_labels,
                 "task_priority_labels": task_priority_labels,
@@ -3919,6 +3973,7 @@ def clean_tasks_center(
                     "nature": clean_nature,
                     "plate": normalized_plate,
                     "q": q.strip(),
+                    "due": active_due,
                 },
                 "prefill": {
                     "record_type": effective_record_type,
@@ -4487,6 +4542,7 @@ def clean_tasks_help_response(
     task_id: int,
     help_id: int,
     response: str = Form("accepted"),
+    comment: str = Form(""),
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
@@ -4499,6 +4555,14 @@ def clean_tasks_help_response(
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         help_request.status = clean_response
         help_request.responded_at = datetime.now(UTC)
+        if clean_response == "responded" and comment.strip():
+            db.add(
+                TaskComment(
+                    task_id=task_id,
+                    user_id=user_id,
+                    comment=f"Resposta ao pedido de suporte: {comment.strip()}",
+                )
+            )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_answered")
 
@@ -17812,7 +17876,17 @@ def clean_fleet_documents_save_classification_row(
             record.updated_by_id = user_id
         elif document_id:
             document = db.get(Document, document_id)
-            if not document or document.vehicle_id != vehicle_id:
+            vehicle = db.get(Vehicle, vehicle_id)
+            if (
+                not document
+                or not vehicle
+                or not db.scalar(
+                    select(Document.id).where(
+                        Document.id == document.id,
+                        document_vehicle_predicate(vehicle),
+                    )
+                )
+            ):
                 return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
             db.execute(
                 delete(VehicleDocumentRecordTag).where(

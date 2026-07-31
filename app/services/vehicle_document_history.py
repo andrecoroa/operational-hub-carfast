@@ -2558,7 +2558,7 @@ def vehicle_document_module_context(
     pending_archive_records = [
         record
         for record in pending_archive_records
-        if record.source_record_type == "archive_pending"
+        if record.source_record_type in {"archive_pending", "pending_import"}
     ]
     structured_rows = _build_structured_rows(db, vehicle.id, record_tags)
     extraction_metadata = _document_extraction_metadata(db, [document.id for document in documents])

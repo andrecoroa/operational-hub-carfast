@@ -4499,6 +4499,70 @@ def test_clean_vehicle_documents_keeps_detail_open_after_classification(authenti
     assert "clean-doc-detail-open" in page.text
 
 
+def test_clean_vehicle_documents_includes_expected_invoice_and_saves_plate_linked_document(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    expected = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="pending_import",
+        main_group="invoices",
+        title="Fatura pendente FS0003640",
+        external_reference="FS0003640",
+        plate=vehicle.plate,
+        status="pending",
+        has_physical_file=False,
+    )
+    document = Document(
+        title="Fatura FS0003640",
+        document_type="workshop_supplier_invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_manual",
+        original_name="FS0003640.pdf",
+        file_name="FS0003640.pdf",
+        storage_provider="local",
+        storage_path="Frota/FS0003640.pdf",
+        folder_path="Frota/Faturas",
+        status="received",
+        vehicle_id=None,
+        plate=vehicle.plate,
+        supplier_name="Cruz & Allen",
+        contract_number="FS0003640",
+    )
+    db_session.add_all([expected, document])
+    db_session.commit()
+
+    page = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"
+    )
+    assert page.status_code == 200
+    assert "Fatura pendente FS0003640" in page.text
+
+    saved = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "document_id": str(document.id),
+            "return_group": "invoices",
+            "open_item": f"document:{document.id}",
+            "maintenance": "revision",
+            "classification_action": "validate",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert f"open_item=document%3A{document.id}" in saved.headers["location"]
+    db_session.refresh(document)
+    assert document.status == "classified"
+    assert db_session.scalar(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == document.id,
+            VehicleDocumentRecordTag.category == "maintenance",
+            VehicleDocumentRecordTag.value == "revision",
+        )
+    )
+
+
 def test_clean_vehicle_documents_imports_multiple_detail_lines_by_work_order_number(
     authenticated_client,
     db_session,

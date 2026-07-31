@@ -40,7 +40,7 @@
       <article><span>Filas</span><strong>{{ task_metrics.divisions }}</strong><em>visíveis</em></article>
       <article><span>Abertas</span><strong>{{ task_metrics.open }}</strong><em>tarefas</em></article>
       <article><span>Auditoria</span><strong>{{ task_metrics.audit }}</strong><em>por tratar</em></article>
-      <article><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></article>
+      <a class="clean-task-kpi-link" href="/v2-clean/tasks?workspace=all&status=open&due=today"><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></a>
     </section>
 
     {% if writable_workspaces %}
@@ -114,7 +114,7 @@
       </nav>
       {% if filters.workspace == "mine" %}
         <nav class="clean-task-mine-tabs" aria-label="Relação com a tarefa">
-          {% for code, label in [("all","Todas as minhas"),("assigned","Atribuídas"),("identified","Identificado"),("following","A acompanhar"),("created","Criadas por mim")] %}
+          {% for code, label in [("all","Todas as minhas"),("assigned","Atribuídas"),("identified","Identificado"),("following","A acompanhar"),("support","Suporte solicitado"),("created","Criadas por mim")] %}
             <a href="/v2-clean/tasks?workspace=mine&mine_kind={{ code }}" class="{% if filters.mine_kind == code %}active{% endif %}">{{ label }}</a>
           {% endfor %}
         </nav>
@@ -122,6 +122,7 @@
       <form method="get" action="/v2-clean/tasks" class="clean-task-filter-row">
         <input type="hidden" name="workspace" value="{{ filters.workspace }}">
         <input type="hidden" name="mine_kind" value="{{ filters.mine_kind }}">
+        <input type="hidden" name="due" value="{{ filters.due }}">
         <label>Estado<select name="status">{% for code, label in task_status_options %}<option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         <label>Natureza
           <select name="nature">
@@ -135,22 +136,29 @@
       </form>
       <div class="clean-task-table-wrap">
         <table class="clean-doc-table clean-task-table">
-          <thead><tr><th>Prioridade</th><th>Tarefa</th><th>Contexto</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead>
+          <thead><tr><th>Prioridade</th><th>Tarefa</th><th>Contexto</th><th>Responsável</th><th>Criada em</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead>
           <tbody>
           {% for task in tasks %}
             {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "administration" if task.task_type == "administration_task" else "operational" %}
             {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
             <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
               <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
-              <td><strong>{{ task.title }}</strong><small>{{ "Problema" if task_is_problem else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small></td>
+              <td>
+                <strong>{{ task.title }}</strong>
+                <small>{{ "Problema" if task_is_problem else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
+                {% for help in help_requests_by_task.get(task.id, []) if help.requested_user_id == current_user_id and help.status == "pending" %}
+                  <span class="clean-task-support-flag">Suporte solicitado</span>
+                {% endfor %}
+              </td>
               <td><strong>{{ task.plate or task.entity_type or "-" }}</strong><small>{{ task.category or "Sem categoria" }}</small></td>
               <td>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</td>
+              <td>{{ task.created_at.strftime("%d/%m/%Y") if task.created_at else "-" }}</td>
               <td>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}</td>
               <td><span class="clean-task-status {% if task.closed_at %}closed{% endif %}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
               <td><button class="button-link secondary-link" type="button">Abrir</button></td>
             </tr>
           {% else %}
-            <tr><td colspan="7">Sem tarefas para os filtros selecionados.</td></tr>
+            <tr><td colspan="8">Sem tarefas para os filtros selecionados.</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -224,8 +232,8 @@
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
               <label>Fila<select name="workspace">{% for code, label in task_workspace_options if code in writable_workspaces %}<option value="{{ code }}" {% if code == task_workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-              <label>Natureza<input name="category" value="{{ task.category or '' }}"></label>
-              <label>Categoria<input name="subcategory" value="{{ task.subcategory or '' }}"></label>
+              <label>Natureza<select name="category"><option value="">Selecionar</option>{% for value in task_nature_edit_options %}<option value="{{ value }}" {% if task.category == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+              <label>Categoria<select name="subcategory"><option value="">Selecionar</option>{% for value in task_category_options %}<option value="{{ value }}" {% if task.subcategory == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span><button type="submit">Guardar</button></div>
             </form>
           </section>
@@ -282,8 +290,9 @@
                 {% if help.requested_user_id == current_user_id and help.status == "pending" %}
                   <form method="post" action="/v2-clean/tasks/{{ task.id }}/help/{{ help.id }}">
                     <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
-                    <button name="response" value="responded">Marcar respondido</button>
-                    <button name="response" value="cancelled" class="secondary">Cancelar</button>
+                    <textarea name="comment" rows="2" placeholder="Resposta ou indicação do apoio prestado" required></textarea>
+                    <button name="response" value="responded">Responder e concluir</button>
+                    <button name="response" value="cancelled" class="secondary" formnovalidate>Cancelar</button>
                   </form>
                 {% endif %}
               </div>

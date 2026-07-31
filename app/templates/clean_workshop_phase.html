@@ -42,11 +42,7 @@
         </div>
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
-            <form class="clean-inline-action" method="post" action="/v2-clean/workshop/{{ workshop_process.id }}/records">
-              <input type="hidden" name="record_type" value="task">
-              <input type="hidden" name="phase" value="{{ phase_key }}">
-              <button type="submit" class="button-link secondary-link">Criar tarefa</button>
-            </form>
+            <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&record_type=task&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&phase={{ phase_key }}&plate={{ workshop_process.plate_snapshot or '' }}&category=Oficina&return_url={{ request.url.path }}%3Fprocess_id%3D{{ workshop_process.id }}">Criar tarefa</a>
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}

@@ -44,7 +44,7 @@
           <span>Acessos imediatos aos fluxos ligados a esta viatura.</span>
         </div>
         <div class="clean-context-action-row">
-          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}">Oficina</a>
+          <a class="button-link secondary-link" href="/v2-clean/workshop-entry?vehicle_id={{ vehicle.id }}&new=1">Oficina</a>
           <a class="button-link secondary-link" href="/v2-clean/processes">Auditoria</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Documentos</a>
           {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}

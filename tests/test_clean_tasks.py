@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import select
 
 from app.models import (
@@ -56,6 +58,43 @@ def test_clean_task_center_creates_document_task_with_audit(authenticated_client
     assert "Confirmar classificação da fatura" in center.text
     assert f'task-preview-{task.id}' in center.text
     assert f'/task-board/{task.id}' not in center.text
+
+
+def test_clean_task_center_filters_due_today_and_shows_creation_date(
+    authenticated_client,
+    db_session,
+):
+    due_today = Task(
+        title="Tarefa com prazo hoje",
+        task_type="operational_task",
+        source="v2_clean",
+        category="Operação",
+        subcategory="Validação",
+        status="new",
+        priority="normal",
+        due_on=date.today(),
+    )
+    later = Task(
+        title="Tarefa para outro dia",
+        task_type="operational_task",
+        source="v2_clean",
+        status="new",
+        priority="normal",
+        due_on=date(2099, 1, 1),
+    )
+    db_session.add_all([due_today, later])
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=all&status=open&due=today")
+
+    assert page.status_code == 200
+    assert "Tarefa com prazo hoje" in page.text
+    assert "Tarefa para outro dia" not in page.text
+    assert "Criada em" in page.text
+    assert 'name="category"><option value="">Selecionar</option>' in page.text
+    assert 'name="subcategory"><option value="">Selecionar</option>' in page.text
+    mine_page = authenticated_client.get("/v2-clean/tasks?workspace=mine")
+    assert "Suporte solicitado" in mine_page.text
 
 
 def test_clean_task_center_creates_problem_and_closes_it(authenticated_client, db_session):

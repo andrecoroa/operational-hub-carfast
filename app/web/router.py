@@ -450,7 +450,18 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
         "driver": snapshot_value(data, ["Driver", "driver", "driver_name"]),
         "rental_station": snapshot_value(data, ["rental_station", "rentalstation", "station", "location"]),
         "return_date": snapshot_value(data, ["return_date", "returndate"]),
-        "value_with_tax": snapshot_value(data, ["value_with_tax", "valuewithtax", "valor_com_iva", "valor_aquisicao"]),
+        "acquisition_value": snapshot_value(
+            data,
+            [
+                "acquisition_value",
+                "purchase_value",
+                "purchasevalue",
+                "valor_aquisicao",
+                "valor_compra",
+                "purchase_price",
+            ],
+        ),
+        "value_with_tax": snapshot_value(data, ["value_with_tax", "valuewithtax", "valor_com_iva"]),
         "purchase_supplier": snapshot_value(
             data,
             [
@@ -621,9 +632,17 @@ def amortization_month(purchase_date: date | None, reference_date: date | None =
     return max(1, min(96, months))
 
 
-def current_cost_from_snapshot(snapshot: VehicleExternalSnapshot | None) -> dict[str, float | int | str | None]:
+def current_cost_from_snapshot(
+    snapshot: VehicleExternalSnapshot | None,
+    *,
+    initial_cost_override: Decimal | float | None = None,
+) -> dict[str, float | int | str | None]:
     context = rentway_commercial_context(snapshot)
-    initial_cost = parse_decimal_text(context.get("value_with_tax"))
+    initial_cost = (
+        float(initial_cost_override)
+        if initial_cost_override is not None
+        else parse_decimal_text(context.get("acquisition_value"))
+    )
     purchase = parse_iso_or_dmy_date(context.get("purchase_date"))
     month = amortization_month(purchase)
     if initial_cost is None or month is None:
@@ -6957,7 +6976,6 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     commercial_context = rentway_commercial_context(snapshot)
     manual_fields = vehicle_manual_values(db, vehicle.id)
     rules = vehicle_rule_context(snapshot, manual_fields)
-    current_cost = current_cost_from_snapshot(snapshot)
     financial_plans = db.scalars(
         select(VehicleFinancialPlan)
         .where(VehicleFinancialPlan.vehicle_id == vehicle.id)
@@ -6970,6 +6988,14 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     active_financial_plan = next(
         (plan for plan in financial_plans if plan.active),
         financial_plans[0] if financial_plans else None,
+    )
+    current_cost = current_cost_from_snapshot(
+        snapshot,
+        initial_cost_override=(
+            active_financial_plan.initial_amount
+            if active_financial_plan
+            else None
+        ),
     )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""

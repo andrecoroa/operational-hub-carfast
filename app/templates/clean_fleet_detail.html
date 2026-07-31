@@ -115,8 +115,8 @@
             <div><span>N.º contrato</span><strong>{{ ctx.finance.contract_number }}</strong></div>
             <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong><small>Não fornecido quando a origem não contém saldo atual.</small></div>
             <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
-            <div><span>Custo inicial</span><strong>{{ ctx.finance.initial_cost }}</strong><small>Valor da fonte.</small></div>
-            <div><span>Custo atual com IVA</span><strong>{{ ctx.finance.current_cost }}</strong></div>
+            <div><span>Custo inicial sem IVA</span><strong>{{ ctx.finance.initial_cost }}</strong><small>Capital inicial do plano; Rentway apenas como alternativa.</small></div>
+            <div><span>Custo atual sem IVA</span><strong>{{ ctx.finance.current_cost }}</strong><small>Amortização contabilística do custo inicial em 96 meses.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
             <div><span>Prestação / renda</span><strong>{{ ctx.finance.installment_with_vat }}</strong><small>Com IVA quando esse valor existe; caso contrário, mostra a renda da fonte.</small></div>
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>

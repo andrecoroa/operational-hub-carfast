@@ -22858,9 +22858,39 @@ body.clean-task-preview-open {
 
 .sale-table {
   width: 100%;
-  min-width: 1500px;
+  min-width: 960px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.76rem;
+}
+
+.sale-table th:first-child {
+  width: 38px;
+}
+
+.sale-table th:nth-child(2) {
+  width: 19%;
+}
+
+.sale-table th:nth-child(3) {
+  width: 13%;
+}
+
+.sale-table th:nth-child(4) {
+  width: 12%;
+}
+
+.sale-table th:nth-child(5),
+.sale-table th:nth-child(6) {
+  width: 18%;
+}
+
+.sale-table th:nth-child(7) {
+  width: 11%;
+}
+
+.sale-table th:last-child {
+  width: 82px;
 }
 
 .sale-table th {
@@ -22880,8 +22910,29 @@ body.clean-task-preview-open {
 }
 
 .sale-table td:nth-child(2),
-.sale-table td:nth-child(3) {
+.sale-table td:nth-child(3),
+.sale-table td:nth-child(4) {
   white-space: normal;
+}
+
+.sale-value-stack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  white-space: normal !important;
+}
+
+.sale-value-stack > span {
+  min-width: 0;
+  font-weight: 800;
+}
+
+.sale-value-stack small {
+  display: block;
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
 }
 
 .sale-table td > strong,

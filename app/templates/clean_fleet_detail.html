@@ -124,7 +124,7 @@
             <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
             <div><span>Custo inicial com IVA</span><strong>{{ ctx.finance.initial_cost_with_vat }}</strong><small>Valor de aquisição Rentway com IVA.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
-            <div class="clean-finance-current-cost"><span>Valor atual com IVA</span><strong>{{ ctx.finance.current_cost_with_vat }}</strong><small>Amortização do custo com IVA em 96 meses.</small></div>
+            <div class="clean-finance-current-cost"><span>Valor atual com IVA</span><strong>{{ ctx.finance.current_cost_with_vat }}</strong><small>Custo inicial com IVA menos as amortizações acumuladas do plano.</small></div>
           </div>
           {% if ctx.finance.plan_count > 1 %}
             <details class="clean-inline-details">

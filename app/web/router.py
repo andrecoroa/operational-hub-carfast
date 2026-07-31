@@ -797,6 +797,23 @@ def amount_with_standard_vat(value: object) -> Decimal | None:
     return (Decimal(str(number)) * Decimal("1.23")).quantize(Decimal("0.01"))
 
 
+def current_value_with_financial_amortization(
+    acquisition_with_vat: object,
+    financed_initial_amount: object,
+    outstanding_amount: object,
+    fallback: object = None,
+) -> Decimal | None:
+    acquisition = parse_decimal_text(acquisition_with_vat)
+    financed_initial = parse_decimal_text(financed_initial_amount)
+    outstanding = parse_decimal_text(outstanding_amount)
+    if acquisition is None or financed_initial is None or outstanding is None:
+        fallback_value = parse_decimal_text(fallback)
+        return Decimal(str(fallback_value)).quantize(Decimal("0.01")) if fallback_value is not None else None
+    accumulated_amortization = max(0.0, financed_initial - outstanding)
+    accumulated_with_vat = accumulated_amortization * 1.23
+    return Decimal(str(max(0.0, acquisition - accumulated_with_vat))).quantize(Decimal("0.01"))
+
+
 def can_manage_carfast_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")
 
@@ -7103,6 +7120,12 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         financial_plans[0] if financial_plans else None,
     )
     current_cost = current_cost_from_snapshot(snapshot)
+    current_value_with_vat = current_value_with_financial_amortization(
+        current_cost.get("initial_cost_with_vat"),
+        active_financial_plan.initial_amount if active_financial_plan else None,
+        active_financial_plan.outstanding_amount if active_financial_plan else None,
+        current_cost.get("current_cost_with_vat"),
+    )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
     model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
@@ -7195,7 +7218,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         },
         "finance": {
             "initial_cost_with_vat": format_eur(current_cost.get("initial_cost_with_vat")),
-            "current_cost_with_vat": format_eur(current_cost.get("current_cost_with_vat")),
+            "current_cost_with_vat": format_eur(current_value_with_vat),
             "amortization_month": (
                 f"{current_cost.get('amortization_month')} de 96"
                 if current_cost.get("amortization_month")

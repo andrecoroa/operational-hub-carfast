@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from app.web.router import (
     amount_with_standard_vat,
     current_cost_from_snapshot,
+    current_value_with_financial_amortization,
     rentway_commercial_context,
 )
 
@@ -48,6 +49,17 @@ def test_financial_plan_cost_always_uses_rentway_value():
 def test_outstanding_capital_is_displayed_with_standard_vat():
     assert amount_with_standard_vat("1000") == 1230
     assert amount_with_standard_vat("1.234,56") == Decimal("1518.51")
+
+
+def test_current_value_uses_real_accumulated_financial_amortization():
+    result = current_value_with_financial_amortization(
+        "24.600,00",
+        "18.431,81",
+        "9.541,84",
+        "15.000,00",
+    )
+
+    assert result == Decimal("13665.34")
 
 
 def test_financial_panel_uses_requested_four_column_order():

@@ -70,6 +70,15 @@ def _reference_date(definition: Any) -> date | None:
     return _date_value(match.group(1)) if match else None
 
 
+def _association_or_contract(
+    association: dict[str, Any],
+    contract_row: dict[str, Any],
+    column: str,
+) -> Any:
+    value = association.get(column)
+    return value if value not in (None, "") else contract_row.get(column)
+
+
 def _plan_status(contract_row: dict[str, Any]) -> tuple[str, bool]:
     status_text = " ".join(
         [
@@ -173,9 +182,28 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
         else:
             seen.add((entity.upper(), contract.upper(), vehicle.id))
             matched += 1
-        definition = _text((contract_row or {}).get("Base temporal / definição"))
-        installment_amount = _money((contract_row or {}).get("Renda financeira (€)"))
-        installment_with_vat = _money((contract_row or {}).get("Encargos/renda c/IVA (€)"))
+        resolved_contract = contract_row or {}
+        definition = _text(
+            _association_or_contract(
+                association,
+                resolved_contract,
+                "Base temporal / definição",
+            )
+        )
+        installment_amount = _money(
+            _association_or_contract(
+                association,
+                resolved_contract,
+                "Renda financeira (€)",
+            )
+        )
+        installment_with_vat = _money(
+            _association_or_contract(
+                association,
+                resolved_contract,
+                "Encargos/renda c/IVA (€)",
+            )
+        )
         installment_display = installment_with_vat or installment_amount
         installment_source = (
             "Encargos/renda c/IVA (€)"
@@ -184,7 +212,15 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
             if installment_amount is not None
             else ""
         )
-        plan_status, active = _plan_status(contract_row or {})
+        resolved_plan = {
+            **resolved_contract,
+            **{
+                key: value
+                for key, value in association.items()
+                if value not in (None, "")
+            },
+        }
+        plan_status, active = _plan_status(resolved_plan)
         preview_rows.append(
             {
                 "row_number": row_number,
@@ -202,22 +238,28 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
                 "association_evidence": _text(association.get("Evidência")),
                 "plan_status": plan_status,
                 "active": active,
-                "start_date": (_date_value((contract_row or {}).get("Data início")) or "").isoformat()
-                if _date_value((contract_row or {}).get("Data início")) else "",
-                "end_date": (_date_value((contract_row or {}).get("Data fim")) or "").isoformat()
-                if _date_value((contract_row or {}).get("Data fim")) else "",
-                "term_months": int((contract_row or {}).get("Prazo (meses)"))
-                if isinstance((contract_row or {}).get("Prazo (meses)"), (int, float)) else None,
-                "initial_amount": str(_money((contract_row or {}).get("Capital inicial (€)")) or ""),
-                "outstanding_amount": str(_money((contract_row or {}).get("Saldo conhecido (€)")) or ""),
+                "start_date": (_date_value(resolved_plan.get("Data início")) or "").isoformat()
+                if _date_value(resolved_plan.get("Data início")) else "",
+                "end_date": (_date_value(resolved_plan.get("Data fim")) or "").isoformat()
+                if _date_value(resolved_plan.get("Data fim")) else "",
+                "term_months": int(resolved_plan.get("Prazo (meses)"))
+                if isinstance(resolved_plan.get("Prazo (meses)"), (int, float)) else None,
+                "initial_amount": str(_money(resolved_plan.get("Capital inicial (€)")) or ""),
+                "outstanding_amount": str(_money(resolved_plan.get("Saldo conhecido (€)")) or ""),
                 "amount_reference_date": (_reference_date(definition) or "").isoformat()
                 if _reference_date(definition) else "",
                 "installment_amount": str(installment_amount or ""),
                 "installment_with_vat": str(installment_display or ""),
                 "installment_source": installment_source,
-                "residual_amount": str(_money((contract_row or {}).get("Valor residual (€)")) or ""),
+                "residual_amount": str(_money(resolved_plan.get("Valor residual (€)")) or ""),
                 "source_definition": definition,
-                "source_references": _text((contract_row or {}).get("Fontes consolidadas")),
+                "source_references": _text(
+                    _association_or_contract(
+                        association,
+                        resolved_contract,
+                        "Fontes consolidadas",
+                    )
+                ),
                 "raw": {
                     "contract": {key: _text(value) for key, value in (contract_row or {}).items()},
                     "association": {key: _text(value) for key, value in association.items()},

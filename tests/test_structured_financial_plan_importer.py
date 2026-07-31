@@ -165,6 +165,39 @@ def test_preview_uses_financial_rent_when_vat_rent_is_missing(db_session: Sessio
     assert preview["rows"][0]["installment_source"] == "Renda financeira (€)"
 
 
+def test_preview_prefers_vehicle_financial_values_from_association_sheet(
+    db_session: Session,
+    tmp_path: Path,
+):
+    path = tmp_path / "plans-per-vehicle-values.xlsx"
+    _workbook(path)
+    workbook = load_workbook(path)
+    associations = workbook["Viaturas associadas"]
+    extra_headers = [
+        "Saldo conhecido (€)",
+        "Encargos/renda c/IVA (€)",
+        "Valor residual (€)",
+        "Base temporal / definição",
+    ]
+    for column, header in enumerate(extra_headers, start=14):
+        associations.cell(1, column, header)
+    associations.cell(2, 14, 1200.50)
+    associations.cell(2, 15, 320.10)
+    associations.cell(2, 16, 800.25)
+    associations.cell(2, 17, "Saldo conhecido em 15/07/2026")
+    workbook.save(path)
+    db_session.add(Vehicle(plate="AA-00-AA", vin="VIN00000000000001", rentway_unit_nr="101"))
+    db_session.commit()
+
+    preview = preview_financial_plan_workbook(db_session, path)
+
+    row = preview["rows"][0]
+    assert row["outstanding_amount"] == "1200.50"
+    assert row["installment_with_vat"] == "320.10"
+    assert row["residual_amount"] == "800.25"
+    assert row["amount_reference_date"] == "2026-07-15"
+
+
 def test_clean_financial_plan_import_requires_preview_before_confirm(
     authenticated_client: TestClient,
     db_session: Session,

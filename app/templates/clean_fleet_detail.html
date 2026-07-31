@@ -113,12 +113,12 @@
           <div class="clean-detail-facts">
             <div><span>Entidade financeira</span><strong>{{ ctx.finance.finance_entity }}</strong></div>
             <div><span>N.º contrato</span><strong>{{ ctx.finance.contract_number }}</strong></div>
-            <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong><small>Valor da fonte; IVA não confirmado quando não indicado.</small></div>
-            <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong></div>
+            <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong><small>Não fornecido quando a origem não contém saldo atual.</small></div>
+            <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
             <div><span>Custo inicial</span><strong>{{ ctx.finance.initial_cost }}</strong><small>Valor da fonte.</small></div>
             <div><span>Custo atual com IVA</span><strong>{{ ctx.finance.current_cost }}</strong></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
-            <div><span>Prestação com IVA</span><strong>{{ ctx.finance.installment_with_vat }}</strong></div>
+            <div><span>Prestação / renda</span><strong>{{ ctx.finance.installment_with_vat }}</strong><small>Com IVA quando esse valor existe; caso contrário, mostra a renda da fonte.</small></div>
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
             <div><span>Início</span><strong>{{ ctx.finance.start_date }}</strong></div>
             <div><span>Fim</span><strong>{{ ctx.finance.end_date }}</strong></div>

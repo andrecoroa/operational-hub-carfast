@@ -2,7 +2,7 @@ from io import BytesIO
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -146,6 +146,23 @@ def test_confirm_preserves_multivehicle_contract_and_96_month_term(db_session: S
     assert {plan.term_months for plan in plans} == {96}
     assert {plan.installment_with_vat for plan in plans} == {Decimal("627.30")}
     assert db_session.scalar(select(func.count()).select_from(ImportBatch)) == 1
+
+
+def test_preview_uses_financial_rent_when_vat_rent_is_missing(db_session: Session, tmp_path: Path):
+    path = tmp_path / "plans-without-vat-rent.xlsx"
+    _workbook(path)
+    workbook = load_workbook(path)
+    contracts = workbook["Todos os contratos"]
+    contracts["Q2"] = None
+    workbook.save(path)
+    db_session.add(Vehicle(plate="AA-00-AA", vin="VIN00000000000001", rentway_unit_nr="101"))
+    db_session.commit()
+
+    preview = preview_financial_plan_workbook(db_session, path)
+
+    assert preview["rows"][0]["installment_amount"] == "510.00"
+    assert preview["rows"][0]["installment_with_vat"] == "510.00"
+    assert preview["rows"][0]["installment_source"] == "Renda financeira (€)"
 
 
 def test_clean_financial_plan_import_requires_preview_before_confirm(

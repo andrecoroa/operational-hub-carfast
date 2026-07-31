@@ -174,6 +174,16 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
             seen.add((entity.upper(), contract.upper(), vehicle.id))
             matched += 1
         definition = _text((contract_row or {}).get("Base temporal / definição"))
+        installment_amount = _money((contract_row or {}).get("Renda financeira (€)"))
+        installment_with_vat = _money((contract_row or {}).get("Encargos/renda c/IVA (€)"))
+        installment_display = installment_with_vat or installment_amount
+        installment_source = (
+            "Encargos/renda c/IVA (€)"
+            if installment_with_vat is not None
+            else "Renda financeira (€)"
+            if installment_amount is not None
+            else ""
+        )
         plan_status, active = _plan_status(contract_row or {})
         preview_rows.append(
             {
@@ -202,8 +212,9 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
                 "outstanding_amount": str(_money((contract_row or {}).get("Saldo conhecido (€)")) or ""),
                 "amount_reference_date": (_reference_date(definition) or "").isoformat()
                 if _reference_date(definition) else "",
-                "installment_amount": str(_money((contract_row or {}).get("Renda financeira (€)")) or ""),
-                "installment_with_vat": str(_money((contract_row or {}).get("Encargos/renda c/IVA (€)")) or ""),
+                "installment_amount": str(installment_amount or ""),
+                "installment_with_vat": str(installment_display or ""),
+                "installment_source": installment_source,
                 "residual_amount": str(_money((contract_row or {}).get("Valor residual (€)")) or ""),
                 "source_definition": definition,
                 "source_references": _text((contract_row or {}).get("Fontes consolidadas")),

@@ -78,6 +78,7 @@ from app.models.tasks import (
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
+    VehicleFinancialPlan,
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
@@ -115,6 +116,10 @@ from app.services.pending_document_importer import (
     reconcile_pending_invoices,
 )
 from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx, preview_rentway_fleet_xlsx
+from app.services.structured_financial_plan_importer import (
+    apply_financial_plan_preview,
+    preview_financial_plan_workbook,
+)
 from app.services.document_import_preview import (
     RENTWAY_IMPORT_KINDS,
     preview_structured_spreadsheet,
@@ -6953,6 +6958,19 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     manual_fields = vehicle_manual_values(db, vehicle.id)
     rules = vehicle_rule_context(snapshot, manual_fields)
     current_cost = current_cost_from_snapshot(snapshot)
+    financial_plans = db.scalars(
+        select(VehicleFinancialPlan)
+        .where(VehicleFinancialPlan.vehicle_id == vehicle.id)
+        .order_by(
+            VehicleFinancialPlan.active.desc(),
+            VehicleFinancialPlan.start_date.desc(),
+            VehicleFinancialPlan.id.desc(),
+        )
+    ).all()
+    active_financial_plan = next(
+        (plan for plan in financial_plans if plan.active),
+        financial_plans[0] if financial_plans else None,
+    )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
     model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
@@ -7044,11 +7062,55 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "status": rules.get("maintenance_status") or "Por configurar",
         },
         "finance": {
-            "initial_cost": format_eur(current_cost.get("initial_cost")),
+            "initial_cost": format_eur(
+                active_financial_plan.initial_amount
+                if active_financial_plan
+                else current_cost.get("initial_cost")
+            ),
             "current_cost": format_eur(current_cost.get("current_cost")),
-            "amortization_month": current_cost.get("amortization_month") or "-",
-            "debt_value": format_eur(debt_value),
-            "finance_entity": finance_entity or "-",
+            "amortization_month": (
+                f"{current_cost.get('amortization_month')} de 96"
+                if current_cost.get("amortization_month")
+                else "-"
+            ),
+            "debt_value": format_eur(
+                active_financial_plan.outstanding_amount
+                if active_financial_plan
+                else debt_value
+            ),
+            "debt_reference_date": clean_date(
+                active_financial_plan.amount_reference_date.isoformat()
+                if active_financial_plan and active_financial_plan.amount_reference_date
+                else None
+            ),
+            "finance_entity": (
+                active_financial_plan.finance_entity
+                if active_financial_plan
+                else finance_entity or "-"
+            ),
+            "contract_number": active_financial_plan.contract_number if active_financial_plan else "-",
+            "installment_with_vat": format_eur(
+                active_financial_plan.installment_with_vat
+                if active_financial_plan
+                else None
+            ),
+            "residual_with_vat": format_eur(
+                active_financial_plan.residual_amount
+                if active_financial_plan
+                else None
+            ),
+            "start_date": clean_date(
+                active_financial_plan.start_date.isoformat()
+                if active_financial_plan and active_financial_plan.start_date
+                else None
+            ),
+            "end_date": clean_date(
+                active_financial_plan.end_date.isoformat()
+                if active_financial_plan and active_financial_plan.end_date
+                else None
+            ),
+            "plan_count": len(financial_plans),
+            "plans": financial_plans,
         },
         "status": {
             "lifecycle": vehicle.lifecycle_status or "-",
@@ -7111,6 +7173,14 @@ def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = N
             "amortization_month": "-",
             "debt_value": "-",
             "finance_entity": "-",
+            "contract_number": "-",
+            "installment_with_vat": "-",
+            "residual_with_vat": "-",
+            "debt_reference_date": "-",
+            "start_date": "-",
+            "end_date": "-",
+            "plan_count": 0,
+            "plans": [],
         },
         "status": {
             "lifecycle": vehicle.lifecycle_status or "-",
@@ -10860,6 +10930,176 @@ def clean_documentation_import_workspace(
                 "diagnostic_counts": diagnostic_counts,
             },
         )
+
+
+@web_router.get(
+    "/v2-clean/documentation/imports/financial-plans",
+    response_class=HTMLResponse,
+)
+def clean_financial_plan_import_page(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        batches = db.scalars(
+            select(ImportBatch)
+            .where(ImportBatch.import_type == "vehicle_financial_plans")
+            .order_by(ImportBatch.id.desc())
+            .limit(20)
+        ).all()
+    return templates.TemplateResponse(
+        request,
+        "clean_financial_plan_import.html",
+        {"batches": batches, "payload": None, "preview_token": None},
+    )
+
+
+@web_router.post("/v2-clean/documentation/imports/financial-plans/preview")
+def clean_financial_plan_import_preview_submit(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_run_document_imports(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?error=permission",
+            status_code=303,
+        )
+    original_name = Path(file.filename or "planos_financeiros.xlsx").name
+    if Path(original_name).suffix.lower() != ".xlsx":
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?error=format",
+            status_code=303,
+        )
+    content = file.file.read()
+    if not content or len(content) > BATCH_DOCUMENT_MAX_TOTAL_SIZE:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?error=size",
+            status_code=303,
+        )
+    with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        with SessionLocal() as db:
+            preview = preview_financial_plan_workbook(db, tmp_path)
+        token = _store_documentation_import_preview(
+            content=content,
+            original_name=original_name,
+            import_kind="financial_plans",
+            user_id=get_web_user_id(request),
+            preview=preview,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?"
+            + urlencode({"error": f"preview_{exc.__class__.__name__}"}),
+            status_code=303,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return RedirectResponse(
+        f"/v2-clean/documentation/imports/financial-plans/preview/{token}",
+        status_code=303,
+    )
+
+
+@web_router.get(
+    "/v2-clean/documentation/imports/financial-plans/preview/{token}",
+    response_class=HTMLResponse,
+)
+def clean_financial_plan_import_preview(request: Request, token: str):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    try:
+        payload, _ = _load_documentation_import_preview(token, get_web_user_id(request))
+    except ValueError as exc:
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?"
+            + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    return templates.TemplateResponse(
+        request,
+        "clean_financial_plan_import.html",
+        {"batches": [], "payload": payload, "preview_token": token},
+    )
+
+
+@web_router.post("/v2-clean/documentation/imports/financial-plans/confirm")
+def clean_financial_plan_import_confirm(
+    request: Request,
+    preview_token: str = Form(...),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_run_document_imports(request):
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?error=permission",
+            status_code=303,
+        )
+    user_id = get_web_user_id(request)
+    try:
+        payload, source_path = _load_documentation_import_preview(preview_token, user_id)
+        original_name = str(payload["original_name"])
+        now = datetime.now(UTC)
+        target_dir = (
+            document_archive_root()
+            / "Importacoes"
+            / "Planos financeiros"
+            / now.strftime("%Y")
+            / now.strftime("%m")
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(original_name).stem).strip("._")
+        durable_path = target_dir / f"{now.strftime('%Y%m%d-%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_name}.xlsx"
+        shutil.copy2(source_path, durable_path)
+        with SessionLocal() as db:
+            result = apply_financial_plan_preview(
+                db,
+                dict(payload.get("preview") or {}),
+                source_path=durable_path,
+                original_name=original_name,
+                user_id=user_id,
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            "/v2-clean/documentation/imports/financial-plans?"
+            + urlencode({"error": f"confirm_{exc.__class__.__name__}"}),
+            status_code=303,
+        )
+    _discard_documentation_import_preview(preview_token)
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/financial-plans?"
+        + urlencode(
+            {
+                "confirmed": result["created"] + result["updated"],
+                "batch_id": result["batch_id"],
+            }
+        ),
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/documentation/imports/financial-plans/cancel")
+def clean_financial_plan_import_cancel(
+    request: Request,
+    preview_token: str = Form(...),
+):
+    try:
+        _load_documentation_import_preview(preview_token, get_web_user_id(request))
+        _discard_documentation_import_preview(preview_token)
+    except ValueError:
+        pass
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/financial-plans",
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/documentation/imports/rentway/preview")

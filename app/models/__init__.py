@@ -47,6 +47,7 @@ from app.models.tasks import (
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
+    VehicleFinancialPlan,
     VehicleIdentifier,
     VehicleLifecycleEvent,
     VehicleManualField,
@@ -143,6 +144,7 @@ __all__ = [
     "UserRole",
     "Vehicle",
     "VehicleExternalSnapshot",
+    "VehicleFinancialPlan",
     "VehicleHistoryAudit",
     "VehicleHistoryAuditDocument",
     "VehicleHistoryAuditIssue",

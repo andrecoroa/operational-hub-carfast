@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -82,3 +84,36 @@ class VehicleExternalSnapshot(TimestampMixin, Base):
     import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id"))
     data_json: Mapped[dict] = mapped_column(JSON)
     data_hash: Mapped[str | None] = mapped_column(String(80), index=True)
+
+
+class VehicleFinancialPlan(TimestampMixin, Base):
+    __tablename__ = "vehicle_financial_plans"
+    __table_args__ = (
+        UniqueConstraint("finance_entity", "contract_number", "vehicle_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id", ondelete="CASCADE"), index=True)
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id"))
+    finance_entity: Mapped[str] = mapped_column(String(160), index=True)
+    contract_number: Mapped[str] = mapped_column(String(160), index=True)
+    association_status: Mapped[str | None] = mapped_column(String(80), index=True)
+    association_confidence: Mapped[str | None] = mapped_column(String(40))
+    association_method: Mapped[str | None] = mapped_column(String(40))
+    plan_status: Mapped[str | None] = mapped_column(String(80), index=True)
+    start_date: Mapped[Date | None] = mapped_column(Date)
+    end_date: Mapped[Date | None] = mapped_column(Date)
+    term_months: Mapped[int | None] = mapped_column(Integer)
+    initial_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    outstanding_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    amount_reference_date: Mapped[Date | None] = mapped_column(Date)
+    installment_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    installment_with_vat: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    residual_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    source_definition: Mapped[str | None] = mapped_column(Text)
+    source_references: Mapped[str | None] = mapped_column(Text)
+    raw_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    human_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

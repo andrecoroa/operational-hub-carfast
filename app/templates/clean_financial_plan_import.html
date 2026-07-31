@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_imports" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+  {% set doc_nav = "imports" %}
+  {% include "_clean_documentation_nav.html" %}
+<header class="clean-header-shell clean-header-compact">
+  <div>
+    <p class="eyebrow">Documentação / Importações</p>
+    <h1>Planos financeiros</h1>
+    <p>Associação estruturada por VIN, matrícula ou Unit. Nenhum dado é gravado antes da confirmação.</p>
+  </div>
+  <a class="button-link secondary-link" href="/v2-clean/documentation/imports">Voltar</a>
+</header>
+
+{% if payload %}
+  {% set preview = payload.preview %}
+  <section class="clean-panel clean-card-wide">
+    <div class="table-heading flat-heading">
+      <div><h2>Pré-visualização</h2><p>{{ payload.original_name }}</p></div>
+      <span class="status-pill">{{ preview.matched }} prontas</span>
+    </div>
+    <div class="clean-metric-strip">
+      <div><span>Contratos</span><strong>{{ preview.total_contracts }}</strong></div>
+      <div><span>Associações</span><strong>{{ preview.total_associations }}</strong></div>
+      <div><span>Correspondências</span><strong>{{ preview.matched }}</strong></div>
+      <div><span>Por associar</span><strong>{{ preview.unmatched }}</strong></div>
+      <div><span>Conflitos</span><strong>{{ preview.conflicts }}</strong></div>
+    </div>
+    <div class="clean-table-wrap clean-doc-table-scroll-8">
+      <table class="clean-table">
+        <thead><tr><th>Estado</th><th>Viatura</th><th>Entidade</th><th>Contrato</th><th>Método</th><th>Início</th><th>Fim</th><th>Prestação c/ IVA</th></tr></thead>
+        <tbody>
+          {% for row in preview.rows %}
+            <tr>
+              <td><span class="status-pill {% if row.status != 'ready' %}warn{% endif %}">{{ row.status }}</span>{% if row.message %}<small class="clean-subrow-block">{{ row.message }}</small>{% endif %}</td>
+              <td><strong>{{ row.vehicle_plate or '-' }}</strong><small class="clean-subrow-block">{{ row.vehicle_unit or row.vehicle_vin or '-' }}</small></td>
+              <td>{{ row.finance_entity }}</td>
+              <td>{{ row.contract_number }}</td>
+              <td>{{ row.match_method or '-' }}</td>
+              <td>{{ row.start_date or '-' }}</td>
+              <td>{{ row.end_date or '-' }}</td>
+              <td>{{ row.installment_with_vat or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="clean-context-action-grid">
+      <form method="post" action="/v2-clean/documentation/imports/financial-plans/cancel">
+        <input type="hidden" name="preview_token" value="{{ preview_token }}">
+        <button type="submit" class="secondary-button">Cancelar</button>
+      </form>
+      <form method="post" action="/v2-clean/documentation/imports/financial-plans/confirm">
+        <input type="hidden" name="preview_token" value="{{ preview_token }}">
+        <button type="submit" {% if not preview.matched %}disabled{% endif %}>Confirmar {{ preview.matched }} associações</button>
+      </form>
+    </div>
+  </section>
+{% else %}
+  <section class="clean-panel clean-card-wide">
+    <div class="table-heading flat-heading"><div><h2>Nova importação</h2><p>Ficheiro consolidado com os separadores “Todos os contratos” e “Viaturas associadas”.</p></div></div>
+    <form method="post" action="/v2-clean/documentation/imports/financial-plans/preview" enctype="multipart/form-data" class="clean-filter-row">
+      <label>Ficheiro Excel<input type="file" name="file" accept=".xlsx" required></label>
+      <button type="submit">Pré-visualizar</button>
+    </form>
+  </section>
+  <section class="clean-panel clean-card-wide">
+    <div class="table-heading flat-heading"><div><h2>Histórico</h2><p>Fontes confirmadas e arquivadas.</p></div></div>
+    <div class="clean-table-wrap">
+      <table class="clean-table">
+        <thead><tr><th>Lote</th><th>Data</th><th>Registos</th><th>Criados</th><th>Atualizados</th><th>Ignorados</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for batch in batches %}
+            <tr><td>#{{ batch.id }}</td><td>{{ batch.created_at }}</td><td>{{ batch.total_rows }}</td><td>{{ batch.created_rows }}</td><td>{{ batch.updated_rows }}</td><td>{{ batch.skipped_rows }}</td><td>{{ batch.status }}</td></tr>
+          {% else %}
+            <tr><td colspan="7">Ainda não existem importações confirmadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+  </main>
+</div>
+{% endblock %}

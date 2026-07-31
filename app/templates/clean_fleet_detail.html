@@ -106,14 +106,38 @@
         </article>
 
         <article class="clean-substep-panel" id="clean-substep-financeiro">
-          <div class="table-heading flat-heading"><div><p class="eyebrow">Financeiro</p><h3>Valores essenciais</h3><p>Informação suficiente para preparar venda, decisão ou análise financeira.</p></div></div>
+          <div class="table-heading flat-heading">
+            <div><p class="eyebrow">Financeiro</p><h3>Plano financeiro</h3><p>Resumo do plano associado à viatura, com valores apresentados com IVA quando disponível na fonte.</p></div>
+            <a class="button-link secondary-link" href="/v2-clean/documentation/imports/financial-plans">Importar planos</a>
+          </div>
           <div class="clean-detail-facts">
             <div><span>Entidade financeira</span><strong>{{ ctx.finance.finance_entity }}</strong></div>
-            <div><span>Custo inicial</span><strong>{{ ctx.finance.initial_cost }}</strong></div>
-            <div><span>Valor custo atual</span><strong>{{ ctx.finance.current_cost }}</strong></div>
+            <div><span>N.º contrato</span><strong>{{ ctx.finance.contract_number }}</strong></div>
+            <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong><small>Valor da fonte; IVA não confirmado quando não indicado.</small></div>
+            <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong></div>
+            <div><span>Custo inicial</span><strong>{{ ctx.finance.initial_cost }}</strong><small>Valor da fonte.</small></div>
+            <div><span>Custo atual com IVA</span><strong>{{ ctx.finance.current_cost }}</strong></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
-            <div><span>Valor em dívida</span><strong>{{ ctx.finance.debt_value }}</strong></div>
+            <div><span>Prestação com IVA</span><strong>{{ ctx.finance.installment_with_vat }}</strong></div>
+            <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
+            <div><span>Início</span><strong>{{ ctx.finance.start_date }}</strong></div>
+            <div><span>Fim</span><strong>{{ ctx.finance.end_date }}</strong></div>
           </div>
+          {% if ctx.finance.plan_count > 1 %}
+            <details class="clean-inline-details">
+              <summary>Ver histórico de planos ({{ ctx.finance.plan_count }})</summary>
+              <div class="clean-table-wrap">
+                <table class="clean-table">
+                  <thead><tr><th>Entidade</th><th>Contrato</th><th>Início</th><th>Fim</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {% for plan in ctx.finance.plans %}
+                      <tr><td>{{ plan.finance_entity }}</td><td>{{ plan.contract_number }}</td><td>{{ plan.start_date or '-' }}</td><td>{{ plan.end_date or '-' }}</td><td>{{ plan.plan_status or '-' }}</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          {% endif %}
         </article>
 
         <article class="clean-substep-panel" id="clean-substep-historico">

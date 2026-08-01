@@ -357,6 +357,17 @@ def apply_financial_plan_preview(
             "confirmed_by_id": user_id,
             "confirmed_at": datetime.now(UTC),
         }
+        if values["active"]:
+            previous_active_plans = db.scalars(
+                select(VehicleFinancialPlan).where(
+                    VehicleFinancialPlan.vehicle_id == key[2],
+                    VehicleFinancialPlan.finance_entity == key[0],
+                    VehicleFinancialPlan.active.is_(True),
+                    VehicleFinancialPlan.contract_number != key[1],
+                )
+            ).all()
+            for previous_plan in previous_active_plans:
+                previous_plan.active = False
         if plan is None:
             plan = VehicleFinancialPlan(
                 vehicle_id=key[2],

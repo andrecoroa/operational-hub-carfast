@@ -148,6 +148,46 @@ def test_confirm_preserves_multivehicle_contract_and_96_month_term(db_session: S
     assert db_session.scalar(select(func.count()).select_from(ImportBatch)) == 1
 
 
+def test_confirmed_import_deactivates_previous_plan_from_same_finance_entity(
+    db_session: Session,
+    tmp_path: Path,
+):
+    path = tmp_path / "plans.xlsx"
+    _workbook(path)
+    vehicle = Vehicle(plate="AA-00-AA", vin="VIN00000000000001", rentway_unit_nr="101")
+    db_session.add(vehicle)
+    db_session.flush()
+    previous = VehicleFinancialPlan(
+        vehicle_id=vehicle.id,
+        finance_entity="CGD",
+        contract_number="OLD-CONTRACT",
+        active=True,
+    )
+    db_session.add(previous)
+    db_session.commit()
+
+    preview = preview_financial_plan_workbook(db_session, path)
+    apply_financial_plan_preview(
+        db_session,
+        preview,
+        source_path=path,
+        original_name=path.name,
+        user_id=None,
+    )
+    db_session.commit()
+
+    db_session.refresh(previous)
+    imported = db_session.scalar(
+        select(VehicleFinancialPlan).where(
+            VehicleFinancialPlan.vehicle_id == vehicle.id,
+            VehicleFinancialPlan.contract_number == "400144083",
+        )
+    )
+    assert previous.active is False
+    assert imported is not None
+    assert imported.active is True
+
+
 def test_preview_uses_financial_rent_when_vat_rent_is_missing(db_session: Session, tmp_path: Path):
     path = tmp_path / "plans-without-vat-rent.xlsx"
     _workbook(path)

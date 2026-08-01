@@ -22971,6 +22971,22 @@ body.clean-task-preview-open {
   white-space: normal !important;
 }
 
+.sale-value-stack-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.sale-situation-stack {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.sale-table td .sale-situation-stack .sale-badge {
+  display: inline-flex;
+}
+
 .sale-value-stack > span {
   min-width: 0;
   font-weight: 800;

@@ -203,7 +203,16 @@ def _sale_row(
     commercial = base_router.rentway_commercial_context(snapshot)
     vehicle_context = base_router.rentway_vehicle_context(snapshot)
     finance = base_router.current_cost_from_snapshot(snapshot)
-    cost = decimal_value(finance.get("current_cost"))
+    cost = decimal_value(
+        base_router.current_value_with_financial_amortization(
+            finance.get("initial_cost_with_vat"),
+            financial_plan.initial_amount if financial_plan else None,
+            financial_plan.outstanding_amount if financial_plan else None,
+            finance.get("current_cost_with_vat"),
+            financial_plan.start_date if financial_plan else None,
+            financial_plan.amount_reference_date if financial_plan else None,
+        )
+    )
     debt = decimal_value(
         financial_plan.outstanding_amount if financial_plan else manual.get("debt_value")
     )

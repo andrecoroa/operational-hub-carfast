@@ -5,6 +5,7 @@ from app.models.admin import Permission, Role, RolePermission
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.services.management_center import ensure_management_defaults
+from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
 
 INITIAL_PERMISSIONS = [
@@ -54,6 +55,9 @@ INITIAL_PERMISSIONS = [
     ("tasks.create_recurring", "Criar tarefas recorrentes"),
     ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
+    ("stock.read", "Consultar Stock"),
+    ("stock.operate", "Gerir artigos, receções e movimentos operacionais de Stock"),
+    ("stock.manage", "Gerir fornecedores, mínimos, acertos e configuração de Stock"),
     ("management_center.read", "Ver Centro de Gestão e Acompanhamento"),
     ("management_center.write", "Gerir Centro de Gestão e Acompanhamento"),
 ]
@@ -92,6 +96,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "admin.integrations.read",
         "admin.integrations.manage",
         "admin.audit.read",
+        "stock.read",
+        "stock.manage",
     },
     "auditor": {
         "dashboard.read",
@@ -111,6 +117,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.audit.read",
         "tasks.audit.write",
         "documents.read",
+        "stock.read",
     },
     "manager": {
         "dashboard.read",
@@ -136,6 +143,9 @@ DEFAULT_ROLE_PERMISSIONS = {
         "documents.write",
         "management_center.read",
         "management_center.write",
+        "stock.read",
+        "stock.operate",
+        "stock.manage",
     },
     "operator": {
         "dashboard.read",
@@ -155,6 +165,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "documents.write",
         "management_center.read",
         "management_center.write",
+        "stock.read",
+        "stock.operate",
     },
     "viewer": {
         "dashboard.read",
@@ -166,6 +178,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.audit.read",
         "documents.read",
         "management_center.read",
+        "stock.read",
     },
 }
 
@@ -228,6 +241,7 @@ def seed_initial_data(db: Session) -> None:
     seed_catalogs(db)
     ensure_management_defaults(db)
     ensure_workshop_configuration_defaults(db)
+    ensure_stock_defaults(db)
     db.commit()
 
 

@@ -1,0 +1,7 @@
+<nav class="stock-nav" aria-label="Navegação Stock">
+  <a href="/v2-clean/stock" {% if stock_nav == "summary" %}class="active"{% endif %}>Resumo</a>
+  <a href="/v2-clean/stock/articles" {% if stock_nav == "articles" %}class="active"{% endif %}>Artigos</a>
+  <a href="/v2-clean/stock/suppliers" {% if stock_nav == "suppliers" %}class="active"{% endif %}>Fornecedores</a>
+  <a href="/v2-clean/stock/invoices" {% if stock_nav == "invoices" %}class="active"{% endif %}>Faturas e receções</a>
+  <a href="/v2-clean/stock/movements" {% if stock_nav == "movements" %}class="active"{% endif %}>Movimentos</a>
+</nav>

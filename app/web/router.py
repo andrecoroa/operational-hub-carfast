@@ -139,6 +139,7 @@ from app.services.document_workflow import (
     transition_document_workflow,
     workflow_values,
 )
+from app.services.stock import ensure_invoice_import
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
@@ -10878,6 +10879,12 @@ def clean_documentation_triage_decide(
                     user_id=user_id,
                     decision_reason=decision_reason or "Decisão manual na Triagem",
                 )
+                if invoice_nature.strip().lower() == "stock":
+                    ensure_invoice_import(
+                        db,
+                        document=document,
+                        user_id=user_id,
+                    )
             except ValueError:
                 db.rollback()
                 return triage_redirect(error="invoice_nature")
@@ -12031,6 +12038,12 @@ def clean_documentation_invoice_nature(
                 suggestion_confidence=confidence_value,
                 decision_reason=decision_reason,
             )
+            if nature.strip().lower() == "stock":
+                ensure_invoice_import(
+                    db,
+                    document=document,
+                    user_id=get_web_user_id(request),
+                )
             db.commit()
     except ValueError as exc:
         return RedirectResponse(

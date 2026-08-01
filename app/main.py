@@ -15,6 +15,7 @@ from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.web.portal import portal_router
 from app.web.router import web_router
+from app.web.stock import stock_router
 from app.web.vehicle_sales import vehicle_sales_router
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
@@ -102,6 +103,13 @@ WEB_PERMISSION_RULES = (
                 "users.manage",
                 "settings.manage",
             },
+        },
+    ),
+    (
+        ("/v2-clean/stock",),
+        {
+            "GET": {"stock.read", "stock.operate", "stock.manage", "admin.manage"},
+            "POST": {"stock.operate", "stock.manage", "admin.manage"},
         },
     ),
     (
@@ -357,6 +365,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(portal_router)
     app.include_router(vehicle_sales_router)
+    app.include_router(stock_router)
     app.include_router(web_router)
     return app
 

@@ -8,6 +8,7 @@ from app.api.routes import (
     integrations,
     organization,
     settings,
+    stock,
     tasks,
     vehicles,
     workshop,
@@ -20,6 +21,7 @@ api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(organization.router, tags=["organization"])
 api_router.include_router(settings.router, tags=["settings"])
+api_router.include_router(stock.router)
 api_router.include_router(vehicles.router, tags=["vehicles"])
 api_router.include_router(imports.router, tags=["imports"])
 api_router.include_router(tasks.router, tags=["tasks"])

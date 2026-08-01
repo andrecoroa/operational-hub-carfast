@@ -38,6 +38,19 @@ from app.models.portal import (
     PortalUser,
 )
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.stock import (
+    StockArticle,
+    StockArticleSupplierRef,
+    StockCategory,
+    StockInvoiceImport,
+    StockInvoiceLine,
+    StockLocation,
+    StockMinimum,
+    StockMovement,
+    StockReceipt,
+    StockReceiptLine,
+    StockSupplier,
+)
 from app.models.tasks import (
     QuickRecord,
     Task,
@@ -146,6 +159,17 @@ __all__ = [
     "RolePermission",
     "SettingsCatalog",
     "SettingsValue",
+    "StockArticle",
+    "StockArticleSupplierRef",
+    "StockCategory",
+    "StockInvoiceImport",
+    "StockInvoiceLine",
+    "StockLocation",
+    "StockMinimum",
+    "StockMovement",
+    "StockReceipt",
+    "StockReceiptLine",
+    "StockSupplier",
     "Task",
     "TaskComment",
     "TaskDocument",

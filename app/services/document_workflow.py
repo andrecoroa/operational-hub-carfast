@@ -16,7 +16,7 @@ ASSOCIATION_STATUSES = frozenset({"unassociated", "suggested", "associated", "fa
 EXTRACTION_STATUSES = frozenset({"not_requested", "queued", "processing", "extracted", "failed"})
 VALIDATION_STATUSES = frozenset({"pending", "automatic_validated", "human_validated", "rejected"})
 DESTINATION_STATUSES = frozenset({"triage", "imports", "invoices", "diagnostics", "archive", "unknown"})
-INVOICE_NATURES = frozenset({"por_classificar", "operacional", "financeira"})
+INVOICE_NATURES = frozenset({"por_classificar", "operacional", "financeira", "stock"})
 
 WORKFLOW_LABELS = {
     "received": "Recebido",
@@ -42,6 +42,7 @@ WORKFLOW_LABELS = {
     "por_classificar": "Por classificar",
     "operacional": "Operacional",
     "financeira": "Financeira",
+    "stock": "Fatura de stock",
 }
 
 
@@ -275,7 +276,7 @@ def classify_invoice_nature(
         state.destination_status = "invoices"
         timeline_visible = True
         archive_only = False
-    else:
+    elif clean_nature == "financeira":
         document.document_type = "finance_supplier_invoice"
         document.classification = "finance"
         document.status = "archived"
@@ -286,6 +287,17 @@ def classify_invoice_nature(
         state.destination_status = "archive"
         timeline_visible = False
         archive_only = True
+    else:
+        document.document_type = "stock_invoice"
+        document.classification = "stock"
+        document.status = "pending_stock_review"
+        document.archived = False
+        document.archived_at = None
+        document.archived_by_id = None
+        state.validation_status = "human_validated"
+        state.destination_status = "invoices"
+        timeline_visible = False
+        archive_only = False
 
     state.association_status = "associated" if document.vehicle_id else "unassociated"
     after = {

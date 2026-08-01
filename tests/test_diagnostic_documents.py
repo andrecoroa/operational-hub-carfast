@@ -244,6 +244,7 @@ def test_clean_vehicle_diagnostics_has_dedicated_operational_page():
             )
             db.add(profile)
             db.flush()
+            profile_id = profile.id
             db.add(
                 DiagnosticExtraction(
                     diagnostic_document_id=profile.id,
@@ -291,9 +292,18 @@ def test_clean_vehicle_diagnostics_has_dedicated_operational_page():
         assert "14:25:00" in page.text
         assert "P0420" in page.text
         assert "Tensão bateria" in page.text
+        assert "Qualidade e proveniência da extração" in page.text
+        assert "96%" in page.text
+        assert "Página 1" in page.text
         assert 'data-src="/v2-clean/documents/' in page.text
         assert 'data-src="/documents/' not in page.text
         assert '<iframe title="Pré-visualização do diagnóstico" src=' not in page.text
+
+        selected_page = client.get(
+            f"/v2-clean/fleet/{vehicle_id}/diagnostics?selected=diagnostic-{profile_id}"
+        )
+        assert selected_page.status_code == 200
+        assert 'class="clean-diagnostic-row active"' in selected_page.text
 
         documents_page = client.get(f"/v2-clean/fleet/{vehicle_id}/documents")
         assert documents_page.status_code == 200
@@ -781,6 +791,7 @@ def test_diagnostic_center_separates_health_from_operational_states():
             )
             db.add_all([extracted_profile, pending_profile])
             db.flush()
+            extracted_profile_id = extracted_profile.id
             db.add(
                 DiagnosticExtraction(
                     diagnostic_document_id=extracted_profile.id,
@@ -811,6 +822,7 @@ def test_diagnostic_center_separates_health_from_operational_states():
         assert "Sem extração" in page.text
         assert "Lotes importados" in page.text
         assert "Importação sem lote" in page.text
+        assert f"selected=diagnostic%3A{extracted_profile_id}" in page.text
 
         reconciled = client.post(
             "/v2-clean/diagnostics/reconcile",

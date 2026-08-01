@@ -2032,6 +2032,7 @@ def _build_archive_rows(
             }
         )
     for record in pending_records:
+        metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
         rows.append(
             {
                 "kind": "pending_record",
@@ -2043,7 +2044,10 @@ def _build_archive_rows(
                 "date": record.document_date,
                 "date_display": _display_date(record.document_date),
                 "supplier_name": record.supplier_name or "-",
-                "supplier_nif": "",
+                "supplier_nif": metadata.get("supplier_nif") or "",
+                "km": clean_int(metadata.get("km")),
+                "total_with_vat": metadata.get("expected_total") or "",
+                "work_order_reference": metadata.get("work_order_reference") or "",
                 "status": record.status,
                 "ocr_status": record.status,
                 "extraction_state": "pendente",
@@ -2067,7 +2071,7 @@ def _build_archive_rows(
                     _service_matrix_from_text_and_tags(record.title or record.raw_description or "", [])
                 ),
                 "custom_services": [],
-                "manual_note": str((record.metadata_json or {}).get("manual_note") or ""),
+                "manual_note": str(metadata.get("manual_note") or ""),
             }
         )
     rows.sort(key=lambda row: (row["date"] or date.min, row["title"]), reverse=True)

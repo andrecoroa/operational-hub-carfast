@@ -21056,7 +21056,7 @@ body.clean-task-preview-open {
 
 .clean-diagnostic-facts {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
   margin: 0 16px 14px;
   border: 1px solid var(--line);
 }
@@ -22613,6 +22613,50 @@ body.clean-task-preview-open {
   min-width: 0;
   max-width: 100%;
   overflow-x: clip;
+}
+
+.clean-diagnostic-technical pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+}
+
+.clean-diagnostic-measurement-groups {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.clean-diagnostic-measurement-groups > section {
+  min-width: 0;
+  border: 1px solid var(--line);
+}
+
+.clean-diagnostic-measurement-groups > section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  background: #f6f8fb;
+  border-bottom: 1px solid var(--line);
+}
+
+.clean-diagnostic-measurement-groups > section > header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.clean-diagnostic-measurement-groups .clean-doc-table-wrap {
+  max-height: 320px;
+}
+
+.clean-diagnostic-measurement-groups td small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
 }
 
 .sale-page > *,

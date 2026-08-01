@@ -4513,6 +4513,7 @@ def test_clean_vehicle_documents_includes_expected_invoice_and_saves_plate_linke
         plate=vehicle.plate,
         status="pending",
         has_physical_file=False,
+        metadata_json={"expected_total": "401,71", "supplier_nif": "504104250"},
     )
     document = Document(
         title="Fatura FS0003640",
@@ -4538,6 +4539,8 @@ def test_clean_vehicle_documents_includes_expected_invoice_and_saves_plate_linke
     )
     assert page.status_code == 200
     assert "Fatura pendente FS0003640" in page.text
+    assert "401,71" in page.text
+    assert "504104250" in page.text
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",

@@ -15,6 +15,8 @@
           <span><b>VIN</b><em>{{ ctx.identity.vin or "-" }}</em></span>
           <span><b>KM atuais</b><em>{{ ctx.identity.current_km or "-" }}</em></span>
           <span><b>Relatórios</b><em>{{ rows|length }}</em></span>
+          <span><b>Extraídos</b><em>{{ extracted_count }}</em></span>
+          <span><b>Por rever</b><em>{{ review_count }}</em></span>
           <span><b>DTC registados</b><em>{{ all_dtcs }}</em></span>
           <span><b>Avisos</b><em>{{ warning_count }}</em></span>
         </div>
@@ -58,10 +60,9 @@
         <label>Estado
           <select name="status">
             <option value="">Todos</option>
-            <option value="pending" {% if selected_status == "pending" %}selected{% endif %}>Pendente</option>
-            <option value="needs_review" {% if selected_status == "needs_review" %}selected{% endif %}>Requer revisão</option>
-            <option value="validated" {% if selected_status == "validated" %}selected{% endif %}>Validado</option>
-            <option value="rejected" {% if selected_status == "rejected" %}selected{% endif %}>Rejeitado</option>
+            {% for code, label in status_options %}
+              <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
           </select>
         </label>
         <button type="submit">Filtrar</button>
@@ -123,6 +124,9 @@
             <span><b>Máquina</b><em>{{ selected_row.machine }}</em></span>
             <span><b>KM</b><em>{{ selected_row.odometer_km or "-" }}</em></span>
             <span><b>Estado</b><em>{{ selected_row.status_label }}</em></span>
+            <span><b>Extração</b><em>{{ selected_row.extraction_health }}</em></span>
+            <span><b>Confiança</b><em>{% if selected_row.extraction_confidence is number %}{{ "%.0f"|format(selected_row.extraction_confidence * 100) }}%{% else %}-{% endif %}</em></span>
+            <span><b>Páginas</b><em>{{ selected_row.source_page_count or "-" }}</em></span>
           </div>
 
           {% if selected_row.file_url %}
@@ -132,7 +136,7 @@
           {% endif %}
 
           <section class="clean-diagnostic-data" data-diagnostic-data>
-            <div class="clean-diagnostic-block">
+            <div class="clean-diagnostic-block clean-diagnostic-dtc-block">
               <div class="clean-diagnostic-section-heading">
                 <div><strong>Códigos de avaria</strong><span>{{ selected_row.dtcs|length }} códigos</span></div>
               </div>
@@ -155,21 +159,28 @@
               <div class="clean-diagnostic-section-heading">
                 <div><strong>Parâmetros e medições</strong><span>{{ selected_row.observations|length }} valores</span></div>
               </div>
-              {% if selected_row.observations %}
-                <div class="clean-doc-table-wrap">
-                  <table class="clean-doc-table">
-                    <thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Página</th></tr></thead>
-                    <tbody>
-                      {% for field in selected_row.observations %}
-                        <tr>
-                          <td><strong>{{ field.get("label") or "-" }}</strong>{% if field.get("help") %}<small>{{ field.get("help") }}</small>{% endif %}</td>
-                          <td>{{ field.get("value") or "-" }}</td>
-                          <td>{{ field.get("unit") or "-" }}</td>
-                          <td>{{ field.get("page") or "-" }}</td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
+              {% if selected_row.observation_groups %}
+                <div class="clean-diagnostic-measurement-groups">
+                  {% for group, fields in selected_row.observation_groups.items() %}
+                    <section>
+                      <header><strong>{{ group }}</strong><span>{{ fields|length }} valores</span></header>
+                      <div class="clean-doc-table-wrap">
+                        <table class="clean-doc-table">
+                          <thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Pág.</th></tr></thead>
+                          <tbody>
+                            {% for field in fields %}
+                              <tr>
+                                <td><strong>{{ field.get("label") or "-" }}</strong>{% if field.get("help") %}<small>{{ field.get("help") }}</small>{% endif %}</td>
+                                <td>{{ field.get("value") or "-" }}</td>
+                                <td>{{ field.get("unit") or "-" }}</td>
+                                <td>{{ field.get("page") or "-" }}</td>
+                              </tr>
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  {% endfor %}
                 </div>
               {% else %}
                 <p class="clean-diagnostic-empty">Ainda não existem parâmetros estruturados. Em “Dados e validação” podes extrair ou reprocessar o PDF.</p>
@@ -183,12 +194,21 @@
               </details>
             {% endif %}
             <details class="clean-diagnostic-technical">
+              <summary>Qualidade e proveniência da extração</summary>
+              <dl>
+                {% for label, value in selected_row.technical_metadata %}
+                  <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+                {% endfor %}
+                <div><dt>Ficheiro</dt><dd>{{ selected_row.source_file or "-" }}</dd></div>
+              </dl>
+            </details>
+            <details class="clean-diagnostic-technical">
               <summary>Dados técnicos completos</summary>
               <dl>
-                {% for key, value in selected_row.data.items() %}
-                  {% if key not in ["observations", "dtcs", "warnings"] %}
-                    <div><dt>{{ key|replace("_", " ")|title }}</dt><dd>{{ value }}</dd></div>
-                  {% endif %}
+                {% for label, value in selected_row.technical_data %}
+                  <div><dt>{{ label }}</dt><dd><pre>{{ value }}</pre></dd></div>
+                {% else %}
+                  <div><dt>Informação</dt><dd>Sem campos adicionais neste relatório.</dd></div>
                 {% endfor %}
               </dl>
             </details>

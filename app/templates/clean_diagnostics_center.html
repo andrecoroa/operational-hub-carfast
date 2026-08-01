@@ -119,7 +119,7 @@
                 <td><span class="pill diagnostic-health-{{ row.health }}">{{ row.health_label }}</span></td>
                 <td>{{ row.field_count }} campos{% if row.extraction %}<small>{{ row.extraction.source_page_count }} pág.</small>{% endif %}</td>
                 <td>
-                  {% if row.vehicle %}<a class="button-link secondary-link" href="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic-{{ row.profile.id }}">Ver dados</a>{% endif %}
+                  {% if row.vehicle %}<a class="button-link secondary-link" href="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic%3A{{ row.profile.id }}">Ver dados</a>{% endif %}
                   <a class="button-link secondary-link" href="/v2-clean/documents/{{ row.document.id }}">Validar</a>
                 </td>
               </tr>

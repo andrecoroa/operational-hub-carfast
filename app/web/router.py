@@ -1041,6 +1041,20 @@ def unified_vehicle_technical_readings(
             "diagnostic_profile_id": diagnostic.id,
             "source_file": document.original_name,
             "odometer_km": diagnostic.odometer_km or normalized.get("odometer"),
+            "diagnostic_status": diagnostic.diagnostic_status,
+            "association_status": diagnostic.association_status,
+            "ocr_status": diagnostic.ocr_status,
+            "ocr_confidence": diagnostic.ocr_confidence,
+            "validation_status": diagnostic.validation_status,
+            "diagnostic_tool": diagnostic.diagnostic_tool,
+            "diagnostic_tool_serial": diagnostic.diagnostic_tool_serial,
+            "technician_name": diagnostic.technician_name,
+            "extraction_status": extraction.extraction_status if extraction else "missing",
+            "extraction_method": extraction.extraction_method if extraction else "",
+            "extraction_confidence": extraction.confidence if extraction else None,
+            "extractor_version": extraction.extractor_version if extraction else "",
+            "parser_version": extraction.parser_version if extraction else "",
+            "source_page_count": extraction.source_page_count if extraction else None,
         }
         readings.append(
             SimpleNamespace(
@@ -8481,6 +8495,7 @@ def clean_fleet_diagnostics(
         search = q.strip().lower()
         rows: list[dict[str, Any]] = []
         type_options: dict[str, str] = {}
+        status_options: dict[str, str] = {}
         for reading in readings:
             data = dict(reading.data_json or {})
             reading_type = str(reading.reading_type or "other")
@@ -8511,6 +8526,21 @@ def clean_fleet_diagnostics(
             warnings = (
                 data.get("warnings") if isinstance(data.get("warnings"), list) else []
             )
+            observation_groups: dict[str, list[dict[str, Any]]] = {}
+            for observation in observations:
+                if not isinstance(observation, dict):
+                    continue
+                group = str(
+                    observation.get("section")
+                    or observation.get("category")
+                    or observation.get("ecu")
+                    or (
+                        f"Página {observation.get('page')}"
+                        if observation.get("page")
+                        else "Outras medições"
+                    )
+                ).strip()
+                observation_groups.setdefault(group, []).append(observation)
             report_datetime = getattr(reading, "report_datetime", None)
             if not report_datetime and reading.reading_date:
                 report_datetime = datetime.combine(reading.reading_date, time.min)
@@ -8537,6 +8567,11 @@ def clean_fleet_diagnostics(
                     ),
                 )
             ).lower()
+            reading_status = str(reading.status or "pending")
+            status_options[reading_status] = DIAGNOSTIC_VALIDATION_STATUS_LABELS.get(
+                reading_status,
+                reading_status.replace("_", " ").title(),
+            )
             if search and search not in blob:
                 continue
             if diagnostic_type and reading_type != diagnostic_type:
@@ -8545,9 +8580,45 @@ def clean_fleet_diagnostics(
                 continue
             if status and str(reading.status or "") != status:
                 continue
+            profile_id = data.get("diagnostic_profile_id")
+            row_key = (
+                f"diagnostic:{profile_id}"
+                if str(profile_id or "").isdigit()
+                else f"reading:{reading.id}"
+            )
+            extraction_status = str(data.get("extraction_status") or "unknown")
+            extraction_confidence = data.get("extraction_confidence")
+            extraction_health = (
+                "Extraído"
+                if extraction_status == "extracted" and (observations or dtcs or data)
+                else "Sem dados estruturados"
+                if extraction_status in {"missing", "unknown"}
+                else extraction_status.replace("_", " ").title()
+            )
+            technical_excluded = {
+                "observations", "label_values", "dtcs", "warnings", "native_text",
+                "ocr_text", "pages", "diagnostic_profile_id", "document_id",
+                "record_origin", "origin_label", "source_file", "odometer_km",
+                "diagnostic_status", "association_status", "ocr_status",
+                "ocr_confidence", "validation_status", "extraction_status",
+                "extraction_method", "extraction_confidence", "extractor_version",
+                "parser_version", "source_page_count",
+            }
+            technical_data = []
+            for key, value in data.items():
+                if key in technical_excluded or value in (None, "", [], {}):
+                    continue
+                display_value = (
+                    json.dumps(value, ensure_ascii=False, indent=2)
+                    if isinstance(value, (dict, list))
+                    else str(value)
+                )
+                technical_data.append(
+                    (key.replace("_", " ").title(), display_value)
+                )
             rows.append(
                 {
-                    "key": f"reading:{reading.id}",
+                    "key": row_key,
                     "type_label": type_label,
                     "origin_label": origin_label,
                     "machine": machine or "Não identificada",
@@ -8561,12 +8632,13 @@ def clean_fleet_diagnostics(
                         if report_datetime and report_datetime.time() != time.min
                         else "-"
                     ),
-                    "status": str(reading.status or "pending"),
+                    "status": reading_status,
                     "status_label": DIAGNOSTIC_VALIDATION_STATUS_LABELS.get(
                         str(reading.status or ""),
                         str(reading.status or "Pendente").replace("_", " ").title(),
                     ),
                     "observations": observations,
+                    "observation_groups": observation_groups,
                     "dtcs": dtcs,
                     "warnings": warnings,
                     "file_url": file_url,
@@ -8579,10 +8651,24 @@ def clean_fleet_diagnostics(
                         or data.get("odometer")
                     ),
                     "data": data,
+                    "extraction_health": extraction_health,
+                    "extraction_confidence": extraction_confidence,
+                    "source_page_count": data.get("source_page_count"),
+                    "source_file": data.get("source_file") or "",
+                    "technical_metadata": [
+                        ("Estado da extração", extraction_health),
+                        ("Confiança", f"{float(extraction_confidence) * 100:.0f}%" if isinstance(extraction_confidence, (int, float)) else "-"),
+                        ("Método", str(data.get("extraction_method") or "-")),
+                        ("Extrator", str(data.get("extractor_version") or "-")),
+                        ("Parser", str(data.get("parser_version") or "-")),
+                        ("Páginas", str(data.get("source_page_count") or "-")),
+                    ],
+                    "technical_data": technical_data,
                 }
             )
 
-        selected_row = next((row for row in rows if row["key"] == selected), None)
+        normalized_selected = selected.replace("diagnostic-", "diagnostic:", 1)
+        selected_row = next((row for row in rows if row["key"] == normalized_selected), None)
         if not selected_row and rows:
             selected_row = rows[0]
         return templates.TemplateResponse(
@@ -8598,8 +8684,11 @@ def clean_fleet_diagnostics(
                 "selected_origin": origin,
                 "selected_status": status,
                 "type_options": sorted(type_options.items(), key=lambda item: item[1]),
+                "status_options": sorted(status_options.items(), key=lambda item: item[1]),
                 "all_dtcs": sum(len(row["dtcs"]) for row in rows),
                 "warning_count": sum(len(row["warnings"]) for row in rows),
+                "extracted_count": sum(row["extraction_health"] == "Extraído" for row in rows),
+                "review_count": sum(row["status"] in {"pending", "needs_review", "pending_validation"} for row in rows),
                 "origin_options": [
                     ("document_archive", "Arquivo documental"),
                     ("workshop_process", "Processo de oficina"),

@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from sqlalchemy import select
 
@@ -17,7 +18,7 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.users import create_user
-from app.web.vehicle_sales import _sale_row, compact_finance_entity
+from app.web.vehicle_sales import _filter_rows, _sale_row, compact_finance_entity
 
 
 def test_compact_finance_entity_labels():
@@ -27,6 +28,49 @@ def test_compact_finance_entity_labels():
     assert compact_finance_entity("CGD Locação Corrente") == "CGD Locação"
     assert compact_finance_entity("LeasePlan Portugal") == "LeasePlan"
     assert compact_finance_entity("Mercedes-Benz Financial") == "Mercedes"
+
+
+def test_cgd_filter_includes_all_cgd_name_variants():
+    rows = []
+    for entity in ("CGD", "Caixa Geral de Depósitos, S.A."):
+        rows.append(
+            {
+                "vehicle": SimpleNamespace(
+                    plate=entity,
+                    rentway_unit_nr=None,
+                    vin=None,
+                    brand=None,
+                    model=None,
+                ),
+                "finance_entity": entity,
+                "finance_entity_key": compact_finance_entity(entity).casefold(),
+                "status": "candidate",
+                "vehicle_state": "free",
+                "registration": None,
+                "return_on": None,
+                "financial_margin": None,
+                "commercial_margin": None,
+                "market_trade": None,
+                "market_retail": None,
+            }
+        )
+    filters = {
+        "q": "",
+        "sale_status": "",
+        "finance_entity": "CGD",
+        "vehicle_state": "",
+        "registration_from": "",
+        "registration_to": "",
+        "return_from": "",
+        "return_to": "",
+        "financial_margin_min": "",
+        "financial_margin_max": "",
+        "commercial_margin_min": "",
+        "commercial_margin_max": "",
+        "market_state": "",
+    }
+
+    assert len(_filter_rows(rows, filters)) == 2
 
 
 def test_unfinanced_vehicle_ignores_legacy_manual_debt():

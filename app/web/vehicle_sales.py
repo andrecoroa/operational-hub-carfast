@@ -270,6 +270,7 @@ def _sale_row(
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
         "finance_entity": finance_entity,
         "finance_entity_display": compact_finance_entity(finance_entity),
+        "finance_entity_key": compact_finance_entity(finance_entity).casefold(),
         "cost": cost,
         "cost_missing_reason": (
             "Sem custo de aquisição Rentway"
@@ -514,7 +515,10 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[di
             continue
         if filters["sale_status"] and row["status"] != filters["sale_status"]:
             continue
-        if filters["finance_entity"] and row["finance_entity"] != filters["finance_entity"]:
+        if (
+            filters["finance_entity"]
+            and row["finance_entity_key"] != filters["finance_entity"].casefold()
+        ):
             continue
         if filters["vehicle_state"] and row["vehicle_state"] != filters["vehicle_state"]:
             continue
@@ -586,7 +590,11 @@ def vehicle_sales_page(
     filters = {
         "q": q.strip(),
         "sale_status": sale_status if sale_status in SALE_STATUS_LABELS else "",
-        "finance_entity": finance_entity.strip(),
+        "finance_entity": (
+            compact_finance_entity(finance_entity)
+            if finance_entity.strip()
+            else ""
+        ),
         "vehicle_state": vehicle_state if vehicle_state in VEHICLE_SALE_STATE_LABELS else "",
         "registration_from": registration_from.strip(),
         "registration_to": registration_to.strip(),
@@ -616,7 +624,11 @@ def vehicle_sales_page(
         )
         counts["blocked"] = sum(1 for row in all_rows if row["sale_blocked"])
         finance_options = sorted(
-            {row["finance_entity"] for row in all_rows if row["finance_entity"]},
+            {
+                row["finance_entity_display"]
+                for row in all_rows
+                if row["finance_entity"]
+            },
             key=str.casefold,
         )
     query_without_page = urlencode({key: value for key, value in filters.items() if value})

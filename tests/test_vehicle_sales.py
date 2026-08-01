@@ -17,6 +17,16 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.users import create_user
+from app.web.vehicle_sales import compact_finance_entity
+
+
+def test_compact_finance_entity_labels():
+    assert compact_finance_entity("Caixa Geral de Depósitos, S.A.") == "CGD"
+    assert compact_finance_entity("Santander Consumer Finance") == "Santander"
+    assert compact_finance_entity("Banco BPI, S.A.") == "BPI"
+    assert compact_finance_entity("CGD Locação Corrente") == "CGD Locação"
+    assert compact_finance_entity("LeasePlan Portugal") == "LeasePlan"
+    assert compact_finance_entity("Mercedes-Benz Financial") == "Mercedes"
 
 
 def create_sale_vehicle(db_session) -> Vehicle:

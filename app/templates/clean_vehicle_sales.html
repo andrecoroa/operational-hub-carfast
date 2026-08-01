@@ -136,21 +136,20 @@
             <thead>
               <tr>
                 <th><input type="checkbox" data-sale-select-all aria-label="Selecionar todas as viaturas visíveis"></th>
-                <th>Viatura</th><th>Situação</th><th>Financiamento</th><th>Financeiro</th><th>Mercado</th><th>Preço proposto</th><th></th>
+                <th>Viatura</th><th>Situação</th><th>Financ.</th><th>Valores</th><th>Preço proposto</th><th></th>
               </tr>
             </thead>
             <tbody>
               {% for row in rows %}
                 <tr>
                   <td><input type="checkbox" name="vehicle_ids" value="{{ row.vehicle.id }}" data-sale-row-checkbox aria-label="Selecionar {{ row.vehicle.plate or row.vehicle.id }}"></td>
-                  <td><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small></td>
+                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small></td>
                   <td><div class="sale-situation-stack"><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span><span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></div>{% if row.vehicle_state == "contract" %}<small>Devolução {{ row.return_on_display }}</small>{% endif %}</td>
-                  <td>{{ row.finance_entity or "Sem financiamento" }}</td>
-                  <td class="sale-value-stack sale-value-stack-compact">
+                  <td title="{{ row.finance_entity or 'Sem financiamento' }}">{{ row.finance_entity_display }}</td>
+                  <td class="sale-value-stack sale-value-stack-five">
                     <span><small>Custo</small>{{ money(row.cost) }}</span>
                     <span><small>Em dívida</small>{{ money(row.debt) }}</span>
-                  </td>
-                  <td class="sale-value-stack sale-value-stack-compact">
+                    <span class="{% if row.financial_margin is not none %}{% if row.financial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}"><small>Margem</small>{{ money(row.financial_margin) }}</span>
                     <span><small>Comércio</small>{{ money(row.market_trade) }}</span>
                     <span><small>Cliente final</small>{{ money(row.market_retail) }}</span>
                   </td>
@@ -158,7 +157,7 @@
                   <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></td>
                 </tr>
               {% else %}
-                <tr><td colspan="8" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
+                <tr><td colspan="7" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
               {% endfor %}
             </tbody>
           </table>

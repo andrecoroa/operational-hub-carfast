@@ -22907,7 +22907,7 @@ body.clean-task-preview-open {
 
 .sale-table {
   width: 100%;
-  min-width: 960px;
+  min-width: 900px;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.76rem;
@@ -22918,23 +22918,22 @@ body.clean-task-preview-open {
 }
 
 .sale-table th:nth-child(2) {
-  width: 19%;
+  width: 20%;
 }
 
 .sale-table th:nth-child(3) {
-  width: 13%;
+  width: 10%;
 }
 
 .sale-table th:nth-child(4) {
-  width: 12%;
+  width: 10%;
 }
 
-.sale-table th:nth-child(5),
+.sale-table th:nth-child(5) {
+  width: 38%;
+}
+
 .sale-table th:nth-child(6) {
-  width: 18%;
-}
-
-.sale-table th:nth-child(7) {
   width: 11%;
 }
 
@@ -22976,15 +22975,38 @@ body.clean-task-preview-open {
   align-items: start;
 }
 
+.sale-value-stack-five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px;
+}
+
 .sale-situation-stack {
-  display: flex;
-  align-items: center;
+  display: grid;
+  justify-items: start;
   gap: 3px;
-  white-space: nowrap;
 }
 
 .sale-table td .sale-situation-stack .sale-badge {
   display: inline-flex;
+}
+
+.sale-vehicle-cell > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sale-vehicle-cell > div > strong,
+.sale-vehicle-cell > div > span {
+  display: inline;
+}
+
+.sale-vehicle-cell > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sale-value-stack > span {

@@ -193,6 +193,28 @@ def _vehicle_state(vehicle: Vehicle, commercial: dict[str, Any]) -> str:
     return "free"
 
 
+def compact_finance_entity(value: object) -> str:
+    label = str(value or "").strip()
+    normalized = label.casefold()
+    if not label:
+        return "Sem financiamento"
+    if "locação corrente" in normalized or "locacao corrente" in normalized:
+        return "CGD Locação"
+    if "caixa geral de depósitos" in normalized or "caixa geral de depositos" in normalized:
+        return "CGD"
+    if normalized == "cgd" or normalized.startswith("cgd "):
+        return "CGD"
+    if "santander" in normalized:
+        return "Santander"
+    if "banco bpi" in normalized or normalized == "bpi" or normalized.startswith("bpi "):
+        return "BPI"
+    if "leaseplan" in normalized:
+        return "LeasePlan"
+    if "mercedes" in normalized:
+        return "Mercedes"
+    return label
+
+
 def _sale_row(
     vehicle: Vehicle,
     snapshot: VehicleExternalSnapshot | None,
@@ -224,6 +246,12 @@ def _sale_row(
     return_on = date_value(commercial.get("return_date"))
     state = _vehicle_state(vehicle, commercial)
     status = profile.status if profile else _default_sale_status(vehicle)
+    finance_entity = str(
+        (financial_plan.finance_entity if financial_plan else None)
+        or manual.get("finance_entity")
+        or commercial.get("finance_entity")
+        or ""
+    ).strip()
     return {
         "vehicle": vehicle,
         "snapshot": snapshot,
@@ -236,12 +264,8 @@ def _sale_row(
         "return_on_display": return_on.strftime("%d/%m/%Y") if return_on else "-",
         "registration": registration,
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
-        "finance_entity": str(
-            (financial_plan.finance_entity if financial_plan else None)
-            or manual.get("finance_entity")
-            or commercial.get("finance_entity")
-            or ""
-        ).strip(),
+        "finance_entity": finance_entity,
+        "finance_entity_display": compact_finance_entity(finance_entity),
         "cost": cost,
         "debt": debt,
         "financial_margin": financial_margin,

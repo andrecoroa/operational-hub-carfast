@@ -638,7 +638,7 @@ def amortization_month(purchase_date: date | None, reference_date: date | None =
     return max(1, min(96, months))
 
 
-def current_value_by_elapsed_days(
+def current_value_by_amortization_month(
     initial_value: object,
     start_date: date | None,
     reference_date: date | None = None,
@@ -647,15 +647,10 @@ def current_value_by_elapsed_days(
     if initial is None or not start_date:
         return None
     initial_decimal = Decimal(str(initial))
-    reference = reference_date or date.today()
-    end_date = add_months(start_date, 96)
-    total_days = (end_date - start_date).days
-    if total_days <= 0 or reference <= start_date:
-        return initial_decimal.quantize(Decimal("0.01"))
-    if reference >= end_date:
-        return Decimal("0.00")
-    elapsed_days = (reference - start_date).days
-    paid_value = initial_decimal * Decimal(elapsed_days) / Decimal(total_days)
+    month = amortization_month(start_date, reference_date)
+    if month is None:
+        return None
+    paid_value = initial_decimal * Decimal(month) / Decimal(96)
     return max(Decimal("0"), initial_decimal - paid_value).quantize(Decimal("0.01"))
 
 
@@ -678,8 +673,8 @@ def current_cost_from_snapshot(
             "current_cost": None,
             "current_cost_with_vat": None,
         }
-    current_cost = current_value_by_elapsed_days(initial_cost, purchase)
-    current_cost_with_vat = current_value_by_elapsed_days(initial_cost_with_vat, purchase)
+    current_cost = current_value_by_amortization_month(initial_cost, purchase)
+    current_cost_with_vat = current_value_by_amortization_month(initial_cost_with_vat, purchase)
     return {
         "initial_cost": initial_cost,
         "initial_cost_with_vat": initial_cost_with_vat,
@@ -830,7 +825,29 @@ def current_value_with_financial_amortization(
         return Decimal(str(fallback_value)).quantize(Decimal("0.01"))
     start = plan_start_date if isinstance(plan_start_date, date) else parse_iso_or_dmy_date(str(plan_start_date or ""))
     reference = reference_date if isinstance(reference_date, date) else parse_iso_or_dmy_date(str(reference_date or ""))
-    return current_value_by_elapsed_days(acquisition, start, reference)
+    return current_value_by_amortization_month(acquisition, start, reference)
+
+
+def residual_amount_for_vehicle(
+    plan: VehicleFinancialPlan | None,
+    contract_plans: list[VehicleFinancialPlan],
+) -> Decimal | None:
+    if plan is None or plan.residual_amount is None:
+        return None
+    entity = str(plan.finance_entity or "").strip().upper()
+    if "CGD" not in entity and "CAIXA GERAL" not in entity:
+        return plan.residual_amount
+    association = (plan.raw_json or {}).get("association") or {}
+    if parse_decimal_text(association.get("Valor residual (€)")) is not None:
+        return plan.residual_amount
+    candidates = [item for item in contract_plans if item.active and item.initial_amount is not None]
+    if len(candidates) <= 1:
+        return plan.residual_amount
+    total_initial = sum((item.initial_amount for item in candidates), Decimal("0"))
+    if total_initial <= 0 or plan.initial_amount is None:
+        return (plan.residual_amount / Decimal(len(candidates))).quantize(Decimal("0.01"))
+    weight = plan.initial_amount / total_initial
+    return (plan.residual_amount * weight).quantize(Decimal("0.01"))
 
 
 def can_manage_carfast_fleet(request: Request) -> bool:
@@ -7138,6 +7155,19 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         (plan for plan in financial_plans if plan.active),
         financial_plans[0] if financial_plans else None,
     )
+    related_contract_plans: list[VehicleFinancialPlan] = []
+    if active_financial_plan:
+        related_contract_plans = db.scalars(
+            select(VehicleFinancialPlan).where(
+                VehicleFinancialPlan.finance_entity == active_financial_plan.finance_entity,
+                VehicleFinancialPlan.contract_number == active_financial_plan.contract_number,
+                VehicleFinancialPlan.active.is_(True),
+            )
+        ).all()
+    vehicle_residual_amount = residual_amount_for_vehicle(
+        active_financial_plan,
+        related_contract_plans,
+    )
     current_cost = current_cost_from_snapshot(snapshot)
     current_value_with_vat = current_value_with_financial_amortization(
         current_cost.get("initial_cost_with_vat"),
@@ -7269,9 +7299,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
                 else None
             ),
             "residual_with_vat": format_eur(
-                active_financial_plan.residual_amount
-                if active_financial_plan
-                else None
+                vehicle_residual_amount
             ),
             "start_date": clean_date(
                 active_financial_plan.start_date.isoformat()

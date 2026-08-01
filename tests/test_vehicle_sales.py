@@ -355,6 +355,12 @@ def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
     assert "fim" in response.text
     assert "valor residual" in response.text
 
+    page = authenticated_client.get("/v2-clean/fleet/financial-audit")
+    assert page.status_code == 200
+    assert "Auditoria dos planos financeiros" in page.text
+    assert "12-AB-34" in page.text
+    assert "Plano importado sem referência" in page.text
+
 
 def test_vehicle_sale_images_public_snapshot_and_leads(
     authenticated_client,

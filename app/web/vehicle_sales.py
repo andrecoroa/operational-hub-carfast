@@ -422,16 +422,27 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
     for vehicle in vehicles:
         snapshot = snapshots.get(vehicle.id)
         plan = active_plans.get(vehicle.id)
+        manual = base_router.vehicle_manual_values(db, vehicle.id)
+        commercial = base_router.rentway_commercial_context(snapshot)
+        declared_entity = str(
+            (plan.finance_entity if plan else None)
+            or manual.get("finance_entity")
+            or commercial.get("finance_entity")
+            or ""
+        ).strip()
         rentway_cost = base_router.current_cost_from_snapshot(snapshot)
         initial_with_vat = rentway_cost.get("initial_cost_with_vat")
-        current_with_vat = base_router.current_value_with_financial_amortization(
-            initial_with_vat,
-            plan.initial_amount if plan else None,
-            plan.outstanding_amount if plan else None,
-            rentway_cost.get("current_cost_with_vat"),
-            plan.start_date if plan else None,
-            plan.amount_reference_date if plan else None,
-        )
+        current_with_vat = rentway_cost.get("current_cost_with_vat")
+        if current_with_vat is None:
+            current_with_vat = base_router.current_value_with_financial_amortization(
+                initial_with_vat,
+                plan.initial_amount if plan else None,
+                plan.outstanding_amount if plan else None,
+                None,
+                rentway_cost.get("purchase_date")
+                or (plan.start_date if plan else None),
+                plan.amount_reference_date if plan else None,
+            )
         contract_key = (
             str(plan.finance_entity or "").strip().casefold(),
             str(plan.contract_number or "").strip().casefold(),
@@ -460,12 +471,25 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
             missing.append("custo inicial Rentway")
         if current_with_vat is None:
             missing.append("valor atual")
+        source_reference = str(plan.source_references or "").strip() if plan else ""
+        if not declared_entity:
+            diagnosis = "Sem entidade financeira declarada"
+        elif not plan:
+            diagnosis = "Entidade identificada, mas sem plano financeiro ativo associado"
+        elif missing:
+            diagnosis = (
+                "Plano importado com campos incompletos; rever ou reprocessar a fonte"
+                if source_reference
+                else "Plano importado sem referência ao documento de origem"
+            )
+        else:
+            diagnosis = "Completo"
         rows.append(
             {
                 "vehicle_id": vehicle.id,
                 "plate": vehicle.plate or "",
                 "unit": vehicle.rentway_unit_nr or "",
-                "finance_entity": plan.finance_entity if plan else "",
+                "finance_entity": declared_entity,
                 "contract_number": plan.contract_number if plan else "",
                 "start_date": plan.start_date.isoformat() if plan and plan.start_date else "",
                 "end_date": plan.end_date.isoformat() if plan and plan.end_date else "",
@@ -483,6 +507,8 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
                 "amortization_month": rentway_cost.get("amortization_month"),
                 "current_value_with_vat": current_with_vat,
                 "plan_count": len(plans_by_vehicle.get(vehicle.id, [])),
+                "source_reference": source_reference,
+                "diagnosis": diagnosis,
                 "missing_count": len(missing),
                 "missing_fields": ", ".join(missing),
             }
@@ -690,6 +716,58 @@ def vehicle_sales_page(
             "updated": updated,
             "error": error,
             "money": money,
+        },
+    )
+
+
+@vehicle_sales_router.get("/v2-clean/fleet/financial-audit", response_class=HTMLResponse)
+def vehicle_financial_audit_page(
+    request: Request,
+    entity: str = "",
+    missing: str = "",
+):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        all_rows = [row for row in _financial_audit_rows(db) if row["finance_entity"]]
+    entities = sorted(
+        {compact_finance_entity(row["finance_entity"]) for row in all_rows},
+        key=str.casefold,
+    )
+    normalized_entity = compact_finance_entity(entity) if entity else ""
+    rows = [
+        row
+        for row in all_rows
+        if (not normalized_entity or compact_finance_entity(row["finance_entity"]) == normalized_entity)
+        and (not missing or missing in row["missing_fields"].split(", "))
+    ]
+    missing_options = sorted(
+        {
+            field
+            for row in all_rows
+            for field in row["missing_fields"].split(", ")
+            if field
+        }
+    )
+    summary = {
+        "total": len(all_rows),
+        "incomplete": sum(1 for row in all_rows if row["missing_count"]),
+        "no_plan": sum(1 for row in all_rows if "plano ativo" in row["missing_fields"]),
+        "with_source": sum(
+            1 for row in all_rows if row["missing_count"] and row["source_reference"]
+        ),
+    }
+    return base_router.templates.TemplateResponse(
+        request,
+        "clean_vehicle_financial_audit.html",
+        {
+            "rows": rows,
+            "entities": entities,
+            "entity": normalized_entity,
+            "missing": missing,
+            "missing_options": missing_options,
+            "summary": summary,
         },
     )
 

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}{% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div><p class="eyebrow">Frota / financeiro</p><h2>Auditoria dos planos financeiros</h2><p>Viaturas com entidade financeira e dados contratuais incompletos.</p></div>
+      <div class="clean-header-actions"><a class="button-link secondary-link" href="/v2-clean/fleet/financial-audit.csv">Exportar CSV</a><a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar</a></div>
+    </header>
+    <section class="clean-process-kpi-row">
+      <article><span>Com entidade</span><strong>{{ summary.total }}</strong></article>
+      <article><span>Incompletas</span><strong>{{ summary.incomplete }}</strong></article>
+      <article><span>Sem plano ativo</span><strong>{{ summary.no_plan }}</strong></article>
+      <article><span>Com fonte para rever</span><strong>{{ summary.with_source }}</strong></article>
+    </section>
+    <section class="clean-panel clean-card-wide">
+      <form method="get" class="clean-task-filter-row">
+        <label>Entidade<select name="entity"><option value="">Todas</option>{% for item in entities %}<option value="{{ item }}" {% if entity == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+        <label>Campo em falta<select name="missing"><option value="">Todos</option>{% for item in missing_options %}<option value="{{ item }}" {% if missing == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+        <button type="submit">Filtrar</button>
+      </form>
+      <div class="clean-doc-table-wrap"><table class="clean-doc-table financial-audit-table">
+        <thead><tr><th>Viatura</th><th>Entidade / contrato</th><th>Início</th><th>Fim</th><th>Renda</th><th>Capital</th><th>Valor atual</th><th>Em falta</th><th>Diagnóstico</th></tr></thead>
+        <tbody>{% for row in rows %}<tr>
+          <td><a href="/v2-clean/fleet/{{ row.vehicle_id }}">{{ row.plate or '-' }}</a><small>Unit {{ row.unit or '-' }}</small></td>
+          <td><strong>{{ row.finance_entity }}</strong><small>{{ row.contract_number or 'Sem contrato' }}</small></td>
+          <td>{{ row.start_date or '-' }}</td><td>{{ row.end_date or '-' }}</td><td>{{ row.installment_with_vat or '-' }}</td><td>{{ row.outstanding_with_vat or '-' }}</td><td>{{ row.current_value_with_vat or '-' }}</td>
+          <td>{{ row.missing_fields or '-' }}</td><td>{{ row.diagnosis }}{% if row.source_reference %}<small title="{{ row.source_reference }}">Fonte registada</small>{% endif %}</td>
+        </tr>{% else %}<tr><td colspan="9">Sem registos para os filtros.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+{% endblock %}

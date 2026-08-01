@@ -143,11 +143,11 @@
               {% for row in rows %}
                 <tr>
                   <td><input type="checkbox" name="vehicle_ids" value="{{ row.vehicle.id }}" data-sale-row-checkbox aria-label="Selecionar {{ row.vehicle.plate or row.vehicle.id }}"></td>
-                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small></td>
-                  <td><div class="sale-situation-stack"><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span><span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></div>{% if row.vehicle_state == "contract" %}<small>Devolução {{ row.return_on_display }}</small>{% endif %}</td>
+                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}{% if row.vehicle_state == "contract" %} · Dev. {{ row.return_on_display }}{% endif %}</small></td>
+                  <td><div class="sale-situation-stack"><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span><span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></div></td>
                   <td title="{{ row.finance_entity or 'Sem financiamento' }}">{{ row.finance_entity_display }}</td>
                   <td class="sale-value-stack sale-value-stack-five">
-                    <span><small>Custo</small>{{ money(row.cost) }}</span>
+                    <span{% if row.cost_missing_reason %} title="{{ row.cost_missing_reason }}"{% endif %}><small>Custo</small>{{ money(row.cost) }}</span>
                     <span><small>Em dívida</small>{{ money(row.debt) }}</span>
                     <span class="{% if row.financial_margin is not none %}{% if row.financial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}"><small>Margem</small>{{ money(row.financial_margin) }}</span>
                     <span><small>Comércio</small>{{ money(row.market_trade) }}</span>

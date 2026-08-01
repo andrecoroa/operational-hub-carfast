@@ -225,16 +225,20 @@ def _sale_row(
     commercial = base_router.rentway_commercial_context(snapshot)
     vehicle_context = base_router.rentway_vehicle_context(snapshot)
     finance = base_router.current_cost_from_snapshot(snapshot)
-    cost = decimal_value(
-        base_router.current_value_with_financial_amortization(
-            finance.get("initial_cost_with_vat"),
-            financial_plan.initial_amount if financial_plan else None,
-            financial_plan.outstanding_amount if financial_plan else None,
-            finance.get("current_cost_with_vat"),
-            financial_plan.start_date if financial_plan else None,
-            financial_plan.amount_reference_date if financial_plan else None,
+    rentway_current_cost = decimal_value(finance.get("current_cost_with_vat"))
+    cost = rentway_current_cost
+    if cost is None:
+        cost = decimal_value(
+            base_router.current_value_with_financial_amortization(
+                finance.get("initial_cost_with_vat"),
+                financial_plan.initial_amount if financial_plan else None,
+                financial_plan.outstanding_amount if financial_plan else None,
+                None,
+                finance.get("purchase_date")
+                or (financial_plan.start_date if financial_plan else None),
+                financial_plan.amount_reference_date if financial_plan else None,
+            )
         )
-    )
     debt = decimal_value(
         financial_plan.outstanding_amount if financial_plan else manual.get("debt_value")
     )
@@ -267,6 +271,13 @@ def _sale_row(
         "finance_entity": finance_entity,
         "finance_entity_display": compact_finance_entity(finance_entity),
         "cost": cost,
+        "cost_missing_reason": (
+            "Sem custo de aquisição Rentway"
+            if finance.get("initial_cost_with_vat") is None
+            else "Sem data de compra para calcular a amortização"
+        )
+        if cost is None
+        else "",
         "debt": debt,
         "financial_margin": financial_margin,
         "market_trade": market_trade,

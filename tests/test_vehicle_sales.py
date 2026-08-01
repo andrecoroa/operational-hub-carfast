@@ -97,7 +97,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert page.status_code == 200
     assert "Venda de viaturas" in page.text
     assert "12-AB-34" in page.text
-    assert "Devolução 18/10/2026" in page.text
+    assert "Dev. 18/10/2026" in page.text
     assert "Custo CarFast − valor em dívida" in page.text
     assert "Valor comércio − custo CarFast" in page.text
 

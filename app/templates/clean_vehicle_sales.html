@@ -155,7 +155,7 @@
                     <span><small>Cliente final</small>{{ money(row.market_retail) }}</span>
                   </td>
                   <td>{{ money(row.selling_price) }}</td>
-                  <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}">Preparar</a></td>
+                  <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></td>
                 </tr>
               {% else %}
                 <tr><td colspan="8" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
@@ -175,6 +175,16 @@
     </form>
   </main>
 </div>
+<dialog class="sale-preview-dialog" data-sale-preview-dialog aria-labelledby="sale-preview-title">
+  <header>
+    <div>
+      <small>Venda de viaturas</small>
+      <h2 id="sale-preview-title" data-sale-preview-title>Preparação da venda</h2>
+    </div>
+    <button type="button" class="secondary" data-sale-preview-close>Fechar</button>
+  </header>
+  <iframe title="Preparação da venda" data-sale-preview-frame></iframe>
+</dialog>
 <script>
   (() => {
     const form = document.querySelector("[data-sale-bulk-form]");
@@ -200,6 +210,39 @@
       });
     });
     refresh();
+
+    const preview = document.querySelector("[data-sale-preview-dialog]");
+    const previewFrame = preview?.querySelector("[data-sale-preview-frame]");
+    const previewTitle = preview?.querySelector("[data-sale-preview-title]");
+    const closePreview = () => {
+      if (!preview) return;
+      preview.close();
+      if (previewFrame) previewFrame.src = "about:blank";
+    };
+    document.querySelectorAll("[data-sale-preview]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        if (!preview || !previewFrame) return;
+        event.preventDefault();
+        previewTitle.textContent = `Preparar venda · ${link.dataset.saleLabel}`;
+        previewFrame.src = link.href;
+        preview.showModal();
+      });
+    });
+    previewFrame?.addEventListener("load", () => {
+      if (!previewFrame.contentDocument || previewFrame.src === "about:blank") return;
+      const style = previewFrame.contentDocument.createElement("style");
+      style.textContent = `
+        .app-shell.clean-shell { display: block !important; min-height: auto !important; }
+        .app-shell.clean-shell > .sidebar { display: none !important; }
+        .app-shell.clean-shell > main.content { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 18px !important; }
+        .clean-workshop-header { margin-top: 0 !important; }
+      `;
+      previewFrame.contentDocument.head.appendChild(style);
+    });
+    preview?.querySelector("[data-sale-preview-close]")?.addEventListener("click", closePreview);
+    preview?.addEventListener("click", (event) => {
+      if (event.target === preview) closePreview();
+    });
   })();
 </script>
 {% endblock %}

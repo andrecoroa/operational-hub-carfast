@@ -12,7 +12,7 @@ from app.main import app
 from app.models import Base
 from app.models.documents import DiagnosticDocument, DiagnosticExtraction, Document
 from app.models.vehicles import Vehicle
-from app.models.workshop import WorkshopProcess
+from app.models.workshop import WorkshopProcess, WorkshopTechnicalReading
 from app.services.bootstrap import seed_initial_data
 from app.services.diagnostic_documents import (
     backfill_legacy_diagnostics,
@@ -345,6 +345,78 @@ def test_document_intake_normalizes_plate_and_creates_diagnostic_profile():
             assert profile.document_id == document.id
             assert profile.diagnostic_type == "engine_lubrication_information"
             assert profile.association_status == "confirmed"
+
+
+def test_vehicle_diagnostics_enriches_existing_historical_reading_with_extraction():
+    with diagnostic_test_context() as (testing_session, client):
+        with testing_session() as db:
+            vehicle = Vehicle(
+                plate="AZ-91-XT",
+                vin="VF7ENRICHEDREADING",
+                rentway_unit_nr="901",
+                lifecycle_status="active",
+                operational_status="free",
+            )
+            db.add(vehicle)
+            db.flush()
+            document = make_document(
+                id=1701,
+                title="Leitura já importada",
+                document_type="workshop_diagnostic",
+                vehicle_id=vehicle.id,
+            )
+            db.add(document)
+            db.flush()
+            profile = DiagnosticDocument(
+                document_id=document.id,
+                diagnostic_type="fault_codes_global_test",
+                diagnostic_status="ready_for_review",
+                ocr_status="extracted",
+                validation_status="pending",
+                association_status="confirmed",
+            )
+            db.add(profile)
+            db.flush()
+            db.add(
+                DiagnosticExtraction(
+                    diagnostic_document_id=profile.id,
+                    extractor_name="diagnostic_pdf",
+                    source_sha256="b" * 64,
+                    extractor_version="1.0.0",
+                    parser_name="diagnostic_pdf",
+                    parser_version="1.1.0",
+                    extraction_method="native_text",
+                    source_page_count=2,
+                    extraction_status="extracted",
+                    confidence=0.94,
+                    normalized_data_json={"vin": vehicle.vin},
+                    dynamic_fields_json={
+                        "dtcs": [{"code": "P1351", "raw_context": "Pré-aquecimento"}]
+                    },
+                    warnings_json=[],
+                )
+            )
+            db.add(
+                WorkshopTechnicalReading(
+                    vehicle_id=vehicle.id,
+                    reading_type="fault_codes_global_test",
+                    summary="Registo histórico",
+                    data_json={"document_id": document.id, "import_status": "active"},
+                    status="active",
+                )
+            )
+            db.commit()
+            vehicle_id = vehicle.id
+            profile_id = profile.id
+
+        page = client.get(
+            f"/v2-clean/fleet/{vehicle_id}/diagnostics?selected=diagnostic:{profile_id}"
+        )
+        assert page.status_code == 200
+        assert "1" in page.text
+        assert "P1351" in page.text
+        assert "94%" in page.text
+        assert 'class="clean-diagnostic-row active"' in page.text
 
 
 def test_manual_link_and_diagnostic_validation_are_independent_from_invoice_fields():

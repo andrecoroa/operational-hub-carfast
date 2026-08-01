@@ -22615,6 +22615,11 @@ body.clean-task-preview-open {
   overflow-x: clip;
 }
 
+.diagnostic-health-source_missing {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
 .clean-diagnostic-technical pre {
   margin: 0;
   max-height: 260px;

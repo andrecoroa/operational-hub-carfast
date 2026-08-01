@@ -9,6 +9,7 @@ from app.models import (
     AuditLog,
     Vehicle,
     VehicleExternalSnapshot,
+    VehicleFinancialPlan,
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
@@ -147,6 +148,35 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
         db_session.scalar(select(AuditLog).where(AuditLog.action == "vehicle.sale.bulk_price_rule"))
         is not None
     )
+
+
+def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
+    authenticated_client,
+    db_session,
+):
+    vehicle = create_sale_vehicle(db_session)
+    db_session.add(
+        VehicleFinancialPlan(
+            vehicle_id=vehicle.id,
+            finance_entity="Santander",
+            contract_number="FIN-123",
+            start_date=date(2026, 7, 1),
+            installment_with_vat=Decimal("325.03"),
+            outstanding_amount=Decimal("10000"),
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/fleet/financial-audit.csv")
+
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "12-AB-34" in response.text
+    assert "19200" in response.text
+    assert "FIN-123" in response.text
+    assert "fim" in response.text
+    assert "valor residual" in response.text
 
 
 def test_vehicle_sale_images_public_snapshot_and_leads(

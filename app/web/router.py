@@ -1019,8 +1019,6 @@ def unified_vehicle_technical_readings(
 
     next_synthetic_id = -1
     for document, diagnostic in diagnostic_rows:
-        if document.id in represented_document_ids:
-            continue
         extraction = latest_extraction_by_diagnostic.get(diagnostic.id)
         normalized = dict(extraction.normalized_data_json or {}) if extraction else {}
         dynamic = dict(extraction.dynamic_fields_json or {}) if extraction else {}
@@ -1032,7 +1030,7 @@ def unified_vehicle_technical_readings(
             document.document_date,
             document.created_at,
         )
-        data_json = {
+        diagnostic_data = {
             **dynamic,
             **normalized,
             "record_origin": "document_archive",
@@ -1056,6 +1054,24 @@ def unified_vehicle_technical_readings(
             "parser_version": extraction.parser_version if extraction else "",
             "source_page_count": extraction.source_page_count if extraction else None,
         }
+        if document.id in represented_document_ids:
+            for reading in readings:
+                reading_document_id = (reading.data_json or {}).get("document_id")
+                if str(reading_document_id or "") != str(document.id):
+                    continue
+                reading.data_json = {
+                    **dict(reading.data_json or {}),
+                    **diagnostic_data,
+                }
+                reading.status = diagnostic.validation_status
+                reading.storage_provider = document.storage_provider
+                reading.external_url = f"/documents/{document.id}"
+                if collected_at:
+                    reading.report_datetime = collected_at
+                    reading.reading_date = collected_at.date()
+                if diagnostic.odometer_km is not None:
+                    reading.odometer_km = diagnostic.odometer_km
+            continue
         readings.append(
             SimpleNamespace(
                 id=next_synthetic_id,
@@ -1067,7 +1083,7 @@ def unified_vehicle_technical_readings(
                 report_datetime=collected_at,
                 odometer_km=diagnostic.odometer_km,
                 summary=document.title or document.original_name,
-                data_json=data_json,
+                data_json=diagnostic_data,
                 differences_json=None,
                 storage_provider=document.storage_provider,
                 external_url=f"/documents/{document.id}",
@@ -8050,6 +8066,7 @@ def _diagnostic_batch_context(
                 "ready": 0,
                 "pending": 0,
                 "failed": 0,
+                "source_missing": 0,
                 "outdated": 0,
             },
         )
@@ -8057,11 +8074,18 @@ def _diagnostic_batch_context(
         if document.vehicle_id:
             batch["vehicles"].add(document.vehicle_id)
         extraction = latest_by_profile.get(profile.id)
-        health_code = _diagnostic_audit_health(profile, extraction)
+        source_missing = not extraction and _document_resolved_file(document) is None
+        health_code = (
+            "source_missing"
+            if source_missing
+            else _diagnostic_audit_health(profile, extraction)
+        )
         if health_code == "ready":
             batch["ready"] += 1
         elif health_code == "extraction_failed":
             batch["failed"] += 1
+        elif health_code == "source_missing":
+            batch["source_missing"] += 1
         else:
             batch["pending"] += 1
         if extraction and (
@@ -8148,6 +8172,7 @@ def clean_diagnostics_center(
     health_labels = {
         "ready": "Com extração",
         "missing_extraction": "Sem extração",
+        "source_missing": "Ficheiro de origem em falta",
         "extraction_failed": "Extração falhada",
         "empty_extraction": "Extração vazia",
         "state_mismatch": "Estado incoerente",
@@ -8181,7 +8206,11 @@ def clean_diagnostics_center(
         rows = []
         for document, profile in records:
             extraction = latest_by_profile.get(profile.id)
-            health_code = _diagnostic_audit_health(profile, extraction)
+            health_code = (
+                "source_missing"
+                if not extraction and _document_resolved_file(document) is None
+                else _diagnostic_audit_health(profile, extraction)
+            )
             counts[health_code] += 1
             if health and health_code != health:
                 continue

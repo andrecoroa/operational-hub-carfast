@@ -1,4 +1,6 @@
+import csv
 import hashlib
+import io
 import secrets
 import uuid
 from datetime import UTC, date, datetime
@@ -7,7 +9,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 
 import app.web.router as base_router
@@ -312,6 +314,127 @@ def _load_sale_rows(db) -> list[dict[str, Any]]:
     ]
 
 
+def _financial_audit_rows(db) -> list[dict[str, Any]]:
+    vehicles = db.scalars(
+        select(Vehicle)
+        .where(Vehicle.active.is_(True))
+        .order_by(Vehicle.plate, Vehicle.id)
+    ).all()
+    vehicle_ids = [vehicle.id for vehicle in vehicles]
+    if not vehicle_ids:
+        return []
+
+    snapshots: dict[int, VehicleExternalSnapshot] = {}
+    for snapshot in db.scalars(
+        select(VehicleExternalSnapshot)
+        .where(
+            VehicleExternalSnapshot.vehicle_id.in_(vehicle_ids),
+            VehicleExternalSnapshot.source_system == "rentway",
+        )
+        .order_by(
+            VehicleExternalSnapshot.updated_at.desc(),
+            VehicleExternalSnapshot.id.desc(),
+        )
+    ).all():
+        snapshots.setdefault(snapshot.vehicle_id, snapshot)
+
+    plans_by_vehicle: dict[int, list[VehicleFinancialPlan]] = {
+        vehicle_id: [] for vehicle_id in vehicle_ids
+    }
+    active_plans: dict[int, VehicleFinancialPlan] = {}
+    for plan in db.scalars(
+        select(VehicleFinancialPlan)
+        .where(VehicleFinancialPlan.vehicle_id.in_(vehicle_ids))
+        .order_by(
+            VehicleFinancialPlan.active.desc(),
+            VehicleFinancialPlan.updated_at.desc(),
+            VehicleFinancialPlan.id.desc(),
+        )
+    ).all():
+        plans_by_vehicle[plan.vehicle_id].append(plan)
+        if plan.active:
+            active_plans.setdefault(plan.vehicle_id, plan)
+
+    active_contract_plans: dict[tuple[str, str], list[VehicleFinancialPlan]] = {}
+    for plan in active_plans.values():
+        key = (
+            str(plan.finance_entity or "").strip().casefold(),
+            str(plan.contract_number or "").strip().casefold(),
+        )
+        active_contract_plans.setdefault(key, []).append(plan)
+
+    rows: list[dict[str, Any]] = []
+    for vehicle in vehicles:
+        snapshot = snapshots.get(vehicle.id)
+        plan = active_plans.get(vehicle.id)
+        rentway_cost = base_router.current_cost_from_snapshot(snapshot)
+        initial_with_vat = rentway_cost.get("initial_cost_with_vat")
+        current_with_vat = base_router.current_value_with_financial_amortization(
+            initial_with_vat,
+            plan.initial_amount if plan else None,
+            plan.outstanding_amount if plan else None,
+            rentway_cost.get("current_cost_with_vat"),
+            plan.start_date if plan else None,
+            plan.amount_reference_date if plan else None,
+        )
+        contract_key = (
+            str(plan.finance_entity or "").strip().casefold(),
+            str(plan.contract_number or "").strip().casefold(),
+        ) if plan else ("", "")
+        residual = base_router.residual_amount_for_vehicle(
+            plan,
+            active_contract_plans.get(contract_key, []),
+        )
+        missing: list[str] = []
+        if not plan:
+            missing.append("plano ativo")
+        else:
+            for label, value in (
+                ("entidade", plan.finance_entity),
+                ("contrato", plan.contract_number),
+                ("início", plan.start_date),
+                ("fim", plan.end_date),
+                ("prestação/renda", plan.installment_with_vat),
+                ("valor residual", residual),
+                ("capital em dívida", plan.outstanding_amount),
+                ("data do capital", plan.amount_reference_date),
+            ):
+                if value in (None, ""):
+                    missing.append(label)
+        if initial_with_vat is None:
+            missing.append("custo inicial Rentway")
+        if current_with_vat is None:
+            missing.append("valor atual")
+        rows.append(
+            {
+                "vehicle_id": vehicle.id,
+                "plate": vehicle.plate or "",
+                "unit": vehicle.rentway_unit_nr or "",
+                "finance_entity": plan.finance_entity if plan else "",
+                "contract_number": plan.contract_number if plan else "",
+                "start_date": plan.start_date.isoformat() if plan and plan.start_date else "",
+                "end_date": plan.end_date.isoformat() if plan and plan.end_date else "",
+                "installment_with_vat": plan.installment_with_vat if plan else None,
+                "residual_with_vat": residual,
+                "outstanding_with_vat": (
+                    base_router.amount_with_standard_vat(plan.outstanding_amount)
+                    if plan else None
+                ),
+                "amount_reference_date": (
+                    plan.amount_reference_date.isoformat()
+                    if plan and plan.amount_reference_date else ""
+                ),
+                "initial_cost_with_vat": initial_with_vat,
+                "amortization_month": rentway_cost.get("amortization_month"),
+                "current_value_with_vat": current_with_vat,
+                "plan_count": len(plans_by_vehicle.get(vehicle.id, [])),
+                "missing_count": len(missing),
+                "missing_fields": ", ".join(missing),
+            }
+        )
+    return rows
+
+
 def _safe_return_url(value: str, fallback: str) -> str:
     clean = value.strip()
     if clean.startswith("/v2-clean/fleet/sales") and not clean.startswith("//"):
@@ -474,6 +597,30 @@ def vehicle_sales_page(
             "error": error,
             "money": money,
         },
+    )
+
+
+@vehicle_sales_router.get("/v2-clean/fleet/financial-audit.csv")
+def vehicle_financial_audit_export(request: Request, download: int = 1):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        rows = _financial_audit_rows(db)
+    stream = io.StringIO(newline="")
+    fieldnames = list(rows[0]) if rows else ["vehicle_id", "plate", "missing_fields"]
+    writer = csv.DictWriter(stream, fieldnames=fieldnames, delimiter=";")
+    writer.writeheader()
+    writer.writerows(rows)
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = (
+            f'attachment; filename="auditoria_financeira_viaturas_{date.today():%Y%m%d}.csv"'
+        )
+    return Response(
+        content="\ufeff" + stream.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers=headers,
     )
 
 

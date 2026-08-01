@@ -40,7 +40,7 @@
             <thead>
               <tr>
                 <th>Lote</th><th>Viaturas</th><th>Relatórios</th><th>Extraídos</th>
-                <th>Pendentes</th><th>Falhas</th><th>Versão antiga</th><th>Ação</th>
+                <th>Pendentes</th><th>Sem ficheiro</th><th>Falhas</th><th>Versão antiga</th><th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -51,6 +51,7 @@
                   <td>{{ batch.documents }}</td>
                   <td>{{ batch.ready }}</td>
                   <td>{{ batch.pending }}</td>
+                  <td>{{ batch.source_missing }}</td>
                   <td>{{ batch.failed }}</td>
                   <td>{{ batch.outdated }}</td>
                   <td>
@@ -67,7 +68,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="8"><em>Não existem lotes de relatórios importados.</em></td></tr>
+                <tr><td colspan="9"><em>Não existem lotes de relatórios importados.</em></td></tr>
               {% endfor %}
             </tbody>
           </table>

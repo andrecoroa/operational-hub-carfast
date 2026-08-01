@@ -17,7 +17,7 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.users import create_user
-from app.web.vehicle_sales import compact_finance_entity
+from app.web.vehicle_sales import _sale_row, compact_finance_entity
 
 
 def test_compact_finance_entity_labels():
@@ -27,6 +27,35 @@ def test_compact_finance_entity_labels():
     assert compact_finance_entity("CGD Locação Corrente") == "CGD Locação"
     assert compact_finance_entity("LeasePlan Portugal") == "LeasePlan"
     assert compact_finance_entity("Mercedes-Benz Financial") == "Mercedes"
+
+
+def test_unfinanced_vehicle_ignores_legacy_manual_debt():
+    vehicle = Vehicle(
+        plate="BS-13-UU",
+        brand="Mercedes",
+        model="Classe A",
+        operational_status="active",
+        lifecycle_status="active",
+        active=True,
+    )
+    snapshot = VehicleExternalSnapshot(
+        data_json={
+            "purchase_date": "2025-04-30",
+            "acquisition_value": "30.902,40",
+            "value_with_tax": "38.010,00",
+        }
+    )
+
+    row = _sale_row(
+        vehicle,
+        snapshot,
+        {"debt_value": "36.982,78"},
+        None,
+        None,
+    )
+
+    assert row["debt"] is None
+    assert row["financial_margin"] is None
 
 
 def create_sale_vehicle(db_session) -> Vehicle:
@@ -74,6 +103,15 @@ def create_sale_vehicle(db_session) -> Vehicle:
                 value_json="15000",
             ),
         ]
+    )
+    db_session.add(
+        VehicleFinancialPlan(
+            vehicle_id=vehicle.id,
+            finance_entity="Santander",
+            contract_number="CONT-100",
+            outstanding_amount=Decimal("15000"),
+            active=True,
+        )
     )
     db_session.commit()
     return vehicle

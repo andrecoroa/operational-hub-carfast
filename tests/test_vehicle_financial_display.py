@@ -52,7 +52,7 @@ def test_outstanding_capital_is_displayed_with_standard_vat():
     assert amount_with_standard_vat("1.234,56") == Decimal("1518.51")
 
 
-def test_current_value_uses_real_accumulated_financial_amortization():
+def test_current_value_uses_rentway_daily_value_instead_of_bank_capital():
     result = current_value_with_financial_amortization(
         "24.600,00",
         "18.431,81",
@@ -60,7 +60,7 @@ def test_current_value_uses_real_accumulated_financial_amortization():
         "15.000,00",
     )
 
-    assert result == Decimal("13665.34")
+    assert result == Decimal("15000.00")
 
 
 def test_current_value_falls_back_to_plan_dates_when_financial_amounts_are_missing():
@@ -73,7 +73,7 @@ def test_current_value_falls_back_to_plan_dates_when_financial_amounts_are_missi
         date(2026, 7, 31),
     )
 
-    assert result == Decimal("22806.25")
+    assert result == Decimal("22823.61")
 
 
 def test_financial_panel_uses_requested_four_column_order():

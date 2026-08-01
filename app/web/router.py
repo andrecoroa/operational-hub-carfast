@@ -638,6 +638,27 @@ def amortization_month(purchase_date: date | None, reference_date: date | None =
     return max(1, min(96, months))
 
 
+def current_value_by_elapsed_days(
+    initial_value: object,
+    start_date: date | None,
+    reference_date: date | None = None,
+) -> Decimal | None:
+    initial = parse_decimal_text(initial_value)
+    if initial is None or not start_date:
+        return None
+    initial_decimal = Decimal(str(initial))
+    reference = reference_date or date.today()
+    end_date = add_months(start_date, 96)
+    total_days = (end_date - start_date).days
+    if total_days <= 0 or reference <= start_date:
+        return initial_decimal.quantize(Decimal("0.01"))
+    if reference >= end_date:
+        return Decimal("0.00")
+    elapsed_days = (reference - start_date).days
+    paid_value = initial_decimal * Decimal(elapsed_days) / Decimal(total_days)
+    return max(Decimal("0"), initial_decimal - paid_value).quantize(Decimal("0.01"))
+
+
 def current_cost_from_snapshot(
     snapshot: VehicleExternalSnapshot | None,
 ) -> dict[str, float | int | str | None]:
@@ -657,12 +678,8 @@ def current_cost_from_snapshot(
             "current_cost": None,
             "current_cost_with_vat": None,
         }
-    current_cost = max(0, initial_cost - ((initial_cost / 96) * month))
-    current_cost_with_vat = (
-        max(0, initial_cost_with_vat - ((initial_cost_with_vat / 96) * month))
-        if initial_cost_with_vat is not None
-        else None
-    )
+    current_cost = current_value_by_elapsed_days(initial_cost, purchase)
+    current_cost_with_vat = current_value_by_elapsed_days(initial_cost_with_vat, purchase)
     return {
         "initial_cost": initial_cost,
         "initial_cost_with_vat": initial_cost_with_vat,
@@ -806,23 +823,14 @@ def current_value_with_financial_amortization(
     reference_date: object = None,
 ) -> Decimal | None:
     acquisition = parse_decimal_text(acquisition_with_vat)
-    financed_initial = parse_decimal_text(financed_initial_amount)
-    outstanding = parse_decimal_text(outstanding_amount)
     if acquisition is None:
         return None
-    if financed_initial is not None and outstanding is not None:
-        accumulated_amortization = max(0.0, financed_initial - outstanding)
-        accumulated_with_vat = accumulated_amortization * 1.23
-        return Decimal(str(max(0.0, acquisition - accumulated_with_vat))).quantize(Decimal("0.01"))
     fallback_value = parse_decimal_text(fallback)
     if fallback_value is not None:
         return Decimal(str(fallback_value)).quantize(Decimal("0.01"))
     start = plan_start_date if isinstance(plan_start_date, date) else parse_iso_or_dmy_date(str(plan_start_date or ""))
     reference = reference_date if isinstance(reference_date, date) else parse_iso_or_dmy_date(str(reference_date or ""))
-    month = amortization_month(start, reference) if start else None
-    if month is None:
-        return None
-    return Decimal(str(max(0.0, acquisition - ((acquisition / 96) * month)))).quantize(Decimal("0.01"))
+    return current_value_by_elapsed_days(acquisition, start, reference)
 
 
 def can_manage_carfast_fleet(request: Request) -> bool:

@@ -62,6 +62,8 @@ from app.models.vehicles import (
 from app.models.vehicle_sales import (
     VehicleImage,
     VehicleSaleLead,
+    VehicleSaleProposal,
+    VehicleSaleProposalLine,
     VehicleSaleProfile,
     VehicleSalePublication,
 )
@@ -163,6 +165,8 @@ __all__ = [
     "VehicleFinancialPlan",
     "VehicleImage",
     "VehicleSaleLead",
+    "VehicleSaleProposal",
+    "VehicleSaleProposalLine",
     "VehicleSaleProfile",
     "VehicleSalePublication",
     "VehicleHistoryAudit",

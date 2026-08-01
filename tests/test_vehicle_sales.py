@@ -14,6 +14,8 @@ from app.models import (
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
+    VehicleSaleProposal,
+    VehicleSaleProposalLine,
     VehicleSaleProfile,
     VehicleSalePublication,
 )
@@ -71,6 +73,89 @@ def test_cgd_filter_includes_all_cgd_name_variants():
     }
 
     assert len(_filter_rows(rows, filters)) == 2
+
+
+def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db_session):
+    vehicle = create_sale_vehicle(db_session)
+    profile = VehicleSaleProfile(
+        vehicle_id=vehicle.id,
+        status="candidate",
+        market_trade_value=Decimal("21000.00"),
+    )
+    db_session.add(profile)
+    db_session.commit()
+
+    created = authenticated_client.post(
+        "/v2-clean/fleet/sales/bulk",
+        data={"vehicle_ids": [str(vehicle.id)], "action": "proposal"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    proposal = db_session.scalar(select(VehicleSaleProposal))
+    assert proposal is not None
+    line = db_session.scalar(
+        select(VehicleSaleProposalLine).where(
+            VehicleSaleProposalLine.proposal_id == proposal.id
+        )
+    )
+    assert line is not None
+    assert line.base_price == Decimal("21000.00")
+
+    saved = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}",
+        data={
+            "title": "Lote agosto",
+            "recipient": "Comerciante teste",
+            "included_line_ids": [str(line.id)],
+            f"price_{line.id}": "19800",
+            f"notes_{line.id}": "Preço exclusivo do lote",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(VehicleSaleProposalLine, line.id).proposed_price == Decimal("19800.00")
+    assert db_session.get(VehicleSaleProfile, profile.id).market_trade_value == Decimal("21000.00")
+
+    sent = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}/send",
+        follow_redirects=False,
+    )
+    assert sent.status_code == 303
+    reopened = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}/reopen",
+        follow_redirects=False,
+    )
+    assert reopened.status_code == 303
+    db_session.expire_all()
+    proposals = db_session.scalars(
+        select(VehicleSaleProposal).order_by(VehicleSaleProposal.version)
+    ).all()
+    assert [item.version for item in proposals] == [1, 2]
+    assert proposals[0].status == "sent"
+    assert proposals[1].status == "draft"
+
+    listing = authenticated_client.get("/v2-clean/fleet/sales/proposals")
+    assert listing.status_code == 200
+    assert proposal.reference in listing.text
+    detail = authenticated_client.get(
+        f"/v2-clean/fleet/sales/proposals/{proposals[1].id}"
+    )
+    assert detail.status_code == 200
+    assert "Preço exclusivo do lote" in detail.text
+    export = authenticated_client.get(
+        f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/xlsx"
+    )
+    assert export.status_code == 200
+    assert export.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    pdf = authenticated_client.get(
+        f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/pdf"
+    )
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content.startswith(b"%PDF")
 
 
 def test_unfinanced_vehicle_ignores_legacy_manual_debt():

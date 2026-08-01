@@ -22846,6 +22846,47 @@ body.clean-task-preview-open {
   flex: 1;
 }
 
+.sale-bulk-direct {
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: transparent;
+}
+
+.sale-proposal-summary {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 180px;
+  gap: 12px;
+}
+
+.sale-proposal-summary label,
+.sale-proposal-lines td > small {
+  display: block;
+}
+
+.sale-proposal-notes {
+  grid-column: 1 / -1;
+}
+
+.sale-proposal-lines input[type="number"] {
+  min-width: 130px;
+}
+
+.sale-proposal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .sale-proposal-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .sale-proposal-notes {
+    grid-column: auto;
+  }
+}
+
 .sale-bulk-bar > span:last-child {
   font-size: 0.75rem;
 }

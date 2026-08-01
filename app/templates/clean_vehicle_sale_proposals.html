@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}{% include "_sidebar.html" %}
+  <main class="content clean-content sale-page">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div><p class="eyebrow">Frota / venda</p><h2>Propostas comerciais</h2><p>Lotes preparados sem alterar os valores gerais das viaturas.</p></div>
+      <div class="clean-header-actions"><a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar às viaturas</a></div>
+    </header>
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading"><div><h3>Histórico de propostas</h3><p>{{ proposals|length }} registos recentes.</p></div></div>
+      <div class="clean-doc-table-wrap"><table class="clean-doc-table">
+        <thead><tr><th>Referência</th><th>Destinatário</th><th>Viaturas</th><th>Validade</th><th>Estado</th><th>Ação</th></tr></thead>
+        <tbody>{% for proposal in proposals %}<tr>
+          <td><strong>{{ proposal.reference }}</strong><small>Versão {{ proposal.version }}</small></td>
+          <td>{{ proposal.recipient or "Por definir" }}</td><td>{{ line_counts.get(proposal.id, 0) }}</td>
+          <td>{{ proposal.expires_on.strftime("%d/%m/%Y") if proposal.expires_on else "-" }}</td>
+          <td><span class="status-pill">{{ status_labels.get(proposal.status, proposal.status) }}</span></td>
+          <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}">Abrir</a></td>
+        </tr>{% else %}<tr><td colspan="6">Ainda não existem propostas. Seleciona viaturas na página de venda e usa “Criar proposta”.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+{% endblock %}

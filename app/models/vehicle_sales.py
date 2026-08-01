@@ -121,3 +121,45 @@ class VehicleSaleLead(TimestampMixin, Base):
         ForeignKey("portal_organizations.id", ondelete="SET NULL"), index=True
     )
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class VehicleSaleProposal(TimestampMixin, Base):
+    __tablename__ = "vehicle_sale_proposals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    previous_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicle_sale_proposals.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    recipient: Mapped[str | None] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(240), default="Proposta de viaturas")
+    expires_on: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class VehicleSaleProposalLine(TimestampMixin, Base):
+    __tablename__ = "vehicle_sale_proposal_lines"
+    __table_args__ = (UniqueConstraint("proposal_id", "vehicle_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(
+        ForeignKey("vehicle_sale_proposals.id", ondelete="CASCADE"), index=True
+    )
+    vehicle_id: Mapped[int] = mapped_column(
+        ForeignKey("vehicles.id", ondelete="RESTRICT"), index=True
+    )
+    snapshot_json: Mapped[dict] = mapped_column(JSON)
+    base_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    proposed_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+    included: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)

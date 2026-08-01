@@ -10,6 +10,8 @@ from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 from sqlalchemy import func, select
 
 import app.web.router as base_router
@@ -23,6 +25,8 @@ from app.models import (
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
+    VehicleSaleProposal,
+    VehicleSaleProposalLine,
     VehicleSaleProfile,
     VehicleSalePublication,
 )
@@ -63,6 +67,12 @@ from app.services.vehicle_sales import (
 )
 
 vehicle_sales_router = APIRouter(include_in_schema=False)
+
+PROPOSAL_STATUS_LABELS = {
+    "draft": "Rascunho",
+    "sent": "Enviada",
+    "cancelled": "Cancelada",
+}
 
 VEHICLE_IMAGE_MAX_SIZE = 10 * 1024 * 1024
 VEHICLE_IMAGE_SIGNATURES = {
@@ -487,6 +497,34 @@ def _safe_return_url(value: str, fallback: str) -> str:
     return fallback
 
 
+def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    vehicle = row["vehicle"]
+    return {
+        "plate": vehicle.plate,
+        "unit": vehicle.rentway_unit_nr,
+        "brand": vehicle.brand,
+        "model": vehicle.model,
+        "version": vehicle.version,
+        "year": vehicle.year,
+        "registration": row["registration_display"],
+        "km": str(row["km"]) if row["km"] is not None else None,
+        "status": row["status_label"],
+    }
+
+
+def _proposal_lines(db, proposal_id: int) -> list[VehicleSaleProposalLine]:
+    return db.scalars(
+        select(VehicleSaleProposalLine)
+        .where(VehicleSaleProposalLine.proposal_id == proposal_id)
+        .order_by(VehicleSaleProposalLine.sort_order, VehicleSaleProposalLine.id)
+    ).all()
+
+
+def _proposal_reference(proposal_id: int, version: int = 1) -> str:
+    base = f"PC-{date.today():%Y}-{proposal_id:05d}"
+    return base if version == 1 else f"{base}-V{version}"
+
+
 def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[dict[str, Any]]:
     registration_from = date_value(filters["registration_from"])
     registration_to = date_value(filters["registration_to"])
@@ -701,6 +739,52 @@ async def vehicle_sales_bulk_update(request: Request):
 
     changed = 0
     with base_router.SessionLocal() as db:
+        if action == "proposal":
+            selected = {
+                row["vehicle"].id: row
+                for row in _load_sale_rows(db)
+                if row["vehicle"].id in selected_ids
+            }
+            proposal = VehicleSaleProposal(
+                reference=f"TEMP-{uuid.uuid4().hex}",
+                status="draft",
+                version=1,
+                title="Proposta de viaturas",
+                created_by_id=user_id,
+                updated_by_id=user_id,
+            )
+            db.add(proposal)
+            db.flush()
+            proposal.reference = _proposal_reference(proposal.id)
+            for position, vehicle_id in enumerate(selected_ids):
+                row = selected.get(vehicle_id)
+                if not row:
+                    continue
+                base_price = row["market_trade"] or row["selling_price"]
+                db.add(
+                    VehicleSaleProposalLine(
+                        proposal_id=proposal.id,
+                        vehicle_id=vehicle_id,
+                        snapshot_json=_proposal_snapshot(row),
+                        base_price=base_price,
+                        proposed_price=base_price,
+                        included=True,
+                        sort_order=position,
+                    )
+                )
+            record_audit(
+                db,
+                action="vehicle.sale.proposal_created",
+                entity_type="vehicle_sale_proposal",
+                entity_id=proposal.id,
+                detail=f"Proposta {proposal.reference} criada com {len(selected)} viaturas",
+                after_json={"vehicle_ids": list(selected)},
+                user_id=user_id,
+            )
+            db.commit()
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal.id}", status_code=303
+            )
         vehicles = {
             vehicle.id: vehicle
             for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(selected_ids))).all()
@@ -778,6 +862,266 @@ async def vehicle_sales_bulk_update(request: Request):
         db.commit()
     separator = "&" if "?" in return_url else "?"
     return RedirectResponse(f"{return_url}{separator}updated={changed}", status_code=303)
+
+
+@vehicle_sales_router.get("/v2-clean/fleet/sales/proposals", response_class=HTMLResponse)
+def vehicle_sale_proposals_page(request: Request):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        proposals = db.scalars(
+            select(VehicleSaleProposal).order_by(VehicleSaleProposal.id.desc()).limit(200)
+        ).all()
+        line_counts = {
+            proposal_id: count
+            for proposal_id, count in db.execute(
+                select(
+                    VehicleSaleProposalLine.proposal_id,
+                    func.count(VehicleSaleProposalLine.id),
+                ).group_by(VehicleSaleProposalLine.proposal_id)
+            ).all()
+        }
+    return base_router.templates.TemplateResponse(
+        request,
+        "clean_vehicle_sale_proposals.html",
+        {
+            "proposals": proposals,
+            "line_counts": line_counts,
+            "status_labels": PROPOSAL_STATUS_LABELS,
+        },
+    )
+
+
+@vehicle_sales_router.get(
+    "/v2-clean/fleet/sales/proposals/{proposal_id}", response_class=HTMLResponse
+)
+def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int = 0):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal:
+            return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
+        lines = _proposal_lines(db, proposal.id)
+    return base_router.templates.TemplateResponse(
+        request,
+        "clean_vehicle_sale_proposal_detail.html",
+        {
+            "proposal": proposal,
+            "lines": lines,
+            "saved": saved,
+            "status_labels": PROPOSAL_STATUS_LABELS,
+            "money": money,
+        },
+    )
+
+
+@vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}")
+async def vehicle_sale_proposal_update(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    form = await request.form()
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal or proposal.status != "draft":
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+            )
+        proposal.recipient = str(form.get("recipient") or "").strip()[:200] or None
+        proposal.title = str(form.get("title") or "Proposta de viaturas").strip()[:240]
+        proposal.expires_on = date_value(form.get("expires_on"))
+        proposal.notes = str(form.get("notes") or "").strip() or None
+        proposal.updated_by_id = user_id
+        included_ids = {
+            int(value) for value in form.getlist("included_line_ids") if str(value).isdigit()
+        }
+        for line in _proposal_lines(db, proposal.id):
+            line.included = line.id in included_ids
+            line.proposed_price = decimal_value(form.get(f"price_{line.id}"))
+            line.notes = str(form.get(f"notes_{line.id}") or "").strip() or None
+        record_audit(
+            db,
+            action="vehicle.sale.proposal_updated",
+            entity_type="vehicle_sale_proposal",
+            entity_id=proposal.id,
+            detail=f"Proposta {proposal.reference} atualizada",
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{proposal_id}?saved=1", status_code=303
+    )
+
+
+@vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/send")
+def vehicle_sale_proposal_send(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if proposal and proposal.status == "draft":
+            proposal.status = "sent"
+            proposal.sent_at = datetime.now(UTC)
+            proposal.updated_by_id = user_id
+            record_audit(
+                db,
+                action="vehicle.sale.proposal_sent",
+                entity_type="vehicle_sale_proposal",
+                entity_id=proposal.id,
+                detail=f"Proposta {proposal.reference} marcada como enviada",
+                user_id=user_id,
+            )
+            db.commit()
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+    )
+
+
+@vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/reopen")
+def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    with base_router.SessionLocal() as db:
+        previous = db.get(VehicleSaleProposal, proposal_id)
+        if not previous:
+            return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
+        if previous.status == "draft":
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{previous.id}", status_code=303
+            )
+        proposal = VehicleSaleProposal(
+            reference=f"TEMP-{uuid.uuid4().hex}",
+            version=previous.version + 1,
+            previous_version_id=previous.id,
+            status="draft",
+            recipient=previous.recipient,
+            title=previous.title,
+            expires_on=previous.expires_on,
+            notes=previous.notes,
+            created_by_id=user_id,
+            updated_by_id=user_id,
+        )
+        db.add(proposal)
+        db.flush()
+        root_reference = previous.reference.split("-V", 1)[0]
+        proposal.reference = f"{root_reference}-V{proposal.version}"
+        for line in _proposal_lines(db, previous.id):
+            db.add(
+                VehicleSaleProposalLine(
+                    proposal_id=proposal.id,
+                    vehicle_id=line.vehicle_id,
+                    snapshot_json=dict(line.snapshot_json or {}),
+                    base_price=line.base_price,
+                    proposed_price=line.proposed_price,
+                    notes=line.notes,
+                    included=line.included,
+                    sort_order=line.sort_order,
+                )
+            )
+        db.commit()
+        new_id = proposal.id
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{new_id}", status_code=303
+    )
+
+
+@vehicle_sales_router.get("/v2-clean/fleet/sales/proposals/{proposal_id}/xlsx")
+def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal:
+            return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
+        lines = [line for line in _proposal_lines(db, proposal.id) if line.included]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Proposta"
+    sheet.append([proposal.reference, proposal.title, proposal.recipient or "", proposal.expires_on or ""])
+    sheet.append([])
+    headers = ["Matrícula", "Marca", "Modelo", "Versão", "Ano", "Unit", "KM", "Preço", "Observações"]
+    sheet.append(headers)
+    for cell in sheet[3]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="173B68")
+    for line in lines:
+        data = line.snapshot_json or {}
+        sheet.append([
+            data.get("plate"), data.get("brand"), data.get("model"), data.get("version"),
+            data.get("year"), data.get("unit"), data.get("km"), line.proposed_price, line.notes,
+        ])
+    for column in sheet.columns:
+        letter = column[0].column_letter
+        sheet.column_dimensions[letter].width = min(40, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
+    output = io.BytesIO()
+    workbook.save(output)
+    return Response(
+        output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{proposal.reference}.xlsx"'},
+    )
+
+
+@vehicle_sales_router.get("/v2-clean/fleet/sales/proposals/{proposal_id}/pdf")
+def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal:
+            return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
+        lines = [line for line in _proposal_lines(db, proposal.id) if line.included]
+    output = io.BytesIO()
+    document = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=28, rightMargin=28)
+    styles = getSampleStyleSheet()
+    story = [Paragraph(proposal.title, styles["Title"])]
+    story.append(Paragraph(f"{proposal.reference} · {proposal.recipient or 'Destinatário por definir'}", styles["Normal"]))
+    if proposal.expires_on:
+        story.append(Paragraph(f"Válida até {proposal.expires_on:%d/%m/%Y}", styles["Normal"]))
+    story.append(Spacer(1, 14))
+    data = [["Matrícula", "Viatura", "Ano", "Unit", "KM", "Preço", "Observações"]]
+    for line in lines:
+        item = line.snapshot_json or {}
+        data.append([
+            item.get("plate") or "-",
+            " ".join(str(value or "") for value in (item.get("brand"), item.get("model"), item.get("version"))).strip(),
+            item.get("year") or "-", item.get("unit") or "-", item.get("km") or "-",
+            money(line.proposed_price), line.notes or "",
+        ])
+    table = Table(data, repeatRows=1, colWidths=[65, 230, 45, 55, 65, 80, 180])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#173B68")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D0D5DD")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+    ]))
+    story.append(table)
+    if proposal.notes:
+        story.extend([Spacer(1, 14), Paragraph(proposal.notes, styles["Normal"])])
+    document.build(story)
+    return Response(
+        output.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{proposal.reference}.pdf"'},
+    )
 
 
 @vehicle_sales_router.get("/v2-clean/fleet/sales/{vehicle_id}", response_class=HTMLResponse)

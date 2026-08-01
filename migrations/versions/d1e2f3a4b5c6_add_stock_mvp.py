@@ -269,15 +269,20 @@ def upgrade() -> None:
         "stock_receipts",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "invoice_import_id",
+            "supplier_id",
             sa.Integer(),
-            sa.ForeignKey("stock_invoice_imports.id", ondelete="RESTRICT"),
-            nullable=False,
+            sa.ForeignKey("stock_suppliers.id", ondelete="RESTRICT"),
         ),
         sa.Column(
-            "location_id", sa.Integer(), sa.ForeignKey("stock_locations.id", ondelete="RESTRICT")
+            "location_id",
+            sa.Integer(),
+            sa.ForeignKey("stock_locations.id", ondelete="RESTRICT"),
+            nullable=False,
         ),
-        sa.Column("status", sa.String(40), nullable=False, server_default="pending"),
+        sa.Column("source_type", sa.String(40), nullable=False),
+        sa.Column("source_reference", sa.String(160)),
+        sa.Column("idempotency_key", sa.String(120), unique=True),
+        sa.Column("status", sa.String(40), nullable=False, server_default="completed"),
         sa.Column("confirmed_by_id", sa.Integer(), sa.ForeignKey("users.id")),
         sa.Column("responsible_name", sa.String(160)),
         sa.Column("confirmed_at", sa.DateTime(timezone=True)),
@@ -291,6 +296,30 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "stock_receipt_invoice_links",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column(
+            "receipt_id",
+            sa.Integer(),
+            sa.ForeignKey("stock_receipts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "invoice_import_id",
+            sa.Integer(),
+            sa.ForeignKey("stock_invoice_imports.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("linked_by_id", sa.Integer(), sa.ForeignKey("users.id")),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.UniqueConstraint(
+            "receipt_id", "invoice_import_id", name="uq_stock_receipt_invoice_link"
+        ),
+    )
+
+    op.create_table(
         "stock_receipt_lines",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
@@ -300,20 +329,13 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "invoice_line_id",
-            sa.Integer(),
-            sa.ForeignKey("stock_invoice_lines.id", ondelete="RESTRICT"),
-            nullable=False,
-        ),
-        sa.Column(
             "article_id",
             sa.Integer(),
             sa.ForeignKey("stock_articles.id", ondelete="RESTRICT"),
             nullable=False,
         ),
-        sa.Column("invoiced_quantity", sa.Numeric(14, 3), nullable=False),
-        sa.Column("previously_received_quantity", sa.Numeric(14, 3), nullable=False),
-        sa.Column("received_quantity", sa.Numeric(14, 3), nullable=False),
+        sa.Column("supplier_ref", sa.String(160)),
+        sa.Column("accepted_quantity", sa.Numeric(14, 3), nullable=False),
         sa.Column("unit_cost", sa.Numeric(14, 4), nullable=False),
         sa.Column("lot", sa.String(120)),
         sa.Column("divergence_reason", sa.Text()),
@@ -452,6 +474,7 @@ def downgrade() -> None:
     for table in (
         "stock_movements",
         "stock_receipt_lines",
+        "stock_receipt_invoice_links",
         "stock_receipts",
         "stock_invoice_lines",
         "stock_invoice_imports",

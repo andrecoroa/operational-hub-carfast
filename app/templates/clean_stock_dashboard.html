@@ -6,13 +6,13 @@
     {% set stock_nav = "summary" %}{% include "_clean_stock_nav.html" %}
     <header class="stock-header">
       <div><p class="eyebrow">Operações</p><h1>Stock</h1><p>Gestão de artigos, receções e existências, separada da Oficina.</p></div>
-      <a class="button-link" href="/v2-clean/documentation/invoices">Classificar fatura</a>
+      <a class="button-link" href="/v2-clean/stock/receipts">Nova receção física</a>
     </header>
     <section class="stock-kpis" aria-label="Indicadores Stock">
       <a href="/v2-clean/stock/articles"><span>Artigos ativos</span><strong>{{ metrics.articles }}</strong></a>
       <a href="/v2-clean/stock/articles"><span>Valor estimado</span><strong>{{ "%.2f"|format(metrics.value) }} €</strong></a>
       <a class="warning" href="/v2-clean/stock/articles?low_stock=true"><span>Stock baixo</span><strong>{{ metrics.low }}</strong></a>
-      <a href="/v2-clean/stock/invoices"><span>Receções pendentes</span><strong>{{ metrics.pending_receipts }}</strong></a>
+      <a href="/v2-clean/stock/receipts"><span>Receções físicas</span><strong>{{ metrics.physical_receipts }}</strong></a>
     </section>
     <section class="stock-alert-card">
       <div class="stock-card-heading"><div><p class="eyebrow">Atenção necessária</p><h2>Alertas operacionais</h2></div></div>
@@ -20,7 +20,6 @@
         {% for row in low_rows %}
           <a href="/v2-clean/stock/articles/{{ row.article.id }}"><strong>{{ row.article.name }}</strong><span>{{ row.location.name }} · {{ row.available }} / mínimo {{ row.minimum.minimum_quantity }} {{ row.article.unit }}</span></a>
         {% else %}<p class="stock-empty">Não existem artigos abaixo do mínimo.</p>{% endfor %}
-        {% if metrics.pending_receipts %}<a href="/v2-clean/stock/invoices"><strong>{{ metrics.pending_receipts }} receções pendentes</strong><span>Confirmar local e quantidades físicas.</span></a>{% endif %}
       </div>
     </section>
     <section class="stock-card">

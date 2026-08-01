@@ -21,6 +21,7 @@ from app.models.stock import (
     StockMinimum,
     StockMovement,
     StockReceipt,
+    StockReceiptInvoiceLink,
     StockReceiptLine,
     StockSupplier,
 )
@@ -28,14 +29,14 @@ from app.schemas.stock import (
     StockInvoiceLineReview,
     StockInvoiceReview,
     StockMovementCreate,
-    StockReceiptConfirm,
-    StockReceiptLineConfirm,
+    StockReceiptCreate,
+    StockReceiptLineCreate,
 )
 from app.services.authorization import get_user_permission_codes
 from app.services.stock import (
     StockDomainError,
-    confirm_receipt,
     create_manual_movement,
+    create_physical_receipt,
     extract_stock_invoice,
     low_stock_rows,
     review_and_validate_invoice,
@@ -141,14 +142,7 @@ def stock_dashboard(request: Request, db: DbSession):
     ).all()
     rows = _article_rows(db, articles)
     low_rows = low_stock_rows(db)
-    pending_receipts = int(
-        db.scalar(
-            select(func.count())
-            .select_from(StockReceipt)
-            .where(StockReceipt.status.in_({"pending", "partial"}))
-        )
-        or 0
-    )
+    physical_receipts = int(db.scalar(select(func.count()).select_from(StockReceipt)) or 0)
     value = sum(
         (max(row["available"], ZERO) * (row["article"].average_cost or ZERO) for row in rows),
         ZERO,
@@ -168,7 +162,7 @@ def stock_dashboard(request: Request, db: DbSession):
                 "articles": len(articles),
                 "value": value,
                 "low": len(low_rows),
-                "pending_receipts": pending_receipts,
+                "physical_receipts": physical_receipts,
             },
             "low_rows": low_rows[:8],
             "article_rows": rows[:25],
@@ -291,12 +285,12 @@ def stock_article_detail(request: Request, article_id: int, db: DbSession):
         .order_by(StockMovement.occurred_at.desc(), StockMovement.id.desc())
         .limit(100)
     ).all()
-    invoice_lines = db.execute(
-        select(StockInvoiceLine, StockInvoiceImport, Document)
-        .join(StockInvoiceImport, StockInvoiceImport.id == StockInvoiceLine.invoice_import_id)
-        .join(Document, Document.id == StockInvoiceImport.document_id)
-        .where(StockInvoiceLine.article_id == article.id)
-        .order_by(StockInvoiceImport.invoice_date.desc().nullslast(), StockInvoiceImport.id.desc())
+    receipt_lines = db.execute(
+        select(StockReceiptLine, StockReceipt, StockSupplier)
+        .join(StockReceipt, StockReceipt.id == StockReceiptLine.receipt_id)
+        .outerjoin(StockSupplier, StockSupplier.id == StockReceipt.supplier_id)
+        .where(StockReceiptLine.article_id == article.id)
+        .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
         .limit(50)
     ).all()
     return templates.TemplateResponse(
@@ -311,7 +305,7 @@ def stock_article_detail(request: Request, article_id: int, db: DbSession):
             "locations": db.scalars(select(StockLocation).order_by(StockLocation.name)).all(),
             "minimums": minimums,
             "movements": movements,
-            "invoice_lines": invoice_lines,
+            "receipt_lines": receipt_lines,
         },
     )
 
@@ -471,21 +465,20 @@ def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: 
         )
     rows = []
     for invoice_import, document, supplier in db.execute(statement).all():
-        receipts = db.scalars(
-            select(StockReceipt).where(StockReceipt.invoice_import_id == invoice_import.id)
-        ).all()
+        linked_receipts = int(
+            db.scalar(
+                select(func.count())
+                .select_from(StockReceiptInvoiceLink)
+                .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
+            )
+            or 0
+        )
         rows.append(
             {
                 "invoice_import": invoice_import,
                 "document": document,
                 "supplier": supplier,
-                "receipt_status": (
-                    "completed"
-                    if receipts and all(item.status == "completed" for item in receipts)
-                    else "partial"
-                    if any(item.status == "partial" for item in receipts)
-                    else "pending"
-                ),
+                "linked_receipts": linked_receipts,
             }
         )
     return templates.TemplateResponse(
@@ -516,15 +509,13 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
         else {}
     )
     line_rows = saved_lines or raw.get("lines", [])
-    received = {
-        line_id: quantity or ZERO
-        for line_id, quantity in db.execute(
-            select(StockReceiptLine.invoice_line_id, func.sum(StockReceiptLine.received_quantity))
-            .join(StockInvoiceLine, StockInvoiceLine.id == StockReceiptLine.invoice_line_id)
-            .where(StockInvoiceLine.invoice_import_id == invoice_import.id)
-            .group_by(StockReceiptLine.invoice_line_id)
-        ).all()
-    }
+    linked_receipts = db.execute(
+        select(StockReceipt, StockLocation)
+        .join(StockReceiptInvoiceLink, StockReceiptInvoiceLink.receipt_id == StockReceipt.id)
+        .join(StockLocation, StockLocation.id == StockReceipt.location_id)
+        .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
+        .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
+    ).all()
     return templates.TemplateResponse(
         request,
         "clean_stock_invoice_review.html",
@@ -540,24 +531,9 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
                 .where(StockSupplier.active.is_(True))
                 .order_by(StockSupplier.name)
             ).all(),
-            "articles": db.scalars(
-                select(StockArticle)
-                .where(StockArticle.active.is_(True))
-                .order_by(StockArticle.name)
-            ).all(),
-            "categories": db.scalars(
-                select(StockCategory)
-                .where(StockCategory.active.is_(True))
-                .order_by(StockCategory.name)
-            ).all(),
-            "locations": db.scalars(
-                select(StockLocation)
-                .where(StockLocation.active.is_(True))
-                .order_by(StockLocation.name)
-            ).all(),
             "line_rows": line_rows,
             "raw": raw,
-            "received": received,
+            "linked_receipts": linked_receipts,
         },
     )
 
@@ -598,17 +574,9 @@ async def stock_invoice_validate(request: Request, invoice_import_id: int, db: D
                 values = form.getlist(name)
                 return str(values[row_index]) if row_index < len(values) else default
 
-            article_id = value("article_id")
-            create_article = value("create_article") == "1"
             lines.append(
                 StockInvoiceLineReview(
                     line_number=int(line_number),
-                    article_id=int(article_id) if article_id else None,
-                    create_article=create_article,
-                    internal_ref=value("internal_ref") or None,
-                    article_name=value("article_name") or None,
-                    category_id=int(value("category_id")) if value("category_id") else None,
-                    classification=value("classification") or None,
                     supplier_ref=value("supplier_ref") or None,
                     description=value("description"),
                     quantity=_parse_decimal(value("quantity")),
@@ -654,29 +622,85 @@ async def stock_invoice_validate(request: Request, invoice_import_id: int, db: D
     )
 
 
-@stock_router.post("/v2-clean/stock/invoices/{invoice_import_id}/receive")
-async def stock_invoice_receive(request: Request, invoice_import_id: int, db: DbSession):
+@stock_router.get("/v2-clean/stock/receipts", response_class=HTMLResponse)
+def stock_receipts(request: Request, db: DbSession):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    receipt_rows = db.execute(
+        select(StockReceipt, StockLocation, StockSupplier)
+        .join(StockLocation, StockLocation.id == StockReceipt.location_id)
+        .outerjoin(StockSupplier, StockSupplier.id == StockReceipt.supplier_id)
+        .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
+        .limit(200)
+    ).all()
+    linked_counts = {
+        receipt_id: count
+        for receipt_id, count in db.execute(
+            select(
+                StockReceiptInvoiceLink.receipt_id,
+                func.count(StockReceiptInvoiceLink.id),
+            ).group_by(StockReceiptInvoiceLink.receipt_id)
+        ).all()
+    }
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_receipts.html",
+        {
+            **_page_context(request, db),
+            "receipt_rows": receipt_rows,
+            "linked_counts": linked_counts,
+            "articles": db.scalars(
+                select(StockArticle)
+                .where(StockArticle.active.is_(True))
+                .order_by(StockArticle.name)
+            ).all(),
+            "locations": db.scalars(
+                select(StockLocation)
+                .where(StockLocation.active.is_(True))
+                .order_by(StockLocation.name)
+            ).all(),
+            "suppliers": db.scalars(
+                select(StockSupplier)
+                .where(StockSupplier.active.is_(True))
+                .order_by(StockSupplier.name)
+            ).all(),
+            "invoices": db.execute(
+                select(StockInvoiceImport, Document)
+                .join(Document, Document.id == StockInvoiceImport.document_id)
+                .order_by(StockInvoiceImport.invoice_date.desc().nullslast())
+                .limit(100)
+            ).all(),
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/receipts")
+async def stock_receipt_create(request: Request, db: DbSession):
     if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
         return denied
-    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
-    if not invoice_import:
-        return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
     form = await request.form()
     try:
-        ids = form.getlist("invoice_line_id")
-        quantities = form.getlist("received_quantity")
-        costs = form.getlist("received_unit_cost")
+        article_ids = form.getlist("article_id")
+        quantities = form.getlist("accepted_quantity")
+        costs = form.getlist("unit_cost")
+        supplier_refs = form.getlist("supplier_ref")
         lots = form.getlist("lot")
         divergences = form.getlist("divergence_reason")
         lines = []
-        for index, line_id in enumerate(ids):
-            quantity = _parse_decimal(str(quantities[index] if index < len(quantities) else "0"))
-            if quantity <= ZERO:
+        for index, article_id in enumerate(article_ids):
+            if not article_id:
                 continue
             lines.append(
-                StockReceiptLineConfirm(
-                    invoice_line_id=int(line_id),
-                    received_quantity=quantity,
+                StockReceiptLineCreate(
+                    article_id=int(article_id),
+                    supplier_ref=str(supplier_refs[index])
+                    if index < len(supplier_refs) and supplier_refs[index]
+                    else None,
+                    accepted_quantity=_parse_decimal(
+                        str(quantities[index] if index < len(quantities) else "0")
+                    ),
                     unit_cost=_parse_decimal(str(costs[index]))
                     if index < len(costs) and costs[index]
                     else None,
@@ -686,26 +710,23 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
                     else None,
                 )
             )
-        confirmation = StockReceiptConfirm(
+        command = StockReceiptCreate(
             location_id=int(str(form.get("location_id"))),
+            supplier_id=int(str(form.get("supplier_id"))) if form.get("supplier_id") else None,
+            source_type=str(form.get("source_type") or "manual"),
+            source_reference=str(form.get("source_reference") or "") or None,
             responsible_name=str(form.get("responsible_name") or "") or None,
             notes=str(form.get("notes") or "") or None,
+            invoice_import_ids=[int(value) for value in form.getlist("invoice_import_ids")],
             lines=lines,
         )
-        receipt = confirm_receipt(
-            db,
-            invoice_import=invoice_import,
-            confirmation=confirmation,
-            user_id=_user_id(request),
-        )
+        receipt = create_physical_receipt(db, command=command, user_id=_user_id(request))
         db.commit()
         notice = {"received": str(receipt.id)}
     except (ValueError, StockDomainError) as exc:
         db.rollback()
         notice = {"error": str(exc)}
-    return RedirectResponse(
-        f"/v2-clean/stock/invoices/{invoice_import_id}?{urlencode(notice)}", status_code=303
-    )
+    return RedirectResponse(f"/v2-clean/stock/receipts?{urlencode(notice)}", status_code=303)
 
 
 @stock_router.get("/v2-clean/stock/movements", response_class=HTMLResponse)

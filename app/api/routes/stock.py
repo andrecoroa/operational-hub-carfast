@@ -13,6 +13,7 @@ from app.models.stock import (
     StockInvoiceImport,
     StockInvoiceLine,
     StockMovement,
+    StockReceipt,
 )
 from app.schemas.stock import (
     StockArticleCreate,
@@ -21,15 +22,16 @@ from app.schemas.stock import (
     StockMovementCreate,
     StockMovementRead,
     StockMovementReverse,
-    StockReceiptConfirm,
+    StockReceiptCreate,
 )
 from app.services.audit import record_audit
 from app.services.stock import (
     StockDomainError,
-    confirm_receipt,
     create_manual_movement,
+    create_physical_receipt,
     ensure_invoice_import,
     extract_stock_invoice,
+    link_invoice_to_receipt,
     low_stock_rows,
     reverse_movement,
     review_and_validate_invoice,
@@ -210,21 +212,37 @@ def validate_invoice_import(
     return {"id": invoice_import.id, "status": invoice_import.status, "stock_changed": False}
 
 
-@router.post("/invoice-imports/{invoice_import_id}/receipts")
-def receive_invoice_import(
-    invoice_import_id: int,
-    payload: StockReceiptConfirm,
+@router.get("/receipts")
+def list_receipts(db: DbSession, limit: int = Query(default=100, ge=1, le=500)):
+    receipts = db.scalars(
+        select(StockReceipt)
+        .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "id": receipt.id,
+            "supplier_id": receipt.supplier_id,
+            "location_id": receipt.location_id,
+            "source_type": receipt.source_type,
+            "source_reference": receipt.source_reference,
+            "status": receipt.status,
+            "confirmed_at": receipt.confirmed_at,
+        }
+        for receipt in receipts
+    ]
+
+
+@router.post("/receipts", status_code=status.HTTP_201_CREATED)
+def create_receipt(
+    payload: StockReceiptCreate,
     db: DbSession,
     user: CurrentUser,
 ):
-    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
-    if not invoice_import:
-        raise HTTPException(status_code=404, detail="Importação não encontrada.")
     try:
-        receipt = confirm_receipt(
+        receipt = create_physical_receipt(
             db,
-            invoice_import=invoice_import,
-            confirmation=payload,
+            command=payload,
             user_id=user.id,
         )
         db.commit()
@@ -232,6 +250,32 @@ def receive_invoice_import(
         db.rollback()
         raise _domain_error(exc) from exc
     return {"id": receipt.id, "status": receipt.status, "location_id": receipt.location_id}
+
+
+@router.post("/receipts/{receipt_id}/invoice-links/{invoice_import_id}")
+def link_receipt_invoice(
+    receipt_id: int,
+    invoice_import_id: int,
+    db: DbSession,
+    user: CurrentUser,
+):
+    receipt = db.get(StockReceipt, receipt_id)
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not receipt or not invoice_import:
+        raise HTTPException(status_code=404, detail="Receção ou fatura não encontrada.")
+    link = link_invoice_to_receipt(
+        db,
+        receipt=receipt,
+        invoice_import=invoice_import,
+        user_id=user.id,
+    )
+    db.commit()
+    return {
+        "id": link.id,
+        "receipt_id": link.receipt_id,
+        "invoice_import_id": link.invoice_import_id,
+        "stock_changed": False,
+    }
 
 
 @router.get("/movements", response_model=list[StockMovementRead])

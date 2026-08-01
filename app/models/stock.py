@@ -189,17 +189,37 @@ class StockReceipt(TimestampMixin, Base):
     __tablename__ = "stock_receipts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    invoice_import_id: Mapped[int] = mapped_column(
-        ForeignKey("stock_invoice_imports.id", ondelete="RESTRICT"), index=True
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_suppliers.id", ondelete="RESTRICT"), index=True
     )
-    location_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stock_locations.id", ondelete="RESTRICT"), index=True
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_locations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    source_type: Mapped[str] = mapped_column(String(40), index=True)
+    source_reference: Mapped[str | None] = mapped_column(String(160), index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="completed", index=True)
     confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     responsible_name: Mapped[str | None] = mapped_column(String(160))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class StockReceiptInvoiceLink(Base):
+    __tablename__ = "stock_receipt_invoice_links"
+    __table_args__ = (
+        UniqueConstraint("receipt_id", "invoice_import_id", name="uq_stock_receipt_invoice_link"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    receipt_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_receipts.id", ondelete="CASCADE"), index=True
+    )
+    invoice_import_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_invoice_imports.id", ondelete="CASCADE"), index=True
+    )
+    linked_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class StockReceiptLine(Base):
@@ -209,15 +229,11 @@ class StockReceiptLine(Base):
     receipt_id: Mapped[int] = mapped_column(
         ForeignKey("stock_receipts.id", ondelete="RESTRICT"), index=True
     )
-    invoice_line_id: Mapped[int] = mapped_column(
-        ForeignKey("stock_invoice_lines.id", ondelete="RESTRICT"), index=True
-    )
     article_id: Mapped[int] = mapped_column(
         ForeignKey("stock_articles.id", ondelete="RESTRICT"), index=True
     )
-    invoiced_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
-    previously_received_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
-    received_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
+    supplier_ref: Mapped[str | None] = mapped_column(String(160), index=True)
+    accepted_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
     unit_cost: Mapped[Decimal] = mapped_column(MONEY)
     lot: Mapped[str | None] = mapped_column(String(120), index=True)
     divergence_reason: Mapped[str | None] = mapped_column(Text)

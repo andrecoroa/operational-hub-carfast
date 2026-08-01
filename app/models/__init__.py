@@ -48,6 +48,7 @@ from app.models.stock import (
     StockMinimum,
     StockMovement,
     StockReceipt,
+    StockReceiptInvoiceLink,
     StockReceiptLine,
     StockSupplier,
 )
@@ -168,6 +169,7 @@ __all__ = [
     "StockMinimum",
     "StockMovement",
     "StockReceipt",
+    "StockReceiptInvoiceLink",
     "StockReceiptLine",
     "StockSupplier",
     "Task",

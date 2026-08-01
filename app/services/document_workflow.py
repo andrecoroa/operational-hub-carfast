@@ -288,16 +288,18 @@ def classify_invoice_nature(
         timeline_visible = False
         archive_only = True
     else:
-        document.document_type = "stock_invoice"
-        document.classification = "stock"
-        document.status = "pending_stock_review"
-        document.archived = False
-        document.archived_at = None
-        document.archived_by_id = None
+        document.document_type = "finance_supplier_invoice"
+        document.classification = "finance"
+        document.status = "archived"
+        document.archived = True
+        document.archived_at = datetime.now(UTC)
+        document.archived_by_id = user_id
+        document.vehicle_id = None
+        document.workshop_process_id = None
         state.validation_status = "human_validated"
-        state.destination_status = "invoices"
+        state.destination_status = "archive"
         timeline_visible = False
-        archive_only = False
+        archive_only = True
 
     state.association_status = "associated" if document.vehicle_id else "unassociated"
     after = {

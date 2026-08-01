@@ -16,12 +16,6 @@ class StockInvoiceImportCreate(BaseModel):
 
 class StockInvoiceLineReview(BaseModel):
     line_number: int = Field(ge=1)
-    article_id: int | None = None
-    create_article: bool = False
-    internal_ref: str | None = None
-    article_name: str | None = None
-    category_id: int | None = None
-    classification: str | None = None
     supplier_ref: str | None = None
     description: str = Field(min_length=1)
     quantity: Decimal = Field(gt=0)
@@ -31,14 +25,6 @@ class StockInvoiceLineReview(BaseModel):
     eco_value: Decimal = Field(default=Decimal("0"), ge=0)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=1)
     line_total: Decimal | None = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def article_choice_is_explicit(self):
-        if self.create_article and not (self.internal_ref and self.article_name):
-            raise ValueError("Um artigo novo exige referência interna e designação.")
-        if not self.create_article and not self.article_id and not self.supplier_ref:
-            raise ValueError("Associe um artigo, uma referência conhecida ou crie um artigo.")
-        return self
 
 
 class StockInvoiceReview(BaseModel):
@@ -59,19 +45,31 @@ class StockInvoiceReview(BaseModel):
     lines: list[StockInvoiceLineReview] = Field(min_length=1)
 
 
-class StockReceiptLineConfirm(BaseModel):
-    invoice_line_id: int
-    received_quantity: Decimal = Field(gt=0)
+class StockReceiptLineCreate(BaseModel):
+    article_id: int
+    supplier_ref: str | None = None
+    accepted_quantity: Decimal = Field(gt=0)
     unit_cost: Decimal | None = Field(default=None, ge=0)
     lot: str | None = None
     divergence_reason: str | None = None
 
 
-class StockReceiptConfirm(BaseModel):
+class StockReceiptCreate(BaseModel):
     location_id: int
+    supplier_id: int | None = None
+    source_type: Literal["delivery_note", "invoice", "manual"]
+    source_reference: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=120)
     responsible_name: str | None = None
     notes: str | None = None
-    lines: list[StockReceiptLineConfirm] = Field(min_length=1)
+    invoice_import_ids: list[int] = Field(default_factory=list)
+    lines: list[StockReceiptLineCreate] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def source_reference_matches_type(self):
+        if self.source_type != "manual" and not (self.source_reference or "").strip():
+            raise ValueError("Uma guia ou fatura exige referência do documento físico.")
+        return self
 
 
 class StockArticleCreate(BaseModel):

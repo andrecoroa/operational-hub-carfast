@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu="stock" %}{% include "_sidebar.html" %}
+  <main class="content clean-content stock-page">
+    {% set stock_nav="receipts" %}{% include "_clean_stock_nav.html" %}
+    <header class="stock-header">
+      <div><p class="eyebrow">Operação física</p><h1>Receções</h1><p>A receção nasce aqui, no momento da entrega. Só quantidades fisicamente aceites atualizam existências.</p></div>
+    </header>
+    {% if request.query_params.get('received') %}<div class="stock-notice success">Receção física registada e entradas imutáveis criadas.</div>{% endif %}
+    {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
+    <section class="stock-card">
+      <div class="stock-card-heading"><div><h2>Nova receção física</h2><p>Usa guia de transporte, fatura apresentada na entrega ou registo manual. A ligação documental é opcional e não altera stock.</p></div></div>
+      <form method="post" action="/v2-clean/stock/receipts" class="stock-review-form">
+        <div class="stock-form-grid">
+          <label>Local<select name="location_id" required><option value="">Selecionar</option>{% for item in locations %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Fornecedor<select name="supplier_id"><option value="">Sem fornecedor</option>{% for item in suppliers %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Documento apresentado<select name="source_type" required><option value="delivery_note">Guia de transporte</option><option value="invoice">Fatura</option><option value="manual">Registo manual</option></select></label>
+          <label>Referência física<input name="source_reference" placeholder="N.º da guia ou fatura"></label>
+          <label>Responsável no Aeroporto<input name="responsible_name" placeholder="Obrigatório no Aeroporto"></label>
+          <label>Observações<input name="notes"></label>
+        </div>
+        <label>Faturas para conferência — opcional<select name="invoice_import_ids" multiple size="4">{% for invoice,document in invoices %}<option value="{{ invoice.id }}">{{ invoice.invoice_number or document.title or document.original_name }} · {{ invoice.status }}</option>{% endfor %}</select></label>
+        <div class="stock-table-wrap"><table class="stock-table stock-review-table"><thead><tr><th>Artigo aceite</th><th>Ref. fornecedor</th><th>Quantidade aceite</th><th>Custo unitário</th><th>Lote</th><th>Divergência/observação</th></tr></thead><tbody id="receipt-lines"><tr><td><select name="article_id" required><option value="">Selecionar</option>{% for article in articles %}<option value="{{ article.id }}">{{ article.internal_ref }} · {{ article.name }}</option>{% endfor %}</select></td><td><input name="supplier_ref"></td><td><input name="accepted_quantity" inputmode="decimal" required></td><td><input name="unit_cost" inputmode="decimal"></td><td><input name="lot"></td><td><input name="divergence_reason"></td></tr></tbody></table></div>
+        <div class="stock-actions"><button type="button" class="secondary" id="add-receipt-line">Adicionar artigo</button><button type="submit" {% if not can_operate_stock %}disabled{% endif %}>Confirmar receção física</button></div>
+      </form>
+    </section>
+    <section class="stock-card"><div class="stock-card-heading"><div><h2>Receções concluídas</h2><p>Registos físicos; as faturas ligadas servem apenas para conferência.</p></div></div><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Data</th><th>Origem</th><th>Referência</th><th>Fornecedor</th><th>Local</th><th>Faturas ligadas</th><th>Estado</th></tr></thead><tbody>{% for receipt,location,supplier in receipt_rows %}<tr><td>{{ receipt.confirmed_at.strftime('%d/%m/%Y %H:%M') if receipt.confirmed_at else '-' }}</td><td>{{ {'delivery_note':'Guia','invoice':'Fatura','manual':'Manual'}.get(receipt.source_type,receipt.source_type) }}</td><td>{{ receipt.source_reference or receipt.id }}</td><td>{{ supplier.name if supplier else '-' }}</td><td>{{ location.name }}</td><td>{{ linked_counts.get(receipt.id,0) }}</td><td><span class="stock-badge success">Concluída</span></td></tr>{% else %}<tr><td colspan="7" class="stock-empty">Ainda não existem receções físicas.</td></tr>{% endfor %}</tbody></table></div></section>
+  </main>
+</div>
+<script>(()=>{const button=document.getElementById('add-receipt-line');const body=document.getElementById('receipt-lines');if(!button||!body)return;button.addEventListener('click',()=>{const row=body.querySelector('tr:last-child');const clone=row.cloneNode(true);clone.querySelectorAll('input').forEach(el=>el.value='');clone.querySelectorAll('select').forEach(el=>el.selectedIndex=0);body.appendChild(clone);});})();</script>
+{% endblock %}

@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
+from app.api.routes import stock as stock_api
 from app.models.admin import Permission, Role, RolePermission
 from app.models.documents import Document, DocumentWorkflowState
 from app.models.stock import (
@@ -15,6 +16,8 @@ from app.models.stock import (
     StockMinimum,
     StockMovement,
     StockReceipt,
+    StockReceiptInvoiceLink,
+    StockReceiptLine,
 )
 from app.models.vehicles import Vehicle
 from app.models.workshop import WorkshopProcess, WorkshopTechnicalReading
@@ -22,7 +25,9 @@ from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProc
 from app.services.stock import low_stock_rows, parse_dispnal_invoice, stock_balances
 
 
-def _document(name: str, *, file_hash: str | None = None) -> Document:
+def _document(
+    name: str, *, file_hash: str | None = None, vehicle_id: int | None = None
+) -> Document:
     return Document(
         title=name,
         document_type="workshop_supplier_invoice",
@@ -35,10 +40,11 @@ def _document(name: str, *, file_hash: str | None = None) -> Document:
         storage_path=f"Stock/{name}.pdf",
         file_hash=file_hash,
         status="received",
+        vehicle_id=vehicle_id,
     )
 
 
-def _review_payload(invoice_number: str, *, supplier_ref: str = "DISP-001", create=True):
+def _review_payload(invoice_number: str):
     return {
         "supplier_tax_id": "504670409",
         "supplier_name": "Dispnal Pneus, S.A.",
@@ -50,10 +56,7 @@ def _review_payload(invoice_number: str, *, supplier_ref: str = "DISP-001", crea
         "lines": [
             {
                 "line_number": 1,
-                "create_article": create,
-                "internal_ref": "PNEU-TESTE" if create else None,
-                "article_name": "Pneu de teste" if create else None,
-                "supplier_ref": supplier_ref,
+                "supplier_ref": "DISP-001",
                 "description": "Pneu Petlas 215/70 R15C",
                 "quantity": "10",
                 "unit": "un.",
@@ -65,6 +68,20 @@ def _review_payload(invoice_number: str, *, supplier_ref: str = "DISP-001", crea
             }
         ],
     }
+
+
+def _create_article(authenticated_client, reference="PNEU-TESTE") -> int:
+    response = authenticated_client.post(
+        "/api/stock/articles",
+        json={
+            "internal_ref": reference,
+            "name": "Pneu de teste",
+            "unit": "un.",
+            "classification": "pneu",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
 
 
 def _isolation_fixture(db_session):
@@ -133,23 +150,23 @@ def _isolation_fixture(db_session):
         "phase": phase.id,
         "reading": reading.id,
         "document": workshop_document.id,
-        "snapshot": {
-            "vehicle_status": vehicle.operational_status,
-            "process_status": process.status,
-            "process_km": process.km_entry,
-            "process_decision": process.decision,
-            "process_closed": process.closed_at,
-            "phased_status": phased.status,
-            "phased_phase": phased.current_phase_code,
-            "phased_km": phased.initial_km,
-            "phased_closed": phased.closed_at,
-            "phase_status": phase.status,
-            "reading_km": reading.odometer_km,
-            "reading_status": reading.status,
-            "document_status": workshop_document.status,
-            "document_hash": workshop_document.file_hash,
-            "document_path": workshop_document.storage_path,
-        },
+        "snapshot": (
+            vehicle.operational_status,
+            process.status,
+            process.km_entry,
+            process.decision,
+            process.closed_at,
+            phased.status,
+            phased.current_phase_code,
+            phased.initial_km,
+            phased.closed_at,
+            phase.status,
+            reading.odometer_km,
+            reading.status,
+            workshop_document.status,
+            workshop_document.file_hash,
+            workshop_document.storage_path,
+        ),
     }
 
 
@@ -161,29 +178,38 @@ def _assert_workshop_unchanged(db_session, isolation):
     phase = db_session.get(WorkshopPhasedProcessPhase, isolation["phase"])
     reading = db_session.get(WorkshopTechnicalReading, isolation["reading"])
     document = db_session.get(Document, isolation["document"])
-    assert {
-        "vehicle_status": vehicle.operational_status,
-        "process_status": process.status,
-        "process_km": process.km_entry,
-        "process_decision": process.decision,
-        "process_closed": process.closed_at,
-        "phased_status": phased.status,
-        "phased_phase": phased.current_phase_code,
-        "phased_km": phased.initial_km,
-        "phased_closed": phased.closed_at,
-        "phase_status": phase.status,
-        "reading_km": reading.odometer_km,
-        "reading_status": reading.status,
-        "document_status": document.status,
-        "document_hash": document.file_hash,
-        "document_path": document.storage_path,
-    } == isolation["snapshot"]
+    assert (
+        vehicle.operational_status,
+        process.status,
+        process.km_entry,
+        process.decision,
+        process.closed_at,
+        phased.status,
+        phased.current_phase_code,
+        phased.initial_km,
+        phased.closed_at,
+        phase.status,
+        reading.odometer_km,
+        reading.status,
+        document.status,
+        document.file_hash,
+        document.storage_path,
+    ) == isolation["snapshot"]
 
 
-def test_document_classification_creates_pending_import_without_stock(
+def test_stock_invoice_classification_archives_and_removes_operational_association(
     authenticated_client, db_session
 ):
-    document = _document("fatura-classificada")
+    vehicle = Vehicle(
+        plate="FS-00-01",
+        vin="VF3STOCKDOCUMENT001",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    document = _document("fatura-classificada", vehicle_id=vehicle.id)
     db_session.add(document)
     db_session.commit()
 
@@ -198,248 +224,221 @@ def test_document_classification_creates_pending_import_without_stock(
     state = db_session.scalar(
         select(DocumentWorkflowState).where(DocumentWorkflowState.document_id == document.id)
     )
-    invoice_import = db_session.scalar(
-        select(StockInvoiceImport).where(StockInvoiceImport.document_id == document.id)
-    )
+    document = db_session.get(Document, document.id)
     assert state.invoice_nature == "stock"
-    assert invoice_import.status == "needs_review"
+    assert state.destination_status == "archive"
+    assert document.classification == "finance"
+    assert document.document_type == "finance_supplier_invoice"
+    assert document.status == "archived"
+    assert document.archived is True
+    assert document.vehicle_id is None
+    assert document.workshop_process_id is None
+    assert db_session.scalar(select(func.count()).select_from(StockInvoiceImport)) == 1
+    assert db_session.scalar(select(func.count()).select_from(StockArticle)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 0
     assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
-    assert stock_balances(db_session) == {}
 
 
-def test_end_to_end_partial_receipts_movements_and_workshop_isolation(
-    authenticated_client, db_session
-):
-    isolation = _isolation_fixture(db_session)
-    document = _document("ft-8643", file_hash="a" * 64)
-    db_session.add(document)
-    db_session.commit()
-
-    imported = authenticated_client.post(
-        "/api/stock/invoice-imports",
-        json={
-            "document_id": document.id,
-            "classification": "stock_invoice",
-            "extracted_data": {"content_hash": "a" * 64},
-        },
-    )
-    assert imported.status_code == 200
-    import_id = imported.json()["id"]
-
-    validated = authenticated_client.post(
-        f"/api/stock/invoice-imports/{import_id}/validate",
-        json=_review_payload("8643/2026"),
-    )
-    assert validated.status_code == 200
-    assert validated.json()["stock_changed"] is False
-    db_session.expire_all()
-    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
-    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 1
-    assert stock_balances(db_session) == {}
-    _assert_workshop_unchanged(db_session, isolation)
-
-    invoice_line = db_session.scalar(
-        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == import_id)
-    )
-    article_id = invoice_line.article_id
-    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
-    airport = db_session.scalar(select(StockLocation).where(StockLocation.code == "AIRPORT"))
-    first_receipt = authenticated_client.post(
-        f"/api/stock/invoice-imports/{import_id}/receipts",
-        json={
-            "location_id": workshop.id,
-            "lines": [{"invoice_line_id": invoice_line.id, "received_quantity": "4"}],
-        },
-    )
-    assert first_receipt.status_code == 200
-    assert first_receipt.json()["status"] == "partial"
-    db_session.expire_all()
-    assert stock_balances(db_session)[(article_id, workshop.id)] == Decimal("4.000")
-    assert stock_balances(db_session).get((article_id, airport.id), Decimal("0")) == 0
-    supplier_reference = db_session.scalar(
-        select(StockArticleSupplierRef).where(StockArticleSupplierRef.article_id == article_id)
-    )
-    assert supplier_reference.last_cost == Decimal("10.0000")
-    assert supplier_reference.last_purchase_at is not None
-    _assert_workshop_unchanged(db_session, isolation)
-
-    missing_responsible = authenticated_client.post(
-        f"/api/stock/invoice-imports/{import_id}/receipts",
-        json={
-            "location_id": airport.id,
-            "lines": [{"invoice_line_id": invoice_line.id, "received_quantity": "6"}],
-        },
-    )
-    assert missing_responsible.status_code == 422
-
-    final_receipt = authenticated_client.post(
-        f"/api/stock/invoice-imports/{import_id}/receipts",
-        json={
-            "location_id": airport.id,
-            "responsible_name": "Responsável Aeroporto",
-            "lines": [{"invoice_line_id": invoice_line.id, "received_quantity": "6"}],
-        },
-    )
-    assert final_receipt.status_code == 200
-    assert final_receipt.json()["status"] == "completed"
-
-    for payload in (
-        {
-            "article_id": article_id,
-            "movement_type": "exit",
-            "quantity": "1",
-            "from_location_id": workshop.id,
-            "reason": "Saída manual de teste",
-        },
-        {
-            "article_id": article_id,
-            "movement_type": "return",
-            "quantity": "1",
-            "from_location_id": airport.id,
-            "reason": "Devolução ao fornecedor",
-        },
-        {
-            "article_id": article_id,
-            "movement_type": "adjustment",
-            "quantity": "2",
-            "to_location_id": workshop.id,
-            "reason": "Acerto inventário contado",
-        },
-        {
-            "article_id": article_id,
-            "movement_type": "transfer",
-            "quantity": "1",
-            "from_location_id": workshop.id,
-            "to_location_id": airport.id,
-            "reason": "Transferência física",
-        },
-    ):
-        result = authenticated_client.post("/api/stock/movements", json=payload)
-        assert result.status_code == 201, result.text
-    _assert_workshop_unchanged(db_session, isolation)
-
-
-def test_known_supplier_reference_is_reused_and_import_is_idempotent(
-    authenticated_client, db_session
-):
-    first_document = _document("first-known-reference", file_hash="b" * 64)
-    second_document = _document("second-known-reference", file_hash="c" * 64)
-    db_session.add_all([first_document, second_document])
-    db_session.commit()
-    first = authenticated_client.post(
-        "/api/stock/invoice-imports",
-        json={
-            "document_id": first_document.id,
-            "classification": "stock_invoice",
-            "extracted_data": {},
-        },
-    ).json()
-    same = authenticated_client.post(
-        "/api/stock/invoice-imports",
-        json={
-            "document_id": first_document.id,
-            "classification": "stock_invoice",
-            "extracted_data": {},
-        },
-    ).json()
-    assert same["id"] == first["id"]
-    assert (
-        authenticated_client.post(
-            f"/api/stock/invoice-imports/{first['id']}/validate",
-            json=_review_payload("REF-1/2026"),
-        ).status_code
-        == 200
-    )
-    db_session.expire_all()
-    original_line = db_session.scalar(
-        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == first["id"])
-    )
-
-    second = authenticated_client.post(
-        "/api/stock/invoice-imports",
-        json={
-            "document_id": second_document.id,
-            "classification": "stock_invoice",
-            "extracted_data": {},
-        },
-    ).json()
-    payload = _review_payload("REF-2/2026", create=False)
-    validated = authenticated_client.post(
-        f"/api/stock/invoice-imports/{second['id']}/validate", json=payload
-    )
-    assert validated.status_code == 200, validated.text
-    db_session.expire_all()
-    reused_line = db_session.scalar(
-        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == second["id"])
-    )
-    assert reused_line.article_id == original_line.article_id
-    assert db_session.scalar(select(func.count()).select_from(StockArticle)) == 1
-    assert db_session.scalar(select(func.count()).select_from(StockArticleSupplierRef)) == 1
-
-
-def test_divergent_totals_stay_in_review_and_create_no_receipt_or_movement(
-    authenticated_client, db_session
-):
-    document = _document("divergent")
+def test_extract_and_validate_are_document_only(authenticated_client, db_session, monkeypatch):
+    document = _document("document-only", file_hash="a" * 64)
     db_session.add(document)
     db_session.commit()
     invoice_import = authenticated_client.post(
         "/api/stock/invoice-imports",
-        json={"document_id": document.id, "classification": "stock_invoice", "extracted_data": {}},
+        json={"document_id": document.id, "classification": "stock_invoice"},
     ).json()
-    payload = _review_payload("DIV-1/2026")
-    payload["gross_total"] = "200.00"
-    response = authenticated_client.post(
-        f"/api/stock/invoice-imports/{invoice_import['id']}/validate", json=payload
+
+    def fake_extract(_db, record):
+        record.raw_extraction_json = _review_payload("DOC-1/2026")
+        record.status = "needs_review"
+        return record.raw_extraction_json
+
+    monkeypatch.setattr(stock_api, "extract_stock_invoice", fake_extract)
+    extracted = authenticated_client.post(
+        f"/api/stock/invoice-imports/{invoice_import['id']}/extract"
     )
-    assert response.status_code == 422
+    assert extracted.status_code == 200
+    validated = authenticated_client.post(
+        f"/api/stock/invoice-imports/{invoice_import['id']}/validate",
+        json=_review_payload("DOC-1/2026"),
+    )
+    assert validated.status_code == 200, validated.text
+    assert validated.json()["stock_changed"] is False
     db_session.expire_all()
-    record = db_session.get(StockInvoiceImport, invoice_import["id"])
-    assert record.status == "needs_review"
-    assert "Totais divergentes" in record.error_details
+    line = db_session.scalar(
+        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_import["id"])
+    )
+    assert line.quantity == Decimal("10.000")
+    assert line.article_id is None
+    assert db_session.scalar(select(func.count()).select_from(StockArticle)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockArticleSupplierRef)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockReceiptLine)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
+    assert stock_balances(db_session) == {}
+
+
+def test_receipts_start_only_from_physical_stock_action_and_can_link_one_invoice_many_times(
+    authenticated_client, db_session
+):
+    isolation = _isolation_fixture(db_session)
+    article_id = _create_article(authenticated_client)
+    document = _document("physical-link")
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    assert (
+        authenticated_client.post(
+            f"/api/stock/invoice-imports/{invoice_id}/validate",
+            json=_review_payload("PHYS-1/2026"),
+        ).status_code
+        == 200
+    )
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    airport = db_session.scalar(select(StockLocation).where(StockLocation.code == "AIRPORT"))
+
+    first = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": workshop.id,
+            "source_type": "delivery_note",
+            "source_reference": "GT-100",
+            "invoice_import_ids": [invoice_id],
+            "lines": [
+                {
+                    "article_id": article_id,
+                    "supplier_ref": "DISP-001",
+                    "accepted_quantity": "4",
+                    "unit_cost": "10",
+                }
+            ],
+        },
+    )
+    assert first.status_code == 201, first.text
+    second = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": airport.id,
+            "source_type": "manual",
+            "responsible_name": "Responsável Aeroporto",
+            "invoice_import_ids": [invoice_id],
+            "lines": [{"article_id": article_id, "accepted_quantity": "3", "unit_cost": "11"}],
+        },
+    )
+    assert second.status_code == 201, second.text
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 2
+    assert db_session.scalar(select(func.count()).select_from(StockReceiptInvoiceLink)) == 2
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 2
+    assert stock_balances(db_session)[(article_id, workshop.id)] == Decimal("4.000")
+    assert stock_balances(db_session)[(article_id, airport.id)] == Decimal("3.000")
+    _assert_workshop_unchanged(db_session, isolation)
+
+
+def test_linking_invoice_after_receipt_is_idempotent_and_never_changes_stock(
+    authenticated_client, db_session
+):
+    article_id = _create_article(authenticated_client, "FILTRO-TESTE")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    receipt_id = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": workshop.id,
+            "source_type": "manual",
+            "lines": [{"article_id": article_id, "accepted_quantity": "2", "unit_cost": "5"}],
+        },
+    ).json()["id"]
+    document = _document("later-link")
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    before = stock_balances(db_session).copy()
+    for _ in range(2):
+        response = authenticated_client.post(
+            f"/api/stock/receipts/{receipt_id}/invoice-links/{invoice_id}"
+        )
+        assert response.status_code == 200
+        assert response.json()["stock_changed"] is False
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(StockReceiptInvoiceLink)) == 1
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 1
+    assert stock_balances(db_session) == before
+
+
+def test_receipt_idempotency_and_airport_responsibility(authenticated_client, db_session):
+    article_id = _create_article(authenticated_client, "OLEO-IDEMP")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    airport = db_session.scalar(select(StockLocation).where(StockLocation.code == "AIRPORT"))
+    payload = {
+        "location_id": workshop.id,
+        "source_type": "delivery_note",
+        "source_reference": "GT-IDEMP",
+        "idempotency_key": "receipt-idempotency-test",
+        "lines": [{"article_id": article_id, "accepted_quantity": "2", "unit_cost": "8"}],
+    }
+    first = authenticated_client.post("/api/stock/receipts", json=payload)
+    second = authenticated_client.post("/api/stock/receipts", json=payload)
+    assert first.status_code == second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 1
+    missing_responsible = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": airport.id,
+            "source_type": "manual",
+            "lines": [{"article_id": article_id, "accepted_quantity": "1"}],
+        },
+    )
+    assert missing_responsible.status_code == 422
+
+
+def test_legacy_invoice_driven_receipt_endpoint_cannot_create_stock(
+    authenticated_client, db_session
+):
+    document = _document("legacy-endpoint")
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    response = authenticated_client.post(
+        f"/api/stock/invoice-imports/{invoice_id}/receipts", json={}
+    )
+    assert response.status_code in {404, 405}
     assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 0
     assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
 
 
 def test_low_stock_alert_and_movement_immutability(authenticated_client, db_session):
-    document = _document("immutable")
-    db_session.add(document)
-    db_session.commit()
-    import_id = authenticated_client.post(
-        "/api/stock/invoice-imports",
-        json={"document_id": document.id, "classification": "stock_invoice", "extracted_data": {}},
-    ).json()["id"]
-    assert (
-        authenticated_client.post(
-            f"/api/stock/invoice-imports/{import_id}/validate",
-            json=_review_payload("IMM-1/2026"),
-        ).status_code
-        == 200
-    )
-    db_session.expire_all()
-    line = db_session.scalar(
-        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == import_id)
-    )
+    article_id = _create_article(authenticated_client, "IMMUTABLE")
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
     assert (
         authenticated_client.post(
-            f"/api/stock/invoice-imports/{import_id}/receipts",
+            "/api/stock/receipts",
             json={
                 "location_id": workshop.id,
-                "lines": [{"invoice_line_id": line.id, "received_quantity": "2"}],
+                "source_type": "manual",
+                "lines": [{"article_id": article_id, "accepted_quantity": "2", "unit_cost": "4"}],
             },
         ).status_code
-        == 200
+        == 201
     )
-    db_session.expire_all()
     db_session.add(
         StockMinimum(
-            article_id=line.article_id, location_id=workshop.id, minimum_quantity=Decimal("3")
+            article_id=article_id,
+            location_id=workshop.id,
+            minimum_quantity=Decimal("3"),
         )
     )
     db_session.commit()
     assert len(low_stock_rows(db_session)) == 1
-
     movement = db_session.scalar(select(StockMovement).order_by(StockMovement.id))
     movement.reason = "Tentativa de edição"
     with pytest.raises(ValueError, match="imutáveis"):
@@ -477,18 +476,23 @@ def test_existing_profiles_receive_stock_permissions(db_session):
         "/v2-clean/stock",
         "/v2-clean/stock/articles",
         "/v2-clean/stock/suppliers",
+        "/v2-clean/stock/receipts",
         "/v2-clean/stock/invoices",
         "/v2-clean/stock/movements",
     ],
 )
-def test_clean_stock_pages_render_and_use_responsive_navigation(authenticated_client, path):
+def test_clean_stock_pages_render_and_explain_physical_boundary(authenticated_client, path):
     response = authenticated_client.get(path)
     assert response.status_code == 200
     assert 'class="stock-nav"' in response.text
     assert "Stock" in response.text
+    if path.endswith("/receipts"):
+        assert "Só quantidades fisicamente aceites" in response.text
+    if path.endswith("/invoices"):
+        assert "cria artigos, receções, movimentos ou existências" in response.text
 
 
-def test_dispnal_parser_ports_the_tested_importer_fields():
+def test_dispnal_parser_keeps_documentary_fields_only():
     lines = [
         "Dispnal Pneus, S.A. | NIF 504670409",
         "N.º 8643/2026",
@@ -500,6 +504,5 @@ def test_dispnal_parser_ports_the_tested_importer_fields():
     assert parsed["supplier_tax_id"] == "504670409"
     assert parsed["invoice_number"] == "8643/2026"
     assert parsed["lines"][0]["supplier_ref"] == "ABC1234567"
-    assert Decimal(parsed["lines"][0]["discount"]) == Decimal("0.1")
-    assert parsed["lines"][0]["eco_value"] == "1.00"
-    assert parsed["lines"][0]["tax_rate"] == "0.23"
+    assert "article_id" not in parsed["lines"][0]
+    assert "receipt_id" not in parsed

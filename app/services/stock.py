@@ -25,6 +25,7 @@ from app.models.stock import (
     StockMinimum,
     StockMovement,
     StockReceipt,
+    StockReceiptInvoiceLink,
     StockReceiptLine,
     StockSupplier,
 )
@@ -32,7 +33,7 @@ from app.schemas.stock import (
     StockInvoiceLineReview,
     StockInvoiceReview,
     StockMovementCreate,
-    StockReceiptConfirm,
+    StockReceiptCreate,
 )
 from app.services.audit import record_audit
 
@@ -167,9 +168,6 @@ def ensure_invoice_import(
     )
     db.add(invoice_import)
     db.flush()
-    document.document_type = "stock_invoice"
-    document.classification = "stock"
-    document.status = "pending_stock_review"
     db.add(
         DocumentEvent(
             document_id=document.id,
@@ -184,70 +182,11 @@ def ensure_invoice_import(
         action="stock.invoice_import.created",
         entity_type="stock_invoice_import",
         entity_id=invoice_import.id,
-        detail="Fatura classificada para revisão Stock; nenhuma existência foi alterada.",
+        detail="Registo documental criado para conferência; nenhuma operação de Stock foi criada.",
         user_id=user_id,
         after_json={"document_id": document.id, "status": invoice_import.status},
     )
     return invoice_import
-
-
-def _resolve_article(
-    db: Session,
-    *,
-    supplier: StockSupplier,
-    line: StockInvoiceLineReview,
-) -> StockArticle:
-    article = db.get(StockArticle, line.article_id) if line.article_id else None
-    supplier_ref = (line.supplier_ref or "").strip()
-    reference = None
-    if supplier_ref:
-        reference = db.scalar(
-            select(StockArticleSupplierRef).where(
-                StockArticleSupplierRef.supplier_id == supplier.id,
-                StockArticleSupplierRef.supplier_ref == supplier_ref,
-            )
-        )
-        if reference and article and reference.article_id != article.id:
-            raise StockDomainError(f"A referência {supplier_ref} já está associada a outro artigo.")
-        if reference and not article:
-            article = db.get(StockArticle, reference.article_id)
-    if line.create_article:
-        if article:
-            raise StockDomainError("A linha pede criação mas já está associada a um artigo.")
-        clean_ref = (line.internal_ref or "").strip()
-        if db.scalar(select(StockArticle).where(StockArticle.internal_ref == clean_ref)):
-            raise StockDomainError(f"A referência interna {clean_ref} já existe.")
-        if line.category_id and not db.get(StockCategory, line.category_id):
-            raise StockDomainError("Categoria de artigo inexistente.")
-        article = StockArticle(
-            internal_ref=clean_ref,
-            name=(line.article_name or "").strip(),
-            description=line.description.strip(),
-            unit=line.unit.strip(),
-            category_id=line.category_id,
-            classification=(line.classification or "").strip() or None,
-            primary_supplier_id=supplier.id,
-            active=True,
-            average_cost=ZERO,
-            last_cost=ZERO,
-        )
-        db.add(article)
-        db.flush()
-    if not article or not article.active:
-        raise StockDomainError(
-            f"A linha {line.line_number} tem de ser associada a um artigo ativo ou criar um novo."
-        )
-    if supplier_ref and not reference:
-        db.add(
-            StockArticleSupplierRef(
-                article_id=article.id,
-                supplier_id=supplier.id,
-                supplier_ref=supplier_ref,
-                supplier_description=line.description.strip(),
-                preferred=article.primary_supplier_id == supplier.id,
-            )
-        )
-    return article
 
 
 def review_and_validate_invoice(
@@ -259,15 +198,6 @@ def review_and_validate_invoice(
 ) -> StockInvoiceImport:
     if invoice_import.status in {"duplicate", "failed", "cancelled"}:
         raise StockDomainError("Esta importação não pode ser validada no estado atual.")
-    received = db.scalar(
-        select(func.count())
-        .select_from(StockReceiptLine)
-        .join(StockInvoiceLine, StockInvoiceLine.id == StockReceiptLine.invoice_line_id)
-        .where(StockInvoiceLine.invoice_import_id == invoice_import.id)
-    )
-    if received:
-        raise StockDomainError("Uma fatura com receções físicas já não pode ser revalidada.")
-
     supplier = _find_or_create_supplier(db, review)
     duplicate = db.scalar(
         select(StockInvoiceImport).where(
@@ -326,13 +256,12 @@ def review_and_validate_invoice(
         delete(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_import.id)
     )
     for line in sorted(review.lines, key=lambda item: item.line_number):
-        article = _resolve_article(db, supplier=supplier, line=line)
         _net, _tax, gross = _line_amounts(line)
         db.add(
             StockInvoiceLine(
                 invoice_import_id=invoice_import.id,
                 line_number=line.line_number,
-                article_id=article.id,
+                article_id=None,
                 supplier_ref=(line.supplier_ref or "").strip() or None,
                 description=line.description.strip(),
                 quantity=_quantity(line.quantity),
@@ -363,23 +292,14 @@ def review_and_validate_invoice(
     invoice_import.validated_by_id = user_id
     invoice_import.validated_at = datetime.now(UTC)
     db.flush()
-    receipt = db.scalar(
-        select(StockReceipt).where(
-            StockReceipt.invoice_import_id == invoice_import.id,
-            StockReceipt.location_id.is_(None),
-        )
-    )
-    if not receipt:
-        db.add(StockReceipt(invoice_import_id=invoice_import.id, status="pending"))
     document = db.get(Document, invoice_import.document_id)
     if document:
-        document.status = "stock_receipt_pending"
         db.add(
             DocumentEvent(
                 document_id=document.id,
                 action="stock.invoice_import.validated",
-                old_value="pending_stock_review",
-                new_value="stock_receipt_pending",
+                old_value=document.status,
+                new_value=document.status,
                 user_id=user_id,
             )
         )
@@ -388,13 +308,14 @@ def review_and_validate_invoice(
         action="stock.invoice_import.validated",
         entity_type="stock_invoice_import",
         entity_id=invoice_import.id,
-        detail="Fatura validada e receção pendente criada; nenhum movimento foi criado.",
+        detail="Conferência documental validada; nenhum artigo, receção ou movimento foi criado.",
         user_id=user_id,
         after_json={
             "supplier_id": supplier.id,
             "invoice_number": invoice_import.invoice_number,
             "line_count": len(review.lines),
-            "receipt_pending": True,
+            "receipt_created": False,
+            "articles_created": False,
             "stock_changed": False,
         },
     )
@@ -457,20 +378,6 @@ def article_total_balance(db: Session, article_id: int) -> Decimal:
     )
 
 
-def _received_by_invoice_line(db: Session, invoice_import_id: int) -> dict[int, Decimal]:
-    rows = db.execute(
-        select(StockReceiptLine.invoice_line_id, func.sum(StockReceiptLine.received_quantity))
-        .join(StockInvoiceLine, StockInvoiceLine.id == StockReceiptLine.invoice_line_id)
-        .join(StockReceipt, StockReceipt.id == StockReceiptLine.receipt_id)
-        .where(
-            StockInvoiceLine.invoice_import_id == invoice_import_id,
-            StockReceipt.status != "cancelled",
-        )
-        .group_by(StockReceiptLine.invoice_line_id)
-    ).all()
-    return {line_id: _decimal(quantity) for line_id, quantity in rows}
-
-
 def _update_average_cost_for_entry(
     db: Session,
     *,
@@ -489,82 +396,116 @@ def _update_average_cost_for_entry(
     article.last_cost = _money(unit_cost)
 
 
-def confirm_receipt(
+def link_invoice_to_receipt(
     db: Session,
     *,
+    receipt: StockReceipt,
     invoice_import: StockInvoiceImport,
-    confirmation: StockReceiptConfirm,
+    user_id: int | None,
+) -> StockReceiptInvoiceLink:
+    existing = db.scalar(
+        select(StockReceiptInvoiceLink).where(
+            StockReceiptInvoiceLink.receipt_id == receipt.id,
+            StockReceiptInvoiceLink.invoice_import_id == invoice_import.id,
+        )
+    )
+    if existing:
+        return existing
+    link = StockReceiptInvoiceLink(
+        receipt_id=receipt.id,
+        invoice_import_id=invoice_import.id,
+        linked_by_id=user_id,
+    )
+    db.add(link)
+    db.flush()
+    record_audit(
+        db,
+        action="stock.receipt.invoice_linked",
+        entity_type="stock_receipt",
+        entity_id=receipt.id,
+        detail=f"Fatura documental {invoice_import.id} ligada sem alterar existências.",
+        user_id=user_id,
+        after_json={"invoice_import_id": invoice_import.id, "stock_changed": False},
+    )
+    return link
+
+
+def create_physical_receipt(
+    db: Session,
+    *,
+    command: StockReceiptCreate,
     user_id: int | None,
 ) -> StockReceipt:
-    if invoice_import.status != "validated":
-        raise StockDomainError("A fatura tem de estar validada antes da receção física.")
-    location = db.get(StockLocation, confirmation.location_id)
+    if command.idempotency_key:
+        existing = db.scalar(
+            select(StockReceipt).where(
+                StockReceipt.idempotency_key == command.idempotency_key.strip()
+            )
+        )
+        if existing:
+            return existing
+    location = db.get(StockLocation, command.location_id)
     if not location or not location.active:
         raise StockDomainError("Localização de Stock inválida ou inativa.")
-    responsible_name = (confirmation.responsible_name or "").strip() or None
+    supplier = db.get(StockSupplier, command.supplier_id) if command.supplier_id else None
+    if command.supplier_id and (not supplier or not supplier.active):
+        raise StockDomainError("Fornecedor inexistente ou inativo.")
+    responsible_name = (command.responsible_name or "").strip() or None
     if location.code == "AIRPORT" and not responsible_name:
         raise StockDomainError("A receção no Aeroporto exige um responsável identificado.")
+    invoice_imports = []
+    for invoice_import_id in dict.fromkeys(command.invoice_import_ids):
+        invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+        if not invoice_import:
+            raise StockDomainError(f"Fatura documental {invoice_import_id} inexistente.")
+        invoice_imports.append(invoice_import)
 
-    invoice_lines = {
-        line.id: line
-        for line in db.scalars(
-            select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_import.id)
-        ).all()
-    }
-    already_received = _received_by_invoice_line(db, invoice_import.id)
-    placeholder = db.scalar(
-        select(StockReceipt)
-        .where(
-            StockReceipt.invoice_import_id == invoice_import.id,
-            StockReceipt.location_id.is_(None),
-            StockReceipt.status == "pending",
-        )
-        .order_by(StockReceipt.id)
+    receipt = StockReceipt(
+        supplier_id=supplier.id if supplier else None,
+        location_id=location.id,
+        source_type=command.source_type,
+        source_reference=(command.source_reference or "").strip() or None,
+        idempotency_key=(command.idempotency_key or "").strip() or None,
+        status="completed",
+        confirmed_by_id=user_id,
+        responsible_name=responsible_name,
+        confirmed_at=datetime.now(UTC),
+        notes=(command.notes or "").strip() or None,
     )
-    receipt = db.scalar(
-        select(StockReceipt)
-        .where(
-            StockReceipt.invoice_import_id == invoice_import.id,
-            StockReceipt.location_id == location.id,
-            StockReceipt.status.in_({"pending", "partial"}),
-        )
-        .order_by(StockReceipt.id.desc())
-    )
-    if not receipt:
-        receipt = placeholder or StockReceipt(invoice_import_id=invoice_import.id)
-        receipt.location_id = location.id
-        db.add(receipt)
-        db.flush()
+    db.add(receipt)
+    db.flush()
 
-    seen_lines: set[int] = set()
-    for item in confirmation.lines:
-        if item.invoice_line_id in seen_lines:
-            raise StockDomainError("A mesma linha não pode ser confirmada duas vezes no pedido.")
-        seen_lines.add(item.invoice_line_id)
-        invoice_line = invoice_lines.get(item.invoice_line_id)
-        if not invoice_line:
-            raise StockDomainError("Linha de fatura inexistente nesta importação.")
-        previous = already_received.get(invoice_line.id, ZERO)
-        quantity = _quantity(item.received_quantity)
-        outstanding = _decimal(invoice_line.quantity) - previous
-        if quantity > outstanding:
-            raise StockDomainError(
-                f"A quantidade da linha {invoice_line.line_number} excede "
-                f"o saldo pendente {outstanding}."
-            )
-        unit_cost = _money(item.unit_cost if item.unit_cost is not None else invoice_line.unit_cost)
-        article = db.get(StockArticle, invoice_line.article_id)
-        if not article:
-            raise StockDomainError("Artigo associado à linha já não existe.")
+    seen_articles: set[int] = set()
+    for item in command.lines:
+        if item.article_id in seen_articles:
+            raise StockDomainError("O mesmo artigo não pode aparecer duas vezes na receção.")
+        seen_articles.add(item.article_id)
+        article = db.get(StockArticle, item.article_id)
+        if not article or not article.active:
+            raise StockDomainError("Artigo inexistente ou inativo.")
+        quantity = _quantity(item.accepted_quantity)
+        unit_cost = _money(item.unit_cost if item.unit_cost is not None else article.last_cost)
+        supplier_ref = (item.supplier_ref or "").strip() or None
         supplier_reference = None
-        if invoice_import.supplier_id and invoice_line.supplier_ref:
+        if supplier and supplier_ref:
             supplier_reference = db.scalar(
                 select(StockArticleSupplierRef).where(
-                    StockArticleSupplierRef.article_id == article.id,
-                    StockArticleSupplierRef.supplier_id == invoice_import.supplier_id,
-                    StockArticleSupplierRef.supplier_ref == invoice_line.supplier_ref,
+                    StockArticleSupplierRef.supplier_id == supplier.id,
+                    StockArticleSupplierRef.supplier_ref == supplier_ref,
                 )
             )
+            if supplier_reference and supplier_reference.article_id != article.id:
+                raise StockDomainError(
+                    f"A referência {supplier_ref} já está associada a outro artigo."
+                )
+            if not supplier_reference:
+                supplier_reference = StockArticleSupplierRef(
+                    article_id=article.id,
+                    supplier_id=supplier.id,
+                    supplier_ref=supplier_ref,
+                    preferred=article.primary_supplier_id == supplier.id,
+                )
+                db.add(supplier_reference)
         if supplier_reference:
             supplier_reference.last_cost = unit_cost
             supplier_reference.last_purchase_at = datetime.now(UTC)
@@ -576,11 +517,9 @@ def confirm_receipt(
         )
         receipt_line = StockReceiptLine(
             receipt_id=receipt.id,
-            invoice_line_id=invoice_line.id,
             article_id=article.id,
-            invoiced_quantity=invoice_line.quantity,
-            previously_received_quantity=previous,
-            received_quantity=quantity,
+            supplier_ref=supplier_ref,
+            accepted_quantity=quantity,
             unit_cost=unit_cost,
             lot=(item.lot or "").strip() or None,
             divergence_reason=(item.divergence_reason or "").strip() or None,
@@ -595,48 +534,34 @@ def confirm_receipt(
             unit_cost=unit_cost,
             to_location_id=location.id,
             receipt_line_id=receipt_line.id,
-            external_reference_type="stock_invoice_import",
-            external_reference_id=str(invoice_import.id),
+            external_reference_type="stock_receipt",
+            external_reference_id=str(receipt.id),
             performed_by_id=user_id,
-            reason=f"Receção física da fatura {invoice_import.invoice_number or invoice_import.id}",
+            reason=f"Receção física {command.source_reference or receipt.id}",
         )
         db.add(movement)
         db.flush()
-        already_received[invoice_line.id] = previous + quantity
-
-    all_complete = all(
-        already_received.get(line.id, ZERO) >= _decimal(line.quantity)
-        for line in invoice_lines.values()
-    )
-    any_received = any(quantity > ZERO for quantity in already_received.values())
-    receipt.status = "completed" if all_complete else "partial" if any_received else "pending"
-    receipt.confirmed_by_id = user_id
-    receipt.responsible_name = responsible_name
-    receipt.confirmed_at = datetime.now(UTC)
-    receipt.notes = (confirmation.notes or "").strip() or receipt.notes
-    if all_complete:
-        for related in db.scalars(
-            select(StockReceipt).where(
-                StockReceipt.invoice_import_id == invoice_import.id,
-                StockReceipt.status != "cancelled",
-            )
-        ).all():
-            related.status = "completed"
-        document = db.get(Document, invoice_import.document_id)
-        if document:
-            document.status = "stock_received"
+    for invoice_import in invoice_imports:
+        link_invoice_to_receipt(
+            db,
+            receipt=receipt,
+            invoice_import=invoice_import,
+            user_id=user_id,
+        )
     record_audit(
         db,
         action="stock.receipt.confirmed",
         entity_type="stock_receipt",
         entity_id=receipt.id,
-        detail=f"Receção física em {location.name} ({receipt.status}).",
+        detail=f"Receção física concluída em {location.name}; apenas quantidades aceites entraram.",
         user_id=user_id,
         after_json={
-            "invoice_import_id": invoice_import.id,
             "location_id": location.id,
+            "source_type": command.source_type,
+            "source_reference": receipt.source_reference,
+            "invoice_import_ids": [item.id for item in invoice_imports],
             "status": receipt.status,
-            "lines": [item.model_dump(mode="json") for item in confirmation.lines],
+            "lines": [item.model_dump(mode="json") for item in command.lines],
         },
     )
     return receipt

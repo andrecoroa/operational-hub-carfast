@@ -8098,7 +8098,12 @@ def _diagnostic_batch_context(
     batches = []
     for batch in grouped.values():
         batch["vehicle_count"] = len(batch.pop("vehicles"))
-        batch["processable"] = batch["pending"] + batch["failed"] + batch["outdated"]
+        batch["processable"] = (
+            batch["pending"]
+            + batch["failed"]
+            + batch["source_missing"]
+            + batch["outdated"]
+        )
         batches.append(batch)
     batches.sort(key=lambda item: (-item["processable"], item["name"].lower()))
     return batches, batch_by_document

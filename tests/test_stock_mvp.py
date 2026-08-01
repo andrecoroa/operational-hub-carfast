@@ -22,7 +22,13 @@ from app.models.stock import (
 from app.models.vehicles import Vehicle
 from app.models.workshop import WorkshopProcess, WorkshopTechnicalReading
 from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessPhase
-from app.services.stock import low_stock_rows, parse_dispnal_invoice, stock_balances
+from app.services.stock import (
+    low_stock_rows,
+    parse_caetano_parts_invoice,
+    parse_dispnal_invoice,
+    parse_torres_cunha_invoice,
+    stock_balances,
+)
 
 
 def _document(
@@ -506,3 +512,39 @@ def test_dispnal_parser_keeps_documentary_fields_only():
     assert parsed["lines"][0]["supplier_ref"] == "ABC1234567"
     assert "article_id" not in parsed["lines"][0]
     assert "receipt_id" not in parsed
+
+
+def test_torres_parser_ignores_duplicate_copy_and_keeps_ecovalue():
+    lines = [
+        "Fatura | nº | 6701/2026",
+        "ORIGINAL | FT | 2026A1/6701",
+        "Torres | & | Cunha | Peças | Auto | Lda.",
+        "Contribuinte: | 503699292",
+        "65621-5L | 3J.3 | OLEO | SINT. | 0W20 | 2,00 | UNI | 39,98 | 81,04 | 23,00",
+        "23,00% | 100,82 | 23,19",
+        "Total | 124,01",
+        "DUPLICADO | FT | 2026A1/6701",
+        "65621-5L | 3J.3 | OLEO | SINT. | 0W20 | 2,00 | UNI | 39,98 | 81,04 | 23,00",
+    ]
+    parsed = parse_torres_cunha_invoice(lines, "a" * 64)
+    assert parsed["invoice_number"] == "6701/2026"
+    assert parsed["gross_total"] == "124,01"
+    assert len(parsed["lines"]) == 1
+    assert Decimal(parsed["lines"][0]["eco_value"]) == Decimal("1.08")
+
+
+def test_caetano_parser_preserves_repeated_article_lines():
+    lines = [
+        "Nº | Documento | JFM/547307/2026 | Carfast | Rent-A-Car",
+        "Armazem | 1034",
+        "PSA | 1682952480 | E:FILTRO | GASÓL | Armazem | 1034 | "
+        "5,00Uds | 29,54 | 54,00 | 67,94 | 23,00",
+        "PSA | 1682952480 | E:FILTRO | GASÓL | Armazem | 1034 | "
+        "5,00Uds | 29,54 | 54,00 | 67,94 | 23,00",
+        "0,00 | 0,00 | 268,72 | 315,46 | 61,81 | 330,53",
+    ]
+    parsed = parse_caetano_parts_invoice(lines, "b" * 64)
+    assert parsed["supplier_tax_id"] == "504639668"
+    assert parsed["invoice_number"] == "JFM/547307/2026"
+    assert parsed["gross_total"] == "330,53"
+    assert len(parsed["lines"]) == 2

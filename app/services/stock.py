@@ -759,11 +759,22 @@ def _first_match(lines: list[str], pattern: str) -> str | None:
     return None
 
 
+def _joined_amount(lines: list[str], pattern: str) -> str | None:
+    regex = re.compile(pattern, re.IGNORECASE)
+    for line in lines:
+        if match := regex.search(line):
+            tokens = re.findall(r"\d+(?:[,.]\d+)?", line[match.end() :])
+            if tokens:
+                return "".join(tokens)
+    return None
+
+
 def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any] | None:
     all_text = "\n".join(lines)
-    if not re.search(r"Dispnal\s+Pneus", all_text, re.IGNORECASE) or "504670409" not in all_text:
+    is_dispnal = re.search(r"Dispnal\s*\|?\s*Pneus", all_text, re.IGNORECASE)
+    if not is_dispnal or "504670409" not in all_text:
         return None
-    invoice_number = _first_match(lines, r"N\.º\s*(\d+/\d{4})")
+    invoice_number = _first_match(lines, r"N\.º\s*\|?\s*(\d+/\d{4})")
     if not invoice_number:
         raise StockDomainError("Número da fatura Dispnal não encontrado.")
     parsed_lines: list[dict[str, Any]] = []
@@ -813,11 +824,197 @@ def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any]
         "supplier_name": "Dispnal Pneus, S.A.",
         "supplier_tax_id": "504670409",
         "invoice_number": invoice_number,
-        "net_total": _first_match(lines, r"Total\s*B\.T\.\s*\|\s*([\d.,]+)"),
-        "tax_total": _first_match(lines, r"^IVA\s*\|\s*([\d.,]+)"),
-        "gross_total": _first_match(lines, r"Total\s*\(\s*EUR\s*\)\s*\|\s*([\d.,]+)"),
+        "net_total": _first_match(lines, r"IVA\s*\|\s*\(23[,.]00\)\s*\|\s*([\d.,]+)"),
+        "tax_total": _first_match(
+            lines,
+            r"IVA\s*\|\s*\(23[,.]00\)\s*\|\s*[\d.,]+\s*\|\s*([\d.,]+)",
+        ),
+        "gross_total": _joined_amount(lines, r"Total\s*\|\s*\(\s*\|\s*EUR\s*\|\s*\)\s*\|"),
         "lines": parsed_lines,
     }
+
+
+def _document_copy(lines: list[str], marker: str) -> list[str]:
+    """Keep the first logical copy when a PDF contains ORIGINAL and DUPLICADO."""
+    stop = next(
+        (index for index, line in enumerate(lines) if index and marker.lower() in line.lower()),
+        len(lines),
+    )
+    return lines[:stop]
+
+
+def parse_torres_cunha_invoice(
+    lines: list[str], content_hash: str
+) -> dict[str, Any] | None:
+    all_text = "\n".join(lines)
+    if not re.search(r"Torres\s*\|?\s*&\s*\|?\s*Cunha", all_text, re.IGNORECASE):
+        return None
+    if "503699292" not in all_text:
+        return None
+
+    source_lines = _document_copy(lines, "DUPLICADO")
+    invoice_number = _first_match(source_lines, r"Fatura\s*\|?\s*n[.ºo]*\s*\|?\s*(\d+/\d{4})")
+    if not invoice_number:
+        raise StockDomainError("Número da fatura Torres & Cunha não encontrado.")
+
+    parsed_lines: list[dict[str, Any]] = []
+    for source_line in source_lines:
+        parts = [part.strip() for part in source_line.split("|") if part.strip()]
+        if len(parts) < 8 or not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{3,20}", parts[0]):
+            continue
+        quantity_index = next(
+            (
+                index
+                for index, part in enumerate(parts[:-1])
+                if re.fullmatch(r"\d+[,.]\d+", part)
+                and parts[index + 1].upper() in {"UNI", "UN", "UDS"}
+            ),
+            -1,
+        )
+        if quantity_index < 3 or len(parts) <= quantity_index + 4:
+            continue
+        tail = parts[quantity_index + 2 :]
+        unit_cost = _decimal(tail[0])
+        discount_parts = [part for part in tail[1:] if part.endswith("%")]
+        discount = sum((_decimal(part[:-1]) for part in discount_parts), ZERO) / Decimal("100")
+        numeric_tail = [part for part in tail[1:] if re.fullmatch(r"\d+[,.]\d+", part)]
+        if len(numeric_tail) < 2:
+            continue
+        line_value = _decimal(numeric_tail[0])
+        tax_rate = _decimal(numeric_tail[1]) / Decimal("100")
+        quantity = _decimal(parts[quantity_index])
+        goods_after_discount = _cent(quantity * unit_cost * (Decimal("1") - discount))
+        eco_value = max(ZERO, _cent(line_value - goods_after_discount))
+        parsed_lines.append(
+            {
+                "line_number": len(parsed_lines) + 1,
+                "supplier_ref": parts[0],
+                "description": " ".join(parts[2:quantity_index]).strip(),
+                "quantity": str(quantity),
+                "unit": parts[quantity_index + 1].lower(),
+                "unit_cost": str(unit_cost),
+                "discount": str(discount),
+                "eco_value": str(eco_value),
+                "tax_rate": str(tax_rate),
+                "line_total": str(_cent(line_value * (Decimal("1") + tax_rate))),
+            }
+        )
+    if not parsed_lines:
+        raise StockDomainError("Não foram encontradas linhas na fatura Torres & Cunha.")
+
+    tax_match = next(
+        (
+            re.search(r"23[,.]00%\s*\|\s*([\d.,]+)\s*\|\s*([\d.,]+)", line)
+            for line in source_lines
+            if "23,00%" in line or "23.00%" in line
+        ),
+        None,
+    )
+    gross_total = next(
+        (
+            match.group(1)
+            for line in reversed(source_lines)
+            if (match := re.search(r"^Total\s*\|\s*([\d.,]+)\s*$", line, re.IGNORECASE))
+        ),
+        None,
+    )
+    return {
+        "extractor_name": "torres_cunha",
+        "extractor_version": "v1",
+        "content_hash": content_hash,
+        "supplier_name": "Torres & Cunha Peças Auto Lda.",
+        "supplier_tax_id": "503699292",
+        "invoice_number": invoice_number,
+        "net_total": tax_match.group(1) if tax_match else None,
+        "tax_total": tax_match.group(2) if tax_match else None,
+        "gross_total": gross_total,
+        "lines": parsed_lines,
+    }
+
+
+def parse_caetano_parts_invoice(
+    lines: list[str], content_hash: str
+) -> dict[str, Any] | None:
+    all_text = "\n".join(lines)
+    invoice_number = _first_match(lines, r"JFM/(\d+/\d{4})")
+    if not invoice_number or "Armazem | 1034" not in all_text:
+        return None
+    invoice_number = f"JFM/{invoice_number}"
+
+    parsed_lines: list[dict[str, Any]] = []
+    previous_text = ""
+    for source_line in lines:
+        parts = [part.strip() for part in source_line.split("|") if part.strip()]
+        if len(parts) < 9 or parts[0].upper() != "PSA":
+            if parts and len(parts) <= 4 and not re.search(r"\d", source_line):
+                previous_text = " ".join(parts)
+            continue
+        location_index = next(
+            (index for index, part in enumerate(parts) if part.lower() == "armazem"), -1
+        )
+        if location_index < 2 or location_index + 6 >= len(parts):
+            continue
+        quantity_match = re.fullmatch(r"(\d+[,.]\d+)([A-Za-z]+)", parts[location_index + 2])
+        if not quantity_match:
+            continue
+        quantity = _decimal(quantity_match.group(1))
+        unit_cost = _decimal(parts[location_index + 3])
+        discount = _decimal(parts[location_index + 4]) / Decimal("100")
+        line_value = _decimal(parts[location_index + 5])
+        tax_rate = _decimal(parts[location_index + 6]) / Decimal("100")
+        parsed_lines.append(
+            {
+                "line_number": len(parsed_lines) + 1,
+                "supplier_ref": parts[1],
+                "description": (
+                    " ".join(parts[2:location_index]).strip() or previous_text
+                ),
+                "quantity": str(quantity),
+                "unit": quantity_match.group(2).lower(),
+                "unit_cost": str(unit_cost),
+                "discount": str(discount),
+                "eco_value": "0",
+                "tax_rate": str(tax_rate),
+                "line_total": str(_cent(line_value * (Decimal("1") + tax_rate))),
+            }
+        )
+        previous_text = ""
+    if not parsed_lines:
+        raise StockDomainError("Não foram encontradas linhas na fatura Caetano Parts.")
+
+    totals = next(
+        (
+            re.findall(r"\d+[,.]\d+", line)
+            for line in lines
+            if line.count("|") >= 5
+            and len(re.findall(r"\d+[,.]\d+", line)) == 6
+            and line.strip().startswith("0,00")
+        ),
+        [],
+    )
+    return {
+        "extractor_name": "caetano_parts_jfm",
+        "extractor_version": "v1",
+        "content_hash": content_hash,
+        "supplier_name": "Caetano Parts, LDA",
+        "supplier_tax_id": "504639668",
+        "invoice_number": invoice_number,
+        "net_total": totals[2] if totals else None,
+        "tax_total": totals[4] if totals else None,
+        "gross_total": totals[5] if totals else None,
+        "lines": parsed_lines,
+    }
+
+
+def parse_stock_invoice(lines: list[str], content_hash: str) -> dict[str, Any] | None:
+    for parser in (
+        parse_dispnal_invoice,
+        parse_torres_cunha_invoice,
+        parse_caetano_parts_invoice,
+    ):
+        if parsed := parser(lines, content_hash):
+            return parsed
+    return None
 
 
 def extract_stock_invoice(db: Session, invoice_import: StockInvoiceImport) -> dict[str, Any]:
@@ -826,7 +1023,7 @@ def extract_stock_invoice(db: Session, invoice_import: StockInvoiceImport) -> di
         raise StockDomainError("Documento original inexistente.")
     path = _authorized_document_path(document)
     lines, content_hash = _pdf_lines(path)
-    parsed = parse_dispnal_invoice(lines, content_hash)
+    parsed = parse_stock_invoice(lines, content_hash)
     if not parsed:
         invoice_import.status = "needs_review"
         invoice_import.content_hash = content_hash

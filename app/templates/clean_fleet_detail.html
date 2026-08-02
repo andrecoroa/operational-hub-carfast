@@ -126,6 +126,28 @@
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
             <div class="clean-finance-current-cost"><span>Valor atual com IVA</span><strong>{{ ctx.finance.current_cost_with_vat }}</strong><small>Custo inicial com IVA menos os meses amortizados, num total de 96 meses.</small></div>
           </div>
+          {% if ctx.finance.installment_count %}
+            <details class="clean-inline-details">
+              <summary>Ver plano completo ({{ ctx.finance.installment_count }} mensalidades)</summary>
+              <div class="clean-table-wrap">
+                <table class="clean-table">
+                  <thead><tr><th>Mês</th><th>Período</th><th>Amortização</th><th>Juros</th><th>Prestação</th><th>Capital em dívida com IVA</th></tr></thead>
+                  <tbody>
+                    {% for installment in ctx.finance.installments %}
+                      <tr>
+                        <td>{{ installment.number }}</td>
+                        <td>{{ installment.period }}</td>
+                        <td>{{ installment.amortization }}</td>
+                        <td>{{ installment.interest }}</td>
+                        <td>{{ installment.installment }}</td>
+                        <td><strong>{{ installment.outstanding_with_vat }}</strong></td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          {% endif %}
           {% if ctx.finance.plan_count > 1 %}
             <details class="clean-inline-details">
               <summary>Ver histórico de planos ({{ ctx.finance.plan_count }})</summary>

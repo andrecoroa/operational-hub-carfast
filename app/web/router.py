@@ -79,6 +79,7 @@ from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
+    VehicleFinancialPlanInstallment,
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
@@ -7186,6 +7187,15 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         (plan for plan in financial_plans if plan.active),
         financial_plans[0] if financial_plans else None,
     )
+    financial_installments = (
+        db.scalars(
+            select(VehicleFinancialPlanInstallment)
+            .where(VehicleFinancialPlanInstallment.financial_plan_id == active_financial_plan.id)
+            .order_by(VehicleFinancialPlanInstallment.period_number)
+        ).all()
+        if active_financial_plan
+        else []
+    )
     related_contract_plans: list[VehicleFinancialPlan] = []
     if active_financial_plan:
         related_contract_plans = db.scalars(
@@ -7344,6 +7354,29 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             ),
             "plan_count": len(financial_plans),
             "plans": financial_plans,
+            "installment_count": len(financial_installments),
+            "installments": [
+                {
+                    "number": installment.period_number,
+                    "period": " - ".join(
+                        value
+                        for value in [
+                            clean_date(installment.period_start.isoformat()) if installment.period_start else "",
+                            clean_date(installment.period_end.isoformat()),
+                        ]
+                        if value and value != "-"
+                    ),
+                    "amortization": format_eur(installment.amortization_amount),
+                    "interest": format_eur(installment.interest_amount),
+                    "installment": format_eur(installment.installment_amount),
+                    "outstanding_with_vat": format_eur(
+                        installment.outstanding_with_vat
+                        if installment.outstanding_with_vat is not None
+                        else amount_with_standard_vat(installment.outstanding_amount)
+                    ),
+                }
+                for installment in financial_installments
+            ],
         },
         "status": {
             "lifecycle": vehicle.lifecycle_status or "-",

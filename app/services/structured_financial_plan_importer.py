@@ -7,16 +7,22 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.imports import ImportBatch, ImportFile, ImportRawRow
-from app.models.vehicles import Vehicle, VehicleFinancialPlan, VehicleIdentifier
+from app.models.vehicles import (
+    Vehicle,
+    VehicleFinancialPlan,
+    VehicleFinancialPlanInstallment,
+    VehicleIdentifier,
+)
 from app.services.audit import record_audit
 
 
 MAIN_SHEET = "Todos os contratos"
 ASSOCIATIONS_SHEET = "Viaturas associadas"
+MONTHLY_SHEET = "Plano mensal"
 IMPORT_TYPE = "vehicle_financial_plans"
 
 
@@ -112,6 +118,10 @@ def _sheet_rows(workbook: Any, name: str) -> list[dict[str, Any]]:
     ]
 
 
+def _optional_sheet_rows(workbook: Any, name: str) -> list[dict[str, Any]]:
+    return _sheet_rows(workbook, name) if name in workbook.sheetnames else []
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -150,6 +160,7 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
     try:
         contracts = _sheet_rows(workbook, MAIN_SHEET)
         associations = _sheet_rows(workbook, ASSOCIATIONS_SHEET)
+        monthly_rows = _optional_sheet_rows(workbook, MONTHLY_SHEET)
     finally:
         workbook.close()
 
@@ -159,6 +170,16 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
         if _key(row.get("Financeira")) and _key(row.get("Contrato"))
     }
     indexes = _vehicle_indexes(db)
+    monthly_by_plan: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for monthly in monthly_rows:
+        monthly_by_plan.setdefault(
+            (
+                _key(monthly.get("Financeira")),
+                _key(monthly.get("Contrato")),
+                _key(monthly.get("Matrícula")),
+            ),
+            [],
+        ).append(monthly)
     preview_rows: list[dict[str, Any]] = []
     matched = conflicts = unmatched = 0
     seen: set[tuple[str, str, int]] = set()
@@ -221,6 +242,32 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
             },
         }
         plan_status, active = _plan_status(resolved_plan)
+        installments = []
+        for monthly in sorted(
+            monthly_by_plan.get(
+                (_key(entity), _key(contract), _key(association.get("Matrícula"))),
+                [],
+            ),
+            key=lambda item: int(item.get("Período") or 0),
+        ):
+            installments.append(
+                {
+                    "period_number": int(monthly.get("Período") or 0),
+                    "period_start": (_date_value(monthly.get("Data início")) or "").isoformat()
+                    if _date_value(monthly.get("Data início")) else "",
+                    "period_end": (_date_value(monthly.get("Data fim")) or "").isoformat()
+                    if _date_value(monthly.get("Data fim")) else "",
+                    "amortization_amount": str(_money(monthly.get("Amortização (€)")) or ""),
+                    "interest_amount": str(_money(monthly.get("Juros (€)")) or ""),
+                    "installment_amount": str(_money(monthly.get("Prestação (€)")) or ""),
+                    "outstanding_amount": str(_money(monthly.get("Capital em dívida (€)")) or ""),
+                    "outstanding_with_vat": str(
+                        _money(monthly.get("Capital em dívida c/IVA (€)")) or ""
+                    ),
+                    "source_label": _text(monthly.get("Fonte")),
+                    "raw": {key: _text(value) for key, value in monthly.items()},
+                }
+            )
         preview_rows.append(
             {
                 "row_number": row_number,
@@ -260,6 +307,8 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
                         "Fontes consolidadas",
                     )
                 ),
+                "installments": installments,
+                "installment_count": len(installments),
                 "raw": {
                     "contract": {key: _text(value) for key, value in (contract_row or {}).items()},
                     "association": {key: _text(value) for key, value in association.items()},
@@ -271,6 +320,7 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
         "file_hash": file_sha256(path),
         "total_contracts": len(contracts),
         "total_associations": len(associations),
+        "total_installments": len(monthly_rows),
         "matched": matched,
         "conflicts": conflicts,
         "unmatched": unmatched,
@@ -316,7 +366,7 @@ def apply_financial_plan_preview(
             original_name=original_name[:255],
             file_name=source_path.name[:255],
             storage_path=str(source_path),
-            sheet_name=f"{MAIN_SHEET}; {ASSOCIATIONS_SHEET}",
+            sheet_name=f"{MAIN_SHEET}; {ASSOCIATIONS_SHEET}; {MONTHLY_SHEET}",
             columns_json=[],
         )
     )
@@ -383,6 +433,38 @@ def apply_financial_plan_preview(
                 setattr(plan, field, value)
             updated += int(changed)
             unchanged += int(not changed)
+        db.flush()
+        if "installments" in row and row["installments"]:
+            db.execute(
+                delete(VehicleFinancialPlanInstallment).where(
+                    VehicleFinancialPlanInstallment.financial_plan_id == plan.id
+                )
+            )
+            for installment in row["installments"]:
+                period_end = _iso_date(installment.get("period_end"))
+                if not period_end:
+                    continue
+                db.add(
+                    VehicleFinancialPlanInstallment(
+                        financial_plan_id=plan.id,
+                        period_number=int(installment["period_number"]),
+                        period_start=_iso_date(installment.get("period_start")),
+                        period_end=period_end,
+                        amortization_amount=_decimal_or_none(
+                            installment.get("amortization_amount")
+                        ),
+                        interest_amount=_decimal_or_none(installment.get("interest_amount")),
+                        installment_amount=_decimal_or_none(installment.get("installment_amount")),
+                        outstanding_amount=_decimal_or_none(
+                            installment.get("outstanding_amount")
+                        ),
+                        outstanding_with_vat=_decimal_or_none(
+                            installment.get("outstanding_with_vat")
+                        ),
+                        source_label=installment.get("source_label") or None,
+                        raw_json=installment.get("raw") or {},
+                    )
+                )
         db.add(
             ImportRawRow(
                 batch_id=batch.id,

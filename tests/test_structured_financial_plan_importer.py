@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.imports import ImportBatch
-from app.models.vehicles import Vehicle, VehicleFinancialPlan
+from app.models.vehicles import Vehicle, VehicleFinancialPlan, VehicleFinancialPlanInstallment
 from app.services.structured_financial_plan_importer import (
     apply_financial_plan_preview,
     preview_financial_plan_workbook,
@@ -146,6 +146,42 @@ def test_confirm_preserves_multivehicle_contract_and_96_month_term(db_session: S
     assert {plan.term_months for plan in plans} == {96}
     assert {plan.installment_with_vat for plan in plans} == {Decimal("627.30")}
     assert db_session.scalar(select(func.count()).select_from(ImportBatch)) == 1
+
+
+def test_confirm_imports_and_replaces_full_monthly_plan(db_session: Session, tmp_path: Path):
+    path = tmp_path / "plans-with-monthly-schedule.xlsx"
+    _workbook(path)
+    workbook = load_workbook(path)
+    monthly = workbook.create_sheet("Plano mensal")
+    monthly.append(
+        [
+            "Financeira", "Contrato", "Matrícula", "Período", "Data início", "Data fim",
+            "Amortização (€)", "Juros (€)", "Prestação (€)", "Capital em dívida (€)",
+            "Capital em dívida c/IVA (€)", "Fonte",
+        ]
+    )
+    monthly.append(["CGD", "400144083", "AA-00-AA", 1, "01/01/2024", "31/01/2024", 400, 110, 510, 49600, 61008, "Teste"])
+    monthly.append(["CGD", "400144083", "AA-00-AA", 2, "01/02/2024", "29/02/2024", 402, 108, 510, 49198, 60513.54, "Teste"])
+    workbook.save(path)
+    db_session.add(Vehicle(plate="AA-00-AA", vin="VIN00000000000001", rentway_unit_nr="101"))
+    db_session.commit()
+
+    preview = preview_financial_plan_workbook(db_session, path)
+    assert preview["total_installments"] == 2
+    assert preview["rows"][0]["installment_count"] == 2
+    apply_financial_plan_preview(db_session, preview, source_path=path, original_name=path.name, user_id=None)
+    db_session.commit()
+
+    installments = db_session.scalars(
+        select(VehicleFinancialPlanInstallment).order_by(VehicleFinancialPlanInstallment.period_number)
+    ).all()
+    assert len(installments) == 2
+    assert installments[1].outstanding_with_vat == Decimal("60513.54")
+
+    preview["rows"][0]["installments"] = preview["rows"][0]["installments"][:1]
+    apply_financial_plan_preview(db_session, preview, source_path=path, original_name=path.name, user_id=None)
+    db_session.commit()
+    assert db_session.scalar(select(func.count()).select_from(VehicleFinancialPlanInstallment)) == 1
 
 
 def test_confirmed_import_deactivates_previous_plan_from_same_finance_entity(

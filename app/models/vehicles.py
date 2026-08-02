@@ -117,3 +117,26 @@ class VehicleFinancialPlan(TimestampMixin, Base):
     human_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VehicleFinancialPlanInstallment(TimestampMixin, Base):
+    __tablename__ = "vehicle_financial_plan_installments"
+    __table_args__ = (
+        UniqueConstraint("financial_plan_id", "period_number"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    financial_plan_id: Mapped[int] = mapped_column(
+        ForeignKey("vehicle_financial_plans.id", ondelete="CASCADE"),
+        index=True,
+    )
+    period_number: Mapped[int] = mapped_column(Integer)
+    period_start: Mapped[Date | None] = mapped_column(Date)
+    period_end: Mapped[Date] = mapped_column(Date)
+    amortization_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    interest_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    installment_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    outstanding_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    outstanding_with_vat: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    source_label: Mapped[str | None] = mapped_column(String(255))
+    raw_json: Mapped[dict] = mapped_column(JSON, default=dict)

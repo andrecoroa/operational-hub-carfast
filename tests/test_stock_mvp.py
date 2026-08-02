@@ -281,6 +281,48 @@ def test_direct_stock_invoice_import_classifies_and_opens_review(
     assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
 
 
+def test_direct_stock_invoice_import_keeps_unreadable_pdf_for_manual_review(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from app.web import stock as stock_web
+
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: tmp_path)
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files={"file": ("danificada.pdf", b"%PDF-1.4\nsem estrutura", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/stock/invoices/")
+    invoice_import = db_session.scalar(
+        select(StockInvoiceImport)
+        .join(Document, Document.id == StockInvoiceImport.document_id)
+        .where(Document.original_name == "danificada.pdf")
+    )
+    assert invoice_import.status == "needs_review"
+    assert "revisão manual" in invoice_import.error_details
+
+
+def test_direct_stock_invoice_import_reports_storage_failure(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from app.web import stock as stock_web
+
+    blocked_root = tmp_path / "arquivo"
+    blocked_root.write_text("não é uma pasta", encoding="utf-8")
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: blocked_root)
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files={"file": ("FT-erro.pdf", b"%PDF-1.4\nstock", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/stock/invoices?error=")
+    assert db_session.scalar(select(func.count()).select_from(StockInvoiceImport)) == 0
+
+
 def test_extract_and_validate_are_document_only(authenticated_client, db_session, monkeypatch):
     document = _document("document-only", file_hash="a" * 64)
     db_session.add(document)

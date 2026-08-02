@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -9,6 +10,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import DbSession
 from app.models.admin import User
@@ -40,8 +42,8 @@ from app.services.stock import (
     StockDomainError,
     create_manual_movement,
     create_physical_receipt,
-    extract_stock_invoice,
     ensure_invoice_import,
+    extract_stock_invoice,
     low_stock_rows,
     review_and_validate_invoice,
     stock_balances,
@@ -50,6 +52,7 @@ from app.web.router import document_archive_root, sanitize_archive_component, te
 
 stock_router = APIRouter()
 ZERO = Decimal("0")
+logger = logging.getLogger(__name__)
 
 
 def _user_id(request: Request) -> int | None:
@@ -532,11 +535,26 @@ async def stock_invoice_direct_import(
     user_id = _user_id(request)
     folder_path = f"Stock/Faturas/{date.today().year}"
     storage_dir = document_archive_root().joinpath("Stock", "Faturas", str(date.today().year))
-    storage_dir.mkdir(parents=True, exist_ok=True)
     stem = sanitize_archive_component(Path(original_name).stem, "fatura_stock")
     stored_name = f"{stem}_{digest[:12]}.pdf"
     stored_path = storage_dir / stored_name
-    stored_path.write_bytes(content)
+    try:
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        stored_path.write_bytes(content)
+    except OSError:
+        logger.exception("Failed to persist direct stock invoice upload")
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?"
+            + urlencode(
+                {
+                    "error": (
+                        "Não foi possível guardar a fatura no arquivo documental. "
+                        "Verifica o armazenamento configurado e tenta novamente."
+                    )
+                }
+            ),
+            status_code=303,
+        )
     document = Document(
         title=Path(original_name).stem[:200],
         document_type="workshop_supplier_invoice",
@@ -556,33 +574,54 @@ async def stock_invoice_direct_import(
         file_hash=digest,
         uploaded_by_id=user_id,
     )
-    db.add(document)
-    db.flush()
-    classify_invoice_nature(
-        db,
-        document=document,
-        nature="stock",
-        user_id=user_id,
-        suggested_nature="stock",
-        suggestion_confidence=1.0,
-        decision_reason="Importação iniciada no módulo Stock",
-    )
-    invoice_import = ensure_invoice_import(db, document=document, user_id=user_id)
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action="stock.invoice.direct_imported",
-            old_value=None,
-            new_value=f"stock_invoice_import:{invoice_import.id}",
-            user_id=user_id,
-        )
-    )
     try:
-        extract_stock_invoice(db, invoice_import)
-    except (OSError, StockDomainError, ValueError) as exc:
-        invoice_import.status = "needs_review"
-        invoice_import.error_details = f"Extração automática indisponível: {exc}"
-    db.commit()
+        db.add(document)
+        db.flush()
+        classify_invoice_nature(
+            db,
+            document=document,
+            nature="stock",
+            user_id=user_id,
+            suggested_nature="stock",
+            suggestion_confidence=1.0,
+            decision_reason="Importação iniciada no módulo Stock",
+        )
+        invoice_import = ensure_invoice_import(db, document=document, user_id=user_id)
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="stock.invoice.direct_imported",
+                old_value=None,
+                new_value=f"stock_invoice_import:{invoice_import.id}",
+                user_id=user_id,
+            )
+        )
+        try:
+            extract_stock_invoice(db, invoice_import)
+        except Exception as exc:  # Extraction failures must not reject the received document.
+            logger.exception("Automatic extraction failed for stock invoice %s", original_name)
+            invoice_import.status = "needs_review"
+            invoice_import.error_details = (
+                "Extração automática indisponível. O documento ficou disponível para revisão "
+                f"manual ({type(exc).__name__})."
+            )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        stored_path.unlink(missing_ok=True)
+        logger.exception("Failed to register direct stock invoice upload")
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?"
+            + urlencode(
+                {
+                    "error": (
+                        "Não foi possível registar a fatura. "
+                        "Confirma que a base de dados está atualizada e tenta novamente."
+                    )
+                }
+            ),
+            status_code=303,
+        )
     return RedirectResponse(
         f"/v2-clean/stock/invoices/{invoice_import.id}?imported=1",
         status_code=303,

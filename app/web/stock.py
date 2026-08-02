@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
 from app.api.deps import DbSession
 from app.models.admin import User
-from app.models.documents import Document
+from app.models.documents import Document, DocumentEvent
 from app.models.stock import (
     StockArticle,
     StockArticleSupplierRef,
@@ -33,16 +35,18 @@ from app.schemas.stock import (
     StockReceiptLineCreate,
 )
 from app.services.authorization import get_user_permission_codes
+from app.services.document_workflow import classify_invoice_nature
 from app.services.stock import (
     StockDomainError,
     create_manual_movement,
     create_physical_receipt,
     extract_stock_invoice,
+    ensure_invoice_import,
     low_stock_rows,
     review_and_validate_invoice,
     stock_balances,
 )
-from app.web.router import templates
+from app.web.router import document_archive_root, sanitize_archive_component, templates
 
 stock_router = APIRouter()
 ZERO = Decimal("0")
@@ -485,6 +489,103 @@ def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: 
         request,
         "clean_stock_invoices.html",
         {**_page_context(request, db), "rows": rows, "q": q, "status_filter": status_filter},
+    )
+
+
+@stock_router.post("/v2-clean/stock/invoices/import")
+async def stock_invoice_direct_import(
+    request: Request,
+    db: DbSession,
+    file: UploadFile = File(...),
+):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    original_name = Path(file.filename or "fatura_stock.pdf").name
+    if Path(original_name).suffix.lower() != ".pdf":
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?" + urlencode({"error": "A fatura tem de ser PDF."}),
+            status_code=303,
+        )
+    content = await file.read()
+    if not content:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?" + urlencode({"error": "O ficheiro está vazio."}),
+            status_code=303,
+        )
+    if len(content) > 25 * 1024 * 1024:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?" + urlencode({"error": "O PDF excede 25 MB."}),
+            status_code=303,
+        )
+    digest = hashlib.sha256(content).hexdigest()
+    existing = db.scalar(
+        select(StockInvoiceImport)
+        .join(Document, Document.id == StockInvoiceImport.document_id)
+        .where(Document.file_hash == digest)
+    )
+    if existing:
+        return RedirectResponse(
+            f"/v2-clean/stock/invoices/{existing.id}?duplicate=1",
+            status_code=303,
+        )
+
+    user_id = _user_id(request)
+    folder_path = f"Stock/Faturas/{date.today().year}"
+    storage_dir = document_archive_root().joinpath("Stock", "Faturas", str(date.today().year))
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    stem = sanitize_archive_component(Path(original_name).stem, "fatura_stock")
+    stored_name = f"{stem}_{digest[:12]}.pdf"
+    stored_path = storage_dir / stored_name
+    stored_path.write_bytes(content)
+    document = Document(
+        title=Path(original_name).stem[:200],
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="stock_direct_import",
+        entry_channel="stock_invoice_import",
+        source_subject="Importação direta em Stock",
+        original_name=original_name[:255],
+        file_name=stored_name[:255],
+        file_type="pdf",
+        file_size=len(content),
+        storage_provider="local",
+        storage_path=str(stored_path),
+        storage_key=digest,
+        folder_path=folder_path,
+        status="received",
+        file_hash=digest,
+        uploaded_by_id=user_id,
+    )
+    db.add(document)
+    db.flush()
+    classify_invoice_nature(
+        db,
+        document=document,
+        nature="stock",
+        user_id=user_id,
+        suggested_nature="stock",
+        suggestion_confidence=1.0,
+        decision_reason="Importação iniciada no módulo Stock",
+    )
+    invoice_import = ensure_invoice_import(db, document=document, user_id=user_id)
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="stock.invoice.direct_imported",
+            old_value=None,
+            new_value=f"stock_invoice_import:{invoice_import.id}",
+            user_id=user_id,
+        )
+    )
+    try:
+        extract_stock_invoice(db, invoice_import)
+    except (OSError, StockDomainError, ValueError) as exc:
+        invoice_import.status = "needs_review"
+        invoice_import.error_details = f"Extração automática indisponível: {exc}"
+    db.commit()
+    return RedirectResponse(
+        f"/v2-clean/stock/invoices/{invoice_import.id}?imported=1",
+        status_code=303,
     )
 
 

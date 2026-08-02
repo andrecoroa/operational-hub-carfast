@@ -245,6 +245,42 @@ def test_stock_invoice_classification_archives_and_removes_operational_associati
     assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
 
 
+def test_direct_stock_invoice_import_classifies_and_opens_review(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from app.web import stock as stock_web
+
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        stock_web,
+        "extract_stock_invoice",
+        lambda _db, record: setattr(record, "status", "needs_review") or {},
+    )
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files={"file": ("FT-100.pdf", b"%PDF-1.4\nstock test", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/stock/invoices/")
+    document = db_session.scalar(select(Document).where(Document.original_name == "FT-100.pdf"))
+    state = db_session.scalar(
+        select(DocumentWorkflowState).where(DocumentWorkflowState.document_id == document.id)
+    )
+    invoice_import = db_session.scalar(
+        select(StockInvoiceImport).where(StockInvoiceImport.document_id == document.id)
+    )
+    assert state.invoice_nature == "stock"
+    assert state.human_confirmed is True
+    assert document.source == "stock_direct_import"
+    assert document.vehicle_id is None
+    assert document.archived is True
+    assert invoice_import.status == "needs_review"
+    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 0
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 0
+
+
 def test_extract_and_validate_are_document_only(authenticated_client, db_session, monkeypatch):
     document = _document("document-only", file_hash="a" * 64)
     db_session.add(document)

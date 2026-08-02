@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 import app.web.router as base_router
 from app.core.config import settings
@@ -116,7 +116,7 @@ def _media_root() -> Path:
     root = (
         Path(configured).expanduser()
         if configured
-        else base_router.APP_PROJECT_ROOT / "uploads" / "vehicle_sales"
+        else base_router.document_archive_root() / "Venda de viaturas" / "imagens"
     )
     if not root.is_absolute():
         root = base_router.APP_PROJECT_ROOT / root
@@ -793,6 +793,126 @@ def vehicle_financial_audit_export(request: Request, download: int = 1):
         content="\ufeff" + stream.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers=headers,
+    )
+
+
+@vehicle_sales_router.get(
+    "/v2-clean/fleet/sales/opportunities",
+    response_class=HTMLResponse,
+)
+def vehicle_sale_opportunities(
+    request: Request,
+    status: str = "",
+    kind: str = "",
+    q: str = "",
+    page: int = 1,
+):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    page = max(1, page)
+    page_size = 50
+    clean_status = status if status in LEAD_STATUS_LABELS else ""
+    clean_kind = kind if kind in LEAD_KIND_LABELS else ""
+    with base_router.SessionLocal() as db:
+        statement = select(VehicleSaleLead, Vehicle).join(
+            Vehicle, Vehicle.id == VehicleSaleLead.vehicle_id
+        )
+        count_statement = (
+            select(func.count())
+            .select_from(VehicleSaleLead)
+            .join(Vehicle, Vehicle.id == VehicleSaleLead.vehicle_id)
+        )
+        conditions = []
+        if clean_status:
+            conditions.append(VehicleSaleLead.status == clean_status)
+        if clean_kind:
+            conditions.append(VehicleSaleLead.kind == clean_kind)
+        if q.strip():
+            token = f"%{q.strip()}%"
+            conditions.append(
+                or_(
+                    Vehicle.plate.ilike(token),
+                    Vehicle.rentway_unit_nr.ilike(token),
+                    VehicleSaleLead.name.ilike(token),
+                    VehicleSaleLead.company.ilike(token),
+                    VehicleSaleLead.email.ilike(token),
+                    VehicleSaleLead.phone.ilike(token),
+                    VehicleSaleLead.message.ilike(token),
+                )
+            )
+        if conditions:
+            statement = statement.where(*conditions)
+            count_statement = count_statement.where(*conditions)
+        total = int(db.scalar(count_statement) or 0)
+        rows = db.execute(
+            statement.order_by(VehicleSaleLead.created_at.desc(), VehicleSaleLead.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        open_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(VehicleSaleLead)
+                .where(VehicleSaleLead.status.in_(("new", "in_review")))
+            )
+            or 0
+        )
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    return base_router.templates.TemplateResponse(
+        request,
+        "clean_vehicle_sale_opportunities.html",
+        {
+            "rows": rows,
+            "total": total,
+            "open_count": open_count,
+            "page": page,
+            "total_pages": total_pages,
+            "status_filter": clean_status,
+            "kind_filter": clean_kind,
+            "q": q,
+            "lead_kind_labels": LEAD_KIND_LABELS,
+            "lead_statuses": LEAD_STATUSES,
+            "lead_status_labels": LEAD_STATUS_LABELS,
+            "money": money,
+        },
+    )
+
+
+@vehicle_sales_router.post("/v2-clean/fleet/sales/opportunities/{lead_id}")
+def vehicle_sale_opportunity_update(
+    request: Request,
+    lead_id: int,
+    status: str = Form("in_review"),
+):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    normalized_status = status if status in LEAD_STATUS_LABELS else "in_review"
+    with base_router.SessionLocal() as db:
+        lead = db.get(VehicleSaleLead, lead_id)
+        if lead:
+            before_status = lead.status
+            lead.status = normalized_status
+            lead.updated_by_id = user_id
+            record_audit(
+                db,
+                action="vehicle.sale.lead_status_updated",
+                entity_type="vehicle_sale_lead",
+                entity_id=lead.id,
+                detail=(
+                    "Estado da oportunidade atualizado para "
+                    f"{LEAD_STATUS_LABELS[normalized_status]}"
+                ),
+                before_json={"status": before_status},
+                after_json={"status": normalized_status},
+                user_id=user_id,
+            )
+            db.commit()
+    return RedirectResponse(
+        "/v2-clean/fleet/sales/opportunities?updated=1",
+        status_code=303,
     )
 
 

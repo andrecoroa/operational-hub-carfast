@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "fleet_sales" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content sale-page">
+    <header class="clean-workshop-header clean-workshop-header-final">
+      <div>
+        <p class="eyebrow">Frota / venda</p>
+        <h2>Oportunidades</h2>
+        <p>Questões, propostas e pedidos de compra recebidos pelo portal.</p>
+      </div>
+      <div class="clean-header-actions">
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Venda de viaturas</a>
+      </div>
+    </header>
+
+    <section class="sale-kpi-grid" aria-label="Resumo das oportunidades">
+      <a href="/v2-clean/fleet/sales/opportunities"><span>Total</span><strong>{{ total }}</strong></a>
+      <a href="/v2-clean/fleet/sales/opportunities?status=new"><span>Pendentes</span><strong>{{ open_count }}</strong></a>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <form method="get" class="sale-filter-grid">
+        <label class="sale-filter-wide">Pesquisar
+          <input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, contacto ou mensagem">
+        </label>
+        <label>Tipo
+          <select name="kind"><option value="">Todos</option>{% for code, label in lead_kind_labels.items() %}<option value="{{ code }}" {% if kind_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Estado
+          <select name="status"><option value="">Todos</option>{% for code, label in lead_statuses %}<option value="{{ code }}" {% if status_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </label>
+        <button type="submit">Filtrar</button>
+      </form>
+    </section>
+
+    <section class="clean-panel clean-card-wide">
+      <div class="table-heading flat-heading"><div><h3>{{ total }} registos</h3></div></div>
+      <div class="clean-doc-table-wrap">
+        <table>
+          <thead><tr><th>Recebido</th><th>Viatura</th><th>Tipo</th><th>Contacto</th><th>Mensagem / valor</th><th>Estado</th></tr></thead>
+          <tbody>
+          {% for lead, vehicle in rows %}
+            <tr>
+              <td>{{ lead.created_at.strftime('%d/%m/%Y %H:%M') if lead.created_at else '-' }}</td>
+              <td><a href="/v2-clean/fleet/sales/{{ vehicle.id }}"><strong>{{ vehicle.plate or 'Sem matrícula' }}</strong></a><br><small>Unit {{ vehicle.rentway_unit_nr or '-' }} · {{ vehicle.brand or '' }} {{ vehicle.model or '' }}</small></td>
+              <td>{{ lead_kind_labels.get(lead.kind, lead.kind) }}</td>
+              <td><strong>{{ lead.name }}</strong>{% if lead.company %}<br>{{ lead.company }}{% endif %}<br><small>{{ lead.email or lead.phone or '-' }}</small></td>
+              <td>{% if lead.offer_value is not none %}<strong>{{ money(lead.offer_value) }}</strong><br>{% endif %}{{ lead.message or '-' }}</td>
+              <td>
+                <form method="post" action="/v2-clean/fleet/sales/opportunities/{{ lead.id }}" class="clean-inline-action">
+                  <select name="status">{% for code, label in lead_statuses %}<option value="{{ code }}" {% if lead.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                  <button type="submit">Guardar</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">Não existem oportunidades com estes filtros.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_pages > 1 %}<nav class="clean-pagination"><span>Página {{ page }} de {{ total_pages }}</span>{% if page > 1 %}<a href="?page={{ page - 1 }}&status={{ status_filter }}&kind={{ kind_filter }}&q={{ q }}">Anterior</a>{% endif %}{% if page < total_pages %}<a href="?page={{ page + 1 }}&status={{ status_filter }}&kind={{ kind_filter }}&q={{ q }}">Seguinte</a>{% endif %}</nav>{% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

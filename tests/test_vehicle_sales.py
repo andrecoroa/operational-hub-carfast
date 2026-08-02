@@ -20,7 +20,7 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.users import create_user
-from app.web.vehicle_sales import _filter_rows, _sale_row, compact_finance_entity
+from app.web.vehicle_sales import _filter_rows, _media_root, _sale_row, compact_finance_entity
 
 
 def test_compact_finance_entity_labels():
@@ -30,6 +30,13 @@ def test_compact_finance_entity_labels():
     assert compact_finance_entity("CGD Locação Corrente") == "CGD Locação"
     assert compact_finance_entity("LeasePlan Portugal") == "LeasePlan"
     assert compact_finance_entity("Mercedes-Benz Financial") == "Mercedes"
+
+
+def test_vehicle_sale_media_defaults_to_persistent_document_archive(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "vehicle_sale_media_root", None)
+    monkeypatch.setattr(base_router, "document_archive_root", lambda: tmp_path)
+
+    assert _media_root() == (tmp_path / "Venda de viaturas" / "imagens").resolve()
 
 
 def test_cgd_filter_includes_all_cgd_name_variants():
@@ -503,6 +510,22 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     ).all()
     assert {lead.kind for lead in leads} == {"question", "offer", "purchase"}
     assert next(lead for lead in leads if lead.kind == "offer").offer_value == Decimal("23500.00")
+
+    opportunities = authenticated_client.get("/v2-clean/fleet/sales/opportunities")
+    assert opportunities.status_code == 200
+    assert "Cliente Externo" in opportunities.text
+    assert "Comércio Auto, Lda." in opportunities.text
+    assert "12-AB-34" in opportunities.text
+
+    question_lead = next(lead for lead in leads if lead.kind == "question")
+    updated_lead = authenticated_client.post(
+        f"/v2-clean/fleet/sales/opportunities/{question_lead.id}",
+        data={"status": "in_review"},
+        follow_redirects=False,
+    )
+    assert updated_lead.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(VehicleSaleLead, question_lead.id).status == "in_review"
 
     revoked = authenticated_client.post(
         f"/v2-clean/fleet/sales/{vehicle.id}/publications/{publication.id}/revoke",

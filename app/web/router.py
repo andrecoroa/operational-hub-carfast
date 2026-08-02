@@ -10987,6 +10987,10 @@ DOCUMENTATION_IMPORT_WORKSPACES = {
         "title": "Importação de faturas",
         "subtitle": "Lotes documentais e listas de faturas esperadas ou pendentes.",
     },
+    "fleet": {
+        "title": "Documentação de frota",
+        "subtitle": "Planos financeiros e documentos estruturados associados às viaturas.",
+    },
     "other": {
         "title": "Outros documentos",
         "subtitle": "Documentos conhecidos seguem para o arquivo; desconhecidos para a Triagem.",
@@ -11029,6 +11033,15 @@ BUILTIN_EXTRACTION_MODELS = (
         "fields": "Frota, folhas de obra, detalhes, contratos e impros",
         "status": "active",
         "manage_href": "/v2-clean/documentation/imports/rentway",
+    },
+    {
+        "name": "Planos financeiros",
+        "source_system": "Entidades financeiras / Rentway",
+        "import_type": "vehicle_financial_plan",
+        "version": "Estruturado com pré-visualização",
+        "fields": "Contrato, entidade, datas, renda, capital, saldo e plano mensal",
+        "status": "active",
+        "manage_href": "/v2-clean/documentation/financial-plans",
     },
 )
 
@@ -11187,6 +11200,8 @@ def clean_documentation_import_workspace(
         tab = "diagnostics"
     elif workspace == "invoices":
         tab = "batches"
+    elif workspace == "fleet":
+        tab = "financial_plans"
     elif workspace == "other":
         tab = "known"
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
@@ -11214,6 +11229,12 @@ def clean_documentation_import_workspace(
             )
         elif workspace == "invoices":
             batch_conditions.append(ImportBatch.import_type.ilike("%invoice%"))
+        elif workspace == "fleet":
+            batch_conditions.append(
+                ImportBatch.import_type.in_(
+                    {"vehicle_financial_plans", "rentway_fleet"}
+                )
+            )
         else:
             batch_conditions.append(
                 or_(
@@ -11315,6 +11336,8 @@ def clean_documentation_import_workspace(
                 )
             elif workspace == "invoices":
                 document_conditions.append(_documentation_invoice_condition())
+            elif workspace == "fleet":
+                document_conditions.append(_documentation_family_condition("fleet"))
             else:
                 document_conditions.append(
                     ~Document.document_type.in_(
@@ -11427,7 +11450,12 @@ def clean_documentation_import_workspace(
             "invoices": {"supplier_invoice", "stock_invoice"},
             "diagnostics": {"diagnostic_report", "technical_report"},
             "rentway": {"structured_data", "rentway"},
-            "fleet": {"structured_data", "fleet", "vehicle_document"},
+            "fleet": {
+                "structured_data",
+                "fleet",
+                "vehicle_document",
+                "vehicle_financial_plan",
+            },
             "other": {"document", "archive", "other"},
         }[document_family]
         builtin_models = [

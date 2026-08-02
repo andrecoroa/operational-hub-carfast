@@ -100,6 +100,7 @@ def test_new_documentation_navigation_and_legacy_center_coexist(
         "/v2-clean/documentation/imports/rentway",
         "/v2-clean/documentation/imports/reports",
         "/v2-clean/documentation/imports/invoices",
+        "/v2-clean/documentation/imports/fleet",
         "/v2-clean/documentation/imports/other",
         "/v2-clean/documentation/invoices",
         "/v2-clean/documentation/archive",
@@ -134,6 +135,25 @@ def test_documentation_primary_flow_and_family_workspaces(authenticated_client):
     assert "Modelos de extração" in imports.text
     assert archive.status_code == 200
     assert "Histórico documental concluído" in archive.text
+
+
+def test_fleet_document_workspace_exposes_financial_plan_importer(
+    authenticated_client,
+):
+    page = authenticated_client.get("/v2-clean/documentation/imports/fleet")
+
+    assert page.status_code == 200
+    assert "Doc. Frota" in page.text
+    assert "Planos financeiros" in page.text
+    assert 'href="/v2-clean/documentation/financial-plans"' in page.text
+    assert "/v2-clean/documentation/imports/rentway?tab=fleet" in page.text
+    assert "Estruturado com pré-visualização" in page.text
+
+    importer = authenticated_client.get(
+        "/v2-clean/documentation/financial-plans"
+    )
+    assert importer.status_code == 200
+    assert "Voltar a Doc. Frota" in importer.text
 
 
 def test_invoice_workspace_owns_import_actions_and_hides_legacy_center(

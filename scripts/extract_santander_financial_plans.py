@@ -97,14 +97,19 @@ RESIDUAL = re.compile(
 
 catalog = contract_catalog()
 sections, pdf_sources = pdf_contract_sections()
+sections_by_batch = {}
+for section_contract in sorted(sections):
+    sections_by_batch.setdefault(section_contract[:-2], section_contract)
 records = []
 unmatched = []
 incomplete = []
-for contract, text in sorted(sections.items()):
-    meta = catalog.get(contract)
-    if not meta:
-        unmatched.append({"contract": contract, "source": pdf_sources[contract]})
+catalog_without_pdf = []
+for contract, meta in sorted(catalog.items()):
+    plan_contract = contract if contract in sections else sections_by_batch.get(contract[:-2])
+    if not plan_contract:
+        catalog_without_pdf.append(contract)
         continue
+    text = sections[plan_contract]
     matches = list(ROW.finditer(text))
     if not matches:
         incomplete.append({"contract": contract, "plate": meta["plate"], "reason": "sem mensalidades"})
@@ -144,6 +149,7 @@ for contract, text in sorted(sections.items()):
             "plate": meta["plate"],
             "entity": "Santander",
             "contract": contract,
+            "plan_contract": plan_contract,
             "start_date": meta["start_date"].isoformat(),
             "end_date": meta["end_date"].isoformat(),
             "term_months": len(schedule),
@@ -153,11 +159,17 @@ for contract, text in sorted(sections.items()):
             "reference_date": selected["period_end"],
             "installment_amount": selected["installment_amount"],
             "residual_with_vat": str(residual_with_vat or ""),
-            "source": pdf_sources[contract],
+            "source": pdf_sources[plan_contract],
             "catalog_source": meta["source"],
+            "inherited_from_batch": plan_contract != contract,
             "installments": schedule,
         }
     )
+
+catalog_batches = {contract[:-2] for contract in catalog}
+for contract in sorted(set(sections) - set(catalog)):
+    if contract[:-2] not in catalog_batches:
+        unmatched.append({"contract": contract, "source": pdf_sources[contract]})
 
 OUTPUT.write_text(
     json.dumps(
@@ -165,7 +177,7 @@ OUTPUT.write_text(
             "records": records,
             "unmatched": unmatched,
             "incomplete": incomplete,
-            "catalog_without_pdf": sorted(set(catalog) - set(sections)),
+            "catalog_without_pdf": catalog_without_pdf,
         },
         ensure_ascii=False,
         indent=2,
@@ -175,5 +187,5 @@ OUTPUT.write_text(
 print(
     f"{len(records)} planos Santander associados; {sum(len(r['installments']) for r in records)} mensalidades; "
     f"{len(unmatched)} sem matrícula; {len(incomplete)} incompletos; "
-    f"{len(set(catalog) - set(sections))} contratos do mapa sem PDF"
+    f"{len(catalog_without_pdf)} contratos do mapa sem PDF"
 )

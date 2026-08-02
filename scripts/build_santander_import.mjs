@@ -33,12 +33,16 @@ const mainRows = rows.map((r) => [
   Number(r.installment_amount), "", "", Number(r.residual_with_vat),
   Number(r.installment_amount), "Quadro de amortizações Santander",
   `Capital em dívida sem IVA em ${r.reference_date}`, `${r.source}; ${r.catalog_source}`,
-  "Valores mensais extraídos do PDF; associação por contrato e matrícula do mapa Santander.",
+  r.inherited_from_batch
+    ? `Plano repetido do contrato-base ${r.plan_contract}; unidade ${r.contract} do mesmo lote.`
+    : "Valores mensais extraídos do PDF; associação por contrato e matrícula do mapa Santander.",
 ]);
 const associationRows = rows.map((r) => [
   r.entity, r.contract, r.plate, "", "", "", "", "", "Ativa", "Alta",
   "Contrato Santander associado à matrícula no mapa de contratos ativos", r.source,
-  "Associação segura por contrato.", r.start_date, r.end_date, r.term_months,
+  r.inherited_from_batch
+    ? `Associação segura; plano comum do lote ${r.plan_contract.slice(0, -2)}.`
+    : "Associação segura por contrato.", r.start_date, r.end_date, r.term_months,
   Number(r.initial_amount), Number(r.outstanding_amount), Number(r.installment_amount),
   Number(r.installment_amount), Number(r.residual_with_vat),
   `Capital em dívida sem IVA em ${r.reference_date}`, `${r.source}; ${r.catalog_source}`,
@@ -47,7 +51,7 @@ const monthlyRows = rows.flatMap((r) => r.installments.map((item) => [
   r.entity, r.contract, r.plate, item.period_number, item.period_start, item.period_end,
   Number(item.amortization_amount), Number(item.interest_amount), Number(item.installment_amount),
   Number(item.outstanding_amount), Number(item.outstanding_amount_with_vat),
-  `${r.source} · data ${item.date_source}`,
+  `${r.source} · plano ${r.plan_contract} · data ${item.date_source}`,
 ]));
 
 const workbook = Workbook.create();

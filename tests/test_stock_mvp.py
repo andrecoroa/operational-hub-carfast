@@ -320,6 +320,65 @@ def test_extract_and_validate_are_document_only(authenticated_client, db_session
     assert stock_balances(db_session) == {}
 
 
+def test_invoice_preview_creates_article_and_confirms_physical_receipt(
+    authenticated_client, db_session
+):
+    document = _document("guided-stock-receipt")
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    validated = authenticated_client.post(
+        f"/api/stock/invoice-imports/{invoice_id}/validate",
+        json=_review_payload("GUIDED-1/2026"),
+    )
+    assert validated.status_code == 200, validated.text
+    invoice_import = db_session.get(StockInvoiceImport, invoice_id)
+    invoice_line = db_session.scalar(
+        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_id)
+    )
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+
+    preview = authenticated_client.get(f"/v2-clean/stock/invoices/{invoice_id}")
+    assert preview.status_code == 200
+    assert "Artigos e quantidades recebidas" in preview.text
+    assert "Confirmar receção física" in preview.text
+    response = authenticated_client.post(
+        f"/v2-clean/stock/invoices/{invoice_id}/receive",
+        data={
+            "invoice_line_id": str(invoice_line.id),
+            "article_id": "",
+            "internal_ref": "PNEU-GUIDED",
+            "article_name": "Pneu guiado",
+            "classification": "pneu",
+            "accepted_quantity": "4",
+            "divergence_reason": "Receção parcial",
+            "location_id": str(workshop.id),
+            "source_type": "invoice",
+            "source_reference": "GUIDED-1/2026",
+            "notes": "Confirmado fisicamente",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "received=" in response.headers["location"]
+    db_session.expire_all()
+    article = db_session.scalar(
+        select(StockArticle).where(StockArticle.internal_ref == "PNEU-GUIDED")
+    )
+    invoice_line = db_session.get(StockInvoiceLine, invoice_line.id)
+    assert article.name == "Pneu guiado"
+    assert article.primary_supplier_id == invoice_import.supplier_id
+    assert invoice_line.article_id == article.id
+    assert db_session.scalar(select(func.count()).select_from(StockReceipt)) == 1
+    assert db_session.scalar(select(func.count()).select_from(StockReceiptInvoiceLink)) == 1
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == 1
+    assert stock_balances(db_session)[(article.id, workshop.id)] == Decimal("4.000")
+
+
 def test_receipts_start_only_from_physical_stock_action_and_can_link_one_invoice_many_times(
     authenticated_client, db_session
 ):

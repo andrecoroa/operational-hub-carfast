@@ -617,6 +617,21 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
         .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
         .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
     ).all()
+    articles = db.scalars(
+        select(StockArticle)
+        .where(StockArticle.active.is_(True))
+        .order_by(StockArticle.internal_ref, StockArticle.name)
+    ).all()
+    supplier_article_matches: dict[str, int] = {}
+    if invoice_import.supplier_id:
+        supplier_article_matches = {
+            reference.supplier_ref: reference.article_id
+            for reference in db.scalars(
+                select(StockArticleSupplierRef).where(
+                    StockArticleSupplierRef.supplier_id == invoice_import.supplier_id
+                )
+            ).all()
+        }
     return templates.TemplateResponse(
         request,
         "clean_stock_invoice_review.html",
@@ -635,6 +650,13 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
             "line_rows": line_rows,
             "raw": raw,
             "linked_receipts": linked_receipts,
+            "articles": articles,
+            "locations": db.scalars(
+                select(StockLocation)
+                .where(StockLocation.active.is_(True))
+                .order_by(StockLocation.name)
+            ).all(),
+            "supplier_article_matches": supplier_article_matches,
         },
     )
 
@@ -717,6 +739,123 @@ async def stock_invoice_validate(request: Request, invoice_import_id: int, db: D
         notice = {"validated": "1"}
     except (ValueError, StockDomainError) as exc:
         db.commit()
+        notice = {"error": str(exc)}
+    return RedirectResponse(
+        f"/v2-clean/stock/invoices/{invoice_import_id}?{urlencode(notice)}", status_code=303
+    )
+
+
+@stock_router.post("/v2-clean/stock/invoices/{invoice_import_id}/receive")
+async def stock_invoice_receive(request: Request, invoice_import_id: int, db: DbSession):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
+    if invoice_import.status != "validated":
+        return RedirectResponse(
+            f"/v2-clean/stock/invoices/{invoice_import_id}?error=Valida primeiro a conferência documental.",
+            status_code=303,
+        )
+    form = await request.form()
+    try:
+        invoice_lines = {
+            line.id: line
+            for line in db.scalars(
+                select(StockInvoiceLine).where(
+                    StockInvoiceLine.invoice_import_id == invoice_import.id
+                )
+            ).all()
+        }
+        article_ids = form.getlist("article_id")
+        invoice_line_ids = form.getlist("invoice_line_id")
+        internal_refs = form.getlist("internal_ref")
+        article_names = form.getlist("article_name")
+        classifications = form.getlist("classification")
+        quantities = form.getlist("accepted_quantity")
+        divergences = form.getlist("divergence_reason")
+        receipt_items: dict[int, dict] = {}
+        for index, invoice_line_id_value in enumerate(invoice_line_ids):
+            invoice_line = invoice_lines.get(int(str(invoice_line_id_value)))
+            if not invoice_line:
+                raise StockDomainError("Linha documental inválida para esta fatura.")
+            accepted_quantity = _parse_decimal(
+                str(quantities[index] if index < len(quantities) else "0")
+            )
+            if accepted_quantity <= ZERO:
+                continue
+            selected_article_id = str(
+                article_ids[index] if index < len(article_ids) else ""
+            ).strip()
+            article = db.get(StockArticle, int(selected_article_id)) if selected_article_id else None
+            if not article:
+                internal_ref = str(
+                    internal_refs[index] if index < len(internal_refs) else ""
+                ).strip()
+                article_name = str(
+                    article_names[index] if index < len(article_names) else ""
+                ).strip()
+                if not internal_ref or not article_name:
+                    raise StockDomainError(
+                        f"Linha {invoice_line.line_number}: seleciona um artigo ou indica referência e nome para o criar."
+                    )
+                article = db.scalar(
+                    select(StockArticle).where(StockArticle.internal_ref == internal_ref)
+                )
+                if not article:
+                    article = StockArticle(
+                        internal_ref=internal_ref,
+                        name=article_name,
+                        description=invoice_line.description,
+                        unit=invoice_line.unit,
+                        classification=str(
+                            classifications[index] if index < len(classifications) else ""
+                        ).strip()
+                        or None,
+                        primary_supplier_id=invoice_import.supplier_id,
+                    )
+                    db.add(article)
+                    db.flush()
+            invoice_line.article_id = article.id
+            divergence = str(
+                divergences[index] if index < len(divergences) else ""
+            ).strip() or None
+            current = receipt_items.get(article.id)
+            if current:
+                current["accepted_quantity"] += accepted_quantity
+                if divergence:
+                    current["divergence_reason"] = "; ".join(
+                        filter(None, [current.get("divergence_reason"), divergence])
+                    )
+            else:
+                receipt_items[article.id] = {
+                    "article_id": article.id,
+                    "supplier_ref": invoice_line.supplier_ref,
+                    "accepted_quantity": accepted_quantity,
+                    "unit_cost": invoice_line.unit_cost,
+                    "divergence_reason": divergence,
+                }
+        if not receipt_items:
+            raise StockDomainError("Indica pelo menos uma quantidade fisicamente recebida.")
+        source_type = str(form.get("source_type") or "invoice")
+        source_reference = str(form.get("source_reference") or "").strip() or None
+        if source_type == "invoice" and not source_reference:
+            source_reference = invoice_import.invoice_number
+        command = StockReceiptCreate(
+            location_id=int(str(form.get("location_id"))),
+            supplier_id=invoice_import.supplier_id,
+            source_type=source_type,
+            source_reference=source_reference,
+            responsible_name=str(form.get("responsible_name") or "") or None,
+            notes=str(form.get("notes") or "") or None,
+            invoice_import_ids=[invoice_import.id],
+            lines=[StockReceiptLineCreate(**item) for item in receipt_items.values()],
+        )
+        receipt = create_physical_receipt(db, command=command, user_id=_user_id(request))
+        db.commit()
+        notice = {"received": str(receipt.id)}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
         notice = {"error": str(exc)}
     return RedirectResponse(
         f"/v2-clean/stock/invoices/{invoice_import_id}?{urlencode(notice)}", status_code=303

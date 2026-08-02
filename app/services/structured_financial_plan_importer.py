@@ -25,6 +25,31 @@ ASSOCIATIONS_SHEET = "Viaturas associadas"
 MONTHLY_SHEET = "Plano mensal"
 IMPORT_TYPE = "vehicle_financial_plans"
 
+SHEET_ALIASES = {
+    MAIN_SHEET: (MAIN_SHEET, "Contratos"),
+    ASSOCIATIONS_SHEET: (ASSOCIATIONS_SHEET, "Associacoes", "Associações"),
+    MONTHLY_SHEET: (MONTHLY_SHEET, "Mensal"),
+}
+
+HEADER_ALIASES = {
+    "Estado associacao": "Estado associação",
+    "Confianca": "Confiança",
+    "Data inicio": "Data início",
+    "Capital inicial c/IVA (EUR)": "Capital inicial (€)",
+    "Saldo conhecido c/IVA (EUR)": "Saldo conhecido (€)",
+    "Data do saldo": "Data do saldo",
+    "Renda c/IVA (EUR)": "Encargos/renda c/IVA (€)",
+    "Valor residual c/IVA (EUR)": "Valor residual (€)",
+    "Base temporal / definicao": "Base temporal / definição",
+    "Observacoes": "Observações",
+    "Matricula": "Matrícula",
+    "Evidencia": "Evidência",
+    "N. renda": "Período",
+    "Data vencimento": "Data fim",
+    "Prestacao c/IVA (EUR)": "Prestação (€)",
+    "Capital em divida c/IVA (EUR)": "Capital em dívida c/IVA (€)",
+}
+
 
 def _text(value: Any) -> str:
     if value is None:
@@ -105,12 +130,28 @@ def _plan_status(contract_row: dict[str, Any]) -> tuple[str, bool]:
     return "active", True
 
 
+def _sheet_name(workbook: Any, canonical_name: str) -> str | None:
+    available = {_key(name): name for name in workbook.sheetnames}
+    for alias in SHEET_ALIASES.get(canonical_name, (canonical_name,)):
+        if resolved := available.get(_key(alias)):
+            return resolved
+    return None
+
+
+def _canonical_header(value: Any) -> str:
+    header = _text(value)
+    normalized_aliases = {_key(alias): canonical for alias, canonical in HEADER_ALIASES.items()}
+    return normalized_aliases.get(_key(header), header)
+
+
 def _sheet_rows(workbook: Any, name: str) -> list[dict[str, Any]]:
-    if name not in workbook.sheetnames:
-        raise ValueError(f"Falta o separador obrigatório: {name}.")
-    sheet = workbook[name]
+    resolved_name = _sheet_name(workbook, name)
+    if not resolved_name:
+        accepted = ", ".join(SHEET_ALIASES.get(name, (name,)))
+        raise ValueError(f"Falta o separador obrigatório: {name} (aceites: {accepted}).")
+    sheet = workbook[resolved_name]
     values = sheet.iter_rows(values_only=True)
-    headers = [_text(value) for value in next(values)]
+    headers = [_canonical_header(value) for value in next(values)]
     return [
         {headers[index]: value for index, value in enumerate(row) if index < len(headers)}
         for row in values
@@ -119,7 +160,7 @@ def _sheet_rows(workbook: Any, name: str) -> list[dict[str, Any]]:
 
 
 def _optional_sheet_rows(workbook: Any, name: str) -> list[dict[str, Any]]:
-    return _sheet_rows(workbook, name) if name in workbook.sheetnames else []
+    return _sheet_rows(workbook, name) if _sheet_name(workbook, name) else []
 
 
 def file_sha256(path: Path) -> str:
@@ -294,7 +335,12 @@ def preview_financial_plan_workbook(db: Session, path: Path) -> dict[str, Any]:
                 "initial_amount": str(_money(resolved_plan.get("Capital inicial (€)")) or ""),
                 "outstanding_amount": str(_money(resolved_plan.get("Saldo conhecido (€)")) or ""),
                 "amount_reference_date": (_reference_date(definition) or "").isoformat()
-                if _reference_date(definition) else "",
+                if _reference_date(definition)
+                else (
+                    (_date_value(resolved_plan.get("Data do saldo")) or "").isoformat()
+                    if _date_value(resolved_plan.get("Data do saldo"))
+                    else ""
+                ),
                 "installment_amount": str(installment_amount or ""),
                 "installment_with_vat": str(installment_display or ""),
                 "installment_source": installment_source,

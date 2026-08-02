@@ -99,6 +99,96 @@ def _workbook_bytes(tmp_path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _cgd_workbook(path: Path) -> None:
+    workbook = Workbook()
+    contracts = workbook.active
+    contracts.title = "Contratos"
+    contracts.append(
+        [
+            "Financeira",
+            "Contrato",
+            "Estado associacao",
+            "Confianca",
+            "Data inicio",
+            "Data fim",
+            "Prazo (meses)",
+            "Capital inicial c/IVA (EUR)",
+            "Saldo conhecido c/IVA (EUR)",
+            "Data do saldo",
+            "Renda c/IVA (EUR)",
+            "Valor residual c/IVA (EUR)",
+            "Base temporal / definicao",
+            "Fontes consolidadas",
+        ]
+    )
+    contracts.append(
+        [
+            "CGD",
+            "100168978",
+            "auto_associado",
+            "alta",
+            "2026-03-31",
+            "2030-03-20",
+            48,
+            217255.01,
+            191391.73,
+            "2026-08-02",
+            4242.69,
+            21725.49,
+            "Valores com IVA; reparticao proporcional",
+            "comprovativo.csv",
+        ]
+    )
+    associations = workbook.create_sheet("Associacoes")
+    associations.append(
+        [
+            "Financeira",
+            "Contrato",
+            "Matricula",
+            "Unidade",
+            "Confianca",
+            "Evidencia",
+            "Capital inicial c/IVA (EUR)",
+            "Saldo conhecido c/IVA (EUR)",
+            "Data do saldo",
+            "Renda c/IVA (EUR)",
+            "Valor residual c/IVA (EUR)",
+        ]
+    )
+    associations.append(
+        [
+            "CGD",
+            "100168978",
+            "CF-13-BU",
+            537,
+            "alta",
+            "Rentway",
+            22087.79,
+            19458.33,
+            "2026-08-02",
+            431.34,
+            2208.78,
+        ]
+    )
+    monthly = workbook.create_sheet("Mensal")
+    monthly.append(
+        [
+            "Financeira",
+            "Contrato",
+            "Matricula",
+            "N. renda",
+            "Data vencimento",
+            "Prestacao c/IVA (EUR)",
+            "Capital em divida c/IVA (EUR)",
+            "Fonte",
+        ]
+    )
+    monthly.append(
+        ["CGD", "100168978", "CF-13-BU", 1, "2026-03-31", 431.34, 19458.33, "comprovativo.csv"]
+    )
+    workbook.save(path)
+
+
 def test_preview_matches_by_vin_then_unit_without_writing(db_session: Session, tmp_path: Path):
     path = tmp_path / "plans.xlsx"
     _workbook(path)
@@ -116,6 +206,26 @@ def test_preview_matches_by_vin_then_unit_without_writing(db_session: Session, t
     assert preview["rows"][0]["match_method"] == "vin"
     assert preview["rows"][1]["match_method"] == "plate"
     assert db_session.scalar(select(func.count()).select_from(VehicleFinancialPlan)) == 0
+
+
+def test_preview_accepts_cgd_export_sheet_and_column_names(db_session: Session, tmp_path: Path):
+    path = tmp_path / "planos-cgd.xlsx"
+    _cgd_workbook(path)
+    db_session.add(Vehicle(plate="CF-13-BU", rentway_unit_nr="537"))
+    db_session.commit()
+
+    preview = preview_financial_plan_workbook(db_session, path)
+
+    assert preview["matched"] == 1
+    assert preview["conflicts"] == 0
+    assert preview["total_installments"] == 1
+    row = preview["rows"][0]
+    assert row["initial_amount"] == "22087.79"
+    assert row["outstanding_amount"] == "19458.33"
+    assert row["amount_reference_date"] == "2026-08-02"
+    assert row["installment_with_vat"] == "431.34"
+    assert row["residual_amount"] == "2208.78"
+    assert row["installments"][0]["outstanding_with_vat"] == "19458.33"
 
 
 def test_confirm_preserves_multivehicle_contract_and_96_month_term(db_session: Session, tmp_path: Path):

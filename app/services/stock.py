@@ -4,7 +4,7 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -1017,6 +1017,18 @@ def parse_stock_invoice(lines: list[str], content_hash: str) -> dict[str, Any] |
     return None
 
 
+def _json_safe_extraction(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe_extraction(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_extraction(item) for item in value]
+    return value
+
+
 def extract_stock_invoice(db: Session, invoice_import: StockInvoiceImport) -> dict[str, Any]:
     document = db.get(Document, invoice_import.document_id)
     if not document:
@@ -1037,6 +1049,7 @@ def extract_stock_invoice(db: Session, invoice_import: StockInvoiceImport) -> di
     invoice_import.content_hash = content_hash
     invoice_import.extractor_name = parsed["extractor_name"]
     invoice_import.extractor_version = parsed["extractor_version"]
+    parsed = _json_safe_extraction(parsed)
     invoice_import.raw_extraction_json = parsed
     invoice_import.status = "needs_review"
     invoice_import.error_details = None

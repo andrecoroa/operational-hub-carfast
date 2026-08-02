@@ -304,6 +304,63 @@ def test_direct_stock_invoice_import_keeps_unreadable_pdf_for_manual_review(
     assert "revisão manual" in invoice_import.error_details
 
 
+def test_direct_stock_invoice_import_persists_recognized_decimal_extraction(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from app.services import stock as stock_service
+    from app.web import stock as stock_web
+
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        stock_service,
+        "_pdf_lines",
+        lambda _path: (["fatura reconhecida"], "b" * 64),
+    )
+    monkeypatch.setattr(
+        stock_service,
+        "parse_stock_invoice",
+        lambda _lines, content_hash: {
+            "extractor_name": "recognized_test",
+            "extractor_version": "v1",
+            "content_hash": content_hash,
+            "supplier_name": "Fornecedor teste",
+            "invoice_number": "FT-DECIMAL",
+            "net_total": Decimal("10.00"),
+            "tax_total": Decimal("2.30"),
+            "gross_total": Decimal("12.30"),
+            "lines": [
+                {
+                    "line_number": 1,
+                    "supplier_ref": "ART-1",
+                    "description": "Artigo teste",
+                    "quantity": Decimal("2.000"),
+                    "unit": "un.",
+                    "unit_cost": Decimal("5.0000"),
+                    "discount": Decimal("0"),
+                    "eco_value": Decimal("0"),
+                    "tax_rate": Decimal("0.23"),
+                    "line_total": Decimal("12.30"),
+                }
+            ],
+        },
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files={"file": ("reconhecida.pdf", b"%PDF-1.4\nstock", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/stock/invoices/")
+    invoice_import = db_session.scalar(
+        select(StockInvoiceImport).where(StockInvoiceImport.extractor_name == "recognized_test")
+    )
+    assert invoice_import.error_details is None
+    assert invoice_import.raw_extraction_json["net_total"] == "10.00"
+    assert invoice_import.raw_extraction_json["lines"][0]["quantity"] == "2.000"
+
+
 def test_direct_stock_invoice_import_reports_storage_failure(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

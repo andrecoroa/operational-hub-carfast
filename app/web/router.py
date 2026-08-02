@@ -818,10 +818,19 @@ def current_value_with_financial_amortization(
     fallback: object = None,
     plan_start_date: object = None,
     reference_date: object = None,
+    amortization_month_value: object = None,
 ) -> Decimal | None:
     acquisition = parse_decimal_text(acquisition_with_vat)
     if acquisition is None:
         return None
+    displayed_month = parse_decimal_text(amortization_month_value)
+    if displayed_month is not None:
+        month = max(1, min(96, int(displayed_month)))
+        acquisition_decimal = Decimal(str(acquisition))
+        paid_value = acquisition_decimal * Decimal(month) / Decimal(96)
+        return max(Decimal("0"), acquisition_decimal - paid_value).quantize(
+            Decimal("0.01")
+        )
     fallback_value = parse_decimal_text(fallback)
     if fallback_value is not None:
         return Decimal(str(fallback_value)).quantize(Decimal("0.01"))
@@ -844,7 +853,7 @@ def residual_amount_for_vehicle(
         return plan.residual_amount
     candidates = [item for item in contract_plans if item.active and item.initial_amount is not None]
     if len(candidates) <= 1:
-        return plan.residual_amount
+        return None
     total_initial = sum((item.initial_amount for item in candidates), Decimal("0"))
     if total_initial <= 0 or plan.initial_amount is None:
         return (plan.residual_amount / Decimal(len(candidates))).quantize(Decimal("0.01"))
@@ -7217,6 +7226,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         current_cost.get("current_cost_with_vat"),
         active_financial_plan.start_date if active_financial_plan else None,
         active_financial_plan.amount_reference_date if active_financial_plan else None,
+        current_cost.get("amortization_month"),
     )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""

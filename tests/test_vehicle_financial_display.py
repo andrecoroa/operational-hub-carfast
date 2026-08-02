@@ -90,6 +90,20 @@ def test_current_value_at_month_24_uses_24_of_96_months():
     assert result == Decimal("16595.61")
 
 
+def test_current_value_uses_displayed_month_when_plan_dates_are_missing():
+    result = current_value_with_financial_amortization(
+        "22.185,66",
+        None,
+        None,
+        None,
+        None,
+        None,
+        5,
+    )
+
+    assert result == Decimal("21030.16")
+
+
 def test_legacy_cgd_contract_residual_is_allocated_by_vehicle_weight():
     first = SimpleNamespace(
         finance_entity="CGD",
@@ -120,6 +134,18 @@ def test_cgd_vehicle_residual_from_association_is_not_reallocated():
     )
 
     assert residual_amount_for_vehicle(plan, [plan]) == Decimal("2324.57")
+
+
+def test_legacy_cgd_contract_residual_is_hidden_without_allocation_basis():
+    plan = SimpleNamespace(
+        finance_entity="CGD",
+        residual_amount=Decimal("21143.82"),
+        initial_amount=Decimal("22185.66"),
+        active=True,
+        raw_json={"association": {}},
+    )
+
+    assert residual_amount_for_vehicle(plan, [plan]) is None
 
 
 def test_financial_panel_uses_requested_four_column_order():

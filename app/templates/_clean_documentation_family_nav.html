@@ -1,0 +1,12 @@
+{% set active_family = document_family or "invoices" %}
+<nav class="doc-family-nav" aria-label="Família documental">
+  {% for code, label in [("invoices", "Faturas"), ("diagnostics", "Diagnósticos"), ("rentway", "Rentway"), ("fleet", "Doc. Frota"), ("other", "Outros documentos")] %}
+    {% if doc_nav == "imports" %}
+      {% set href = "/v2-clean/documentation/imports/" ~ ({"diagnostics": "reports", "fleet": "rentway"}.get(code, code)) %}
+      {% if code == "fleet" %}{% set href = href ~ "?tab=fleet" %}{% endif %}
+    {% else %}
+      {% set href = "/v2-clean/documentation/" ~ doc_nav ~ "?family=" ~ code %}
+    {% endif %}
+    <a href="{{ href }}" {% if active_family == code %}class="active"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>

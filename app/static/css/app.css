@@ -21628,6 +21628,43 @@ body.clean-task-preview-open {
   color: var(--doc-accent);
 }
 
+.doc-family-nav {
+  background: #fff;
+  border: 1px solid var(--doc-border);
+  border-radius: 7px;
+  display: flex;
+  gap: 3px;
+  margin: 0 0 10px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 4px;
+}
+
+.doc-family-nav a {
+  border-radius: 5px;
+  color: var(--doc-muted);
+  flex: 0 0 auto;
+  font-size: 0.74rem;
+  font-weight: 850;
+  padding: 7px 11px;
+  text-decoration: none;
+}
+
+.doc-family-nav a:hover,
+.doc-family-nav a.active {
+  background: var(--doc-accent-soft);
+  color: var(--doc-accent);
+}
+
+.doc-arch-header-simple {
+  min-height: 0;
+}
+
+.doc-arch-section-heading-tight {
+  margin-bottom: 7px;
+  padding: 2px 1px;
+}
+
 .doc-arch-header,
 .doc-arch-section-heading,
 .doc-arch-card-heading {

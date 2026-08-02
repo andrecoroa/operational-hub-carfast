@@ -113,6 +113,29 @@ def test_documentation_workspaces_render(authenticated_client, path):
     assert "Centro de documentação" in response.text
 
 
+def test_documentation_primary_flow_and_family_workspaces(authenticated_client):
+    treatment = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=diagnostics"
+    )
+    imports = authenticated_client.get(
+        "/v2-clean/documentation/imports/invoices"
+    )
+    archive = authenticated_client.get(
+        "/v2-clean/documentation/archive?family=fleet"
+    )
+
+    assert treatment.status_code == 200
+    assert "Tratamento" in treatment.text
+    assert "Diagnósticos por tratar" in treatment.text
+    assert "Doc. Frota" in treatment.text
+    assert imports.status_code == 200
+    assert "Documentos importados" in imports.text
+    assert "Lotes de importação" in imports.text
+    assert "Modelos de extração" in imports.text
+    assert archive.status_code == 200
+    assert "Histórico documental concluído" in archive.text
+
+
 def test_invoice_workspace_owns_import_actions_and_hides_legacy_center(
     authenticated_client,
 ):

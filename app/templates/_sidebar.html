@@ -46,17 +46,14 @@
       {% if nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}
-      {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
+      {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       <details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
         <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>
         <div class="sidebar-nav-children">
-          <a class="sidebar-sub-link" href="/v2-clean/documentation">Centro</a>
           <a class="sidebar-sub-link" href="/v2-clean/documentation/triage">Triagem</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/imports">Importações</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/invoices">Faturas</a>
-          <a class="sidebar-sub-link" href="/v2-clean/diagnostics">Diagnósticos</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/treatment">Tratamento</a>
+          <a class="sidebar-sub-link" href="/v2-clean/documentation/imports/invoices">Importação</a>
           <a class="sidebar-sub-link" href="/v2-clean/documentation/archive">Arquivo</a>
-          <a class="sidebar-sub-link" href="/v2-clean/documentation/extraction-models">Modelos de extração</a>
         </div>
       </details>
       <span class="nav-section-label">Sistema</span>

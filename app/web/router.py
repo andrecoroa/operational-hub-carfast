@@ -10968,17 +10968,10 @@ def clean_documentation_imports(request: Request):
         return denied
     if not can_view_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
-    with SessionLocal() as db:
-        batches = db.scalars(
-            select(ImportBatch)
-            .order_by(ImportBatch.started_at.desc(), ImportBatch.id.desc())
-            .limit(12)
-        ).all()
-        return templates.TemplateResponse(
-            request,
-            "clean_documentation_imports.html",
-            {"batches": batches},
-        )
+    return RedirectResponse(
+        "/v2-clean/documentation/imports/invoices",
+        status_code=303,
+    )
 
 
 DOCUMENTATION_IMPORT_WORKSPACES = {
@@ -10987,7 +10980,7 @@ DOCUMENTATION_IMPORT_WORKSPACES = {
         "subtitle": "Dados estruturados validados por natureza na origem.",
     },
     "reports": {
-        "title": "Relatórios",
+        "title": "Diagnósticos",
         "subtitle": "Diagnósticos, Service Box, planos de manutenção e relatórios técnicos.",
     },
     "invoices": {
@@ -11038,6 +11031,121 @@ BUILTIN_EXTRACTION_MODELS = (
         "manage_href": "/v2-clean/documentation/imports/rentway",
     },
 )
+
+DOCUMENTATION_FAMILIES = {
+    "invoices": "Faturas",
+    "diagnostics": "Diagnósticos",
+    "rentway": "Rentway",
+    "fleet": "Doc. Frota",
+    "other": "Outros documentos",
+}
+
+
+def _documentation_family_condition(family: str) -> Any:
+    if family == "invoices":
+        return _documentation_invoice_condition()
+    if family == "diagnostics":
+        return Document.document_type.in_(
+            {
+                "workshop_diagnostic",
+                "workshop_report",
+                "diagnostic_report",
+                "technical_report",
+            }
+        )
+    if family == "fleet":
+        return Document.document_type.in_(
+            {"general_fleet", "vehicle_document", "fleet_document"}
+        )
+    if family == "rentway":
+        return or_(
+            Document.source.ilike("%rentway%"),
+            Document.entry_channel.ilike("%rentway%"),
+        )
+    return ~Document.document_type.in_(
+        {
+            "workshop_supplier_invoice",
+            "finance_supplier_invoice",
+            "workshop_diagnostic",
+            "workshop_report",
+            "diagnostic_report",
+            "technical_report",
+            "general_fleet",
+            "vehicle_document",
+            "fleet_document",
+        }
+    )
+
+
+@web_router.get("/v2-clean/documentation/treatment", response_class=HTMLResponse)
+def clean_documentation_treatment(
+    request: Request,
+    family: str = "invoices",
+    q: str = "",
+    page: int = 1,
+    page_size: int = 25,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    clean_family = family if family in DOCUMENTATION_FAMILIES else "invoices"
+    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    conditions: list[Any] = [
+        _documentation_family_condition(clean_family),
+        or_(
+            DocumentWorkflowState.id.is_(None),
+            DocumentWorkflowState.validation_status != "human_validated",
+            DocumentWorkflowState.extraction_status.in_({"queued", "pending", "failed"}),
+        ),
+    ]
+    if q.strip():
+        token = f"%{q.strip()}%"
+        conditions.append(
+            or_(
+                Document.title.ilike(token),
+                Document.original_name.ilike(token),
+                Document.plate.ilike(token),
+                Document.supplier_name.ilike(token),
+            )
+        )
+    with SessionLocal() as db:
+        total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+            )
+            or 0
+        )
+        records = db.execute(
+            select(Document, DocumentWorkflowState)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+            .where(*conditions)
+            .order_by(Document.updated_at.desc(), Document.id.desc())
+            .offset(offset)
+            .limit(clean_page_size)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_treatment.html",
+            {
+                "rows": [_documentation_row(document, state) for document, state in records],
+                "document_family": clean_family,
+                "family_label": DOCUMENTATION_FAMILIES[clean_family],
+                "pagination": _documentation_pagination(total, clean_page, clean_page_size),
+                "q": q,
+                "workflow_labels": WORKFLOW_LABELS,
+            },
+        )
 
 RENTWAY_TAB_IMPORT_TYPES = {
     "fleet": {"rentway_fleet"},
@@ -11308,6 +11416,40 @@ def clean_documentation_import_workspace(
                     diagnostic_counts["failed"] += 1
                 else:
                     diagnostic_counts["pending"] += 1
+        document_family = (
+            "diagnostics"
+            if workspace == "reports"
+            else "fleet"
+            if workspace == "rentway" and tab == "fleet"
+            else workspace
+        )
+        model_types = {
+            "invoices": {"supplier_invoice", "stock_invoice"},
+            "diagnostics": {"diagnostic_report", "technical_report"},
+            "rentway": {"structured_data", "rentway"},
+            "fleet": {"structured_data", "fleet", "vehicle_document"},
+            "other": {"document", "archive", "other"},
+        }[document_family]
+        builtin_models = [
+            model
+            for model in BUILTIN_EXTRACTION_MODELS
+            if model["import_type"] in model_types
+            or any(token in model["import_type"] for token in model_types)
+        ]
+        mapping_conditions = [
+            or_(
+                *[
+                    ImportMapping.import_type.ilike(f"%{model_type}%")
+                    for model_type in model_types
+                ]
+            )
+        ]
+        extraction_mappings = db.scalars(
+            select(ImportMapping)
+            .where(*mapping_conditions)
+            .order_by(ImportMapping.active.desc(), ImportMapping.name.asc())
+            .limit(25)
+        ).all()
         return templates.TemplateResponse(
             request,
             "clean_documentation_import_workspace.html",
@@ -11331,6 +11473,9 @@ def clean_documentation_import_workspace(
                 "rentway_import_kinds": RENTWAY_IMPORT_KINDS,
                 "diagnostic_batches": diagnostic_batches,
                 "diagnostic_counts": diagnostic_counts,
+                "document_family": document_family,
+                "builtin_models": builtin_models,
+                "extraction_mappings": extraction_mappings,
             },
         )
 
@@ -12128,6 +12273,7 @@ def clean_documentation_reconcile_pending_invoices(request: Request):
 @web_router.get("/v2-clean/documentation/archive", response_class=HTMLResponse)
 def clean_documentation_archive(
     request: Request,
+    family: str = "invoices",
     q: str = "",
     page: int = 1,
     page_size: int = 25,
@@ -12138,7 +12284,9 @@ def clean_documentation_archive(
     if not can_view_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
+    clean_family = family if family in DOCUMENTATION_FAMILIES else "invoices"
     conditions: list[Any] = [
+        _documentation_family_condition(clean_family),
         or_(
             Document.archived.is_(True),
             DocumentWorkflowState.destination_status == "archive",
@@ -12193,6 +12341,8 @@ def clean_documentation_archive(
                     clean_page_size,
                 ),
                 "q": q,
+                "document_family": clean_family,
+                "family_label": DOCUMENTATION_FAMILIES[clean_family],
             },
         )
 

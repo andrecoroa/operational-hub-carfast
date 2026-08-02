@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_treatment" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page">
+    {% set doc_nav = "treatment" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header doc-arch-header-simple">
+      <div><p class="eyebrow">Documentação</p><h1>Tratamento</h1><p>Validar, completar e encaminhar documentos que já têm uma família definida.</p></div>
+    </header>
+    {% include "_clean_documentation_family_nav.html" %}
+    <section class="doc-arch-section-heading doc-arch-section-heading-tight">
+      <div><h2>{{ family_label }} por tratar</h2><p>A tabela mostra apenas documentos com extração ou validação ainda pendente.</p></div>
+    </section>
+    <form class="doc-arch-filters doc-arch-filters-compact" method="get">
+      <input type="hidden" name="family" value="{{ document_family }}">
+      <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula…">
+      <button type="submit">Filtrar</button>
+    </form>
+    <section class="doc-arch-card">
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Data</th><th>Documento</th><th>Origem</th><th>Viatura</th><th>Extração</th><th>Validação</th><th>Ação</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+              <tr><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.origin }}</td><td>{{ row.document.plate or "-" }}</td><td>{{ workflow_labels.get(row.workflow.extraction_status, row.workflow.extraction_status) }}</td><td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td><td><a href="{{ row.detail_href }}">Tratar</a></td></tr>
+            {% else %}<tr><td colspan="7" class="doc-arch-empty">Não existem documentos pendentes nesta família.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <nav class="doc-arch-pagination">
+      {% if pagination.has_previous %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      {% if pagination.has_next %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+    </nav>
+  </main>
+</div>
+{% endblock %}

@@ -7,8 +7,9 @@
     {% set doc_nav = "imports" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
-      <div><p class="eyebrow">Documentação / Importações</p><h1>{{ workspace_context.title }}</h1><p>{{ workspace_context.subtitle }}</p></div>
+      <div><p class="eyebrow">Documentação / Importação</p><h1>{% if document_family == "fleet" %}Documentação de frota{% else %}{{ workspace_context.title }}{% endif %}</h1><p>{{ workspace_context.subtitle }}</p></div>
     </header>
+    {% include "_clean_documentation_family_nav.html" %}
 
     {% if request.query_params.get("confirmed") %}<div class="doc-arch-notice success">Lote #{{ request.query_params.get("batch_id") }} confirmado: {{ request.query_params.get("confirmed") }} registos tratados.</div>{% endif %}
     {% if request.query_params.get("reprocessed") %}<div class="doc-arch-notice success">Reprocessamento criado no lote #{{ request.query_params.get("reprocessed") }}.</div>{% endif %}
@@ -111,6 +112,7 @@
     </form>
 
     <section class="doc-arch-card">
+      <div class="doc-arch-card-heading"><div><h2>Documentos importados</h2><p>Registos desta família, com o estado atual de associação, extração e validação.</p></div></div>
       <div class="doc-arch-table-wrap">
         <table class="doc-arch-table">
           {% if workspace == "rentway" and tab == "fleet" %}
@@ -133,7 +135,7 @@
     </nav>
 
     <section class="doc-arch-card" id="batch-history">
-      <div class="doc-arch-card-heading"><div><h2>Histórico de lotes</h2><p>O reprocessamento parte sempre da linha do lote e cria uma nova tentativa auditável.</p></div></div>
+      <div class="doc-arch-card-heading"><div><h2>Lotes de importação</h2><p>Histórico auditável das importações e reprocessamentos desta família.</p></div></div>
       <div class="doc-arch-table-wrap">
         <table class="doc-arch-table">
           <thead><tr><th>Lote</th><th>Tipo</th><th>Data</th><th>Total</th><th>Criados</th><th>Atualizados</th><th>Erros</th><th>Estado</th><th>Ação</th></tr></thead>
@@ -141,6 +143,20 @@
             {% for batch in batches %}
               <tr><td>#{{ batch.id }}</td><td>{{ batch.import_type }}</td><td>{{ batch.started_at.strftime("%d/%m/%Y %H:%M") if batch.started_at else "-" }}</td><td>{{ batch.total_rows }}</td><td>{{ batch.created_rows }}</td><td>{{ batch.updated_rows }}</td><td>{{ batch.error_rows }}</td><td><span class="doc-arch-badge {% if batch.status == 'completed' %}success{% elif batch.status == 'failed' %}danger{% else %}warning{% endif %}">{{ batch.status }}</span></td><td>{% if workspace == "rentway" %}<form method="post" action="/v2-clean/documentation/imports/rentway/batches/{{ batch.id }}/reprocess"><button type="submit" class="link-button">Reprocessar</button></form>{% else %}—{% endif %}</td></tr>
             {% else %}<tr><td colspan="9" class="doc-arch-empty">Sem lotes para esta área.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="doc-arch-card" id="extraction-models">
+      <div class="doc-arch-card-heading"><div><h2>Modelos de extração</h2><p>Leitores e mapeamentos disponíveis para esta família documental.</p></div><a href="/v2-clean/documentation/extraction-models" class="button-link secondary-link">Gerir modelos</a></div>
+      <div class="doc-arch-table-wrap">
+        <table class="doc-arch-table">
+          <thead><tr><th>Modelo</th><th>Origem</th><th>Tipo</th><th>Versão</th><th>Estado</th></tr></thead>
+          <tbody>
+            {% for model in builtin_models %}<tr><td>{{ model.name }}</td><td>{{ model.source_system }}</td><td>{{ model.import_type }}</td><td>{{ model.version }}</td><td><span class="doc-arch-badge success">Ativo</span></td></tr>{% endfor %}
+            {% for mapping in extraction_mappings %}<tr><td>{{ mapping.name }}</td><td>{{ mapping.source_system }}</td><td>{{ mapping.import_type }}</td><td>Configurável</td><td><span class="doc-arch-badge {% if mapping.active %}success{% else %}neutral{% endif %}">{{ "Ativo" if mapping.active else "Inativo" }}</span></td></tr>{% endfor %}
+            {% if not builtin_models and not extraction_mappings %}<tr><td colspan="5" class="doc-arch-empty">Não existem modelos configurados para esta família.</td></tr>{% endif %}
           </tbody>
         </table>
       </div>

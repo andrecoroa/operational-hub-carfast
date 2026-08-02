@@ -6,8 +6,10 @@
   <main class="content clean-content doc-arch-page">
     {% set doc_nav = "archive" %}
     {% include "_clean_documentation_nav.html" %}
-    <header class="doc-arch-header"><div><p class="eyebrow">Documentação</p><h1>Arquivo global</h1><p>Pesquisa transversal sobre o arquivo documental único, sem separação artificial por experiência.</p></div></header>
-    <form class="doc-arch-filters doc-arch-filters-compact" method="get"><input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula, remetente…"><button type="submit">Pesquisar</button></form>
+    <header class="doc-arch-header"><div><p class="eyebrow">Documentação</p><h1>Arquivo</h1><p>Consulta dos documentos concluídos, organizada por família documental.</p></div></header>
+    {% include "_clean_documentation_family_nav.html" %}
+    <section class="doc-arch-section-heading doc-arch-section-heading-tight"><div><h2>{{ family_label }}</h2><p>Histórico documental concluído e preservado.</p></div></section>
+    <form class="doc-arch-filters doc-arch-filters-compact" method="get"><input type="hidden" name="family" value="{{ document_family }}"><input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula, remetente…"><button type="submit">Pesquisar</button></form>
     <section class="doc-arch-card">
       <div class="doc-arch-table-wrap">
         <table class="doc-arch-table">
@@ -17,9 +19,9 @@
       </div>
     </section>
     <nav class="doc-arch-pagination">
-      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      {% if pagination.has_previous %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
       <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
-      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+      {% if pagination.has_next %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
     </nav>
   </main>
 </div>

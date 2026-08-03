@@ -222,18 +222,17 @@ def review_and_validate_invoice(
     calculated_net = ZERO
     calculated_tax = ZERO
     calculated_gross = ZERO
+    line_divergences: list[str] = []
     for line in review.lines:
         net, tax, gross = _line_amounts(line)
         calculated_net += net
         calculated_tax += tax
         calculated_gross += gross
-        if line.line_total is not None and abs(line.line_total - gross) > Decimal("0.02"):
-            invoice_import.status = "needs_review"
-            invoice_import.error_details = (
-                f"Total divergente na linha {line.line_number}: "
-                f"calculado {_cent(gross)} / indicado {_cent(line.line_total)}."
+        if line.line_total is not None and _cent(line.line_total) != _cent(gross):
+            line_divergences.append(
+                f"linha {line.line_number}: documento {_cent(line.line_total)} / "
+                f"recalculado {_cent(gross)}"
             )
-            raise StockDomainError(invoice_import.error_details)
     calculated_net = _cent(calculated_net)
     calculated_tax = _cent(calculated_tax)
     calculated_gross = _cent(calculated_gross)
@@ -242,15 +241,14 @@ def review_and_validate_invoice(
         ("IVA", review.tax_total, calculated_tax),
         ("total", review.gross_total, calculated_gross),
     )
-    divergences = [
+    total_divergences = [
         f"{label}: calculado {computed} / documento {document_total}"
         for label, document_total, computed in expected
-        if document_total is not None and abs(document_total - computed) > Decimal("0.02")
+        if document_total is not None and _cent(document_total) != _cent(computed)
     ]
-    if divergences:
-        invoice_import.status = "needs_review"
-        invoice_import.error_details = "Totais divergentes — " + "; ".join(divergences)
-        raise StockDomainError(invoice_import.error_details)
+    divergences = line_divergences + total_divergences
+    visible_divergences = divergences[:8]
+    remaining_divergences = len(divergences) - len(visible_divergences)
 
     db.execute(
         delete(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_import.id)
@@ -288,7 +286,29 @@ def review_and_validate_invoice(
     )
     invoice_import.content_hash = review.content_hash or invoice_import.content_hash
     invoice_import.status = "validated"
-    invoice_import.error_details = None
+    invoice_import.error_details = (
+        "Aviso de reconciliação: os valores documentais foram guardados sem alteração. "
+        + "; ".join(visible_divergences)
+        + (f"; e mais {remaining_divergences} diferença(s)." if remaining_divergences else "")
+        if divergences
+        else None
+    )
+    raw_extraction = (
+        dict(invoice_import.raw_extraction_json)
+        if isinstance(invoice_import.raw_extraction_json, dict)
+        else {}
+    )
+    raw_extraction["reconciliation"] = {
+        "status": "divergent" if divergences else "matched",
+        "document_values_preserved": True,
+        "calculated": {
+            "net_total": str(calculated_net),
+            "tax_total": str(calculated_tax),
+            "gross_total": str(calculated_gross),
+        },
+        "differences": divergences,
+    }
+    invoice_import.raw_extraction_json = raw_extraction
     invoice_import.validated_by_id = user_id
     invoice_import.validated_at = datetime.now(UTC)
     db.flush()

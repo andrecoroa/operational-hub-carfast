@@ -504,6 +504,37 @@ def test_extract_and_validate_are_document_only(authenticated_client, db_session
     assert stock_balances(db_session) == {}
 
 
+def test_invoice_rounding_difference_warns_without_blocking_document_values(
+    authenticated_client, db_session
+):
+    document = _document("rounding-warning")
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    payload = _review_payload("ROUND-1/2026")
+    payload["lines"][0]["line_total"] = "123.01"
+    payload["gross_total"] = "123.01"
+
+    response = authenticated_client.post(
+        f"/api/stock/invoice-imports/{invoice_id}/validate", json=payload
+    )
+
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    invoice_import = db_session.get(StockInvoiceImport, invoice_id)
+    invoice_line = db_session.scalar(
+        select(StockInvoiceLine).where(StockInvoiceLine.invoice_import_id == invoice_id)
+    )
+    assert invoice_import.status == "validated"
+    assert invoice_import.gross_total == Decimal("123.0100")
+    assert invoice_line.line_total == Decimal("123.0100")
+    assert "valores documentais foram guardados sem alteração" in invoice_import.error_details
+    assert invoice_import.raw_extraction_json["reconciliation"]["status"] == "divergent"
+
+
 def test_invoice_preview_creates_article_and_confirms_physical_receipt(
     authenticated_client, db_session
 ):

@@ -334,6 +334,37 @@ def test_direct_stock_invoice_import_survives_extractor_database_failure(
     assert "ProgrammingError" in invoice_import.error_details
 
 
+def test_manual_stock_invoice_extraction_survives_unexpected_failure(
+    authenticated_client, db_session, monkeypatch
+):
+    from app.web import stock as stock_web
+
+    document = _document("FT-manual-extraction")
+    db_session.add(document)
+    db_session.flush()
+    invoice_import = StockInvoiceImport(
+        document_id=document.id,
+        status="needs_review",
+    )
+    db_session.add(invoice_import)
+    db_session.commit()
+
+    def fail_extraction(_db, _invoice_import):
+        raise RuntimeError("falha técnica simulada")
+
+    monkeypatch.setattr(stock_web, "extract_stock_invoice", fail_extraction)
+    response = authenticated_client.post(
+        f"/v2-clean/stock/invoices/{invoice_import.id}/extract",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "extraction_review=1" in response.headers["location"]
+    db_session.refresh(invoice_import)
+    assert invoice_import.status == "needs_review"
+    assert "RuntimeError" in invoice_import.error_details
+
+
 def test_direct_stock_invoice_import_persists_recognized_decimal_extraction(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

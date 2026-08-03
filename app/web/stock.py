@@ -735,6 +735,28 @@ def stock_invoice_extract(request: Request, invoice_import_id: int, db: DbSessio
     except (StockDomainError, OSError) as exc:
         db.rollback()
         notice = {"error": str(exc)}
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Manual extraction failed for stock invoice import %s",
+            invoice_import_id,
+        )
+        invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+        if invoice_import:
+            invoice_import.status = "needs_review"
+            invoice_import.error_details = (
+                "Extração automática indisponível. O documento ficou disponível para "
+                f"revisão manual ({type(exc).__name__})."
+            )
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Failed to persist extraction error for stock invoice import %s",
+                    invoice_import_id,
+                )
+        notice = {"extraction_review": "1"}
     return RedirectResponse(
         f"/v2-clean/stock/invoices/{invoice_import_id}?{urlencode(notice)}", status_code=303
     )

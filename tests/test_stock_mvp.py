@@ -794,6 +794,28 @@ def test_dispnal_parser_keeps_documentary_fields_only():
     assert "receipt_id" not in parsed
 
 
+def test_dispnal_parser_accepts_native_or_ocr_text_layout():
+    lines = [
+        "Dispnal Pneus, S.A.",
+        "Contribuinte N.º: 504670409",
+        "Fatura FT N.º 15319/2026",
+        "EUR 1,00 999 3044 509285970 0,00 0,00 30 Dias 2026-07-01 2026-07-31",
+        "15210516190VM 195/55R16 XL 91V TL PXCM PNEU TOYO 4,0 UN 60,00 0,00 1,48 23,00 240,00",
+        "IVA (23,00) 245,92 56,56",
+        "Total ( EUR ) 302,48",
+    ]
+
+    parsed = parse_dispnal_invoice(lines, "c" * 64)
+
+    assert parsed["invoice_number"] == "15319/2026"
+    assert parsed["invoice_date"] == "2026-07-01"
+    assert parsed["due_date"] == "2026-07-31"
+    assert parsed["net_total"] == "245,92"
+    assert parsed["tax_total"] == "56,56"
+    assert parsed["gross_total"] == "302,48"
+    assert parsed["lines"][0]["description"] == "195/55R16 XL 91V TL PXCM PNEU TOYO"
+
+
 def test_torres_parser_ignores_duplicate_copy_and_keeps_ecovalue():
     lines = [
         "Fatura | nº | 6701/2026",

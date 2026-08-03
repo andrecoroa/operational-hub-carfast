@@ -727,7 +727,11 @@ def stock_invoice_extract(request: Request, invoice_import_id: int, db: DbSessio
     try:
         extract_stock_invoice(db, invoice_import)
         db.commit()
-        notice = {"extracted": "1"}
+        notice = (
+            {"extracted": "1"}
+            if invoice_import.extractor_name != "unsupported"
+            else {"extraction_review": "1"}
+        )
     except (StockDomainError, OSError) as exc:
         db.rollback()
         notice = {"error": str(exc)}

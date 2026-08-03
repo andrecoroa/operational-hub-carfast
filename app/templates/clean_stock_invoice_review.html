@@ -9,6 +9,7 @@
   <div class="stock-notice">Guardar a conferência não altera existências. O stock só aumenta quando confirmas abaixo as quantidades fisicamente recebidas.</div>
   {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
   {% if request.query_params.get('extracted') %}<div class="stock-notice success">Extração concluída; revê os campos.</div>{% endif %}
+  {% if request.query_params.get('extraction_review') %}<div class="stock-notice danger">Não foi possível reconhecer automaticamente esta fatura. O documento ficou disponível para revisão manual.</div>{% endif %}
   {% if request.query_params.get('validated') %}<div class="stock-notice success">Conferência guardada. Agora podes preparar e confirmar a receção.</div>{% endif %}
   {% if request.query_params.get('received') %}<div class="stock-notice success">Receção #{{ request.query_params.get('received') }} confirmada e existências atualizadas.</div>{% endif %}
   {% if invoice_import.error_details %}<div class="stock-notice danger">{{ invoice_import.error_details }}</div>{% endif %}

@@ -747,6 +747,24 @@ def _pdf_lines(path: Path) -> tuple[list[str], str]:
                 )
                 if text:
                     lines.append(text)
+    # Scanned supplier invoices have no usable PDF text layer. Reuse the
+    # production OCR pipeline already used by diagnostics instead of silently
+    # returning an empty extraction.
+    if len(" ".join(lines).strip()) < 80:
+        from app.services.diagnostic_ocr import extract_diagnostic_pdf
+
+        payload = extract_diagnostic_pdf(path, enable_ocr=True)
+        ocr_lines: list[str] = []
+        for page in payload.get("pages", []):
+            source = (
+                (page.get("ocr") or {}).get("text")
+                or page.get("layout_text")
+                or page.get("native_text")
+                or ""
+            )
+            ocr_lines.extend(line.strip() for line in source.splitlines() if line.strip())
+        if ocr_lines:
+            lines = ocr_lines
     return lines, hashlib.sha256(raw).hexdigest()
 
 
@@ -771,43 +789,51 @@ def _joined_amount(lines: list[str], pattern: str) -> str | None:
 
 def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any] | None:
     all_text = "\n".join(lines)
-    is_dispnal = re.search(r"Dispnal\s*\|?\s*Pneus", all_text, re.IGNORECASE)
-    if not is_dispnal or "504670409" not in all_text:
+    is_dispnal = re.search(r"Dispnal(?:\s*\|?\s*)Pneus", all_text, re.IGNORECASE)
+    if not is_dispnal and "504670409" not in all_text:
         return None
-    invoice_number = _first_match(lines, r"N\.º\s*\|?\s*(\d+/\d{4})")
+    invoice_number = _first_match(
+        lines,
+        r"Fatura\s*(?:FT)?\s*N[.ºo°]*\s*(?:\|\s*)?(\d+(?:/\d{4})?)",
+    )
+    invoice_number = invoice_number or _first_match(
+        lines, r"^\s*N[.ºo°]*\s*(?:\|\s*)?(\d+/\d{4})"
+    )
+    invoice_number = invoice_number or _first_match(lines, r"\*FA\s*(\d+)\s*\*")
     if not invoice_number:
         raise StockDomainError("Número da fatura Dispnal não encontrado.")
     parsed_lines: list[dict[str, Any]] = []
     for source_line in lines:
         parts = [part.strip() for part in source_line.split("|") if part.strip()]
-        if not parts or not re.fullmatch(r"[A-Z0-9]{8,20}", parts[0]):
-            continue
-        quantity_index = next(
-            (
-                index
-                for index, part in enumerate(parts[:-1])
-                if re.fullmatch(r"\d+[,.]\d+", part) and parts[index + 1].upper() == "UN"
-            ),
-            -1,
+        if len(parts) > 1:
+            normalized_line = " ".join(parts)
+        else:
+            normalized_line = source_line
+        match = re.match(
+            r"^([A-Z0-9]{8,20})\s+(.+?)\s+"
+            r"(\d+[,.]\d+)\s+(UN|UNI|UDS)\s+"
+            r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s*$",
+            normalized_line.strip(),
+            re.IGNORECASE,
         )
-        if quantity_index < 2 or len(parts) < quantity_index + 7:
+        if not match:
             continue
-        description = " ".join(parts[1:quantity_index]).strip()
-        quantity = _decimal(parts[quantity_index])
-        unit_cost = _decimal(parts[quantity_index + 2])
-        discount = _decimal(parts[quantity_index + 3]) / Decimal("100")
-        eco_value = _decimal(parts[quantity_index + 4])
-        tax_rate = _decimal(parts[quantity_index + 5]) / Decimal("100")
-        goods_value = _decimal(parts[quantity_index + 6])
+        supplier_ref, description, quantity_text, unit, *amounts = match.groups()
+        quantity = _decimal(quantity_text)
+        unit_cost = _decimal(amounts[0])
+        discount = _decimal(amounts[1]) / Decimal("100")
+        eco_value = _decimal(amounts[2])
+        tax_rate = _decimal(amounts[3]) / Decimal("100")
+        goods_value = _decimal(amounts[4])
         base = _cent(goods_value + (quantity * eco_value))
         line_total = _cent(base + (base * tax_rate))
         parsed_lines.append(
             {
                 "line_number": len(parsed_lines) + 1,
-                "supplier_ref": parts[0],
+                "supplier_ref": supplier_ref,
                 "description": description,
                 "quantity": str(quantity),
-                "unit": "un.",
+                "unit": unit.lower(),
                 "unit_cost": str(unit_cost),
                 "discount": str(discount),
                 "eco_value": str(eco_value),
@@ -817,6 +843,17 @@ def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any]
         )
     if not parsed_lines:
         raise StockDomainError("Não foram encontradas linhas de artigos na fatura Dispnal.")
+    dates = re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", all_text)
+    tax_match = re.search(
+        r"IVA[ |]*\(?23[,.]00\)?[ |]+([\d.,]+)[ |]+([\d.,]+)",
+        all_text,
+        re.IGNORECASE,
+    )
+    total_match = re.search(
+        r"Total[ |]*\([ |]*EUR[ |]*\)[ |]*([\d .,]+)",
+        all_text,
+        re.IGNORECASE,
+    )
     return {
         "extractor_name": "dispnal",
         "extractor_version": "v1",
@@ -824,12 +861,11 @@ def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any]
         "supplier_name": "Dispnal Pneus, S.A.",
         "supplier_tax_id": "504670409",
         "invoice_number": invoice_number,
-        "net_total": _first_match(lines, r"IVA\s*\|\s*\(23[,.]00\)\s*\|\s*([\d.,]+)"),
-        "tax_total": _first_match(
-            lines,
-            r"IVA\s*\|\s*\(23[,.]00\)\s*\|\s*[\d.,]+\s*\|\s*([\d.,]+)",
-        ),
-        "gross_total": _joined_amount(lines, r"Total\s*\|\s*\(\s*\|\s*EUR\s*\|\s*\)\s*\|"),
+        "invoice_date": dates[0] if dates else None,
+        "due_date": dates[1] if len(dates) > 1 else None,
+        "net_total": tax_match.group(1) if tax_match else None,
+        "tax_total": tax_match.group(2) if tax_match else None,
+        "gross_total": total_match.group(1).replace(" ", "") if total_match else None,
         "lines": parsed_lines,
     }
 

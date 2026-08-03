@@ -513,7 +513,7 @@ def intake_email(
             detail=f"Erro ao tratar entrada de e-mail: {exc}",
         )
         db.commit()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
     return {
         "status": intake.status,

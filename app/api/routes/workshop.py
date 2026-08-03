@@ -121,12 +121,12 @@ def _authorized_report_source(original_link: str) -> str:
     clean = str(original_link or "").strip().strip('"')
     if not clean:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Seleciona um documento PDF já arquivado ou carrega o ficheiro.",
         )
     if "://" in clean:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="A extração por URL externa não é permitida. Importa primeiro o documento.",
         )
     configured_root = str(settings.document_archive_root or "").strip()
@@ -144,12 +144,12 @@ def _authorized_report_source(original_link: str) -> str:
         resolved.relative_to(root)
     except (OSError, ValueError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="O relatório não pertence ao arquivo documental autorizado.",
         ) from exc
     if not resolved.is_file() or resolved.suffix.lower() != ".pdf":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="O documento autorizado deve ser um ficheiro PDF.",
         )
     return str(resolved)
@@ -1147,7 +1147,7 @@ def create_phased_workshop_process(
     vehicle = _find_vehicle(db, creation.vehicle_id, creation.plate)
     if not vehicle:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Viatura da frota não encontrada.",
         )
     service_codes = [service.service_code for service in creation.services]
@@ -1309,7 +1309,7 @@ def add_workshop_process_document(
     document = db.get(Document, document_id) if document_id else None
     if not document:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Não foi possível associar o documento.",
         )
     return _document_response(document)
@@ -1696,7 +1696,7 @@ def add_technical_report(
         report_input.extracted_values,
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Não é possível criar relatório em branco sem confirmação.",
         )
     vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
@@ -1758,7 +1758,7 @@ def extract_technical_report_values(
         )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     return {
@@ -1779,18 +1779,18 @@ async def extract_uploaded_technical_report_values(
     _get_process_or_404(db, process_id)
     if report_code not in REPORT_CODES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Relatório técnico inválido.",
         )
     if not str(file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="A extração automática só aceita ficheiros PDF.",
         )
     content = await file.read(MAX_TECHNICAL_REPORT_UPLOAD_BYTES + 1)
     if len(content) > MAX_TECHNICAL_REPORT_UPLOAD_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="O relatório excede o limite de 25 MB.",
         )
     try:
@@ -1801,7 +1801,7 @@ async def extract_uploaded_technical_report_values(
         )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     return {
@@ -1945,7 +1945,7 @@ def update_technical_report(
         report.extracted_values_json,
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Não é possível deixar relatório em branco sem confirmação.",
         )
     db.commit()
@@ -2431,7 +2431,7 @@ def close_workshop_process(
         )
     if closure.close_with_pending_items and not closure.pending_justification:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Justificação é obrigatória para fechar com pendências.",
         )
 

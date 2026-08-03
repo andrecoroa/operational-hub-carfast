@@ -596,17 +596,8 @@ async def stock_invoice_direct_import(
                 user_id=user_id,
             )
         )
-        try:
-            extract_stock_invoice(db, invoice_import)
-        except Exception as exc:  # Extraction failures must not reject the received document.
-            logger.exception("Automatic extraction failed for stock invoice %s", original_name)
-            invoice_import.status = "needs_review"
-            invoice_import.error_details = (
-                "Extração automática indisponível. O documento ficou disponível para revisão "
-                f"manual ({type(exc).__name__})."
-            )
         db.commit()
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.rollback()
         stored_path.unlink(missing_ok=True)
         logger.exception("Failed to register direct stock invoice upload")
@@ -616,12 +607,31 @@ async def stock_invoice_direct_import(
                 {
                     "error": (
                         "Não foi possível registar a fatura. "
-                        "Confirma que a base de dados está atualizada e tenta novamente."
+                        "Confirma que a base de dados está atualizada e tenta novamente "
+                        f"({type(exc.orig).__name__ if getattr(exc, 'orig', None) else type(exc).__name__})."
                     )
                 }
             ),
             status_code=303,
         )
+
+    # OCR is deliberately isolated from document ingestion. A parser or database
+    # failure during extraction must never roll back the received invoice.
+    try:
+        invoice_import = db.get(StockInvoiceImport, invoice_import.id)
+        extract_stock_invoice(db, invoice_import)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Automatic extraction failed for stock invoice %s", original_name)
+        invoice_import = db.get(StockInvoiceImport, invoice_import.id)
+        if invoice_import:
+            invoice_import.status = "needs_review"
+            invoice_import.error_details = (
+                "Extração automática indisponível. O documento ficou disponível para revisão "
+                f"manual ({type(exc).__name__})."
+            )
+            db.commit()
     return RedirectResponse(
         f"/v2-clean/stock/invoices/{invoice_import.id}?imported=1",
         status_code=303,

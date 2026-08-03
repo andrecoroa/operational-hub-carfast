@@ -304,6 +304,36 @@ def test_direct_stock_invoice_import_keeps_unreadable_pdf_for_manual_review(
     assert "revisão manual" in invoice_import.error_details
 
 
+def test_direct_stock_invoice_import_survives_extractor_database_failure(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from sqlalchemy.exc import ProgrammingError
+
+    from app.web import stock as stock_web
+
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: tmp_path)
+
+    def fail_extraction(_db, _invoice_import):
+        raise ProgrammingError("extract", {}, RuntimeError("modelo indisponível"))
+
+    monkeypatch.setattr(stock_web, "extract_stock_invoice", fail_extraction)
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files={"file": ("FT-modelo.pdf", b"%PDF-1.4\nstock", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/v2-clean/stock/invoices/")
+    invoice_import = db_session.scalar(
+        select(StockInvoiceImport)
+        .join(Document, Document.id == StockInvoiceImport.document_id)
+        .where(Document.original_name == "FT-modelo.pdf")
+    )
+    assert invoice_import.status == "needs_review"
+    assert "ProgrammingError" in invoice_import.error_details
+
+
 def test_direct_stock_invoice_import_persists_recognized_decimal_extraction(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):

@@ -265,7 +265,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
             "registration_to": "2022-12-31",
             "return_from": "2026-10-01",
             "return_to": "2026-10-31",
-            "financial_margin_min": "400",
+            "financial_margin_min": "-100000",
         },
     )
     assert page.status_code == 200
@@ -274,6 +274,11 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert "Dev. 18/10/2026" in page.text
     assert "Custo CarFast − valor em dívida" in page.text
     assert "Valor comércio − custo CarFast" in page.text
+    assert "18 450,00 €" in page.text
+
+    detail = authenticated_client.get(f"/v2-clean/fleet/sales/{vehicle.id}")
+    assert detail.status_code == 200
+    assert "18 450,00 €" in detail.text
 
     values = authenticated_client.post(
         "/v2-clean/fleet/sales/bulk",

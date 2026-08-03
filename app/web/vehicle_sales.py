@@ -251,7 +251,9 @@ def _sale_row(
         )
     # A financial margin only exists when an active financial plan supplies a balance.
     # Legacy manual debt fields must not make an unfinanced vehicle look financed.
-    debt = decimal_value(financial_plan.outstanding_amount) if financial_plan else None
+    debt = decimal_value(
+        base_router.amount_with_standard_vat(financial_plan.outstanding_amount)
+    ) if financial_plan else None
     market_trade = decimal_value(profile.market_trade_value) if profile else None
     market_retail = decimal_value(profile.market_retail_value) if profile else None
     financial_margin = margin(cost, debt)

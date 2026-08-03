@@ -532,7 +532,10 @@ def test_complete_workshop_training_flow(monkeypatch):
         assert document.classification == "fleet"
         assert document.document_type == "general_fleet"
         assert document.status == "classified"
-        assert document.folder_path == "Oficina/Matrículas/BZ81SC/Geral Frota"
+        assert (
+            document.folder_path
+            == "Frota/BZ81SC_ZFA5FBAT0SJ079652/03_Documentacao_Base_Viatura/Documentacao_Viatura"
+        )
         assert document.entry_channel == "documentos@carfast.pt"
         assert document.task_id == managed_task_id
         assert document.workshop_process_id == process_id

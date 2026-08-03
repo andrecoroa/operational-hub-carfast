@@ -174,3 +174,8 @@ def test_financial_panel_uses_requested_four_column_order():
     assert positions == sorted(positions)
     assert "clean-detail-facts clean-finance-facts" in panel
     assert "clean-finance-current-cost" in panel
+
+    stylesheet = (
+        Path(__file__).parents[1] / "app" / "static" / "css" / "app.css"
+    ).read_text(encoding="utf-8")
+    assert ".clean-finance-facts .clean-finance-current-cost" not in stylesheet

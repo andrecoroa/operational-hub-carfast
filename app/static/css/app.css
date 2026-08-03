@@ -12986,10 +12986,6 @@ button.clean-upload-preview-card {
   max-width: none;
 }
 
-.clean-finance-facts .clean-finance-current-cost {
-  grid-column: span 2;
-}
-
 .clean-detail-facts div {
   display: grid;
   gap: 4px;
@@ -13116,9 +13112,6 @@ button.clean-upload-preview-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .clean-finance-facts .clean-finance-current-cost {
-    grid-column: auto;
-  }
 }
 
 @media (max-width: 650px) {

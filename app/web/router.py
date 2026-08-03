@@ -3578,7 +3578,6 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
                 .select_from(Task)
                 .where(
                     Task.task_type.in_(tuple(task_codes)),
-                    Task.source == "v2_clean",
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )
@@ -3604,7 +3603,6 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
                 .select_from(Task)
                 .where(
                     Task.task_type.in_(tuple(task_codes)),
-                    Task.source == "v2_clean",
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.due_on == date.today(),
@@ -3838,7 +3836,7 @@ def clean_tasks_center(
             and (active_workspace in {"all", "mine"} or workspace_code == active_workspace)
             for code in codes
         ]
-        filters = [Task.task_type.in_(tuple(task_type_codes)), Task.source == "v2_clean"]
+        filters = [Task.task_type.in_(tuple(task_type_codes))]
         if active_workspace == "mine" and user_id:
             participant_task_ids = select(TaskParticipant.task_id).where(
                 TaskParticipant.user_id == user_id,
@@ -3982,7 +3980,6 @@ def clean_tasks_center(
         ).all()
         open_filter = [
             Task.task_type.in_(tuple([code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes])),
-            Task.source == "v2_clean",
         ]
         task_metrics = {
             "divisions": len(task_divisions),
@@ -4005,7 +4002,6 @@ def clean_tasks_center(
                 .select_from(Task)
                 .where(
                     Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES["audit"])),
-                    Task.source == "v2_clean",
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES),
                 )
@@ -4023,7 +4019,6 @@ def clean_tasks_center(
             for value in db.scalars(
                 select(Task.category)
                 .where(
-                    Task.source == "v2_clean",
                     Task.category.is_not(None),
                     Task.category != "",
                 )
@@ -4046,7 +4041,6 @@ def clean_tasks_center(
                     for value in db.scalars(
                         select(Task.subcategory)
                         .where(
-                            Task.source == "v2_clean",
                             Task.subcategory.is_not(None),
                             Task.subcategory != "",
                         )
@@ -4300,7 +4294,7 @@ def clean_tasks_update(
     now = datetime.now(UTC)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
-        if not task or task.source != "v2_clean":
+        if not task:
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
         current_user = db.get(User, user_id)
         task_workspace = workspace_for_task_type(task.task_type)
@@ -4387,7 +4381,7 @@ def clean_tasks_update_context(
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         task = db.get(Task, task_id)
-        if not task or task.source != "v2_clean":
+        if not task:
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
         current_user = db.get(User, user_id)
         task_workspace = workspace_for_task_type(task.task_type)

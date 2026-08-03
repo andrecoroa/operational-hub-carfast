@@ -467,3 +467,33 @@ def test_clean_task_center_paginates_without_hiding_total(authenticated_client, 
     assert second_page.status_code == 200
     assert "Página 2 de 2" in second_page.text
     assert "Tarefa paginada 00" in second_page.text
+
+
+def test_clean_task_center_can_manage_compatible_historical_task(authenticated_client, db_session):
+    task = Task(
+        title="Tarefa histórica compatível",
+        description="Criada antes da experiência Clean.",
+        source="manual",
+        task_type="operational_task",
+        status="new",
+        priority="normal",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=operational")
+    assert page.status_code == 200
+    assert "Tarefa histórica compatível" in page.text
+
+    updated = authenticated_client.post(
+        f"/v2-clean/tasks/{task.id}/context",
+        data={
+            "description": "Tratada na experiência Clean.",
+            "return_url": "/v2-clean/tasks?workspace=operational",
+        },
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    db_session.refresh(task)
+    assert task.description == "Tratada na experiência Clean."
+    assert task.source == "manual"

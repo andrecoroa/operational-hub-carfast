@@ -18,6 +18,8 @@ permissao explicita e acesso auditado.
 - Centro de Documentacao reorganizado com triagem, tratamento, importacoes e arquivo;
 - Diagnosticos com pagina propria, extracao, reprocessamento e historico por data real;
 - Tarefas Clean com filas, natureza, categoria, colaboracao, suporte e paginacao;
+- tarefas historicas compativeis visiveis e editaveis por fila e permissao, mantendo
+  `source` apenas como metadado auditavel;
 - Stock isolado da Oficina, com faturas em lote, rececoes, existencias e movimentos;
 - planos financeiros e Venda usam a mesma fonte para custo atual e capital em divida;
 - retornos contextuais preservados entre Frota, Documentos, Diagnosticos e Tarefas;
@@ -26,20 +28,17 @@ permissao explicita e acesso auditado.
 
 ### Dependencias estruturais remanescentes
 
-1. **Tarefas historicas** - o Centro Clean ainda usa `source="v2_clean"` como
-   fronteira. A migracao deve mapear cada tarefa antiga para fila, natureza,
-   permissao e responsavel antes de remover esse filtro.
-2. **Motor antigo da Oficina** - continua disponivel em contingencia. Nao deve
+1. **Motor antigo da Oficina** - continua disponivel em contingencia. Nao deve
    receber novas funcionalidades; a desativacao exige primeiro inventario dos
    processos ainda abertos nesse motor.
-3. **Processamento pesado** - OCR e alguns importadores continuam sincronicos.
+2. **Processamento pesado** - OCR e alguns importadores continuam sincronicos.
    A passagem para workers deve preservar idempotencia, estado do lote, retoma e
    auditoria antes de ser ativada em producao.
-4. **Centro documental tecnico** - `/v2-clean/documents` ainda suporta rotas de
+3. **Centro documental tecnico** - `/v2-clean/documents` ainda suporta rotas de
    detalhe e operacoes internas usadas pelas novas paginas. A sua remocao deve
    ocorrer apenas depois de transferir essas rotas, nao por redirecionamento cego.
 
-Estes quatro pontos sao trabalho de migracao controlada. Nao representam uma
+Estes tres pontos sao trabalho de migracao controlada. Nao representam uma
 necessidade de o utilizador comum alternar para a experiencia anterior.
 
 ## Objetivo

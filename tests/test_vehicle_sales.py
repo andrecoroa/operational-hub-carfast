@@ -77,6 +77,7 @@ def test_cgd_filter_includes_all_cgd_name_variants():
         "sale_status": "",
         "finance_entity": "CGD",
         "vehicle_state": "",
+        "rentway_group": "",
         "registration_from": "",
         "registration_to": "",
         "return_from": "",
@@ -262,6 +263,7 @@ def create_sale_vehicle(db_session) -> Vehicle:
                 "value_with_tax": "19200",
                 "km": "98450",
                 "current_status": "Contrato",
+                "groupid": "C1",
                 "document_nr": "CONT-100",
                 "return_date": "2026-10-18",
                 "finance_entity": "Santander",
@@ -303,6 +305,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
         params={
             "finance_entity": "Santander",
             "vehicle_state": "contract",
+            "rentway_group": "C1",
             "registration_from": "2022-01-01",
             "registration_to": "2022-12-31",
             "return_from": "2026-10-01",
@@ -317,6 +320,15 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert "Custo CarFast − valor em dívida" in page.text
     assert "Valor comércio − custo CarFast" in page.text
     assert "15 000,00 €" in page.text
+    assert 'name="rentway_group"' in page.text
+    assert '<option value="C1" selected>C1</option>' in page.text
+
+    other_group = authenticated_client.get(
+        "/v2-clean/fleet/sales",
+        params={"rentway_group": "C2"},
+    )
+    assert other_group.status_code == 200
+    assert "12-AB-34" not in other_group.text
 
     detail = authenticated_client.get(f"/v2-clean/fleet/sales/{vehicle.id}")
     assert detail.status_code == 200

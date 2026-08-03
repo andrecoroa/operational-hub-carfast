@@ -71,6 +71,14 @@
             {% endfor %}
           </select>
         </label>
+        <label>Grupo Rentway
+          <select name="rentway_group">
+            <option value="">Todos</option>
+            {% for value in group_options %}
+              <option value="{{ value }}" {% if filters.rentway_group == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <fieldset>
           <legend>Data da matrícula</legend>
           <span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span>

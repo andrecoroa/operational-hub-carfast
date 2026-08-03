@@ -277,6 +277,7 @@ def _sale_row(
         "registration": registration,
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
         "colour": vehicle_context.get("colour") or "-",
+        "rentway_group": str(vehicle_context.get("groupid") or "").strip(),
         "finance_entity": finance_entity,
         "finance_entity_display": compact_finance_entity(finance_entity),
         "finance_entity_key": compact_finance_entity(finance_entity).casefold(),
@@ -621,6 +622,8 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[di
             continue
         if filters["vehicle_state"] and row["vehicle_state"] != filters["vehicle_state"]:
             continue
+        if filters["rentway_group"] and row["rentway_group"] != filters["rentway_group"]:
+            continue
         if registration_from and (
             not row["registration"] or row["registration"] < registration_from
         ):
@@ -670,6 +673,7 @@ def vehicle_sales_page(
     sale_status: str = "",
     finance_entity: str = "",
     vehicle_state: str = "",
+    rentway_group: str = "",
     registration_from: str = "",
     registration_to: str = "",
     return_from: str = "",
@@ -695,6 +699,7 @@ def vehicle_sales_page(
             else ""
         ),
         "vehicle_state": vehicle_state if vehicle_state in VEHICLE_SALE_STATE_LABELS else "",
+        "rentway_group": rentway_group.strip(),
         "registration_from": registration_from.strip(),
         "registration_to": registration_to.strip(),
         "return_from": return_from.strip(),
@@ -730,6 +735,10 @@ def vehicle_sales_page(
             },
             key=str.casefold,
         )
+        group_options = sorted(
+            {row["rentway_group"] for row in all_rows if row["rentway_group"]},
+            key=str.casefold,
+        )
     query_without_page = urlencode({key: value for key, value in filters.items() if value})
     return base_router.templates.TemplateResponse(
         request,
@@ -742,6 +751,7 @@ def vehicle_sales_page(
             "sale_statuses": SALE_STATUSES,
             "vehicle_states": VEHICLE_SALE_STATES,
             "finance_options": finance_options,
+            "group_options": group_options,
             "price_bases": PRICE_BASES,
             "margin_modes": MARGIN_MODES,
             "rounding_modes": ROUNDING_MODES,

@@ -1,8 +1,11 @@
+import io
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
 from sqlalchemy import select
+from openpyxl import load_workbook
+from PyPDF2 import PdfReader
 
 import app.web.router as base_router
 from app.core.config import settings
@@ -113,6 +116,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     )
     assert line is not None
     assert line.base_price == Decimal("21000.00")
+    assert line.snapshot_json["registration"] == "15/01/2022"
+    assert line.snapshot_json["colour"] == "Azul"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -163,12 +168,24 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert export.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    sheet = load_workbook(io.BytesIO(export.content), data_only=True).active
+    headers = [cell.value for cell in sheet[3]]
+    assert "Data matrícula" in headers
+    assert "Cor" in headers
+    assert sheet.cell(row=4, column=headers.index("Data matrícula") + 1).value == "15/01/2022"
+    assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     pdf = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/pdf"
     )
     assert pdf.status_code == 200
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
+    pdf_text = "\n".join(
+        page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf.content)).pages
+    )
+    assert "Data matrícula" in pdf_text
+    assert "15/01/2022" in pdf_text
+    assert "Azul" in pdf_text
 
 
 def test_unfinanced_vehicle_ignores_legacy_manual_debt():
@@ -239,6 +256,7 @@ def create_sale_vehicle(db_session) -> Vehicle:
             source_system="rentway",
             data_json={
                 "plate_date": "2022-01-15",
+                "colour": "Azul",
                 "purchase_date": "2026-07-01",
                 "acquisition_value": "15609.76",
                 "value_with_tax": "19200",

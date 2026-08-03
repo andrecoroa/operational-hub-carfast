@@ -276,6 +276,7 @@ def _sale_row(
         "return_on_display": return_on.strftime("%d/%m/%Y") if return_on else "-",
         "registration": registration,
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
+        "colour": vehicle_context.get("colour") or "-",
         "finance_entity": finance_entity,
         "finance_entity_display": compact_finance_entity(finance_entity),
         "finance_entity_key": compact_finance_entity(finance_entity).casefold(),
@@ -566,6 +567,7 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "version": vehicle.version,
         "year": vehicle.year,
         "registration": row["registration_display"],
+        "colour": row.get("colour") or "-",
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
     }
@@ -1295,7 +1297,19 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
     sheet.title = "Proposta"
     sheet.append([proposal.reference, proposal.title, proposal.recipient or "", proposal.expires_on or ""])
     sheet.append([])
-    headers = ["Matrícula", "Marca", "Modelo", "Versão", "Ano", "Unit", "KM", "Preço", "Observações"]
+    headers = [
+        "Matrícula",
+        "Data matrícula",
+        "Marca",
+        "Modelo",
+        "Versão",
+        "Cor",
+        "Ano",
+        "Unit",
+        "KM",
+        "Preço",
+        "Observações",
+    ]
     sheet.append(headers)
     for cell in sheet[3]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -1303,8 +1317,10 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
     for line in lines:
         data = line.snapshot_json or {}
         sheet.append([
-            data.get("plate"), data.get("brand"), data.get("model"), data.get("version"),
-            data.get("year"), data.get("unit"), data.get("km"), line.proposed_price, line.notes,
+            data.get("plate"), data.get("registration"), data.get("brand"),
+            data.get("model"), data.get("version"), data.get("colour"),
+            data.get("year"), data.get("unit"), data.get("km"), line.proposed_price,
+            line.notes,
         ])
     for column in sheet.columns:
         letter = column[0].column_letter
@@ -1341,16 +1357,31 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
     if proposal.expires_on:
         story.append(Paragraph(f"Válida até {proposal.expires_on:%d/%m/%Y}", styles["Normal"]))
     story.append(Spacer(1, 14))
-    data = [["Matrícula", "Viatura", "Ano", "Unit", "KM", "Preço", "Observações"]]
+    data = [[
+        "Matrícula",
+        "Data matrícula",
+        "Viatura",
+        "Cor",
+        "Ano",
+        "Unit",
+        "KM",
+        "Preço",
+        "Observações",
+    ]]
     for line in lines:
         item = line.snapshot_json or {}
         data.append([
             item.get("plate") or "-",
+            item.get("registration") or "-",
             " ".join(str(value or "") for value in (item.get("brand"), item.get("model"), item.get("version"))).strip(),
-            item.get("year") or "-", item.get("unit") or "-", item.get("km") or "-",
+            item.get("colour") or "-", item.get("year") or "-", item.get("unit") or "-", item.get("km") or "-",
             money(line.proposed_price), line.notes or "",
         ])
-    table = Table(data, repeatRows=1, colWidths=[65, 230, 45, 55, 65, 80, 180])
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[58, 65, 190, 60, 38, 50, 55, 70, 150],
+    )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#173B68")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

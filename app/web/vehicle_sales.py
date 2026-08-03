@@ -26,9 +26,9 @@ from app.models import (
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
+    VehicleSaleProfile,
     VehicleSaleProposal,
     VehicleSaleProposalLine,
-    VehicleSaleProfile,
     VehicleSalePublication,
 )
 from app.services.audit import record_audit
@@ -446,17 +446,15 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
         ).strip()
         rentway_cost = base_router.current_cost_from_snapshot(snapshot)
         initial_with_vat = rentway_cost.get("initial_cost_with_vat")
-        current_with_vat = rentway_cost.get("current_cost_with_vat")
-        if current_with_vat is None:
-            current_with_vat = base_router.current_value_with_financial_amortization(
-                initial_with_vat,
-                plan.initial_amount if plan else None,
-                plan.outstanding_amount if plan else None,
-                None,
-                rentway_cost.get("purchase_date")
-                or (plan.start_date if plan else None),
-                plan.amount_reference_date if plan else None,
-            )
+        current_with_vat = base_router.current_value_with_financial_amortization(
+            initial_with_vat,
+            plan.initial_amount if plan else None,
+            plan.outstanding_amount if plan else None,
+            rentway_cost.get("current_cost_with_vat"),
+            plan.start_date if plan else None,
+            plan.amount_reference_date if plan else None,
+            rentway_cost.get("amortization_month"),
+        )
         contract_key = (
             str(plan.finance_entity or "").strip().casefold(),
             str(plan.contract_number or "").strip().casefold(),

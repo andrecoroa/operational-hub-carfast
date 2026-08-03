@@ -14,13 +14,19 @@ from app.models import (
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
+    VehicleSaleProfile,
     VehicleSaleProposal,
     VehicleSaleProposalLine,
-    VehicleSaleProfile,
     VehicleSalePublication,
 )
 from app.services.users import create_user
-from app.web.vehicle_sales import _filter_rows, _media_root, _sale_row, compact_finance_entity
+from app.web.vehicle_sales import (
+    _filter_rows,
+    _financial_audit_rows,
+    _media_root,
+    _sale_row,
+    compact_finance_entity,
+)
 
 
 def test_compact_finance_entity_labels():
@@ -391,6 +397,28 @@ def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
     assert "12-AB-34" in page.text
     assert "Plano importado sem referência" in page.text
     assert "Sem plano mensal" in page.text
+
+
+def test_financial_audit_uses_same_current_value_as_vehicle_sales(db_session):
+    vehicle = create_sale_vehicle(db_session)
+    snapshot = db_session.scalar(
+        select(VehicleExternalSnapshot).where(VehicleExternalSnapshot.vehicle_id == vehicle.id)
+    )
+    plan = db_session.scalar(
+        select(VehicleFinancialPlan).where(
+            VehicleFinancialPlan.vehicle_id == vehicle.id,
+            VehicleFinancialPlan.active.is_(True),
+        )
+    )
+
+    sale_row = _sale_row(vehicle, snapshot, {}, None, plan)
+    audit_row = next(
+        row
+        for row in _financial_audit_rows(db_session)
+        if row["vehicle_id"] == vehicle.id
+    )
+
+    assert audit_row["current_value_with_vat"] == sale_row["cost"]
 
 
 def test_vehicle_sale_images_public_snapshot_and_leads(

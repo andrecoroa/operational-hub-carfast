@@ -7328,11 +7328,9 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
                 else "-"
             ),
             "debt_with_vat": format_eur(
-                amount_with_standard_vat(
-                    active_financial_plan.outstanding_amount
-                    if active_financial_plan
-                    else debt_value
-                )
+                active_financial_plan.outstanding_amount
+                if active_financial_plan
+                else debt_value
             ),
             "debt_reference_date": clean_date(
                 active_financial_plan.amount_reference_date.isoformat()
@@ -7383,7 +7381,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
                     "outstanding_with_vat": format_eur(
                         installment.outstanding_with_vat
                         if installment.outstanding_with_vat is not None
-                        else amount_with_standard_vat(installment.outstanding_amount)
+                        else installment.outstanding_amount
                     ),
                 }
                 for installment in financial_installments

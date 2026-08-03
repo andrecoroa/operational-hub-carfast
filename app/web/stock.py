@@ -495,31 +495,17 @@ def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: 
     )
 
 
-@stock_router.post("/v2-clean/stock/invoices/import")
-async def stock_invoice_direct_import(
-    request: Request,
-    db: DbSession,
-    file: UploadFile = File(...),
-):
-    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
-        return denied
+async def _import_stock_invoice_file(
+    db: DbSession, *, file: UploadFile, user_id: int | None
+) -> tuple[str, int | None, str]:
     original_name = Path(file.filename or "fatura_stock.pdf").name
     if Path(original_name).suffix.lower() != ".pdf":
-        return RedirectResponse(
-            "/v2-clean/stock/invoices?" + urlencode({"error": "A fatura tem de ser PDF."}),
-            status_code=303,
-        )
+        return "failed", None, f"{original_name}: o ficheiro não é PDF."
     content = await file.read()
     if not content:
-        return RedirectResponse(
-            "/v2-clean/stock/invoices?" + urlencode({"error": "O ficheiro está vazio."}),
-            status_code=303,
-        )
+        return "failed", None, f"{original_name}: o ficheiro está vazio."
     if len(content) > 25 * 1024 * 1024:
-        return RedirectResponse(
-            "/v2-clean/stock/invoices?" + urlencode({"error": "O PDF excede 25 MB."}),
-            status_code=303,
-        )
+        return "failed", None, f"{original_name}: o PDF excede 25 MB."
     digest = hashlib.sha256(content).hexdigest()
     existing = db.scalar(
         select(StockInvoiceImport)
@@ -527,12 +513,8 @@ async def stock_invoice_direct_import(
         .where(Document.file_hash == digest)
     )
     if existing:
-        return RedirectResponse(
-            f"/v2-clean/stock/invoices/{existing.id}?duplicate=1",
-            status_code=303,
-        )
+        return "duplicate", existing.id, f"{original_name}: já estava importado."
 
-    user_id = _user_id(request)
     folder_path = f"Stock/Faturas/{date.today().year}"
     storage_dir = document_archive_root().joinpath("Stock", "Faturas", str(date.today().year))
     stem = sanitize_archive_component(Path(original_name).stem, "fatura_stock")
@@ -543,17 +525,10 @@ async def stock_invoice_direct_import(
         stored_path.write_bytes(content)
     except OSError:
         logger.exception("Failed to persist direct stock invoice upload")
-        return RedirectResponse(
-            "/v2-clean/stock/invoices?"
-            + urlencode(
-                {
-                    "error": (
-                        "Não foi possível guardar a fatura no arquivo documental. "
-                        "Verifica o armazenamento configurado e tenta novamente."
-                    )
-                }
-            ),
-            status_code=303,
+        return (
+            "failed",
+            None,
+            f"{original_name}: não foi possível guardar no arquivo documental.",
         )
     document = Document(
         title=Path(original_name).stem[:200],
@@ -601,18 +576,11 @@ async def stock_invoice_direct_import(
         db.rollback()
         stored_path.unlink(missing_ok=True)
         logger.exception("Failed to register direct stock invoice upload")
-        return RedirectResponse(
-            "/v2-clean/stock/invoices?"
-            + urlencode(
-                {
-                    "error": (
-                        "Não foi possível registar a fatura. "
-                        "Confirma que a base de dados está atualizada e tenta novamente "
-                        f"({type(exc.orig).__name__ if getattr(exc, 'orig', None) else type(exc).__name__})."
-                    )
-                }
-            ),
-            status_code=303,
+        error_name = type(exc.orig).__name__ if getattr(exc, "orig", None) else type(exc).__name__
+        return (
+            "failed",
+            None,
+            f"{original_name}: não foi possível registar ({error_name}).",
         )
 
     # OCR is deliberately isolated from document ingestion. A parser or database
@@ -632,10 +600,49 @@ async def stock_invoice_direct_import(
                 f"manual ({type(exc).__name__})."
             )
             db.commit()
-    return RedirectResponse(
-        f"/v2-clean/stock/invoices/{invoice_import.id}?imported=1",
-        status_code=303,
-    )
+    return "imported", invoice_import.id, f"{original_name}: importado."
+
+
+@stock_router.post("/v2-clean/stock/invoices/import")
+async def stock_invoice_direct_import(
+    request: Request,
+    db: DbSession,
+    files: list[UploadFile] = File(..., alias="file"),
+):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    if not files:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?" + urlencode({"error": "Seleciona pelo menos um PDF."}),
+            status_code=303,
+        )
+    counts = {"imported": 0, "duplicate": 0, "failed": 0}
+    messages: list[str] = []
+    last_import_id: int | None = None
+    for file in files[:100]:
+        status, import_id, message = await _import_stock_invoice_file(
+            db, file=file, user_id=_user_id(request)
+        )
+        counts[status] += 1
+        messages.append(message)
+        if status == "imported":
+            last_import_id = import_id
+    if len(files) == 1 and counts["failed"]:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?" + urlencode({"error": messages[0]}), status_code=303
+        )
+    notice = {
+        "batch_imported": counts["imported"],
+        "batch_duplicates": counts["duplicate"],
+        "batch_failed": counts["failed"],
+    }
+    if messages and counts["failed"]:
+        notice["batch_errors"] = " | ".join(messages)[:1000]
+    if len(files) == 1 and last_import_id and not counts["failed"]:
+        return RedirectResponse(
+            f"/v2-clean/stock/invoices/{last_import_id}?imported=1", status_code=303
+        )
+    return RedirectResponse(f"/v2-clean/stock/invoices?{urlencode(notice)}", status_code=303)
 
 
 @stock_router.get("/v2-clean/stock/invoices/{invoice_import_id}", response_class=HTMLResponse)
@@ -1057,6 +1064,92 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
             "q": q,
         },
     )
+
+
+@stock_router.get("/v2-clean/stock/current", response_class=HTMLResponse)
+def stock_current(request: Request, db: DbSession, q: str = "", location_id: int | None = None):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    statement = select(StockArticle).where(StockArticle.active.is_(True))
+    if q.strip():
+        token = f"%{q.strip()}%"
+        statement = statement.where(
+            or_(StockArticle.internal_ref.ilike(token), StockArticle.name.ilike(token))
+        )
+    articles = db.scalars(statement.order_by(StockArticle.internal_ref)).all()
+    locations = db.scalars(
+        select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
+    ).all()
+    if location_id:
+        locations = [location for location in locations if location.id == location_id]
+    balances = stock_balances(db, article_ids=[article.id for article in articles])
+    minimums = {
+        (minimum.article_id, minimum.location_id): minimum.minimum_quantity
+        for minimum in db.scalars(select(StockMinimum)).all()
+    }
+    rows = [
+        {
+            "article": article,
+            "location": location,
+            "quantity": balances.get((article.id, location.id), ZERO),
+            "minimum": minimums.get((article.id, location.id)),
+        }
+        for article in articles
+        for location in locations
+    ]
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_current.html",
+        {
+            **_page_context(request, db),
+            "rows": rows,
+            "locations": db.scalars(
+                select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
+            ).all(),
+            "q": q,
+            "location_id": location_id,
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/current/count")
+def stock_current_count(
+    request: Request,
+    db: DbSession,
+    article_id: int = Form(...),
+    location_id: int = Form(...),
+    counted_quantity: str = Form(...),
+    reason: str = Form(...),
+):
+    if denied := _denied(request, db, "stock.manage", "admin.manage"):
+        return denied
+    try:
+        current = stock_balances(db, article_ids=[article_id]).get((article_id, location_id), ZERO)
+        counted = _parse_decimal(counted_quantity)
+        difference = counted - current
+        if difference == ZERO:
+            notice = {"confirmed": "unchanged"}
+        else:
+            movement = create_manual_movement(
+                db,
+                command=StockMovementCreate(
+                    article_id=article_id,
+                    movement_type="adjustment",
+                    quantity=difference,
+                    to_location_id=location_id,
+                    reason=f"Contagem física: {reason.strip()}",
+                    external_reference_type="stock_count",
+                ),
+                user_id=_user_id(request),
+            )
+            db.commit()
+            notice = {"confirmed": movement.id}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/current?{urlencode(notice)}", status_code=303)
 
 
 @stock_router.post("/v2-clean/stock/movements")

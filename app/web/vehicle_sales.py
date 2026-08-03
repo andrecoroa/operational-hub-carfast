@@ -22,6 +22,7 @@ from app.models import (
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
+    VehicleFinancialPlanInstallment,
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
@@ -251,9 +252,7 @@ def _sale_row(
         )
     # A financial margin only exists when an active financial plan supplies a balance.
     # Legacy manual debt fields must not make an unfinanced vehicle look financed.
-    debt = decimal_value(
-        base_router.amount_with_standard_vat(financial_plan.outstanding_amount)
-    ) if financial_plan else None
+    debt = decimal_value(financial_plan.outstanding_amount) if financial_plan else None
     market_trade = decimal_value(profile.market_trade_value) if profile else None
     market_retail = decimal_value(profile.market_retail_value) if profile else None
     financial_margin = margin(cost, debt)
@@ -420,6 +419,22 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
         )
         active_contract_plans.setdefault(key, []).append(plan)
 
+    installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {
+        plan.id: [] for plan in active_plans.values()
+    }
+    active_plan_ids = list(installments_by_plan)
+    if active_plan_ids:
+        for installment in db.scalars(
+            select(VehicleFinancialPlanInstallment)
+            .where(VehicleFinancialPlanInstallment.financial_plan_id.in_(active_plan_ids))
+            .order_by(
+                VehicleFinancialPlanInstallment.financial_plan_id,
+                VehicleFinancialPlanInstallment.period_end,
+                VehicleFinancialPlanInstallment.period_number,
+            )
+        ).all():
+            installments_by_plan[installment.financial_plan_id].append(installment)
+
     rows: list[dict[str, Any]] = []
     for vehicle in vehicles:
         snapshot = snapshots.get(vehicle.id)
@@ -474,6 +489,26 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
         if current_with_vat is None:
             missing.append("valor atual")
         source_reference = str(plan.source_references or "").strip() if plan else ""
+        installments = installments_by_plan.get(plan.id, []) if plan else []
+        debt_installments = [item for item in installments if item.outstanding_amount is not None]
+        future_debt_installments = [
+            item for item in debt_installments if item.period_end >= date.today()
+        ]
+        if not plan:
+            monthly_status = "Sem plano ativo"
+            monthly_ready = False
+        elif not installments:
+            monthly_status = "Sem plano mensal"
+            monthly_ready = False
+        elif not debt_installments:
+            monthly_status = "Plano mensal sem saldos"
+            monthly_ready = False
+        elif not future_debt_installments:
+            monthly_status = "Plano mensal terminado"
+            monthly_ready = False
+        else:
+            monthly_status = "Atualização mensal disponível"
+            monthly_ready = True
         if not declared_entity:
             diagnosis = "Sem entidade financeira declarada"
         elif not plan:
@@ -497,10 +532,7 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
                 "end_date": plan.end_date.isoformat() if plan and plan.end_date else "",
                 "installment_with_vat": plan.installment_with_vat if plan else None,
                 "residual_with_vat": residual,
-                "outstanding_with_vat": (
-                    base_router.amount_with_standard_vat(plan.outstanding_amount)
-                    if plan else None
-                ),
+                "outstanding_with_vat": plan.outstanding_amount if plan else None,
                 "amount_reference_date": (
                     plan.amount_reference_date.isoformat()
                     if plan and plan.amount_reference_date else ""
@@ -510,6 +542,16 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
                 "current_value_with_vat": current_with_vat,
                 "plan_count": len(plans_by_vehicle.get(vehicle.id, [])),
                 "source_reference": source_reference,
+                "monthly_status": monthly_status,
+                "monthly_ready": monthly_ready,
+                "installment_count": len(installments),
+                "debt_installment_count": len(debt_installments),
+                "monthly_first_date": debt_installments[0].period_end.isoformat()
+                if debt_installments
+                else "",
+                "monthly_last_date": debt_installments[-1].period_end.isoformat()
+                if debt_installments
+                else "",
                 "diagnosis": diagnosis,
                 "missing_count": len(missing),
                 "missing_fields": ", ".join(missing),
@@ -727,6 +769,7 @@ def vehicle_financial_audit_page(
     request: Request,
     entity: str = "",
     missing: str = "",
+    monthly: str = "",
 ):
     denied = _sales_access_denied(request)
     if denied:
@@ -743,6 +786,7 @@ def vehicle_financial_audit_page(
         for row in all_rows
         if (not normalized_entity or compact_finance_entity(row["finance_entity"]) == normalized_entity)
         and (not missing or missing in row["missing_fields"].split(", "))
+        and (not monthly or row["monthly_status"] == monthly)
     ]
     missing_options = sorted(
         {
@@ -759,6 +803,8 @@ def vehicle_financial_audit_page(
         "with_source": sum(
             1 for row in all_rows if row["missing_count"] and row["source_reference"]
         ),
+        "monthly_ready": sum(1 for row in all_rows if row["monthly_ready"]),
+        "monthly_missing": sum(1 for row in all_rows if not row["monthly_ready"]),
     }
     return base_router.templates.TemplateResponse(
         request,
@@ -768,6 +814,8 @@ def vehicle_financial_audit_page(
             "entities": entities,
             "entity": normalized_entity,
             "missing": missing,
+            "monthly": monthly,
+            "monthly_options": sorted({row["monthly_status"] for row in all_rows}),
             "missing_options": missing_options,
             "summary": summary,
         },

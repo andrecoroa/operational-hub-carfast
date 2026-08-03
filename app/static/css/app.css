@@ -163,6 +163,8 @@
 .stock-table tr:last-child td { border-bottom: 0; }
 .stock-table a { color: #174f91; font-weight: 700; text-decoration: none; }
 .stock-table a:hover { text-decoration: underline; }
+.stock-count-form { display: grid; grid-template-columns: minmax(72px, .55fr) minmax(150px, 1fr) auto; gap: 8px; min-width: 380px; }
+.stock-count-form input, .stock-count-form button { min-height: 36px; }
 
 .stock-badge {
   display: inline-flex;

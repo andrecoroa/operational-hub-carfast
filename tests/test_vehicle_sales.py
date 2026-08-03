@@ -274,11 +274,11 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert "Dev. 18/10/2026" in page.text
     assert "Custo CarFast − valor em dívida" in page.text
     assert "Valor comércio − custo CarFast" in page.text
-    assert "18 450,00 €" in page.text
+    assert "15 000,00 €" in page.text
 
     detail = authenticated_client.get(f"/v2-clean/fleet/sales/{vehicle.id}")
     assert detail.status_code == 200
-    assert "18 450,00 €" in detail.text
+    assert "15 000,00 €" in detail.text
 
     values = authenticated_client.post(
         "/v2-clean/fleet/sales/bulk",
@@ -372,6 +372,7 @@ def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
     assert "Auditoria dos planos financeiros" in page.text
     assert "12-AB-34" in page.text
     assert "Plano importado sem referência" in page.text
+    assert "Sem plano mensal" in page.text
 
 
 def test_vehicle_sale_images_public_snapshot_and_leads(

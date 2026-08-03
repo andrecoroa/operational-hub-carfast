@@ -410,6 +410,61 @@ def test_direct_stock_invoice_import_reports_storage_failure(
     assert db_session.scalar(select(func.count()).select_from(StockInvoiceImport)) == 0
 
 
+def test_direct_stock_invoice_batch_keeps_valid_files_when_one_is_invalid(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    from app.web import stock as stock_web
+
+    monkeypatch.setattr(stock_web, "document_archive_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        stock_web,
+        "extract_stock_invoice",
+        lambda _db, record: setattr(record, "status", "needs_review") or {},
+    )
+    response = authenticated_client.post(
+        "/v2-clean/stock/invoices/import",
+        files=[
+            ("file", ("FT-LOTE-1.pdf", b"%PDF-1.4\none", "application/pdf")),
+            ("file", ("ignorar.txt", b"not a pdf", "text/plain")),
+            ("file", ("FT-LOTE-2.pdf", b"%PDF-1.4\ntwo", "application/pdf")),
+        ],
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "batch_imported=2" in response.headers["location"]
+    assert "batch_failed=1" in response.headers["location"]
+    assert db_session.scalar(select(func.count()).select_from(StockInvoiceImport)) == 2
+
+
+def test_stock_physical_count_creates_only_difference_adjustment(
+    authenticated_client, db_session
+):
+    article_id = _create_article(authenticated_client, "COUNT-001")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    response = authenticated_client.post(
+        "/v2-clean/stock/current/count",
+        data={
+            "article_id": article_id,
+            "location_id": workshop.id,
+            "counted_quantity": "7",
+            "reason": "Inventário mensal",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    movement = db_session.scalar(
+        select(StockMovement).where(StockMovement.article_id == article_id)
+    )
+    assert movement.movement_type == "adjustment"
+    assert movement.quantity == Decimal("7.000")
+    assert movement.to_location_id == workshop.id
+    assert stock_balances(db_session, article_ids=[article_id])[(article_id, workshop.id)] == Decimal(
+        "7.000"
+    )
+
+
 def test_extract_and_validate_are_document_only(authenticated_client, db_session, monkeypatch):
     document = _document("document-only", file_hash="a" * 64)
     db_session.add(document)
@@ -708,6 +763,7 @@ def test_existing_profiles_receive_stock_permissions(db_session):
         "/v2-clean/stock/suppliers",
         "/v2-clean/stock/receipts",
         "/v2-clean/stock/invoices",
+        "/v2-clean/stock/current",
         "/v2-clean/stock/movements",
     ],
 )

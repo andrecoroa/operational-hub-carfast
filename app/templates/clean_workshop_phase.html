@@ -975,10 +975,10 @@
 </div>
 <div class="clean-image-preview-modal" id="clean-history-preview-modal" hidden>
   <div class="clean-image-preview-backdrop" data-history-preview-close></div>
-  <section class="clean-image-preview-dialog clean-history-preview-dialog" role="dialog" aria-modal="true">
-    <header>
+  <section class="clean-image-preview-dialog clean-history-preview-dialog clean-preview-dialog" role="dialog" aria-modal="true">
+    <header class="clean-preview-header">
       <span><strong>Histórico da viatura</strong><small>Processos, documentos e diagnósticos por data real</small></span>
-      <button type="button" data-history-preview-close>Fechar</button>
+      <button type="button" class="clean-preview-close" data-history-preview-close>Fechar preview</button>
     </header>
     <div class="clean-history-preview-body">
       {% include "_clean_workshop_history_content.html" %}

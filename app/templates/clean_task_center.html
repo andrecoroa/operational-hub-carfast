@@ -101,7 +101,7 @@
 
     <section class="clean-panel clean-card-wide clean-task-queue-panel">
       <div class="table-heading flat-heading">
-        <div><h3>Fila de trabalho</h3><p>{{ tasks|length }} registos nos filtros atuais.</p></div>
+        <div><h3>Fila de trabalho</h3><p>{{ pagination.total }} registos nos filtros atuais.</p></div>
       </div>
       <nav class="clean-task-workspace-tabs" aria-label="Filas">
         <a href="/v2-clean/tasks?workspace=mine" class="{% if filters.workspace == 'mine' %}active{% endif %}"><span>Minhas</span></a>
@@ -163,6 +163,13 @@
           </tbody>
         </table>
       </div>
+      {% if pagination.total_pages > 1 %}
+        <nav class="doc-arch-pagination" aria-label="Paginação das tarefas">
+          {% if pagination.has_previous %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&page={{ pagination.previous_page }}">Anterior</a>{% endif %}
+          <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} tarefas</span>
+          {% if pagination.has_next %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&page={{ pagination.next_page }}">Seguinte</a>{% endif %}
+        </nav>
+      {% endif %}
     </section>
   </main>
 </div>

@@ -3795,6 +3795,7 @@ def clean_tasks_center(
     updated: str | None = None,
     closed: str | None = None,
     reopened: str | None = None,
+    page: int = 1,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -3917,11 +3918,18 @@ def clean_tasks_center(
                     Task.external_source_id.ilike(search),
                 )
             )
+        page_size = 50
+        total_tasks = db.scalar(
+            select(func.count()).select_from(Task).where(*filters)
+        ) or 0
+        total_pages = max(1, (total_tasks + page_size - 1) // page_size)
+        active_page = min(max(page, 1), total_pages)
         tasks = db.scalars(
             select(Task)
             .where(*filters)
             .order_by(Task.closed_at.is_not(None), Task.priority.desc(), Task.due_on.is_(None), Task.due_on, Task.id.desc())
-            .limit(120)
+            .offset((active_page - 1) * page_size)
+            .limit(page_size)
         ).all()
         task_ids = [task.id for task in tasks]
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
@@ -4113,6 +4121,15 @@ def clean_tasks_center(
                 "updated": updated,
                 "closed": closed,
                 "reopened": reopened,
+                "pagination": {
+                    "page": active_page,
+                    "total_pages": total_pages,
+                    "total": total_tasks,
+                    "has_previous": active_page > 1,
+                    "has_next": active_page < total_pages,
+                    "previous_page": active_page - 1,
+                    "next_page": active_page + 1,
+                },
             },
         )
 

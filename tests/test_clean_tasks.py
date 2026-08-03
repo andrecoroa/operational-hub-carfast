@@ -439,3 +439,31 @@ def test_clean_task_context_is_editable_without_changing_management(authenticate
     assert "Confirmar documentação" in page.text
     assert ">Natureza<" in page.text
     assert "Tarefas e problemas" not in page.text
+
+
+def test_clean_task_center_paginates_without_hiding_total(authenticated_client, db_session):
+    tasks = [
+        Task(
+            title=f"Tarefa paginada {index:02d}",
+            source="v2_clean",
+            task_type="operational_task",
+            status="new",
+            priority="normal",
+        )
+        for index in range(51)
+    ]
+    db_session.add_all(tasks)
+    db_session.commit()
+
+    first_page = authenticated_client.get("/v2-clean/tasks?workspace=operational")
+    second_page = authenticated_client.get(
+        "/v2-clean/tasks?workspace=operational&page=2"
+    )
+
+    assert first_page.status_code == 200
+    assert "51 registos nos filtros atuais" in first_page.text
+    assert "Página 1 de 2" in first_page.text
+    assert "Tarefa paginada 00" not in first_page.text
+    assert second_page.status_code == 200
+    assert "Página 2 de 2" in second_page.text
+    assert "Tarefa paginada 00" in second_page.text

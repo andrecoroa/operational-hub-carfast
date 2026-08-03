@@ -397,6 +397,7 @@ def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
     assert "12-AB-34" in page.text
     assert "Plano importado sem referência" in page.text
     assert "Sem plano mensal" in page.text
+    assert "Valor residual" in page.text
 
 
 def test_financial_audit_uses_same_current_value_as_vehicle_sales(db_session):

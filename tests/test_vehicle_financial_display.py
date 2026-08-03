@@ -7,9 +7,23 @@ from app.web.router import (
     amount_with_standard_vat,
     current_cost_from_snapshot,
     current_value_with_financial_amortization,
+    financial_contract_key,
     residual_amount_for_vehicle,
     rentway_commercial_context,
 )
+
+
+def test_financial_contract_key_normalizes_entity_aliases():
+    cgd = SimpleNamespace(
+        finance_entity="CGD",
+        contract_number=" 100169978 ",
+    )
+    caixa = SimpleNamespace(
+        finance_entity="Caixa Geral de Depósitos, S.A.",
+        contract_number="100169978",
+    )
+
+    assert financial_contract_key(cgd) == financial_contract_key(caixa)
 
 
 def test_rentway_acquisition_value_is_not_treated_as_value_with_tax():

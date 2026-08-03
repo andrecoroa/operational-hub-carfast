@@ -410,10 +410,7 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
 
     active_contract_plans: dict[tuple[str, str], list[VehicleFinancialPlan]] = {}
     for plan in active_plans.values():
-        key = (
-            str(plan.finance_entity or "").strip().casefold(),
-            str(plan.contract_number or "").strip().casefold(),
-        )
+        key = base_router.financial_contract_key(plan)
         active_contract_plans.setdefault(key, []).append(plan)
 
     installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {
@@ -455,10 +452,7 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
             plan.amount_reference_date if plan else None,
             rentway_cost.get("amortization_month"),
         )
-        contract_key = (
-            str(plan.finance_entity or "").strip().casefold(),
-            str(plan.contract_number or "").strip().casefold(),
-        ) if plan else ("", "")
+        contract_key = base_router.financial_contract_key(plan)
         residual = base_router.residual_amount_for_vehicle(
             plan,
             active_contract_plans.get(contract_key, []),

@@ -22,13 +22,13 @@
         <button type="submit">Filtrar</button>
       </form>
       <div class="clean-doc-table-wrap"><table class="clean-doc-table financial-audit-table">
-        <thead><tr><th>Viatura</th><th>Entidade / contrato</th><th>Início</th><th>Fim</th><th>Renda</th><th>Capital</th><th>Valor atual</th><th>Atualização mensal</th><th>Em falta</th><th>Diagnóstico</th></tr></thead>
+        <thead><tr><th>Viatura</th><th>Entidade / contrato</th><th>Início</th><th>Fim</th><th>Renda</th><th>Valor residual</th><th>Capital</th><th>Valor atual</th><th>Atualização mensal</th><th>Em falta</th><th>Diagnóstico</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
           <td><a href="/v2-clean/fleet/{{ row.vehicle_id }}">{{ row.plate or '-' }}</a><small>Unit {{ row.unit or '-' }}</small></td>
           <td><strong>{{ row.finance_entity }}</strong><small>{{ row.contract_number or 'Sem contrato' }}</small></td>
-          <td>{{ row.start_date or '-' }}</td><td>{{ row.end_date or '-' }}</td><td>{{ row.installment_with_vat or '-' }}</td><td>{{ row.outstanding_with_vat or '-' }}</td><td>{{ row.current_value_with_vat or '-' }}</td><td><strong>{{ row.monthly_status }}</strong><small>{{ row.debt_installment_count }}/{{ row.installment_count }} meses com saldo{% if row.monthly_first_date %} · {{ row.monthly_first_date }} a {{ row.monthly_last_date }}{% endif %}</small></td>
+          <td>{{ row.start_date or '-' }}</td><td>{{ row.end_date or '-' }}</td><td>{{ row.installment_with_vat or '-' }}</td><td>{{ row.residual_with_vat or '-' }}</td><td>{{ row.outstanding_with_vat or '-' }}</td><td>{{ row.current_value_with_vat or '-' }}</td><td><strong>{{ row.monthly_status }}</strong><small>{{ row.debt_installment_count }}/{{ row.installment_count }} meses com saldo{% if row.monthly_first_date %} · {{ row.monthly_first_date }} a {{ row.monthly_last_date }}{% endif %}</small></td>
           <td>{{ row.missing_fields or '-' }}</td><td>{{ row.diagnosis }}{% if row.source_reference %}<small title="{{ row.source_reference }}">Fonte registada</small>{% endif %}</td>
-        </tr>{% else %}<tr><td colspan="10">Sem registos para os filtros.</td></tr>{% endfor %}</tbody>
+        </tr>{% else %}<tr><td colspan="11">Sem registos para os filtros.</td></tr>{% endfor %}</tbody>
       </table></div>
     </section>
   </main>

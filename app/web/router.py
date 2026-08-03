@@ -861,6 +861,25 @@ def residual_amount_for_vehicle(
     return (plan.residual_amount * weight).quantize(Decimal("0.01"))
 
 
+def financial_contract_key(plan: VehicleFinancialPlan | None) -> tuple[str, str]:
+    if plan is None:
+        return ("", "")
+    entity = str(plan.finance_entity or "").strip().casefold()
+    if "caixa geral de dep" in entity or entity == "cgd" or entity.startswith("cgd "):
+        entity = "cgd"
+    elif "santander" in entity:
+        entity = "santander"
+    elif "volkswagen" in entity or "vwbfs" in entity:
+        entity = "volkswagen"
+    elif "banco bpi" in entity or entity == "bpi" or entity.startswith("bpi "):
+        entity = "bpi"
+    elif "leaseplan" in entity:
+        entity = "leaseplan"
+    elif "mercedes" in entity:
+        entity = "mercedes"
+    return (entity, str(plan.contract_number or "").strip().casefold())
+
+
 def can_manage_carfast_fleet(request: Request) -> bool:
     return has_any_web_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage")
 
@@ -7219,13 +7238,18 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
     )
     related_contract_plans: list[VehicleFinancialPlan] = []
     if active_financial_plan:
-        related_contract_plans = db.scalars(
-            select(VehicleFinancialPlan).where(
-                VehicleFinancialPlan.finance_entity == active_financial_plan.finance_entity,
-                VehicleFinancialPlan.contract_number == active_financial_plan.contract_number,
-                VehicleFinancialPlan.active.is_(True),
-            )
-        ).all()
+        contract_key = financial_contract_key(active_financial_plan)
+        related_contract_plans = [
+            plan
+            for plan in db.scalars(
+                select(VehicleFinancialPlan).where(
+                    VehicleFinancialPlan.contract_number
+                    == active_financial_plan.contract_number,
+                    VehicleFinancialPlan.active.is_(True),
+                )
+            ).all()
+            if financial_contract_key(plan) == contract_key
+        ]
     vehicle_residual_amount = residual_amount_for_vehicle(
         active_financial_plan,
         related_contract_plans,

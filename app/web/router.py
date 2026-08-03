@@ -7316,8 +7316,11 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "version": version or "-",
             "vin": vehicle.vin or snapshot_value(data, ["chassinr", "vin", "chassis"]) or "-",
             "groupid": vehicle_context.get("groupid") or "-",
+            "category": vehicle_context.get("category") or "-",
+            "seats": vehicle_context.get("seats") or "-",
             "colour": vehicle_context.get("colour") or "-",
             "fuel": vehicle_context.get("fuel") or "-",
+            "rentway_status": commercial_context.get("current_status") or "-",
             "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
             "current_km": clean_km(
                 str(
@@ -7332,6 +7335,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         "dates": {
             "registration": clean_date(vehicle_context.get("plate_date")),
             "purchase": clean_date(vehicle_context.get("purchase_date")),
+            "expected_return": clean_date(commercial_context.get("return_date")),
             "real_start": clean_date(real_start_date) if real_start_date else "Por validar",
             "rentway_ipo": clean_date(rules["rentway_ipo"].isoformat() if rules.get("rentway_ipo") else None),
             "calculated_ipo": clean_date(calculated_ipo.isoformat() if isinstance(calculated_ipo, date) else None),
@@ -7458,13 +7462,17 @@ def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = N
             "version": vehicle.version or "-",
             "vin": vehicle.vin or "-",
             "groupid": "-",
+            "category": "-",
+            "seats": "-",
             "colour": "-",
             "fuel": "-",
+            "rentway_status": "-",
             "purchase_supplier": "-",
         },
         "dates": {
             "registration": "-",
             "purchase": "-",
+            "expected_return": "-",
             "real_start": "Por validar",
             "rentway_ipo": "-",
             "calculated_ipo": "-",

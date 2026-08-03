@@ -193,3 +193,22 @@ def test_financial_panel_uses_requested_four_column_order():
         Path(__file__).parents[1] / "app" / "static" / "css" / "app.css"
     ).read_text(encoding="utf-8")
     assert ".clean-finance-facts .clean-finance-current-cost" not in stylesheet
+
+
+def test_vehicle_rules_panel_includes_requested_rentway_fields():
+    template = (
+        Path(__file__).parents[1] / "app" / "templates" / "clean_fleet_detail.html"
+    ).read_text(encoding="utf-8")
+    panel = template.split('id="clean-substep-regras"', 1)[1].split(
+        'id="clean-substep-manutencao"', 1
+    )[0]
+
+    for label in (
+        "Cor",
+        "Combustível",
+        "Categoria / grupo Rentway",
+        "Lugares",
+        "Estado Rentway",
+        "Devolução prevista",
+    ):
+        assert label in panel

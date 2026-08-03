@@ -165,6 +165,37 @@
 .stock-table a:hover { text-decoration: underline; }
 .stock-count-form { display: grid; grid-template-columns: minmax(72px, .55fr) minmax(150px, 1fr) auto; gap: 8px; min-width: 380px; }
 .stock-count-form input, .stock-count-form button { min-height: 36px; }
+.clean-header-more { position: relative; }
+.clean-header-more > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+.clean-header-more > summary::-webkit-details-marker { display: none; }
+.clean-header-more > nav {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(18, 39, 75, 0.14);
+}
+.clean-header-more > nav a {
+  display: block;
+  padding: 9px 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.clean-header-more > nav a:hover { background: var(--surface-soft); }
 
 .stock-badge {
   display: inline-flex;

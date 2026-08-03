@@ -194,6 +194,24 @@ def test_unfinanced_vehicle_ignores_legacy_manual_debt():
     assert row["financial_margin"] is None
 
 
+def test_sale_row_uses_same_amortized_current_cost_as_vehicle_sheet(monkeypatch):
+    vehicle = Vehicle(plate="12-AA-34", active=True)
+    snapshot = VehicleExternalSnapshot(data_json={})
+    monkeypatch.setattr(
+        base_router,
+        "current_cost_from_snapshot",
+        lambda _snapshot: {
+            "initial_cost_with_vat": Decimal("9600.00"),
+            "current_cost_with_vat": Decimal("9000.00"),
+            "amortization_month": 24,
+        },
+    )
+
+    row = _sale_row(vehicle, snapshot, {}, None, None)
+
+    assert row["cost"] == Decimal("7200.00")
+
+
 def create_sale_vehicle(db_session) -> Vehicle:
     vehicle = Vehicle(
         plate="12-AB-34",
@@ -526,10 +544,20 @@ def test_vehicle_sale_images_public_snapshot_and_leads(
     question_lead = next(lead for lead in leads if lead.kind == "question")
     updated_lead = authenticated_client.post(
         f"/v2-clean/fleet/sales/opportunities/{question_lead.id}",
-        data={"status": "in_review"},
+        data={
+            "status": "in_review",
+            "page": "2",
+            "status_filter": "new",
+            "kind_filter": "question",
+            "q": "Cliente Externo",
+        },
         follow_redirects=False,
     )
     assert updated_lead.status_code == 303
+    assert "page=2" in updated_lead.headers["location"]
+    assert "status=new" in updated_lead.headers["location"]
+    assert "kind=question" in updated_lead.headers["location"]
+    assert "q=Cliente+Externo" in updated_lead.headers["location"]
     db_session.expire_all()
     assert db_session.get(VehicleSaleLead, question_lead.id).status == "in_review"
 

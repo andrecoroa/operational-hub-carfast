@@ -63,57 +63,6 @@
       </div>
     </section>
 
-    <section class="clean-page-grid clean-process-recent-grid">
-      <article class="clean-panel clean-panel-compact">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Frota</p>
-            <h3>Auditorias recentes</h3>
-          </div>
-          <a class="table-link" href="/v2-clean/fleet">Abrir Frota</a>
-        </div>
-        <div class="clean-process-list">
-          {% for audit in recent_audits %}
-            <a href="/v2-clean/fleet">
-              <strong>{{ audit.plate or "Sem matricula" }}</strong>
-              <span>{{ audit.status }}</span>
-              <em>{{ audit.objective or "Auditoria tecnica da viatura" }}</em>
-            </a>
-          {% else %}
-            <p class="muted">Ainda sem auditorias tecnicas recentes.</p>
-          {% endfor %}
-        </div>
-      </article>
-
-      <article class="clean-panel clean-panel-compact">
-        <div class="table-heading flat-heading">
-          <div>
-            <p class="eyebrow">Gestao</p>
-            <h3>Processos recentes</h3>
-          </div>
-        </div>
-        <div class="clean-process-list">
-          {% for process in recent_management %}
-            <a href="/v2-clean/processes#process-management">
-              <strong>{{ process.internal_reference or process.title or "Processo" }}</strong>
-              <span>{{ process.status }}</span>
-              <em>{{ process.title or process.phase or "Processo de gestao" }}</em>
-            </a>
-          {% else %}
-            <p class="muted">Ainda sem processos de gestao recentes.</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
-
-    <section class="clean-panel clean-process-next-step">
-      <div>
-        <p class="eyebrow">Proximo passo</p>
-        <h3>Criar processo por modelo</h3>
-        <p>Depois desta limpeza, ligamos um fluxo novo: área -> modelo -> processo, sem aproveitar processos antigos.</p>
-      </div>
-      <a class="button-link secondary-link" href="/v2-clean/processes">Em preparacao</a>
-    </section>
   </main>
 </div>
 {% endblock %}

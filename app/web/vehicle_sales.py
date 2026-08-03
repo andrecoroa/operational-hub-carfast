@@ -236,20 +236,17 @@ def _sale_row(
     commercial = base_router.rentway_commercial_context(snapshot)
     vehicle_context = base_router.rentway_vehicle_context(snapshot)
     finance = base_router.current_cost_from_snapshot(snapshot)
-    rentway_current_cost = decimal_value(finance.get("current_cost_with_vat"))
-    cost = rentway_current_cost
-    if cost is None:
-        cost = decimal_value(
-            base_router.current_value_with_financial_amortization(
-                finance.get("initial_cost_with_vat"),
-                financial_plan.initial_amount if financial_plan else None,
-                financial_plan.outstanding_amount if financial_plan else None,
-                None,
-                finance.get("purchase_date")
-                or (financial_plan.start_date if financial_plan else None),
-                financial_plan.amount_reference_date if financial_plan else None,
-            )
+    cost = decimal_value(
+        base_router.current_value_with_financial_amortization(
+            finance.get("initial_cost_with_vat"),
+            financial_plan.initial_amount if financial_plan else None,
+            financial_plan.outstanding_amount if financial_plan else None,
+            finance.get("current_cost_with_vat"),
+            financial_plan.start_date if financial_plan else None,
+            financial_plan.amount_reference_date if financial_plan else None,
+            finance.get("amortization_month"),
         )
+    )
     # A financial margin only exists when an active financial plan supplies a balance.
     # Legacy manual debt fields must not make an unfinanced vehicle look financed.
     debt = decimal_value(financial_plan.outstanding_amount) if financial_plan else None
@@ -934,6 +931,10 @@ def vehicle_sale_opportunity_update(
     request: Request,
     lead_id: int,
     status: str = Form("in_review"),
+    page: int = Form(1),
+    status_filter: str = Form(""),
+    kind_filter: str = Form(""),
+    q: str = Form(""),
 ):
     denied = _sales_access_denied(request)
     if denied:
@@ -960,10 +961,16 @@ def vehicle_sale_opportunity_update(
                 user_id=user_id,
             )
             db.commit()
-    return RedirectResponse(
-        "/v2-clean/fleet/sales/opportunities?updated=1",
-        status_code=303,
+    query = urlencode(
+        {
+            "updated": 1,
+            "page": max(page, 1),
+            "status": status_filter.strip(),
+            "kind": kind_filter.strip(),
+            "q": q.strip(),
+        }
     )
+    return RedirectResponse(f"/v2-clean/fleet/sales/opportunities?{query}", status_code=303)
 
 
 @vehicle_sales_router.post("/v2-clean/fleet/sales/bulk")

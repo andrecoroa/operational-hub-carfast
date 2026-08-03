@@ -20,4 +20,4 @@ def test_clean_process_center_shows_core_areas(client):
     assert "Frota" in response.text
     assert "Gestão" in response.text
     assert "Administração" in response.text
-    assert "A Oficina continua no modulo proprio" in response.text
+    assert 'href="/v2-clean/workshop"' in response.text

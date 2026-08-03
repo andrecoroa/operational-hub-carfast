@@ -38,7 +38,7 @@
       </form>
       <div class="clean-fleet-search-feedback" id="clean-fleet-search-help" aria-live="polite">
         {% if q %}
-          <strong>{{ rows|length }} resultado{% if rows|length != 1 %}s{% endif %}</strong>
+          <strong>{{ pagination.total }} resultado{% if pagination.total != 1 %}s{% endif %}</strong>
           <span>para “{{ q }}”</span>
         {% else %}
           <span>Escreve a matrícula completa ou parte da matrícula, Unit, VIN, marca ou modelo. Carrega em Enter para pesquisar.</span>
@@ -52,7 +52,7 @@
 
       <div class="clean-fleet-list">
         {% for row in rows %}
-          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ row.id }}">
+          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ row.id }}?return_to={{ ('/v2-clean/fleet?scope=' ~ scope ~ '&q=' ~ (q|urlencode) ~ '&page=' ~ pagination.page)|urlencode }}">
             <div class="clean-fleet-row-main">
               <strong>{{ row.plate }}</strong>
               <span>{{ row.brand }} {{ row.model }}{% if row.version and row.version != '-' %} · {{ row.version }}{% endif %}</span>
@@ -70,6 +70,13 @@
           <p class="muted">Sem viaturas para os filtros selecionados.</p>
         {% endfor %}
       </div>
+      {% if pagination.total_pages > 1 %}
+        <nav class="doc-arch-pagination" aria-label="Paginação da frota">
+          {% if pagination.has_previous %}<a href="?scope={{ scope }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}">Anterior</a>{% endif %}
+          <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} viaturas</span>
+          {% if pagination.has_next %}<a href="?scope={{ scope }}&q={{ q|urlencode }}&page={{ pagination.next_page }}">Seguinte</a>{% endif %}
+        </nav>
+      {% endif %}
     </section>
   </main>
 </div>

@@ -3491,9 +3491,9 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "open": 0,
             "critical": 0,
             "models": ["Transferência crítica", "Verificação operacional"],
-            "href": "#process-operational",
-            "action": "Em preparação",
-            "state": "Base limpa",
+            "href": "/v2-clean/tasks?workspace=operational",
+            "action": "Abrir tarefas",
+            "state": "Operacional",
         },
         {
             "code": "fleet",
@@ -3515,9 +3515,9 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "open": 0,
             "critical": 0,
             "models": ["Sinistro acompanhado", "Reclamação fornecedor", "Discussão Stellantis"],
-            "href": "#process-management",
-            "action": "Em preparação",
-            "state": "Base limpa",
+            "href": "/v2-clean/tasks?workspace=audit",
+            "action": "Abrir auditoria",
+            "state": "Em tratamento",
         },
         {
             "code": "administration",
@@ -3527,9 +3527,9 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
             "open": 0,
             "critical": 0,
             "models": ["Alteração de procedimento", "Revisão de protocolo", "Descritivo de função"],
-            "href": "#process-administration",
-            "action": "Em preparação",
-            "state": "Base limpa",
+            "href": "/v2-clean/admin/overview",
+            "action": "Abrir administração",
+            "state": "Restrito",
         },
     ]
 
@@ -7547,7 +7547,12 @@ def clean_vehicle_document_summary(documents: list[Document]) -> dict[str, int]:
         summary[group] = summary.get(group, 0) + 1
     return summary
 @web_router.get("/v2-clean/fleet", response_class=HTMLResponse)
-def clean_fleet_page(request: Request, q: str | None = None, scope: str = "active"):
+def clean_fleet_page(
+    request: Request,
+    q: str | None = None,
+    scope: str = "active",
+    page: int = 1,
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -7556,7 +7561,7 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
     raw_query = (q or "").strip()
     normalized_query = normalize_identifier(raw_query) if raw_query else ""
     with SessionLocal() as db:
-        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(300)
+        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
         if scope == "active":
             stmt = stmt.where(
                 Vehicle.active.is_(True),
@@ -7589,7 +7594,15 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
                 | Vehicle.brand.ilike(f"%{raw_query}%")
                 | Vehicle.model.ilike(f"%{raw_query}%")
             )
-        vehicles = sorted(db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True)[:120]
+        matching_vehicles = sorted(
+            db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True
+        )
+        page_size = 50
+        total_rows = len(matching_vehicles)
+        total_pages = max(1, (total_rows + page_size - 1) // page_size)
+        active_page = min(max(page, 1), total_pages)
+        page_start = (active_page - 1) * page_size
+        vehicles = matching_vehicles[page_start : page_start + page_size]
         plate_suggestions = [
             plate
             for plate in db.scalars(
@@ -7664,7 +7677,22 @@ def clean_fleet_page(request: Request, q: str | None = None, scope: str = "activ
     return templates.TemplateResponse(
         request,
         "clean_fleet.html",
-        {"rows": rows, "counts": counts, "q": q or "", "scope": scope, "plate_suggestions": plate_suggestions},
+        {
+            "rows": rows,
+            "counts": counts,
+            "q": q or "",
+            "scope": scope,
+            "plate_suggestions": plate_suggestions,
+            "pagination": {
+                "page": active_page,
+                "total_pages": total_pages,
+                "total": total_rows,
+                "has_previous": active_page > 1,
+                "has_next": active_page < total_pages,
+                "previous_page": active_page - 1,
+                "next_page": active_page + 1,
+            },
+        },
     )
 
 
@@ -18496,12 +18524,17 @@ def clean_fleet_documents_save_audit_field(
         db.commit()
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?saved=audit", status_code=303)
 @web_router.get("/v2-clean/fleet/{vehicle_id}", response_class=HTMLResponse)
-def clean_fleet_detail(request: Request, vehicle_id: int):
+def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
     denied = clean_experience_denied(request)
     if denied:
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    safe_return_to = (
+        return_to
+        if return_to.startswith("/v2-clean/fleet") and not return_to.startswith("//")
+        else "/v2-clean/fleet"
+    )
     with SessionLocal() as db:
         vehicle = db.get(Vehicle, vehicle_id)
         if not vehicle:
@@ -18566,6 +18599,7 @@ def clean_fleet_detail(request: Request, vehicle_id: int):
             "document_counts": document_counts,
             "document_summary": document_summary,
             "document_group_labels": document_group_labels,
+            "return_to": safe_return_to,
         },
     )
 

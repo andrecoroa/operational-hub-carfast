@@ -4,7 +4,7 @@
 <main class="content clean-content stock-page">{% set stock_nav="invoices" %}{% include "_clean_stock_nav.html" %}
   <header class="stock-header">
     <div><p class="eyebrow">Fatura de stock #{{ invoice_import.id }}</p><h1>{{ invoice_import.invoice_number or document.title or document.original_name }}</h1><p>Conferência documental e receção física no mesmo fluxo.</p></div>
-    <div class="stock-actions"><a class="button-link secondary-link" href="/v2-clean/documentation/invoices">Ver documento</a>{% if can_operate_stock and invoice_import.status != 'validated' %}<form method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/extract"><button>Extrair PDF</button></form>{% endif %}</div>
+    <div class="stock-actions"><a class="button-link secondary-link" href="/v2-clean/stock/invoices">Voltar</a><a class="button-link secondary-link" href="/v2-clean/documentation/invoices">Ver documento</a>{% if can_operate_stock and invoice_import.status != 'validated' %}<form method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/extract"><button>Extrair PDF</button></form>{% endif %}</div>
   </header>
   <div class="stock-notice">Guardar a conferência não altera existências. O stock só aumenta quando confirmas abaixo as quantidades fisicamente recebidas.</div>
   {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}

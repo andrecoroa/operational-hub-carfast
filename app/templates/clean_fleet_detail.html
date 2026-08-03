@@ -51,7 +51,7 @@
             <a class="button-link secondary-link" href="/v2-clean/fleet/sales/{{ vehicle.id }}">Preparar venda</a>
           {% endif %}
           <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}">Tarefas e problemas</a>
-          <a class="button-link secondary-link" href="/v2-clean/fleet">Voltar</a>
+          <a class="button-link secondary-link" href="{{ return_to }}">Voltar</a>
         </div>
       </article>
     </section>
@@ -120,7 +120,7 @@
             <div><span>Fim</span><strong>{{ ctx.finance.end_date }}</strong></div>
             <div><span>Prestação / renda</span><strong>{{ ctx.finance.installment_with_vat }}</strong><small>Com IVA quando esse valor existe; caso contrário, mostra a renda da fonte.</small></div>
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
-            <div><span>Capital em dívida</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo atual indicado pela entidade financeira, sem nova aplicação de IVA.</small></div>
+            <div><span>Capital em dívida com IVA</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo atual indicado pela entidade financeira, sem nova aplicação de IVA.</small></div>
             <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
             <div><span>Custo inicial com IVA</span><strong>{{ ctx.finance.initial_cost_with_vat }}</strong><small>Valor de aquisição Rentway com IVA.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
@@ -131,7 +131,7 @@
               <summary>Ver plano completo ({{ ctx.finance.installment_count }} mensalidades)</summary>
               <div class="clean-table-wrap">
                 <table class="clean-table">
-                  <thead><tr><th>Mês</th><th>Período</th><th>Amortização</th><th>Juros</th><th>Prestação</th><th>Capital em dívida</th></tr></thead>
+                  <thead><tr><th>Mês</th><th>Período</th><th>Amortização</th><th>Juros</th><th>Prestação</th><th>Capital em dívida com IVA</th></tr></thead>
                   <tbody>
                     {% for installment in ctx.finance.installments %}
                       <tr>

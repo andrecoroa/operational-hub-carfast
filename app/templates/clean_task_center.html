@@ -179,12 +179,12 @@
   {% set can_write = task_workspace in writable_workspaces %}
   <section class="clean-task-preview" id="task-preview-{{ task.id }}" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="clean-task-preview-backdrop" data-task-close></div>
-    <article class="clean-task-preview-dialog">
-      <header>
+    <article class="clean-task-preview-dialog clean-preview-dialog">
+      <header class="clean-preview-header">
         <div><small>{{ task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
         <div class="clean-task-preview-actions">
           <span class="clean-task-status">{{ task_status_labels.get(task.status, task.status) }}</span>
-          <button type="button" class="button-link secondary-link" data-task-close>Fechar</button>
+          <button type="button" class="button-link secondary-link clean-preview-close" data-task-close>Fechar preview</button>
         </div>
       </header>
       <div class="clean-task-preview-body">

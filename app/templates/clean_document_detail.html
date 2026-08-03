@@ -15,11 +15,9 @@
         <p>Validação do documento, leitura OCR, associação à viatura e classificação operacional.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
+        <a class="button-link secondary-link" href="{{ return_to }}">Voltar</a>
         {% if vehicle %}
-          <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Voltar à documentação</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
-        {% else %}
-          <a class="button-link secondary-link" href="/v2-clean/documentation">Centro de documentação</a>
         {% endif %}
         {% if document.document_type == "workshop_supplier_invoice" %}
           {% if document_preview_url %}

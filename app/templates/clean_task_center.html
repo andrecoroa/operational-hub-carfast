@@ -307,7 +307,7 @@
           </section>
           <section {% if not documents_by_task.get(task.id) %}hidden{% endif %}>
             <h3>Documentos</h3>
-            {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
+            {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
           </section>
           <section class="clean-task-close-zone">
             {% if can_write %}

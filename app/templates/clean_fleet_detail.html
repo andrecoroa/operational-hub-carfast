@@ -184,7 +184,7 @@
           </div>
           <div class="clean-document-strip">
             {% for document in documents %}
-              <a href="/v2-clean/documents/{{ document.id }}"><b>{{ document.title or document.original_name }}</b><span>{{ document.classification or '-' }} · {{ document.document_type or '-' }}</span></a>
+              <a href="/v2-clean/documents/{{ document.id }}?return_to={{ ('/v2-clean/fleet/' ~ vehicle.id)|urlencode }}"><b>{{ document.title or document.original_name }}</b><span>{{ document.classification or '-' }} · {{ document.document_type or '-' }}</span></a>
             {% else %}
               <p class="muted">Sem documentos associados.</p>
             {% endfor %}

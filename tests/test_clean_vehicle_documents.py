@@ -4663,12 +4663,22 @@ def test_clean_document_detail_page_renders_in_v2(authenticated_client, db_sessi
     db_session.add(document)
     db_session.commit()
 
-    response = authenticated_client.get(f"/v2-clean/documents/{document.id}")
+    response = authenticated_client.get(
+        f"/v2-clean/documents/{document.id}",
+        params={"return_to": f"/v2-clean/fleet/{vehicle.id}/documents"},
+    )
 
     assert response.status_code == 200
     assert "Fatura oficina" in response.text
     assert vehicle.plate in response.text
-    assert "Voltar à documentação" in response.text
+    assert "Voltar" in response.text
+    assert f'href="/v2-clean/fleet/{vehicle.id}/documents"' in response.text
+
+    unsafe_return = authenticated_client.get(
+        f"/v2-clean/documents/{document.id}",
+        params={"return_to": "https://example.com/phishing"},
+    )
+    assert 'href="/v2-clean/documentation"' in unsafe_return.text
 
 
 def test_clean_vehicle_documents_import_work_orders_stays_on_current_vehicle(authenticated_client, db_session):

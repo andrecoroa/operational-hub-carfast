@@ -9368,6 +9368,7 @@ def clean_document_ocr_validation_status(
 def clean_document_detail(
     request: Request,
     document_id: int,
+    return_to: str = "",
     ocr_reprocessed: str | None = None,
     ocr_lines: int | None = None,
     ocr_error: str | None = None,
@@ -9381,6 +9382,7 @@ def clean_document_detail(
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    safe_return_to = _clean_v2_return_url(return_to, "/v2-clean/documentation")
     with SessionLocal() as db:
         document = db.get(Document, document_id)
         if not document:
@@ -9432,6 +9434,7 @@ def clean_document_detail(
                 "ocr_batch_failed": ocr_batch_failed,
                 "ocr_batch_lines": ocr_batch_lines,
                 "ocr_batch_label": ocr_batch_label or "",
+                "return_to": safe_return_to,
             },
         )
 

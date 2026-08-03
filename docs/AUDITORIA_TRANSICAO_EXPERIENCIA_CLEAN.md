@@ -2,6 +2,46 @@
 
 Data da auditoria: 2026-07-29
 
+## Atualizacao de execucao - 2026-08-03
+
+A experiencia Clean e agora a entrada predefinida e cobre os fluxos diarios de
+Frota, Venda, Oficina faseada, Tarefas, Documentacao, Diagnosticos, Stock e
+Administracao. A experiencia anterior permanece apenas como contingencia com
+permissao explicita e acesso auditado.
+
+### Concluido
+
+- login e raiz encaminham para `/v2-clean`;
+- acesso anterior removido da navegacao principal e limitado a perfis autorizados;
+- Administracao Clean funcional, com utilizadores, perfis, permissoes e auditoria;
+- Oficina Clean com referencias proprias, modelos versionados e snapshots;
+- Centro de Documentacao reorganizado com triagem, tratamento, importacoes e arquivo;
+- Diagnosticos com pagina propria, extracao, reprocessamento e historico por data real;
+- Tarefas Clean com filas, natureza, categoria, colaboracao, suporte e paginacao;
+- Stock isolado da Oficina, com faturas em lote, rececoes, existencias e movimentos;
+- planos financeiros e Venda usam a mesma fonte para custo atual e capital em divida;
+- retornos contextuais preservados entre Frota, Documentos, Diagnosticos e Tarefas;
+- previews principais normalizados e fechados sem abandonar o fluxo de origem;
+- suite integral validada em 2026-08-03: 299 testes aprovados.
+
+### Dependencias estruturais remanescentes
+
+1. **Tarefas historicas** - o Centro Clean ainda usa `source="v2_clean"` como
+   fronteira. A migracao deve mapear cada tarefa antiga para fila, natureza,
+   permissao e responsavel antes de remover esse filtro.
+2. **Motor antigo da Oficina** - continua disponivel em contingencia. Nao deve
+   receber novas funcionalidades; a desativacao exige primeiro inventario dos
+   processos ainda abertos nesse motor.
+3. **Processamento pesado** - OCR e alguns importadores continuam sincronicos.
+   A passagem para workers deve preservar idempotencia, estado do lote, retoma e
+   auditoria antes de ser ativada em producao.
+4. **Centro documental tecnico** - `/v2-clean/documents` ainda suporta rotas de
+   detalhe e operacoes internas usadas pelas novas paginas. A sua remocao deve
+   ocorrer apenas depois de transferir essas rotas, nao por redirecionamento cego.
+
+Estes quatro pontos sao trabalho de migracao controlada. Nao representam uma
+necessidade de o utilizador comum alternar para a experiencia anterior.
+
 ## Objetivo
 
 Transformar a experiencia `v2-clean` na unica interface utilizada pelos

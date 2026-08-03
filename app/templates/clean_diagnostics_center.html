@@ -120,7 +120,7 @@
                 <td><span class="pill diagnostic-health-{{ row.health }}">{{ row.health_label }}</span></td>
                 <td>{{ row.field_count }} campos{% if row.extraction %}<small>{{ row.extraction.source_page_count }} pág.</small>{% endif %}</td>
                 <td>
-                  {% if row.vehicle %}<a class="button-link secondary-link" href="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic%3A{{ row.profile.id }}">Ver dados</a>{% endif %}
+                  {% if row.vehicle %}<button type="button" class="button-link secondary-link" data-diagnostic-audit-preview="/v2-clean/fleet/{{ row.vehicle.id }}/diagnostics?selected=diagnostic%3A{{ row.profile.id }}&preview=1" data-diagnostic-label="{{ row.vehicle.plate or row.vehicle.rentway_unit_nr or row.vehicle.id }} · {{ row.type_label }}">Ver dados</button>{% endif %}
                   <a class="button-link secondary-link" href="/v2-clean/documents/{{ row.document.id }}">Validar</a>
                 </td>
               </tr>
@@ -131,6 +131,31 @@
         </table>
       </div>
     </section>
+    <dialog class="sale-preview-dialog diagnostic-audit-preview-dialog" data-diagnostic-audit-dialog aria-labelledby="diagnostic-audit-preview-title">
+      <header>
+        <div><small>Diagnóstico</small><h2 id="diagnostic-audit-preview-title" data-diagnostic-audit-title>Dados extraídos</h2></div>
+        <button type="button" class="secondary" data-diagnostic-audit-close>Fechar</button>
+      </header>
+      <iframe title="Preview do diagnóstico" data-diagnostic-audit-frame></iframe>
+    </dialog>
   </main>
 </div>
+<script>
+(() => {
+  const dialog = document.querySelector("[data-diagnostic-audit-dialog]");
+  const frame = dialog?.querySelector("[data-diagnostic-audit-frame]");
+  const title = dialog?.querySelector("[data-diagnostic-audit-title]");
+  if (!dialog || !frame) return;
+  document.querySelectorAll("[data-diagnostic-audit-preview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      frame.src = button.dataset.diagnosticAuditPreview;
+      if (title) title.textContent = button.dataset.diagnosticLabel || "Dados extraídos";
+      dialog.showModal();
+    });
+  });
+  const close = () => { dialog.close(); frame.removeAttribute("src"); };
+  dialog.querySelector("[data-diagnostic-audit-close]")?.addEventListener("click", close);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
+})();
+</script>
 {% endblock %}

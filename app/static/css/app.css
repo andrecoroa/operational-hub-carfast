@@ -23894,6 +23894,58 @@ body.clean-task-preview-open {
   background: var(--surface-subtle, #f7f9fc);
 }
 
+.diagnostic-audit-preview-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  height: min(820px, calc(100vh - 32px));
+}
+
+.clean-diagnostic-preview-page {
+  margin: 0;
+  background: var(--surface-subtle, #f7f9fc);
+}
+
+.clean-diagnostic-preview-content {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.clean-diagnostic-preview-heading,
+.clean-diagnostic-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.clean-diagnostic-preview-heading h1,
+.clean-diagnostic-preview-heading p {
+  margin: 0;
+}
+
+.clean-diagnostic-preview-heading h1 {
+  font-size: 1.35rem;
+}
+
+.clean-diagnostic-preview-section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.clean-diagnostic-preview-more {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.clean-diagnostic-preview-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 @media (max-width: 700px) {
   .sale-preview-dialog {
     width: 100vw;

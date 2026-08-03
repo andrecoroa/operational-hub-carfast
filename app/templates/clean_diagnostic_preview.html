@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <title>Preview do diagnóstico</title>
+</head>
+<body class="clean-diagnostic-preview-page">
+  {% if selected_row %}
+    <main class="clean-diagnostic-preview-content">
+      <header class="clean-diagnostic-preview-heading">
+        <div>
+          <p class="eyebrow">{{ selected_row.origin_label }}</p>
+          <h1>{{ selected_row.type_label }}</h1>
+          <p>{{ selected_row.date_display }} · {{ selected_row.time_display }} · {{ selected_row.machine }}</p>
+        </div>
+        <span class="pill status-{{ selected_row.status }}">{{ selected_row.status_label }}</span>
+      </header>
+
+      <section class="clean-diagnostic-facts">
+        <span><b>Viatura</b><em>{{ ctx.identity.plate or "-" }} · Unit {{ ctx.identity.unit or "-" }}</em></span>
+        <span><b>KM</b><em>{{ selected_row.odometer_km or "-" }}</em></span>
+        <span><b>Extração</b><em>{{ selected_row.extraction_health }}</em></span>
+        <span><b>Confiança</b><em>{% if selected_row.extraction_confidence is number %}{{ "%.0f"|format(selected_row.extraction_confidence * 100) }}%{% else %}-{% endif %}</em></span>
+      </section>
+
+      <section class="clean-diagnostic-preview-section">
+        <div class="clean-diagnostic-section-heading"><div><strong>Códigos de avaria</strong><span>{{ selected_row.dtcs|length }} códigos</span></div></div>
+        {% if selected_row.dtcs %}
+          <div class="clean-diagnostic-dtc-grid">
+            {% for dtc in selected_row.dtcs %}
+              <article><strong>{{ dtc.get("code") or "Código não identificado" }}</strong><span>{{ dtc.get("description") or dtc.get("raw_context") or "-" }}</span>{% if dtc.get("ecu") %}<small>{{ dtc.get("ecu") }}</small>{% endif %}</article>
+            {% endfor %}
+          </div>
+        {% else %}<p class="clean-diagnostic-empty">Nenhum código de avaria estruturado.</p>{% endif %}
+      </section>
+
+      <section class="clean-diagnostic-preview-section">
+        <div class="clean-diagnostic-section-heading"><div><strong>Leituras principais</strong><span>{{ selected_row.observations|length }} valores</span></div></div>
+        {% if selected_row.observations %}
+          <div class="clean-doc-table-wrap"><table class="clean-doc-table clean-doc-table-compact"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Unidade</th></tr></thead><tbody>
+          {% for field in selected_row.observations[:12] %}<tr><td>{{ field.get("label") or "-" }}</td><td>{{ field.get("value") or "-" }}</td><td>{{ field.get("unit") or "-" }}</td></tr>{% endfor %}
+          </tbody></table></div>
+          {% if selected_row.observations|length > 12 %}<p class="clean-diagnostic-preview-more">Mais {{ selected_row.observations|length - 12 }} valores disponíveis na ficha completa.</p>{% endif %}
+        {% else %}<p class="clean-diagnostic-empty">Sem leituras estruturadas.</p>{% endif %}
+      </section>
+
+      <details class="clean-diagnostic-technical">
+        <summary>Informação técnica e proveniência</summary>
+        <dl>{% for label, value in selected_row.technical_metadata %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+      </details>
+      <footer class="clean-diagnostic-preview-actions">
+        {% if selected_row.file_url %}<a class="button-link secondary-link" href="{{ selected_row.file_url }}" target="_blank" rel="noopener">Abrir PDF</a>{% endif %}
+        <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/diagnostics?selected={{ selected_row.key|urlencode }}" target="_top">Abrir ficha completa</a>
+      </footer>
+    </main>
+  {% else %}<main class="clean-diagnostic-preview-content"><div class="empty-state">Diagnóstico não encontrado.</div></main>{% endif %}
+</body>
+</html>

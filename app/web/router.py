@@ -8556,6 +8556,7 @@ def clean_fleet_diagnostics(
     origin: str = "",
     status: str = "",
     selected: str = "",
+    preview: int = 0,
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -8751,7 +8752,7 @@ def clean_fleet_diagnostics(
             selected_row = rows[0]
         return templates.TemplateResponse(
             request,
-            "clean_fleet_diagnostics.html",
+            "clean_diagnostic_preview.html" if preview else "clean_fleet_diagnostics.html",
             {
                 "vehicle": vehicle,
                 "ctx": ctx,
@@ -8767,6 +8768,7 @@ def clean_fleet_diagnostics(
                 "warning_count": sum(len(row["warnings"]) for row in rows),
                 "extracted_count": sum(row["extraction_health"] == "Extraído" for row in rows),
                 "review_count": sum(row["status"] in {"pending", "needs_review", "pending_validation"} for row in rows),
+                "preview_mode": bool(preview),
                 "origin_options": [
                     ("document_archive", "Arquivo documental"),
                     ("workshop_process", "Processo de oficina"),

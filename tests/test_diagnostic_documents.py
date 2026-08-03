@@ -305,6 +305,17 @@ def test_clean_vehicle_diagnostics_has_dedicated_operational_page():
         assert selected_page.status_code == 200
         assert 'class="clean-diagnostic-row active"' in selected_page.text
 
+        preview = client.get(
+            f"/v2-clean/fleet/{vehicle_id}/diagnostics"
+            f"?selected=diagnostic-{profile_id}&preview=1"
+        )
+        assert preview.status_code == 200
+        assert "Preview do diagnóstico" in preview.text
+        assert "P0420" in preview.text
+        assert "Tensão bateria" in preview.text
+        assert "Informação técnica e proveniência" in preview.text
+        assert "app-shell" not in preview.text
+
         documents_page = client.get(f"/v2-clean/fleet/{vehicle_id}/documents")
         assert documents_page.status_code == 200
         assert f"/v2-clean/fleet/{vehicle_id}/diagnostics" in documents_page.text
@@ -895,6 +906,8 @@ def test_diagnostic_center_separates_health_from_operational_states():
         assert "Lotes importados" in page.text
         assert "Importação sem lote" in page.text
         assert f"selected=diagnostic%3A{extracted_profile_id}" in page.text
+        assert "data-diagnostic-audit-preview" in page.text
+        assert "preview=1" in page.text
 
         reconciled = client.post(
             "/v2-clean/diagnostics/reconcile",

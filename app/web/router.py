@@ -7188,6 +7188,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         .where(VehicleFinancialPlan.vehicle_id == vehicle.id)
         .order_by(
             VehicleFinancialPlan.active.desc(),
+            VehicleFinancialPlan.updated_at.desc(),
             VehicleFinancialPlan.id.desc(),
             VehicleFinancialPlan.start_date.desc(),
         )

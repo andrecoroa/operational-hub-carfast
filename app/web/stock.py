@@ -1357,12 +1357,27 @@ def stock_receipts(request: Request, db: DbSession):
             ).group_by(StockReceiptInvoiceLink.receipt_id)
         ).all()
     }
+    pending_invoice_rows = db.execute(
+        select(StockInvoiceImport, StockSupplier)
+        .join(StockSupplier, StockSupplier.id == StockInvoiceImport.supplier_id)
+        .where(
+            StockInvoiceImport.status == "validated",
+            ~StockInvoiceImport.id.in_(
+                select(StockReceiptInvoiceLink.invoice_import_id)
+            ),
+        )
+        .order_by(
+            StockInvoiceImport.invoice_date.asc().nullsfirst(),
+            StockInvoiceImport.id.asc(),
+        )
+    ).all()
     return templates.TemplateResponse(
         request,
         "clean_stock_receipts.html",
         {
             **_page_context(request, db),
             "receipt_rows": receipt_rows,
+            "pending_invoice_rows": pending_invoice_rows,
             "linked_counts": linked_counts,
             "articles": db.scalars(
                 select(StockArticle)

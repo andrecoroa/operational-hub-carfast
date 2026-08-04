@@ -310,6 +310,46 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     assert "name=" not in responsible_field
 
 
+def test_validated_invoice_is_pending_until_a_physical_receipt(
+    authenticated_client, db_session
+):
+    supplier = _supplier(db_session)
+    document = Document(
+        title="Fatura a receber",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="stock_test",
+        entry_channel="stock",
+        original_name="pending-receipt.pdf",
+        file_name="pending-receipt.pdf",
+        storage_provider="local",
+        storage_path="Stock/pending-receipt.pdf",
+        status="received",
+    )
+    db_session.add(document)
+    db_session.commit()
+    invoice_id = authenticated_client.post(
+        "/api/stock/invoice-imports",
+        json={"document_id": document.id, "classification": "stock_invoice"},
+    ).json()["id"]
+    invoice = db_session.get(StockInvoiceImport, invoice_id)
+    invoice.supplier_id = supplier.id
+    invoice.invoice_number = "FT-PENDING-1"
+    invoice.status = "validated"
+    invoice.conference_status = "conferred"
+    db_session.commit()
+
+    pending = authenticated_client.get(
+        f"/api/stock/pending-sources?supplier_id={supplier.id}"
+    )
+    page = authenticated_client.get("/v2-clean/stock/receipts")
+
+    assert pending.status_code == 200
+    assert [item["id"] for item in pending.json()["invoices"]] == [invoice_id]
+    assert "FT-PENDING-1" in page.text
+    assert "Preparar receção" in page.text
+
+
 def test_fractional_quantities_are_rejected(authenticated_client, db_session):
     article_id = _article(authenticated_client, "INTEGER-ONLY")
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))

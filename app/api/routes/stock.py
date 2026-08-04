@@ -21,6 +21,7 @@ from app.models.stock import (
     StockPurchaseOrder,
     StockPurchaseOrderLine,
     StockReceipt,
+    StockReceiptInvoiceLink,
 )
 from app.schemas.stock import (
     StockArticleCreate,
@@ -563,7 +564,10 @@ def pending_receipt_sources(supplier_id: int, db: DbSession):
         select(StockInvoiceImport)
         .where(
             StockInvoiceImport.supplier_id == supplier_id,
-            StockInvoiceImport.conference_status.in_({"pending", "divergent"}),
+            StockInvoiceImport.status == "validated",
+            ~StockInvoiceImport.id.in_(
+                select(StockReceiptInvoiceLink.invoice_import_id)
+            ),
         )
         .order_by(StockInvoiceImport.invoice_date, StockInvoiceImport.id)
     ).all()

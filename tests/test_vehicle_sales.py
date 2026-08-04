@@ -324,6 +324,9 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert 'name="rentway_group"' in page.text
     assert 'value="C1" checked' in page.text
     assert "Valor de custo" in page.text
+    assert 'name="price_target"' in page.text
+    assert 'value="trade">Valor comércio' in page.text
+    assert 'value="retail">Valor cliente final' in page.text
 
     other_group = authenticated_client.get(
         "/v2-clean/fleet/sales",
@@ -415,6 +418,28 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     )
     assert profile.selling_price == Decimal("19300.00")
     assert profile.price_base == "cost"
+
+    target_cost = authenticated_client.post(
+        "/v2-clean/fleet/sales/bulk",
+        data={
+            "vehicle_ids": [str(vehicle.id)],
+            "action": "price_rule",
+            "price_target": "trade",
+            "price_base": "cost",
+            "margin_mode": "value",
+            "margin_value": "0",
+            "rounding_mode": "none",
+            "rounding_increment": "100",
+            "return_url": "/v2-clean/fleet/sales",
+        },
+        follow_redirects=False,
+    )
+    assert target_cost.status_code == 303
+    db_session.expire_all()
+    profile = db_session.scalar(
+        select(VehicleSaleProfile).where(VehicleSaleProfile.vehicle_id == vehicle.id)
+    )
+    assert profile.market_trade_value == Decimal("18800.00")
 
 
 def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(

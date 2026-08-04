@@ -1309,6 +1309,7 @@ async def vehicle_sales_bulk_update(request: Request):
                     profile.market_value_source = source[:200]
                 profile.market_valued_on = date.today()
             elif action == "price_rule":
+                price_target = str(form.get("price_target") or "")
                 price_base = str(form.get("price_base") or "")
                 margin_mode = str(form.get("margin_mode") or "")
                 rounding_mode = str(form.get("rounding_mode") or "none")
@@ -1337,7 +1338,15 @@ async def vehicle_sales_bulk_update(request: Request):
                 profile.rounding_mode = rounding_mode
                 profile.rounding_increment = rounding_increment
                 if calculated is not None:
-                    profile.selling_price = calculated
+                    if price_target == "trade":
+                        profile.market_trade_value = calculated
+                        profile.market_valued_on = date.today()
+                    elif price_target == "retail":
+                        profile.market_retail_value = calculated
+                        profile.market_valued_on = date.today()
+                    else:
+                        # Compatibility for rules saved or submitted before targets existed.
+                        profile.selling_price = calculated
             else:
                 continue
             profile.updated_by_id = user_id

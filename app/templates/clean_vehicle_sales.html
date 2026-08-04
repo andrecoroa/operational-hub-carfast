@@ -135,7 +135,8 @@
         <details>
           <summary>Aplicar regra de preço</summary>
           <div class="sale-bulk-popover sale-price-rule-popover">
-            <label>Base<select name="price_base">{% for code, label in price_bases %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Aplicar em<select name="price_target"><option value="trade">Valor comércio</option><option value="retail">Valor cliente final</option></select></label>
+            <label>Base do cálculo<select name="price_base">{% for code, label in price_bases %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
             <label>Margem<select name="margin_mode">{% for code, label in margin_modes %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
             <label>Valor da margem<input type="number" step="0.01" name="margin_value" value="0"></label>
             <label>Arredondamento<select name="rounding_mode">{% for code, label in rounding_modes %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>

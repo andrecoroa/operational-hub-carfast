@@ -7,6 +7,7 @@ from app.models.documents import Document, DocumentLink
 from app.models.audit import AuditLog
 from app.models.tasks import Task
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
+from app.models.workshop import WorkshopProcess
 from app.models.workshop_phased import (
     WorkshopPhasedProcess,
     WorkshopPhasedProcessPhase,
@@ -46,6 +47,13 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
     )
     db_session.add(process)
     db_session.flush()
+    legacy_process = WorkshopProcess(
+        vehicle_id=vehicle.id,
+        title="Oficina histórica KM-11-AA",
+        status="opening",
+        km_entry=98765,
+    )
+    db_session.add(legacy_process)
     entry_phase = WorkshopPhasedProcessPhase(
         process_id=process.id,
         phase_code="entrada",
@@ -69,6 +77,7 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
 
     db_session.refresh(process)
     db_session.refresh(entry_phase)
+    db_session.refresh(legacy_process)
     db_session.refresh(vehicle)
     snapshot = db_session.scalar(
         select(VehicleExternalSnapshot).where(
@@ -80,6 +89,8 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
     assert snapshot is not None
     assert snapshot.data_json["Kms"] == 145678
     assert process.initial_km == 101234
+    assert legacy_process.km_entry == 98765
+    assert legacy_process.status == "opening"
     assert process.status == "open"
     assert process.current_phase_code == "entrada"
     assert entry_phase.data_json["entry_km"] == "101234"

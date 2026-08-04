@@ -27,6 +27,8 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
         brand="PEUGEOT",
         model="208",
         active=True,
+        lifecycle_status="active",
+        operational_status="in_maintenance",
     )
     db_session.add(vehicle)
     db_session.flush()
@@ -59,7 +61,7 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
     sheet = workbook.active
     sheet.title = "Vehicles"
     sheet.append(["PlateNr", "ChassisNr", "UnitNr", "Kms", "CurrentStatus", "BrandId", "ModelId"])
-    sheet.append([vehicle.plate, vehicle.vin, vehicle.rentway_unit_nr, 145678, "FREE", "PEUGEOT", "208"])
+    sheet.append([vehicle.plate, vehicle.vin, vehicle.rentway_unit_nr, 145678, "SOLD", "PEUGEOT", "208"])
     import_path = tmp_path / "rentway_fleet.xlsx"
     workbook.save(import_path)
 
@@ -67,6 +69,7 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
 
     db_session.refresh(process)
     db_session.refresh(entry_phase)
+    db_session.refresh(vehicle)
     snapshot = db_session.scalar(
         select(VehicleExternalSnapshot).where(
             VehicleExternalSnapshot.vehicle_id == vehicle.id,
@@ -77,8 +80,15 @@ def test_rentway_fleet_update_preserves_workshop_mileage(db_session, tmp_path):
     assert snapshot is not None
     assert snapshot.data_json["Kms"] == 145678
     assert process.initial_km == 101234
+    assert process.status == "open"
+    assert process.current_phase_code == "entrada"
     assert entry_phase.data_json["entry_km"] == "101234"
     assert entry_phase.data_json["entry_km_source"] == "manual"
+    assert entry_phase.status == "completed"
+    assert vehicle.active is True
+    assert vehicle.lifecycle_status == "active"
+    assert vehicle.operational_status == "in_maintenance"
+    assert vehicle.rentway_km == 145678
 
 
 def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_session):

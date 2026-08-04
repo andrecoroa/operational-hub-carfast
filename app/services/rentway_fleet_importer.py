@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models.imports import ImportBatch, ImportFile, ImportRawRow
 from app.models.vehicles import Vehicle, VehicleExternalSnapshot
+from app.models.workshop import WorkshopProcess
+from app.models.workshop_phased import WorkshopPhasedProcess
 from app.services.audit import record_audit
 from app.services.spreadsheets import (
     build_column_lookup,
@@ -50,6 +52,39 @@ RENTWAY_FIELD_LABELS = {
     "active": "Ativa",
     "notes": "Observações",
 }
+
+WORKSHOP_PROTECTED_VEHICLE_FIELDS = frozenset(
+    {"active", "lifecycle_status", "operational_status"}
+)
+
+
+def has_open_workshop_process(db: Session, vehicle_id: int) -> bool:
+    phased_open = db.scalar(
+        select(WorkshopPhasedProcess.id).where(
+            WorkshopPhasedProcess.vehicle_id == vehicle_id,
+            WorkshopPhasedProcess.status.notin_(("closed", "cancelled")),
+        ).limit(1)
+    )
+    if phased_open:
+        return True
+    return bool(
+        db.scalar(
+            select(WorkshopProcess.id).where(
+                WorkshopProcess.vehicle_id == vehicle_id,
+                WorkshopProcess.closed_at.is_(None),
+                WorkshopProcess.status.notin_(("closed", "cancelled")),
+            ).limit(1)
+        )
+    )
+
+
+def preserve_open_workshop_vehicle_state(
+    db: Session, vehicle: Vehicle, payload: dict[str, Any]
+) -> None:
+    if not has_open_workshop_process(db, vehicle.id):
+        return
+    for field in WORKSHOP_PROTECTED_VEHICLE_FIELDS:
+        payload[field] = getattr(vehicle, field)
 
 
 def _rentway_value(row: tuple[Any, ...], col: dict[str, int], *candidates: str) -> Any:
@@ -384,6 +419,7 @@ def import_rentway_fleet_xlsx(
                 # Historical workshop mileage belongs to the workshop process and is
                 # deliberately never synchronized from this payload.
                 before_payload = {field: getattr(vehicle, field, None) for field in payload}
+                preserve_open_workshop_vehicle_state(db, vehicle, payload)
                 for field, value in payload.items():
                     setattr(vehicle, field, value)
                 stats["updated_rows"] += 1
@@ -477,6 +513,8 @@ def preview_rentway_fleet_xlsx(
         )
         action = "updated" if vehicle else "created"
         counts[f"{action}_rows"] += 1
+        if vehicle:
+            preserve_open_workshop_vehicle_state(db, vehicle, payload)
         changes = []
         for field, value in payload.items():
             old_value = getattr(vehicle, field, None) if vehicle else None

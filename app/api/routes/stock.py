@@ -625,7 +625,12 @@ def create_receipt(
     except StockDomainError as exc:
         db.rollback()
         raise _domain_error(exc) from exc
-    return {"id": receipt.id, "status": receipt.status, "location_id": receipt.location_id}
+    return {
+        "id": receipt.id,
+        "status": receipt.status,
+        "location_id": receipt.location_id,
+        "responsible_name": receipt.responsible_name,
+    }
 
 
 @router.post("/receipts/{receipt_id}/invoice-links/{invoice_import_id}")

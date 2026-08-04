@@ -6,9 +6,11 @@ from app.models.documents import Document
 from app.models.stock import (
     StockArticleVehicleCompatibility,
     StockInventorySession,
+    StockInvoiceImport,
     StockLocation,
     StockMovement,
     StockPurchaseOrder,
+    StockReceipt,
     StockSupplier,
 )
 from app.models.workshop import WorkshopProcess
@@ -60,6 +62,35 @@ def test_article_table_is_short_and_integer_formatted(authenticated_client):
     assert "<th>Custo" not in response.text
     assert "<th>Mínimo" not in response.text
     assert ".000" not in response.text
+
+
+def test_receipt_responsible_is_always_the_authenticated_user(
+    authenticated_client, db_session
+):
+    article_id = _article(authenticated_client, "RESP-LOGIN")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+
+    response = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": workshop.id,
+            "source_type": "manual",
+            "manual_reason": "Entrega de teste",
+            "responsible_name": "Nome introduzido pelo cliente",
+            "lines": [{"article_id": article_id, "accepted_quantity": 1}],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["responsible_name"] == "Admin Testes"
+    db_session.expire_all()
+    receipt = db_session.get(StockReceipt, response.json()["id"])
+    assert receipt.responsible_name == "Admin Testes"
+    assert receipt.confirmed_by_id is not None
+
+    page = authenticated_client.get("/v2-clean/stock/receipts")
+    assert 'value="Admin Testes" readonly' in page.text
+    assert 'name="responsible_name"' not in page.text
 
 
 def test_blind_inventory_html_and_api_do_not_expose_snapshot(authenticated_client, db_session):
@@ -225,11 +256,19 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
 
     listing = authenticated_client.get("/v2-clean/stock/invoices")
     modal = authenticated_client.get(f"/v2-clean/stock/invoices/{invoice_id}/modal")
+    invoice_import = db_session.get(StockInvoiceImport, invoice_id)
+    invoice_import.status = "validated"
+    db_session.commit()
+    review = authenticated_client.get(f"/v2-clean/stock/invoices/{invoice_id}")
 
     assert "<iframe" not in listing.text
     assert "Ver e conferir" in listing.text
     assert "<iframe" in modal.text
     assert f"/v2-clean/stock/invoices/{invoice_id}/document" in modal.text
+    responsible_field = review.text.split("Responsável pela receção", 1)[1].split("</label>", 1)[0]
+    assert "Admin Testes" in responsible_field
+    assert "readonly" in responsible_field
+    assert "name=" not in responsible_field
 
 
 def test_fractional_quantities_are_rejected(authenticated_client, db_session):

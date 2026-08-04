@@ -931,6 +931,7 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
                 .where(StockLocation.active.is_(True))
                 .order_by(StockLocation.name)
             ).all(),
+            "receipt_responsible": db.get(User, _user_id(request)),
             "supplier_article_matches": supplier_article_matches,
         },
     )
@@ -1149,7 +1150,6 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
             supplier_id=invoice_import.supplier_id,
             source_type=source_type,
             source_reference=source_reference,
-            responsible_name=str(form.get("responsible_name") or "") or None,
             notes=str(form.get("notes") or "") or None,
             invoice_import_ids=[invoice_import.id],
             lines=[StockReceiptLineCreate(**item) for item in receipt_items.values()],
@@ -1309,6 +1309,7 @@ def stock_receipts(request: Request, db: DbSession):
                 .where(StockSupplier.active.is_(True))
                 .order_by(StockSupplier.name)
             ).all(),
+            "receipt_responsible": db.get(User, _user_id(request)),
             "completed_count": len(receipt_rows),
         },
     )
@@ -1366,7 +1367,6 @@ async def stock_receipt_create(request: Request, db: DbSession):
             if form.get("delivery_document_id")
             else None,
             idempotency_key=str(form.get("idempotency_key") or "") or None,
-            responsible_name=str(form.get("responsible_name") or "") or None,
             notes=str(form.get("notes") or "") or None,
             invoice_import_ids=[int(value) for value in form.getlist("invoice_import_ids")],
             lines=lines,

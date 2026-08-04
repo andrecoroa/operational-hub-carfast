@@ -14,6 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.admin import User
 from app.models.documents import Document, DocumentEvent
 from app.models.stock import (
     StockArticle,
@@ -488,12 +489,13 @@ def create_physical_receipt(
     supplier = db.get(StockSupplier, command.supplier_id) if command.supplier_id else None
     if command.supplier_id and (not supplier or not supplier.active):
         raise StockDomainError("Fornecedor inexistente ou inativo.")
-    responsible_name = (command.responsible_name or "").strip() or None
+    responsible_user = db.get(User, user_id) if user_id else None
+    if not responsible_user or not responsible_user.active:
+        raise StockDomainError("A receção exige um utilizador autenticado e ativo.")
+    responsible_name = responsible_user.name.strip()
     manual_reason = (command.manual_reason or "").strip() or None
     if command.source_type == "manual" and not manual_reason:
         raise StockDomainError("Uma receção sem documento exige motivo.")
-    if location.code == "AIRPORT" and not responsible_name:
-        raise StockDomainError("A receção no Aeroporto exige um responsável identificado.")
     purchase_order = (
         db.get(StockPurchaseOrder, command.purchase_order_id) if command.purchase_order_id else None
     )
@@ -531,7 +533,7 @@ def create_physical_receipt(
         purchase_order_id=purchase_order.id if purchase_order else None,
         idempotency_key=(command.idempotency_key or "").strip() or None,
         status="completed",
-        confirmed_by_id=user_id,
+        confirmed_by_id=responsible_user.id,
         responsible_name=responsible_name,
         confirmed_at=datetime.now(UTC),
         notes=(command.notes or "").strip() or None,

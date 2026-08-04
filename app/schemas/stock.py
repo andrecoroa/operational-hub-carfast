@@ -75,7 +75,6 @@ class StockReceiptCreate(BaseModel):
     purchase_order_id: int | None = None
     delivery_document_id: int | None = None
     manual_reason: str | None = None
-    responsible_name: str | None = None
     notes: str | None = None
     invoice_import_ids: list[int] = Field(default_factory=list)
     lines: list[StockReceiptLineCreate] = Field(min_length=1)

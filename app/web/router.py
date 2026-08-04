@@ -11490,6 +11490,32 @@ def clean_documentation_treatment(
         )
         total = len(prepared_rows)
         records_page = prepared_rows[offset : offset + clean_page_size]
+        page_document_ids = [row["document"].id for row in records_page]
+        events_by_document: dict[int, list[DocumentEvent]] = defaultdict(list)
+        tags_by_document: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+        if page_document_ids:
+            extraction_events = db.scalars(
+                select(DocumentEvent)
+                .where(DocumentEvent.document_id.in_(page_document_ids))
+                .order_by(DocumentEvent.id.desc())
+            ).all()
+            for event in extraction_events:
+                events_by_document[event.document_id].append(event)
+            tags = db.scalars(
+                select(VehicleDocumentRecordTag).where(
+                    VehicleDocumentRecordTag.document_id.in_(page_document_ids)
+                )
+            ).all()
+            for tag in tags:
+                value = (tag.value or tag.free_text or "").strip()
+                if value:
+                    tags_by_document[tag.document_id][tag.category].append(value)
+        for row in records_page:
+            document = row["document"]
+            metadata = _document_latest_ocr_metadata(events_by_document.get(document.id, []))
+            row["extracted_fields"] = _document_ocr_extracted_fields(metadata)
+            row["extracted_lines"] = metadata.get("invoice_lines") or metadata.get("lines") or []
+            row["service_codes"] = tags_by_document.get(document.id, {})
         return_url = _documentation_treatment_return_url(
             family=clean_family,
             q=q,
@@ -11513,6 +11539,8 @@ def clean_documentation_treatment(
                 "return_url": return_url,
                 "workflow_labels": WORKFLOW_LABELS,
                 "can_manage_documents": can_manage_documentation(request),
+                "quick_classifications": DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
+                "quick_classification_labels": DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
             },
         )
 
@@ -11604,6 +11632,63 @@ def _apply_document_treatment_action(
     )
 
 
+def _save_treatment_service_classification(
+    db: Session,
+    *,
+    document: Document,
+    values_by_category: dict[str, list[str]],
+    other_custom: str,
+    user_id: int | None,
+) -> None:
+    if not document.vehicle_id:
+        raise ValueError("vehicle_required_for_services")
+    categories = list(values_by_category)
+    db.execute(
+        delete(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.vehicle_id == document.vehicle_id,
+            VehicleDocumentRecordTag.document_id == document.id,
+            VehicleDocumentRecordTag.category.in_(categories),
+        )
+    )
+    for category, raw_values in values_by_category.items():
+        clean_values = list(
+            dict.fromkeys(value.strip() for value in raw_values if value and value.strip())
+        )
+        if len(clean_values) > 1 and "undefined" in clean_values:
+            clean_values.remove("undefined")
+        for value in clean_values:
+            add_quick_classification(
+                db,
+                vehicle_id=document.vehicle_id,
+                document_id=document.id,
+                category=category,
+                value=value,
+                free_text=None,
+                user_id=user_id,
+            )
+    for free_text in (
+        value.strip() for value in re.split(r"[,;\n]+", other_custom or "") if value.strip()
+    ):
+        add_quick_classification(
+            db,
+            vehicle_id=document.vehicle_id,
+            document_id=document.id,
+            category="other",
+            value=None,
+            free_text=free_text,
+            user_id=user_id,
+        )
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="document.service_classification_saved",
+            old_value=None,
+            new_value=json.dumps(values_by_category, ensure_ascii=False),
+            user_id=user_id,
+        )
+    )
+
+
 @web_router.post("/v2-clean/documentation/treatment/bulk")
 def clean_documentation_treatment_bulk(
     request: Request,
@@ -11613,6 +11698,14 @@ def clean_documentation_treatment_bulk(
     destination: str = Form(""),
     plate: str = Form(""),
     reason: str = Form(""),
+    service_classification_present: str = Form(""),
+    maintenance: list[str] = Form([]),
+    pads: list[str] = Form([]),
+    discs: list[str] = Form([]),
+    tyres: list[str] = Form([]),
+    ipo: list[str] = Form([]),
+    other: list[str] = Form([]),
+    other_custom: str = Form(""),
     return_url: str = Form("/v2-clean/documentation/treatment"),
 ):
     denied = clean_experience_denied(request)
@@ -11639,6 +11732,21 @@ def clean_documentation_treatment_bulk(
                 continue
             try:
                 with db.begin_nested():
+                    if service_classification_present == "1":
+                        _save_treatment_service_classification(
+                            db,
+                            document=document,
+                            values_by_category={
+                                "maintenance": maintenance,
+                                "pads": pads,
+                                "discs": discs,
+                                "tyres": tyres,
+                                "ipo": ipo,
+                                "other": other,
+                            },
+                            other_custom=other_custom,
+                            user_id=user_id,
+                        )
                     _apply_document_treatment_action(
                         db,
                         document=document,
@@ -11657,6 +11765,78 @@ def clean_documentation_treatment_bulk(
         _append_query_flag(target, bulk_processed=str(processed), bulk_failed=str(failed)),
         status_code=303,
     )
+
+
+@web_router.post("/v2-clean/documentation/treatment/{document_id}/audit-task")
+def clean_documentation_treatment_audit_task(
+    request: Request,
+    document_id: int,
+    reason: str = Form(""),
+    return_url: str = Form("/v2-clean/documentation/treatment"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    target = _clean_v2_return_url(return_url, "/v2-clean/documentation/treatment")
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse(_append_query_flag(target, task_error="permission"), status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user_can_access_task_workspace(db, user, "audit", write=True):
+            return RedirectResponse(_append_query_flag(target, task_error="permission"), status_code=303)
+        document = db.get(Document, document_id)
+        if not document:
+            return RedirectResponse(_append_query_flag(target, task_error="not_found"), status_code=303)
+        title = document.title or document.original_name or f"Documento #{document.id}"
+        task = Task(
+            title=f"Auditar documento: {title}"[:200],
+            description=reason.strip() or "Rever classificação, extração e validação documental.",
+            task_type=TASK_WORKSPACE_CONFIG["audit"]["default_task_type"],
+            source="v2_clean",
+            category="documentacao",
+            subcategory="auditoria_documental",
+            status="new",
+            priority="normal",
+            plate=document.plate,
+            invoice_number=document.contract_number or document.reservation_number,
+            entity_type="document",
+            entity_id=str(document.id),
+            team_id=default_team_id(db, TASK_WORKSPACE_CONFIG["audit"]["default_team_code"]),
+            created_by_id=user_id,
+            external_source_id=f"document:audit:{document.id}:{datetime.now(UTC).timestamp()}",
+        )
+        db.add(task)
+        db.flush()
+        db.add(TaskDocument(task_id=task.id, document_id=document.id, category="source"))
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="created",
+                old_value=None,
+                new_value="Criada no tratamento documental",
+            )
+        )
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="document.audit_task_created",
+                old_value=None,
+                new_value=str(task.id),
+                user_id=user_id,
+            )
+        )
+        record_audit(
+            db,
+            action="task.create",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Tarefa de auditoria criada para documento #{document.id}",
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(_append_query_flag(target, audit_task_created="1"), status_code=303)
 
 RENTWAY_TAB_IMPORT_TYPES = {
     "fleet": {"rentway_fleet"},

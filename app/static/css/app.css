@@ -22223,6 +22223,17 @@ body.clean-task-preview-open {
   cursor: pointer;
 }
 
+.doc-treatment-table .doc-treatment-preview-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: #fff !important;
+  background: var(--red) !important;
+}
+
 .doc-treatment-dialog,
 .doc-treatment-bulk-dialog {
   width: min(1180px, calc(100vw - 32px));
@@ -22232,6 +22243,12 @@ body.clean-task-preview-open {
   background: #f7f9fc;
   border: 1px solid #cfd9e5;
   border-radius: 6px;
+}
+
+.doc-treatment-dialog {
+  width: min(1500px, calc(100vw - 16px));
+  height: calc(100vh - 16px);
+  max-height: calc(100vh - 16px);
 }
 
 .doc-treatment-dialog::backdrop,
@@ -22259,7 +22276,8 @@ body.clean-task-preview-open {
 
 .doc-treatment-preview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(440px, 0.75fr);
+  height: calc(100% - 75px);
   min-height: 650px;
 }
 
@@ -22337,6 +22355,91 @@ body.clean-task-preview-open {
 .doc-treatment-bulk-dialog button.secondary {
   color: var(--navy);
   background: #eef2f7;
+}
+
+.doc-treatment-preview-form button.danger {
+  color: #9f2319;
+  background: #fde9e6;
+  border: 1px solid #efb7b0;
+}
+
+#doc-treatment-inline-content {
+  display: grid;
+  gap: 10px;
+}
+
+.doc-treatment-extracted,
+.doc-treatment-services {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+}
+
+.doc-treatment-extracted-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.doc-treatment-extracted-fields > div {
+  min-width: 0;
+  padding: 8px;
+  background: #f3f6fa;
+  border: 1px solid #dfe6ee;
+}
+
+.doc-treatment-extracted-fields span,
+.doc-treatment-extracted-fields strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.doc-treatment-extracted-fields span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.doc-treatment-lines-wrap {
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid #dfe6ee;
+}
+
+.doc-treatment-lines-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.doc-treatment-lines-wrap th,
+.doc-treatment-lines-wrap td {
+  padding: 7px;
+  text-align: left;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.doc-treatment-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.doc-treatment-service-grid fieldset {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dfe6ee;
+}
+
+.doc-treatment-service-grid label {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-treatment-service-grid input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
 }
 
 .doc-treatment-bulk-dialog {

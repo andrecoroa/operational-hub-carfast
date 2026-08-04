@@ -15,8 +15,10 @@ from app.models.documents import (
     DocumentLink,
     DocumentWorkflowState,
     VehicleDocumentRecord,
+    VehicleDocumentRecordTag,
 )
 from app.models.imports import ImportBatch, ImportFile
+from app.models.tasks import Task, TaskDocument
 from app.models.vehicles import Vehicle
 from app.models.workshop import WorkshopTechnicalReading
 
@@ -989,6 +991,110 @@ def test_treatment_bulk_validates_compatible_documents_individually(
         )
         == 2
     )
+
+
+def test_treatment_preview_saves_services_and_creates_linked_audit_task(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="AA-44-ZZ", rentway_unit_nr="4400", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Fatura para auditoria",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="fatura_auditoria.pdf",
+        file_name="fatura_auditoria.pdf",
+        storage_provider="local",
+        storage_path="Faturas/fatura_auditoria.pdf",
+        status="pending_validation",
+        supplier_name="Fornecedor Teste",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="completed",
+            association_status="associated",
+            extraction_status="extracted",
+            validation_status="pending",
+            destination_status="invoices",
+            invoice_nature="operacional",
+        )
+    )
+    db_session.add(
+        DocumentEvent(
+            document_id=document.id,
+            action="invoice.ocr.extracted",
+            new_value=json.dumps(
+                {
+                    "document_number": "FT 44",
+                    "total_with_vat": "123.45",
+                    "invoice_lines": [
+                        {"reference": "OLEO", "description": "Mudança de óleo", "quantity": "1"}
+                    ],
+                }
+            ),
+        )
+    )
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/documentation/treatment?family=invoices")
+    assert page.status_code == 200
+    assert "FT 44" in page.text
+    assert "Mudança de óleo" in page.text
+    assert "Serviços da fatura" in page.text
+
+    saved = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "document_ids": str(document.id),
+            "action": "classify",
+            "service_classification_present": "1",
+            "maintenance": "revision",
+            "tyres": "front",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == document.id
+        )
+    ).all()
+    assert {(tag.category, tag.value) for tag in tags} == {
+        ("maintenance", "revision"),
+        ("tyres", "front"),
+    }
+
+    created = authenticated_client.post(
+        f"/v2-clean/documentation/treatment/{document.id}/audit-task",
+        data={
+            "reason": "Confirmar serviços faturados",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert created.status_code == 303
+    task = db_session.scalar(
+        select(Task).where(Task.entity_type == "document", Task.entity_id == str(document.id))
+    )
+    assert task is not None
+    assert task.task_type == "audit_task"
+    assert task.description == "Confirmar serviços faturados"
+    assert db_session.scalar(
+        select(TaskDocument).where(
+            TaskDocument.task_id == task.id,
+            TaskDocument.document_id == document.id,
+        )
+    ) is not None
 
 
 @pytest.mark.parametrize(

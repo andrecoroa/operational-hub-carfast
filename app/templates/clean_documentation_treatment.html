@@ -117,7 +117,44 @@
                       data-nature="{{ row.workflow.invoice_nature or '' }}"
                       data-destination="{{ row.workflow.destination_status or '' }}"
                       data-plate="{{ row.document.plate or '' }}"
+                      data-content-template="doc-treatment-content-{{ row.document.id }}"
                     >Tratar</button>
+                    <template id="doc-treatment-content-{{ row.document.id }}">
+                      <section class="doc-treatment-extracted">
+                        <h3>Dados extraídos</h3>
+                        <div class="doc-treatment-extracted-fields">
+                          {% for field in row.extracted_fields %}
+                            <div><span>{{ field.label }}</span><strong>{{ field.value }}</strong></div>
+                          {% else %}<p>Não existem campos extraídos disponíveis.</p>{% endfor %}
+                        </div>
+                        {% if row.extracted_lines %}
+                          <details open>
+                            <summary>{{ row.extracted_lines|length }} linhas extraídas</summary>
+                            <div class="doc-treatment-lines-wrap"><table><thead><tr><th>Referência</th><th>Descrição</th><th>Qtd.</th><th>Total</th></tr></thead><tbody>
+                              {% for line in row.extracted_lines %}<tr><td>{{ line.reference or '-' }}</td><td>{{ line.description or line.designation or '-' }}</td><td>{{ line.quantity or '-' }}</td><td>{{ line.amount or line.total or '-' }}</td></tr>{% endfor %}
+                            </tbody></table></div>
+                          </details>
+                        {% endif %}
+                      </section>
+                      {% if document_family == 'invoices' %}
+                        <section class="doc-treatment-services">
+                          <h3>Serviços da fatura</h3>
+                          {% if row.document.vehicle_id %}
+                            <input type="hidden" name="service_classification_present" value="1">
+                            <div class="doc-treatment-service-grid">
+                              {% for category in ['maintenance', 'pads', 'discs', 'tyres', 'ipo', 'other'] %}
+                                <fieldset><legend>{{ quick_classification_labels.get(category, category) }}</legend>
+                                  {% for code, label in quick_classifications.get(category, []) %}
+                                    <label><input type="checkbox" name="{{ category }}" value="{{ code }}" {% if code in row.service_codes.get(category, []) %}checked{% endif %}><span>{{ label }}</span></label>
+                                  {% endfor %}
+                                </fieldset>
+                              {% endfor %}
+                            </div>
+                            <label>Outro serviço<input name="other_custom" placeholder="Descrição opcional"></label>
+                          {% else %}<p>Associa primeiro a fatura a uma viatura para classificar os serviços.</p>{% endif %}
+                        </section>
+                      {% endif %}
+                    </template>
                   </td>
                 </tr>
               {% else %}<tr><td colspan="8" class="doc-arch-empty">Não existem documentos pendentes neste grupo.</td></tr>{% endfor %}
@@ -145,8 +182,15 @@
           <input type="hidden" name="return_url" value="{{ return_url }}">
           <section><h3>Classificar</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option><option value="por_classificar">Por classificar</option></select></label></section>
           <section><h3>Associar e encaminhar</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
-          <section><h3>Validar e concluir</h3><label>Motivo / observação<textarea name="reason" rows="3" placeholder="Obrigatório para resolver exceções"></textarea></label><a id="doc-treatment-detail-link" href="#">Ver todos os dados extraídos e campos técnicos</a></section>
-          <footer><button type="submit" name="action" value="classify" class="secondary">Guardar pendente</button><button type="submit" name="action" value="resolve" class="secondary">Resolver exceção</button><button type="submit" name="action" value="complete">Concluir tratamento</button></footer>
+          <div id="doc-treatment-inline-content"></div>
+          <section><h3>Validar e concluir</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
+          <footer>
+            <button type="submit" name="action" value="classify" class="secondary">Guardar pendente</button>
+            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve">Concluir com exceção</button>
+            <button type="submit" class="secondary" id="doc-treatment-audit-task">Criar tarefa de auditoria</button>
+            <button type="submit" class="danger" id="doc-treatment-remove">Remover documento</button>
+            <button type="submit" name="action" value="complete">Concluir tratamento</button>
+          </footer>
         </form>
       </div>
     </dialog>
@@ -181,6 +225,11 @@
 
     const preview = document.getElementById('doc-treatment-preview');
     const previewPane = document.getElementById('doc-treatment-document-pane');
+    const inlineContent = document.getElementById('doc-treatment-inline-content');
+    const previewForm = preview.querySelector('.doc-treatment-preview-form');
+    const reasonField = document.getElementById('doc-treatment-preview-reason');
+    const auditTask = document.getElementById('doc-treatment-audit-task');
+    const removeDocument = document.getElementById('doc-treatment-remove');
     document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => {
       button.addEventListener('click', () => {
         document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
@@ -189,6 +238,11 @@
         document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
         document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
         document.getElementById('doc-treatment-detail-link').href = button.dataset.detailHref || '#';
+        const treatmentTemplate = document.getElementById(button.dataset.contentTemplate || '');
+        inlineContent.replaceChildren(treatmentTemplate ? treatmentTemplate.content.cloneNode(true) : document.createTextNode(''));
+        reasonField.value = '';
+        auditTask.formAction = `/v2-clean/documentation/treatment/${button.dataset.documentId}/audit-task`;
+        removeDocument.formAction = `/v2-clean/documents/${button.dataset.documentId}/remove`;
         previewPane.innerHTML = '';
         const iframe = document.createElement('iframe');
         iframe.src = `${button.dataset.previewSrc || ''}#toolbar=1&navpanes=0`;
@@ -198,6 +252,13 @@
       });
     });
     document.querySelectorAll('[data-close-treatment-preview]').forEach((button) => button.addEventListener('click', () => { preview.close(); previewPane.innerHTML = ''; }));
+    document.getElementById('doc-treatment-resolve')?.addEventListener('click', (event) => {
+      if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); }
+    });
+    removeDocument?.addEventListener('click', (event) => {
+      if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); return; }
+      if (!window.confirm('Remover este documento da aplicação? O registo fica preservado para auditoria.')) event.preventDefault();
+    });
 
     const review = document.getElementById('doc-treatment-bulk-review');
     document.getElementById('doc-treatment-review-bulk')?.addEventListener('click', () => {

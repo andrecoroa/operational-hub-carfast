@@ -353,23 +353,6 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
         .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
     ).all():
         financial_plans.setdefault(plan.vehicle_id, plan)
-    installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {
-        plan.id: [] for plan in financial_plans.values()
-    }
-    if installments_by_plan:
-        for installment in db.scalars(
-            select(VehicleFinancialPlanInstallment)
-            .where(
-                VehicleFinancialPlanInstallment.financial_plan_id.in_(
-                    installments_by_plan
-                )
-            )
-            .order_by(
-                VehicleFinancialPlanInstallment.financial_plan_id,
-                VehicleFinancialPlanInstallment.period_number,
-            )
-        ).all():
-            installments_by_plan[installment.financial_plan_id].append(installment)
     manual_by_vehicle: dict[int, dict[str, Any]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
     for field in db.scalars(
         select(VehicleManualField).where(
@@ -385,9 +368,6 @@ def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
             manual_by_vehicle.get(vehicle.id, {}),
             profiles.get(vehicle.id),
             financial_plans.get(vehicle.id),
-            installments_by_plan.get(financial_plans[vehicle.id].id, [])
-            if vehicle.id in financial_plans
-            else [],
         )
         for vehicle in vehicles
     ]
@@ -442,11 +422,14 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
     installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {
         plan.id: [] for plan in active_plans.values()
     }
-    active_plan_ids = list(installments_by_plan)
-    if active_plan_ids:
+    if installments_by_plan:
         for installment in db.scalars(
             select(VehicleFinancialPlanInstallment)
-            .where(VehicleFinancialPlanInstallment.financial_plan_id.in_(active_plan_ids))
+            .where(
+                VehicleFinancialPlanInstallment.financial_plan_id.in_(
+                    installments_by_plan
+                )
+            )
             .order_by(
                 VehicleFinancialPlanInstallment.financial_plan_id,
                 VehicleFinancialPlanInstallment.period_end,

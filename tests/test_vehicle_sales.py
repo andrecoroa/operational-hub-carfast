@@ -24,6 +24,7 @@ from app.models import (
     VehicleSalePublication,
 )
 from app.services.users import create_user
+from app.services.vehicle_financials import canonical_vehicle_financial_values
 from app.web.vehicle_sales import (
     _filter_rows,
     _financial_audit_rows,
@@ -40,6 +41,38 @@ def test_compact_finance_entity_labels():
     assert compact_finance_entity("CGD Locação Corrente") == "CGD Locação"
     assert compact_finance_entity("LeasePlan Portugal") == "LeasePlan"
     assert compact_finance_entity("Mercedes-Benz Financial") == "Mercedes"
+
+
+def test_amortization_is_effective_on_first_day_of_current_month():
+    reference = date(2026, 8, 5)
+    for purchase_date, installment_end in (
+        (date(2023, 5, 30), date(2026, 6, 30)),
+        (date(2025, 7, 15), date(2026, 7, 15)),
+        (date(2026, 8, 3), date(2026, 7, 31)),
+    ):
+        values = canonical_vehicle_financial_values(
+            cost_context={
+                "purchase_date": purchase_date,
+                "initial_cost_with_vat": Decimal("24000"),
+            },
+            plan=SimpleNamespace(
+                start_date=purchase_date,
+                initial_amount=Decimal("24000"),
+                outstanding_amount=Decimal("18000"),
+                amount_reference_date=installment_end,
+            ),
+            installments=[
+                SimpleNamespace(
+                    period_end=installment_end,
+                    period_number=1,
+                    amortization_amount=Decimal("250"),
+                )
+            ],
+            current_value_calculator=lambda *_args: Decimal("10000"),
+            reference=reference,
+        )
+
+        assert values["current_value_date"] == date(2026, 8, 1)
 
 
 def test_vehicle_sale_media_defaults_to_persistent_document_archive(tmp_path, monkeypatch):
@@ -568,9 +601,12 @@ def test_sheet_audit_and_sale_share_value_and_last_amortization_date(db_session)
     assert sheet["finance"]["current_cost_with_vat"] == base_router.format_eur(
         sale_row["cost"]
     )
-    assert sale_row["current_value_date"] == date(2026, 6, 30)
-    assert audit_row["current_value_date"] == "2026-06-30"
-    assert sheet["finance"]["current_value_date"] == "30/06/2026"
+    expected_amortization_date = date.today().replace(day=1)
+    assert sale_row["current_value_date"] == expected_amortization_date
+    assert audit_row["current_value_date"] == expected_amortization_date.isoformat()
+    assert sheet["finance"]["current_value_date"] == expected_amortization_date.strftime(
+        "%d/%m/%Y"
+    )
     assert sheet["finance"]["debt_reference_date"] == "31/07/2026"
 
 

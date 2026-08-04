@@ -51,28 +51,25 @@ def canonical_vehicle_financial_values(
     installment_list = list(installments)
     applied_installment = _latest_applied_installment(installment_list, as_of)
     amortization_month = cost_context.get("amortization_month")
-    current_value_date = applied_installment.period_end if applied_installment else None
+    current_value_date = None
 
-    # Imported monthly plans are the strongest evidence for the last period
-    # applied.  The formula itself remains the existing linear 96-month rule.
+    # Accounting amortization is independent from the lender's rental plan.
+    # It advances once per calendar month and is effective on day one.
     calculation_start = _date_value(cost_context.get("purchase_date")) or (
         getattr(plan, "start_date", None) if plan else None
     )
-    if applied_installment and calculation_start:
-        start = calculation_start
+    if calculation_start:
         amortization_month = max(
             1,
             min(
                 96,
-                (current_value_date.year - start.year) * 12
-                + (current_value_date.month - start.month)
+                (as_of.year - calculation_start.year) * 12
+                + (as_of.month - calculation_start.month)
                 + 1,
             ),
         )
-    elif amortization_month:
-        # Without a monthly schedule the current calculation is an estimate at
-        # the page/request date, which is still distinct from the debt date.
-        current_value_date = as_of
+    if amortization_month:
+        current_value_date = as_of.replace(day=1)
 
     current_value = current_value_calculator(
         cost_context.get("initial_cost_with_vat"),

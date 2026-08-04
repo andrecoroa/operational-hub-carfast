@@ -643,6 +643,21 @@ def stock_invoice_conference_modal(request: Request, invoice_import_id: int, db:
     if not invoice_import:
         return HTMLResponse("Documento de Stock não encontrado.", status_code=404)
     document = db.get(Document, invoice_import.document_id)
+    saved_lines = db.scalars(
+        select(StockInvoiceLine)
+        .where(StockInvoiceLine.invoice_import_id == invoice_import.id)
+        .order_by(StockInvoiceLine.line_number)
+    ).all()
+    raw = (
+        invoice_import.raw_extraction_json
+        if isinstance(invoice_import.raw_extraction_json, dict)
+        else {}
+    )
+    raw_lines = raw.get("lines", [])
+    extracted_lines = (
+        saved_lines
+        or [line for line in raw_lines if isinstance(line, dict)]
+    )
     return templates.TemplateResponse(
         request,
         "_clean_stock_conference_modal.html",
@@ -654,6 +669,7 @@ def stock_invoice_conference_modal(request: Request, invoice_import_id: int, db:
             if invoice_import.supplier_id
             else None,
             "comparison": conference_comparison(db, invoice_import),
+            "extracted_lines": extracted_lines,
         },
     )
 

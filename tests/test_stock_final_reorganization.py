@@ -253,6 +253,23 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
         "/api/stock/invoice-imports",
         json={"document_id": document.id, "classification": "stock_invoice"},
     ).json()["id"]
+    invoice_import = db_session.get(StockInvoiceImport, invoice_id)
+    invoice_import.raw_extraction_json = {
+        "lines": [
+            {
+                "line_number": 1,
+                "supplier_ref": "REF-MODAL",
+                "description": "Artigo extraído",
+                "quantity": "2",
+                "unit": "un.",
+                "unit_cost": "12.50",
+                "discount": "0.10",
+                "tax_rate": "0.23",
+                "line_total": "27.68",
+            }
+        ]
+    }
+    db_session.commit()
 
     listing = authenticated_client.get("/v2-clean/stock/invoices")
     modal = authenticated_client.get(f"/v2-clean/stock/invoices/{invoice_id}/modal")
@@ -265,6 +282,10 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     assert "Ver e conferir" in listing.text
     assert "<iframe" in modal.text
     assert f"/v2-clean/stock/invoices/{invoice_id}/document" in modal.text
+    assert "REF-MODAL" in modal.text
+    assert "12.50 €" in modal.text
+    assert "27.68 €" in modal.text
+    assert "Rever extração e validar artigos" in modal.text
     responsible_field = review.text.split("Responsável pela receção", 1)[1].split("</label>", 1)[0]
     assert "Admin Testes" in responsible_field
     assert "readonly" in responsible_field

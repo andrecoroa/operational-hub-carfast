@@ -25,36 +25,39 @@
       <a href="/v2-clean/fleet?scope=all"><span>Total</span><strong>{{ counts.total }}</strong></a>
     </section>
 
-    <section class="clean-panel clean-card-wide clean-fleet-list-panel">
-      <form method="get" action="/v2-clean/fleet" class="fleet-table-filters" data-clean-fleet-search>
-        <label class="fleet-filter-search">Pesquisar
+    <section class="clean-panel clean-card-wide clean-fleet-list-panel sale-filter-panel">
+      <div class="table-heading flat-heading">
+        <div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div>
+      </div>
+      <form method="get" action="/v2-clean/fleet" class="sale-filter-grid" data-clean-fleet-search>
+        <label class="sale-filter-wide">Matrícula, Unit, VIN, marca ou modelo
           <input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off">
         </label>
         <label>Âmbito
           <select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para venda</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select>
         </label>
-        <label>Marca <small>seleção múltipla</small>
-          <select name="brand" multiple size="3">{% for value in filter_options.brands %}<option value="{{ value }}" {% if value in filters.brands %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
-        </label>
-        <label>Combustível <small>seleção múltipla</small>
-          <select name="fuel" multiple size="3">{% for value in filter_options.fuels %}<option value="{{ value }}" {% if value in filters.fuels %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
-        </label>
-        <label>Categoria <small>seleção múltipla</small>
-          <select name="category" multiple size="3">{% for value in filter_options.categories %}<option value="{{ value }}" {% if value in filters.categories %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
-        </label>
-        <label>Grupo Rentway <small>seleção múltipla</small>
-          <select name="rentway_group" multiple size="3">{% for value in filter_options.groups %}<option value="{{ value }}" {% if value in filters.groups %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
-        </label>
-        <label>Estado Rentway <small>seleção múltipla</small>
-          <select name="rentway_status" multiple size="3">{% for value in filter_options.statuses %}<option value="{{ value }}" {% if value in filters.statuses %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
-        </label>
+        {% set fleet_check_filters = [
+          ('Marca', 'brand', filter_options.brands, filters.brands, 'Todas'),
+          ('Combustível', 'fuel', filter_options.fuels, filters.fuels, 'Todos'),
+          ('Categoria', 'category', filter_options.categories, filters.categories, 'Todas'),
+          ('Grupo Rentway', 'rentway_group', filter_options.groups, filters.groups, 'Todos'),
+          ('Estado Rentway', 'rentway_status', filter_options.statuses, filters.statuses, 'Todos')
+        ] %}
+        {% for label, name, options, selected, empty_label in fleet_check_filters %}
+          <details class="sale-filter-check-menu">
+            <summary><span>{{ label }}</span><small>{% if selected %}{{ selected|length }} selecionado{% if selected|length != 1 %}s{% endif %}{% else %}{{ empty_label }}{% endif %}</small></summary>
+            <div class="sale-filter-check-options">
+              {% for value in options %}<label><input type="checkbox" name="{{ name }}" value="{{ value }}" {% if value in selected %}checked{% endif %}><span>{{ value }}</span></label>{% endfor %}
+            </div>
+          </details>
+        {% endfor %}
         <label>Cliente atual
           <input type="search" name="client" value="{{ filters.client }}" placeholder="Nome do cliente">
         </label>
         <fieldset><legend>Data da matrícula</legend><span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span></fieldset>
         <fieldset><legend>Devolução prevista</legend><span><input type="date" name="return_from" value="{{ filters.return_from }}" aria-label="Devolução desde"><em>até</em><input type="date" name="return_to" value="{{ filters.return_to }}" aria-label="Devolução até"></span></fieldset>
         <fieldset><legend>IPO Rentway</legend><span><input type="date" name="ipo_from" value="{{ filters.ipo_from }}" aria-label="IPO desde"><em>até</em><input type="date" name="ipo_to" value="{{ filters.ipo_to }}" aria-label="IPO até"></span></fieldset>
-        <div class="fleet-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar filtros</button></div>
+        <div class="sale-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar filtros</button></div>
       </form>
 
       <div class="clean-fleet-search-feedback" aria-live="polite">
@@ -94,6 +97,18 @@
 </div>
 <script>
   (() => {
+    const filterMenus = Array.from(document.querySelectorAll(".sale-filter-check-menu"));
+    filterMenus.forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        filterMenus.forEach((other) => { if (other !== details) other.open = false; });
+      });
+    });
+    document.addEventListener("click", (event) => {
+      filterMenus.forEach((details) => {
+        if (details.open && !details.contains(event.target)) details.open = false;
+      });
+    });
     const storageKey = `clean-fleet-scroll:${location.pathname}${location.search}`;
     const stored = sessionStorage.getItem(storageKey);
     if (stored !== null && !location.hash) requestAnimationFrame(() => scrollTo(0, Number(stored) || 0));

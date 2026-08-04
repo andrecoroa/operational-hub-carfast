@@ -159,7 +159,8 @@ def test_fleet_filters_and_pagination_preserve_query_page_and_return_anchor(
     assert page.status_code == 200
     assert "Página 2 de 2 · 55 viaturas" in page.text
     assert page.text.count('class="fleet-vehicle-link"') == 5
-    assert 'option value="Peugeot" selected' in page.text
+    assert 'type="checkbox" name="brand" value="Peugeot" checked' in page.text
+    assert "Encontrar as viaturas certas" in page.text
     assert "return_to=" in page.text
     assert "page%3D2" in page.text
     assert "%23vehicle-" in page.text

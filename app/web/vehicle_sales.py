@@ -1272,6 +1272,17 @@ async def vehicle_sales_bulk_update(request: Request):
             vehicle.id: vehicle
             for vehicle in db.scalars(select(Vehicle).where(Vehicle.id.in_(selected_ids))).all()
         }
+        selected_sale_rows = (
+            {
+                row["vehicle"].id: row
+                for row in _load_sale_rows(
+                    db,
+                    select(Vehicle).where(Vehicle.id.in_(selected_ids)),
+                )
+            }
+            if action == "price_rule"
+            else {}
+        )
         for vehicle_id in selected_ids:
             vehicle = vehicles.get(vehicle_id)
             if not vehicle:
@@ -1307,11 +1318,12 @@ async def vehicle_sales_bulk_update(request: Request):
                     rounding_mode = "none"
                 margin_amount = decimal_value(form.get("margin_value"))
                 rounding_increment = decimal_value(form.get("rounding_increment"))
-                base_value = (
-                    profile.market_trade_value
-                    if price_base == "trade"
-                    else profile.market_retail_value
-                )
+                if price_base == "cost":
+                    base_value = selected_sale_rows.get(vehicle_id, {}).get("cost")
+                elif price_base == "trade":
+                    base_value = profile.market_trade_value
+                else:
+                    base_value = profile.market_retail_value
                 calculated = calculate_selling_price(
                     base_value,
                     margin_mode,

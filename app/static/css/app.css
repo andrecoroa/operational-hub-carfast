@@ -23554,6 +23554,90 @@ body.clean-task-preview-open {
   grid-column: span 2;
 }
 
+.sale-filter-check-menu {
+  position: relative;
+  min-width: 0;
+}
+
+.sale-filter-check-menu > summary {
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+  list-style: none;
+}
+
+.sale-filter-check-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sale-filter-check-menu > summary::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 21px;
+  color: var(--muted);
+}
+
+.sale-filter-check-menu[open] > summary::after {
+  content: "▴";
+}
+
+.sale-filter-check-menu > summary small {
+  padding-right: 20px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.sale-filter-check-options {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 250px;
+  padding: 7px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgb(15 23 42 / 18%);
+}
+
+.sale-filter-check-options label {
+  min-height: 34px;
+  padding: 6px 7px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sale-filter-check-options label:hover {
+  background: var(--surface-subtle, #f4f7fa);
+}
+
+.sale-filter-check-options input[type="checkbox"] {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 16px;
+}
+
 .sale-filter-grid fieldset {
   min-width: 0;
   margin: 0;

@@ -47,18 +47,6 @@
         <label class="sale-filter-wide">Matrícula, Unit ou modelo
           <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar viatura">
         </label>
-        <label>Marca <small>seleção múltipla</small>
-          <select name="brand" multiple size="3">
-            {% for value in brand_options %}<option value="{{ value }}" {% if value in filters.brand %}selected{% endif %}>{{ value }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Estado de venda <small>seleção múltipla</small>
-          <select name="sale_status" multiple size="3">
-            {% for code, label in sale_statuses %}
-              <option value="{{ code }}" {% if code in filters.sale_status %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
         <label>Entidade de financiamento
           <select name="finance_entity">
             <option value="">Todas</option>
@@ -67,19 +55,37 @@
             {% endfor %}
           </select>
         </label>
-        <label>Estado da viatura <small>seleção múltipla</small>
-          <select name="vehicle_state" multiple size="3">
-            {% for code, label in vehicle_states %}
-              <option value="{{ code }}" {% if code in filters.vehicle_state %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
+        <label>Valores em falta
+          <select name="market_state">
+            <option value="">Todos</option>
+            <option value="missing_trade" {% if filters.market_state == "missing_trade" %}selected{% endif %}>Sem valor comércio</option>
+            <option value="missing_retail" {% if filters.market_state == "missing_retail" %}selected{% endif %}>Sem valor cliente final</option>
           </select>
         </label>
-        <label>Grupo Rentway <small>seleção múltipla</small>
-          <select name="rentway_group" multiple size="3">
-            {% for value in group_options %}
-              <option value="{{ value }}" {% if value in filters.rentway_group %}selected{% endif %}>{{ value }}</option>
-            {% endfor %}
-          </select>
+        <details class="sale-filter-check-menu">
+          <summary><span>Marca</span><small>{% if filters.brand %}{{ filters.brand|length }} selecionada{% if filters.brand|length != 1 %}s{% endif %}{% else %}Todas{% endif %}</small></summary>
+          <div class="sale-filter-check-options">
+            {% for value in brand_options %}<label><input type="checkbox" name="brand" value="{{ value }}" {% if value in filters.brand %}checked{% endif %}><span>{{ value }}</span></label>{% endfor %}
+          </div>
+        </details>
+        <details class="sale-filter-check-menu">
+          <summary><span>Estado de venda</span><small>{% if filters.sale_status %}{{ filters.sale_status|length }} selecionado{% if filters.sale_status|length != 1 %}s{% endif %}{% else %}Todos{% endif %}</small></summary>
+          <div class="sale-filter-check-options">
+            {% for code, label in sale_statuses %}<label><input type="checkbox" name="sale_status" value="{{ code }}" {% if code in filters.sale_status %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+          </div>
+        </details>
+        <details class="sale-filter-check-menu">
+          <summary><span>Estado da viatura</span><small>{% if filters.vehicle_state %}{{ filters.vehicle_state|length }} selecionado{% if filters.vehicle_state|length != 1 %}s{% endif %}{% else %}Todos{% endif %}</small></summary>
+          <div class="sale-filter-check-options">
+            {% for code, label in vehicle_states %}<label><input type="checkbox" name="vehicle_state" value="{{ code }}" {% if code in filters.vehicle_state %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+          </div>
+        </details>
+        <details class="sale-filter-check-menu">
+          <summary><span>Grupo Rentway</span><small>{% if filters.rentway_group %}{{ filters.rentway_group|length }} selecionado{% if filters.rentway_group|length != 1 %}s{% endif %}{% else %}Todos{% endif %}</small></summary>
+          <div class="sale-filter-check-options">
+            {% for value in group_options %}<label><input type="checkbox" name="rentway_group" value="{{ value }}" {% if value in filters.rentway_group %}checked{% endif %}><span>{{ value }}</span></label>{% endfor %}
+          </div>
+        </details>
         </label>
         <fieldset>
           <legend>Data da matrícula</legend>
@@ -97,13 +103,6 @@
           <legend>Devolução do contrato <small>Aplicável a contratos</small></legend>
           <span><input type="date" name="return_from" value="{{ filters.return_from }}" aria-label="Devolução desde"><em>até</em><input type="date" name="return_to" value="{{ filters.return_to }}" aria-label="Devolução até"></span>
         </fieldset>
-        <label>Valores em falta
-          <select name="market_state">
-            <option value="">Todos</option>
-            <option value="missing_trade" {% if filters.market_state == "missing_trade" %}selected{% endif %}>Sem valor comércio</option>
-            <option value="missing_retail" {% if filters.market_state == "missing_retail" %}selected{% endif %}>Sem valor cliente final</option>
-          </select>
-        </label>
         <div class="sale-filter-actions">
           <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Limpar</a>
           <button type="submit">Aplicar filtros</button>
@@ -208,6 +207,19 @@
 </dialog>
 <script>
   (() => {
+    const filterMenus = Array.from(document.querySelectorAll(".sale-filter-check-menu"));
+    filterMenus.forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        filterMenus.forEach((other) => { if (other !== details) other.open = false; });
+      });
+    });
+    document.addEventListener("click", (event) => {
+      filterMenus.forEach((details) => {
+        if (details.open && !details.contains(event.target)) details.open = false;
+      });
+    });
+
     const form = document.querySelector("[data-sale-bulk-form]");
     if (!form) return;
     const boxes = Array.from(form.querySelectorAll("[data-sale-row-checkbox]"));

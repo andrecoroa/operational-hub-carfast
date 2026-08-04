@@ -53,6 +53,7 @@ LEAD_STATUSES = [
 LEAD_STATUS_LABELS = dict(LEAD_STATUSES)
 
 PRICE_BASES = [
+    ("cost", "Valor de custo"),
     ("trade", "Valor comércio"),
     ("retail", "Valor cliente final"),
 ]

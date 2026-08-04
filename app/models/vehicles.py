@@ -22,6 +22,21 @@ class Vehicle(TimestampMixin, Base):
     year: Mapped[int | None] = mapped_column(Integer)
     lifecycle_status: Mapped[str | None] = mapped_column(String(80), index=True)
     operational_status: Mapped[str | None] = mapped_column(String(80), index=True)
+    # Filterable Rentway projection.  The complete, unmodified source row remains
+    # in VehicleExternalSnapshot/ImportRawRow; these columns are the canonical
+    # operational values used by fleet and sale screens.
+    rentway_category: Mapped[str | None] = mapped_column(String(40), index=True)
+    rentway_group: Mapped[str | None] = mapped_column(String(80), index=True)
+    rentway_fuel: Mapped[str | None] = mapped_column(String(80), index=True)
+    rentway_seats: Mapped[int | None] = mapped_column(Integer)
+    rentway_colour: Mapped[str | None] = mapped_column(String(120))
+    rentway_status: Mapped[str | None] = mapped_column(String(120), index=True)
+    rentway_client: Mapped[str | None] = mapped_column(String(200), index=True)
+    rentway_return_date: Mapped[Date | None] = mapped_column(Date, index=True)
+    rentway_ipo_date: Mapped[Date | None] = mapped_column(Date, index=True)
+    rentway_registration_date: Mapped[Date | None] = mapped_column(Date, index=True)
+    rentway_km: Mapped[int | None] = mapped_column(Integer)
+    rentway_location: Mapped[str | None] = mapped_column(String(160), index=True)
     current_location_id: Mapped[int | None] = mapped_column(ForeignKey("organizational_units.id"))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str | None] = mapped_column(Text)

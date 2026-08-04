@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,71 @@ from app.services.vehicles import (
 )
 
 
+RENTWAY_FIELD_LABELS = {
+    "plate": "Matrícula",
+    "vin": "Chassis/VIN",
+    "rentway_unit_nr": "Unit",
+    "brand": "Marca",
+    "model": "Modelo",
+    "version": "Versão",
+    "year": "Ano",
+    "rentway_category": "Categoria",
+    "rentway_group": "Grupo Rentway",
+    "rentway_fuel": "Combustível",
+    "rentway_seats": "Lugares",
+    "rentway_colour": "Cor",
+    "rentway_status": "Estado Rentway",
+    "rentway_client": "Cliente atual",
+    "rentway_return_date": "Devolução prevista",
+    "rentway_ipo_date": "IPO Rentway",
+    "rentway_registration_date": "Data de matrícula",
+    "rentway_km": "KM",
+    "rentway_location": "Localização",
+    "lifecycle_status": "Estado de ciclo de vida",
+    "operational_status": "Estado operacional",
+    "active": "Ativa",
+    "notes": "Observações",
+}
+
+
+def _rentway_value(row: tuple[Any, ...], col: dict[str, int], *candidates: str) -> Any:
+    """Read a Rentway value using normalized real-export header variants."""
+
+    return first_row_value(row, col, list(candidates))
+
+
+def _date_value(value: Any) -> date | None:
+    normalized = excel_date_to_iso(value)
+    if not normalized:
+        return None
+    try:
+        return date.fromisoformat(str(normalized)[:10])
+    except ValueError:
+        return None
+
+
+def normalize_rentway_category(value: Any) -> str | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    normalized = text.casefold()
+    if any(token in normalized for token in ("comerc", "commercial", "cargo", "van", "furg")):
+        return "Comerciais"
+    if any(token in normalized for token in ("ligeir", "passage", "passenger", "car")):
+        return "Ligeiros"
+    return None
+
+
+def clean_seats(value: Any) -> int | None:
+    seats = clean_int(value)
+    # Some Rentway exports use zero as the default for an unknown seat count.
+    return seats if seats is not None and seats > 0 else None
+
+
+def _audit_value(value: Any) -> Any:
+    return value.isoformat() if isinstance(value, (date, datetime)) else value
+
+
 def rentway_status_to_states(current_status: str | None, status: str | None) -> tuple[str, str | None, bool]:
     current = (current_status or "").strip().upper()
     raw_status = str(status or "").strip()
@@ -39,16 +105,41 @@ def rentway_status_to_states(current_status: str | None, status: str | None) -> 
 
 
 def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str, Any] | None:
-    plate = normalize_identifier(clean_text(first_row_value(row, col, ["platenr", "matricula", "plate"])))
-    vin = normalize_identifier(clean_text(first_row_value(row, col, ["chassinr", "vin", "chassis"])))
+    plate = normalize_identifier(
+        clean_text(_rentway_value(row, col, "PlateNr", "Plate Nr", "Matrícula", "Matricula", "Plate"))
+    )
+    vin = normalize_identifier(
+        clean_text(_rentway_value(row, col, "ChassisNr", "Chassis Nr", "VIN", "Chassis"))
+    )
     rentway_unit_nr = normalize_identifier(
-        clean_text(first_row_value(row, col, ["unitnr", "rentway_unitnr", "rentway_id"]))
+        clean_text(
+            _rentway_value(
+                row,
+                col,
+                "UnitNr",
+                "Unit Nr",
+                "Unit",
+                "Rentway UnitNr",
+                "Rentway Unit",
+                "RentwayId",
+            )
+        )
     )
     if not (plate or vin or rentway_unit_nr):
         return None
 
-    current_status = clean_text(first_row_value(row, col, ["CurrentStatus", "current_status_rentway"]))
-    status = clean_text(first_row_value(row, col, ["status", "status_rentway"]))
+    current_status = clean_text(
+        _rentway_value(
+            row,
+            col,
+            "CurrentStatus",
+            "Current Status",
+            "Estado Rentway",
+            "Estado atual",
+            "current_status_rentway",
+        )
+    )
+    status = clean_text(_rentway_value(row, col, "Status", "Status Rentway", "status_rentway"))
     imported_lifecycle = clean_text(first_row_value(row, col, ["estado_frota", "lifecycle_status"]))
     imported_operational = clean_text(first_row_value(row, col, ["estado_operacional", "operational_status"]))
     lifecycle_status, operational_status, active = rentway_status_to_states(current_status, status)
@@ -60,16 +151,124 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
     if imported_active not in (None, ""):
         active = str(imported_active).strip().lower() not in {"0", "false", "nao", "não", "no"}
 
+    raw_category = _rentway_value(
+        row,
+        col,
+        "Category",
+        "VehicleCategory",
+        "Vehicle Category",
+        "Categoria",
+        "Tipo de viatura",
+        "VehicleType",
+    )
+
     return {
         "plate": plate,
         "vin": vin,
         "rentway_unit_nr": rentway_unit_nr,
-        "brand": clean_text(first_row_value(row, col, ["brandid", "marca", "brand"])),
-        "model": clean_text(first_row_value(row, col, ["modelid", "modelo", "model"])),
-        "version": clean_text(first_row_value(row, col, ["version", "versao"])),
-        "year": clean_int(first_row_value(row, col, ["Year", "ano"])),
+        "brand": clean_text(_rentway_value(row, col, "BrandId", "Brand", "Marca")),
+        "model": clean_text(_rentway_value(row, col, "ModelId", "Model", "Modelo")),
+        "version": clean_text(_rentway_value(row, col, "Version", "Versão", "Versao")),
+        "year": clean_int(_rentway_value(row, col, "Year", "Ano")),
         "lifecycle_status": lifecycle_status,
         "operational_status": operational_status,
+        "rentway_category": normalize_rentway_category(raw_category),
+        "rentway_group": clean_text(
+            _rentway_value(
+                row,
+                col,
+                "GroupId",
+                "Group ID",
+                "RentwayGroup",
+                "Grupo Rentway",
+                "Grupo",
+            )
+        ),
+        "rentway_fuel": clean_text(
+            _rentway_value(row, col, "Fuel", "FuelType", "Fuel Type", "Combustível", "Combustivel")
+        ),
+        "rentway_seats": clean_seats(
+            _rentway_value(
+                row,
+                col,
+                "Seats",
+                "SeatCount",
+                "Seat Count",
+                "NumberOfSeats",
+                "Lugares",
+                "N.º lugares",
+                "Nº Lugares",
+            )
+        ),
+        "rentway_colour": clean_text(_rentway_value(row, col, "Colour", "Color", "Cor")),
+        "rentway_status": current_status,
+        "rentway_client": clean_text(
+            _rentway_value(
+                row,
+                col,
+                "Client",
+                "ClientName",
+                "Client Name",
+                "Customer",
+                "CustomerName",
+                "Cliente",
+                "Cliente atual",
+            )
+        ),
+        "rentway_return_date": _date_value(
+            _rentway_value(
+                row,
+                col,
+                "ReturnDate",
+                "Return Date",
+                "ExpectedReturnDate",
+                "Expected Return Date",
+                "Data prevista de devolução",
+                "Data devolução",
+                "Data de devolução",
+            )
+        ),
+        "rentway_ipo_date": _date_value(
+            _rentway_value(
+                row,
+                col,
+                "InspectionDate",
+                "Inspection Date",
+                "NextInspectionDate",
+                "IPODate",
+                "IPO Date",
+                "Data IPO",
+                "Próxima IPO",
+                "Proxima IPO",
+            )
+        ),
+        "rentway_registration_date": _date_value(
+            _rentway_value(
+                row,
+                col,
+                "PlateDate",
+                "Plate Date",
+                "RegistrationDate",
+                "Registration Date",
+                "Data matrícula",
+                "Data de matrícula",
+            )
+        ),
+        "rentway_km": clean_int(
+            _rentway_value(row, col, "Kms", "KM", "Km", "Odometer", "CurrentKm", "Quilómetros")
+        ),
+        "rentway_location": clean_text(
+            _rentway_value(
+                row,
+                col,
+                "RentalStation",
+                "Rental Station",
+                "Station",
+                "Location",
+                "Estação",
+                "Localização",
+            )
+        ),
         "active": active,
         "notes": clean_text(first_row_value(row, col, ["observations", "observacoes"])),
     }
@@ -179,10 +378,12 @@ def import_rentway_fleet_xlsx(
                 vin=payload["vin"],
                 rentway_unit_nr=payload["rentway_unit_nr"],
             )
+            before_payload: dict[str, Any] = {}
             if vehicle:
                 # Rentway updates the live fleet record and its external snapshot only.
                 # Historical workshop mileage belongs to the workshop process and is
                 # deliberately never synchronized from this payload.
+                before_payload = {field: getattr(vehicle, field, None) for field in payload}
                 for field, value in payload.items():
                     setattr(vehicle, field, value)
                 stats["updated_rows"] += 1
@@ -194,6 +395,21 @@ def import_rentway_fleet_xlsx(
 
             sync_vehicle_identifiers(db, vehicle)
             upsert_external_snapshot(db, vehicle.id, batch.id, raw, raw_hash)
+            changed_fields = {
+                field: {"before": before_payload.get(field), "after": value}
+                for field, value in payload.items()
+                if before_payload.get(field) != value
+            }
+            record_audit(
+                db,
+                action="vehicle.rentway_snapshot.applied",
+                entity_type="vehicle",
+                entity_id=vehicle.id,
+                detail=f"Rentway aplicado a {vehicle.plate or vehicle.rentway_unit_nr or vehicle.id}",
+                before_json={field: _audit_value(values["before"]) for field, values in changed_fields.items()},
+                after_json={field: _audit_value(values["after"]) for field, values in changed_fields.items()},
+                user_id=imported_by_id,
+            )
 
         batch.status = "completed"
         batch.total_rows = stats["total_rows"]
@@ -262,17 +478,17 @@ def preview_rentway_fleet_xlsx(
         action = "updated" if vehicle else "created"
         counts[f"{action}_rows"] += 1
         changes = []
-        if vehicle:
-            for field, value in payload.items():
-                old_value = getattr(vehicle, field, None)
-                if old_value != value:
-                    changes.append(
-                        {
-                            "field": field,
-                            "before": old_value,
-                            "after": value,
-                        }
-                    )
+        for field, value in payload.items():
+            old_value = getattr(vehicle, field, None) if vehicle else None
+            if old_value != value:
+                changes.append(
+                    {
+                        "field": field,
+                        "label": RENTWAY_FIELD_LABELS.get(field, field),
+                        "before": old_value.isoformat() if isinstance(old_value, (date, datetime)) else old_value,
+                        "after": value.isoformat() if isinstance(value, (date, datetime)) else value,
+                    }
+                )
         if len(preview_rows) < sample_limit:
             preview_rows.append(
                 {

@@ -18,15 +18,15 @@
       <div class="stock-card-heading"><div><p class="eyebrow">Atenção necessária</p><h2>Alertas operacionais</h2></div></div>
       <div class="stock-alert-list">
         {% for row in low_rows %}
-          <a href="/v2-clean/stock/articles/{{ row.article.id }}"><strong>{{ row.article.name }}</strong><span>{{ row.location.name }} · {{ row.available }} / mínimo {{ row.minimum.minimum_quantity }} {{ row.article.unit }}</span></a>
+          <a href="/v2-clean/stock/articles/{{ row.article.id }}"><strong>{{ row.article.name }}</strong><span>{{ row.location.name }} · {{ row.available|int }} / mínimo {{ row.minimum.minimum_quantity|int }} {{ row.article.unit }}</span></a>
         {% else %}<p class="stock-empty">Não existem artigos abaixo do mínimo.</p>{% endfor %}
       </div>
     </section>
     <section class="stock-card">
       <div class="stock-card-heading"><div><h2>Artigos</h2><p>Existências derivadas dos movimentos confirmados.</p></div><a href="/v2-clean/stock/articles">Ver todos</a></div>
-      <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Referência</th><th>Artigo</th><th>Categoria</th><th>Fornecedor</th><th>Oficina</th><th>Aeroporto</th><th>Disponível</th><th>Mínimo</th><th>Custo médio</th><th>Estado</th></tr></thead><tbody>
-        {% for row in article_rows %}<tr><td><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td><td>{{ row.article.name }}</td><td>{{ row.category.name if row.category else "-" }}</td><td>{{ row.supplier.name if row.supplier else "-" }}</td><td>{{ row.by_location.get("WORKSHOP", 0) }}</td><td>{{ row.by_location.get("AIRPORT", 0) }}</td><td>{{ row.available }}</td><td>{{ row.minimum }}</td><td>{{ "%.2f"|format(row.article.average_cost or 0) }} €</td><td><span class="stock-badge {{ 'warning' if row.low else 'success' }}">{{ 'Stock baixo' if row.low else 'Normal' }}</span></td></tr>
-        {% else %}<tr><td colspan="10" class="stock-empty">Ainda não existem artigos.</td></tr>{% endfor %}
+      <div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Referência</th><th>Designação curta</th><th>Categoria</th><th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead><tbody>
+        {% for row in article_rows %}<tr><td><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td><td>{{ row.article.name }}</td><td>{{ row.category.name if row.category else "-" }}</td><td>{{ row.supplier.name if row.supplier else "-" }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><span class="stock-badge {{ 'warning' if row.low else 'success' }}">{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(row.article.status,'Ativo') }}</span></td></tr>
+        {% else %}<tr><td colspan="6" class="stock-empty">Ainda não existem artigos.</td></tr>{% endfor %}
       </tbody></table></div>
     </section>
   </main>

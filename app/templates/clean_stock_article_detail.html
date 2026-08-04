@@ -1,10 +1,65 @@
-{% extends "base.html" %}{% block body %}<div class="app-shell clean-shell">{% set active_menu="stock" %}{% include "_sidebar.html" %}<main class="content clean-content stock-page">{% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
-  <header class="stock-header"><div><p class="eyebrow">{{ article.internal_ref }}</p><h1>{{ article.name }}</h1><p>{{ article.description or 'Sem descrição adicional.' }}</p></div><a class="button-link secondary-link" href="/v2-clean/stock/articles">Voltar aos artigos</a></header>
-  {% if request.query_params.get('saved') %}<div class="stock-notice success">Alteração guardada.</div>{% endif %}
-  <section class="stock-kpis"><div><span>Disponível</span><strong>{{ row.available }} {{ article.unit }}</strong></div><div><span>Oficina</span><strong>{{ row.by_location.get('WORKSHOP',0) }}</strong></div><div><span>Aeroporto</span><strong>{{ row.by_location.get('AIRPORT',0) }}</strong></div><div><span>Custo médio</span><strong>{{ "%.2f"|format(article.average_cost or 0) }} €</strong></div></section>
-  <div class="stock-detail-grid"><section class="stock-card"><div class="stock-card-heading"><div><h2>Dados gerais</h2></div></div><dl class="stock-definition"><div><dt>Unidade</dt><dd>{{ article.unit }}</dd></div><div><dt>Categoria</dt><dd>{{ category.name if category else '-' }}</dd></div><div><dt>Classificação</dt><dd>{{ article.classification or '-' }}</dd></div><div><dt>Último custo</dt><dd>{{ "%.2f"|format(article.last_cost or 0) }} €</dd></div><div><dt>Estado</dt><dd>{{ 'Ativo' if article.active else 'Inativo' }}</dd></div></dl></section>
-  <section class="stock-card"><div class="stock-card-heading"><div><h2>Mínimos por local</h2></div></div>{% for location in locations %}<form class="stock-inline-form" method="post" action="/v2-clean/stock/articles/{{ article.id }}/minimums"><input type="hidden" name="location_id" value="{{ location.id }}"><strong>{{ location.name }}</strong><input name="minimum_quantity" inputmode="decimal" value="{{ minimums.get(location.id).minimum_quantity if minimums.get(location.id) else 0 }}" {% if not can_manage_stock %}readonly{% endif %}>{% if can_manage_stock %}<button>Guardar</button>{% endif %}</form>{% endfor %}</section></div>
-  <section class="stock-card"><div class="stock-card-heading"><div><h2>Referências por fornecedor</h2><p>Uma referência do fornecedor aponta para um único artigo.</p></div></div><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Fornecedor</th><th>Referência</th><th>Descrição</th><th>Último custo</th><th>Preferido</th></tr></thead><tbody>{% for reference,supplier in references %}<tr><td><a href="/v2-clean/stock/suppliers/{{ supplier.id }}">{{ supplier.name }}</a></td><td>{{ reference.supplier_ref }}</td><td>{{ reference.supplier_description or '-' }}</td><td>{{ "%.2f"|format(reference.last_cost or 0) }} €</td><td>{{ 'Sim' if reference.preferred else 'Não' }}</td></tr>{% else %}<tr><td colspan="5" class="stock-empty">Sem referências externas.</td></tr>{% endfor %}</tbody></table></div></section>
-  <section class="stock-card"><div class="stock-card-heading"><div><h2>Histórico de movimentos</h2></div></div><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Data</th><th>Tipo</th><th>Quantidade</th><th>Origem</th><th>Destino</th><th>Motivo</th></tr></thead><tbody>{% for item in movements %}<tr><td>{{ item.occurred_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.movement_type }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td>{{ item.from_location_id or '-' }}</td><td>{{ item.to_location_id or '-' }}</td><td>{{ item.reason or '-' }}</td></tr>{% else %}<tr><td colspan="6" class="stock-empty">Sem movimentos confirmados.</td></tr>{% endfor %}</tbody></table></div></section>
-  <section class="stock-card"><div class="stock-card-heading"><div><h2>Receções físicas de origem</h2><p>As faturas ligadas às receções são apenas elementos de conferência.</p></div></div><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Receção</th><th>Data</th><th>Fornecedor</th><th>Quantidade aceite</th><th>Custo</th></tr></thead><tbody>{% for line,receipt,supplier in receipt_lines %}<tr><td><a href="/v2-clean/stock/receipts">#{{ receipt.id }} · {{ receipt.source_reference or receipt.source_type }}</a></td><td>{{ receipt.confirmed_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ supplier.name if supplier else '-' }}</td><td>{{ line.accepted_quantity }} {{ article.unit }}</td><td>{{ "%.2f"|format(line.unit_cost) }} €</td></tr>{% else %}<tr><td colspan="5" class="stock-empty">Sem receções físicas associadas.</td></tr>{% endfor %}</tbody></table></div></section>
-</main></div>{% endblock %}
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu="stock" %}{% include "_sidebar.html" %}
+  <main class="content clean-content stock-page">
+    {% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
+    <header class="stock-header compact-header">
+      <div><p class="eyebrow">{{ article.internal_ref }}</p><h1>{{ article.name }}</h1><p>Ficha completa do artigo.</p></div>
+      <a class="button-link secondary-link" href="/v2-clean/stock/articles">Voltar</a>
+    </header>
+    {% if request.query_params.get('saved') %}<div class="stock-notice success">Alteração guardada.</div>{% endif %}
+    {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
+
+    <section class="stock-kpis">
+      <div><span>Disponível</span><strong>{{ row.available|int }} {{ article.unit }}</strong></div>
+      {% for location in locations %}<div><span>{{ location.name }}</span><strong>{{ row.by_location.get(location.code,0)|int }}</strong></div>{% endfor %}
+      <div><span>Custo médio</span><strong>{{ "%.2f"|format(article.average_cost or 0) }} €</strong></div>
+      <div><span>Último custo</span><strong>{{ "%.2f"|format(article.last_cost or 0) }} €</strong></div>
+    </section>
+
+    <section class="stock-card flat-card">
+      <div class="stock-card-heading"><div><h2>Dados editáveis</h2><p>A referência interna permanece estável.</p></div></div>
+      <form method="post" action="/v2-clean/stock/articles/{{ article.id }}" class="stock-review-form">
+        <div class="stock-form-grid">
+          <label>Designação<input name="name" value="{{ article.name }}" required {% if not can_operate_stock %}readonly{% endif %}></label>
+          <label>Categoria<select name="category_id" {% if not can_operate_stock %}disabled{% endif %}><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}" {% if article.category_id==item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Classificação<input name="classification" value="{{ article.classification or '' }}" {% if not can_operate_stock %}readonly{% endif %}></label>
+          <label>Unidade<input name="unit" value="{{ article.unit }}" required {% if not can_operate_stock %}readonly{% endif %}></label>
+          <label>Fornecedor principal<select name="primary_supplier_id" {% if not can_operate_stock %}disabled{% endif %}><option value="">Sem fornecedor</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if article.primary_supplier_id==item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Estado<select name="status" {% if not can_operate_stock %}disabled{% endif %}><option value="active" {% if article.status=='active' %}selected{% endif %}>Ativo</option><option value="inactive" {% if article.status=='inactive' %}selected{% endif %}>Inativo</option><option value="discontinued" {% if article.status=='discontinued' %}selected{% endif %}>Descontinuado</option></select></label>
+          <label class="stock-form-wide">Descrição<textarea name="description" {% if not can_operate_stock %}readonly{% endif %}>{{ article.description or '' }}</textarea></label>
+        </div>
+        {% if can_operate_stock %}<div class="stock-actions"><button>Guardar ficha</button></div>{% endif %}
+      </form>
+    </section>
+
+    <section class="stock-card flat-card">
+      <div class="stock-card-heading"><div><h2>Existências e mínimos</h2><p>Quantidades inteiras por localização.</p></div></div>
+      <div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Local</th><th>Existência</th><th>Mínimo</th></tr></thead><tbody>
+        {% for location in locations %}<tr><td>{{ location.name }}</td><td>{{ row.by_location.get(location.code,0)|int }} {{ article.unit }}</td><td><form class="stock-inline-form" method="post" action="/v2-clean/stock/articles/{{ article.id }}/minimums"><input type="hidden" name="location_id" value="{{ location.id }}"><input name="minimum_quantity" inputmode="numeric" step="1" value="{{ minimums.get(location.id).minimum_quantity|int if minimums.get(location.id) else 0 }}" {% if not can_manage_stock %}readonly{% endif %}>{% if can_manage_stock %}<button>Guardar</button>{% endif %}</form></td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section class="stock-card flat-card">
+      <div class="stock-card-heading"><div><h2>Compatibilidade artigo–viatura</h2><p>Uma aplicação em Oficina cria evidência confirmada; nunca valida automaticamente.</p></div>{% if can_manage_compatibility %}<button type="button" class="secondary" onclick="document.getElementById('new-compatibility').showModal()">Adicionar evidência</button>{% endif %}</div>
+      <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Marca</th><th>Modelo</th><th>Versão</th><th>Motorização</th><th>Geração/período</th><th>Evidência</th><th>Estado</th></tr></thead><tbody>
+        {% for item in compatibilities %}<tr><td>{{ item.brand }}</td><td>{{ item.model }}</td><td>{{ item.version or '-' }}</td><td>{{ item.engine or '-' }}</td><td>{{ item.generation_period or '-' }}</td><td>{{ {'manual':'Manual','workshop':'Aplicação em reparação','supplier':'Fornecedor','revision_model':'Modelo de revisão'}.get(item.evidence_type,item.evidence_type) }}{% if item.evidence_reference %}<br><small>{{ item.evidence_reference }}</small>{% endif %}</td><td><span class="stock-badge {{ 'success' if item.status=='validated' else ('warning' if item.status in ['suggested','confirmed'] else 'danger') }}">{{ {'suggested':'Sugerida','confirmed':'Confirmada','validated':'Validada','rejected':'Rejeitada'}.get(item.status,item.status) }}</span></td></tr>
+        {% else %}<tr><td colspan="7" class="stock-empty">Sem compatibilidades registadas.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section class="stock-card flat-card">
+      <div class="stock-card-heading"><div><h2>Referências de fornecedor</h2><p>Uma referência do fornecedor aponta para um único artigo.</p></div></div>
+      <div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Fornecedor</th><th>Referência</th><th>Descrição</th><th>Último custo</th><th>Preferido</th></tr></thead><tbody>{% for reference,supplier in references %}<tr><td><a href="/v2-clean/stock/suppliers/{{ supplier.id }}">{{ supplier.name }}</a></td><td>{{ reference.supplier_ref }}</td><td>{{ reference.supplier_description or '-' }}</td><td>{{ "%.2f"|format(reference.last_cost or 0) }} €</td><td>{{ 'Sim' if reference.preferred else 'Não' }}</td></tr>{% else %}<tr><td colspan="5" class="stock-empty">Sem referências externas.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    <section class="stock-card flat-card">
+      <div class="stock-card-heading"><div><h2>Histórico</h2><p>Data efetiva separada do timestamp real de registo.</p></div></div>
+      <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Data efetiva</th><th>Registado em</th><th>Tipo</th><th>Qtd.</th><th>Origem</th><th>Destino</th><th>Documento</th><th>Motivo</th><th>Custo</th></tr></thead><tbody>{% for item in movements %}<tr><td>{{ item.effective_date.strftime('%d/%m/%Y') }}</td><td>{{ item.occurred_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.movement_type }}</td><td>{{ item.quantity|int }} {{ item.unit }}</td><td>{{ location_names.get(item.from_location_id,'-') }}</td><td>{{ location_names.get(item.to_location_id,'-') }}</td><td>{{ item.external_reference_id or '-' }}</td><td>{{ item.reason or '-' }}</td><td>{{ "%.2f"|format(item.unit_cost or 0) }} €</td></tr>{% else %}<tr><td colspan="9" class="stock-empty">Sem movimentos confirmados.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    {% if can_manage_compatibility %}<dialog id="new-compatibility" class="stock-dialog"><form method="post" action="/v2-clean/stock/articles/{{ article.id }}/compatibilities"><h2>Nova evidência de compatibilidade</h2><div class="stock-form-grid"><label>Marca<input name="brand" required></label><label>Modelo<input name="model" required></label><label>Versão<input name="version"></label><label>Motorização<input name="engine"></label><label>Geração/período<input name="generation_period"></label><label>Estado<select name="status"><option value="suggested">Sugerida</option><option value="confirmed">Confirmada</option><option value="validated">Validada</option><option value="rejected">Rejeitada</option></select></label><label>Evidência<select name="evidence_type"><option value="manual">Manual</option><option value="supplier">Fornecedor</option><option value="revision_model">Modelo de revisão</option></select></label><label>Referência<input name="evidence_reference"></label><label class="stock-form-wide">Notas<textarea name="evidence_notes"></textarea></label></div><div class="stock-actions"><button>Guardar</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div></form></dialog>{% endif %}
+  </main>
+</div>
+{% endblock %}

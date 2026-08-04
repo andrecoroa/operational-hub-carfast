@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import mimetypes
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -18,21 +19,35 @@ from app.models.documents import Document, DocumentEvent
 from app.models.stock import (
     StockArticle,
     StockArticleSupplierRef,
+    StockArticleVehicleCompatibility,
     StockCategory,
+    StockDiscrepancy,
+    StockInventoryCount,
+    StockInventorySession,
     StockInvoiceImport,
     StockInvoiceLine,
     StockLocation,
     StockMinimum,
     StockMovement,
+    StockPurchaseOrder,
+    StockPurchaseOrderLine,
     StockReceipt,
     StockReceiptInvoiceLink,
     StockReceiptLine,
     StockSupplier,
 )
 from app.schemas.stock import (
+    StockArticleVehicleCompatibilityCreate,
+    StockConferenceAction,
+    StockDiscrepancyRegularize,
+    StockInventoryConfirm,
+    StockInventoryJustification,
+    StockInventorySessionCreate,
     StockInvoiceLineReview,
     StockInvoiceReview,
     StockMovementCreate,
+    StockPurchaseOrderCreate,
+    StockPurchaseOrderLineCreate,
     StockReceiptCreate,
     StockReceiptLineCreate,
 )
@@ -40,12 +55,21 @@ from app.services.authorization import get_user_permission_codes
 from app.services.document_workflow import classify_invoice_nature
 from app.services.stock import (
     StockDomainError,
+    _authorized_document_path,
+    apply_conference_action,
+    conference_comparison,
+    confirm_inventory_session,
+    create_inventory_session,
     create_manual_movement,
     create_physical_receipt,
+    create_purchase_order,
+    create_vehicle_compatibility,
     ensure_invoice_import,
     extract_stock_invoice,
     low_stock_rows,
+    regularize_discrepancy,
     review_and_validate_invoice,
+    save_inventory_counts,
     stock_balances,
 )
 from app.web.router import document_archive_root, sanitize_archive_component, templates
@@ -81,6 +105,19 @@ def _page_context(request: Request, db: DbSession) -> dict:
     return {
         "can_operate_stock": bool(permissions & {"stock.operate", "stock.manage", "admin.manage"}),
         "can_manage_stock": bool(permissions & {"stock.manage", "admin.manage"}),
+        "can_manage_orders": bool(permissions & {"stock.orders.manage", "admin.manage"}),
+        "can_count_inventory": bool(
+            permissions & {"stock.inventory.count", "stock.manage", "admin.manage"}
+        ),
+        "can_confirm_inventory": bool(
+            permissions & {"stock.inventory.confirm", "stock.manage", "admin.manage"}
+        ),
+        "can_manage_compatibility": bool(
+            permissions & {"stock.compatibility.manage", "stock.manage", "admin.manage"}
+        ),
+        "can_conference_stock": bool(
+            permissions & {"stock.conference", "stock.manage", "admin.manage"}
+        ),
     }
 
 
@@ -247,6 +284,7 @@ def stock_article_create(
     category_id: int | None = Form(None),
     classification: str = Form(""),
     primary_supplier_id: int | None = Form(None),
+    status: str = Form("active"),
 ):
     if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
         return denied
@@ -261,6 +299,8 @@ def stock_article_create(
         category_id=category_id,
         classification=classification.strip() or None,
         primary_supplier_id=primary_supplier_id,
+        status=status if status in {"active", "inactive", "discontinued"} else "active",
+        active=status == "active",
     )
     db.add(article)
     db.commit()
@@ -312,11 +352,99 @@ def stock_article_detail(request: Request, article_id: int, db: DbSession):
             "row": row,
             "category": db.get(StockCategory, article.category_id) if article.category_id else None,
             "references": references,
+            "categories": db.scalars(select(StockCategory).order_by(StockCategory.name)).all(),
+            "suppliers": db.scalars(select(StockSupplier).order_by(StockSupplier.name)).all(),
             "locations": db.scalars(select(StockLocation).order_by(StockLocation.name)).all(),
+            "location_names": {
+                item.id: item.name for item in db.scalars(select(StockLocation)).all()
+            },
             "minimums": minimums,
             "movements": movements,
             "receipt_lines": receipt_lines,
+            "compatibilities": db.scalars(
+                select(StockArticleVehicleCompatibility)
+                .where(StockArticleVehicleCompatibility.article_id == article.id)
+                .order_by(
+                    StockArticleVehicleCompatibility.created_at.desc(),
+                    StockArticleVehicleCompatibility.id.desc(),
+                )
+            ).all(),
         },
+    )
+
+
+@stock_router.post("/v2-clean/stock/articles/{article_id}")
+def stock_article_update(
+    request: Request,
+    article_id: int,
+    db: DbSession,
+    name: str = Form(...),
+    description: str = Form(""),
+    unit: str = Form("un."),
+    category_id: int | None = Form(None),
+    classification: str = Form(""),
+    primary_supplier_id: int | None = Form(None),
+    status: str = Form("active"),
+):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    article = db.get(StockArticle, article_id)
+    if not article:
+        return RedirectResponse("/v2-clean/stock/articles?error=missing", status_code=303)
+    if status not in {"active", "inactive", "discontinued"}:
+        return RedirectResponse(
+            f"/v2-clean/stock/articles/{article_id}?error=invalid_status", status_code=303
+        )
+    article.name = name.strip()
+    article.description = description.strip() or None
+    article.unit = unit.strip() or "un."
+    article.category_id = category_id
+    article.classification = classification.strip() or None
+    article.primary_supplier_id = primary_supplier_id
+    article.status = status
+    article.active = status == "active"
+    db.commit()
+    return RedirectResponse(f"/v2-clean/stock/articles/{article_id}?saved=article", status_code=303)
+
+
+@stock_router.post("/v2-clean/stock/articles/{article_id}/compatibilities")
+def stock_article_compatibility_create(
+    request: Request,
+    article_id: int,
+    db: DbSession,
+    brand: str = Form(...),
+    model: str = Form(...),
+    version: str = Form(""),
+    engine: str = Form(""),
+    generation_period: str = Form(""),
+    status: str = Form("suggested"),
+    evidence_type: str = Form("manual"),
+    evidence_reference: str = Form(""),
+    evidence_notes: str = Form(""),
+):
+    if denied := _denied(request, db, "stock.compatibility.manage", "stock.manage", "admin.manage"):
+        return denied
+    try:
+        command = StockArticleVehicleCompatibilityCreate(
+            article_id=article_id,
+            brand=brand,
+            model=model,
+            version=version or None,
+            engine=engine or None,
+            generation_period=generation_period or None,
+            status=status,
+            evidence_type=evidence_type,
+            evidence_reference=evidence_reference or None,
+            evidence_notes=evidence_notes or None,
+        )
+        create_vehicle_compatibility(db, command=command, user_id=_user_id(request))
+        db.commit()
+        notice = {"saved": "compatibility"}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(
+        f"/v2-clean/stock/articles/{article_id}?{urlencode(notice)}", status_code=303
     )
 
 
@@ -451,7 +579,12 @@ def stock_supplier_detail(request: Request, supplier_id: int, db: DbSession):
 
 
 @stock_router.get("/v2-clean/stock/invoices", response_class=HTMLResponse)
-def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: str = ""):
+def stock_invoices(
+    request: Request,
+    db: DbSession,
+    q: str = "",
+    status_filter: str = "pending",
+):
     if denied := _denied(
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
@@ -460,9 +593,11 @@ def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: 
         select(StockInvoiceImport, Document, StockSupplier)
         .join(Document, Document.id == StockInvoiceImport.document_id)
         .outerjoin(StockSupplier, StockSupplier.id == StockInvoiceImport.supplier_id)
-        .order_by(StockInvoiceImport.created_at.desc(), StockInvoiceImport.id.desc())
+        .order_by(StockInvoiceImport.created_at.asc(), StockInvoiceImport.id.asc())
     )
-    if status_filter:
+    if status_filter in {"pending", "divergent", "conferred"}:
+        statement = statement.where(StockInvoiceImport.conference_status == status_filter)
+    elif status_filter not in {"", "all"}:
         statement = statement.where(StockInvoiceImport.status == status_filter)
     if q.strip():
         token = f"%{q.strip()}%"
@@ -496,6 +631,87 @@ def stock_invoices(request: Request, db: DbSession, q: str = "", status_filter: 
         "clean_stock_invoices.html",
         {**_page_context(request, db), "rows": rows, "q": q, "status_filter": status_filter},
     )
+
+
+@stock_router.get("/v2-clean/stock/invoices/{invoice_import_id}/modal", response_class=HTMLResponse)
+def stock_invoice_conference_modal(request: Request, invoice_import_id: int, db: DbSession):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        return HTMLResponse("Documento de Stock não encontrado.", status_code=404)
+    document = db.get(Document, invoice_import.document_id)
+    return templates.TemplateResponse(
+        request,
+        "_clean_stock_conference_modal.html",
+        {
+            **_page_context(request, db),
+            "invoice_import": invoice_import,
+            "document": document,
+            "supplier": db.get(StockSupplier, invoice_import.supplier_id)
+            if invoice_import.supplier_id
+            else None,
+            "comparison": conference_comparison(db, invoice_import),
+        },
+    )
+
+
+@stock_router.get("/v2-clean/stock/invoices/{invoice_import_id}/document")
+def stock_invoice_document(request: Request, invoice_import_id: int, db: DbSession):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    document = db.get(Document, invoice_import.document_id) if invoice_import else None
+    if not document:
+        return HTMLResponse("Documento de Stock não encontrado.", status_code=404)
+    try:
+        path = _authorized_document_path(document)
+    except StockDomainError as exc:
+        return HTMLResponse(str(exc), status_code=404)
+    original_name = Path(document.original_name or document.file_name or path.name).name
+    media_type = mimetypes.guess_type(original_name)[0] or "application/pdf"
+    response = FileResponse(path, media_type=media_type, filename=original_name)
+    response.headers["Content-Disposition"] = (
+        f'inline; filename="{original_name.replace(chr(34), "")}"'
+    )
+    return response
+
+
+@stock_router.post("/v2-clean/stock/invoices/{invoice_import_id}/conference")
+def stock_invoice_conference_action(
+    request: Request,
+    invoice_import_id: int,
+    db: DbSession,
+    action: str = Form(...),
+    notes: str = Form(""),
+    tolerance: str = Form("0.01"),
+):
+    if denied := _denied(request, db, "stock.conference", "stock.manage", "admin.manage"):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
+    try:
+        apply_conference_action(
+            db,
+            invoice_import=invoice_import,
+            command=StockConferenceAction(
+                action=action,
+                notes=notes or None,
+                tolerance=_parse_decimal(tolerance, "0.01"),
+            ),
+            user_id=_user_id(request),
+        )
+        db.commit()
+        notice = {"conference_saved": invoice_import.conference_status}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/invoices?{urlencode(notice)}", status_code=303)
 
 
 async def _import_stock_invoice_file(
@@ -610,7 +826,7 @@ async def _import_stock_invoice_file(
 async def stock_invoice_direct_import(
     request: Request,
     db: DbSession,
-    files: list[UploadFile] = File(..., alias="file"),
+    files: list[UploadFile] = File(..., alias="file"),  # noqa: B008
 ):
     if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
         return denied
@@ -839,7 +1055,8 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
         return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
     if invoice_import.status != "validated":
         return RedirectResponse(
-            f"/v2-clean/stock/invoices/{invoice_import_id}?error=Valida primeiro a conferência documental.",
+            f"/v2-clean/stock/invoices/{invoice_import_id}"
+            "?error=Valida primeiro a conferência documental.",
             status_code=303,
         )
     form = await request.form()
@@ -872,7 +1089,9 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
             selected_article_id = str(
                 article_ids[index] if index < len(article_ids) else ""
             ).strip()
-            article = db.get(StockArticle, int(selected_article_id)) if selected_article_id else None
+            article = (
+                db.get(StockArticle, int(selected_article_id)) if selected_article_id else None
+            )
             if not article:
                 internal_ref = str(
                     internal_refs[index] if index < len(internal_refs) else ""
@@ -882,7 +1101,8 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
                 ).strip()
                 if not internal_ref or not article_name:
                     raise StockDomainError(
-                        f"Linha {invoice_line.line_number}: seleciona um artigo ou indica referência e nome para o criar."
+                        f"Linha {invoice_line.line_number}: seleciona um artigo ou "
+                        "indica referência e nome para o criar."
                     )
                 article = db.scalar(
                     select(StockArticle).where(StockArticle.internal_ref == internal_ref)
@@ -902,9 +1122,7 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
                     db.add(article)
                     db.flush()
             invoice_line.article_id = article.id
-            divergence = str(
-                divergences[index] if index < len(divergences) else ""
-            ).strip() or None
+            divergence = str(divergences[index] if index < len(divergences) else "").strip() or None
             current = receipt_items.get(article.id)
             if current:
                 current["accepted_quantity"] += accepted_quantity
@@ -947,6 +1165,106 @@ async def stock_invoice_receive(request: Request, invoice_import_id: int, db: Db
     )
 
 
+@stock_router.get("/v2-clean/stock/orders", response_class=HTMLResponse)
+def stock_orders(
+    request: Request,
+    db: DbSession,
+    supplier_id: str = "",
+    receiving_status: str = "",
+):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    clean_supplier_id = int(supplier_id) if supplier_id.isdigit() else None
+    statement = (
+        select(StockPurchaseOrder, StockSupplier)
+        .join(StockSupplier, StockSupplier.id == StockPurchaseOrder.supplier_id)
+        .order_by(StockPurchaseOrder.effective_date.desc(), StockPurchaseOrder.id.desc())
+    )
+    if clean_supplier_id:
+        statement = statement.where(StockPurchaseOrder.supplier_id == clean_supplier_id)
+    if receiving_status in {"pending", "partial", "complete"}:
+        statement = statement.where(StockPurchaseOrder.receiving_status == receiving_status)
+    line_counts = {
+        order_id: count
+        for order_id, count in db.execute(
+            select(
+                StockPurchaseOrderLine.purchase_order_id,
+                func.count(StockPurchaseOrderLine.id),
+            ).group_by(StockPurchaseOrderLine.purchase_order_id)
+        ).all()
+    }
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_orders.html",
+        {
+            **_page_context(request, db),
+            "rows": db.execute(statement).all(),
+            "line_counts": line_counts,
+            "suppliers": db.scalars(
+                select(StockSupplier)
+                .where(StockSupplier.active.is_(True))
+                .order_by(StockSupplier.name)
+            ).all(),
+            "articles": db.scalars(
+                select(StockArticle)
+                .where(StockArticle.active.is_(True))
+                .order_by(StockArticle.internal_ref)
+            ).all(),
+            "locations": db.scalars(
+                select(StockLocation)
+                .where(StockLocation.active.is_(True))
+                .order_by(StockLocation.name)
+            ).all(),
+            "supplier_id": clean_supplier_id,
+            "receiving_status": receiving_status,
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/orders")
+async def stock_order_create(request: Request, db: DbSession):
+    if denied := _denied(request, db, "stock.orders.manage", "stock.manage", "admin.manage"):
+        return denied
+    form = await request.form()
+    try:
+        article_ids = form.getlist("article_id")
+        supplier_refs = form.getlist("supplier_ref")
+        quantities = form.getlist("quantity")
+        units = form.getlist("unit")
+        prices = form.getlist("unit_price")
+        location_ids = form.getlist("line_location_id")
+        lines = []
+        for index, raw_article_id in enumerate(article_ids):
+            if not raw_article_id:
+                continue
+            lines.append(
+                StockPurchaseOrderLineCreate(
+                    article_id=int(raw_article_id),
+                    supplier_ref=str(supplier_refs[index]).strip() or None,
+                    quantity=_parse_decimal(str(quantities[index])),
+                    unit=str(units[index]).strip() or "un.",
+                    unit_price=_parse_decimal(str(prices[index])),
+                    location_id=int(str(location_ids[index])),
+                )
+            )
+        command = StockPurchaseOrderCreate(
+            supplier_id=int(str(form.get("supplier_id"))),
+            effective_date=_parse_date(str(form.get("effective_date") or "")) or date.today(),
+            commercial_status=str(form.get("commercial_status") or "draft"),
+            notes=str(form.get("notes") or "") or None,
+            lines=lines,
+        )
+        order = create_purchase_order(db, command=command, user_id=_user_id(request))
+        db.commit()
+        notice = {"created": order.order_number}
+    except (ValueError, IndexError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/orders?{urlencode(notice)}", status_code=303)
+
+
 @stock_router.get("/v2-clean/stock/receipts", response_class=HTMLResponse)
 def stock_receipts(request: Request, db: DbSession):
     if denied := _denied(
@@ -957,7 +1275,7 @@ def stock_receipts(request: Request, db: DbSession):
         select(StockReceipt, StockLocation, StockSupplier)
         .join(StockLocation, StockLocation.id == StockReceipt.location_id)
         .outerjoin(StockSupplier, StockSupplier.id == StockReceipt.supplier_id)
-        .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
+        .order_by(StockReceipt.effective_date.desc(), StockReceipt.id.desc())
         .limit(200)
     ).all()
     linked_counts = {
@@ -991,12 +1309,7 @@ def stock_receipts(request: Request, db: DbSession):
                 .where(StockSupplier.active.is_(True))
                 .order_by(StockSupplier.name)
             ).all(),
-            "invoices": db.execute(
-                select(StockInvoiceImport, Document)
-                .join(Document, Document.id == StockInvoiceImport.document_id)
-                .order_by(StockInvoiceImport.invoice_date.desc().nullslast())
-                .limit(100)
-            ).all(),
+            "completed_count": len(receipt_rows),
         },
     )
 
@@ -1013,6 +1326,7 @@ async def stock_receipt_create(request: Request, db: DbSession):
         supplier_refs = form.getlist("supplier_ref")
         lots = form.getlist("lot")
         divergences = form.getlist("divergence_reason")
+        order_line_ids = form.getlist("purchase_order_line_id")
         lines = []
         for index, article_id in enumerate(article_ids):
             if not article_id:
@@ -1033,6 +1347,9 @@ async def stock_receipt_create(request: Request, db: DbSession):
                     divergence_reason=str(divergences[index])
                     if index < len(divergences) and divergences[index]
                     else None,
+                    purchase_order_line_id=int(str(order_line_ids[index]))
+                    if index < len(order_line_ids) and order_line_ids[index]
+                    else None,
                 )
             )
         command = StockReceiptCreate(
@@ -1040,6 +1357,15 @@ async def stock_receipt_create(request: Request, db: DbSession):
             supplier_id=int(str(form.get("supplier_id"))) if form.get("supplier_id") else None,
             source_type=str(form.get("source_type") or "manual"),
             source_reference=str(form.get("source_reference") or "") or None,
+            manual_reason=str(form.get("manual_reason") or "") or None,
+            effective_date=_parse_date(str(form.get("effective_date") or "")) or date.today(),
+            purchase_order_id=int(str(form.get("purchase_order_id")))
+            if form.get("purchase_order_id")
+            else None,
+            delivery_document_id=int(str(form.get("delivery_document_id")))
+            if form.get("delivery_document_id")
+            else None,
+            idempotency_key=str(form.get("idempotency_key") or "") or None,
             responsible_name=str(form.get("responsible_name") or "") or None,
             notes=str(form.get("notes") or "") or None,
             invoice_import_ids=[int(value) for value in form.getlist("invoice_import_ids")],
@@ -1063,7 +1389,7 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
     statement = (
         select(StockMovement, StockArticle)
         .join(StockArticle, StockArticle.id == StockMovement.article_id)
-        .order_by(StockMovement.occurred_at.desc(), StockMovement.id.desc())
+        .order_by(StockMovement.effective_date.desc(), StockMovement.id.desc())
         .limit(500)
     )
     if movement_type:
@@ -1091,6 +1417,16 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
             ).all(),
             "movement_type": movement_type,
             "q": q,
+            "location_names": {
+                item.id: item.name for item in db.scalars(select(StockLocation)).all()
+            },
+            "discrepancy_rows": db.execute(
+                select(StockDiscrepancy, StockArticle, StockLocation)
+                .join(StockArticle, StockArticle.id == StockDiscrepancy.article_id)
+                .join(StockLocation, StockLocation.id == StockDiscrepancy.location_id)
+                .where(StockDiscrepancy.status == "open")
+                .order_by(StockDiscrepancy.created_at, StockDiscrepancy.id)
+            ).all(),
         },
     )
 
@@ -1136,11 +1472,192 @@ def stock_current(request: Request, db: DbSession, q: str = "", location_id: str
             **_page_context(request, db),
             "rows": rows,
             "locations": db.scalars(
-                select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
+                select(StockLocation)
+                .where(StockLocation.active.is_(True))
+                .order_by(StockLocation.name)
             ).all(),
             "q": q,
             "location_id": clean_location_id,
         },
+    )
+
+
+@stock_router.get("/v2-clean/stock/inventory", response_class=HTMLResponse)
+def stock_inventory_sessions(request: Request, db: DbSession):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    rows = db.execute(
+        select(StockInventorySession, StockLocation)
+        .join(StockLocation, StockLocation.id == StockInventorySession.location_id)
+        .order_by(StockInventorySession.created_at.desc(), StockInventorySession.id.desc())
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_inventory.html",
+        {
+            **_page_context(request, db),
+            "rows": rows,
+            "locations": db.scalars(
+                select(StockLocation)
+                .where(StockLocation.active.is_(True))
+                .order_by(StockLocation.name)
+            ).all(),
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/inventory")
+def stock_inventory_start(
+    request: Request,
+    db: DbSession,
+    location_id: int = Form(...),
+    effective_date: str = Form(""),
+    notes: str = Form(""),
+    idempotency_key: str = Form(""),
+):
+    if denied := _denied(request, db, "stock.inventory.count", "stock.manage", "admin.manage"):
+        return denied
+    try:
+        inventory = create_inventory_session(
+            db,
+            command=StockInventorySessionCreate(
+                location_id=location_id,
+                effective_date=_parse_date(effective_date) or date.today(),
+                notes=notes or None,
+                idempotency_key=idempotency_key or None,
+            ),
+            user_id=_user_id(request),
+        )
+        db.commit()
+        return RedirectResponse(f"/v2-clean/stock/inventory/{inventory.id}", status_code=303)
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        return RedirectResponse(
+            f"/v2-clean/stock/inventory?{urlencode({'error': str(exc)})}", status_code=303
+        )
+
+
+@stock_router.get("/v2-clean/stock/inventory/{inventory_id}", response_class=HTMLResponse)
+def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSession):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
+    db_rows = db.execute(
+        select(StockInventoryCount, StockArticle)
+        .join(StockArticle, StockArticle.id == StockInventoryCount.article_id)
+        .where(StockInventoryCount.session_id == inventory.id)
+        .order_by(StockArticle.internal_ref)
+    ).all()
+    reveal = inventory.status in {"review", "completed"}
+    if reveal:
+        rows = [
+            {
+                "article_id": article.id,
+                "internal_ref": article.internal_ref,
+                "name": article.name,
+                "expected": count.expected_snapshot,
+                "counted": count.counted_quantity,
+                "difference": (count.counted_quantity or ZERO) - count.expected_snapshot,
+                "justification": count.justification,
+                "adjustment_movement_id": count.adjustment_movement_id,
+            }
+            for count, article in db_rows
+        ]
+    else:
+        # Deliberately build a redacted structure: expected/minimum/status never reach HTML.
+        rows = [
+            {
+                "article_id": article.id,
+                "internal_ref": article.internal_ref,
+                "name": article.name,
+                "counted": count.counted_quantity,
+            }
+            for count, article in db_rows
+        ]
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_inventory_session.html",
+        {
+            **_page_context(request, db),
+            "inventory": inventory,
+            "location": db.get(StockLocation, inventory.location_id),
+            "rows": rows,
+            "reveal": reveal,
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/inventory/{inventory_id}/counts")
+async def stock_inventory_save(request: Request, inventory_id: int, db: DbSession):
+    if denied := _denied(request, db, "stock.inventory.count", "stock.manage", "admin.manage"):
+        return denied
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
+    form = await request.form()
+    try:
+        article_ids = form.getlist("article_id")
+        quantities = form.getlist("counted_quantity")
+        counts = {
+            int(str(article_id)): _parse_decimal(str(quantities[index]))
+            for index, article_id in enumerate(article_ids)
+            if article_id and index < len(quantities) and str(quantities[index]).strip()
+        }
+        save_inventory_counts(
+            db,
+            inventory=inventory,
+            counts=counts,
+            user_id=_user_id(request),
+            close=str(form.get("action") or "save") == "close",
+        )
+        db.commit()
+        notice = {"saved": inventory.status}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(
+        f"/v2-clean/stock/inventory/{inventory_id}?{urlencode(notice)}", status_code=303
+    )
+
+
+@stock_router.post("/v2-clean/stock/inventory/{inventory_id}/confirm")
+async def stock_inventory_confirm(request: Request, inventory_id: int, db: DbSession):
+    if denied := _denied(request, db, "stock.inventory.confirm", "stock.manage", "admin.manage"):
+        return denied
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
+    form = await request.form()
+    try:
+        article_ids = form.getlist("article_id")
+        justifications = form.getlist("justification")
+        command = StockInventoryConfirm(
+            confirmations=[
+                StockInventoryJustification(
+                    article_id=int(str(article_id)),
+                    justification=str(justifications[index])
+                    if index < len(justifications)
+                    else None,
+                )
+                for index, article_id in enumerate(article_ids)
+            ]
+        )
+        confirm_inventory_session(
+            db, inventory=inventory, command=command, user_id=_user_id(request)
+        )
+        db.commit()
+        notice = {"confirmed": "1"}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(
+        f"/v2-clean/stock/inventory/{inventory_id}?{urlencode(notice)}", status_code=303
     )
 
 
@@ -1153,33 +1670,11 @@ def stock_current_count(
     counted_quantity: str = Form(...),
     reason: str = Form(...),
 ):
-    if denied := _denied(request, db, "stock.manage", "admin.manage"):
+    if denied := _denied(request, db, "stock.inventory.count", "stock.manage", "admin.manage"):
         return denied
-    try:
-        current = stock_balances(db, article_ids=[article_id]).get((article_id, location_id), ZERO)
-        counted = _parse_decimal(counted_quantity)
-        difference = counted - current
-        if difference == ZERO:
-            notice = {"confirmed": "unchanged"}
-        else:
-            movement = create_manual_movement(
-                db,
-                command=StockMovementCreate(
-                    article_id=article_id,
-                    movement_type="adjustment",
-                    quantity=difference,
-                    to_location_id=location_id,
-                    reason=f"Contagem física: {reason.strip()}",
-                    external_reference_type="stock_count",
-                ),
-                user_id=_user_id(request),
-            )
-            db.commit()
-            notice = {"confirmed": movement.id}
-    except (ValueError, StockDomainError) as exc:
-        db.rollback()
-        notice = {"error": str(exc)}
-    return RedirectResponse(f"/v2-clean/stock/current?{urlencode(notice)}", status_code=303)
+    return RedirectResponse(
+        "/v2-clean/stock/inventory?error=use_blind_inventory_session", status_code=303
+    )
 
 
 @stock_router.post("/v2-clean/stock/movements")
@@ -1193,6 +1688,7 @@ def stock_movement_create(
     from_location_id: int | None = Form(None),
     to_location_id: int | None = Form(None),
     reason: str = Form(...),
+    effective_date: str = Form(""),
 ):
     required = (
         ("stock.manage", "admin.manage")
@@ -1210,10 +1706,44 @@ def stock_movement_create(
             from_location_id=from_location_id,
             to_location_id=to_location_id,
             reason=reason,
+            effective_date=_parse_date(effective_date) or date.today(),
         )
         movement = create_manual_movement(db, command=command, user_id=_user_id(request))
         db.commit()
         notice = {"created": str(movement.id)}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/movements?{urlencode(notice)}", status_code=303)
+
+
+@stock_router.post("/v2-clean/stock/discrepancies/{discrepancy_id}/regularize")
+def stock_discrepancy_regularize(
+    request: Request,
+    discrepancy_id: int,
+    db: DbSession,
+    adjustment_quantity: str = Form(...),
+    reason: str = Form(...),
+    effective_date: str = Form(""),
+):
+    if denied := _denied(request, db, "stock.inventory.confirm", "stock.manage", "admin.manage"):
+        return denied
+    discrepancy = db.get(StockDiscrepancy, discrepancy_id)
+    if not discrepancy:
+        return RedirectResponse("/v2-clean/stock/movements?error=missing", status_code=303)
+    try:
+        regularize_discrepancy(
+            db,
+            discrepancy=discrepancy,
+            command=StockDiscrepancyRegularize(
+                adjustment_quantity=_parse_decimal(adjustment_quantity),
+                reason=reason,
+                effective_date=_parse_date(effective_date) or date.today(),
+            ),
+            user_id=_user_id(request),
+        )
+        db.commit()
+        notice = {"regularized": str(discrepancy.id)}
     except (ValueError, StockDomainError) as exc:
         db.rollback()
         notice = {"error": str(exc)}

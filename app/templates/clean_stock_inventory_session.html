@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu="stock" %}{% include "_sidebar.html" %}
+  <main class="content clean-content stock-page">
+    {% set stock_nav="inventory" %}{% include "_clean_stock_nav.html" %}
+    <header class="stock-header compact-header"><div><p class="eyebrow">{{ location.name }} · {{ inventory.effective_date.strftime('%d/%m/%Y') }}</p><h1>{{ 'Revisão da contagem' if reveal else 'Contagem cega' }}</h1><p>{{ 'Confirma as diferenças e respetivas justificações.' if reveal else 'Durante a contagem só são apresentados artigo, referência e quantidade contada.' }}</p></div><a class="button-link secondary-link" href="/v2-clean/stock/inventory">Voltar</a></header>
+    {% if request.query_params.get('saved') %}<div class="stock-notice success">Rascunho guardado.</div>{% endif %}
+    {% if request.query_params.get('confirmed') %}<div class="stock-notice success">Confirmação concluída; acertos imutáveis criados apenas para diferenças.</div>{% endif %}
+    {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
+    {% if not reveal %}
+      <form method="post" action="/v2-clean/stock/inventory/{{ inventory.id }}/counts">
+        <section class="stock-card flat-card"><div class="stock-table-wrap"><table class="stock-table stock-table-compact blind-count-table"><thead><tr><th>Referência</th><th>Artigo</th><th>Contado</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.internal_ref }}</td><td>{{ row.name }}</td><td><input type="hidden" name="article_id" value="{{ row.article_id }}"><input name="counted_quantity" type="number" min="0" step="1" value="{{ row.counted|int if row.counted is not none else '' }}" required aria-label="Quantidade contada para {{ row.internal_ref }}"></td></tr>{% else %}<tr><td colspan="3" class="stock-empty">Não existem artigos ativos no snapshot.</td></tr>{% endfor %}</tbody></table></div></section>
+        {% if can_count_inventory %}<div class="stock-actions sticky-actions"><button name="action" value="save" class="secondary">Guardar rascunho</button><button name="action" value="close">Fechar contagem</button></div>{% endif %}
+      </form>
+    {% else %}
+      <form method="post" action="/v2-clean/stock/inventory/{{ inventory.id }}/confirm">
+        <section class="stock-card flat-card"><div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Referência</th><th>Artigo</th><th>Esperado</th><th>Contado</th><th>Diferença</th><th>Justificação humana</th></tr></thead><tbody>{% for row in rows %}<tr class="{{ 'stock-row-divergent' if row.difference else '' }}"><td>{{ row.internal_ref }}</td><td>{{ row.name }}</td><td>{{ row.expected|int }}</td><td>{{ row.counted|int }}</td><td><strong>{{ '%+d'|format(row.difference|int) }}</strong></td><td><input type="hidden" name="article_id" value="{{ row.article_id }}"><input name="justification" value="{{ row.justification or '' }}" {% if row.difference and inventory.status!='completed' %}required{% endif %} {% if inventory.status=='completed' %}readonly{% endif %} placeholder="Obrigatória quando há diferença"></td></tr>{% endfor %}</tbody></table></div></section>
+        {% if inventory.status=='review' and can_confirm_inventory %}<div class="stock-actions sticky-actions"><button>Confirmar acertos</button></div>{% endif %}
+      </form>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

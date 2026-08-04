@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu="stock" %}{% include "_sidebar.html" %}
+  <main class="content clean-content stock-page">
+    {% set stock_nav="inventory" %}{% include "_clean_stock_nav.html" %}
+    <header class="stock-header compact-header"><div><p class="eyebrow">Inventário cego</p><h1>Sessões de contagem</h1><p>Rascunho, retoma, fecho e confirmação humana auditada.</p></div>{% if can_count_inventory %}<button class="button-link" onclick="document.getElementById('new-inventory').showModal()">Nova sessão</button>{% endif %}</header>
+    {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
+    <section class="stock-card flat-card"><div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Sessão</th><th>Local</th><th>Data efetiva</th><th>Fase</th><th>Ação</th></tr></thead><tbody>{% for inventory,location in rows %}<tr><td>#{{ inventory.id }}</td><td>{{ location.name }}</td><td>{{ inventory.effective_date.strftime('%d/%m/%Y') }}</td><td><span class="stock-badge {{ 'success' if inventory.status=='completed' else 'warning' }}">{{ {'draft':'Rascunho','counting':'Em contagem','review':'A rever','completed':'Concluída'}.get(inventory.status,inventory.status) }}</span></td><td><a href="/v2-clean/stock/inventory/{{ inventory.id }}">{{ 'Ver' if inventory.status=='completed' else 'Retomar' }}</a></td></tr>{% else %}<tr><td colspan="5" class="stock-empty">Sem sessões de inventário.</td></tr>{% endfor %}</tbody></table></div></section>
+    {% if can_count_inventory %}<dialog id="new-inventory" class="stock-dialog"><form method="post" action="/v2-clean/stock/inventory"><h2>Nova sessão cega</h2><label>Local<select name="location_id" required><option value="">Selecionar</option>{% for item in locations %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Data efetiva<input name="effective_date" type="date"></label><label>Notas<textarea name="notes"></textarea></label><input type="hidden" name="idempotency_key" id="inventory-idempotency"><div class="stock-actions"><button>Criar snapshot</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div></form></dialog>{% endif %}
+  </main>
+</div>
+<script>document.getElementById('inventory-idempotency')?.setAttribute('value',crypto.randomUUID?crypto.randomUUID():String(Date.now()));</script>
+{% endblock %}

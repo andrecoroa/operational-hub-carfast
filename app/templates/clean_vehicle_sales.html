@@ -47,11 +47,15 @@
         <label class="sale-filter-wide">Matrícula, Unit ou modelo
           <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar viatura">
         </label>
-        <label>Estado de venda
-          <select name="sale_status">
-            <option value="">Todos</option>
+        <label>Marca <small>seleção múltipla</small>
+          <select name="brand" multiple size="3">
+            {% for value in brand_options %}<option value="{{ value }}" {% if value in filters.brand %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Estado de venda <small>seleção múltipla</small>
+          <select name="sale_status" multiple size="3">
             {% for code, label in sale_statuses %}
-              <option value="{{ code }}" {% if filters.sale_status == code %}selected{% endif %}>{{ label }}</option>
+              <option value="{{ code }}" {% if code in filters.sale_status %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -63,19 +67,17 @@
             {% endfor %}
           </select>
         </label>
-        <label>Estado da viatura
-          <select name="vehicle_state">
-            <option value="">Livre, IMPRO ou Contrato</option>
+        <label>Estado da viatura <small>seleção múltipla</small>
+          <select name="vehicle_state" multiple size="3">
             {% for code, label in vehicle_states %}
-              <option value="{{ code }}" {% if filters.vehicle_state == code %}selected{% endif %}>{{ label }}</option>
+              <option value="{{ code }}" {% if code in filters.vehicle_state %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
-        <label>Grupo Rentway
-          <select name="rentway_group">
-            <option value="">Todos</option>
+        <label>Grupo Rentway <small>seleção múltipla</small>
+          <select name="rentway_group" multiple size="3">
             {% for value in group_options %}
-              <option value="{{ value }}" {% if filters.rentway_group == value %}selected{% endif %}>{{ value }}</option>
+              <option value="{{ value }}" {% if value in filters.rentway_group %}selected{% endif %}>{{ value }}</option>
             {% endfor %}
           </select>
         </label>
@@ -153,28 +155,31 @@
             <thead>
               <tr>
                 <th><input type="checkbox" data-sale-select-all aria-label="Selecionar todas as viaturas visíveis"></th>
-                <th>Viatura</th><th>Situação</th><th>Financ.</th><th>Valores</th><th>Preço proposto</th><th></th>
+                <th>Viatura</th><th>Situação</th><th>Financiamento</th><th>Valores financeiros</th><th>Venda</th><th>Operação</th><th>Mercado</th>
               </tr>
             </thead>
             <tbody>
               {% for row in rows %}
                 <tr>
                   <td><input type="checkbox" name="vehicle_ids" value="{{ row.vehicle.id }}" data-sale-row-checkbox aria-label="Selecionar {{ row.vehicle.plate or row.vehicle.id }}"></td>
-                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}{% if row.vehicle_state == "contract" %} · Dev. {{ row.return_on_display }}{% endif %}</small></td>
+                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small><small>{{ row.km|int if row.km is not none else '-' }} KM</small></td>
                   <td><div class="sale-situation-stack"><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span><span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></div></td>
-                  <td title="{{ row.finance_entity or 'Sem financiamento' }}">{{ row.finance_entity_display }}</td>
-                  <td class="sale-value-stack sale-value-stack-five">
+                  <td title="{{ row.finance_entity or 'Sem financiamento' }}"><div class="sale-finance-stack"><strong>{{ row.finance_entity_display }}</strong><small>{{ row.contract_number or 'Sem contrato' }}</small></div></td>
+                  <td><div class="sale-value-stack sale-value-stack-three">
                     <span{% if row.cost_missing_reason %} title="{{ row.cost_missing_reason }}"{% endif %}><small>Custo</small>{{ money(row.cost) }}</span>
-                    <span><small>Em dívida</small>{{ money(row.debt) }}</span>
+                    <span><small>Financiamento</small>{{ money(row.debt) }}</span>
                     <span class="{% if row.financial_margin is not none %}{% if row.financial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}"><small>Margem</small>{{ money(row.financial_margin) }}</span>
+                  </div></td>
+                  <td><div class="sale-value-stack sale-value-stack-three">
                     <span><small>Comércio</small>{{ money(row.market_trade) }}</span>
                     <span><small>Cliente final</small>{{ money(row.market_retail) }}</span>
-                  </td>
-                  <td>{{ money(row.selling_price) }}</td>
-                  <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></td>
+                    <span class="{% if row.commercial_margin is not none %}{% if row.commercial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}"><small>Margem comercial</small>{{ money(row.commercial_margin) }}</span>
+                  </div></td>
+                  <td><div class="sale-operation-stack"><span><small>Cliente / localização</small>{{ row.client or '-' }}{% if row.location %} · {{ row.location }}{% endif %}</span><span><small>Avaliação</small>{{ row.market_valued_on.strftime('%d/%m/%Y') if row.market_valued_on else '-' }}</span><span><small>Devolução</small>Dev. {{ row.return_on_display }}</span></div></td>
+                  <td><div class="sale-market-stack"><span><small>Preço proposto</small><strong>{{ money(row.selling_price) }}</strong></span><span><small>Origem</small>{{ row.profile.market_value_source if row.profile and row.profile.market_value_source else '-' }}</span><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}?return_to={{ list_return_url|urlencode }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></div></td>
                 </tr>
               {% else %}
-                <tr><td colspan="7" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
+                <tr><td colspan="8" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
               {% endfor %}
             </tbody>
           </table>

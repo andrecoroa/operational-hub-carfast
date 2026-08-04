@@ -13,7 +13,7 @@
       <div class="clean-header-actions clean-header-actions-strong">
         <a class="button-link secondary-link" href="/v2-clean/fleet/sales-access">Acessos ao portal</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
-        <a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar à seleção</a>
+        <a class="button-link secondary-link" href="{{ return_to }}">Voltar à seleção</a>
       </div>
     </header>
 
@@ -35,6 +35,7 @@
       <section class="clean-panel clean-card-wide">
         <div class="table-heading flat-heading"><div><p class="eyebrow">Preparação</p><h3>Ficha comercial interna</h3><p>As notas e valores abaixo não são alterados pelas importações da frota.</p></div></div>
         <form method="post" action="/v2-clean/fleet/sales/{{ vehicle.id }}" class="sale-profile-form">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
           <label>Estado da venda
             <select name="status">{% for code, label in sale_statuses %}<option value="{{ code }}" {% if profile.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
           </label>

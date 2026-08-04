@@ -24975,3 +24975,153 @@ body.clean-task-preview-open {
     min-width: auto;
   }
 }
+
+/* Rentway fleet table and the compact sale matrix. */
+.fleet-table-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fleet-table-filters label,
+.fleet-table-filters fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.fleet-table-filters label { display: flex; flex-direction: column; gap: 5px; }
+.fleet-table-filters label small { color: var(--muted); font-weight: 500; }
+.fleet-table-filters input,
+.fleet-table-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 10px;
+}
+.fleet-table-filters select[multiple] { min-height: 78px; padding: 3px; }
+.fleet-filter-search { grid-column: span 2; }
+.fleet-table-filters legend { margin-bottom: 5px; }
+.fleet-table-filters fieldset > span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+.fleet-table-filters fieldset em { color: var(--muted); font-style: normal; }
+.fleet-filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+  gap: 8px;
+}
+.fleet-table-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
+.fleet-compact-table { width: 100%; min-width: 1040px; table-layout: fixed; border-collapse: collapse; font-size: .74rem; }
+.fleet-compact-table th { padding: 9px 8px; background: #f8fafc; color: #475467; text-align: left; white-space: nowrap; }
+.fleet-compact-table td { height: 54px; padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+.fleet-compact-table tbody tr:target { background: #eef6ff; box-shadow: inset 3px 0 #2474c6; }
+.fleet-compact-table th:nth-child(1) { width: 10%; }
+.fleet-compact-table th:nth-child(2) { width: 15%; }
+.fleet-compact-table th:nth-child(3) { width: 10%; }
+.fleet-compact-table th:nth-child(4) { width: 8%; }
+.fleet-compact-table th:nth-child(5) { width: 11%; }
+.fleet-compact-table th:nth-child(6) { width: 15%; }
+.fleet-compact-table th:nth-child(7),
+.fleet-compact-table th:nth-child(8) { width: 9%; }
+.fleet-compact-table th:nth-child(9) { width: 13%; }
+.fleet-compact-table td strong,
+.fleet-compact-table td small { display: block; }
+.fleet-compact-table td small { margin-top: 2px; color: var(--muted); }
+.fleet-vehicle-link { color: var(--blue-dark); }
+.fleet-alert-pill { display: inline-flex; flex-direction: column; gap: 1px; border-radius: 7px; padding: 5px 7px; background: #edf9f4; color: #087f5b; }
+.fleet-alert-pill.warn { background: #fff8e8; color: #b54708; }
+.fleet-alert-pill.danger { background: #fff1f0; color: #b42318; }
+.clean-maintenance-plan-preview iframe { width: 100%; min-height: 560px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+.clean-maintenance-version-list { display: grid; gap: 7px; margin: 10px 0 0; padding-left: 22px; }
+.doc-arch-change-list { display: grid; gap: 4px; margin: 8px 0 0; padding-left: 18px; }
+.doc-arch-change-list span { display: block; color: var(--muted); }
+
+.sale-filter-grid select[multiple] { min-height: 78px; padding: 3px; }
+.sale-table { min-width: 1000px; font-size: .71rem; }
+.sale-table th:first-child { width: 3%; }
+.sale-table th:nth-child(2) { width: 15%; }
+.sale-table th:nth-child(3) { width: 9%; }
+.sale-table th:nth-child(4) { width: 10%; }
+.sale-table th:nth-child(5), .sale-table th:nth-child(6) { width: 13%; }
+.sale-table th:nth-child(7) { width: 22%; }
+.sale-table th:nth-child(8) { width: 15%; }
+.sale-table td { height: 82px; padding: 7px 7px; white-space: normal; overflow-wrap: anywhere; }
+.sale-table th { white-space: normal; line-height: 1.15; }
+.sale-value-stack-three { grid-template-columns: 1fr; gap: 3px; }
+.sale-value-stack-three > span,
+.sale-operation-stack > span,
+.sale-market-stack > span { display: block; min-width: 0; }
+.sale-value-stack-three > span { display: flex; justify-content: space-between; gap: 5px; }
+.sale-value-stack-three small,
+.sale-operation-stack small,
+.sale-market-stack small,
+.sale-finance-stack small { display: block; color: var(--muted); font-size: .62rem; font-weight: 700; }
+.sale-operation-stack,
+.sale-market-stack,
+.sale-finance-stack { display: grid; align-content: center; gap: 4px; min-width: 0; }
+.sale-operation-stack small,
+.sale-market-stack small { display: inline; margin-right: 4px; }
+.sale-operation-stack > span,
+.sale-market-stack > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sale-operation-stack > span:first-child,
+.sale-market-stack > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+.sale-market-stack .compact-link { justify-self: start; }
+
+@media (max-width: 900px) {
+  .fleet-table-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fleet-filter-search { grid-column: span 2; }
+}
+
+@media (max-width: 640px) {
+  .fleet-table-filters { grid-template-columns: 1fr; }
+  .fleet-filter-search { grid-column: auto; }
+  .fleet-filter-actions { justify-content: stretch; }
+  .fleet-filter-actions > * { flex: 1; text-align: center; }
+  .fleet-table-scroll { overflow: visible; border: 0; }
+  .fleet-compact-table,
+  .fleet-compact-table tbody,
+  .fleet-compact-table tr,
+  .fleet-compact-table td { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
+  .fleet-compact-table thead { display: none; }
+  .fleet-compact-table tr { margin-bottom: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+  .fleet-compact-table td { display: grid; grid-template-columns: 108px minmax(0, 1fr); min-height: 0; height: auto; padding: 5px 0; border: 0; }
+  .fleet-compact-table td::before { color: var(--muted); font-size: .68rem; font-weight: 800; }
+  .fleet-compact-table td:nth-child(1)::before { content: "Viatura"; }
+  .fleet-compact-table td:nth-child(2)::before { content: "Marca / modelo"; }
+  .fleet-compact-table td:nth-child(3)::before { content: "Categoria"; }
+  .fleet-compact-table td:nth-child(4)::before { content: "Combustível"; }
+  .fleet-compact-table td:nth-child(5)::before { content: "Estado Rentway"; }
+  .fleet-compact-table td:nth-child(6)::before { content: "Cliente"; }
+  .fleet-compact-table td:nth-child(7)::before { content: "Devolução"; }
+  .fleet-compact-table td:nth-child(8)::before { content: "IPO"; }
+  .fleet-compact-table td:nth-child(9)::before { content: "Alertas"; }
+  .clean-maintenance-plan-preview iframe { min-height: 420px; }
+
+  .sale-table-scroll { overflow: visible; }
+  .sale-table,
+  .sale-table tbody,
+  .sale-table tr,
+  .sale-table td { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
+  .sale-table thead { display: none; }
+  .sale-table tbody tr { position: relative; margin-bottom: 12px; padding: 10px 10px 10px 38px; border: 1px solid var(--line); border-radius: 10px; box-shadow: none; background: #fff; }
+  .sale-table td { min-height: 0; height: auto; padding: 6px 0; border: 0; }
+  .sale-table td:first-child { position: absolute; top: 12px; left: 11px; width: auto; }
+  .sale-value-stack-three > span { max-width: 250px; }
+  .sale-operation-stack,
+  .sale-market-stack { gap: 6px; }
+  .sale-table-panel { overflow: visible; background: transparent; border: 0; }
+}

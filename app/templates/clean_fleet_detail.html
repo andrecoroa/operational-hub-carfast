@@ -68,7 +68,7 @@
         </button>
         <button class="clean-substep-card" type="button" data-target="financeiro">
           <span><b>Financeiro</b><em>Custo, dívida e entidade</em></span>
-          <strong>{{ ctx.finance.debt_value }}</strong>
+          <strong>{{ ctx.finance.debt_with_vat }}</strong>
         </button>
         <button class="clean-substep-card" type="button" data-target="historico">
           <span><b>Documentação / histórico</b><em>Documentos, tarefas, auditorias</em></span>
@@ -83,12 +83,13 @@
             <div><span>Data matrícula</span><strong>{{ ctx.dates.registration }}</strong></div>
             <div><span>Data compra / início CarFast</span><strong>{{ ctx.dates.purchase }}</strong></div>
             <div><span>Início real</span><strong>{{ ctx.dates.real_start }}</strong></div>
-            <div><span>Categoria para regras</span><strong>{{ ctx.rules.rule_category_label }}</strong></div>
+            <div><span>Categoria</span><strong>{{ ctx.rules.rule_category_label }}</strong></div>
             <div><span>Cor</span><strong>{{ ctx.identity.colour }}</strong></div>
             <div><span>Combustível</span><strong>{{ ctx.identity.fuel }}</strong></div>
-            <div><span>Categoria / grupo Rentway</span><strong>{{ ctx.identity.category }}{% if ctx.identity.groupid != '-' and ctx.identity.groupid != ctx.identity.category %} · {{ ctx.identity.groupid }}{% endif %}</strong></div>
+            <div data-legacy-label="Categoria / grupo Rentway"><span>Grupo Rentway</span><strong>{{ ctx.identity.groupid }}</strong></div>
             <div><span>Lugares</span><strong>{{ ctx.identity.seats }}</strong></div>
             <div><span>Estado Rentway</span><strong>{{ ctx.identity.rentway_status }}</strong></div>
+            <div><span>Cliente atual</span><strong>{{ ctx.status.client }}</strong></div>
             <div><span>Devolução prevista</span><strong>{{ ctx.dates.expected_return }}</strong></div>
             <div><span>IPO Rentway</span><strong>{{ ctx.dates.rentway_ipo }}</strong></div>
             <div><span>IPO calculada</span><strong>{{ ctx.dates.calculated_ipo }}</strong></div>
@@ -104,7 +105,10 @@
         </article>
 
         <article class="clean-substep-panel" id="clean-substep-manutencao">
-          <div class="table-heading flat-heading"><div><p class="eyebrow">Manutenção</p><h3>Rentway vs cálculo</h3><p>Leitura rápida das datas e quilómetros que podem gerar divergências.</p></div></div>
+          <div class="table-heading flat-heading">
+            <div><p class="eyebrow">Manutenção</p><h3>Rentway vs cálculo</h3><p>Leitura rápida das datas, quilómetros e plano permanente da viatura.</p></div>
+            <a class="button-link secondary-link" href="/v2-clean/documents/new?vehicle_id={{ vehicle.id }}&plate={{ ctx.identity.plate|urlencode }}&classification=fleet&document_type=maintenance_plan&title={{ 'Plano de manutenção'|urlencode }}&return_url={{ ('/v2-clean/fleet/' ~ vehicle.id)|urlencode }}">Anexar plano de manutenção</a>
+          </div>
           <div class="clean-detail-facts">
             <div><span>Último serviço Rentway</span><strong>{{ ctx.maintenance.last_rentway_km }} km</strong></div>
             <div><span>Próximo serviço Rentway</span><strong>{{ ctx.maintenance.next_rentway_km }} km</strong></div>
@@ -112,12 +116,33 @@
             <div><span>Data calculada</span><strong>{{ ctx.dates.service_calculated }}</strong></div>
             <div><span>Estado</span><strong>{{ ctx.maintenance.status }}</strong></div>
           </div>
+          {% if maintenance_plan %}
+            <details class="clean-inline-details clean-maintenance-plan-preview" data-lazy-document>
+              <summary>Ver plano de manutenção · versão {{ maintenance_plans|length }}</summary>
+              <iframe title="Plano de manutenção" data-src="/v2-clean/documents/{{ maintenance_plan.id }}/file?inline=1"></iframe>
+            </details>
+            {% if maintenance_plans|length > 1 %}
+              <details class="clean-inline-details">
+                <summary>Histórico de versões ({{ maintenance_plans|length }})</summary>
+                <ol class="clean-maintenance-version-list">
+                  {% for plan in maintenance_plans %}
+                    <li><a href="/v2-clean/documents/{{ plan.id }}?return_to={{ ('/v2-clean/fleet/' ~ vehicle.id)|urlencode }}">Versão {{ maintenance_plans|length - loop.index0 }} · {{ plan.created_at.strftime('%d/%m/%Y %H:%M') if plan.created_at else '-' }} · {{ plan.original_name }}</a></li>
+                  {% endfor %}
+                </ol>
+              </details>
+            {% endif %}
+          {% else %}
+            <p class="muted">Ainda não existe um plano de manutenção associado a esta viatura.</p>
+          {% endif %}
         </article>
 
         <article class="clean-substep-panel" id="clean-substep-financeiro">
           <div class="table-heading flat-heading">
             <div><p class="eyebrow">Financeiro</p><h3>Plano financeiro</h3><p>Resumo do plano associado à viatura, com valores apresentados com IVA quando disponível na fonte.</p></div>
-            <a class="button-link secondary-link" href="/v2-clean/documentation/financial-plans">Importar planos</a>
+            <div class="clean-header-actions">
+              {% if ctx.finance.installment_count %}<button type="button" class="button-link secondary-link" data-open-financial-plan>Ver detalhe do plano</button>{% endif %}
+              <a class="button-link secondary-link" href="/v2-clean/documentation/financial-plans">Importar planos</a>
+            </div>
           </div>
           <div class="clean-detail-facts clean-finance-facts">
             <div><span>Entidade financeira</span><strong>{{ ctx.finance.finance_entity }}</strong></div>
@@ -127,13 +152,14 @@
             <div><span>Prestação / renda</span><strong>{{ ctx.finance.installment_with_vat }}</strong><small>Com IVA quando esse valor existe; caso contrário, mostra a renda da fonte.</small></div>
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
             <div><span>Capital em dívida com IVA</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo atual indicado pela entidade financeira, sem nova aplicação de IVA.</small></div>
-            <div><span>Data do valor</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Não fornecida quando a fonte não indica a data do saldo.</small></div>
+            <div><span>Data do valor do capital em dívida</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Data do saldo indicada pela entidade financeira.</small></div>
             <div><span>Custo inicial com IVA</span><strong>{{ ctx.finance.initial_cost_with_vat }}</strong><small>Valor de aquisição Rentway com IVA.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>
             <div class="clean-finance-current-cost"><span>Valor atual com IVA</span><strong>{{ ctx.finance.current_cost_with_vat }}</strong><small>Custo inicial com IVA menos os meses amortizados, num total de 96 meses.</small></div>
+            <div class="clean-finance-current-cost"><span>Data do valor atual</span><strong>{{ ctx.finance.current_value_date }}</strong><small>Última amortização usada no cálculo do valor atual.</small></div>
           </div>
           {% if ctx.finance.installment_count %}
-            <details class="clean-inline-details">
+            <details class="clean-inline-details" id="financial-plan-preview">
               <summary>Ver plano completo ({{ ctx.finance.installment_count }} mensalidades)</summary>
               <div class="clean-table-wrap">
                 <table class="clean-table">
@@ -209,6 +235,19 @@
         workbench.querySelectorAll(".clean-substep-card").forEach((item) => item.classList.toggle("active", item === button));
         workbench.querySelectorAll(".clean-substep-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `clean-substep-${target}`));
       });
+    });
+    document.querySelectorAll("[data-lazy-document]").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        const frame = details.querySelector("iframe[data-src]");
+        if (frame && !frame.getAttribute("src")) frame.src = frame.dataset.src;
+      }, { once: true });
+    });
+    document.querySelector("[data-open-financial-plan]")?.addEventListener("click", () => {
+      const plan = document.getElementById("financial-plan-preview");
+      if (!plan) return;
+      plan.open = true;
+      plan.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   })();
 </script>

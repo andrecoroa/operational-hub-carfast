@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 
 import app.web.router as base_router
 from app.core.config import settings
@@ -232,21 +232,16 @@ def _sale_row(
     manual: dict[str, Any],
     profile: VehicleSaleProfile | None,
     financial_plan: VehicleFinancialPlan | None,
+    installments: list[VehicleFinancialPlanInstallment] | None = None,
 ) -> dict[str, Any]:
-    commercial = base_router.rentway_commercial_context(snapshot)
-    vehicle_context = base_router.rentway_vehicle_context(snapshot)
-    finance = base_router.current_cost_from_snapshot(snapshot)
-    cost = decimal_value(
-        base_router.current_value_with_financial_amortization(
-            finance.get("initial_cost_with_vat"),
-            financial_plan.initial_amount if financial_plan else None,
-            financial_plan.outstanding_amount if financial_plan else None,
-            finance.get("current_cost_with_vat"),
-            financial_plan.start_date if financial_plan else None,
-            financial_plan.amount_reference_date if financial_plan else None,
-            finance.get("amortization_month"),
-        )
+    commercial = base_router.rentway_commercial_context(snapshot, vehicle)
+    vehicle_context = base_router.rentway_vehicle_context(snapshot, vehicle)
+    financial_values = base_router.vehicle_financial_values(
+        snapshot,
+        financial_plan,
+        installments or [],
     )
+    cost = decimal_value(financial_values.get("current_value_with_vat"))
     # A financial margin only exists when an active financial plan supplies a balance.
     # Legacy manual debt fields must not make an unfinanced vehicle look financed.
     debt = decimal_value(financial_plan.outstanding_amount) if financial_plan else None
@@ -284,7 +279,7 @@ def _sale_row(
         "cost": cost,
         "cost_missing_reason": (
             "Sem custo de aquisição Rentway"
-            if finance.get("initial_cost_with_vat") is None
+            if financial_values.get("initial_cost_with_vat") is None
             else "Sem data de compra para calcular a amortização"
         )
         if cost is None
@@ -296,6 +291,12 @@ def _sale_row(
         "market_retail": market_retail,
         "selling_price": decimal_value(profile.selling_price) if profile else None,
         "km": decimal_value(commercial.get("km")),
+        "client": str(commercial.get("client") or "").strip(),
+        "location": str(commercial.get("rental_station") or "").strip(),
+        "contract_number": financial_plan.contract_number if financial_plan else "",
+        "current_value_date": financial_values.get("current_value_date"),
+        "debt_reference_date": financial_values.get("debt_reference_date"),
+        "market_valued_on": profile.market_valued_on if profile else None,
         "sale_blocked": bool(manual.get("sale_blocked")),
         "sale_notes": profile.sale_notes if profile else "",
         "money": money,
@@ -314,13 +315,16 @@ def _active_financial_plan(db, vehicle_id: int) -> VehicleFinancialPlan | None:
     )
 
 
-def _load_sale_rows(db) -> list[dict[str, Any]]:
-    vehicles = db.scalars(
-        select(Vehicle)
+def _load_sale_rows(db, vehicle_statement=None) -> list[dict[str, Any]]:
+    statement = vehicle_statement
+    if statement is None:
+        statement = (
+            select(Vehicle)
         .where(Vehicle.active.is_(True))
         .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
         .limit(5000)
-    ).all()
+        )
+    vehicles = db.scalars(statement).all()
     vehicle_ids = [vehicle.id for vehicle in vehicles]
     if not vehicle_ids:
         return []
@@ -349,6 +353,23 @@ def _load_sale_rows(db) -> list[dict[str, Any]]:
         .order_by(VehicleFinancialPlan.updated_at.desc(), VehicleFinancialPlan.id.desc())
     ).all():
         financial_plans.setdefault(plan.vehicle_id, plan)
+    installments_by_plan: dict[int, list[VehicleFinancialPlanInstallment]] = {
+        plan.id: [] for plan in financial_plans.values()
+    }
+    if installments_by_plan:
+        for installment in db.scalars(
+            select(VehicleFinancialPlanInstallment)
+            .where(
+                VehicleFinancialPlanInstallment.financial_plan_id.in_(
+                    installments_by_plan
+                )
+            )
+            .order_by(
+                VehicleFinancialPlanInstallment.financial_plan_id,
+                VehicleFinancialPlanInstallment.period_number,
+            )
+        ).all():
+            installments_by_plan[installment.financial_plan_id].append(installment)
     manual_by_vehicle: dict[int, dict[str, Any]] = {vehicle_id: {} for vehicle_id in vehicle_ids}
     for field in db.scalars(
         select(VehicleManualField).where(
@@ -364,6 +385,9 @@ def _load_sale_rows(db) -> list[dict[str, Any]]:
             manual_by_vehicle.get(vehicle.id, {}),
             profiles.get(vehicle.id),
             financial_plans.get(vehicle.id),
+            installments_by_plan.get(financial_plans[vehicle.id].id, [])
+            if vehicle.id in financial_plans
+            else [],
         )
         for vehicle in vehicles
     ]
@@ -436,24 +460,21 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
         snapshot = snapshots.get(vehicle.id)
         plan = active_plans.get(vehicle.id)
         manual = base_router.vehicle_manual_values(db, vehicle.id)
-        commercial = base_router.rentway_commercial_context(snapshot)
+        commercial = base_router.rentway_commercial_context(snapshot, vehicle)
         declared_entity = str(
             (plan.finance_entity if plan else None)
             or manual.get("finance_entity")
             or commercial.get("finance_entity")
             or ""
         ).strip()
-        rentway_cost = base_router.current_cost_from_snapshot(snapshot)
-        initial_with_vat = rentway_cost.get("initial_cost_with_vat")
-        current_with_vat = base_router.current_value_with_financial_amortization(
-            initial_with_vat,
-            plan.initial_amount if plan else None,
-            plan.outstanding_amount if plan else None,
-            rentway_cost.get("current_cost_with_vat"),
-            plan.start_date if plan else None,
-            plan.amount_reference_date if plan else None,
-            rentway_cost.get("amortization_month"),
+        installments = installments_by_plan.get(plan.id, []) if plan else []
+        financial_values = base_router.vehicle_financial_values(
+            snapshot,
+            plan,
+            installments,
         )
+        initial_with_vat = financial_values.get("initial_cost_with_vat")
+        current_with_vat = financial_values.get("current_value_with_vat")
         contract_key = base_router.financial_contract_key(plan)
         residual = base_router.residual_amount_for_vehicle(
             plan,
@@ -480,7 +501,6 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
         if current_with_vat is None:
             missing.append("valor atual")
         source_reference = str(plan.source_references or "").strip() if plan else ""
-        installments = installments_by_plan.get(plan.id, []) if plan else []
         debt_installments = [item for item in installments if item.outstanding_amount is not None]
         future_debt_installments = [
             item for item in debt_installments if item.period_end >= date.today()
@@ -529,7 +549,12 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
                     if plan and plan.amount_reference_date else ""
                 ),
                 "initial_cost_with_vat": initial_with_vat,
-                "amortization_month": rentway_cost.get("amortization_month"),
+                "amortization_month": financial_values.get("amortization_month"),
+                "current_value_date": (
+                    financial_values["current_value_date"].isoformat()
+                    if isinstance(financial_values.get("current_value_date"), date)
+                    else ""
+                ),
                 "current_value_with_vat": current_with_vat,
                 "plan_count": len(plans_by_vehicle.get(vehicle.id, [])),
                 "source_reference": source_reference,
@@ -587,7 +612,89 @@ def _proposal_reference(proposal_id: int, version: int = 1) -> str:
     return base if version == 1 else f"{base}-V{version}"
 
 
-def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[dict[str, Any]]:
+def _filter_values(value: Any) -> set[str]:
+    if isinstance(value, (list, tuple, set)):
+        return {str(item).strip() for item in value if str(item).strip()}
+    clean = str(value or "").strip()
+    return {clean} if clean else set()
+
+
+def _sale_status_sql_condition(selected_statuses: list[str]):
+    lifecycle_not_sold = or_(
+        Vehicle.lifecycle_status.is_(None),
+        Vehicle.lifecycle_status != "sold",
+    )
+    operational_not_sold = or_(
+        Vehicle.operational_status.is_(None),
+        Vehicle.operational_status != "sold",
+    )
+    not_sold = and_(lifecycle_not_sold, operational_not_sold)
+    default_conditions = []
+    if "sold" in selected_statuses:
+        default_conditions.append(
+            or_(Vehicle.lifecycle_status == "sold", Vehicle.operational_status == "sold")
+        )
+    if "for_sale" in selected_statuses:
+        default_conditions.append(
+            and_(not_sold, Vehicle.lifecycle_status == "for_sale")
+        )
+    if "candidate" in selected_statuses:
+        default_conditions.append(
+            and_(
+                not_sold,
+                or_(
+                    Vehicle.lifecycle_status.is_(None),
+                    Vehicle.lifecycle_status != "for_sale",
+                ),
+            )
+        )
+    profile_condition = VehicleSaleProfile.status.in_(selected_statuses)
+    if not default_conditions:
+        return profile_condition
+    return or_(
+        profile_condition,
+        and_(VehicleSaleProfile.id.is_(None), or_(*default_conditions)),
+    )
+
+
+def _vehicle_state_sql_condition(selected_states: list[str]):
+    operational = func.lower(func.coalesce(Vehicle.operational_status, ""))
+    rentway_status = func.lower(func.coalesce(Vehicle.rentway_status, ""))
+    impro = or_(operational.like("%impro%"), rentway_status.like("%impro%"))
+    explicit_free = or_(
+        operational.in_(("free", "available")),
+        rentway_status.like("%livre%"),
+        rentway_status.like("%free%"),
+        rentway_status.like("%available%"),
+    )
+    contract_source = or_(
+        operational.in_(("in_contract", "contract")),
+        Vehicle.rentway_return_date.is_not(None),
+    )
+    state_conditions = []
+    if "impro" in selected_states:
+        state_conditions.append(impro)
+    if "free" in selected_states:
+        state_conditions.append(
+            and_(not_(impro), or_(explicit_free, not_(contract_source)))
+        )
+    if "contract" in selected_states:
+        state_conditions.append(
+            and_(not_(impro), not_(explicit_free), contract_source)
+        )
+    normalized_condition = or_(*state_conditions)
+    # A small legacy escape hatch lets the Python compatibility mapper inspect
+    # pre-migration snapshots. New imports and the migration populate these
+    # columns, so normal operation remains fully SQL-filtered.
+    legacy_unprojected = and_(
+        Vehicle.rentway_status.is_(None),
+        Vehicle.rentway_return_date.is_(None),
+        Vehicle.operational_status.is_(None),
+    )
+    return or_(normalized_condition, legacy_unprojected)
+
+
+def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, Any]) -> list[dict[str, Any]]:
     registration_from = date_value(filters["registration_from"])
     registration_to = date_value(filters["registration_to"])
     return_from = date_value(filters["return_from"])
@@ -597,6 +704,10 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[di
     commercial_min = decimal_value(filters["commercial_margin_min"])
     commercial_max = decimal_value(filters["commercial_margin_max"])
     query = filters["q"].casefold()
+    selected_brands = _filter_values(filters.get("brand"))
+    selected_sale_statuses = _filter_values(filters.get("sale_status"))
+    selected_vehicle_states = _filter_values(filters.get("vehicle_state"))
+    selected_groups = _filter_values(filters.get("rentway_group"))
     filtered = []
     for row in rows:
         vehicle = row["vehicle"]
@@ -613,16 +724,18 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[di
         ).casefold()
         if query and query not in haystack:
             continue
-        if filters["sale_status"] and row["status"] != filters["sale_status"]:
+        if selected_brands and str(vehicle.brand or "") not in selected_brands:
+            continue
+        if selected_sale_statuses and row["status"] not in selected_sale_statuses:
             continue
         if (
             filters["finance_entity"]
             and row["finance_entity_key"] != filters["finance_entity"].casefold()
         ):
             continue
-        if filters["vehicle_state"] and row["vehicle_state"] != filters["vehicle_state"]:
+        if selected_vehicle_states and row["vehicle_state"] not in selected_vehicle_states:
             continue
-        if filters["rentway_group"] and row["rentway_group"] != filters["rentway_group"]:
+        if selected_groups and row["rentway_group"] not in selected_groups:
             continue
         if registration_from and (
             not row["registration"] or row["registration"] < registration_from
@@ -670,6 +783,7 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, str]) -> list[di
 def vehicle_sales_page(
     request: Request,
     q: str = "",
+    brand: str = "",
     sale_status: str = "",
     finance_entity: str = "",
     vehicle_state: str = "",
@@ -690,16 +804,29 @@ def vehicle_sales_page(
     denied = _sales_access_denied(request)
     if denied:
         return denied
+    selected_brands = [value for value in request.query_params.getlist("brand") if value]
+    selected_sale_statuses = [
+        value
+        for value in request.query_params.getlist("sale_status")
+        if value in SALE_STATUS_LABELS
+    ]
+    selected_vehicle_states = [
+        value
+        for value in request.query_params.getlist("vehicle_state")
+        if value in VEHICLE_SALE_STATE_LABELS
+    ]
+    selected_groups = [value for value in request.query_params.getlist("rentway_group") if value]
     filters = {
         "q": q.strip(),
-        "sale_status": sale_status if sale_status in SALE_STATUS_LABELS else "",
+        "brand": selected_brands,
+        "sale_status": selected_sale_statuses,
         "finance_entity": (
             compact_finance_entity(finance_entity)
             if finance_entity.strip()
             else ""
         ),
-        "vehicle_state": vehicle_state if vehicle_state in VEHICLE_SALE_STATE_LABELS else "",
-        "rentway_group": rentway_group.strip(),
+        "vehicle_state": selected_vehicle_states,
+        "rentway_group": selected_groups,
         "registration_from": registration_from.strip(),
         "registration_to": registration_to.strip(),
         "return_from": return_from.strip(),
@@ -711,7 +838,70 @@ def vehicle_sales_page(
         "market_state": market_state if market_state in {"missing_trade", "missing_retail"} else "",
     }
     with base_router.SessionLocal() as db:
-        all_rows = _load_sale_rows(db)
+        vehicle_stmt = select(Vehicle).where(Vehicle.active.is_(True))
+        if filters["q"]:
+            pattern = f"%{filters['q']}%"
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.plate.ilike(pattern),
+                    Vehicle.rentway_unit_nr.ilike(pattern),
+                    Vehicle.vin.ilike(pattern),
+                    Vehicle.brand.ilike(pattern),
+                    Vehicle.model.ilike(pattern),
+                )
+            )
+        if selected_brands:
+            vehicle_stmt = vehicle_stmt.where(Vehicle.brand.in_(selected_brands))
+        if selected_sale_statuses:
+            vehicle_stmt = vehicle_stmt.outerjoin(
+                VehicleSaleProfile,
+                VehicleSaleProfile.vehicle_id == Vehicle.id,
+            ).where(_sale_status_sql_condition(selected_sale_statuses))
+        if selected_vehicle_states:
+            vehicle_stmt = vehicle_stmt.where(
+                _vehicle_state_sql_condition(selected_vehicle_states)
+            )
+        if selected_groups:
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.rentway_group.in_(selected_groups),
+                    Vehicle.rentway_group.is_(None),
+                )
+            )
+        registration_start = date_value(filters["registration_from"])
+        registration_end = date_value(filters["registration_to"])
+        return_start = date_value(filters["return_from"])
+        return_end = date_value(filters["return_to"])
+        if registration_start:
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.rentway_registration_date >= registration_start,
+                    Vehicle.rentway_registration_date.is_(None),
+                )
+            )
+        if registration_end:
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.rentway_registration_date <= registration_end,
+                    Vehicle.rentway_registration_date.is_(None),
+                )
+            )
+        if return_start:
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.rentway_return_date >= return_start,
+                    Vehicle.rentway_return_date.is_(None),
+                )
+            )
+        if return_end:
+            vehicle_stmt = vehicle_stmt.where(
+                or_(
+                    Vehicle.rentway_return_date <= return_end,
+                    Vehicle.rentway_return_date.is_(None),
+                )
+            )
+        vehicle_stmt = vehicle_stmt.order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(5000)
+        all_rows = _load_sale_rows(db, vehicle_stmt)
         rows = _filter_rows(all_rows, filters)
         page_size = 100
         total_pages = max(1, (len(rows) + page_size - 1) // page_size)
@@ -735,11 +925,42 @@ def vehicle_sales_page(
             },
             key=str.casefold,
         )
-        group_options = sorted(
-            {row["rentway_group"] for row in all_rows if row["rentway_group"]},
+        brand_options = sorted(
+            {
+                *selected_brands,
+                *[
+                    value
+                    for value in db.scalars(
+                select(Vehicle.brand)
+                .where(Vehicle.brand.is_not(None))
+                .distinct()
+                .order_by(Vehicle.brand)
+            ).all()
+                    if value
+                ],
+            },
             key=str.casefold,
         )
-    query_without_page = urlencode({key: value for key, value in filters.items() if value})
+        group_options = sorted(
+            {
+                *selected_groups,
+                *[
+                    value
+                    for value in db.scalars(
+                select(Vehicle.rentway_group)
+                .where(Vehicle.rentway_group.is_not(None))
+                .distinct()
+                .order_by(Vehicle.rentway_group)
+            ).all()
+                    if value
+                ],
+            },
+            key=str.casefold,
+        )
+    query_without_page = urlencode(
+        {key: value for key, value in filters.items() if value},
+        doseq=True,
+    )
     return base_router.templates.TemplateResponse(
         request,
         "clean_vehicle_sales.html",
@@ -750,6 +971,7 @@ def vehicle_sales_page(
             "filters": filters,
             "sale_statuses": SALE_STATUSES,
             "vehicle_states": VEHICLE_SALE_STATES,
+            "brand_options": brand_options,
             "finance_options": finance_options,
             "group_options": group_options,
             "price_bases": PRICE_BASES,
@@ -758,6 +980,8 @@ def vehicle_sales_page(
             "page": current_page,
             "total_pages": total_pages,
             "query_without_page": query_without_page,
+            "list_return_url": str(request.url.path)
+            + (f"?{request.url.query}" if request.url.query else ""),
             "updated": updated,
             "error": error,
             "money": money,
@@ -1413,7 +1637,13 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
 
 
 @vehicle_sales_router.get("/v2-clean/fleet/sales/{vehicle_id}", response_class=HTMLResponse)
-def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", error: str = ""):
+def vehicle_sale_detail(
+    request: Request,
+    vehicle_id: int,
+    saved: str = "",
+    error: str = "",
+    return_to: str = "",
+):
     denied = _sales_access_denied(request)
     if denied:
         return denied
@@ -1424,12 +1654,26 @@ def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", erro
         profile = _get_or_create_profile(db, vehicle)
         snapshot = base_router.latest_vehicle_snapshot(db, vehicle.id)
         manual = base_router.vehicle_manual_values(db, vehicle.id)
+        financial_plan = _active_financial_plan(db, vehicle.id)
+        installments = (
+            db.scalars(
+                select(VehicleFinancialPlanInstallment)
+                .where(
+                    VehicleFinancialPlanInstallment.financial_plan_id
+                    == financial_plan.id
+                )
+                .order_by(VehicleFinancialPlanInstallment.period_number)
+            ).all()
+            if financial_plan
+            else []
+        )
         row = _sale_row(
             vehicle,
             snapshot,
             manual,
             profile,
-            _active_financial_plan(db, vehicle.id),
+            financial_plan,
+            installments,
         )
         images = db.scalars(
             select(VehicleImage)
@@ -1484,6 +1728,7 @@ def vehicle_sale_detail(request: Request, vehicle_id: int, saved: str = "", erro
             "money": money,
             "saved": saved,
             "error": error,
+            "return_to": _safe_return_url(return_to, "/v2-clean/fleet/sales"),
         },
     )
 
@@ -1505,6 +1750,7 @@ def vehicle_sale_update(
     rounding_increment: str = Form(""),
     sale_notes: str = Form(""),
     public_notes: str = Form(""),
+    return_to: str = Form(""),
 ):
     denied = _sales_access_denied(request)
     if denied:
@@ -1546,7 +1792,16 @@ def vehicle_sale_update(
             user_id=user_id,
         )
         db.commit()
-    return RedirectResponse(f"/v2-clean/fleet/sales/{vehicle_id}?saved=profile", status_code=303)
+    detail_query = urlencode(
+        {
+            "saved": "profile",
+            "return_to": _safe_return_url(return_to, "/v2-clean/fleet/sales"),
+        }
+    )
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/{vehicle_id}?{detail_query}",
+        status_code=303,
+    )
 
 
 @vehicle_sales_router.post("/v2-clean/fleet/sales/{vehicle_id}/images")

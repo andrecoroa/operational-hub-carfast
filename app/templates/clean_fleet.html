@@ -7,8 +7,8 @@
     <header class="clean-workshop-header clean-workshop-header-final">
       <div>
         <p class="eyebrow">Frota / experiência nova</p>
-        <h2>Ficha simples da viatura</h2>
-        <p>Lista limpa para abrir a ficha v2-clean, ver alertas e confirmar dados base.</p>
+        <h2>Viaturas</h2>
+        <p>Tabela operacional Rentway, paginada e filtrada no servidor.</p>
       </div>
       <div class="clean-header-actions clean-header-actions-strong">
         {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
@@ -26,76 +26,80 @@
     </section>
 
     <section class="clean-panel clean-card-wide clean-fleet-list-panel">
-      <form method="get" action="/v2-clean/fleet" class="clean-fleet-toolbar" data-clean-fleet-search>
-        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off" list="clean-fleet-plate-suggestions" data-clean-fleet-query aria-describedby="clean-fleet-search-help"></label>
-        <label>Âmbito<select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para venda</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select></label>
-        <div class="clean-fleet-search-actions">
-          <button type="submit">Pesquisar</button>
-          {% if q %}
-            <a href="/v2-clean/fleet?scope={{ scope }}" class="button-link secondary-link">Limpar</a>
-          {% endif %}
-        </div>
+      <form method="get" action="/v2-clean/fleet" class="fleet-table-filters" data-clean-fleet-search>
+        <label class="fleet-filter-search">Pesquisar
+          <input type="search" name="q" value="{{ q }}" placeholder="Matrícula, Unit, VIN, marca ou modelo" autocomplete="off">
+        </label>
+        <label>Âmbito
+          <select name="scope"><option value="active" {% if scope == 'active' %}selected{% endif %}>Ativas</option><option value="for_sale" {% if scope == 'for_sale' %}selected{% endif %}>Para venda</option><option value="all" {% if scope == 'all' %}selected{% endif %}>Todas</option></select>
+        </label>
+        <label>Marca <small>seleção múltipla</small>
+          <select name="brand" multiple size="3">{% for value in filter_options.brands %}<option value="{{ value }}" {% if value in filters.brands %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        </label>
+        <label>Combustível <small>seleção múltipla</small>
+          <select name="fuel" multiple size="3">{% for value in filter_options.fuels %}<option value="{{ value }}" {% if value in filters.fuels %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        </label>
+        <label>Categoria <small>seleção múltipla</small>
+          <select name="category" multiple size="3">{% for value in filter_options.categories %}<option value="{{ value }}" {% if value in filters.categories %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        </label>
+        <label>Grupo Rentway <small>seleção múltipla</small>
+          <select name="rentway_group" multiple size="3">{% for value in filter_options.groups %}<option value="{{ value }}" {% if value in filters.groups %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        </label>
+        <label>Estado Rentway <small>seleção múltipla</small>
+          <select name="rentway_status" multiple size="3">{% for value in filter_options.statuses %}<option value="{{ value }}" {% if value in filters.statuses %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        </label>
+        <label>Cliente atual
+          <input type="search" name="client" value="{{ filters.client }}" placeholder="Nome do cliente">
+        </label>
+        <fieldset><legend>Data da matrícula</legend><span><input type="date" name="registration_from" value="{{ filters.registration_from }}" aria-label="Matrícula desde"><em>até</em><input type="date" name="registration_to" value="{{ filters.registration_to }}" aria-label="Matrícula até"></span></fieldset>
+        <fieldset><legend>Devolução prevista</legend><span><input type="date" name="return_from" value="{{ filters.return_from }}" aria-label="Devolução desde"><em>até</em><input type="date" name="return_to" value="{{ filters.return_to }}" aria-label="Devolução até"></span></fieldset>
+        <fieldset><legend>IPO Rentway</legend><span><input type="date" name="ipo_from" value="{{ filters.ipo_from }}" aria-label="IPO desde"><em>até</em><input type="date" name="ipo_to" value="{{ filters.ipo_to }}" aria-label="IPO até"></span></fieldset>
+        <div class="fleet-filter-actions"><a class="button-link secondary-link" href="/v2-clean/fleet">Limpar</a><button type="submit">Aplicar filtros</button></div>
       </form>
-      <div class="clean-fleet-search-feedback" id="clean-fleet-search-help" aria-live="polite">
-        {% if q %}
-          <strong>{{ pagination.total }} resultado{% if pagination.total != 1 %}s{% endif %}</strong>
-          <span>para “{{ q }}”</span>
-        {% else %}
-          <span>Escreve a matrícula completa ou parte da matrícula, Unit, VIN, marca ou modelo. Carrega em Enter para pesquisar.</span>
-        {% endif %}
-      </div>
-      <datalist id="clean-fleet-plate-suggestions">
-        {% for plate in plate_suggestions %}
-          <option value="{{ plate }}"></option>
-        {% endfor %}
-      </datalist>
 
-      <div class="clean-fleet-list">
-        {% for row in rows %}
-          <a class="clean-fleet-row" href="/v2-clean/fleet/{{ row.id }}?return_to={{ ('/v2-clean/fleet?scope=' ~ scope ~ '&q=' ~ (q|urlencode) ~ '&page=' ~ pagination.page)|urlencode }}">
-            <div class="clean-fleet-row-main">
-              <strong>{{ row.plate }}</strong>
-              <span>{{ row.brand }} {{ row.model }}{% if row.version and row.version != '-' %} · {{ row.version }}{% endif %}</span>
-              <em>Unit {{ row.unit }} · {{ row.vin }}</em>
-            </div>
-            <div><span>Grupo</span><b>{{ row.group }}</b></div>
-            <div><span>Combustível</span><b>{{ row.fuel }}</b></div>
-            <div><span>IPO</span><b>{{ row.ipo }}</b></div>
-            <div><span>Manutenção</span><b>{{ row.maintenance }}</b></div>
-            <div class="clean-fleet-row-alert {% if row.primary_alert %}{{ row.primary_alert.severity }}{% endif %}">
-              {% if row.primary_alert %}<b>{{ row.primary_alert.title }}</b><span>{{ row.primary_alert.detail }}</span>{% else %}<b>Sem alertas</b><span>Dados críticos OK</span>{% endif %}
-            </div>
-          </a>
-        {% else %}
-          <p class="muted">Sem viaturas para os filtros selecionados.</p>
-        {% endfor %}
+      <div class="clean-fleet-search-feedback" aria-live="polite">
+        <strong>{{ pagination.total }} viatura{% if pagination.total != 1 %}s{% endif %}</strong>
+        {% if q %}<span>para “{{ q }}”</span>{% else %}<span>nos filtros selecionados</span>{% endif %}
       </div>
-      {% if pagination.total_pages > 1 %}
-        <nav class="doc-arch-pagination" aria-label="Paginação da frota">
-          {% if pagination.has_previous %}<a href="?scope={{ scope }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}">Anterior</a>{% endif %}
-          <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} viaturas</span>
-          {% if pagination.has_next %}<a href="?scope={{ scope }}&q={{ q|urlencode }}&page={{ pagination.next_page }}">Seguinte</a>{% endif %}
-        </nav>
-      {% endif %}
+
+      <div class="fleet-table-scroll">
+        <table class="fleet-compact-table">
+          <thead><tr><th>Viatura</th><th>Marca / modelo</th><th>Categoria</th><th>Combustível</th><th>Estado Rentway</th><th>Cliente</th><th>Devolução</th><th>IPO</th><th>Alertas</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+              <tr id="vehicle-{{ row.id }}">
+                <td><a class="fleet-vehicle-link" data-fleet-open href="/v2-clean/fleet/{{ row.id }}?return_to={{ (current_list_url ~ '#vehicle-' ~ row.id)|urlencode }}"><strong>{{ row.plate }}</strong><small>Unit {{ row.unit }}</small></a></td>
+                <td><strong>{{ row.brand }} {{ row.model }}</strong>{% if row.version and row.version != '-' %}<small>{{ row.version }}</small>{% endif %}</td>
+                <td><strong>{{ row.category }}</strong><small>Grupo {{ row.group }}</small></td>
+                <td>{{ row.fuel }}</td>
+                <td>{{ row.rentway_status }}</td>
+                <td>{{ row.client }}</td>
+                <td>{{ row.return_date }}</td>
+                <td>{{ row.ipo }}</td>
+                <td><span class="fleet-alert-pill {% if row.primary_alert %}{{ row.primary_alert.severity }}{% else %}ok{% endif %}">{% if row.primary_alert %}<b>{{ row.primary_alert.title }}</b><small>{{ row.primary_alert.detail }}</small>{% else %}Sem alertas{% endif %}</span></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <nav class="doc-arch-pagination" aria-label="Paginação da frota">
+        {% if pagination.has_previous %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ pagination.previous_page }}">Anterior</a>{% endif %}
+        <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} viaturas</span>
+        {% if pagination.has_next %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ pagination.next_page }}">Seguinte</a>{% endif %}
+      </nav>
     </section>
   </main>
 </div>
 <script>
   (() => {
-    const form = document.querySelector("[data-clean-fleet-search]");
-    const query = document.querySelector("[data-clean-fleet-query]");
-    if (!form || !query) return;
-    const knownPlates = new Set(
-      Array.from(document.querySelectorAll("#clean-fleet-plate-suggestions option"))
-        .map((option) => option.value.trim().toUpperCase())
-    );
-    query.addEventListener("change", () => {
-      const current = query.value.trim().toUpperCase();
-      if (knownPlates.has(current)) {
-        form.requestSubmit();
-      }
+    const storageKey = `clean-fleet-scroll:${location.pathname}${location.search}`;
+    const stored = sessionStorage.getItem(storageKey);
+    if (stored !== null && !location.hash) requestAnimationFrame(() => scrollTo(0, Number(stored) || 0));
+    document.querySelectorAll("[data-fleet-open]").forEach((link) => {
+      link.addEventListener("click", () => sessionStorage.setItem(storageKey, String(scrollY)));
     });
   })();
 </script>
 {% endblock %}
-

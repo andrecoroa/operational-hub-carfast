@@ -14,6 +14,7 @@ from app.models import (
     Vehicle,
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
+    VehicleFinancialPlanInstallment,
     VehicleImage,
     VehicleManualField,
     VehicleSaleLead,
@@ -450,6 +451,79 @@ def test_financial_audit_uses_same_current_value_as_vehicle_sales(db_session):
     )
 
     assert audit_row["current_value_with_vat"] == sale_row["cost"]
+
+
+def test_sheet_audit_and_sale_share_value_and_last_amortization_date(db_session):
+    vehicle = Vehicle(
+        plate="FV-10-AA",
+        rentway_unit_nr="FV10",
+        brand="Peugeot",
+        model="208",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    snapshot = VehicleExternalSnapshot(
+        vehicle_id=vehicle.id,
+        source_system="rentway",
+        data_json={
+            "purchase_date": "2025-01-01",
+            "acquisition_value": "20000",
+            "value_with_tax": "24600",
+        },
+    )
+    plan = VehicleFinancialPlan(
+        vehicle_id=vehicle.id,
+        finance_entity="Santander",
+        contract_number="FV-PLAN",
+        start_date=date(2025, 1, 1),
+        outstanding_amount=Decimal("15000"),
+        amount_reference_date=date(2026, 7, 31),
+        active=True,
+    )
+    db_session.add_all([snapshot, plan])
+    db_session.flush()
+    db_session.add_all(
+        [
+            VehicleFinancialPlanInstallment(
+                financial_plan_id=plan.id,
+                period_number=17,
+                period_end=date(2026, 5, 31),
+                amortization_amount=Decimal("256.25"),
+                outstanding_amount=Decimal("15256.25"),
+            ),
+            VehicleFinancialPlanInstallment(
+                financial_plan_id=plan.id,
+                period_number=18,
+                period_end=date(2026, 6, 30),
+                amortization_amount=Decimal("256.25"),
+                outstanding_amount=Decimal("15000"),
+            ),
+        ]
+    )
+    db_session.commit()
+    installments = db_session.scalars(
+        select(VehicleFinancialPlanInstallment)
+        .where(VehicleFinancialPlanInstallment.financial_plan_id == plan.id)
+        .order_by(VehicleFinancialPlanInstallment.period_number)
+    ).all()
+
+    sale_row = _sale_row(vehicle, snapshot, {}, None, plan, installments)
+    audit_row = next(
+        row for row in _financial_audit_rows(db_session) if row["vehicle_id"] == vehicle.id
+    )
+    sheet = base_router.clean_vehicle_display_context(db_session, vehicle)
+
+    assert sale_row["cost"] == audit_row["current_value_with_vat"]
+    assert sheet["finance"]["current_cost_with_vat"] == base_router.format_eur(
+        sale_row["cost"]
+    )
+    assert sale_row["current_value_date"] == date(2026, 6, 30)
+    assert audit_row["current_value_date"] == "2026-06-30"
+    assert sheet["finance"]["current_value_date"] == "30/06/2026"
+    assert sheet["finance"]["debt_reference_date"] == "31/07/2026"
 
 
 def test_vehicle_sale_images_public_snapshot_and_leads(

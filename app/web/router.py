@@ -122,11 +122,16 @@ from app.services.portal_access import (
     portal_csrf_token,
     valid_portal_csrf,
 )
-from app.services.rentway_fleet_importer import import_rentway_fleet_xlsx, preview_rentway_fleet_xlsx
+from app.services.rentway_fleet_importer import (
+    import_rentway_fleet_xlsx,
+    normalize_rentway_category,
+    preview_rentway_fleet_xlsx,
+)
 from app.services.structured_financial_plan_importer import (
     apply_financial_plan_preview,
     preview_financial_plan_workbook,
 )
+from app.services.vehicle_financials import canonical_vehicle_financial_values
 from app.services.document_import_preview import (
     RENTWAY_IMPORT_KINDS,
     preview_structured_spreadsheet,
@@ -416,12 +421,20 @@ def snapshot_data(snapshot: VehicleExternalSnapshot | None) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+def rentway_vehicle_context(
+    snapshot: VehicleExternalSnapshot | None,
+    vehicle: Vehicle | None = None,
+) -> dict[str, str | int | None]:
     data = snapshot_data(snapshot)
 
-    return {
+    context: dict[str, str | int | None] = {
         "groupid": snapshot_value(data, ["groupid", "group_id", "categoria_grupo", "grupo"]),
-        "category": snapshot_value(data, ["category", "categoria", "tipo_categoria"]),
+        "category": normalize_rentway_category(
+            snapshot_value(
+                data,
+                ["category", "vehicle_category", "categoria", "tipo_categoria", "vehicle_type"],
+            )
+        ),
         "seats": snapshot_value(data, ["seats", "lugares", "passageiros"]),
         "colour": snapshot_value(data, ["colour", "color", "cor"]),
         "fuel": snapshot_value(data, ["fuel", "combustivel"]),
@@ -447,11 +460,37 @@ def rentway_vehicle_context(snapshot: VehicleExternalSnapshot | None) -> dict[st
         "last_service_km": snapshot_value(data, ["last_service_km", "lastservicekm"]),
         "next_service_km": snapshot_value(data, ["next_service_km", "nextservicekm"]),
     }
+    if context["seats"] is not None and parse_decimal_text(context["seats"]) == 0:
+        context["seats"] = None
+    if vehicle:
+        context.update(
+            {
+                "groupid": vehicle.rentway_group or context["groupid"],
+                "category": vehicle.rentway_category or context["category"],
+                "seats": vehicle.rentway_seats or context["seats"],
+                "colour": vehicle.rentway_colour or context["colour"],
+                "fuel": vehicle.rentway_fuel or context["fuel"],
+                "plate_date": (
+                    vehicle.rentway_registration_date.isoformat()
+                    if vehicle.rentway_registration_date
+                    else context["plate_date"]
+                ),
+                "inspection_date": (
+                    vehicle.rentway_ipo_date.isoformat()
+                    if vehicle.rentway_ipo_date
+                    else context["inspection_date"]
+                ),
+            }
+        )
+    return context
 
 
-def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict[str, str | None]:
+def rentway_commercial_context(
+    snapshot: VehicleExternalSnapshot | None,
+    vehicle: Vehicle | None = None,
+) -> dict[str, str | int | None]:
     data = snapshot_data(snapshot)
-    return {
+    context: dict[str, str | int | None] = {
         "current_status": snapshot_value(data, ["CurrentStatus", "current_status", "current_status_rentway"]),
         "document_nr": snapshot_value(data, ["DocumentNr", "document_nr", "document_number", "contractnr"]),
         "client": snapshot_value(data, ["Client", "client", "customer", "customer_name"]),
@@ -503,6 +542,21 @@ def rentway_commercial_context(snapshot: VehicleExternalSnapshot | None) -> dict
             ],
         ),
     }
+    if vehicle:
+        context.update(
+            {
+                "current_status": vehicle.rentway_status or context["current_status"],
+                "client": vehicle.rentway_client or context["client"],
+                "rental_station": vehicle.rentway_location or context["rental_station"],
+                "return_date": (
+                    vehicle.rentway_return_date.isoformat()
+                    if vehicle.rentway_return_date
+                    else context["return_date"]
+                ),
+                "km": vehicle.rentway_km if vehicle.rentway_km is not None else context["km"],
+            }
+        )
+    return context
 
 
 CARFAST_MANAGEMENT_FIELD_CODES = {
@@ -689,8 +743,8 @@ def current_cost_from_snapshot(
 
 VEHICLE_RULE_CATEGORIES = [
     ("", "Por confirmar"),
-    ("passenger", "Passageiros"),
-    ("commercial", "Comercial"),
+    ("passenger", "Ligeiros"),
+    ("commercial", "Comerciais"),
 ]
 VEHICLE_RULE_CATEGORY_LABELS = dict(VEHICLE_RULE_CATEGORIES)
 
@@ -710,11 +764,15 @@ def add_months(base_date: date, months: int) -> date:
     return date(year, month, min(base_date.day, days_in_month[month - 1]))
 
 
-def inferred_rule_category(snapshot: VehicleExternalSnapshot | None, manual: dict[str, object]) -> str:
+def inferred_rule_category(
+    snapshot: VehicleExternalSnapshot | None,
+    manual: dict[str, object],
+    vehicle: Vehicle | None = None,
+) -> str:
     manual_category = str(manual.get("rule_category") or "").strip()
     if manual_category and manual_category in VEHICLE_RULE_CATEGORY_LABELS:
         return manual_category
-    context = rentway_vehicle_context(snapshot)
+    context = rentway_vehicle_context(snapshot, vehicle)
     category = str(context.get("category") or "").strip().upper()
     if "COMERC" in category:
         return "commercial"
@@ -747,9 +805,13 @@ def ipo_dates_compatible(calculated_ipo: date, rentway_ipo: date) -> bool:
     return 0 <= days_early <= 7
 
 
-def vehicle_rule_context(snapshot: VehicleExternalSnapshot | None, manual: dict[str, object]) -> dict[str, object]:
-    context = rentway_vehicle_context(snapshot)
-    rule_category = inferred_rule_category(snapshot, manual)
+def vehicle_rule_context(
+    snapshot: VehicleExternalSnapshot | None,
+    manual: dict[str, object],
+    vehicle: Vehicle | None = None,
+) -> dict[str, object]:
+    context = rentway_vehicle_context(snapshot, vehicle)
+    rule_category = inferred_rule_category(snapshot, manual, vehicle)
     registration_date = parse_iso_or_dmy_date(context.get("plate_date"))
     rentway_ipo = parse_iso_or_dmy_date(context.get("inspection_date"))
     calculated_ipo = calculated_next_ipo(registration_date, rule_category)
@@ -837,6 +899,21 @@ def current_value_with_financial_amortization(
     start = plan_start_date if isinstance(plan_start_date, date) else parse_iso_or_dmy_date(str(plan_start_date or ""))
     reference = reference_date if isinstance(reference_date, date) else parse_iso_or_dmy_date(str(reference_date or ""))
     return current_value_by_amortization_month(acquisition, start, reference)
+
+
+def vehicle_financial_values(
+    snapshot: VehicleExternalSnapshot | None,
+    plan: VehicleFinancialPlan | None,
+    installments: list[VehicleFinancialPlanInstallment] | None = None,
+) -> dict[str, object]:
+    """Canonical financial values shared by fleet detail, audit and sale."""
+
+    return canonical_vehicle_financial_values(
+        cost_context=current_cost_from_snapshot(snapshot),
+        plan=plan,
+        installments=installments or [],
+        current_value_calculator=current_value_with_financial_amortization,
+    )
 
 
 def residual_amount_for_vehicle(
@@ -7056,15 +7133,15 @@ def clean_workshop_vehicle_context(
         .order_by(VehicleExternalSnapshot.updated_at.desc())
     )
     data = snapshot_data(snapshot)
-    vehicle_context = rentway_vehicle_context(snapshot)
-    commercial_context = rentway_commercial_context(snapshot)
+    vehicle_context = rentway_vehicle_context(snapshot, vehicle)
+    commercial_context = rentway_commercial_context(snapshot, vehicle)
     manual_fields = {
         item.field_code: item.value_json
         for item in db.scalars(
             select(VehicleManualField).where(VehicleManualField.vehicle_id == vehicle.id)
         ).all()
     }
-    rules = vehicle_rule_context(snapshot, manual_fields)
+    rules = vehicle_rule_context(snapshot, manual_fields, vehicle)
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
     model = vehicle.model or snapshot_value(data, ["modelid", "modelo", "model"]) or ""
     version = vehicle.version or snapshot_value(data, ["version", "versao"]) or ""
@@ -7209,10 +7286,10 @@ def latest_vehicle_snapshot(db: Session, vehicle_id: int) -> VehicleExternalSnap
 def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, object]:
     snapshot = latest_vehicle_snapshot(db, vehicle.id)
     data = snapshot_data(snapshot)
-    vehicle_context = rentway_vehicle_context(snapshot)
-    commercial_context = rentway_commercial_context(snapshot)
+    vehicle_context = rentway_vehicle_context(snapshot, vehicle)
+    commercial_context = rentway_commercial_context(snapshot, vehicle)
     manual_fields = vehicle_manual_values(db, vehicle.id)
-    rules = vehicle_rule_context(snapshot, manual_fields)
+    rules = vehicle_rule_context(snapshot, manual_fields, vehicle)
     financial_plans = db.scalars(
         select(VehicleFinancialPlan)
         .where(VehicleFinancialPlan.vehicle_id == vehicle.id)
@@ -7254,15 +7331,10 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
         active_financial_plan,
         related_contract_plans,
     )
-    current_cost = current_cost_from_snapshot(snapshot)
-    current_value_with_vat = current_value_with_financial_amortization(
-        current_cost.get("initial_cost_with_vat"),
-        active_financial_plan.initial_amount if active_financial_plan else None,
-        active_financial_plan.outstanding_amount if active_financial_plan else None,
-        current_cost.get("current_cost_with_vat"),
-        active_financial_plan.start_date if active_financial_plan else None,
-        active_financial_plan.amount_reference_date if active_financial_plan else None,
-        current_cost.get("amortization_month"),
+    financial_values = vehicle_financial_values(
+        snapshot,
+        active_financial_plan,
+        financial_installments,
     )
 
     brand = vehicle.brand or snapshot_value(data, ["brandid", "marca", "brand"]) or ""
@@ -7359,11 +7431,16 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "status": rules.get("maintenance_status") or "Por configurar",
         },
         "finance": {
-            "initial_cost_with_vat": format_eur(current_cost.get("initial_cost_with_vat")),
-            "current_cost_with_vat": format_eur(current_value_with_vat),
+            "initial_cost_with_vat": format_eur(financial_values.get("initial_cost_with_vat")),
+            "current_cost_with_vat": format_eur(financial_values.get("current_value_with_vat")),
+            "current_value_date": clean_date(
+                financial_values["current_value_date"].isoformat()
+                if isinstance(financial_values.get("current_value_date"), date)
+                else None
+            ),
             "amortization_month": (
-                f"{current_cost.get('amortization_month')} de 96"
-                if current_cost.get("amortization_month")
+                f"{financial_values.get('amortization_month')} de 96"
+                if financial_values.get("amortization_month")
                 else "-"
             ),
             "debt_with_vat": format_eur(
@@ -7486,10 +7563,11 @@ def clean_vehicle_fallback_context(vehicle: Vehicle, error: Exception | None = N
             "status": "Por validar",
         },
         "finance": {
-            "initial_cost": "-",
-            "current_cost": "-",
+            "initial_cost_with_vat": "-",
+            "current_cost_with_vat": "-",
+            "current_value_date": "-",
             "amortization_month": "-",
-            "debt_value": "-",
+            "debt_with_vat": "-",
             "finance_entity": "-",
             "contract_number": "-",
             "installment_with_vat": "-",
@@ -7601,10 +7679,24 @@ def clean_fleet_page(
         return denied
     if not can_view_fleet(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    scope = scope if scope in {"active", "for_sale", "all"} else "active"
     raw_query = (q or "").strip()
     normalized_query = normalize_identifier(raw_query) if raw_query else ""
+    query_params = request.query_params
+    selected_brands = [value.strip() for value in query_params.getlist("brand") if value.strip()]
+    selected_fuels = [value.strip() for value in query_params.getlist("fuel") if value.strip()]
+    selected_categories = [value.strip() for value in query_params.getlist("category") if value.strip()]
+    selected_groups = [value.strip() for value in query_params.getlist("rentway_group") if value.strip()]
+    selected_statuses = [value.strip() for value in query_params.getlist("rentway_status") if value.strip()]
+    client = query_params.get("client", "").strip()
+    registration_from = parse_iso_or_dmy_date(query_params.get("registration_from", ""))
+    registration_to = parse_iso_or_dmy_date(query_params.get("registration_to", ""))
+    return_from = parse_iso_or_dmy_date(query_params.get("return_from", ""))
+    return_to_date = parse_iso_or_dmy_date(query_params.get("return_to", ""))
+    ipo_from = parse_iso_or_dmy_date(query_params.get("ipo_from", ""))
+    ipo_to = parse_iso_or_dmy_date(query_params.get("ipo_to", ""))
     with SessionLocal() as db:
-        stmt = select(Vehicle).order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+        stmt = select(Vehicle)
         if scope == "active":
             stmt = stmt.where(
                 Vehicle.active.is_(True),
@@ -7637,27 +7729,60 @@ def clean_fleet_page(
                 | Vehicle.brand.ilike(f"%{raw_query}%")
                 | Vehicle.model.ilike(f"%{raw_query}%")
             )
-        matching_vehicles = sorted(
-            db.scalars(stmt).all(), key=rentway_unit_sort_key, reverse=True
-        )
+        if selected_brands:
+            stmt = stmt.where(Vehicle.brand.in_(selected_brands))
+        if selected_fuels:
+            stmt = stmt.where(Vehicle.rentway_fuel.in_(selected_fuels))
+        if selected_categories:
+            stmt = stmt.where(Vehicle.rentway_category.in_(selected_categories))
+        if selected_groups:
+            stmt = stmt.where(Vehicle.rentway_group.in_(selected_groups))
+        if selected_statuses:
+            stmt = stmt.where(Vehicle.rentway_status.in_(selected_statuses))
+        if client:
+            stmt = stmt.where(Vehicle.rentway_client.ilike(f"%{client}%"))
+        if registration_from:
+            stmt = stmt.where(Vehicle.rentway_registration_date >= registration_from)
+        if registration_to:
+            stmt = stmt.where(Vehicle.rentway_registration_date <= registration_to)
+        if return_from:
+            stmt = stmt.where(Vehicle.rentway_return_date >= return_from)
+        if return_to_date:
+            stmt = stmt.where(Vehicle.rentway_return_date <= return_to_date)
+        if ipo_from:
+            stmt = stmt.where(Vehicle.rentway_ipo_date >= ipo_from)
+        if ipo_to:
+            stmt = stmt.where(Vehicle.rentway_ipo_date <= ipo_to)
+
         page_size = 50
-        total_rows = len(matching_vehicles)
+        total_rows = db.scalar(
+            select(func.count()).select_from(stmt.order_by(None).subquery())
+        ) or 0
         total_pages = max(1, (total_rows + page_size - 1) // page_size)
         active_page = min(max(page, 1), total_pages)
         page_start = (active_page - 1) * page_size
-        vehicles = matching_vehicles[page_start : page_start + page_size]
-        plate_suggestions = [
-            plate
-            for plate in db.scalars(
-                select(Vehicle.plate)
-                .where(Vehicle.plate.is_not(None))
-                .order_by(Vehicle.plate.asc())
-                .limit(1000)
-            ).all()
-            if plate
-        ]
+        vehicles = db.scalars(
+            stmt.order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+            .offset(page_start)
+            .limit(page_size)
+        ).all()
         rows = []
         for vehicle in vehicles:
+            alert = None
+            if vehicle.rentway_ipo_date:
+                days_to_ipo = (vehicle.rentway_ipo_date - date.today()).days
+                if days_to_ipo < 0:
+                    alert = {
+                        "severity": "danger",
+                        "title": "IPO vencida",
+                        "detail": clean_date(vehicle.rentway_ipo_date.isoformat()),
+                    }
+                elif days_to_ipo <= 60:
+                    alert = {
+                        "severity": "warn",
+                        "title": "IPO próxima",
+                        "detail": f"{clean_date(vehicle.rentway_ipo_date.isoformat())} · {days_to_ipo} dias",
+                    }
             rows.append(
                 {
                     "id": vehicle.id,
@@ -7667,11 +7792,22 @@ def clean_fleet_page(
                     "version": vehicle.version or "",
                     "unit": vehicle.rentway_unit_nr or "-",
                     "vin": vehicle.vin or "-",
-                    "group": "-",
-                    "fuel": "-",
-                    "ipo": "-",
-                    "maintenance": vehicle.lifecycle_status or vehicle.operational_status or "Ver ficha",
-                    "primary_alert": None,
+                    "category": vehicle.rentway_category or "-",
+                    "group": vehicle.rentway_group or "-",
+                    "fuel": vehicle.rentway_fuel or "-",
+                    "rentway_status": vehicle.rentway_status or "-",
+                    "client": vehicle.rentway_client or "-",
+                    "return_date": clean_date(
+                        vehicle.rentway_return_date.isoformat()
+                        if vehicle.rentway_return_date
+                        else None
+                    ),
+                    "ipo": clean_date(
+                        vehicle.rentway_ipo_date.isoformat()
+                        if vehicle.rentway_ipo_date
+                        else None
+                    ),
+                    "primary_alert": alert,
                 }
             )
         sale_block_fields = db.scalars(
@@ -7717,6 +7853,13 @@ def clean_fleet_page(
             "blocked_sale": sum(1 for value in sale_block_fields if value is True or str(value).lower() == "true"),
             "total": db.scalar(select(func.count()).select_from(Vehicle)) or 0,
         }
+        filter_options = {
+            "brands": [value for value in db.scalars(select(Vehicle.brand).where(Vehicle.brand.is_not(None)).distinct().order_by(Vehicle.brand)).all() if value],
+            "fuels": [value for value in db.scalars(select(Vehicle.rentway_fuel).where(Vehicle.rentway_fuel.is_not(None)).distinct().order_by(Vehicle.rentway_fuel)).all() if value],
+            "categories": [value for value in db.scalars(select(Vehicle.rentway_category).where(Vehicle.rentway_category.is_not(None)).distinct().order_by(Vehicle.rentway_category)).all() if value],
+            "groups": [value for value in db.scalars(select(Vehicle.rentway_group).where(Vehicle.rentway_group.is_not(None)).distinct().order_by(Vehicle.rentway_group)).all() if value],
+            "statuses": [value for value in db.scalars(select(Vehicle.rentway_status).where(Vehicle.rentway_status.is_not(None)).distinct().order_by(Vehicle.rentway_status)).all() if value],
+        }
     return templates.TemplateResponse(
         request,
         "clean_fleet.html",
@@ -7725,7 +7868,26 @@ def clean_fleet_page(
             "counts": counts,
             "q": q or "",
             "scope": scope,
-            "plate_suggestions": plate_suggestions,
+            "filter_options": filter_options,
+            "filters": {
+                "brands": selected_brands,
+                "fuels": selected_fuels,
+                "categories": selected_categories,
+                "groups": selected_groups,
+                "statuses": selected_statuses,
+                "client": client,
+                "registration_from": query_params.get("registration_from", ""),
+                "registration_to": query_params.get("registration_to", ""),
+                "return_from": query_params.get("return_from", ""),
+                "return_to": query_params.get("return_to", ""),
+                "ipo_from": query_params.get("ipo_from", ""),
+                "ipo_to": query_params.get("ipo_to", ""),
+            },
+            "query_without_page": urlencode(
+                [(key, value) for key, value in query_params.multi_items() if key != "page"]
+            ),
+            "current_list_url": str(request.url.path)
+            + (f"?{request.url.query}" if request.url.query else ""),
             "pagination": {
                 "page": active_page,
                 "total_pages": total_pages,
@@ -18847,6 +19009,15 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
             .order_by(Document.updated_at.desc(), Document.id.desc())
             .limit(8)
         ).all()
+        maintenance_plans = db.scalars(
+            select(Document)
+            .where(
+                Document.vehicle_id == vehicle.id,
+                Document.document_type == "maintenance_plan",
+            )
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(20)
+        ).all()
         try:
             document_module_ctx = vehicle_document_module_context(db, vehicle, materialize_sources=False)
             document_summary = document_module_ctx["group_counts"]
@@ -18896,6 +19067,8 @@ def clean_fleet_detail(request: Request, vehicle_id: int, return_to: str = ""):
             "document_counts": document_counts,
             "document_summary": document_summary,
             "document_group_labels": document_group_labels,
+            "maintenance_plans": maintenance_plans,
+            "maintenance_plan": maintenance_plans[0] if maintenance_plans else None,
             "return_to": safe_return_to,
         },
     )

@@ -10,31 +10,57 @@ from app.api.deps import DbSession
 from app.models.documents import Document
 from app.models.stock import (
     StockArticle,
+    StockArticleVehicleCompatibility,
+    StockDeliveryDocument,
+    StockDiscrepancy,
+    StockInventoryCount,
+    StockInventorySession,
     StockInvoiceImport,
     StockInvoiceLine,
     StockMovement,
+    StockPurchaseOrder,
+    StockPurchaseOrderLine,
     StockReceipt,
 )
 from app.schemas.stock import (
     StockArticleCreate,
+    StockArticleVehicleCompatibilityCreate,
+    StockCompatibilityDecision,
+    StockConferenceAction,
+    StockDiscrepancyRegularize,
+    StockInventoryClose,
+    StockInventoryConfirm,
+    StockInventorySessionCreate,
     StockInvoiceImportCreate,
     StockInvoiceReview,
     StockMovementCreate,
     StockMovementRead,
     StockMovementReverse,
+    StockPurchaseOrderCreate,
     StockReceiptCreate,
+    StockWorkshopCompatibilityEvidence,
 )
 from app.services.audit import record_audit
 from app.services.stock import (
     StockDomainError,
+    apply_conference_action,
+    conference_comparison,
+    confirm_inventory_session,
+    create_inventory_session,
     create_manual_movement,
     create_physical_receipt,
+    create_purchase_order,
+    create_vehicle_compatibility,
+    decide_vehicle_compatibility,
     ensure_invoice_import,
     extract_stock_invoice,
     link_invoice_to_receipt,
     low_stock_rows,
+    record_workshop_compatibility_evidence,
+    regularize_discrepancy,
     reverse_movement,
     review_and_validate_invoice,
+    save_inventory_counts,
     stock_balances,
 )
 
@@ -44,6 +70,13 @@ router = APIRouter(
     dependencies=[Depends(require_method_permission("stock.read", "stock.operate"))],
 )
 StockManager = Annotated[object, Depends(require_permission("stock.manage"))]
+StockOrderManager = Annotated[object, Depends(require_permission("stock.orders.manage"))]
+StockInventoryCounter = Annotated[object, Depends(require_permission("stock.inventory.count"))]
+StockInventoryConfirmer = Annotated[object, Depends(require_permission("stock.inventory.confirm"))]
+StockCompatibilityManager = Annotated[
+    object, Depends(require_permission("stock.compatibility.manage"))
+]
+StockConferenceOperator = Annotated[object, Depends(require_permission("stock.conference"))]
 
 
 def _domain_error(exc: StockDomainError) -> HTTPException:
@@ -115,6 +148,87 @@ def create_article(payload: StockArticleCreate, db: DbSession, user: CurrentUser
     )
     db.commit()
     return {"id": article.id, "internal_ref": article.internal_ref, "name": article.name}
+
+
+@router.get("/compatibilities")
+def list_compatibilities(
+    db: DbSession,
+    article_id: int | None = None,
+    status_filter: str = "",
+):
+    statement = select(StockArticleVehicleCompatibility).order_by(
+        StockArticleVehicleCompatibility.created_at.desc(),
+        StockArticleVehicleCompatibility.id.desc(),
+    )
+    if article_id:
+        statement = statement.where(StockArticleVehicleCompatibility.article_id == article_id)
+    if status_filter:
+        statement = statement.where(StockArticleVehicleCompatibility.status == status_filter)
+    return db.scalars(statement).all()
+
+
+@router.post("/compatibilities", status_code=status.HTTP_201_CREATED)
+def create_compatibility(
+    payload: StockArticleVehicleCompatibilityCreate,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockCompatibilityManager,
+):
+    try:
+        compatibility = create_vehicle_compatibility(db, command=payload, user_id=user.id)
+        db.commit()
+        db.refresh(compatibility)
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return compatibility
+
+
+@router.post("/compatibilities/workshop-evidence", status_code=status.HTTP_201_CREATED)
+def create_workshop_compatibility_evidence(
+    payload: StockWorkshopCompatibilityEvidence,
+    db: DbSession,
+    user: CurrentUser,
+):
+    try:
+        compatibility = record_workshop_compatibility_evidence(db, command=payload, user_id=user.id)
+        db.commit()
+        db.refresh(compatibility)
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {
+        "id": compatibility.id,
+        "status": compatibility.status,
+        "evidence_type": compatibility.evidence_type,
+        "automatically_validated": False,
+    }
+
+
+@router.post("/compatibilities/{compatibility_id}/decision")
+def decide_compatibility(
+    compatibility_id: int,
+    payload: StockCompatibilityDecision,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockCompatibilityManager,
+):
+    compatibility = db.get(StockArticleVehicleCompatibility, compatibility_id)
+    if not compatibility:
+        raise HTTPException(status_code=404, detail="Compatibilidade não encontrada.")
+    try:
+        decide_vehicle_compatibility(
+            db,
+            compatibility=compatibility,
+            status=payload.status,
+            reason=payload.reason,
+            user_id=user.id,
+        )
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {"id": compatibility.id, "status": compatibility.status}
 
 
 @router.post("/invoice-imports")
@@ -210,6 +324,268 @@ def validate_invoice_import(
         db.commit()
         raise _domain_error(exc) from exc
     return {"id": invoice_import.id, "status": invoice_import.status, "stock_changed": False}
+
+
+@router.get("/invoice-imports/{invoice_import_id}/comparison")
+def get_invoice_comparison(invoice_import_id: int, db: DbSession):
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        raise HTTPException(status_code=404, detail="Importação não encontrada.")
+    comparison = conference_comparison(db, invoice_import)
+    return {
+        "invoice_import_id": invoice_import.id,
+        "conference_status": invoice_import.conference_status,
+        "order_count": comparison["order_count"],
+        "receipt_count": comparison["receipt_count"],
+        "order_total": comparison["order_total"],
+        "invoice_total": comparison["invoice_total"],
+        "total_divergent": comparison["total_divergent"],
+        "has_divergence": comparison["has_divergence"],
+        "lines": [
+            {
+                "invoice_line_id": row["line"].id,
+                "supplier_ref": row["line"].supplier_ref,
+                "description": row["line"].description,
+                "ordered": row["ordered"],
+                "received": row["received"],
+                "invoiced": row["invoiced"],
+                "divergent": row["divergent"],
+            }
+            for row in comparison["lines"]
+        ],
+    }
+
+
+@router.post("/invoice-imports/{invoice_import_id}/conference")
+def conference_invoice_import(
+    invoice_import_id: int,
+    payload: StockConferenceAction,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockConferenceOperator,
+):
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        raise HTTPException(status_code=404, detail="Importação não encontrada.")
+    try:
+        apply_conference_action(db, invoice_import=invoice_import, command=payload, user_id=user.id)
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {
+        "id": invoice_import.id,
+        "conference_status": invoice_import.conference_status,
+        "stock_changed": False,
+    }
+
+
+@router.post("/inventory-sessions", status_code=status.HTTP_201_CREATED)
+def start_inventory_session(
+    payload: StockInventorySessionCreate,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockInventoryCounter,
+):
+    try:
+        inventory = create_inventory_session(db, command=payload, user_id=user.id)
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {"id": inventory.id, "status": inventory.status, "location_id": inventory.location_id}
+
+
+@router.get("/inventory-sessions/{inventory_id}")
+def get_inventory_session(inventory_id: int, db: DbSession):
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Sessão de inventário não encontrada.")
+    rows = db.execute(
+        select(StockInventoryCount, StockArticle)
+        .join(StockArticle, StockArticle.id == StockInventoryCount.article_id)
+        .where(StockInventoryCount.session_id == inventory.id)
+        .order_by(StockArticle.internal_ref)
+    ).all()
+    reveal = inventory.status in {"review", "completed"}
+    items = []
+    for count, article in rows:
+        item = {
+            "article_id": article.id,
+            "internal_ref": article.internal_ref,
+            "name": article.name,
+            "counted_quantity": count.counted_quantity,
+        }
+        if reveal:
+            item.update(
+                {
+                    "expected_quantity": count.expected_snapshot,
+                    "difference_quantity": (
+                        count.counted_quantity - count.expected_snapshot
+                        if count.counted_quantity is not None
+                        else None
+                    ),
+                    "justification": count.justification,
+                }
+            )
+        items.append(item)
+    return {
+        "id": inventory.id,
+        "location_id": inventory.location_id,
+        "status": inventory.status,
+        "effective_date": inventory.effective_date,
+        "items": items,
+    }
+
+
+@router.post("/inventory-sessions/{inventory_id}/counts")
+def write_inventory_counts(
+    inventory_id: int,
+    payload: StockInventoryClose,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockInventoryCounter,
+    close: bool = False,
+):
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Sessão de inventário não encontrada.")
+    try:
+        save_inventory_counts(
+            db,
+            inventory=inventory,
+            counts={item.article_id: item.counted_quantity for item in payload.counts},
+            user_id=user.id,
+            close=close,
+        )
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {"id": inventory.id, "status": inventory.status}
+
+
+@router.post("/inventory-sessions/{inventory_id}/confirm")
+def confirm_inventory(
+    inventory_id: int,
+    payload: StockInventoryConfirm,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockInventoryConfirmer,
+):
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Sessão de inventário não encontrada.")
+    try:
+        confirm_inventory_session(db, inventory=inventory, command=payload, user_id=user.id)
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {"id": inventory.id, "status": inventory.status}
+
+
+@router.get("/purchase-orders")
+def list_purchase_orders(
+    db: DbSession,
+    supplier_id: int | None = None,
+    receiving_status: str = "",
+):
+    statement = select(StockPurchaseOrder).order_by(
+        StockPurchaseOrder.effective_date.desc(), StockPurchaseOrder.id.desc()
+    )
+    if supplier_id:
+        statement = statement.where(StockPurchaseOrder.supplier_id == supplier_id)
+    if receiving_status:
+        statement = statement.where(StockPurchaseOrder.receiving_status == receiving_status)
+    return db.scalars(statement).all()
+
+
+@router.post("/purchase-orders", status_code=status.HTTP_201_CREATED)
+def create_stock_purchase_order(
+    payload: StockPurchaseOrderCreate,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockOrderManager,
+):
+    try:
+        order = create_purchase_order(db, command=payload, user_id=user.id)
+        db.commit()
+        db.refresh(order)
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {"id": order.id, "order_number": order.order_number, "version": order.version}
+
+
+@router.get("/purchase-orders/{order_id}")
+def get_purchase_order(order_id: int, db: DbSession):
+    order = db.get(StockPurchaseOrder, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Encomenda não encontrada.")
+    lines = db.scalars(
+        select(StockPurchaseOrderLine)
+        .where(StockPurchaseOrderLine.purchase_order_id == order.id)
+        .order_by(StockPurchaseOrderLine.line_number)
+    ).all()
+    return {
+        "id": order.id,
+        "order_number": order.order_number,
+        "version": order.version,
+        "supplier_id": order.supplier_id,
+        "commercial_status": order.commercial_status,
+        "receiving_status": order.receiving_status,
+        "effective_date": order.effective_date,
+        "lines": lines,
+    }
+
+
+@router.get("/pending-sources")
+def pending_receipt_sources(supplier_id: int, db: DbSession):
+    orders = db.scalars(
+        select(StockPurchaseOrder)
+        .where(
+            StockPurchaseOrder.supplier_id == supplier_id,
+            StockPurchaseOrder.receiving_status.in_({"pending", "partial"}),
+            StockPurchaseOrder.commercial_status != "cancelled",
+        )
+        .order_by(StockPurchaseOrder.effective_date, StockPurchaseOrder.id)
+    ).all()
+    guides = db.scalars(
+        select(StockDeliveryDocument)
+        .where(
+            StockDeliveryDocument.supplier_id == supplier_id,
+            StockDeliveryDocument.status == "pending",
+        )
+        .order_by(StockDeliveryDocument.effective_date, StockDeliveryDocument.id)
+    ).all()
+    invoices = db.scalars(
+        select(StockInvoiceImport)
+        .where(
+            StockInvoiceImport.supplier_id == supplier_id,
+            StockInvoiceImport.conference_status.in_({"pending", "divergent"}),
+        )
+        .order_by(StockInvoiceImport.invoice_date, StockInvoiceImport.id)
+    ).all()
+    return {
+        "supplier_id": supplier_id,
+        "orders": [
+            {
+                "id": item.id,
+                "reference": f"{item.order_number} v{item.version}",
+                "receiving_status": item.receiving_status,
+            }
+            for item in orders
+        ],
+        "delivery_notes": [
+            {"id": item.id, "reference": item.reference, "effective_date": item.effective_date}
+            for item in guides
+        ],
+        "invoices": [
+            {"id": item.id, "reference": item.invoice_number, "date": item.invoice_date}
+            for item in invoices
+        ],
+    }
 
 
 @router.get("/receipts")
@@ -318,3 +694,27 @@ def reverse_stock_movement(
         db.rollback()
         raise _domain_error(exc) from exc
     return reversal
+
+
+@router.post("/discrepancies/{discrepancy_id}/regularize")
+def regularize_stock_discrepancy(
+    discrepancy_id: int,
+    payload: StockDiscrepancyRegularize,
+    db: DbSession,
+    user: CurrentUser,
+    _: StockInventoryConfirmer,
+):
+    discrepancy = db.get(StockDiscrepancy, discrepancy_id)
+    if not discrepancy:
+        raise HTTPException(status_code=404, detail="Divergência não encontrada.")
+    try:
+        regularize_discrepancy(db, discrepancy=discrepancy, command=payload, user_id=user.id)
+        db.commit()
+    except StockDomainError as exc:
+        db.rollback()
+        raise _domain_error(exc) from exc
+    return {
+        "id": discrepancy.id,
+        "status": discrepancy.status,
+        "adjustment_movement_id": discrepancy.adjustment_movement_id,
+    }

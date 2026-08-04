@@ -58,6 +58,11 @@ INITIAL_PERMISSIONS = [
     ("stock.read", "Consultar Stock"),
     ("stock.operate", "Gerir artigos, receções e movimentos operacionais de Stock"),
     ("stock.manage", "Gerir fornecedores, mínimos, acertos e configuração de Stock"),
+    ("stock.orders.manage", "Gerir encomendas de Stock"),
+    ("stock.inventory.count", "Executar contagens cegas de Stock"),
+    ("stock.inventory.confirm", "Confirmar diferenças e acertos de inventário"),
+    ("stock.compatibility.manage", "Gerir compatibilidades artigo-viatura"),
+    ("stock.conference", "Conferir documentos de Stock"),
     ("management_center.read", "Ver Centro de Gestão e Acompanhamento"),
     ("management_center.write", "Gerir Centro de Gestão e Acompanhamento"),
 ]
@@ -98,6 +103,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "admin.audit.read",
         "stock.read",
         "stock.manage",
+        "stock.compatibility.manage",
     },
     "auditor": {
         "dashboard.read",
@@ -146,6 +152,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "stock.read",
         "stock.operate",
         "stock.manage",
+        "stock.orders.manage",
+        "stock.inventory.count",
+        "stock.inventory.confirm",
+        "stock.compatibility.manage",
+        "stock.conference",
     },
     "operator": {
         "dashboard.read",
@@ -167,6 +178,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "management_center.write",
         "stock.read",
         "stock.operate",
+        "stock.inventory.count",
+        "stock.conference",
     },
     "viewer": {
         "dashboard.read",

@@ -18,28 +18,42 @@ from app.models.documents import Document, DocumentEvent
 from app.models.stock import (
     StockArticle,
     StockArticleSupplierRef,
+    StockArticleVehicleCompatibility,
     StockCategory,
+    StockDeliveryDocument,
+    StockDiscrepancy,
+    StockInventoryCount,
+    StockInventorySession,
     StockInvoiceImport,
     StockInvoiceLine,
     StockLocation,
     StockMinimum,
     StockMovement,
+    StockPurchaseOrder,
+    StockPurchaseOrderLine,
     StockReceipt,
     StockReceiptInvoiceLink,
     StockReceiptLine,
     StockSupplier,
 )
 from app.schemas.stock import (
+    StockArticleVehicleCompatibilityCreate,
+    StockConferenceAction,
+    StockDiscrepancyRegularize,
+    StockInventoryConfirm,
+    StockInventorySessionCreate,
     StockInvoiceLineReview,
     StockInvoiceReview,
     StockMovementCreate,
+    StockPurchaseOrderCreate,
     StockReceiptCreate,
+    StockWorkshopCompatibilityEvidence,
 )
 from app.services.audit import record_audit
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
-QUANTITY_STEP = Decimal("0.001")
+QUANTITY_STEP = Decimal("1")
 MONEY_STEP = Decimal("0.0001")
 STOCK_LOCATION_DEFAULTS = (("WORKSHOP", "Oficina"), ("AIRPORT", "Aeroporto"))
 STOCK_CATEGORY_DEFAULTS = (
@@ -76,7 +90,10 @@ def _cent(value: Decimal) -> Decimal:
 
 
 def _quantity(value: Decimal) -> Decimal:
-    return value.quantize(QUANTITY_STEP, rounding=ROUND_HALF_UP)
+    parsed = _decimal(value)
+    if parsed != parsed.to_integral_value():
+        raise StockDomainError("As quantidades de Stock têm de ser inteiras.")
+    return parsed.quantize(QUANTITY_STEP)
 
 
 def ensure_stock_defaults(db: Session) -> None:
@@ -286,6 +303,7 @@ def review_and_validate_invoice(
     )
     invoice_import.content_hash = review.content_hash or invoice_import.content_hash
     invoice_import.status = "validated"
+    invoice_import.conference_status = "divergent" if divergences else "conferred"
     invoice_import.error_details = (
         "Aviso de reconciliação: os valores documentais foram guardados sem alteração. "
         + "; ".join(visible_divergences)
@@ -471,20 +489,46 @@ def create_physical_receipt(
     if command.supplier_id and (not supplier or not supplier.active):
         raise StockDomainError("Fornecedor inexistente ou inativo.")
     responsible_name = (command.responsible_name or "").strip() or None
+    manual_reason = (command.manual_reason or "").strip() or None
+    if command.source_type == "manual" and not manual_reason:
+        raise StockDomainError("Uma receção sem documento exige motivo.")
     if location.code == "AIRPORT" and not responsible_name:
         raise StockDomainError("A receção no Aeroporto exige um responsável identificado.")
+    purchase_order = (
+        db.get(StockPurchaseOrder, command.purchase_order_id) if command.purchase_order_id else None
+    )
+    if command.purchase_order_id and not purchase_order:
+        raise StockDomainError("Encomenda de Stock inexistente.")
+    if purchase_order and supplier and purchase_order.supplier_id != supplier.id:
+        raise StockDomainError("A encomenda não pertence ao fornecedor selecionado.")
+    if purchase_order and not supplier:
+        supplier = db.get(StockSupplier, purchase_order.supplier_id)
     invoice_imports = []
     for invoice_import_id in dict.fromkeys(command.invoice_import_ids):
         invoice_import = db.get(StockInvoiceImport, invoice_import_id)
         if not invoice_import:
             raise StockDomainError(f"Fatura documental {invoice_import_id} inexistente.")
+        if supplier and invoice_import.supplier_id not in {None, supplier.id}:
+            raise StockDomainError("A fatura não pertence ao fornecedor selecionado.")
         invoice_imports.append(invoice_import)
+    delivery_document = (
+        db.get(StockDeliveryDocument, command.delivery_document_id)
+        if command.delivery_document_id
+        else None
+    )
+    if command.delivery_document_id and not delivery_document:
+        raise StockDomainError("Guia de Stock inexistente.")
+    if delivery_document and supplier and delivery_document.supplier_id != supplier.id:
+        raise StockDomainError("A guia não pertence ao fornecedor selecionado.")
 
     receipt = StockReceipt(
         supplier_id=supplier.id if supplier else None,
         location_id=location.id,
         source_type=command.source_type,
         source_reference=(command.source_reference or "").strip() or None,
+        manual_reason=manual_reason,
+        effective_date=command.effective_date,
+        purchase_order_id=purchase_order.id if purchase_order else None,
         idempotency_key=(command.idempotency_key or "").strip() or None,
         status="completed",
         confirmed_by_id=user_id,
@@ -504,6 +548,20 @@ def create_physical_receipt(
         if not article or not article.active:
             raise StockDomainError("Artigo inexistente ou inativo.")
         quantity = _quantity(item.accepted_quantity)
+        order_line = (
+            db.get(StockPurchaseOrderLine, item.purchase_order_line_id)
+            if item.purchase_order_line_id
+            else None
+        )
+        if item.purchase_order_line_id and not order_line:
+            raise StockDomainError("Linha de encomenda inexistente.")
+        if order_line:
+            if not purchase_order or order_line.purchase_order_id != purchase_order.id:
+                raise StockDomainError("A linha não pertence à encomenda selecionada.")
+            if order_line.article_id != article.id:
+                raise StockDomainError("O artigo recebido não corresponde à linha da encomenda.")
+            if order_line.location_id != location.id:
+                raise StockDomainError("A linha da encomenda destina-se a outra localização.")
         unit_cost = _money(item.unit_cost if item.unit_cost is not None else article.last_cost)
         supplier_ref = (item.supplier_ref or "").strip() or None
         supplier_reference = None
@@ -538,6 +596,7 @@ def create_physical_receipt(
         receipt_line = StockReceiptLine(
             receipt_id=receipt.id,
             article_id=article.id,
+            purchase_order_line_id=order_line.id if order_line else None,
             supplier_ref=supplier_ref,
             accepted_quantity=quantity,
             unit_cost=unit_cost,
@@ -558,15 +617,49 @@ def create_physical_receipt(
             external_reference_id=str(receipt.id),
             performed_by_id=user_id,
             reason=f"Receção física {command.source_reference or receipt.id}",
+            effective_date=command.effective_date,
         )
         db.add(movement)
         db.flush()
+        if order_line:
+            remaining_before = _quantity(order_line.ordered_quantity - order_line.received_quantity)
+            order_line.received_quantity = _quantity(order_line.received_quantity + quantity)
+            if quantity > remaining_before:
+                db.add(
+                    StockDiscrepancy(
+                        article_id=article.id,
+                        location_id=location.id,
+                        source_type="purchase_order_receipt",
+                        source_id=str(receipt_line.id),
+                        expected_quantity=remaining_before,
+                        actual_quantity=quantity,
+                        difference_quantity=_quantity(quantity - remaining_before),
+                        reason=(
+                            item.divergence_reason or "Quantidade superior à encomendada"
+                        ).strip(),
+                    )
+                )
     for invoice_import in invoice_imports:
         link_invoice_to_receipt(
             db,
             receipt=receipt,
             invoice_import=invoice_import,
             user_id=user_id,
+        )
+    if delivery_document:
+        delivery_document.status = "linked"
+        delivery_document.receipt_id = receipt.id
+    if purchase_order:
+        order_lines = db.scalars(
+            select(StockPurchaseOrderLine).where(
+                StockPurchaseOrderLine.purchase_order_id == purchase_order.id
+            )
+        ).all()
+        purchase_order.receiving_status = (
+            "complete"
+            if order_lines
+            and all(line.received_quantity >= line.ordered_quantity for line in order_lines)
+            else "partial"
         )
     record_audit(
         db,
@@ -579,6 +672,9 @@ def create_physical_receipt(
             "location_id": location.id,
             "source_type": command.source_type,
             "source_reference": receipt.source_reference,
+            "manual_reason": receipt.manual_reason,
+            "effective_date": receipt.effective_date.isoformat(),
+            "purchase_order_id": receipt.purchase_order_id,
             "invoice_import_ids": [item.id for item in invoice_imports],
             "status": receipt.status,
             "lines": [item.model_dump(mode="json") for item in command.lines],
@@ -639,6 +735,7 @@ def create_manual_movement(
         external_reference_id=command.external_reference_id,
         performed_by_id=user_id,
         reason=command.reason.strip(),
+        effective_date=command.effective_date,
     )
     db.add(movement)
     db.flush()
@@ -682,6 +779,7 @@ def reverse_movement(
         external_reference_id=str(movement.id),
         performed_by_id=user_id,
         reason=reason.strip(),
+        effective_date=movement.effective_date,
         reverses_movement_id=movement.id,
     )
     db.add(reversal)
@@ -717,6 +815,481 @@ def low_stock_rows(db: Session) -> list[dict[str, Any]]:
         for minimum, article, location in rows
         if balances.get((article.id, location.id), ZERO) < _decimal(minimum.minimum_quantity)
     ]
+
+
+COMPATIBILITY_STATES = {"suggested", "confirmed", "validated", "rejected"}
+
+
+def create_vehicle_compatibility(
+    db: Session,
+    *,
+    command: StockArticleVehicleCompatibilityCreate,
+    user_id: int | None,
+) -> StockArticleVehicleCompatibility:
+    article = db.get(StockArticle, command.article_id)
+    if not article or not article.active:
+        raise StockDomainError("Artigo inexistente ou inativo.")
+    compatibility = StockArticleVehicleCompatibility(
+        article_id=article.id,
+        brand=command.brand.strip(),
+        model=command.model.strip(),
+        version=(command.version or "").strip() or None,
+        engine=(command.engine or "").strip() or None,
+        generation_period=(command.generation_period or "").strip() or None,
+        status=command.status,
+        evidence_type=command.evidence_type,
+        evidence_reference=(command.evidence_reference or "").strip() or None,
+        evidence_notes=(command.evidence_notes or "").strip() or None,
+        created_by_id=user_id,
+    )
+    if command.status in {"validated", "rejected"}:
+        compatibility.decided_by_id = user_id
+        compatibility.decided_at = datetime.now(UTC)
+    db.add(compatibility)
+    db.flush()
+    record_audit(
+        db,
+        action=f"stock.compatibility.{command.status}",
+        entity_type="stock_article_vehicle_compatibility",
+        entity_id=compatibility.id,
+        detail=f"{compatibility.brand} {compatibility.model} · {compatibility.evidence_type}",
+        user_id=user_id,
+        after_json=command.model_dump(mode="json"),
+    )
+    return compatibility
+
+
+def record_workshop_compatibility_evidence(
+    db: Session,
+    *,
+    command: StockWorkshopCompatibilityEvidence,
+    user_id: int | None,
+) -> StockArticleVehicleCompatibility:
+    """Stock-side contract for Oficina usage; deliberately never validates compatibility."""
+    existing = db.scalar(
+        select(StockArticleVehicleCompatibility).where(
+            StockArticleVehicleCompatibility.article_id == command.article_id,
+            StockArticleVehicleCompatibility.workshop_process_reference
+            == command.workshop_process_reference.strip(),
+            StockArticleVehicleCompatibility.brand == command.brand.strip(),
+            StockArticleVehicleCompatibility.model == command.model.strip(),
+        )
+    )
+    if existing:
+        return existing
+    payload = StockArticleVehicleCompatibilityCreate(
+        article_id=command.article_id,
+        brand=command.brand,
+        model=command.model,
+        version=command.version,
+        engine=command.engine,
+        generation_period=command.generation_period,
+        status="confirmed",
+        evidence_type="workshop",
+        evidence_reference=command.workshop_process_reference,
+        evidence_notes=command.evidence_notes,
+    )
+    compatibility = create_vehicle_compatibility(db, command=payload, user_id=user_id)
+    compatibility.workshop_process_reference = command.workshop_process_reference.strip()
+    return compatibility
+
+
+def decide_vehicle_compatibility(
+    db: Session,
+    *,
+    compatibility: StockArticleVehicleCompatibility,
+    status: str,
+    reason: str,
+    user_id: int | None,
+) -> StockArticleVehicleCompatibility:
+    if status not in COMPATIBILITY_STATES:
+        raise StockDomainError("Estado de compatibilidade inválido.")
+    old_status = compatibility.status
+    compatibility.status = status
+    compatibility.evidence_notes = " · ".join(
+        part for part in (compatibility.evidence_notes, reason.strip()) if part
+    )
+    if status in {"validated", "rejected"}:
+        compatibility.decided_by_id = user_id
+        compatibility.decided_at = datetime.now(UTC)
+    record_audit(
+        db,
+        action="stock.compatibility.decided",
+        entity_type="stock_article_vehicle_compatibility",
+        entity_id=compatibility.id,
+        detail=reason.strip(),
+        user_id=user_id,
+        before_json={"status": old_status},
+        after_json={"status": status},
+    )
+    return compatibility
+
+
+def create_inventory_session(
+    db: Session,
+    *,
+    command: StockInventorySessionCreate,
+    user_id: int | None,
+) -> StockInventorySession:
+    if command.idempotency_key:
+        existing = db.scalar(
+            select(StockInventorySession).where(
+                StockInventorySession.idempotency_key == command.idempotency_key.strip()
+            )
+        )
+        if existing:
+            return existing
+    location = db.get(StockLocation, command.location_id)
+    if not location or not location.active:
+        raise StockDomainError("Localização de Stock inválida ou inativa.")
+    article_ids = db.scalars(
+        select(StockArticle.id).where(StockArticle.active.is_(True)).order_by(StockArticle.id)
+    ).all()
+    balances = stock_balances(db, article_ids=article_ids)
+    inventory = StockInventorySession(
+        location_id=location.id,
+        status="draft",
+        effective_date=command.effective_date,
+        idempotency_key=(command.idempotency_key or "").strip() or None,
+        notes=(command.notes or "").strip() or None,
+        created_by_id=user_id,
+    )
+    db.add(inventory)
+    db.flush()
+    for article_id in article_ids:
+        db.add(
+            StockInventoryCount(
+                session_id=inventory.id,
+                article_id=article_id,
+                expected_snapshot=_quantity(balances.get((article_id, location.id), ZERO)),
+            )
+        )
+    record_audit(
+        db,
+        action="stock.inventory.created",
+        entity_type="stock_inventory_session",
+        entity_id=inventory.id,
+        detail=f"Snapshot cego criado para {location.name}.",
+        user_id=user_id,
+        after_json={
+            "location_id": location.id,
+            "article_count": len(article_ids),
+            "effective_date": command.effective_date.isoformat(),
+        },
+    )
+    return inventory
+
+
+def save_inventory_counts(
+    db: Session,
+    *,
+    inventory: StockInventorySession,
+    counts: dict[int, Decimal],
+    user_id: int | None,
+    close: bool = False,
+) -> StockInventorySession:
+    if inventory.status not in {"draft", "counting"}:
+        raise StockDomainError("Esta sessão já não aceita contagens.")
+    rows = {
+        row.article_id: row
+        for row in db.scalars(
+            select(StockInventoryCount).where(StockInventoryCount.session_id == inventory.id)
+        ).all()
+    }
+    for article_id, raw_quantity in counts.items():
+        if article_id not in rows:
+            raise StockDomainError("O artigo não pertence ao snapshot desta sessão.")
+        rows[article_id].counted_quantity = _quantity(raw_quantity)
+    inventory.status = "counting"
+    if close:
+        missing = [row.article_id for row in rows.values() if row.counted_quantity is None]
+        if missing:
+            raise StockDomainError("É necessário contar todos os artigos antes de fechar.")
+        inventory.status = "review"
+        inventory.closed_by_id = user_id
+        inventory.closed_at = datetime.now(UTC)
+    record_audit(
+        db,
+        action="stock.inventory.closed" if close else "stock.inventory.saved",
+        entity_type="stock_inventory_session",
+        entity_id=inventory.id,
+        detail="Contagem fechada para revisão humana." if close else "Rascunho guardado.",
+        user_id=user_id,
+        after_json={"counted_article_ids": sorted(counts), "status": inventory.status},
+    )
+    return inventory
+
+
+def confirm_inventory_session(
+    db: Session,
+    *,
+    inventory: StockInventorySession,
+    command: StockInventoryConfirm,
+    user_id: int | None,
+) -> StockInventorySession:
+    if inventory.status == "completed":
+        return inventory
+    if inventory.status != "review":
+        raise StockDomainError("A contagem tem de ser fechada antes da confirmação.")
+    justifications = {
+        item.article_id: (item.justification or "").strip() for item in command.confirmations
+    }
+    rows = db.scalars(
+        select(StockInventoryCount)
+        .where(StockInventoryCount.session_id == inventory.id)
+        .order_by(StockInventoryCount.id)
+    ).all()
+    for row in rows:
+        if row.counted_quantity is None:
+            raise StockDomainError("A sessão contém artigos sem contagem.")
+        difference = _quantity(row.counted_quantity - row.expected_snapshot)
+        if difference == ZERO:
+            continue
+        justification = justifications.get(row.article_id) or (row.justification or "").strip()
+        if not justification:
+            raise StockDomainError("Cada diferença exige justificação humana.")
+        row.justification = justification
+        if row.adjustment_movement_id:
+            continue
+        movement = create_manual_movement(
+            db,
+            command=StockMovementCreate(
+                article_id=row.article_id,
+                movement_type="adjustment",
+                quantity=difference,
+                from_location_id=inventory.location_id if difference < ZERO else None,
+                to_location_id=inventory.location_id if difference > ZERO else None,
+                external_reference_type="stock_inventory_session",
+                external_reference_id=str(inventory.id),
+                reason=justification,
+                effective_date=inventory.effective_date,
+            ),
+            user_id=user_id,
+        )
+        row.adjustment_movement_id = movement.id
+    inventory.status = "completed"
+    inventory.confirmed_by_id = user_id
+    inventory.confirmed_at = datetime.now(UTC)
+    record_audit(
+        db,
+        action="stock.inventory.confirmed",
+        entity_type="stock_inventory_session",
+        entity_id=inventory.id,
+        detail="Confirmação humana concluída; apenas diferenças geraram acertos imutáveis.",
+        user_id=user_id,
+        after_json={"status": inventory.status},
+    )
+    return inventory
+
+
+def create_purchase_order(
+    db: Session,
+    *,
+    command: StockPurchaseOrderCreate,
+    user_id: int | None,
+) -> StockPurchaseOrder:
+    supplier = db.get(StockSupplier, command.supplier_id)
+    if not supplier or not supplier.active:
+        raise StockDomainError("Fornecedor inexistente ou inativo.")
+    year = command.effective_date.year
+    sequence = (
+        int(
+            db.scalar(
+                select(func.count())
+                .select_from(StockPurchaseOrder)
+                .where(StockPurchaseOrder.order_number.like(f"PO-{year}-%"))
+            )
+            or 0
+        )
+        + 1
+    )
+    order_number = f"PO-{year}-{sequence:05d}"
+    while db.scalar(
+        select(StockPurchaseOrder.id).where(
+            StockPurchaseOrder.order_number == order_number,
+            StockPurchaseOrder.version == 1,
+        )
+    ):
+        sequence += 1
+        order_number = f"PO-{year}-{sequence:05d}"
+    order = StockPurchaseOrder(
+        order_number=order_number,
+        version=1,
+        supplier_id=supplier.id,
+        commercial_status=command.commercial_status,
+        receiving_status="pending",
+        effective_date=command.effective_date,
+        currency=command.currency.upper(),
+        notes=(command.notes or "").strip() or None,
+        created_by_id=user_id,
+    )
+    db.add(order)
+    db.flush()
+    for number, item in enumerate(command.lines, 1):
+        article = db.get(StockArticle, item.article_id)
+        location = db.get(StockLocation, item.location_id)
+        if not article or not article.active:
+            raise StockDomainError("A encomenda contém um artigo inexistente ou inativo.")
+        if not location or not location.active:
+            raise StockDomainError("A encomenda contém uma localização inválida.")
+        db.add(
+            StockPurchaseOrderLine(
+                purchase_order_id=order.id,
+                line_number=number,
+                article_id=article.id,
+                supplier_ref=(item.supplier_ref or "").strip() or None,
+                ordered_quantity=_quantity(item.quantity),
+                received_quantity=ZERO,
+                unit=item.unit.strip(),
+                unit_price=_cent(item.unit_price),
+                location_id=location.id,
+            )
+        )
+    record_audit(
+        db,
+        action="stock.purchase_order.created",
+        entity_type="stock_purchase_order",
+        entity_id=order.id,
+        detail=f"{order.order_number} v{order.version}",
+        user_id=user_id,
+        after_json=command.model_dump(mode="json") | {"order_number": order.order_number},
+    )
+    return order
+
+
+def conference_comparison(db: Session, invoice_import: StockInvoiceImport) -> dict[str, Any]:
+    invoice_lines = db.scalars(
+        select(StockInvoiceLine)
+        .where(StockInvoiceLine.invoice_import_id == invoice_import.id)
+        .order_by(StockInvoiceLine.line_number)
+    ).all()
+    receipt_rows = db.execute(
+        select(StockReceiptLine, StockReceipt)
+        .join(StockReceipt, StockReceipt.id == StockReceiptLine.receipt_id)
+        .join(StockReceiptInvoiceLink, StockReceiptInvoiceLink.receipt_id == StockReceipt.id)
+        .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
+        .order_by(StockReceipt.effective_date, StockReceipt.id)
+    ).all()
+    order_ids = {
+        receipt.purchase_order_id for _, receipt in receipt_rows if receipt.purchase_order_id
+    }
+    order_lines = db.scalars(
+        select(StockPurchaseOrderLine).where(
+            StockPurchaseOrderLine.purchase_order_id.in_(order_ids or {-1})
+        )
+    ).all()
+    receipts_by_ref: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    receipts_by_article: dict[int, Decimal] = defaultdict(lambda: ZERO)
+    for line, _receipt in receipt_rows:
+        if line.supplier_ref:
+            receipts_by_ref[line.supplier_ref] += line.accepted_quantity
+        receipts_by_article[line.article_id] += line.accepted_quantity
+    orders_by_ref: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    orders_by_article: dict[int, Decimal] = defaultdict(lambda: ZERO)
+    for line in order_lines:
+        if line.supplier_ref:
+            orders_by_ref[line.supplier_ref] += line.ordered_quantity
+        orders_by_article[line.article_id] += line.ordered_quantity
+    line_comparison = []
+    for line in invoice_lines:
+        ordered = orders_by_ref.get(line.supplier_ref or "", ZERO)
+        received = receipts_by_ref.get(line.supplier_ref or "", ZERO)
+        if line.article_id:
+            ordered = ordered or orders_by_article.get(line.article_id, ZERO)
+            received = received or receipts_by_article.get(line.article_id, ZERO)
+        divergent = bool(order_ids and ordered != line.quantity) or bool(
+            receipt_rows and received != line.quantity
+        )
+        line_comparison.append(
+            {
+                "line": line,
+                "ordered": _quantity(ordered),
+                "received": _quantity(received),
+                "invoiced": _quantity(line.quantity),
+                "divergent": divergent,
+            }
+        )
+    order_total = sum((line.ordered_quantity * line.unit_price for line in order_lines), ZERO)
+    tolerance = _decimal(invoice_import.conference_tolerance, CENT)
+    gross_total = _decimal(invoice_import.gross_total)
+    return {
+        "lines": line_comparison,
+        "receipt_count": len({receipt.id for _, receipt in receipt_rows}),
+        "order_count": len(order_ids),
+        "order_total": _cent(order_total),
+        "invoice_total": _cent(gross_total),
+        "total_divergent": bool(order_ids and abs(order_total - gross_total) > tolerance),
+        "has_divergence": any(row["divergent"] for row in line_comparison)
+        or bool(order_ids and abs(order_total - gross_total) > tolerance),
+    }
+
+
+def apply_conference_action(
+    db: Session,
+    *,
+    invoice_import: StockInvoiceImport,
+    command: StockConferenceAction,
+    user_id: int | None,
+) -> StockInvoiceImport:
+    comparison = conference_comparison(db, invoice_import)
+    invoice_import.conference_tolerance = _cent(command.tolerance)
+    invoice_import.conference_notes = (command.notes or "").strip() or None
+    if command.action == "save":
+        invoice_import.conference_status = "pending"
+    elif command.action == "divergence":
+        invoice_import.conference_status = "divergent"
+    else:
+        if comparison["has_divergence"] and not invoice_import.conference_notes:
+            raise StockDomainError("A validação com divergências exige observações.")
+        invoice_import.conference_status = "conferred"
+        invoice_import.validated_by_id = user_id
+        invoice_import.validated_at = datetime.now(UTC)
+    record_audit(
+        db,
+        action=f"stock.conference.{command.action}",
+        entity_type="stock_invoice_import",
+        entity_id=invoice_import.id,
+        detail=invoice_import.conference_notes,
+        user_id=user_id,
+        after_json={
+            "conference_status": invoice_import.conference_status,
+            "has_divergence": comparison["has_divergence"],
+            "stock_changed": False,
+        },
+    )
+    return invoice_import
+
+
+def regularize_discrepancy(
+    db: Session,
+    *,
+    discrepancy: StockDiscrepancy,
+    command: StockDiscrepancyRegularize,
+    user_id: int | None,
+) -> StockDiscrepancy:
+    if discrepancy.status == "regularized":
+        return discrepancy
+    quantity = _quantity(command.adjustment_quantity)
+    movement = create_manual_movement(
+        db,
+        command=StockMovementCreate(
+            article_id=discrepancy.article_id,
+            movement_type="adjustment",
+            quantity=quantity,
+            from_location_id=discrepancy.location_id if quantity < ZERO else None,
+            to_location_id=discrepancy.location_id if quantity > ZERO else None,
+            external_reference_type="stock_discrepancy",
+            external_reference_id=str(discrepancy.id),
+            reason=command.reason,
+            effective_date=command.effective_date,
+        ),
+        user_id=user_id,
+    )
+    discrepancy.adjustment_movement_id = movement.id
+    discrepancy.status = "regularized"
+    discrepancy.regularized_by_id = user_id
+    discrepancy.regularized_at = datetime.now(UTC)
+    return discrepancy
 
 
 def _authorized_document_path(document: Document) -> Path:
@@ -816,9 +1389,7 @@ def parse_dispnal_invoice(lines: list[str], content_hash: str) -> dict[str, Any]
         lines,
         r"Fatura\s*(?:FT)?\s*N[.ºo°]*\s*(?:\|\s*)?(\d+(?:/\d{4})?)",
     )
-    invoice_number = invoice_number or _first_match(
-        lines, r"^\s*N[.ºo°]*\s*(?:\|\s*)?(\d+/\d{4})"
-    )
+    invoice_number = invoice_number or _first_match(lines, r"^\s*N[.ºo°]*\s*(?:\|\s*)?(\d+/\d{4})")
     invoice_number = invoice_number or _first_match(lines, r"\*FA\s*(\d+)\s*\*")
     if not invoice_number:
         raise StockDomainError("Número da fatura Dispnal não encontrado.")
@@ -899,9 +1470,7 @@ def _document_copy(lines: list[str], marker: str) -> list[str]:
     return lines[:stop]
 
 
-def parse_torres_cunha_invoice(
-    lines: list[str], content_hash: str
-) -> dict[str, Any] | None:
+def parse_torres_cunha_invoice(lines: list[str], content_hash: str) -> dict[str, Any] | None:
     all_text = "\n".join(lines)
     if not re.search(r"Torres\s*\|?\s*&\s*\|?\s*Cunha", all_text, re.IGNORECASE):
         return None
@@ -988,9 +1557,7 @@ def parse_torres_cunha_invoice(
     }
 
 
-def parse_caetano_parts_invoice(
-    lines: list[str], content_hash: str
-) -> dict[str, Any] | None:
+def parse_caetano_parts_invoice(lines: list[str], content_hash: str) -> dict[str, Any] | None:
     all_text = "\n".join(lines)
     invoice_number = _first_match(lines, r"JFM/(\d+/\d{4})")
     if not invoice_number or "Armazem | 1034" not in all_text:
@@ -1022,9 +1589,7 @@ def parse_caetano_parts_invoice(
             {
                 "line_number": len(parsed_lines) + 1,
                 "supplier_ref": parts[1],
-                "description": (
-                    " ".join(parts[2:location_index]).strip() or previous_text
-                ),
+                "description": (" ".join(parts[2:location_index]).strip() or previous_text),
                 "quantity": str(quantity),
                 "unit": quantity_match.group(2).lower(),
                 "unit_cost": str(unit_cost),

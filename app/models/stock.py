@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -76,6 +77,7 @@ class StockArticle(TimestampMixin, Base):
     primary_supplier_id: Mapped[int | None] = mapped_column(
         ForeignKey("stock_suppliers.id", ondelete="SET NULL"), index=True
     )
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     average_cost: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"))
     last_cost: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"))
@@ -147,6 +149,9 @@ class StockInvoiceImport(TimestampMixin, Base):
     tax_total: Mapped[Decimal | None] = mapped_column(MONEY)
     gross_total: Mapped[Decimal | None] = mapped_column(MONEY)
     status: Mapped[str] = mapped_column(String(40), default="needs_review", index=True)
+    conference_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    conference_notes: Mapped[str | None] = mapped_column(Text)
+    conference_tolerance: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.01"))
     content_hash: Mapped[str | None] = mapped_column(String(64))
     extractor_name: Mapped[str | None] = mapped_column(String(120))
     extractor_version: Mapped[str | None] = mapped_column(String(40))
@@ -197,6 +202,11 @@ class StockReceipt(TimestampMixin, Base):
     )
     source_type: Mapped[str] = mapped_column(String(40), index=True)
     source_reference: Mapped[str | None] = mapped_column(String(160), index=True)
+    manual_reason: Mapped[str | None] = mapped_column(Text)
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    purchase_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_purchase_orders.id", ondelete="RESTRICT"), index=True
+    )
     idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(40), default="completed", index=True)
     confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
@@ -232,6 +242,9 @@ class StockReceiptLine(Base):
     article_id: Mapped[int] = mapped_column(
         ForeignKey("stock_articles.id", ondelete="RESTRICT"), index=True
     )
+    purchase_order_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_purchase_order_lines.id", ondelete="RESTRICT"), index=True
+    )
     supplier_ref: Mapped[str | None] = mapped_column(String(160), index=True)
     accepted_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
     unit_cost: Mapped[Decimal] = mapped_column(MONEY)
@@ -266,6 +279,7 @@ class StockMovement(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
     reason: Mapped[str | None] = mapped_column(Text)
     reverses_movement_id: Mapped[int | None] = mapped_column(
         ForeignKey("stock_movements.id", ondelete="RESTRICT"), unique=True, index=True
@@ -278,3 +292,168 @@ def _reject_stock_movement_mutation(*_args, **_kwargs) -> None:
 
 event.listen(StockMovement, "before_update", _reject_stock_movement_mutation)
 event.listen(StockMovement, "before_delete", _reject_stock_movement_mutation)
+
+
+class StockArticleVehicleCompatibility(TimestampMixin, Base):
+    __tablename__ = "stock_article_vehicle_compatibilities"
+    __table_args__ = (
+        Index(
+            "ix_stock_compatibility_vehicle",
+            "brand",
+            "model",
+            "version",
+            "engine",
+        ),
+        Index("ix_stock_compat_workshop_ref", "workshop_process_reference"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_articles.id", ondelete="CASCADE"), index=True
+    )
+    brand: Mapped[str] = mapped_column(String(120), index=True)
+    model: Mapped[str] = mapped_column(String(160), index=True)
+    version: Mapped[str | None] = mapped_column(String(160))
+    engine: Mapped[str | None] = mapped_column(String(160))
+    generation_period: Mapped[str | None] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(40), default="suggested", index=True)
+    evidence_type: Mapped[str] = mapped_column(String(40), default="manual", index=True)
+    evidence_reference: Mapped[str | None] = mapped_column(String(200), index=True)
+    evidence_notes: Mapped[str | None] = mapped_column(Text)
+    workshop_process_reference: Mapped[str | None] = mapped_column(String(120))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class StockInventorySession(TimestampMixin, Base):
+    __tablename__ = "stock_inventory_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_locations.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    closed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class StockInventoryCount(TimestampMixin, Base):
+    __tablename__ = "stock_inventory_counts"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "article_id", name="uq_stock_inventory_count_session_article"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_inventory_sessions.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_articles.id", ondelete="RESTRICT"), index=True
+    )
+    expected_snapshot: Mapped[Decimal] = mapped_column(QUANTITY)
+    counted_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    justification: Mapped[str | None] = mapped_column(Text)
+    adjustment_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movements.id", ondelete="RESTRICT"), unique=True, index=True
+    )
+
+
+class StockPurchaseOrder(TimestampMixin, Base):
+    __tablename__ = "stock_purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("order_number", "version", name="uq_stock_purchase_order_number_version"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_number: Mapped[str] = mapped_column(String(80), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_suppliers.id", ondelete="RESTRICT"), index=True
+    )
+    commercial_status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    receiving_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class StockPurchaseOrderLine(TimestampMixin, Base):
+    __tablename__ = "stock_purchase_order_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_purchase_orders.id", ondelete="CASCADE"), index=True
+    )
+    line_number: Mapped[int] = mapped_column(Integer)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_articles.id", ondelete="RESTRICT"), index=True
+    )
+    supplier_ref: Mapped[str | None] = mapped_column(String(160), index=True)
+    ordered_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
+    received_quantity: Mapped[Decimal] = mapped_column(QUANTITY, default=Decimal("0"))
+    unit: Mapped[str] = mapped_column(String(30))
+    unit_price: Mapped[Decimal] = mapped_column(MONEY)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_locations.id", ondelete="RESTRICT"), index=True
+    )
+
+
+class StockDeliveryDocument(TimestampMixin, Base):
+    __tablename__ = "stock_delivery_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "supplier_id", "document_type", "reference", name="uq_stock_delivery_document"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_suppliers.id", ondelete="RESTRICT"), index=True
+    )
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), index=True
+    )
+    document_type: Mapped[str] = mapped_column(String(40), index=True)
+    reference: Mapped[str] = mapped_column(String(160), index=True)
+    effective_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    receipt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_receipts.id", ondelete="SET NULL"), index=True
+    )
+
+
+class StockDiscrepancy(TimestampMixin, Base):
+    __tablename__ = "stock_discrepancies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_articles.id", ondelete="RESTRICT"), index=True
+    )
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_locations.id", ondelete="RESTRICT"), index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(40), index=True)
+    source_id: Mapped[str] = mapped_column(String(120), index=True)
+    expected_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    actual_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    difference_quantity: Mapped[Decimal] = mapped_column(QUANTITY)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    adjustment_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movements.id", ondelete="RESTRICT"), unique=True, index=True
+    )
+    regularized_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    regularized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

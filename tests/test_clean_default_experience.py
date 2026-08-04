@@ -91,7 +91,7 @@ def test_functional_admin_can_open_legacy_and_entry_is_audited(
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.headers["location"] == "/?legacy_entry=1"
     audit = db_session.scalar(
         select(AuditLog)
         .where(AuditLog.action == "web.legacy_experience.open")
@@ -104,6 +104,33 @@ def test_functional_admin_can_open_legacy_and_entry_is_audited(
         "origin": "/v2-clean/admin/settings?tab=catalogs",
         "destination_route": "/",
     }
+
+
+def test_reopening_application_resets_persisted_legacy_experience(
+    authenticated_client,
+):
+    opened = authenticated_client.get(
+        "/switch-experience/current",
+        params={"origin": "/v2-clean", "destination": "/"},
+        follow_redirects=False,
+    )
+    assert opened.headers["location"] == "/?legacy_entry=1"
+
+    legacy = authenticated_client.get("/?legacy_entry=1", follow_redirects=False)
+    assert legacy.status_code == 200
+
+    reopened = authenticated_client.get("/", follow_redirects=False)
+    assert reopened.status_code == 303
+    assert reopened.headers["location"] == "/v2-clean"
+
+    authenticated_client.get(
+        "/switch-experience/current",
+        params={"origin": "/v2-clean", "destination": "/fleet"},
+        follow_redirects=False,
+    )
+    stale_legacy_url = authenticated_client.get("/fleet", follow_redirects=False)
+    assert stale_legacy_url.status_code == 303
+    assert stale_legacy_url.headers["location"] == "/v2-clean"
 
 
 def test_operator_cannot_see_or_open_legacy_experience(client, db_session):

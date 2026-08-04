@@ -31005,7 +31005,11 @@ def switch_experience(
         )
         db.commit()
     request.session["carfast_experience"] = "current"
-    return RedirectResponse(destination_route, status_code=303)
+    separator = "&" if "?" in destination_route else "?"
+    return RedirectResponse(
+        f"{destination_route}{separator}legacy_entry=1",
+        status_code=303,
+    )
 
 
 def safe_internal_next(value: str | None) -> str:

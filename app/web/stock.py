@@ -183,9 +183,9 @@ def stock_articles(
     request: Request,
     db: DbSession,
     q: str = "",
-    category_id: int | None = None,
-    supplier_id: int | None = None,
-    location_id: int | None = None,
+    category_id: str = "",
+    supplier_id: str = "",
+    location_id: str = "",
     state: str = "active",
     low_stock: bool = False,
 ):
@@ -193,21 +193,24 @@ def stock_articles(
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
         return denied
+    clean_category_id = int(category_id) if category_id.strip().isdigit() else None
+    clean_supplier_id = int(supplier_id) if supplier_id.strip().isdigit() else None
+    clean_location_id = int(location_id) if location_id.strip().isdigit() else None
     statement = select(StockArticle).order_by(StockArticle.name, StockArticle.id)
     if q.strip():
         token = f"%{q.strip()}%"
         statement = statement.where(
             or_(StockArticle.internal_ref.ilike(token), StockArticle.name.ilike(token))
         )
-    if category_id:
-        statement = statement.where(StockArticle.category_id == category_id)
-    if supplier_id:
-        statement = statement.where(StockArticle.primary_supplier_id == supplier_id)
+    if clean_category_id:
+        statement = statement.where(StockArticle.category_id == clean_category_id)
+    if clean_supplier_id:
+        statement = statement.where(StockArticle.primary_supplier_id == clean_supplier_id)
     if state in {"active", "inactive"}:
         statement = statement.where(StockArticle.active.is_(state == "active"))
     rows = _article_rows(db, db.scalars(statement).all())
-    if location_id:
-        location = db.get(StockLocation, location_id)
+    if clean_location_id:
+        location = db.get(StockLocation, clean_location_id)
         if location:
             rows = [row for row in rows if row["by_location"].get(location.code, ZERO) != ZERO]
     if low_stock:
@@ -223,9 +226,9 @@ def stock_articles(
             "locations": db.scalars(select(StockLocation).order_by(StockLocation.name)).all(),
             "filters": {
                 "q": q,
-                "category_id": category_id,
-                "supplier_id": supplier_id,
-                "location_id": location_id,
+                "category_id": clean_category_id,
+                "supplier_id": clean_supplier_id,
+                "location_id": clean_location_id,
                 "state": state,
                 "low_stock": low_stock,
             },
@@ -1093,11 +1096,12 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
 
 
 @stock_router.get("/v2-clean/stock/current", response_class=HTMLResponse)
-def stock_current(request: Request, db: DbSession, q: str = "", location_id: int | None = None):
+def stock_current(request: Request, db: DbSession, q: str = "", location_id: str = ""):
     if denied := _denied(
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
         return denied
+    clean_location_id = int(location_id) if location_id.strip().isdigit() else None
     statement = select(StockArticle).where(StockArticle.active.is_(True))
     if q.strip():
         token = f"%{q.strip()}%"
@@ -1108,8 +1112,8 @@ def stock_current(request: Request, db: DbSession, q: str = "", location_id: int
     locations = db.scalars(
         select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
     ).all()
-    if location_id:
-        locations = [location for location in locations if location.id == location_id]
+    if clean_location_id:
+        locations = [location for location in locations if location.id == clean_location_id]
     balances = stock_balances(db, article_ids=[article.id for article in articles])
     minimums = {
         (minimum.article_id, minimum.location_id): minimum.minimum_quantity
@@ -1135,7 +1139,7 @@ def stock_current(request: Request, db: DbSession, q: str = "", location_id: int
                 select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
             ).all(),
             "q": q,
-            "location_id": location_id,
+            "location_id": clean_location_id,
         },
     )
 

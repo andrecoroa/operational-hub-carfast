@@ -840,6 +840,20 @@ def test_clean_stock_pages_render_and_explain_physical_boundary(authenticated_cl
         assert "cria artigos, receções, movimentos ou existências" in response.text
 
 
+def test_stock_filters_accept_empty_optional_ids(authenticated_client):
+    articles = authenticated_client.get(
+        "/v2-clean/stock/articles",
+        params={"category_id": "", "supplier_id": "", "location_id": ""},
+    )
+    current = authenticated_client.get(
+        "/v2-clean/stock/current",
+        params={"location_id": ""},
+    )
+
+    assert articles.status_code == 200
+    assert current.status_code == 200
+
+
 def test_dispnal_parser_keeps_documentary_fields_only():
     lines = [
         "Dispnal Pneus, S.A. | NIF 504670409",

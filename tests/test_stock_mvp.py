@@ -468,32 +468,45 @@ def test_direct_stock_invoice_batch_keeps_valid_files_when_one_is_invalid(
     assert db_session.scalar(select(func.count()).select_from(StockInvoiceImport)) == 2
 
 
-def test_stock_physical_count_creates_only_difference_adjustment(
+def test_blind_inventory_reveals_snapshot_only_after_close_and_confirms_difference(
     authenticated_client, db_session
 ):
     article_id = _create_article(authenticated_client, "COUNT-001")
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
-    response = authenticated_client.post(
-        "/v2-clean/stock/current/count",
-        data={
-            "article_id": article_id,
-            "location_id": workshop.id,
-            "counted_quantity": "7",
-            "reason": "Inventário mensal",
-        },
-        follow_redirects=False,
+    created = authenticated_client.post(
+        "/api/stock/inventory-sessions",
+        json={"location_id": workshop.id, "idempotency_key": "count-001"},
     )
-
-    assert response.status_code == 303
+    assert created.status_code == 201, created.text
+    inventory_id = created.json()["id"]
+    blind = authenticated_client.get(f"/api/stock/inventory-sessions/{inventory_id}")
+    assert "expected_quantity" not in blind.text
+    assert "difference_quantity" not in blind.text
+    closed = authenticated_client.post(
+        f"/api/stock/inventory-sessions/{inventory_id}/counts?close=true",
+        json={"counts": [{"article_id": article_id, "counted_quantity": "7"}]},
+    )
+    assert closed.status_code == 200, closed.text
+    assert (
+        authenticated_client.get(f"/api/stock/inventory-sessions/{inventory_id}").json()["items"][
+            0
+        ]["expected_quantity"]
+        == 0
+    )
+    confirmed = authenticated_client.post(
+        f"/api/stock/inventory-sessions/{inventory_id}/confirm",
+        json={"confirmations": [{"article_id": article_id, "justification": "Inventário mensal"}]},
+    )
+    assert confirmed.status_code == 200, confirmed.text
     movement = db_session.scalar(
         select(StockMovement).where(StockMovement.article_id == article_id)
     )
     assert movement.movement_type == "adjustment"
     assert movement.quantity == Decimal("7.000")
     assert movement.to_location_id == workshop.id
-    assert stock_balances(db_session, article_ids=[article_id])[(article_id, workshop.id)] == Decimal(
-        "7.000"
-    )
+    assert stock_balances(db_session, article_ids=[article_id])[
+        (article_id, workshop.id)
+    ] == Decimal("7.000")
 
 
 def test_extract_and_validate_are_document_only(authenticated_client, db_session, monkeypatch):
@@ -670,6 +683,7 @@ def test_receipts_start_only_from_physical_stock_action_and_can_link_one_invoice
         json={
             "location_id": airport.id,
             "source_type": "manual",
+            "manual_reason": "Entrega sem documento",
             "responsible_name": "Responsável Aeroporto",
             "invoice_import_ids": [invoice_id],
             "lines": [{"article_id": article_id, "accepted_quantity": "3", "unit_cost": "11"}],
@@ -695,6 +709,7 @@ def test_linking_invoice_after_receipt_is_idempotent_and_never_changes_stock(
         json={
             "location_id": workshop.id,
             "source_type": "manual",
+            "manual_reason": "Receção física sem documento",
             "lines": [{"article_id": article_id, "accepted_quantity": "2", "unit_cost": "5"}],
         },
     ).json()["id"]
@@ -772,6 +787,7 @@ def test_low_stock_alert_and_movement_immutability(authenticated_client, db_sess
             json={
                 "location_id": workshop.id,
                 "source_type": "manual",
+                "manual_reason": "Receção física sem documento",
                 "lines": [{"article_id": article_id, "accepted_quantity": "2", "unit_cost": "4"}],
             },
         ).status_code

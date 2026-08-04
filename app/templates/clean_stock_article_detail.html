@@ -5,7 +5,7 @@
   <main class="content clean-content stock-page">
     {% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
     <header class="stock-header compact-header">
-      <div><p class="eyebrow">{{ article.internal_ref }}</p><h1>{{ article.name }}</h1><p>Ficha completa do artigo.</p></div>
+      <div><p class="eyebrow">Artigo</p><h1>{{ article.name }}</h1><p><strong>Referência:</strong> {{ article.internal_ref }}</p></div>
       <a class="button-link secondary-link" href="/v2-clean/stock/articles">Voltar</a>
     </header>
     {% if request.query_params.get('saved') %}<div class="stock-notice success">Alteração guardada.</div>{% endif %}
@@ -22,13 +22,14 @@
       <div class="stock-card-heading"><div><h2>Dados editáveis</h2><p>A referência interna permanece estável.</p></div></div>
       <form method="post" action="/v2-clean/stock/articles/{{ article.id }}" class="stock-review-form">
         <div class="stock-form-grid">
-          <label>Designação<input name="name" value="{{ article.name }}" required {% if not can_operate_stock %}readonly{% endif %}></label>
+          <label>Referência<input value="{{ article.internal_ref }}" readonly aria-readonly="true"></label>
+          <label>Descrição<input name="name" value="{{ article.name }}" required {% if not can_operate_stock %}readonly{% endif %}></label>
           <label>Categoria<select name="category_id" {% if not can_operate_stock %}disabled{% endif %}><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}" {% if article.category_id==item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
           <label>Classificação<input name="classification" value="{{ article.classification or '' }}" {% if not can_operate_stock %}readonly{% endif %}></label>
           <label>Unidade<input name="unit" value="{{ article.unit }}" required {% if not can_operate_stock %}readonly{% endif %}></label>
           <label>Fornecedor principal<select name="primary_supplier_id" {% if not can_operate_stock %}disabled{% endif %}><option value="">Sem fornecedor</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if article.primary_supplier_id==item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
           <label>Estado<select name="status" {% if not can_operate_stock %}disabled{% endif %}><option value="active" {% if article.status=='active' %}selected{% endif %}>Ativo</option><option value="inactive" {% if article.status=='inactive' %}selected{% endif %}>Inativo</option><option value="discontinued" {% if article.status=='discontinued' %}selected{% endif %}>Descontinuado</option></select></label>
-          <label class="stock-form-wide">Descrição<textarea name="description" {% if not can_operate_stock %}readonly{% endif %}>{{ article.description or '' }}</textarea></label>
+          <label class="stock-form-wide">Descrição detalhada <small>Opcional</small><textarea name="description" {% if not can_operate_stock %}readonly{% endif %}>{{ article.description or '' }}</textarea></label>
         </div>
         {% if can_operate_stock %}<div class="stock-actions"><button>Guardar ficha</button></div>{% endif %}
       </form>

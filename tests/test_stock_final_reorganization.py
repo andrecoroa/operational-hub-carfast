@@ -45,7 +45,7 @@ def _login(client, email: str, password: str) -> None:
 
 
 def test_article_table_is_short_and_integer_formatted(authenticated_client):
-    _article(authenticated_client, "SHORT-001")
+    article_id = _article(authenticated_client, "SHORT-001")
 
     response = authenticated_client.get("/v2-clean/stock/articles")
 
@@ -62,6 +62,15 @@ def test_article_table_is_short_and_integer_formatted(authenticated_client):
     assert "<th>Custo" not in response.text
     assert "<th>Mínimo" not in response.text
     assert ".000" not in response.text
+
+    detail = authenticated_client.get(f"/v2-clean/stock/articles/{article_id}")
+    assert "Referência:" in detail.text
+    assert 'value="SHORT-001" readonly' in detail.text
+    assert "Descrição detalhada" in detail.text
+
+    orders = authenticated_client.get("/v2-clean/stock/orders")
+    assert "<th>Referência</th><th>Descrição</th>" in orders.text
+    assert 'data-description="Artigo SHORT-001"' in orders.text
 
 
 def test_receipt_responsible_is_always_the_authenticated_user(
@@ -255,6 +264,10 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     ).json()["id"]
     invoice_import = db_session.get(StockInvoiceImport, invoice_id)
     invoice_import.raw_extraction_json = {
+        "supplier_name": "Fornecedor extraído",
+        "invoice_number": "FT-EXTRAIDA-1",
+        "invoice_date": "2026-08-03",
+        "gross_total": "27.68",
         "lines": [
             {
                 "line_number": 1,
@@ -285,6 +298,11 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     assert "REF-MODAL" in modal.text
     assert "12.50 €" in modal.text
     assert "27.68 €" in modal.text
+    assert "Fornecedor extraído" in modal.text
+    assert "FT-EXTRAIDA-1" in modal.text
+    assert "03/08/2026" in modal.text
+    assert "Referência</th><th>Descrição" in modal.text
+    assert "navpanes=0" in modal.text
     assert "Rever extração e validar artigos" in modal.text
     responsible_field = review.text.split("Responsável pela receção", 1)[1].split("</label>", 1)[0]
     assert "Admin Testes" in responsible_field

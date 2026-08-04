@@ -695,6 +695,17 @@ def stock_invoice_conference_modal(request: Request, invoice_import_id: int, db:
         saved_lines
         or [line for line in raw_lines if isinstance(line, dict)]
     )
+    supplier = (
+        db.get(StockSupplier, invoice_import.supplier_id)
+        if invoice_import.supplier_id
+        else None
+    )
+    display_invoice_date = invoice_import.invoice_date
+    if not display_invoice_date and raw.get("invoice_date"):
+        try:
+            display_invoice_date = _parse_date(str(raw["invoice_date"]))
+        except ValueError:
+            display_invoice_date = None
     return templates.TemplateResponse(
         request,
         "_clean_stock_conference_modal.html",
@@ -702,9 +713,15 @@ def stock_invoice_conference_modal(request: Request, invoice_import_id: int, db:
             **_page_context(request, db),
             "invoice_import": invoice_import,
             "document": document,
-            "supplier": db.get(StockSupplier, invoice_import.supplier_id)
-            if invoice_import.supplier_id
-            else None,
+            "supplier": supplier,
+            "display_supplier_name": supplier.name
+            if supplier
+            else str(raw.get("supplier_name") or "Fornecedor por confirmar"),
+            "display_invoice_number": invoice_import.invoice_number
+            or str(raw.get("invoice_number") or document.title or document.original_name),
+            "display_invoice_date": display_invoice_date,
+            "display_invoice_total": invoice_import.gross_total
+            or _parse_decimal(str(raw.get("gross_total") or "0")),
             "comparison": conference_comparison(db, invoice_import),
             "extracted_lines": extracted_lines,
         },

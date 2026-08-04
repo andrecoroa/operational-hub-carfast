@@ -34,8 +34,8 @@
     {% if can_operate_stock %}<dialog id="new-article" class="stock-dialog"><form method="post" action="/v2-clean/stock/articles">
       <h2>Novo artigo</h2>
       <label>Referência interna<input name="internal_ref" required></label>
-      <label>Designação<input name="name" required></label>
-      <label>Descrição<textarea name="description"></textarea></label>
+      <label>Descrição<input name="name" required></label>
+      <label>Descrição detalhada <small>Opcional</small><textarea name="description"></textarea></label>
       <div class="stock-form-grid">
         <label>Categoria<select name="category_id"><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
         <label>Classificação<input name="classification"></label>

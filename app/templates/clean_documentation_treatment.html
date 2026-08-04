@@ -3,38 +3,212 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_treatment" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content doc-arch-page">
+  <main class="content clean-content doc-arch-page doc-treatment-page">
     {% set doc_nav = "treatment" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header doc-arch-header-simple">
-      <div><p class="eyebrow">Documentação</p><h1>Tratamento</h1><p>Validar, completar e encaminhar documentos que já têm uma família definida.</p></div>
+      <div>
+        <p class="eyebrow">Documentação</p>
+        <h1>Tratamento</h1>
+        <p>Fila única para classificar, associar, extrair, validar e concluir.</p>
+      </div>
     </header>
     {% include "_clean_documentation_family_nav.html" %}
-    <section class="doc-arch-section-heading doc-arch-section-heading-tight">
-      <div><h2>{{ family_label }} por tratar</h2><p>A tabela mostra apenas documentos com extração ou validação ainda pendente.</p></div>
-    </section>
-    <form class="doc-arch-filters doc-arch-filters-compact" method="get">
+
+    {% if request.query_params.get('bulk_processed') %}
+      <div class="doc-arch-notice success">
+        Lote concluído: {{ request.query_params.get('bulk_processed') }} documentos tratados{% if request.query_params.get('bulk_failed') != '0' %}; {{ request.query_params.get('bulk_failed') }} ficaram pendentes por incompatibilidade{% endif %}.
+      </div>
+    {% elif request.query_params.get('bulk_error') %}
+      <div class="doc-arch-notice danger">Não foi possível executar a ação em lote.</div>
+    {% endif %}
+
+    <form class="doc-arch-filters doc-treatment-filters" method="get">
       <input type="hidden" name="family" value="{{ document_family }}">
       <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula…">
-      <button type="submit">Filtrar</button>
+      <select name="stage">
+        <option value="">Todas as etapas</option>
+        <option value="associate" {% if stage == 'associate' %}selected{% endif %}>Associar</option>
+        <option value="extract" {% if stage == 'extract' %}selected{% endif %}>Extrair / reprocessar</option>
+        <option value="validate" {% if stage == 'validate' %}selected{% endif %}>Validar</option>
+        <option value="complete" {% if stage == 'complete' %}selected{% endif %}>Concluir</option>
+      </select>
+      {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group }}">{% endif %}
+      <button type="submit">Aplicar filtros</button>
+      {% if q or stage or selected_group %}<a class="button-link secondary-link" href="?family={{ document_family }}">Limpar</a>{% endif %}
     </form>
-    <section class="doc-arch-card">
-      <div class="doc-arch-table-wrap">
-        <table class="doc-arch-table">
-          <thead><tr><th>Data</th><th>Documento</th><th>Origem</th><th>Viatura</th><th>Extração</th><th>Validação</th><th>Ação</th></tr></thead>
-          <tbody>
-            {% for row in rows %}
-              <tr><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.origin }}</td><td>{{ row.document.plate or "-" }}</td><td>{{ workflow_labels.get(row.workflow.extraction_status, row.workflow.extraction_status) }}</td><td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td><td><a href="{{ row.detail_href }}">Tratar</a></td></tr>
-            {% else %}<tr><td colspan="7" class="doc-arch-empty">Não existem documentos pendentes nesta família.</td></tr>{% endfor %}
-          </tbody>
-        </table>
-      </div>
+
+    <section class="doc-treatment-groups" aria-label="Grupos pendentes">
+      {% for item in groups %}
+        <a class="doc-treatment-group {% if selected_group == item.label %}active{% endif %}" href="?family={{ document_family }}&group={{ item.label|urlencode }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if stage %}&stage={{ stage }}{% endif %}">
+          <strong>{{ item.label }}</strong>
+          <span>{{ item.count }} pendentes · mais antigo {{ item.oldest_display }}</span>
+          {% if item.unassociated or item.failed %}<small>{% if item.unassociated %}{{ item.unassociated }} sem associação{% endif %}{% if item.unassociated and item.failed %} · {% endif %}{% if item.failed %}{{ item.failed }} com erro{% endif %}</small>{% endif %}
+        </a>
+      {% else %}
+        <div class="doc-arch-muted">Não existem grupos pendentes nesta família.</div>
+      {% endfor %}
     </section>
+
+    <form method="post" action="/v2-clean/documentation/treatment/bulk" id="doc-treatment-form">
+      <input type="hidden" name="return_url" value="{{ return_url }}">
+      <section class="doc-treatment-bulk-bar" id="doc-treatment-bulk-bar" hidden>
+        <strong><span id="doc-treatment-selected-count">0</span> selecionados</strong>
+        <div class="doc-treatment-bulk-controls">
+          <select name="action" id="doc-treatment-action" required>
+            <option value="">Selecionar ação…</option>
+            <option value="classify">Classificar</option>
+            <option value="associate">Associar à viatura</option>
+            <option value="extract">Extrair / reprocessar</option>
+            <option value="validate">Validar</option>
+            <option value="resolve">Resolver exceção</option>
+            <option value="complete">Concluir tratamento</option>
+            <option value="archive">Arquivar</option>
+          </select>
+          <select name="invoice_nature">
+            <option value="">Manter natureza</option>
+            <option value="operacional">Operacional</option>
+            <option value="financeira">Financeira</option>
+            <option value="stock">Fatura de stock</option>
+            <option value="por_classificar">Por classificar</option>
+          </select>
+          <select name="destination">
+            <option value="">Manter destino</option>
+            <option value="invoices">Faturas</option>
+            <option value="diagnostics">Diagnósticos</option>
+            <option value="archive">Arquivo</option>
+            <option value="triage">Triagem</option>
+          </select>
+          <input name="plate" placeholder="Matrícula comum (opcional)">
+          <input name="reason" placeholder="Motivo / observação">
+          <button type="button" id="doc-treatment-review-bulk">Rever lote</button>
+        </div>
+      </section>
+
+      <section class="doc-arch-card">
+        <div class="doc-arch-card-heading">
+          <div>
+            <h2>{% if selected_group %}{{ selected_group }}{% else %}{{ family_label }} por tratar{% endif %}</h2>
+            <p>Ordenado do documento mais antigo para o mais recente.</p>
+          </div>
+          {% if rows %}<button type="button" class="secondary" id="doc-treatment-select-visible">Selecionar visíveis</button>{% endif %}
+        </div>
+        <div class="doc-arch-table-wrap">
+          <table class="doc-arch-table doc-treatment-table">
+            <thead><tr><th><input type="checkbox" id="doc-treatment-select-all" aria-label="Selecionar todos"></th><th>Data</th><th>Documento</th><th>Grupo</th><th>Viatura</th><th>Etapa</th><th>Estado</th><th>Ação</th></tr></thead>
+            <tbody>
+              {% for row in rows %}
+                <tr>
+                  <td><input class="doc-treatment-check" type="checkbox" name="document_ids" value="{{ row.document.id }}" aria-label="Selecionar {{ row.title }}"></td>
+                  <td>{{ row.date_display }}</td>
+                  <td><strong>{{ row.title }}</strong><small>{{ row.origin }}</small></td>
+                  <td>{{ row.group_label }}</td>
+                  <td>{{ row.document.plate or "-" }}</td>
+                  <td><span class="doc-arch-badge {% if row.stage == 'extract' and row.workflow.extraction_status == 'failed' %}danger{% elif row.stage in ['associate', 'validate'] %}warning{% endif %}">{{ {'associate':'Associar','extract':'Extrair','validate':'Validar','complete':'Concluir'}.get(row.stage, row.stage) }}</span></td>
+                  <td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      class="doc-treatment-preview-trigger"
+                      data-document-id="{{ row.document.id }}"
+                      data-document-title="{{ row.title }}"
+                      data-preview-src="{{ row.preview_href }}"
+                      data-detail-href="{{ row.detail_href }}?return_to={{ return_url|urlencode }}"
+                      data-nature="{{ row.workflow.invoice_nature or '' }}"
+                      data-destination="{{ row.workflow.destination_status or '' }}"
+                      data-plate="{{ row.document.plate or '' }}"
+                    >Tratar</button>
+                  </td>
+                </tr>
+              {% else %}<tr><td colspan="8" class="doc-arch-empty">Não existem documentos pendentes neste grupo.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </form>
+
     <nav class="doc-arch-pagination">
-      {% if pagination.has_previous %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
+      {% if pagination.has_previous %}<a href="?family={{ document_family }}&group={{ selected_group|urlencode }}&stage={{ stage }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
       <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
-      {% if pagination.has_next %}<a href="?family={{ document_family }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
+      {% if pagination.has_next %}<a href="?family={{ document_family }}&group={{ selected_group|urlencode }}&stage={{ stage }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
     </nav>
+
+    <dialog class="doc-treatment-dialog" id="doc-treatment-preview">
+      <header>
+        <div><p class="eyebrow">Tratamento integral</p><h2 id="doc-treatment-preview-title">Documento</h2></div>
+        <button type="button" class="secondary" data-close-treatment-preview>Fechar</button>
+      </header>
+      <div class="doc-treatment-preview-grid">
+        <div class="doc-treatment-document-pane" id="doc-treatment-document-pane"></div>
+        <form method="post" action="/v2-clean/documentation/treatment/bulk" class="doc-treatment-preview-form">
+          <input type="hidden" name="document_ids" id="doc-treatment-preview-id">
+          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <section><h3>Classificar</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option><option value="por_classificar">Por classificar</option></select></label></section>
+          <section><h3>Associar e encaminhar</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
+          <section><h3>Validar e concluir</h3><label>Motivo / observação<textarea name="reason" rows="3" placeholder="Obrigatório para resolver exceções"></textarea></label><a id="doc-treatment-detail-link" href="#">Ver todos os dados extraídos e campos técnicos</a></section>
+          <footer><button type="submit" name="action" value="classify" class="secondary">Guardar pendente</button><button type="submit" name="action" value="resolve" class="secondary">Resolver exceção</button><button type="submit" name="action" value="complete">Concluir tratamento</button></footer>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog class="doc-treatment-bulk-dialog" id="doc-treatment-bulk-review">
+      <header><div><p class="eyebrow">Confirmação</p><h2>Rever ação em lote</h2></div><button type="button" class="secondary" data-close-bulk-review>Fechar</button></header>
+      <p><strong id="doc-treatment-review-count">0</strong> documentos selecionados. Os documentos incompatíveis ficam pendentes e serão indicados no resultado.</p>
+      <p id="doc-treatment-review-summary"></p>
+      <footer><button type="button" class="secondary" data-close-bulk-review>Cancelar</button><button type="submit" form="doc-treatment-form">Confirmar lote</button></footer>
+    </dialog>
   </main>
 </div>
+<script>
+  (() => {
+    const checks = Array.from(document.querySelectorAll('.doc-treatment-check'));
+    const selectAll = document.getElementById('doc-treatment-select-all');
+    const selectVisible = document.getElementById('doc-treatment-select-visible');
+    const bulkBar = document.getElementById('doc-treatment-bulk-bar');
+    const selectedCount = document.getElementById('doc-treatment-selected-count');
+    const updateSelection = () => {
+      const count = checks.filter((check) => check.checked).length;
+      selectedCount.textContent = String(count);
+      bulkBar.hidden = count === 0;
+      if (selectAll) {
+        selectAll.checked = count === checks.length && checks.length > 0;
+        selectAll.indeterminate = count > 0 && count < checks.length;
+      }
+    };
+    checks.forEach((check) => check.addEventListener('change', updateSelection));
+    selectAll?.addEventListener('change', () => { checks.forEach((check) => { check.checked = selectAll.checked; }); updateSelection(); });
+    selectVisible?.addEventListener('click', () => { checks.forEach((check) => { check.checked = true; }); updateSelection(); });
+
+    const preview = document.getElementById('doc-treatment-preview');
+    const previewPane = document.getElementById('doc-treatment-document-pane');
+    document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
+        document.getElementById('doc-treatment-preview-id').value = button.dataset.documentId || '';
+        document.getElementById('doc-treatment-preview-nature').value = button.dataset.nature || '';
+        document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
+        document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
+        document.getElementById('doc-treatment-detail-link').href = button.dataset.detailHref || '#';
+        previewPane.innerHTML = '';
+        const iframe = document.createElement('iframe');
+        iframe.src = `${button.dataset.previewSrc || ''}#toolbar=1&navpanes=0`;
+        iframe.title = button.dataset.documentTitle || 'Documento';
+        previewPane.appendChild(iframe);
+        preview.showModal();
+      });
+    });
+    document.querySelectorAll('[data-close-treatment-preview]').forEach((button) => button.addEventListener('click', () => { preview.close(); previewPane.innerHTML = ''; }));
+
+    const review = document.getElementById('doc-treatment-bulk-review');
+    document.getElementById('doc-treatment-review-bulk')?.addEventListener('click', () => {
+      const count = checks.filter((check) => check.checked).length;
+      const action = document.getElementById('doc-treatment-action');
+      if (!count || !action.value) { action.focus(); return; }
+      document.getElementById('doc-treatment-review-count').textContent = String(count);
+      document.getElementById('doc-treatment-review-summary').textContent = `Ação: ${action.options[action.selectedIndex].text}. A operação fica registada individualmente em cada documento.`;
+      review.showModal();
+    });
+    document.querySelectorAll('[data-close-bulk-review]').forEach((button) => button.addEventListener('click', () => review.close()));
+  })();
+</script>
 {% endblock %}

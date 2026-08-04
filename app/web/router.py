@@ -11175,11 +11175,69 @@ def _documentation_family_condition(family: str) -> Any:
     )
 
 
+def _documentation_treatment_stage(workflow: dict[str, Any]) -> str:
+    if workflow.get("association_status") in {"unassociated", "failed"}:
+        return "associate"
+    if workflow.get("extraction_status") in {"queued", "processing", "failed"}:
+        return "extract"
+    if workflow.get("validation_status") != "human_validated":
+        return "validate"
+    return "complete"
+
+
+def _documentation_treatment_group_label(
+    document: Document,
+    family: str,
+    diagnostic_type: str = "",
+) -> str:
+    if family == "invoices":
+        return (
+            document.supplier_name
+            or document.source_sender
+            or document.source
+            or "Fornecedor por identificar"
+        ).strip()
+    if family == "diagnostics":
+        return (
+            diagnostic_type
+            or document.classification
+            or document.source
+            or "Relatório por tipificar"
+        ).strip()
+    if family == "rentway":
+        return (document.source_subject or document.source or "Rentway").strip()
+    if family == "fleet":
+        return (document.document_type or document.classification or "Documento de frota").strip()
+    return (document.document_type or document.classification or "Por classificar").strip()
+
+
+def _documentation_treatment_return_url(
+    *,
+    family: str,
+    q: str = "",
+    group: str = "",
+    stage: str = "",
+    page: int = 1,
+    page_size: int = 25,
+) -> str:
+    params = {
+        "family": family,
+        "q": q.strip(),
+        "group": group.strip(),
+        "stage": stage.strip(),
+        "page": max(page, 1),
+        "page_size": min(max(page_size, 10), 100),
+    }
+    return f"/v2-clean/documentation/treatment?{urlencode({key: value for key, value in params.items() if value})}"
+
+
 @web_router.get("/v2-clean/documentation/treatment", response_class=HTMLResponse)
 def clean_documentation_treatment(
     request: Request,
     family: str = "invoices",
     q: str = "",
+    group: str = "",
+    stage: str = "",
     page: int = 1,
     page_size: int = 25,
 ):
@@ -11209,41 +11267,234 @@ def clean_documentation_treatment(
             )
         )
     with SessionLocal() as db:
-        total = int(
-            db.scalar(
-                select(func.count())
-                .select_from(Document)
-                .outerjoin(
-                    DocumentWorkflowState,
-                    DocumentWorkflowState.document_id == Document.id,
-                )
-                .where(*conditions)
-            )
-            or 0
-        )
-        records = db.execute(
+        all_records = db.execute(
             select(Document, DocumentWorkflowState)
             .outerjoin(
                 DocumentWorkflowState,
                 DocumentWorkflowState.document_id == Document.id,
             )
             .where(*conditions)
-            .order_by(Document.updated_at.desc(), Document.id.desc())
-            .offset(offset)
-            .limit(clean_page_size)
+            .order_by(Document.created_at.asc(), Document.id.asc())
         ).all()
+        diagnostic_types: dict[int, str] = {}
+        if clean_family == "diagnostics" and all_records:
+            document_ids = [document.id for document, _state in all_records]
+            diagnostic_types = {
+                document_id: diagnostic_type
+                for document_id, diagnostic_type in db.execute(
+                    select(
+                        DiagnosticDocument.document_id,
+                        DiagnosticDocument.diagnostic_type,
+                    ).where(DiagnosticDocument.document_id.in_(document_ids))
+                ).all()
+                if diagnostic_type
+            }
+        grouped: dict[str, dict[str, Any]] = {}
+        prepared_rows: list[dict[str, Any]] = []
+        for document, state in all_records:
+            row = _documentation_row(document, state)
+            row["stage"] = _documentation_treatment_stage(row["workflow"])
+            row["group_label"] = _documentation_treatment_group_label(
+                document,
+                clean_family,
+                diagnostic_types.get(document.id, ""),
+            )
+            group_item = grouped.setdefault(
+                row["group_label"],
+                {
+                    "label": row["group_label"],
+                    "count": 0,
+                    "oldest_at": document.created_at,
+                    "oldest_display": clean_date(document.created_at.isoformat())
+                    if document.created_at
+                    else "-",
+                    "unassociated": 0,
+                    "failed": 0,
+                },
+            )
+            group_item["count"] += 1
+            if row["workflow"].get("association_status") != "associated":
+                group_item["unassociated"] += 1
+            if row["workflow"].get("extraction_status") == "failed":
+                group_item["failed"] += 1
+            if group and row["group_label"] != group:
+                continue
+            if stage and row["stage"] != stage:
+                continue
+            prepared_rows.append(row)
+        group_rows = sorted(
+            grouped.values(),
+            key=lambda item: (item["oldest_at"] or datetime.max.replace(tzinfo=UTC), item["label"]),
+        )
+        total = len(prepared_rows)
+        records_page = prepared_rows[offset : offset + clean_page_size]
+        return_url = _documentation_treatment_return_url(
+            family=clean_family,
+            q=q,
+            group=group,
+            stage=stage,
+            page=clean_page,
+            page_size=clean_page_size,
+        )
         return templates.TemplateResponse(
             request,
             "clean_documentation_treatment.html",
             {
-                "rows": [_documentation_row(document, state) for document, state in records],
+                "rows": records_page,
+                "groups": group_rows,
+                "selected_group": group,
+                "stage": stage,
                 "document_family": clean_family,
                 "family_label": DOCUMENTATION_FAMILIES[clean_family],
                 "pagination": _documentation_pagination(total, clean_page, clean_page_size),
                 "q": q,
+                "return_url": return_url,
                 "workflow_labels": WORKFLOW_LABELS,
+                "can_manage_documents": can_manage_documentation(request),
             },
         )
+
+
+def _apply_document_treatment_action(
+    db: Session,
+    *,
+    document: Document,
+    action: str,
+    user_id: int | None,
+    reason: str,
+    invoice_nature: str,
+    destination: str,
+    plate: str,
+) -> None:
+    clean_action = action.strip().lower()
+    clean_reason = reason.strip() or f"Ação de tratamento: {clean_action}"
+    state = get_or_create_workflow_state(db, document)
+    if invoice_nature.strip() and invoice_nature.strip() in INVOICE_NATURES:
+        classify_invoice_nature(
+            db,
+            document=document,
+            nature=invoice_nature.strip(),
+            user_id=user_id,
+            decision_reason=clean_reason,
+        )
+        state = get_or_create_workflow_state(db, document)
+    clean_plate = plate.strip()
+    if clean_plate:
+        vehicle = db.scalar(select(Vehicle).where(func.lower(Vehicle.plate) == clean_plate.lower()))
+        if not vehicle:
+            raise ValueError("vehicle_not_found")
+        document.vehicle_id = vehicle.id
+        document.plate = vehicle.plate
+        state.association_status = "associated"
+    if destination.strip() in {"triage", "imports", "invoices", "diagnostics", "archive"}:
+        state.destination_status = destination.strip()
+    if clean_action == "classify":
+        state.ingestion_status = "completed"
+    elif clean_action in {"extract", "reprocess"}:
+        state.extraction_status = "queued"
+        state.validation_status = "pending"
+        document.status = "pending_extraction"
+    elif clean_action == "associate":
+        if not clean_plate:
+            raise ValueError("vehicle_required")
+    elif clean_action in {"validate", "resolve"}:
+        if clean_action == "resolve" and not reason.strip():
+            raise ValueError("reason_required")
+        state.validation_status = "human_validated"
+        state.human_confirmed = True
+        state.confirmed_by_id = user_id
+        state.confirmed_at = datetime.now(UTC)
+        document.status = "classified"
+    elif clean_action in {"complete", "archive"}:
+        state.validation_status = "human_validated"
+        state.human_confirmed = True
+        state.confirmed_by_id = user_id
+        state.confirmed_at = datetime.now(UTC)
+        if clean_action == "archive" or state.destination_status == "archive":
+            state.destination_status = "archive"
+            document.archived = True
+            document.archived_at = document.archived_at or datetime.now(UTC)
+            document.archived_by_id = user_id
+            document.status = "archived"
+        else:
+            document.status = "classified"
+    else:
+        raise ValueError("action")
+    state.decision_reason = clean_reason
+    db.add(
+        DocumentEvent(
+            document_id=document.id,
+            action=f"document.treatment.{clean_action}",
+            old_value=None,
+            new_value=json.dumps(
+                {
+                    "invoice_nature": state.invoice_nature,
+                    "association_status": state.association_status,
+                    "extraction_status": state.extraction_status,
+                    "validation_status": state.validation_status,
+                    "destination_status": state.destination_status,
+                    "reason": clean_reason,
+                },
+                ensure_ascii=False,
+            ),
+            user_id=user_id,
+        )
+    )
+
+
+@web_router.post("/v2-clean/documentation/treatment/bulk")
+def clean_documentation_treatment_bulk(
+    request: Request,
+    document_ids: list[int] = Form([]),
+    action: str = Form(...),
+    invoice_nature: str = Form(""),
+    destination: str = Form(""),
+    plate: str = Form(""),
+    reason: str = Form(""),
+    return_url: str = Form("/v2-clean/documentation/treatment"),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    target = _clean_v2_return_url(return_url, "/v2-clean/documentation/treatment")
+    if not can_manage_documentation(request):
+        return RedirectResponse(_append_query_flag(target, bulk_error="permission"), status_code=303)
+    unique_ids = list(dict.fromkeys(document_ids))[:100]
+    if not unique_ids:
+        return RedirectResponse(_append_query_flag(target, bulk_error="empty"), status_code=303)
+    user_id = get_web_user_id(request)
+    processed = 0
+    failed = 0
+    with SessionLocal() as db:
+        documents = {
+            document.id: document
+            for document in db.scalars(select(Document).where(Document.id.in_(unique_ids))).all()
+        }
+        for document_id in unique_ids:
+            document = documents.get(document_id)
+            if not document:
+                failed += 1
+                continue
+            try:
+                with db.begin_nested():
+                    _apply_document_treatment_action(
+                        db,
+                        document=document,
+                        action=action,
+                        user_id=user_id,
+                        reason=reason,
+                        invoice_nature=invoice_nature,
+                        destination=destination,
+                        plate=plate,
+                    )
+                processed += 1
+            except ValueError:
+                failed += 1
+        db.commit()
+    return RedirectResponse(
+        _append_query_flag(target, bulk_processed=str(processed), bulk_failed=str(failed)),
+        status_code=303,
+    )
 
 RENTWAY_TAB_IMPORT_TYPES = {
     "fleet": {"rentway_fleet"},

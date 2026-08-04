@@ -829,3 +829,185 @@ def test_structured_rentway_confirmation_creates_reprocessable_batch(
         )
         == 1
     )
+
+
+def test_treatment_groups_invoices_by_supplier_and_keeps_preview_links(
+    authenticated_client,
+    db_session,
+):
+    documents = []
+    for index, supplier in enumerate(("Dispnal Pneus, S.A.", "Dispnal Pneus, S.A.", "Outro Fornecedor")):
+        document = Document(
+            title=f"Fatura agrupada {index}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="document_inbox",
+            original_name=f"fatura_{index}.pdf",
+            file_name=f"fatura_{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Faturas/fatura_{index}.pdf",
+            status="pending_validation",
+            supplier_name=supplier,
+        )
+        db_session.add(document)
+        db_session.flush()
+        db_session.add(
+            DocumentWorkflowState(
+                document_id=document.id,
+                ingestion_status="completed",
+                association_status="unassociated",
+                extraction_status="extracted",
+                validation_status="pending",
+                destination_status="invoices",
+                invoice_nature="por_classificar",
+            )
+        )
+        documents.append(document)
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=invoices&group=Dispnal%20Pneus%2C%20S.A."
+    )
+
+    assert response.status_code == 200
+    assert "Dispnal Pneus, S.A." in response.text
+    assert "2 pendentes" in response.text
+    assert "Fatura agrupada 0" in response.text
+    assert "Fatura agrupada 1" in response.text
+    assert "Fatura agrupada 2" not in response.text
+    assert f'data-preview-src="/v2-clean/documents/{documents[0].id}/file?inline=1"' in response.text
+    assert 'action="/v2-clean/documentation/treatment/bulk"' in response.text
+
+
+def test_treatment_groups_diagnostics_by_extracted_type(
+    authenticated_client,
+    db_session,
+):
+    document = Document(
+        title="Relatório técnico",
+        document_type="workshop_diagnostic",
+        classification="technical_report",
+        source="historical_report_import",
+        original_name="relatorio_acer.pdf",
+        file_name="relatorio_acer.pdf",
+        storage_provider="local",
+        storage_path="Diagnosticos/relatorio_acer.pdf",
+        status="pending_validation",
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DiagnosticDocument(
+            document_id=document.id,
+            diagnostic_type="ACER",
+            ocr_status="completed",
+            validation_status="pending",
+        )
+    )
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="completed",
+            association_status="unassociated",
+            extraction_status="extracted",
+            validation_status="pending",
+            destination_status="diagnostics",
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=diagnostics&group=ACER"
+    )
+
+    assert response.status_code == 200
+    assert "ACER" in response.text
+    assert "Relatório técnico" in response.text
+
+
+def test_treatment_bulk_validates_compatible_documents_individually(
+    authenticated_client,
+    db_session,
+):
+    documents = []
+    for index in range(2):
+        document = Document(
+            title=f"Fatura lote {index}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="document_inbox",
+            original_name=f"lote_{index}.pdf",
+            file_name=f"lote_{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Faturas/lote_{index}.pdf",
+            status="pending_validation",
+            supplier_name="Dispnal Pneus, S.A.",
+        )
+        db_session.add(document)
+        db_session.flush()
+        db_session.add(
+            DocumentWorkflowState(
+                document_id=document.id,
+                ingestion_status="completed",
+                association_status="unassociated",
+                extraction_status="extracted",
+                validation_status="pending",
+                destination_status="invoices",
+                invoice_nature="stock",
+            )
+        )
+        documents.append(document)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "document_ids": [str(documents[0].id), str(documents[1].id)],
+            "action": "validate",
+            "reason": "Validação homogénea do lote",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "bulk_processed=2" in response.headers["location"]
+    assert "bulk_failed=0" in response.headers["location"]
+    states = db_session.scalars(
+        select(DocumentWorkflowState).where(
+            DocumentWorkflowState.document_id.in_([document.id for document in documents])
+        )
+    ).all()
+    assert {state.validation_status for state in states} == {"human_validated"}
+    assert all(state.human_confirmed for state in states)
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(DocumentEvent)
+            .where(DocumentEvent.action == "document.treatment.validate")
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    "path, expected_label",
+    [
+        ("/v2-clean/documentation/imports/invoices", "Arquivo de faturas"),
+        ("/v2-clean/documentation/imports/reports", "Relatórios"),
+        ("/v2-clean/documentation/imports/other", "Outros documentos"),
+    ],
+)
+def test_legacy_document_importers_require_preflight_confirmation(
+    authenticated_client,
+    path,
+    expected_label,
+):
+    response = authenticated_client.get(path)
+
+    assert response.status_code == 200
+    assert 'id="doc-import-preflight-dialog"' in response.text
+    assert 'class="doc-import-preflight"' in response.text
+    assert f'data-import-label="{expected_label}"' in response.text
+    assert "Nenhum registo foi gravado" in response.text

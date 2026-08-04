@@ -194,10 +194,10 @@
         <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
         <h2>Importar outros documentos</h2>
         <p>Os documentos conhecidos seguem para arquivo; os restantes entram na Triagem.</p>
-        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox">
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/inbox" class="doc-import-preflight" data-import-label="Outros documentos">
           <input type="hidden" name="return_to" value="documentation_other">
           <label>Documentos<input type="file" name="files" multiple required></label>
-          <div class="doc-arch-dialog-actions"><button type="submit">Importar documentos</button><button type="button" class="secondary" onclick="document.getElementById('other-documents-import-dialog').close()">Cancelar</button></div>
+          <div class="doc-arch-dialog-actions"><button type="submit">Pré-visualizar</button><button type="button" class="secondary" onclick="document.getElementById('other-documents-import-dialog').close()">Cancelar</button></div>
         </form>
       </dialog>
     {% endif %}
@@ -208,12 +208,12 @@
         <p>Escolhe o tratamento adequado. As listas de faturas pendentes são sempre revistas antes de gravar.</p>
         <section class="doc-arch-dialog-section">
           <h3>Documentos de fatura</h3>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/archive-batch">
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/archive-batch" class="doc-import-preflight" data-import-label="Arquivo de faturas">
             <input type="hidden" name="return_to" value="documentation">
             <label>Arquivo ZIP<input type="file" name="file" accept=".zip" required></label>
             <div class="doc-arch-dialog-actions">
-              <button type="submit" name="operation" value="import">Importar</button>
-              <button type="submit" name="operation" value="reprocess_invoices" class="secondary">Reprocessar existentes</button>
+              <button type="submit" name="operation" value="import">Pré-visualizar importação</button>
+              <button type="submit" name="operation" value="reprocess_invoices" class="secondary">Pré-visualizar reprocessamento</button>
             </div>
           </form>
         </section>
@@ -227,10 +227,10 @@
         </section>
         <section class="doc-arch-dialog-section">
           <h3>Resultados OCR processados localmente</h3>
-          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/invoice-ocr-manifest">
+          <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/invoice-ocr-manifest" class="doc-import-preflight" data-import-label="Manifesto OCR de faturas">
             <input type="hidden" name="return_to" value="documentation">
             <label>Manifesto JSON<input type="file" name="file" accept=".json,application/json" required></label>
-            <div class="doc-arch-dialog-actions"><button type="submit">Aplicar resultados</button></div>
+            <div class="doc-arch-dialog-actions"><button type="submit">Pré-visualizar resultados</button></div>
           </form>
         </section>
       </dialog>
@@ -240,16 +240,67 @@
         <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
         <h2>Importar relatórios</h2>
         <p>Podes selecionar vários PDFs ou um ZIP. Em lotes, os ficheiros são associados primeiro e extraídos em blocos de 20.</p>
-        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/historical-reports">
+        <form method="post" enctype="multipart/form-data" action="/v2-clean/documents/import/historical-reports" class="doc-import-preflight" data-import-label="Relatórios">
           <input type="hidden" name="return_to" value="documentation">
           <label>Relatórios ou arquivo ZIP<input type="file" name="files" accept=".pdf,.zip,application/pdf,application/zip" multiple required></label>
           <div class="doc-arch-dialog-actions">
-            <button type="submit">Importar relatórios</button>
+            <button type="submit">Pré-visualizar relatórios</button>
             <button type="button" class="secondary" onclick="document.getElementById('reports-import-dialog').close()">Cancelar</button>
           </div>
         </form>
       </dialog>
     {% endif %}
+    <dialog id="doc-import-preflight-dialog" class="doc-arch-dialog doc-import-preflight-dialog">
+      <form method="dialog" class="doc-arch-dialog-close"><button aria-label="Fechar">×</button></form>
+      <h2>Confirmar ficheiros antes de importar</h2>
+      <p>Nenhum registo foi gravado. Confirma o tipo de operação e os ficheiros selecionados.</p>
+      <dl class="doc-import-preflight-summary">
+        <div><dt>Operação</dt><dd id="doc-import-preflight-label">-</dd></div>
+        <div><dt>Ficheiros</dt><dd id="doc-import-preflight-count">0</dd></div>
+      </dl>
+      <ul id="doc-import-preflight-files" class="doc-import-preflight-files"></ul>
+      <div class="doc-arch-dialog-actions">
+        <button type="button" id="doc-import-preflight-confirm">Confirmar e importar</button>
+        <button type="button" class="secondary" id="doc-import-preflight-cancel">Voltar</button>
+      </div>
+    </dialog>
   </main>
 </div>
+<script>
+  (() => {
+    const dialog = document.getElementById('doc-import-preflight-dialog');
+    const confirmButton = document.getElementById('doc-import-preflight-confirm');
+    const cancelButton = document.getElementById('doc-import-preflight-cancel');
+    const fileList = document.getElementById('doc-import-preflight-files');
+    const count = document.getElementById('doc-import-preflight-count');
+    const label = document.getElementById('doc-import-preflight-label');
+    let pendingForm = null;
+    let pendingSubmitter = null;
+    document.querySelectorAll('.doc-import-preflight').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        if (form.dataset.previewConfirmed === '1') return;
+        event.preventDefault();
+        pendingForm = form;
+        pendingSubmitter = event.submitter || null;
+        const files = Array.from(form.querySelectorAll('input[type="file"]')).flatMap((input) => Array.from(input.files || []));
+        label.textContent = `${form.dataset.importLabel || 'Importação'}${pendingSubmitter?.textContent ? ` · ${pendingSubmitter.textContent.trim()}` : ''}`;
+        count.textContent = String(files.length);
+        fileList.innerHTML = '';
+        files.forEach((file) => {
+          const item = document.createElement('li');
+          item.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`;
+          fileList.appendChild(item);
+        });
+        dialog.showModal();
+      });
+    });
+    confirmButton?.addEventListener('click', () => {
+      if (!pendingForm) return;
+      pendingForm.dataset.previewConfirmed = '1';
+      dialog.close();
+      pendingForm.requestSubmit(pendingSubmitter);
+    });
+    cancelButton?.addEventListener('click', () => dialog.close());
+  })();
+</script>
 {% endblock %}

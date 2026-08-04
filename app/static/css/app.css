@@ -22077,6 +22077,314 @@ body.clean-task-preview-open {
   text-decoration: none;
 }
 
+.doc-treatment-filters {
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 240px) auto auto;
+}
+
+.doc-treatment-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.doc-treatment-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 14px;
+  color: var(--navy);
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid #d9e1ea;
+  border-left: 3px solid transparent;
+}
+
+.doc-treatment-group:hover,
+.doc-treatment-group.active {
+  border-left-color: var(--red);
+  background: #fff8f6;
+}
+
+.doc-treatment-group strong,
+.doc-treatment-group span,
+.doc-treatment-group small {
+  overflow-wrap: anywhere;
+}
+
+.doc-treatment-group span,
+.doc-treatment-group small,
+.doc-treatment-table td small {
+  color: var(--muted);
+}
+
+.doc-treatment-table td strong,
+.doc-treatment-table td small {
+  display: block;
+}
+
+.doc-treatment-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.doc-treatment-bulk-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  color: #fff;
+  background: var(--navy);
+  box-shadow: 0 8px 20px rgba(11, 35, 68, 0.18);
+}
+
+.doc-treatment-bulk-controls {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.doc-treatment-bulk-controls input,
+.doc-treatment-bulk-controls select {
+  width: auto;
+  min-width: 150px;
+  max-width: 210px;
+  padding: 8px 9px;
+}
+
+.doc-treatment-bulk-controls button,
+.doc-treatment-preview-trigger {
+  border: 0;
+  padding: 8px 11px;
+  color: #fff;
+  background: var(--red);
+  cursor: pointer;
+}
+
+.doc-treatment-dialog,
+.doc-treatment-bulk-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  color: var(--navy);
+  background: #f7f9fc;
+  border: 1px solid #cfd9e5;
+  border-radius: 6px;
+}
+
+.doc-treatment-dialog::backdrop,
+.doc-treatment-bulk-dialog::backdrop {
+  background: rgba(7, 21, 42, 0.68);
+}
+
+.doc-treatment-dialog > header,
+.doc-treatment-bulk-dialog > header,
+.doc-treatment-bulk-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border-bottom: 1px solid #d9e1ea;
+}
+
+.doc-treatment-dialog h2,
+.doc-treatment-bulk-dialog h2,
+.doc-treatment-preview-form h3 {
+  margin: 0;
+}
+
+.doc-treatment-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  min-height: 650px;
+}
+
+.doc-treatment-document-pane {
+  min-width: 0;
+  padding: 12px;
+  background: #e7ecf3;
+}
+
+.doc-treatment-document-pane iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 626px;
+  background: #fff;
+  border: 0;
+}
+
+.doc-treatment-preview-form {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 13px;
+  overflow-y: auto;
+  background: #fff;
+  border-left: 1px solid #d9e1ea;
+}
+
+.doc-treatment-preview-form section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e1e7ee;
+}
+
+.doc-treatment-preview-form section h3,
+.doc-treatment-preview-form section a,
+.doc-treatment-preview-form section label:last-child:nth-child(even) {
+  grid-column: 1 / -1;
+}
+
+.doc-treatment-preview-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.doc-treatment-preview-form input,
+.doc-treatment-preview-form select,
+.doc-treatment-preview-form textarea {
+  width: 100%;
+}
+
+.doc-treatment-preview-form footer,
+.doc-treatment-bulk-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.doc-treatment-preview-form button,
+.doc-treatment-dialog > header button,
+.doc-treatment-bulk-dialog button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  border: 0;
+  color: #fff;
+  background: var(--red);
+  cursor: pointer;
+}
+
+.doc-treatment-preview-form button.secondary,
+.doc-treatment-dialog > header button.secondary,
+.doc-treatment-bulk-dialog button.secondary {
+  color: var(--navy);
+  background: #eef2f7;
+}
+
+.doc-treatment-bulk-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.doc-treatment-bulk-dialog > p {
+  margin: 14px;
+}
+
+.doc-import-preflight-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.doc-import-preflight-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.doc-import-preflight-summary > div {
+  padding: 10px;
+  background: #f0f4f8;
+}
+
+.doc-import-preflight-summary dt {
+  color: var(--muted);
+}
+
+.doc-import-preflight-summary dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
+.doc-import-preflight-files {
+  max-height: 260px;
+  margin: 0 0 14px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-top: 1px solid #d9e1ea;
+}
+
+.doc-import-preflight-files li {
+  padding: 9px 4px;
+  border-bottom: 1px solid #e2e8ef;
+}
+
+@media (max-width: 1050px) {
+  .doc-treatment-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .doc-treatment-preview-grid {
+    grid-template-columns: 1fr;
+  }
+  .doc-treatment-document-pane {
+    min-height: 440px;
+  }
+  .doc-treatment-document-pane iframe {
+    min-height: 416px;
+  }
+  .doc-treatment-preview-form {
+    border-top: 1px solid #d9e1ea;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .doc-treatment-filters,
+  .doc-treatment-groups,
+  .doc-treatment-preview-form section {
+    grid-template-columns: 1fr;
+  }
+  .doc-treatment-preview-form section h3,
+  .doc-treatment-preview-form section a,
+  .doc-treatment-preview-form section label:last-child:nth-child(even) {
+    grid-column: auto;
+  }
+  .doc-treatment-bulk-bar,
+  .doc-treatment-dialog > header,
+  .doc-treatment-bulk-dialog > header,
+  .doc-treatment-bulk-dialog > footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .doc-treatment-bulk-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .doc-import-preflight-summary {
+    grid-template-columns: 1fr;
+  }
+  .doc-treatment-bulk-controls input,
+  .doc-treatment-bulk-controls select {
+    width: 100%;
+    max-width: none;
+  }
+  .doc-treatment-document-pane {
+    display: none;
+  }
+}
+
 .doc-arch-workspace-grid {
   display: grid;
   gap: 12px;

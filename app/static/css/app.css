@@ -33,6 +33,7 @@
 .stock-page {
   display: grid;
   gap: 22px;
+  align-content: start;
   min-width: 0;
 }
 
@@ -303,6 +304,22 @@
 .stock-table-compact { min-width: 680px; }
 .stock-table-compact th { padding-block: 9px; }
 .stock-table-compact td { padding-block: 10px; }
+.stock-conference-filters { grid-template-columns: minmax(240px, 1fr) minmax(190px, .55fr) minmax(170px, .45fr) auto; }
+.stock-conference-table { min-width: 720px; }
+.stock-conference-table td > small { display: block; margin-top: 4px; color: #65758a; }
+.stock-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; color: #65758a; }
+.stock-table-footer nav { display: flex; align-items: center; gap: 12px; }
+.stock-table-footer a { color: #174f91; font-weight: 700; text-decoration: none; }
+.stock-five-column-table { min-width: 720px; }
+.stock-row-details { position: relative; }
+.stock-row-details > summary { cursor: pointer; color: #174f91; font-weight: 750; list-style: none; }
+.stock-row-details > summary::-webkit-details-marker { display: none; }
+.stock-row-details[open] { min-width: 290px; }
+.stock-row-details p { margin: 10px 0; color: #52657a; }
+.stock-row-details dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; }
+.stock-row-details dl div { padding: 7px; border-radius: 6px; background: #f6f8fa; }
+.stock-row-details dt { color: #65758a; font-size: .72rem; font-weight: 700; }
+.stock-row-details dd { margin: 3px 0 0; }
 .stock-short-name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stock-badge.danger { color: #9c2d25; background: #fff0ee; }
 .stock-row-divergent td { background: #fff6f2; }
@@ -344,6 +361,7 @@
 @media (max-width: 1180px) {
   .stock-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stock-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stock-conference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .doc-arch-kpis-five { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -359,6 +377,7 @@
   .stock-form-grid,
   .stock-filters,
   .stock-filters.compact,
+  .stock-conference-filters,
   .stock-definition,
   .doc-arch-kpis-five { grid-template-columns: 1fr; }
   .stock-card,

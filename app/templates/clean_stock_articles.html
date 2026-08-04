@@ -5,7 +5,7 @@
   <main class="content clean-content stock-page">
     {% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
     <header class="stock-header compact-header">
-      <div><p class="eyebrow">Stock</p><h1>Artigos</h1><p>Lista operacional curta; o detalhe vive na ficha do artigo.</p></div>
+      <div><p class="eyebrow">Stock</p><h1>Artigos e existências</h1><p>Catálogo e disponibilidade confirmada numa única consulta.</p></div>
       {% if can_operate_stock %}<button type="button" class="button-link" onclick="document.getElementById('new-article').showModal()">Novo artigo</button>{% endif %}
     </header>
     {% if request.query_params.get('error') %}<div class="stock-notice danger">Não foi possível concluir: {{ request.query_params.get('error') }}</div>{% endif %}
@@ -13,6 +13,7 @@
       <input name="q" value="{{ filters.q }}" placeholder="Referência ou designação">
       <select name="category_id"><option value="">Todas as categorias</option>{% for item in categories %}<option value="{{ item.id }}" {% if filters.category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
       <select name="supplier_id"><option value="">Todos os fornecedores</option>{% for item in suppliers %}<option value="{{ item.id }}" {% if filters.supplier_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
+      <select name="location_id"><option value="">Todas as localizações</option>{% for item in locations %}<option value="{{ item.id }}" {% if filters.location_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
       <select name="state"><option value="active" {% if filters.state=='active' %}selected{% endif %}>Ativos</option><option value="inactive" {% if filters.state=='inactive' %}selected{% endif %}>Inativos/descontinuados</option><option value="all" {% if filters.state=='all' %}selected{% endif %}>Todos</option></select>
       <label class="stock-check"><input type="checkbox" name="low_stock" value="true" {% if filters.low_stock %}checked{% endif %}> Abaixo do mínimo</label>
       <button type="submit">Filtrar</button>
@@ -25,7 +26,7 @@
           <td class="stock-short-name" title="{{ row.article.name }}">{{ row.article.name }}</td>
           <td>{{ row.category.name if row.category else '-' }}</td>
           <td>{{ row.supplier.name if row.supplier else '-' }}</td>
-          <td><strong>{{ row.available|int }}</strong> {{ row.article.unit }}</td>
+          <td><strong>{{ row.display_available|default(row.available)|int }}</strong> {{ row.article.unit }}</td>
           <td><span class="stock-badge {{ 'neutral' if not row.article.active else ('warning' if row.low else 'success') }}">{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(row.article.status, 'Ativo' if row.article.active else 'Inativo') }}</span></td>
         </tr>{% else %}<tr><td colspan="6" class="stock-empty">Sem artigos para estes filtros.</td></tr>{% endfor %}</tbody>
       </table></div>

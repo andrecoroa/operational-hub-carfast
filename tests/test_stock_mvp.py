@@ -850,10 +850,21 @@ def test_clean_stock_pages_render_and_explain_physical_boundary(authenticated_cl
     assert response.status_code == 200
     assert 'class="stock-nav"' in response.text
     assert "Stock" in response.text
+    if path == "/v2-clean/stock":
+        assert "Encomendas por receber" in response.text
+        assert "Faturas por conferir" in response.text
+    if path.endswith("/articles") or path.endswith("/current"):
+        assert "Artigos e existências" in response.text
     if path.endswith("/receipts"):
         assert "Só quantidades fisicamente aceites" in response.text
     if path.endswith("/invoices"):
         assert "cria artigos, receções, movimentos ou existências" in response.text
+        assert "Todos os fornecedores" in response.text
+        assert "Página 1 de" in response.text
+    if path.endswith("/movements"):
+        assert response.text.index("Divergências por regularizar") < response.text.index(
+            "Registo cronológico imutável"
+        )
 
 
 def test_stock_filters_accept_empty_optional_ids(authenticated_client):

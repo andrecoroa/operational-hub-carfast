@@ -1,7 +1,6 @@
 <nav class="stock-nav" aria-label="Navegação Stock">
   <a href="/v2-clean/stock" {% if stock_nav == "summary" %}class="active"{% endif %}>Resumo</a>
-  <a href="/v2-clean/stock/articles" {% if stock_nav == "articles" %}class="active"{% endif %}>Artigos</a>
-  <a href="/v2-clean/stock/current" {% if stock_nav == "current" %}class="active"{% endif %}>Existências</a>
+  <a href="/v2-clean/stock/articles" {% if stock_nav in ["articles", "current"] %}class="active"{% endif %}>Artigos e existências</a>
   <a href="/v2-clean/stock/inventory" {% if stock_nav == "inventory" %}class="active"{% endif %}>Inventário</a>
   <a href="/v2-clean/stock/suppliers" {% if stock_nav == "suppliers" %}class="active"{% endif %}>Fornecedores</a>
   <a href="/v2-clean/stock/orders" {% if stock_nav == "orders" %}class="active"{% endif %}>Encomendas</a>

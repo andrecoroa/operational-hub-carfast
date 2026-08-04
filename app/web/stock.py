@@ -181,36 +181,43 @@ def stock_dashboard(request: Request, db: DbSession):
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
         return denied
-    articles = db.scalars(
-        select(StockArticle).where(StockArticle.active.is_(True)).order_by(StockArticle.name)
-    ).all()
-    rows = _article_rows(db, articles)
     low_rows = low_stock_rows(db)
-    physical_receipts = int(db.scalar(select(func.count()).select_from(StockReceipt)) or 0)
-    value = sum(
-        (max(row["available"], ZERO) * (row["article"].average_cost or ZERO) for row in rows),
-        ZERO,
+    pending_orders = int(
+        db.scalar(
+            select(func.count())
+            .select_from(StockPurchaseOrder)
+            .where(StockPurchaseOrder.receiving_status.in_(("pending", "partial")))
+        )
+        or 0
     )
-    recent_movements = db.execute(
-        select(StockMovement, StockArticle)
-        .join(StockArticle, StockArticle.id == StockMovement.article_id)
-        .order_by(StockMovement.occurred_at.desc(), StockMovement.id.desc())
-        .limit(8)
-    ).all()
+    pending_invoices = int(
+        db.scalar(
+            select(func.count())
+            .select_from(StockInvoiceImport)
+            .where(StockInvoiceImport.conference_status.in_(("pending", "divergent")))
+        )
+        or 0
+    )
+    open_inventories = int(
+        db.scalar(
+            select(func.count())
+            .select_from(StockInventorySession)
+            .where(StockInventorySession.status != "completed")
+        )
+        or 0
+    )
     return templates.TemplateResponse(
         request,
         "clean_stock_dashboard.html",
         {
             **_page_context(request, db),
             "metrics": {
-                "articles": len(articles),
-                "value": value,
                 "low": len(low_rows),
-                "physical_receipts": physical_receipts,
+                "pending_orders": pending_orders,
+                "pending_invoices": pending_invoices,
+                "open_inventories": open_inventories,
             },
             "low_rows": low_rows[:8],
-            "article_rows": rows[:25],
-            "recent_movements": recent_movements,
         },
     )
 
@@ -250,6 +257,8 @@ def stock_articles(
         location = db.get(StockLocation, clean_location_id)
         if location:
             rows = [row for row in rows if row["by_location"].get(location.code, ZERO) != ZERO]
+            for row in rows:
+                row["display_available"] = row["by_location"].get(location.code, ZERO)
     if low_stock:
         rows = [row for row in rows if row["low"]]
     return templates.TemplateResponse(
@@ -584,6 +593,8 @@ def stock_invoices(
     db: DbSession,
     q: str = "",
     status_filter: str = "pending",
+    supplier_id: str = "",
+    page: int = 1,
 ):
     if denied := _denied(
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
@@ -608,6 +619,14 @@ def stock_invoices(
                 Document.title.ilike(token),
             )
         )
+    clean_supplier_id = int(supplier_id) if supplier_id.strip().isdigit() else None
+    if clean_supplier_id:
+        statement = statement.where(StockInvoiceImport.supplier_id == clean_supplier_id)
+    per_page = 5
+    total = int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(page, 1), total_pages)
+    statement = statement.limit(per_page).offset((page - 1) * per_page)
     rows = []
     for invoice_import, document, supplier in db.execute(statement).all():
         linked_receipts = int(
@@ -629,7 +648,25 @@ def stock_invoices(
     return templates.TemplateResponse(
         request,
         "clean_stock_invoices.html",
-        {**_page_context(request, db), "rows": rows, "q": q, "status_filter": status_filter},
+        {
+            **_page_context(request, db),
+            "rows": rows,
+            "q": q,
+            "status_filter": status_filter,
+            "supplier_id": clean_supplier_id,
+            "suppliers": db.scalars(
+                select(StockSupplier)
+                .where(StockSupplier.active.is_(True))
+                .order_by(StockSupplier.name)
+            ).all(),
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+            "previous_url": "/v2-clean/stock/invoices?"
+            + urlencode({"q": q, "status_filter": status_filter, "supplier_id": supplier_id, "page": page - 1}),
+            "next_url": "/v2-clean/stock/invoices?"
+            + urlencode({"q": q, "status_filter": status_filter, "supplier_id": supplier_id, "page": page + 1}),
+        },
     )
 
 
@@ -1449,53 +1486,13 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
 
 @stock_router.get("/v2-clean/stock/current", response_class=HTMLResponse)
 def stock_current(request: Request, db: DbSession, q: str = "", location_id: str = ""):
-    if denied := _denied(
-        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
-    ):
-        return denied
-    clean_location_id = int(location_id) if location_id.strip().isdigit() else None
-    statement = select(StockArticle).where(StockArticle.active.is_(True))
+    query = {}
     if q.strip():
-        token = f"%{q.strip()}%"
-        statement = statement.where(
-            or_(StockArticle.internal_ref.ilike(token), StockArticle.name.ilike(token))
-        )
-    articles = db.scalars(statement.order_by(StockArticle.internal_ref)).all()
-    locations = db.scalars(
-        select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
-    ).all()
-    if clean_location_id:
-        locations = [location for location in locations if location.id == clean_location_id]
-    balances = stock_balances(db, article_ids=[article.id for article in articles])
-    minimums = {
-        (minimum.article_id, minimum.location_id): minimum.minimum_quantity
-        for minimum in db.scalars(select(StockMinimum)).all()
-    }
-    rows = [
-        {
-            "article": article,
-            "location": location,
-            "quantity": balances.get((article.id, location.id), ZERO),
-            "minimum": minimums.get((article.id, location.id)),
-        }
-        for article in articles
-        for location in locations
-    ]
-    return templates.TemplateResponse(
-        request,
-        "clean_stock_current.html",
-        {
-            **_page_context(request, db),
-            "rows": rows,
-            "locations": db.scalars(
-                select(StockLocation)
-                .where(StockLocation.active.is_(True))
-                .order_by(StockLocation.name)
-            ).all(),
-            "q": q,
-            "location_id": clean_location_id,
-        },
-    )
+        query["q"] = q.strip()
+    if location_id.strip().isdigit():
+        query["location_id"] = location_id.strip()
+    suffix = f"?{urlencode(query)}" if query else ""
+    return RedirectResponse(f"/v2-clean/stock/articles{suffix}", status_code=302)
 
 
 @stock_router.get("/v2-clean/stock/inventory", response_class=HTMLResponse)

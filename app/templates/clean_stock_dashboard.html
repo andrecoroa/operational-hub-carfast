@@ -4,15 +4,15 @@
   {% set active_menu = "stock" %}{% include "_sidebar.html" %}
   <main class="content clean-content stock-page">
     {% set stock_nav = "summary" %}{% include "_clean_stock_nav.html" %}
-    <header class="stock-header">
-      <div><p class="eyebrow">Operações</p><h1>Stock</h1><p>Gestão de artigos, receções e existências, separada da Oficina.</p></div>
-      <a class="button-link" href="/v2-clean/stock/receipts">Nova receção física</a>
+    <header class="stock-header compact-header">
+      <div><p class="eyebrow">Operações</p><h1>Resumo de Stock</h1><p>Alertas e trabalho pendente que exigem atenção.</p></div>
+      <a class="button-link" href="/v2-clean/stock/receipts">Nova receção</a>
     </header>
     <section class="stock-kpis" aria-label="Indicadores Stock">
-      <a href="/v2-clean/stock/articles"><span>Artigos ativos</span><strong>{{ metrics.articles }}</strong></a>
-      <a href="/v2-clean/stock/articles"><span>Valor estimado</span><strong>{{ "%.2f"|format(metrics.value) }} €</strong></a>
       <a class="warning" href="/v2-clean/stock/articles?low_stock=true"><span>Stock baixo</span><strong>{{ metrics.low }}</strong></a>
-      <a href="/v2-clean/stock/receipts"><span>Receções físicas</span><strong>{{ metrics.physical_receipts }}</strong></a>
+      <a href="/v2-clean/stock/orders"><span>Encomendas por receber</span><strong>{{ metrics.pending_orders }}</strong></a>
+      <a href="/v2-clean/stock/invoices?status_filter=pending"><span>Faturas por conferir</span><strong>{{ metrics.pending_invoices }}</strong></a>
+      <a href="/v2-clean/stock/inventory"><span>Inventários em curso</span><strong>{{ metrics.open_inventories }}</strong></a>
     </section>
     <section class="stock-alert-card">
       <div class="stock-card-heading"><div><p class="eyebrow">Atenção necessária</p><h2>Alertas operacionais</h2></div></div>
@@ -21,13 +21,6 @@
           <a href="/v2-clean/stock/articles/{{ row.article.id }}"><strong>{{ row.article.name }}</strong><span>{{ row.location.name }} · {{ row.available|int }} / mínimo {{ row.minimum.minimum_quantity|int }} {{ row.article.unit }}</span></a>
         {% else %}<p class="stock-empty">Não existem artigos abaixo do mínimo.</p>{% endfor %}
       </div>
-    </section>
-    <section class="stock-card">
-      <div class="stock-card-heading"><div><h2>Artigos</h2><p>Existências derivadas dos movimentos confirmados.</p></div><a href="/v2-clean/stock/articles">Ver todos</a></div>
-      <div class="stock-table-wrap"><table class="stock-table stock-table-compact"><thead><tr><th>Referência</th><th>Designação curta</th><th>Categoria</th><th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead><tbody>
-        {% for row in article_rows %}<tr><td><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td><td>{{ row.article.name }}</td><td>{{ row.category.name if row.category else "-" }}</td><td>{{ row.supplier.name if row.supplier else "-" }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><span class="stock-badge {{ 'warning' if row.low else 'success' }}">{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(row.article.status,'Ativo') }}</span></td></tr>
-        {% else %}<tr><td colspan="6" class="stock-empty">Ainda não existem artigos.</td></tr>{% endfor %}
-      </tbody></table></div>
     </section>
   </main>
 </div>

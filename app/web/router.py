@@ -11793,7 +11793,7 @@ def _documentation_family_condition(family: str) -> Any:
 def _documentation_treatment_stage(workflow: dict[str, Any]) -> str:
     if workflow.get("association_status") in {"unassociated", "failed"}:
         return "associate"
-    if workflow.get("extraction_status") in {"queued", "processing", "failed"}:
+    if workflow.get("extraction_status") != "extracted":
         return "extract"
     if workflow.get("validation_status") != "human_validated":
         return "validate"

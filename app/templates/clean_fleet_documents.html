@@ -677,6 +677,8 @@
         <div class="clean-context-action-row clean-context-action-row-primary">
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents/new">Adicionar documento</a>
           <a class="button-link secondary-link" href="#manual-pending">Criar pendente</a>
+          <a class="button-link secondary-link" href="/v2-clean/documentation/treatment?family=invoices&q={{ (ctx.identity.plate or ctx.identity.vin or '')|urlencode }}">Tratar faturas</a>
+          <a class="button-link secondary-link" href="/v2-clean/documentation/treatment?family=invoices&stage=extract&q={{ (ctx.identity.plate or ctx.identity.vin or '')|urlencode }}">Ver faturas por extrair</a>
           <a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}">Ficha da viatura</a>
           <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&entity_type=vehicle&entity_id={{ vehicle.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Tarefas e problemas</a>
         </div>

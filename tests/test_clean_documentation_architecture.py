@@ -493,6 +493,75 @@ def test_documentation_headers_keep_only_essential_metrics(authenticated_client)
     assert "Sem associação" not in invoices.text
 
 
+def test_invoice_extraction_queue_includes_every_non_extracted_state(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="SE-10-XT", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    statuses = [None, "not_requested", "queued", "processing", "failed", "extracted"]
+    documents = []
+    for index, extraction_status in enumerate(statuses):
+        document = Document(
+            title=f"Fatura estado {extraction_status or 'sem-workflow'}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="document_inbox",
+            original_name=f"state-{index}.pdf",
+            file_name=f"state-{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Faturas/state-{index}.pdf",
+            status="pending_validation",
+            vehicle_id=vehicle.id,
+            plate=vehicle.plate,
+        )
+        db_session.add(document)
+        db_session.flush()
+        documents.append(document)
+        if extraction_status is not None:
+            db_session.add(
+                DocumentWorkflowState(
+                    document_id=document.id,
+                    ingestion_status="completed",
+                    association_status="associated",
+                    extraction_status=extraction_status,
+                    validation_status="pending",
+                    destination_status="invoices",
+                    invoice_nature="operacional",
+                )
+            )
+    db_session.commit()
+
+    response = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=invoices&stage=extract&q=SE-10-XT"
+    )
+
+    assert response.status_code == 200
+    for extraction_status in statuses[:-1]:
+        assert f"Fatura estado {extraction_status or 'sem-workflow'}" in response.text
+    assert "Fatura estado extracted" not in response.text
+    assert "Sem extração / reprocessar" in response.text
+
+
+def test_vehicle_document_page_links_to_canonical_invoice_treatment(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="FV-20-XT", active=True)
+    db_session.add(vehicle)
+    db_session.commit()
+
+    response = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
+
+    assert response.status_code == 200
+    assert "/v2-clean/documentation/treatment?family=invoices&q=FV-20-XT" in response.text
+    assert (
+        "/v2-clean/documentation/treatment?family=invoices&stage=extract&q=FV-20-XT"
+        in response.text
+    )
+
+
 def test_rentway_import_actions_are_scoped_to_active_page(authenticated_client):
     work_orders = authenticated_client.get(
         "/v2-clean/documentation/imports/rentway?tab=work_orders"

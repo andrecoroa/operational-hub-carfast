@@ -150,6 +150,11 @@
                       data-nature="{{ row.workflow.invoice_nature or '' if row.kind == 'document' else '' }}"
                       data-destination="{{ row.workflow.destination_status or '' if row.kind == 'document' else '' }}"
                       data-plate="{{ row.document.plate or '' if row.kind == 'document' else (row.vehicle.plate or '' if row.vehicle else '') }}"
+                      data-nature-status="{{ row.dimensions.nature.status }}"
+                      data-association-status="{{ row.dimensions.association.status }}"
+                      data-extraction-status="{{ row.dimensions.extraction.status }}"
+                      data-services-status="{{ row.dimensions.services.status }}"
+                      data-validation-status="{{ row.dimensions.validation.status }}"
                       data-content-template="doc-treatment-content-{{ row.kind }}-{{ row.document.id if row.kind == 'document' else row.record.id }}"
                     >Tratar</button>
                     <template id="doc-treatment-content-{{ row.kind }}-{{ row.document.id if row.kind == 'document' else row.record.id }}">
@@ -214,18 +219,20 @@
           <section data-real-document-section><h3>Natureza da fatura</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label></section>
           <section><h3>Associação</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label data-real-document-section>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
           <div id="doc-treatment-inline-content"></div>
-          <section data-real-document-section><h3>Decisão e auditoria</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><p class="doc-treatment-exception-help"><strong>Concluir com exceção</strong> fecha o tratamento apesar de pré-requisitos em falta; exige motivo e deixa auditoria explícita.</p><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
+          <section data-real-document-section><h3>Decisão e auditoria</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><div class="doc-treatment-action-help"><p><strong>Guardar natureza/pendente:</strong> guarda a classificação escolhida sem concluir o documento.</p><p><strong>Associar viatura:</strong> valida a matrícula e liga definitivamente esta fatura à ficha da viatura.</p><p><strong>Criar tarefa de auditoria:</strong> cria uma tarefa na fila Auditoria e usa esta observação como descrição.</p><p><strong>Concluir com exceção:</strong> fecha apesar de pré-requisitos em falta; exige motivo e deixa auditoria explícita.</p></div><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
           {% if can_manage_documents %}<footer>
             <p class="doc-treatment-inline-status" id="doc-treatment-inline-status" role="status" hidden></p>
-            <button type="submit" name="action" value="save_services" class="secondary" data-real-action title="Guarda apenas a classificação dos serviços da fatura.">Guardar serviços</button>
-            <button type="submit" name="action" value="classify" class="secondary" data-real-action title="Guarda a natureza selecionada e mantém o documento em tratamento.">Guardar pendente</button>
-            <button type="submit" name="action" value="associate" class="secondary" data-real-action title="Associa o documento à viatura indicada pela matrícula.">Associar viatura</button>
-            <button type="submit" name="action" value="reprocess" class="secondary" data-real-action title="Executa novamente a extração de dados do documento.">Extrair / reprocessar</button>
-            <button type="submit" name="action" value="validate" class="secondary" data-real-action title="Confirma que os dados e a classificação do documento foram verificados.">Validar documento</button>
-            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve" data-real-action title="Conclui apesar de pré-requisitos em falta; exige motivo e fica auditado.">Concluir com exceção</button>
+            <span class="doc-treatment-action-sequence" data-real-action>Ordem recomendada</span>
+            <button type="submit" name="action" value="classify" class="secondary" data-real-action data-treatment-step="nature" title="Guarda a natureza selecionada e mantém o documento em tratamento.">1. Guardar natureza/pendente</button>
+            <button type="submit" name="action" value="associate" class="secondary" data-real-action data-treatment-step="association" title="Associa o documento à viatura indicada pela matrícula.">2. Associar viatura</button>
+            <button type="submit" name="action" value="reprocess" class="secondary" data-real-action data-treatment-step="extraction" title="Executa novamente a extração de dados do documento.">3. Extrair / reprocessar</button>
+            <button type="submit" name="action" value="save_services" class="secondary" data-real-action data-treatment-step="services" title="Guarda apenas a classificação dos serviços da fatura.">4. Guardar serviços</button>
+            <button type="submit" name="action" value="validate" class="secondary" data-real-action data-treatment-step="validation" title="Confirma que os dados e a classificação do documento foram verificados.">5. Validar documento</button>
+            <button type="submit" name="action" value="complete" data-real-action data-treatment-step="complete" title="Fecha o tratamento quando todos os pré-requisitos estão cumpridos.">6. Concluir tratamento</button>
+            <span class="doc-treatment-action-sequence is-secondary" data-real-action>Exceções e apoio</span>
             <button type="submit" class="secondary" id="doc-treatment-audit-task" data-real-action title="Cria uma tarefa na fila Auditoria; a observação passa para a descrição.">Criar tarefa de auditoria</button>
+            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve" data-real-action title="Conclui apesar de pré-requisitos em falta; exige motivo e fica auditado.">Concluir com exceção</button>
             <button type="submit" class="danger" id="doc-treatment-remove" data-real-action title="Remove o documento após confirmação e motivo obrigatório.">Remover documento</button>
-            <button type="submit" name="action" value="complete" data-real-action title="Fecha o tratamento quando todos os pré-requisitos estão cumpridos.">Concluir tratamento</button>
             <button type="submit" name="action" value="associate" class="secondary" data-expected-action hidden>Associar fatura esperada</button>
             <button type="submit" name="action" value="reconcile" data-expected-action hidden>Reconciliar documento real</button>
           </footer>{% else %}<p class="doc-treatment-readonly-note">Consulta disponível. Não tem permissão para alterar o tratamento.</p>{% endif %}
@@ -268,6 +275,25 @@
     const previewReturnUrl = document.getElementById('doc-treatment-preview-return-url');
     const previewForm = preview?.querySelector('.doc-treatment-preview-form');
     const inlineStatus = document.getElementById('doc-treatment-inline-status');
+    const reasonLabels = {{ treatment_reason_labels|tojson }};
+    const applyActionStates = (trigger) => {
+      const states = {
+        nature: trigger.dataset.natureStatus || 'pending',
+        association: trigger.dataset.associationStatus || 'pending',
+        extraction: trigger.dataset.extractionStatus || 'pending',
+        services: trigger.dataset.servicesStatus || 'pending',
+        validation: trigger.dataset.validationStatus || 'pending',
+      };
+      const prerequisitesComplete = Object.values(states).every((state) => state === 'completed');
+      previewForm?.querySelectorAll('[data-treatment-step]').forEach((actionButton) => {
+        const step = actionButton.dataset.treatmentStep;
+        const state = step === 'complete' ? (prerequisitesComplete ? 'pending' : 'blocked') : states[step];
+        actionButton.classList.remove('is-completed', 'is-pending', 'is-blocked', 'is-error');
+        actionButton.classList.add(`is-${state}`);
+        actionButton.disabled = state === 'blocked';
+        if (state === 'completed') actionButton.setAttribute('aria-label', `${actionButton.textContent.trim()}: concluído`);
+      });
+    };
     document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => button.addEventListener('click', () => {
       const isExpected = button.dataset.kind === 'expected';
       document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
@@ -284,6 +310,7 @@
       document.querySelectorAll('[data-real-document-section]').forEach((section) => { section.hidden = isExpected; section.querySelectorAll('input,select,textarea').forEach((field) => { field.disabled = isExpected; }); });
       document.querySelectorAll('[data-real-action]').forEach((action) => { action.hidden = isExpected; });
       document.querySelectorAll('[data-expected-action]').forEach((action) => { action.hidden = !isExpected; });
+      if (!isExpected) applyActionStates(button);
       if (auditTask) auditTask.formAction = `/v2-clean/documentation/treatment/${button.dataset.documentId}/audit-task`;
       if (removeDocument) removeDocument.formAction = `/v2-clean/documents/${button.dataset.documentId}/remove`;
       previewPane.innerHTML = '';
@@ -314,10 +341,16 @@
         const payload = new FormData(previewForm);
         if (submitter.name) payload.set(submitter.name, submitter.value);
         const response = await fetch(submitter.formAction || previewForm.action, { method: 'POST', body: payload });
-        if (!response.ok) throw new Error('request_failed');
-        if (inlineStatus) { inlineStatus.textContent = isAuditTask ? 'Tarefa de auditoria criada.' : 'Alteração guardada. O documento permanece aberto.'; inlineStatus.classList.add('success'); }
+        const resultUrl = new URL(response.url || window.location.href);
+        const failed = Number(resultUrl.searchParams.get('bulk_failed') || 0);
+        const reasonCode = resultUrl.searchParams.get('bulk_reason') || resultUrl.searchParams.get('task_error') || '';
+        if (!response.ok || failed) throw new Error(reasonCode || `http_${response.status}`);
+        if (inlineStatus) { inlineStatus.textContent = isAuditTask ? 'Tarefa de auditoria criada.' : 'Alteração guardada. A atualizar o estado…'; inlineStatus.classList.add('success'); }
+        window.location.replace(resultUrl.toString());
       } catch (error) {
-        if (inlineStatus) { inlineStatus.textContent = 'Não foi possível guardar. Tenta novamente.'; inlineStatus.classList.add('danger'); }
+        const reasonCode = error instanceof Error ? error.message : '';
+        const reason = reasonLabels[reasonCode] || (reasonCode.startsWith('http_') ? `O servidor devolveu ${reasonCode.replace('http_', 'erro ')}.` : 'Não foi possível guardar. Tenta novamente.');
+        if (inlineStatus) { inlineStatus.textContent = reason; inlineStatus.classList.add('danger'); }
       } finally {
         submitter.disabled = false;
       }

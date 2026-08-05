@@ -1219,7 +1219,16 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
     assert "Mudança de óleo" in page.text
     assert "Serviços da fatura" in page.text
     assert "Validar documento" in page.text
-    assert "O documento permanece aberto" in page.text
+    assert "Ordem recomendada" in page.text
+    assert "Falta validar o documento." in page.text
+    assert "Criar tarefa de auditoria:</strong> cria uma tarefa na fila Auditoria" in page.text
+    assert page.text.index("1. Guardar natureza/pendente") < page.text.index(
+        "2. Associar viatura"
+    ) < page.text.index("3. Extrair / reprocessar") < page.text.index(
+        "4. Guardar serviços"
+    ) < page.text.index("5. Validar documento") < page.text.index(
+        "6. Concluir tratamento"
+    )
     assert "doc-treatment-inline-status" in page.text
 
     saved = authenticated_client.post(

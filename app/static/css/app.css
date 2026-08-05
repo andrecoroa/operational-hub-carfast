@@ -22909,6 +22909,54 @@ body.clean-task-preview-open {
   border-top: 1px solid #d9e1ea;
 }
 
+.doc-treatment-action-sequence {
+  flex: 0 0 100%;
+  color: #7c2d12;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.doc-treatment-action-sequence.is-secondary {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.doc-treatment-preview-form footer button.is-completed {
+  border-color: #acd8bb;
+  background: #e4f5ea;
+  color: #176536;
+}
+
+.doc-treatment-preview-form footer button.is-pending {
+  border-color: #edc77f;
+  background: #fff0d0;
+  color: #8a4b05;
+}
+
+.doc-treatment-preview-form footer button.is-blocked {
+  border-color: #d5dbe3;
+  background: #edf0f4;
+  color: #667085;
+  opacity: .78;
+}
+
+.doc-treatment-action-help {
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  padding: 9px 10px;
+  border-left: 3px solid #b45309;
+  background: #fff8ed;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.doc-treatment-action-help p {
+  margin: 0;
+}
+
 .doc-treatment-help,
 .doc-treatment-exception-help {
   margin: 0;

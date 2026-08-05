@@ -130,7 +130,7 @@ def document_treatment_dimensions(
             else "Pendente"
         ),
     }
-    if not is_invoice:
+    if not is_invoice or state.invoice_nature not in {None, "por_classificar", "operacional"}:
         services = {"status": "completed", "label": "Não aplicável"}
     elif not document.vehicle_id:
         services = {"status": "blocked", "label": "Bloqueado"}

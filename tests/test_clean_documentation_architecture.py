@@ -1,6 +1,7 @@
 from io import BytesIO
 import json
 from pathlib import Path
+from datetime import date
 
 from openpyxl import Workbook
 import pytest
@@ -8,6 +9,7 @@ from sqlalchemy import func, select
 
 import app.web.router as web_router
 from app.core.config import settings
+from app.models.audit import AuditLog
 from app.models.documents import (
     DiagnosticDocument,
     Document,
@@ -225,7 +227,7 @@ def test_document_inbox_forms_return_to_their_clean_workspaces(
     )
 
 
-def test_clean_invoices_lists_expected_records_and_allows_manual_association(
+def test_clean_invoices_monitor_routes_expected_records_to_unified_treatment(
     authenticated_client,
     db_session,
 ):
@@ -247,6 +249,9 @@ def test_clean_invoices_lists_expected_records_and_allows_manual_association(
     db_session.commit()
 
     page = authenticated_client.get("/v2-clean/documentation/invoices")
+    treatment = authenticated_client.get(
+        "/v2-clean/documentation/treatment?family=invoices"
+    )
     associated = authenticated_client.post(
         f"/v2-clean/documents/pending/{pending.id}/associate",
         data={"identifier": "9901", "return_to": "clean"},
@@ -256,8 +261,15 @@ def test_clean_invoices_lists_expected_records_and_allows_manual_association(
 
     assert page.status_code == 200
     assert "Faturas esperadas" in page.text
-    assert "HFO/3000/2026" in page.text
-    assert "500000000" in page.text
+    assert "HFO/3000/2026" not in page.text
+    assert "<h2>Faturas recebidas</h2>" not in page.text
+    assert "<table" not in page.text
+    assert "Abrir Tratamento" in page.text
+    assert treatment.status_code == 200
+    assert "HFO/3000/2026" in treatment.text
+    assert "500000000" in treatment.text
+    assert "Fatura esperada" in treatment.text
+    assert "Sem documento real" in treatment.text
     assert associated.status_code == 303
     assert associated.headers["location"].startswith(
         "/v2-clean/documentation/invoices"
@@ -475,7 +487,9 @@ def test_documentation_headers_keep_only_essential_metrics(authenticated_client)
     assert 'aria-label="Indicadores essenciais"' in center.text
     assert "Importações recentes" not in center.text
     assert "Diagnósticos pendentes" not in center.text
-    assert 'class="doc-arch-kpis doc-arch-kpis-four"' in invoices.text
+    assert 'class="doc-arch-kpis doc-invoice-monitor-kpis"' in invoices.text
+    assert "Serviços pendentes" in invoices.text
+    assert "Por extrair" in invoices.text
     assert "Sem associação" not in invoices.text
 
 
@@ -881,6 +895,92 @@ def test_treatment_groups_invoices_by_supplier_and_keeps_preview_links(
     assert 'action="/v2-clean/documentation/treatment/bulk"' in response.text
 
 
+def test_treatment_file_preview_uses_durable_storage_for_central_sources(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+):
+    archive_root = tmp_path / "archive"
+    invoice_path = archive_root / "Faturas" / "central.pdf"
+    invoice_path.parent.mkdir(parents=True)
+    invoice_path.write_bytes(b"%PDF-1.4\n% central preview\n")
+    monkeypatch.setattr(settings, "document_archive_root", str(archive_root))
+    document = Document(
+        title="Fatura central com PDF",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="central.pdf",
+        file_name="central.pdf",
+        file_type="application/pdf",
+        storage_provider="local",
+        storage_path="Faturas/central.pdf",
+        status="pending_validation",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.get(
+        f"/v2-clean/documents/{document.id}/file?inline=1"
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF-1.4")
+    assert response.headers["content-type"].startswith("application/pdf")
+
+
+def test_document_removal_requires_reason_and_records_global_audit(
+    authenticated_client,
+    db_session,
+):
+    document = Document(
+        title="Documento a remover com auditoria",
+        document_type="vehicle_document",
+        classification="fleet",
+        source="v2_clean_manual",
+        original_name="remover.pdf",
+        file_name="remover.pdf",
+        storage_provider="local",
+        storage_path="Frota/remover.pdf",
+        status="received",
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    missing_reason = authenticated_client.post(
+        f"/v2-clean/documents/{document.id}/remove",
+        data={"return_url": "/v2-clean/documentation/treatment?family=fleet"},
+        follow_redirects=False,
+    )
+    removed = authenticated_client.post(
+        f"/v2-clean/documents/{document.id}/remove",
+        data={
+            "reason": "Duplicado confirmado no documento original",
+            "return_url": "/v2-clean/documentation/treatment?family=fleet",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert "remove_error=missing_reason" in missing_reason.headers["location"]
+    assert removed.status_code == 303
+    assert db_session.get(Document, document.id).status == "removed"
+    assert db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "document.removed",
+        )
+    )
+    assert db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "document.removed",
+            AuditLog.entity_type == "document",
+            AuditLog.entity_id == str(document.id),
+        )
+    )
+
+
 def test_treatment_groups_diagnostics_by_extracted_type(
     authenticated_client,
     db_session,
@@ -1118,3 +1218,481 @@ def test_legacy_document_importers_require_preflight_confirmation(
     assert 'class="doc-import-preflight"' in response.text
     assert f'data-import-label="{expected_label}"' in response.text
     assert "Nenhum registo foi gravado" in response.text
+
+
+def test_expected_invoice_is_blocked_from_real_document_bulk_actions(
+    authenticated_client,
+    db_session,
+):
+    expected = VehicleDocumentRecord(
+        source_record_type="pending_import",
+        main_group="invoices",
+        status="pending",
+        title="Fatura esperada HFO-77",
+        external_reference="HFO-77",
+        supplier_name="Fornecedor Esperado",
+        metadata_json={"supplier_nif": "509999999"},
+    )
+    db_session.add(expected)
+    db_session.commit()
+
+    review = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk/review",
+        data={"item_refs": f"expected:{expected.id}", "action": "validate"},
+    )
+
+    assert review.status_code == 200
+    payload = review.json()
+    assert payload["compatible"] == []
+    assert payload["incompatible"][0]["reason"] == (
+        "expected_invoice_requires_real_document"
+    )
+
+
+def test_save_services_does_not_change_nature_validation_or_completion(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="SV-10-CE", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Fatura serviços isolados",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="servicos.pdf",
+        file_name="servicos.pdf",
+        storage_provider="local",
+        storage_path="Faturas/servicos.pdf",
+        status="pending_validation",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.flush()
+    state = DocumentWorkflowState(
+        document_id=document.id,
+        ingestion_status="completed",
+        association_status="associated",
+        extraction_status="extracted",
+        validation_status="pending",
+        destination_status="invoices",
+        invoice_nature="operacional",
+    )
+    db_session.add(state)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": f"document:{document.id}",
+            "action": "save_services",
+            "service_classification_present": "1",
+            "maintenance": ["revision", "degradation"],
+            "pads": ["front", "rear"],
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    stored = db_session.get(Document, document.id)
+    stored_state = db_session.get(DocumentWorkflowState, state.id)
+    assert stored.status == "pending_validation"
+    assert stored_state.invoice_nature == "operacional"
+    assert stored_state.validation_status == "pending"
+    tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == document.id
+        )
+    ).all()
+    assert {(tag.category, tag.value) for tag in tags} == {
+        ("maintenance", "revision"),
+        ("maintenance", "degradation"),
+        ("pads", "front"),
+        ("pads", "rear"),
+    }
+
+
+def test_validate_action_does_not_reclassify_or_associate_visible_form_values(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="SM-21-NT", active=True)
+    document = Document(
+        title="Fatura financeira com ações separadas",
+        document_type="finance_supplier_invoice",
+        classification="finance",
+        source="document_inbox",
+        original_name="semantica.pdf",
+        file_name="semantica.pdf",
+        storage_provider="local",
+        storage_path="Faturas/semantica.pdf",
+        status="pending_validation",
+    )
+    db_session.add_all([vehicle, document])
+    db_session.flush()
+    state = DocumentWorkflowState(
+        document_id=document.id,
+        ingestion_status="completed",
+        association_status="unassociated",
+        extraction_status="extracted",
+        validation_status="pending",
+        destination_status="archive",
+        invoice_nature="financeira",
+    )
+    db_session.add(state)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": f"document:{document.id}",
+            "action": "validate",
+            "invoice_nature": "stock",
+            "plate": vehicle.plate,
+            "destination": "invoices",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "bulk_processed=1" in response.headers["location"]
+    assert db_session.get(Document, document.id).vehicle_id is None
+    stored_state = db_session.get(DocumentWorkflowState, state.id)
+    assert stored_state.invoice_nature == "financeira"
+    assert stored_state.destination_status == "archive"
+    assert stored_state.validation_status == "human_validated"
+
+
+def test_bulk_validation_isolated_per_document_and_enforces_prerequisites(
+    authenticated_client,
+    db_session,
+):
+    stock_document = Document(
+        title="Fatura stock pronta",
+        document_type="finance_supplier_invoice",
+        classification="finance",
+        source="document_inbox",
+        original_name="stock.pdf",
+        file_name="stock.pdf",
+        storage_provider="local",
+        storage_path="Faturas/stock.pdf",
+        status="pending_validation",
+    )
+    operational_document = Document(
+        title="Fatura operacional incompleta",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="operacional.pdf",
+        file_name="operacional.pdf",
+        storage_provider="local",
+        storage_path="Faturas/operacional.pdf",
+        status="pending_validation",
+    )
+    db_session.add_all([stock_document, operational_document])
+    db_session.flush()
+    stock_state = DocumentWorkflowState(
+        document_id=stock_document.id,
+        ingestion_status="completed",
+        association_status="unassociated",
+        extraction_status="extracted",
+        validation_status="pending",
+        destination_status="archive",
+        invoice_nature="stock",
+    )
+    operational_state = DocumentWorkflowState(
+        document_id=operational_document.id,
+        ingestion_status="completed",
+        association_status="unassociated",
+        extraction_status="extracted",
+        validation_status="pending",
+        destination_status="invoices",
+        invoice_nature="operacional",
+    )
+    db_session.add_all([stock_state, operational_state])
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": [
+                f"document:{stock_document.id}",
+                f"document:{operational_document.id}",
+            ],
+            "action": "validate",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "bulk_processed=1" in response.headers["location"]
+    assert "bulk_failed=1" in response.headers["location"]
+    assert db_session.get(DocumentWorkflowState, stock_state.id).validation_status == (
+        "human_validated"
+    )
+    assert db_session.get(DocumentWorkflowState, operational_state.id).validation_status == (
+        "pending"
+    )
+
+
+def test_bulk_extraction_failure_is_persisted_without_losing_item_result(
+    authenticated_client,
+    db_session,
+    monkeypatch,
+):
+    vehicle = Vehicle(plate="ER-25-RO", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Fatura com erro OCR",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="erro-ocr.pdf",
+        file_name="erro-ocr.pdf",
+        storage_provider="local",
+        storage_path="Faturas/erro-ocr.pdf",
+        status="pending_extraction",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.flush()
+    state = DocumentWorkflowState(
+        document_id=document.id,
+        ingestion_status="completed",
+        association_status="associated",
+        extraction_status="not_requested",
+        validation_status="pending",
+        destination_status="invoices",
+        invoice_nature="operacional",
+    )
+    db_session.add(state)
+    db_session.commit()
+    monkeypatch.setattr(
+        web_router,
+        "_reprocess_invoice_document",
+        lambda *_args, **_kwargs: {"error": "ocr_failed", "extracted_text": ""},
+    )
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": f"document:{document.id}",
+            "action": "reprocess",
+            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    assert "bulk_processed=0" in response.headers["location"]
+    assert "bulk_failed=1" in response.headers["location"]
+    assert db_session.get(Document, document.id).status == "ocr_issue"
+    assert db_session.get(DocumentWorkflowState, state.id).extraction_status == "failed"
+    assert db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "document.treatment.reprocess",
+        )
+    )
+
+
+def test_bulk_common_plate_requires_explicit_confirmation(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="LT-20-AA", active=True)
+    documents = [
+        Document(
+            title=f"Fatura associação {index}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="document_inbox",
+            original_name=f"associate-{index}.pdf",
+            file_name=f"associate-{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Faturas/associate-{index}.pdf",
+            status="pending_validation",
+        )
+        for index in range(2)
+    ]
+    db_session.add(vehicle)
+    db_session.add_all(documents)
+    db_session.flush()
+    for document in documents:
+        db_session.add(
+            DocumentWorkflowState(
+                document_id=document.id,
+                ingestion_status="completed",
+                association_status="unassociated",
+                extraction_status="extracted",
+                validation_status="pending",
+                destination_status="invoices",
+                invoice_nature="operacional",
+            )
+        )
+    db_session.commit()
+    data = {
+        "item_refs": [f"document:{document.id}" for document in documents],
+        "action": "associate",
+        "plate": vehicle.plate,
+        "return_url": "/v2-clean/documentation/treatment?family=invoices",
+    }
+
+    rejected = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data=data,
+        follow_redirects=False,
+    )
+    assert "common_plate_confirmation_required" in rejected.headers["location"]
+    assert all(db_session.get(Document, document.id).vehicle_id is None for document in documents)
+
+    accepted = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={**data, "confirm_common_plate": "1"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert "bulk_processed=2" in accepted.headers["location"]
+    assert {
+        db_session.get(Document, document.id).vehicle_id for document in documents
+    } == {vehicle.id}
+
+
+def test_vehicle_invoice_nature_uses_common_classification_audit(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="NT-30-RE", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    document = Document(
+        title="Fatura natureza ficha",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="natureza.pdf",
+        file_name="natureza.pdf",
+        storage_provider="local",
+        storage_path="Faturas/natureza.pdf",
+        status="pending_validation",
+        vehicle_id=vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/{document.id}/nature",
+        data={"nature": "operacional", "decision_reason": "Confirmado na ficha"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    state = db_session.scalar(
+        select(DocumentWorkflowState).where(
+            DocumentWorkflowState.document_id == document.id
+        )
+    )
+    assert state.invoice_nature == "operacional"
+    assert db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "invoice.nature.classified",
+        )
+    )
+
+
+def test_by_vehicle_overview_exposes_explainable_aggregates_and_central_preview(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="PV-40-UA", brand="PEUGEOT", model="208", active=True)
+    db_session.add(vehicle)
+    db_session.flush()
+    work_order = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="structured",
+        main_group="work_orders",
+        title="FO-400",
+        external_reference="FO-400",
+        document_date=date(2026, 7, 1),
+        status="structured",
+    )
+    expected = VehicleDocumentRecord(
+        vehicle_id=vehicle.id,
+        source_record_type="pending_import",
+        main_group="invoices",
+        title="Fatura esperada 401",
+        external_reference="401",
+        document_date=date(2026, 7, 3),
+        status="pending",
+    )
+    invoices = [
+        Document(
+            title=f"Fatura repetição {index}",
+            document_type="workshop_supplier_invoice",
+            classification="invoice",
+            source="document_inbox",
+            original_name=f"repeat-{index}.pdf",
+            file_name=f"repeat-{index}.pdf",
+            storage_provider="local",
+            storage_path=f"Faturas/repeat-{index}.pdf",
+            status="pending_validation",
+            vehicle_id=vehicle.id,
+            plate=vehicle.plate,
+            document_date=date(2026, 7, 5 + index * 20),
+        )
+        for index in range(2)
+    ]
+    db_session.add_all([work_order, expected, *invoices])
+    db_session.flush()
+    db_session.add(
+        DocumentLink(
+            document_id=invoices[0].id,
+            entity_type="vehicle_document_record",
+            entity_id=str(work_order.id),
+            category="invoice_work_order",
+        )
+    )
+    for document in invoices:
+        db_session.add(
+            VehicleDocumentRecordTag(
+                vehicle_id=vehicle.id,
+                document_id=document.id,
+                category="maintenance",
+                value="revision",
+                source_kind="manual",
+            )
+        )
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/documentation/by-vehicle")
+    preview = authenticated_client.get(
+        f"/v2-clean/documentation/by-vehicle/{vehicle.id}"
+    )
+
+    assert page.status_code == 200
+    assert vehicle.plate in page.text
+    assert "Pares confirmados" in page.text
+    assert "FO sem fatura" in page.text
+    assert "≤ 30 dias" in page.text
+    assert "sem algoritmo opaco" in page.text.lower()
+    assert preview.status_code == 200
+    assert "Preview central por viatura" in preview.text
+    assert "Faturas reais" in preview.text
+    assert "Fatura repetição 0" in preview.text
+    assert "Faturas esperadas" in preview.text
+    assert "Correspondência FO–fatura" in preview.text
+    assert "Histórico cronológico" in preview.text

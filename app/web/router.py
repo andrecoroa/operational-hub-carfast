@@ -11872,7 +11872,7 @@ def clean_documentation_import_workspace(
     tab: str = "",
     q: str = "",
     page: int = 1,
-    page_size: int = 25,
+    page_size: int = 10,
     history_page: int = 1,
 ):
     denied = clean_experience_denied(request)

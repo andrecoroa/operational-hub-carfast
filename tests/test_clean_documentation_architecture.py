@@ -1049,6 +1049,7 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
     assert "FT 44" in page.text
     assert "Mudança de óleo" in page.text
     assert "Serviços da fatura" in page.text
+    assert "Validar documento" in page.text
 
     saved = authenticated_client.post(
         "/v2-clean/documentation/treatment/bulk",

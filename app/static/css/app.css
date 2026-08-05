@@ -22262,7 +22262,7 @@ body.clean-task-preview-open {
   opacity: 1 !important;
   visibility: visible !important;
   color: #fff !important;
-  background: var(--red) !important;
+  background: var(--navy) !important;
 }
 
 .doc-treatment-dialog,

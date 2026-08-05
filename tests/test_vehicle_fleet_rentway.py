@@ -9,6 +9,7 @@ from app.models.imports import ImportRawRow
 from app.services.rentway_fleet_importer import (
     build_vehicle_payload,
     import_rentway_fleet_xlsx,
+    normalize_rentway_gearbox,
     preview_rentway_fleet_xlsx,
 )
 from app.services.spreadsheets import build_column_lookup
@@ -88,6 +89,14 @@ def test_rentway_mapping_real_headers_normalizes_filter_fields_and_zero_seats():
     assert payload["rentway_registration_date"] == date(2022, 1, 15)
     assert payload["rentway_km"] == 98450
     assert payload["rentway_location"] == "Porto"
+
+
+def test_rentway_automatic_groups_supply_gearbox_when_source_is_empty():
+    for group in ("B3", "C2", "c4", "c5", "d2", "d4", "e2", "G2", "G3", "I2", "J1", "J2", "J3", "L2"):
+        assert normalize_rentway_gearbox(None, None, group) == "Automática"
+
+    assert normalize_rentway_gearbox("EAT8", None, "C2") == "EAT8"
+    assert normalize_rentway_gearbox(None, "1.5 BlueHDi CVM6", "C1") == "CVM6"
 
 
 def test_rentway_preview_lists_created_fields_and_import_keeps_raw_snapshot(

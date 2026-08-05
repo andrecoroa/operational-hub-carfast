@@ -59,6 +59,10 @@ WORKSHOP_PROTECTED_VEHICLE_FIELDS = frozenset(
     {"active", "lifecycle_status", "operational_status"}
 )
 
+AUTOMATIC_RENTWAY_GROUPS = frozenset(
+    {"B3", "C2", "C4", "C5", "D2", "D4", "E2", "G2", "G3", "I2", "J1", "J2", "J3", "L2"}
+)
+
 
 def has_open_workshop_process(db: Session, vehicle_id: int) -> bool:
     phased_open = db.scalar(
@@ -123,10 +127,16 @@ def clean_seats(value: Any) -> int | None:
     return seats if seats is not None and seats > 0 else None
 
 
-def normalize_rentway_gearbox(value: Any, version: Any = None) -> str | None:
+def normalize_rentway_gearbox(
+    value: Any,
+    version: Any = None,
+    rentway_group: Any = None,
+) -> str | None:
     text = clean_text(value)
     if text:
         return text
+    if (clean_text(rentway_group) or "").upper() in AUTOMATIC_RENTWAY_GROUPS:
+        return "Automática"
     version_text = clean_text(version) or ""
     match = re.search(
         r"\b(CVM\s*\d+|BVM\s*\d+|EAT\s*\d+|DSG\s*\d*|DCT\s*\d*|CVT|"
@@ -214,6 +224,17 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
     )
 
     version = clean_text(_rentway_value(row, col, "Version", "Versão", "Versao"))
+    rentway_group = clean_text(
+        _rentway_value(
+            row,
+            col,
+            "GroupId",
+            "Group ID",
+            "RentwayGroup",
+            "Grupo Rentway",
+            "Grupo",
+        )
+    )
     return {
         "plate": plate,
         "vin": vin,
@@ -225,17 +246,7 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
         "lifecycle_status": lifecycle_status,
         "operational_status": operational_status,
         "rentway_category": normalize_rentway_category(raw_category),
-        "rentway_group": clean_text(
-            _rentway_value(
-                row,
-                col,
-                "GroupId",
-                "Group ID",
-                "RentwayGroup",
-                "Grupo Rentway",
-                "Grupo",
-            )
-        ),
+        "rentway_group": rentway_group,
         "rentway_fuel": clean_text(
             _rentway_value(row, col, "Fuel", "FuelType", "Fuel Type", "Combustível", "Combustivel")
         ),
@@ -252,6 +263,7 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
                 "Tipo de caixa",
             ),
             version,
+            rentway_group,
         ),
         "rentway_seats": clean_seats(
             _rentway_value(

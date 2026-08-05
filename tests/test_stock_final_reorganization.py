@@ -7,6 +7,7 @@ from app.models.stock import (
     StockArticleVehicleCompatibility,
     StockInventorySession,
     StockInvoiceImport,
+    StockInvoiceLine,
     StockLocation,
     StockMovement,
     StockPurchaseOrder,
@@ -337,6 +338,21 @@ def test_validated_invoice_is_pending_until_a_physical_receipt(
     invoice.invoice_number = "FT-PENDING-1"
     invoice.status = "validated"
     invoice.conference_status = "conferred"
+    db_session.add(
+        StockInvoiceLine(
+            invoice_import_id=invoice.id,
+            line_number=1,
+            supplier_ref="REF-PENDING",
+            description="Artigo pendente de receção",
+            quantity=Decimal("2"),
+            unit="un.",
+            unit_cost=Decimal("10"),
+            discount=Decimal("0"),
+            eco_value=Decimal("0"),
+            tax_rate=Decimal("0.23"),
+            line_total=Decimal("20"),
+        )
+    )
     db_session.commit()
 
     pending = authenticated_client.get(
@@ -347,7 +363,9 @@ def test_validated_invoice_is_pending_until_a_physical_receipt(
     assert pending.status_code == 200
     assert [item["id"] for item in pending.json()["invoices"]] == [invoice_id]
     assert "FT-PENDING-1" in page.text
-    assert "Preparar receção" in page.text
+    assert "1 artigos" in page.text
+    assert "Validar artigos e receber" in page.text
+    assert f'/v2-clean/stock/invoices/{invoice_id}#stock-receipt-lines' in page.text
 
 
 def test_fractional_quantities_are_rejected(authenticated_client, db_session):

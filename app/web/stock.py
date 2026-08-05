@@ -1371,6 +1371,19 @@ def stock_receipts(request: Request, db: DbSession):
             StockInvoiceImport.id.asc(),
         )
     ).all()
+    pending_invoice_ids = [invoice.id for invoice, _supplier in pending_invoice_rows]
+    pending_line_counts = (
+        {
+            invoice_id: count
+            for invoice_id, count in db.execute(
+                select(StockInvoiceLine.invoice_import_id, func.count(StockInvoiceLine.id))
+                .where(StockInvoiceLine.invoice_import_id.in_(pending_invoice_ids))
+                .group_by(StockInvoiceLine.invoice_import_id)
+            ).all()
+        }
+        if pending_invoice_ids
+        else {}
+    )
     return templates.TemplateResponse(
         request,
         "clean_stock_receipts.html",
@@ -1378,6 +1391,7 @@ def stock_receipts(request: Request, db: DbSession):
             **_page_context(request, db),
             "receipt_rows": receipt_rows,
             "pending_invoice_rows": pending_invoice_rows,
+            "pending_line_counts": pending_line_counts,
             "linked_counts": linked_counts,
             "articles": db.scalars(
                 select(StockArticle)

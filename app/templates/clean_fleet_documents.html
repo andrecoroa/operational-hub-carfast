@@ -270,7 +270,7 @@
                             data-remove-form="remove-document-{{ row.id }}"
                           >Remover</button>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link clean-doc-summary-command">Guardar classificação</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link clean-doc-summary-command" aria-label="Guardar classificação de serviços">Guardar serviços</button>
                         <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link secondary-link clean-doc-summary-command">Guardar e validar</button>
                         <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
                       </span>
@@ -291,6 +291,26 @@
                         </dl>
                       </section>
                       {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                        {% if row.kind == "document" %}
+                          <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-invoice-nature-card">
+                            <div>
+                              <h4>Natureza da fatura</h4>
+                              <p>Usa o mesmo classificador auditado do Centro de Documentação.</p>
+                            </div>
+                            <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/{{ row.id }}/nature" class="clean-doc-invoice-nature-form">
+                              <input type="hidden" name="return_group" value="invoices">
+                              <input type="hidden" name="open_item" value="document:{{ row.id }}">
+                              <select name="nature" required aria-label="Natureza da fatura">
+                                <option value="por_classificar" {% if row.invoice_nature == 'por_classificar' %}selected{% endif %}>Por classificar</option>
+                                <option value="operacional" {% if row.invoice_nature == 'operacional' %}selected{% endif %}>Operacional</option>
+                                <option value="financeira" {% if row.invoice_nature == 'financeira' %}selected{% endif %}>Financeira</option>
+                                <option value="stock" {% if row.invoice_nature == 'stock' %}selected{% endif %}>Fatura de stock</option>
+                              </select>
+                              <input name="decision_reason" placeholder="Motivo / observação">
+                              <button type="submit" class="button-link secondary-link">Guardar natureza</button>
+                            </form>
+                          </section>
+                        {% endif %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                           {{ render_classification_editor(row, form_id, "Serviços relevantes da fatura") }}
                           <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
@@ -438,7 +458,7 @@
                             <button type="submit" class="button-link secondary-link">Reprocessar OCR</button>
                           </form>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link">Guardar classificação</button>
+                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link primary-link" aria-label="Guardar classificação de serviços">Guardar serviços</button>
                         <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link secondary-link">Guardar e validar</button>
                         {% if row.kind == "document" %}
                           <details class="clean-doc-remove-menu">
@@ -538,7 +558,7 @@
                 {{ render_classification_editor(row) }}
                 <div class="clean-doc-detail-footer-actions">
                   <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
-                  <button type="submit" name="classification_action" value="save" class="button-link primary-link">Guardar classificação</button>
+                  <button type="submit" name="classification_action" value="save" class="button-link primary-link" aria-label="Guardar classificação de serviços">Guardar serviços</button>
                   <button type="submit" name="classification_action" value="validate" class="button-link secondary-link">Guardar e validar</button>
                 </div>
               </form>

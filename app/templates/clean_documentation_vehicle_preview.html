@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body %}
+{% macro simple_document_table(rows, kind) -%}
+  <div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Data</th><th>Documento</th><th>Fornecedor/Origem</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for row in rows %}<tr><td>{{ row.date_display or '—' }}</td><td><strong>{{ row.title or row.document_number or row.external_reference or '—' }}</strong></td><td>{{ row.supplier_name or row.archive_label or '—' }}</td><td>{{ row.comparison_state or row.extraction_state or row.status or '—' }}</td><td>{% if kind == 'invoice' %}<a href="/v2-clean/documentation/treatment?family=invoices&q={{ (row.document_number or row.title or '')|urlencode }}">Tratar</a>{% elif kind == 'diagnostic' %}<a href="/v2-clean/documentation/treatment?family=diagnostics&q={{ (row.title or '')|urlencode }}">Tratar</a>{% else %}<a href="/v2-clean/fleet/{{ vehicle.id }}/documents">Abrir ficha</a>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="doc-arch-empty">Sem registos.</td></tr>{% endfor %}
+  </tbody></table></div>
+{%- endmacro %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_by_vehicle" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page doc-vehicle-preview-page">
+    {% set doc_nav = "by_vehicle" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div><p class="eyebrow">Preview central por viatura</p><h1>{{ vehicle.plate or vehicle.vin or vehicle.rentway_unit_nr }}</h1><p>{{ vehicle.brand or '' }} {{ vehicle.model or '' }} · leitura centralizada, sem estados paralelos.</p></div>
+      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documentation/by-vehicle">Voltar</a><a class="button-link secondary-link" href="/v2-clean/fleet/{{ vehicle.id }}/documents">Ficha documental</a><a class="button-link" href="/v2-clean/documentation/treatment?family=invoices&q={{ (vehicle.plate or vehicle.vin or '')|urlencode }}">Tratar documentos</a></div>
+    </header>
+
+    <section class="doc-arch-kpis doc-vehicle-preview-kpis"><div><strong>{{ real_invoice_rows|length }}</strong><span>Faturas reais</span></div><div><strong>{{ expected_rows|length }}</strong><span>Faturas esperadas</span></div><div><strong>{{ work_order_rows|length }}</strong><span>Folhas de obra</span></div><div><strong>{{ diagnostic_rows|length }}</strong><span>Diagnósticos/relatórios</span></div><div><strong>{{ other_rows|length }}</strong><span>Outros documentos</span></div></section>
+
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Faturas reais</h2><p>As ações abrem o mesmo Tratamento central.</p></div></div>{{ simple_document_table(real_invoice_rows, 'invoice') }}</section>
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Faturas esperadas</h2><p>Associação e reconciliação usam os registos existentes.</p></div>{% if can_manage_documents %}<form method="post" action="/v2-clean/documentation/invoices/reconcile-pending"><input type="hidden" name="return_url" value="/v2-clean/documentation/by-vehicle/{{ vehicle.id }}"><button type="submit">Reconciliar</button></form>{% endif %}</div>{{ simple_document_table(expected_rows, 'invoice') }}</section>
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Folhas de obra</h2><p>Dados estruturados atuais da ficha da viatura.</p></div></div>{{ simple_document_table(work_order_rows, 'work_order') }}</section>
+    <section class="doc-arch-card" id="fo-invoice"><div class="doc-arch-card-heading"><div><h2>Correspondência FO–fatura</h2><p>Pares confirmados e sugestões mantêm a origem visível.</p></div></div><div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>FO</th><th>Fatura</th><th>Tipo</th><th>Estado</th></tr></thead><tbody>{% for row in comparison_rows %}<tr><td>{{ row.work_order.title if row.work_order else 'Sem FO' }}</td><td>{{ row.invoice.title if row.invoice else 'Sem fatura' }}</td><td>{{ 'Confirmado' if row.match_kind == 'confirmed' else ('Sugerido' if row.match_kind == 'suggested' else 'Sem par') }}</td><td>{{ row.state_label }}</td></tr>{% else %}<tr><td colspan="4" class="doc-arch-empty">Sem correspondências.</td></tr>{% endfor %}</tbody></table></div></section>
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Diagnósticos e relatórios</h2></div></div>{{ simple_document_table(diagnostic_rows, 'diagnostic') }}</section>
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Outros documentos</h2></div></div>{{ simple_document_table(other_rows, 'other') }}</section>
+    <section class="doc-arch-card" id="services"><div class="doc-arch-card-heading"><div><h2>Serviços e repetições</h2><p>Classificações do mesmo contrato usado na ficha da viatura.</p></div></div><ul class="doc-vehicle-service-history">{% for row in real_invoice_rows if row.service_summary %}<li><strong>{{ row.date_display }} · {{ row.title }}</strong><span>{{ row.service_summary|join(' · ') }}</span></li>{% else %}<li>Sem serviços classificados nas faturas atuais.</li>{% endfor %}</ul></section>
+    <section class="doc-arch-card"><div class="doc-arch-card-heading"><div><h2>Histórico cronológico</h2><p>Eventos documentais existentes; Oficina, KM, fases e estados não são alterados.</p></div></div><div class="doc-vehicle-timeline">{% for event in timeline_events %}<article><time>{{ event.date }}</time><div>{% for side in ['left', 'center', 'right'] %}{% for card in event.get(side, []) %}<span><strong>{{ card.title }}</strong><small>{{ card.group_label or card.secondary or '' }}</small></span>{% endfor %}{% endfor %}</div></article>{% else %}<p>Sem eventos cronológicos.</p>{% endfor %}</div></section>
+  </main>
+</div>
+{% endblock %}

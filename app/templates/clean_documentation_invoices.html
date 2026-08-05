@@ -7,122 +7,55 @@
     {% set doc_nav = "invoices" %}
     {% include "_clean_documentation_nav.html" %}
     <header class="doc-arch-header">
-      <div><p class="eyebrow">Documentação</p><h1>Faturas</h1><p>Consulta, associação e classificação das faturas da frota.</p></div>
-      <div class="doc-arch-header-actions"><a class="button-link secondary-link" href="/v2-clean/documents?audit_export=1">Exportar auditoria</a><a class="button-link" href="/v2-clean/documentation/imports/invoices">Importar faturas</a></div>
+      <div>
+        <p class="eyebrow">Documentação</p>
+        <h1>Acompanhamento de faturas</h1>
+        <p>Visão compacta da fila. A classificação, associação, extração e validação são feitas uma única vez em Tratamento.</p>
+      </div>
+      <div class="doc-arch-header-actions">
+        <a class="button-link secondary-link" href="/v2-clean/documentation/imports/invoices">Importar faturas</a>
+        <a class="button-link" href="/v2-clean/documentation/treatment?family=invoices">Abrir Tratamento › Faturas</a>
+      </div>
     </header>
-    {% if request.query_params.get("saved") %}<div class="doc-arch-notice success">Natureza confirmada e derivados recalculados, preservando o histórico.</div>{% endif %}
-    {% if request.query_params.get("pending_associated") %}<div class="doc-arch-notice success">Fatura pendente associada à viatura.</div>{% endif %}
+
+    {% if request.query_params.get("saved") %}
+      <div class="doc-arch-notice success">Natureza confirmada pelo classificador comum; a fila de Tratamento já reflete a alteração.</div>
+    {% endif %}
     {% if request.query_params.get("reconciled") is not none %}
       <div class="doc-arch-notice success">
-        Reconciliação concluída: {{ request.query_params.get("reconciled", "0") }} faturas encontradas,
-        {{ request.query_params.get("associated", "0") }} pendentes associados a viaturas,
-        {{ request.query_params.get("ambiguous", "0") }} casos ambíguos e
-        {{ request.query_params.get("unmatched", "0") }} ainda sem documento.
+        Reconciliação concluída: {{ request.query_params.get("reconciled", "0") }} encontradas,
+        {{ request.query_params.get("associated", "0") }} associadas,
+        {{ request.query_params.get("ambiguous", "0") }} ambíguas e
+        {{ request.query_params.get("unmatched", "0") }} ainda sem documento real.
       </div>
     {% endif %}
-    {% if request.query_params.get("pending_error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("pending_error") }}</div>{% endif %}
-    {% if request.query_params.get("error") %}<div class="doc-arch-notice danger">{{ request.query_params.get("error") }}</div>{% endif %}
+    {% if request.query_params.get("error") or request.query_params.get("pending_error") %}
+      <div class="doc-arch-notice danger">{{ request.query_params.get("error") or request.query_params.get("pending_error") }}</div>
+    {% endif %}
 
-    <section class="doc-arch-kpis doc-arch-kpis-four" aria-label="Indicadores essenciais">
-      <a href="/v2-clean/documentation/invoices"><strong>{{ pagination.total }}</strong><span>Total filtrado</span></a>
-      <a class="warning" href="?nature=por_classificar"><strong>{{ nature_counts.get("por_classificar", 0) }}</strong><span>Por classificar</span></a>
-      <a href="?nature=operacional"><strong>{{ nature_counts.get("operacional", 0) + nature_counts.get("legacy", 0) }}</strong><span>Operacionais / legadas</span></a>
-      <a href="?nature=financeira"><strong>{{ nature_counts.get("financeira", 0) + nature_counts.get("stock", 0) }}</strong><span>Financeiras / stock</span></a>
+    <section class="doc-arch-kpis doc-invoice-monitor-kpis" aria-label="Estado das faturas">
+      <a href="/v2-clean/documentation/treatment?family=invoices"><strong>{{ counters.received }}</strong><span>Recebidas</span></a>
+      <a href="/v2-clean/documentation/treatment?family=invoices&stage=associate"><strong>{{ counters.expected }}</strong><span>Esperadas</span></a>
+      <a class="warning" href="/v2-clean/documentation/treatment?family=invoices&stage=classify"><strong>{{ counters.unclassified }}</strong><span>Por classificar</span></a>
+      <a class="warning" href="/v2-clean/documentation/treatment?family=invoices&stage=associate"><strong>{{ counters.unassociated }}</strong><span>Por associar</span></a>
+      <a class="warning" href="/v2-clean/documentation/treatment?family=invoices&stage=extract"><strong>{{ counters.unextracted }}</strong><span>Por extrair</span></a>
+      <a class="warning" href="/v2-clean/documentation/treatment?family=invoices&stage=services"><strong>{{ counters.services_pending }}</strong><span>Serviços pendentes</span></a>
+      <a class="warning" href="/v2-clean/documentation/treatment?family=invoices&stage=validate"><strong>{{ counters.validation_pending }}</strong><span>Por validar</span></a>
     </section>
-    <nav class="doc-arch-tabs">
-      <a href="/v2-clean/documentation/invoices" {% if not nature %}class="active"{% endif %}>Todas</a>
-      <a href="?nature=por_classificar" {% if nature == "por_classificar" %}class="active"{% endif %}>Por tratar</a>
-      <a href="?nature=operacional" {% if nature == "operacional" %}class="active"{% endif %}>Operacionais</a>
-      <a href="?nature=financeira" {% if nature == "financeira" %}class="active"{% endif %}>Financeiras</a>
-      <a href="?nature=stock" {% if nature == "stock" %}class="active"{% endif %}>Stock</a>
-    </nav>
-    <form class="doc-arch-filters" method="get">
-      <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula…">
-      <select name="nature">
-        <option value="">Natureza: todas</option>
-        {% for value in invoice_natures|sort %}<option value="{{ value }}" {% if nature == value %}selected{% endif %}>{{ workflow_labels.get(value, value) }}</option>{% endfor %}
-      </select>
-      <button type="submit">Filtrar</button>
-    </form>
-    <section class="doc-arch-card" id="pending-invoices">
+
+    <section class="doc-arch-card doc-invoice-monitor-card">
       <div class="doc-arch-card-heading">
         <div>
-          <h2>Faturas esperadas</h2>
-          <p>{{ pending_associated }} associadas a viaturas · {{ pending_unassociated }} por associar. Estes registos aguardam a chegada do documento real.</p>
+          <h2>Fila operacional centralizada</h2>
+          <p>Faturas recebidas e Faturas esperadas aparecem na mesma fila, com estados independentes e bloqueios explícitos.</p>
         </div>
-        <form method="post" action="/v2-clean/documentation/invoices/reconcile-pending">
-          <button type="submit">Reconciliar documentos</button>
-        </form>
+        <a class="button-link" href="/v2-clean/documentation/treatment?family=invoices">Tratar faturas</a>
       </div>
-      <div class="doc-arch-table-wrap">
-        <table class="doc-arch-table">
-          <thead><tr><th>Data</th><th>N.º fatura</th><th>Fornecedor</th><th>NIF</th><th>Viatura</th><th>Valor esperado</th><th>Tratamento</th></tr></thead>
-          <tbody>
-            {% for row in pending_rows %}
-              <tr>
-                <td>{{ row.record.document_date.strftime("%d/%m/%Y") if row.record.document_date else "-" }}</td>
-                <td>{{ row.record.external_reference or "-" }}</td>
-                <td>{{ row.record.supplier_name or "-" }}</td>
-                <td>{{ row.supplier_nif or "-" }}</td>
-                <td>
-                  {% if row.vehicle %}
-                    <a href="/v2-clean/fleet/{{ row.vehicle.id }}/documents?main_group=invoices">{{ row.vehicle.plate or row.unit_number or row.vehicle.vin }}</a>
-                  {% else %}
-                    <span class="doc-arch-badge warning">Por associar</span>
-                  {% endif %}
-                </td>
-                <td>{{ row.expected_total if row.expected_total is not none else "-" }}</td>
-                <td>
-                  {% if row.vehicle %}
-                    <a href="/v2-clean/fleet/{{ row.vehicle.id }}/documents?main_group=invoices">Abrir ficha</a>
-                  {% else %}
-                    <form method="post" action="/v2-clean/documents/pending/{{ row.record.id }}/associate">
-                      <input type="hidden" name="return_to" value="clean">
-                      <input name="identifier" required placeholder="Matrícula, VIN ou unit">
-                      <button type="submit" class="link-button">Associar</button>
-                    </form>
-                  {% endif %}
-                </td>
-              </tr>
-            {% else %}<tr><td colspan="7" class="doc-arch-empty">Não existem faturas esperadas nos filtros atuais.</td></tr>{% endfor %}
-          </tbody>
-        </table>
+      <div class="doc-arch-rule-note">
+        <strong>Sem ações duplicadas nesta página</strong>
+        <span>As rotas antigas continuam disponíveis por compatibilidade, mas todas as decisões operacionais usam os mesmos serviços, permissões, estados e auditoria da ficha da viatura e do Centro de Documentação.</span>
       </div>
     </section>
-    <section class="doc-arch-card">
-      <div class="doc-arch-card-heading"><div><h2>Faturas recebidas</h2><p>Documentos reais disponíveis para consulta e classificação.</p></div></div>
-      <div class="doc-arch-table-wrap">
-        <table class="doc-arch-table">
-          <thead><tr><th>Viatura</th><th>Data</th><th>Documento</th><th>Fornecedor</th><th>Natureza</th><th>Associação</th><th>Validação</th><th>Ação</th></tr></thead>
-          <tbody>
-            {% for row in rows %}
-              <tr>
-                <td>{{ row.document.plate or "Por associar" }}</td><td>{{ row.date_display }}</td><td><a href="{{ row.detail_href }}">{{ row.title }}</a></td><td>{{ row.document.supplier_name or "-" }}</td>
-                <td><span class="doc-arch-badge {% if row.workflow.invoice_nature == 'operacional' %}success{% elif row.workflow.invoice_nature in ['financeira', 'stock'] %}neutral{% else %}warning{% endif %}">{{ workflow_labels.get(row.workflow.invoice_nature or "por_classificar", "Por classificar") }}</span></td>
-                <td>{{ workflow_labels.get(row.workflow.association_status, row.workflow.association_status) }}</td><td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td>
-                <td>
-                  <details class="doc-arch-action-menu">
-                    <summary>Classificar</summary>
-                    <form method="post" action="/v2-clean/documentation/invoices/{{ row.document.id }}/nature">
-                      <label>Natureza obrigatória<select name="nature" required><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label>
-                      <label>Sugestão<select name="suggested_nature"><option value="">Sem sugestão</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option><option value="por_classificar">Por classificar</option></select></label>
-                      <label>Confiança (0–1)<input name="suggestion_confidence" inputmode="decimal" placeholder="0,84"></label>
-                      <label>Justificação<input name="decision_reason" placeholder="Motivo / observação"></label>
-                      <button type="submit">Confirmar decisão</button>
-                    </form>
-                  </details>
-                </td>
-              </tr>
-            {% else %}<tr><td colspan="8" class="doc-arch-empty">Nenhuma fatura corresponde aos filtros.</td></tr>{% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-    <nav class="doc-arch-pagination">
-      {% if pagination.has_previous %}<a href="?q={{ q|urlencode }}&nature={{ nature }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
-      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
-      {% if pagination.has_next %}<a href="?q={{ q|urlencode }}&nature={{ nature }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
-    </nav>
   </main>
 </div>
 {% endblock %}

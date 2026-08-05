@@ -23,7 +23,7 @@ from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import case, delete, func, literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
@@ -148,6 +148,18 @@ from app.services.document_workflow import (
     transition_document_workflow,
     workflow_values,
 )
+from app.services.document_service_classification import save_service_classifications
+from app.services.documentation_treatment import (
+    TREATMENT_REASON_LABELS,
+    apply_document_treatment_action,
+    associate_expected_invoice,
+    document_action_compatibility,
+    document_treatment_dimensions,
+    expected_action_compatibility,
+    expected_invoice_dimensions,
+    service_count,
+)
+from app.services.documentation_vehicle_view import documentation_by_vehicle_overview
 from app.services.stock import ensure_invoice_import
 from app.services.task_recurrence import (
     RECURRENCE_FREQUENCIES,
@@ -8488,6 +8500,18 @@ def clean_fleet_documents(
         archive_document_ids = [
             row["id"] for row in archive_rows if row.get("kind") == "document"
         ]
+        invoice_nature_by_document: dict[int, str] = {}
+        if archive_document_ids:
+            for document, state in db.execute(
+                select(Document, DocumentWorkflowState)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(Document.id.in_(archive_document_ids))
+            ).all():
+                nature = workflow_values(document, state).get("invoice_nature")
+                invoice_nature_by_document[document.id] = nature or "por_classificar"
         invoice_work_order_links: dict[int, list[dict[str, Any]]] = defaultdict(list)
         if archive_document_ids and work_order_records:
             for link in db.scalars(
@@ -8547,6 +8571,10 @@ def clean_fleet_documents(
                     "service_matrix": service_matrix,
                     "invoice_lines": row.get("invoice_lines") or [],
                     "linked_work_orders": invoice_work_order_links.get(row.get("id"), []),
+                    "invoice_nature": invoice_nature_by_document.get(
+                        row.get("id"),
+                        "por_classificar",
+                    ),
                 }
             )
         archive_classification_rows.sort(
@@ -10088,7 +10116,7 @@ def clean_document_file(request: Request, document_id: int, inline: int = 1):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     with SessionLocal() as db:
         document = db.get(Document, document_id)
-        if not document or document.source not in V2_CLEAN_DOCUMENT_SOURCES:
+        if not document or (document.status or "").strip().lower() in V2_CLEAN_REMOVED_STATUSES:
             return RedirectResponse("/v2-clean/documents?file_missing=1", status_code=303)
         if document.confidentiality_level == "management" and not can_view_management_documents(request):
             return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
@@ -10114,7 +10142,7 @@ def clean_document_remove(
     denied = clean_experience_denied(request)
     if denied:
         return denied
-    if not can_view_fleet(request):
+    if not can_manage_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     target = _clean_v2_return_url(return_url)
     clean_reason = reason.strip()
@@ -10156,6 +10184,16 @@ def clean_document_remove(
                 new_value=json.dumps(event_payload, ensure_ascii=False),
                 user_id=user_id,
             )
+        )
+        record_audit(
+            db,
+            action="document.removed",
+            entity_type="document",
+            entity_id=document.id,
+            before_json={"status": old_status},
+            after_json={"status": "removed", **event_payload},
+            detail=clean_reason,
+            user_id=user_id,
         )
         db.commit()
     return RedirectResponse(_append_query_flag(target, removed="1"), status_code=303)
@@ -11816,14 +11854,11 @@ def clean_documentation_treatment(
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
     clean_family = family if family in DOCUMENTATION_FAMILIES else "invoices"
     clean_page, clean_page_size, offset = _documentation_page(page, page_size)
-    conditions: list[Any] = [
+    base_conditions: list[Any] = [
         _documentation_family_condition(clean_family),
-        or_(
-            DocumentWorkflowState.id.is_(None),
-            DocumentWorkflowState.validation_status != "human_validated",
-            DocumentWorkflowState.extraction_status.in_({"queued", "pending", "failed"}),
-        ),
+        ~Document.status.in_({"classified", "archived", "removed", "deleted"}),
     ]
+    conditions = list(base_conditions)
     if q.strip():
         token = f"%{q.strip()}%"
         conditions.append(
@@ -11834,68 +11869,298 @@ def clean_documentation_treatment(
                 Document.supplier_name.ilike(token),
             )
         )
-    with SessionLocal() as db:
-        all_records = db.execute(
-            select(Document, DocumentWorkflowState)
-            .outerjoin(
-                DocumentWorkflowState,
-                DocumentWorkflowState.document_id == Document.id,
+    if group:
+        if clean_family == "invoices":
+            conditions.append(
+                or_(
+                    Document.supplier_name == group,
+                    Document.source_sender == group,
+                    Document.source == group,
+                )
             )
-            .where(*conditions)
-            .order_by(Document.created_at.asc(), Document.id.asc())
-        ).all()
+        elif clean_family == "diagnostics":
+            conditions.append(
+                or_(
+                    Document.id.in_(
+                        select(DiagnosticDocument.document_id).where(
+                            DiagnosticDocument.diagnostic_type == group
+                        )
+                    ),
+                    Document.classification == group,
+                    Document.source == group,
+                )
+            )
+    saved_service_exists = select(VehicleDocumentRecordTag.id).where(
+        VehicleDocumentRecordTag.document_id == Document.id
+    ).exists()
+    if stage == "classify":
+        conditions.append(
+            or_(
+                DocumentWorkflowState.id.is_(None),
+                DocumentWorkflowState.invoice_nature.is_(None),
+                DocumentWorkflowState.invoice_nature == "por_classificar",
+            )
+        )
+    elif stage == "associate":
+        conditions.append(
+            or_(
+                DocumentWorkflowState.id.is_(None),
+                DocumentWorkflowState.association_status != "associated",
+            )
+        )
+    elif stage == "extract":
+        conditions.append(
+            or_(
+                DocumentWorkflowState.id.is_(None),
+                DocumentWorkflowState.extraction_status != "extracted",
+            )
+        )
+    elif stage == "services":
+        conditions.append(~saved_service_exists)
+    elif stage == "validate":
+        conditions.append(
+            or_(
+                DocumentWorkflowState.id.is_(None),
+                DocumentWorkflowState.validation_status != "human_validated",
+            )
+        )
+    elif stage == "complete":
+        conditions.append(DocumentWorkflowState.validation_status == "human_validated")
+    with SessionLocal() as db:
+        actual_total = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+            )
+            or 0
+        )
+        expected_conditions: list[Any] = [
+            VehicleDocumentRecord.source_record_type == "pending_import",
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.status == "pending",
+        ]
+        include_expected = clean_family == "invoices" and stage in {"", "associate", "reconcile"}
+        if include_expected and q.strip():
+            token = f"%{q.strip()}%"
+            expected_conditions.append(
+                or_(
+                    VehicleDocumentRecord.title.ilike(token),
+                    VehicleDocumentRecord.external_reference.ilike(token),
+                    VehicleDocumentRecord.supplier_name.ilike(token),
+                    VehicleDocumentRecord.plate.ilike(token),
+                    VehicleDocumentRecord.vin.ilike(token),
+                )
+            )
+        if include_expected and group:
+            expected_conditions.append(VehicleDocumentRecord.supplier_name == group)
+        if include_expected and stage == "associate":
+            expected_conditions.append(VehicleDocumentRecord.vehicle_id.is_(None))
+        elif include_expected and stage == "reconcile":
+            expected_conditions.append(VehicleDocumentRecord.vehicle_id.is_not(None))
+        expected_total = (
+            int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(VehicleDocumentRecord)
+                    .where(*expected_conditions)
+                )
+                or 0
+            )
+            if include_expected
+            else 0
+        )
+        actual_limit = min(clean_page_size, actual_total - offset) if offset < actual_total else 0
+        records_page_raw = (
+            db.execute(
+                select(Document, DocumentWorkflowState)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(*conditions)
+                .order_by(Document.created_at.asc(), Document.id.asc())
+                .offset(offset)
+                .limit(actual_limit)
+            ).all()
+            if actual_limit
+            else []
+        )
+        expected_limit = clean_page_size - len(records_page_raw)
+        expected_offset = max(offset - actual_total, 0) if offset >= actual_total else 0
+        expected_records = (
+            db.scalars(
+                select(VehicleDocumentRecord)
+                .where(*expected_conditions)
+                .order_by(VehicleDocumentRecord.created_at.asc(), VehicleDocumentRecord.id.asc())
+                .offset(expected_offset)
+                .limit(expected_limit)
+            ).all()
+            if include_expected and expected_limit
+            else []
+        )
         diagnostic_types: dict[int, str] = {}
-        if clean_family == "diagnostics" and all_records:
-            document_ids = [document.id for document, _state in all_records]
+        page_document_ids = [document.id for document, _state in records_page_raw]
+        if clean_family == "diagnostics" and page_document_ids:
             diagnostic_types = {
                 document_id: diagnostic_type
                 for document_id, diagnostic_type in db.execute(
                     select(
                         DiagnosticDocument.document_id,
                         DiagnosticDocument.diagnostic_type,
-                    ).where(DiagnosticDocument.document_id.in_(document_ids))
+                    ).where(DiagnosticDocument.document_id.in_(page_document_ids))
                 ).all()
                 if diagnostic_type
             }
-        grouped: dict[str, dict[str, Any]] = {}
-        prepared_rows: list[dict[str, Any]] = []
-        for document, state in all_records:
-            row = _documentation_row(document, state)
-            row["stage"] = _documentation_treatment_stage(row["workflow"])
-            row["group_label"] = _documentation_treatment_group_label(
-                document,
-                clean_family,
-                diagnostic_types.get(document.id, ""),
+
+        if clean_family == "invoices":
+            group_label_expression = func.coalesce(
+                func.nullif(func.trim(Document.supplier_name), ""),
+                func.nullif(func.trim(Document.source_sender), ""),
+                func.nullif(func.trim(Document.source), ""),
+                literal("Fornecedor por identificar"),
             )
-            group_item = grouped.setdefault(
-                row["group_label"],
+        elif clean_family == "diagnostics":
+            group_label_expression = func.coalesce(
+                func.nullif(func.trim(DiagnosticDocument.diagnostic_type), ""),
+                func.nullif(func.trim(Document.classification), ""),
+                func.nullif(func.trim(Document.source), ""),
+                literal("Relatório por tipificar"),
+            )
+        elif clean_family == "rentway":
+            group_label_expression = func.coalesce(
+                func.nullif(func.trim(Document.source_subject), ""),
+                func.nullif(func.trim(Document.source), ""),
+                literal("Rentway"),
+            )
+        elif clean_family == "fleet":
+            group_label_expression = func.coalesce(
+                func.nullif(func.trim(Document.document_type), ""),
+                func.nullif(func.trim(Document.classification), ""),
+                literal("Documento de frota"),
+            )
+        else:
+            group_label_expression = func.coalesce(
+                func.nullif(func.trim(Document.document_type), ""),
+                func.nullif(func.trim(Document.classification), ""),
+                literal("Por classificar"),
+            )
+
+        group_query = (
+            select(
+                group_label_expression.label("group_label"),
+                func.count(Document.id).label("item_count"),
+                func.min(Document.created_at).label("oldest_at"),
+                func.sum(
+                    case(
+                        (
+                            or_(
+                                DocumentWorkflowState.id.is_(None),
+                                DocumentWorkflowState.association_status != "associated",
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("unassociated_count"),
+                func.sum(
+                    case(
+                        (DocumentWorkflowState.extraction_status == "failed", 1),
+                        else_=0,
+                    )
+                ).label("failed_count"),
+            )
+            .select_from(Document)
+            .outerjoin(
+                DocumentWorkflowState,
+                DocumentWorkflowState.document_id == Document.id,
+            )
+        )
+        if clean_family == "diagnostics":
+            group_query = group_query.outerjoin(
+                DiagnosticDocument,
+                DiagnosticDocument.document_id == Document.id,
+            )
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in db.execute(
+            group_query.where(*base_conditions).group_by(group_label_expression)
+        ).all():
+            oldest_at = row.oldest_at
+            label = str(row.group_label or "Por classificar")
+            grouped[label] = {
+                "label": label,
+                "count": int(row.item_count or 0),
+                "oldest_at": oldest_at,
+                "oldest_display": clean_date(oldest_at.isoformat()) if oldest_at else "-",
+                "unassociated": int(row.unassociated_count or 0),
+                "failed": int(row.failed_count or 0),
+            }
+
+        def merge_group(
+            label: str,
+            *,
+            count: int,
+            oldest_at: datetime | None,
+            unassociated: int,
+            failed: int = 0,
+        ) -> None:
+            item = grouped.setdefault(
+                label,
                 {
-                    "label": row["group_label"],
+                    "label": label,
                     "count": 0,
-                    "oldest_at": document.created_at,
-                    "oldest_display": clean_date(document.created_at.isoformat())
-                    if document.created_at
-                    else "-",
+                    "oldest_at": oldest_at,
+                    "oldest_display": clean_date(oldest_at.isoformat()) if oldest_at else "-",
                     "unassociated": 0,
                     "failed": 0,
                 },
             )
-            group_item["count"] += 1
-            if row["workflow"].get("association_status") != "associated":
-                group_item["unassociated"] += 1
-            if row["workflow"].get("extraction_status") == "failed":
-                group_item["failed"] += 1
-            if group and row["group_label"] != group:
-                continue
-            if stage and row["stage"] != stage:
-                continue
-            prepared_rows.append(row)
+            item["count"] += count
+            item["unassociated"] += unassociated
+            item["failed"] += failed
+            if oldest_at and (item["oldest_at"] is None or oldest_at < item["oldest_at"]):
+                item["oldest_at"] = oldest_at
+                item["oldest_display"] = clean_date(oldest_at.isoformat())
+
+        if clean_family == "invoices":
+            expected_group_label = func.coalesce(
+                func.nullif(func.trim(VehicleDocumentRecord.supplier_name), ""),
+                literal("Fornecedor por identificar"),
+            )
+            for row in db.execute(
+                select(
+                    expected_group_label.label("group_label"),
+                    func.count(VehicleDocumentRecord.id).label("item_count"),
+                    func.min(VehicleDocumentRecord.created_at).label("oldest_at"),
+                    func.sum(
+                        case((VehicleDocumentRecord.vehicle_id.is_(None), 1), else_=0)
+                    ).label("unassociated_count"),
+                )
+                .where(
+                    VehicleDocumentRecord.source_record_type == "pending_import",
+                    VehicleDocumentRecord.main_group == "invoices",
+                    VehicleDocumentRecord.status == "pending",
+                )
+                .group_by(expected_group_label)
+            ).all():
+                merge_group(
+                    str(row.group_label or "Fornecedor por identificar"),
+                    count=int(row.item_count or 0),
+                    oldest_at=row.oldest_at,
+                    unassociated=int(row.unassociated_count or 0),
+                )
         group_rows = sorted(
             grouped.values(),
-            key=lambda item: (item["oldest_at"] or datetime.max.replace(tzinfo=UTC), item["label"]),
+            key=lambda item: (item["oldest_at"] is None, item["oldest_at"] or datetime.max, item["label"]),
         )
-        total = len(prepared_rows)
-        records_page = prepared_rows[offset : offset + clean_page_size]
+        records_page = [
+            _documentation_row(document, state)
+            for document, state in records_page_raw
+        ]
         page_document_ids = [row["document"].id for row in records_page]
         events_by_document: dict[int, list[DocumentEvent]] = defaultdict(list)
         tags_by_document: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -11922,6 +12187,74 @@ def clean_documentation_treatment(
             row["extracted_fields"] = _document_ocr_extracted_fields(metadata)
             row["extracted_lines"] = metadata.get("invoice_lines") or metadata.get("lines") or []
             row["service_codes"] = tags_by_document.get(document.id, {})
+            row["group_label"] = _documentation_treatment_group_label(
+                document,
+                clean_family,
+                diagnostic_types.get(document.id, ""),
+            )
+            state = next(
+                (
+                    item_state
+                    for item_document, item_state in records_page_raw
+                    if item_document.id == document.id
+                ),
+                None,
+            )
+            effective_state = state or SimpleNamespace(**workflow_values(document, None))
+            saved_count = sum(len(values) for values in row["service_codes"].values())
+            row["dimensions"] = document_treatment_dimensions(
+                document,
+                effective_state,
+                saved_service_count=saved_count,
+            )
+            next_label = row["dimensions"]["next_action"]["label"]
+            row["stage"] = {
+                "Classificar natureza": "classify",
+                "Associar viatura": "associate",
+                "Extrair / reprocessar": "extract",
+                "Guardar serviços": "services",
+                "Validar documento": "validate",
+                "Concluir tratamento": "complete",
+            }.get(next_label, "complete")
+            row["kind"] = "document"
+            row["item_ref"] = f"document:{document.id}"
+        expected_vehicle_ids = {record.vehicle_id for record in expected_records if record.vehicle_id}
+        expected_vehicles = (
+            {
+                vehicle.id: vehicle
+                for vehicle in db.scalars(
+                    select(Vehicle).where(Vehicle.id.in_(expected_vehicle_ids))
+                ).all()
+            }
+            if expected_vehicle_ids
+            else {}
+        )
+        for record in expected_records:
+            metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
+            records_page.append(
+                {
+                    "kind": "expected",
+                    "record": record,
+                    "item_ref": f"expected:{record.id}",
+                    "title": record.title
+                    or record.external_reference
+                    or f"Fatura esperada #{record.id}",
+                    "date_display": clean_date(
+                        (record.document_date or record.created_at).isoformat()
+                        if (record.document_date or record.created_at)
+                        else None
+                    ),
+                    "origin": "Fatura esperada",
+                    "group_label": (
+                        record.supplier_name or "Fornecedor por identificar"
+                    ).strip(),
+                    "vehicle": expected_vehicles.get(record.vehicle_id),
+                    "supplier_nif": str(metadata.get("supplier_nif") or ""),
+                    "expected_total": metadata.get("expected_total"),
+                    "dimensions": expected_invoice_dimensions(record),
+                    "stage": "reconcile" if record.vehicle_id else "associate",
+                }
+            )
         return_url = _documentation_treatment_return_url(
             family=clean_family,
             q=q,
@@ -11929,6 +12262,11 @@ def clean_documentation_treatment(
             stage=stage,
             page=clean_page,
             page_size=clean_page_size,
+        )
+        bulk_results = (
+            request.session.pop("documentation_treatment_bulk_results", [])
+            if hasattr(request, "session")
+            else []
         )
         return templates.TemplateResponse(
             request,
@@ -11940,102 +12278,21 @@ def clean_documentation_treatment(
                 "stage": stage,
                 "document_family": clean_family,
                 "family_label": DOCUMENTATION_FAMILIES[clean_family],
-                "pagination": _documentation_pagination(total, clean_page, clean_page_size),
+                "pagination": _documentation_pagination(
+                    actual_total + expected_total,
+                    clean_page,
+                    clean_page_size,
+                ),
                 "q": q,
                 "return_url": return_url,
                 "workflow_labels": WORKFLOW_LABELS,
                 "can_manage_documents": can_manage_documentation(request),
                 "quick_classifications": DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
                 "quick_classification_labels": DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
+                "treatment_reason_labels": TREATMENT_REASON_LABELS,
+                "bulk_results": bulk_results,
             },
         )
-
-
-def _apply_document_treatment_action(
-    db: Session,
-    *,
-    document: Document,
-    action: str,
-    user_id: int | None,
-    reason: str,
-    invoice_nature: str,
-    destination: str,
-    plate: str,
-) -> None:
-    clean_action = action.strip().lower()
-    clean_reason = reason.strip() or f"Ação de tratamento: {clean_action}"
-    state = get_or_create_workflow_state(db, document)
-    if invoice_nature.strip() and invoice_nature.strip() in INVOICE_NATURES:
-        classify_invoice_nature(
-            db,
-            document=document,
-            nature=invoice_nature.strip(),
-            user_id=user_id,
-            decision_reason=clean_reason,
-        )
-        state = get_or_create_workflow_state(db, document)
-    clean_plate = plate.strip()
-    if clean_plate:
-        vehicle = db.scalar(select(Vehicle).where(func.lower(Vehicle.plate) == clean_plate.lower()))
-        if not vehicle:
-            raise ValueError("vehicle_not_found")
-        document.vehicle_id = vehicle.id
-        document.plate = vehicle.plate
-        state.association_status = "associated"
-    if destination.strip() in {"triage", "imports", "invoices", "diagnostics", "archive"}:
-        state.destination_status = destination.strip()
-    if clean_action == "classify":
-        state.ingestion_status = "completed"
-    elif clean_action in {"extract", "reprocess"}:
-        state.extraction_status = "queued"
-        state.validation_status = "pending"
-        document.status = "pending_extraction"
-    elif clean_action == "associate":
-        if not clean_plate:
-            raise ValueError("vehicle_required")
-    elif clean_action in {"validate", "resolve"}:
-        if clean_action == "resolve" and not reason.strip():
-            raise ValueError("reason_required")
-        state.validation_status = "human_validated"
-        state.human_confirmed = True
-        state.confirmed_by_id = user_id
-        state.confirmed_at = datetime.now(UTC)
-        document.status = "classified"
-    elif clean_action in {"complete", "archive"}:
-        state.validation_status = "human_validated"
-        state.human_confirmed = True
-        state.confirmed_by_id = user_id
-        state.confirmed_at = datetime.now(UTC)
-        if clean_action == "archive" or state.destination_status == "archive":
-            state.destination_status = "archive"
-            document.archived = True
-            document.archived_at = document.archived_at or datetime.now(UTC)
-            document.archived_by_id = user_id
-            document.status = "archived"
-        else:
-            document.status = "classified"
-    else:
-        raise ValueError("action")
-    state.decision_reason = clean_reason
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action=f"document.treatment.{clean_action}",
-            old_value=None,
-            new_value=json.dumps(
-                {
-                    "invoice_nature": state.invoice_nature,
-                    "association_status": state.association_status,
-                    "extraction_status": state.extraction_status,
-                    "validation_status": state.validation_status,
-                    "destination_status": state.destination_status,
-                    "reason": clean_reason,
-                },
-                ensure_ascii=False,
-            ),
-            user_id=user_id,
-        )
-    )
 
 
 def _save_treatment_service_classification(
@@ -12046,58 +12303,154 @@ def _save_treatment_service_classification(
     other_custom: str,
     user_id: int | None,
 ) -> None:
-    if not document.vehicle_id:
-        raise ValueError("vehicle_required_for_services")
-    categories = list(values_by_category)
-    db.execute(
-        delete(VehicleDocumentRecordTag).where(
-            VehicleDocumentRecordTag.vehicle_id == document.vehicle_id,
-            VehicleDocumentRecordTag.document_id == document.id,
-            VehicleDocumentRecordTag.category.in_(categories),
-        )
+    save_service_classifications(
+        db,
+        vehicle_id=document.vehicle_id or 0,
+        document_id=document.id,
+        values_by_category=values_by_category,
+        other_custom=other_custom,
+        user_id=user_id,
     )
-    for category, raw_values in values_by_category.items():
-        clean_values = list(
-            dict.fromkeys(value.strip() for value in raw_values if value and value.strip())
+
+
+def _treatment_item_refs(
+    item_refs: list[str],
+    document_ids: list[int],
+) -> list[tuple[str, int]]:
+    refs = list(item_refs)
+    refs.extend(f"document:{document_id}" for document_id in document_ids)
+    parsed: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    for raw_ref in refs:
+        kind, separator, raw_id = str(raw_ref).partition(":")
+        if not separator or kind not in {"document", "expected"}:
+            continue
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        item = (kind, item_id)
+        if item_id > 0 and item not in seen:
+            parsed.append(item)
+            seen.add(item)
+        if len(parsed) >= 100:
+            break
+    return parsed
+
+
+def _treatment_review_item(
+    db: Session,
+    *,
+    kind: str,
+    item_id: int,
+    action: str,
+    invoice_nature: str,
+    plate: str,
+    reason: str,
+) -> dict[str, Any]:
+    if kind == "expected":
+        record = db.get(VehicleDocumentRecord, item_id)
+        if not record:
+            return {
+                "ref": f"expected:{item_id}",
+                "title": f"Fatura esperada #{item_id}",
+                "compatible": False,
+                "reason": "document_required",
+            }
+        compatible, reason_code = expected_action_compatibility(
+            record,
+            action=action,
+            plate=plate,
         )
-        if len(clean_values) > 1 and "undefined" in clean_values:
-            clean_values.remove("undefined")
-        for value in clean_values:
-            add_quick_classification(
+        return {
+            "ref": f"expected:{record.id}",
+            "title": record.title or record.external_reference or f"Fatura esperada #{record.id}",
+            "compatible": compatible,
+            "reason": reason_code,
+        }
+    document = db.get(Document, item_id)
+    if not document:
+        return {
+            "ref": f"document:{item_id}",
+            "title": f"Documento #{item_id}",
+            "compatible": False,
+            "reason": "document_required",
+        }
+    state = db.scalar(
+        select(DocumentWorkflowState).where(DocumentWorkflowState.document_id == document.id)
+    )
+    effective_state = state or SimpleNamespace(**workflow_values(document, None))
+    compatible, reason_code = document_action_compatibility(
+        document,
+        effective_state,
+        action=action,
+        invoice_nature=invoice_nature,
+        plate=plate,
+        reason=reason,
+        saved_service_count=service_count(db, document.id),
+    )
+    return {
+        "ref": f"document:{document.id}",
+        "title": document.title or document.original_name or f"Documento #{document.id}",
+        "compatible": compatible,
+        "reason": reason_code,
+    }
+
+
+@web_router.post("/v2-clean/documentation/treatment/bulk/review")
+def clean_documentation_treatment_bulk_review(
+    request: Request,
+    item_refs: list[str] = Form([]),
+    document_ids: list[int] = Form([]),
+    action: str = Form(...),
+    invoice_nature: str = Form(""),
+    plate: str = Form(""),
+    reason: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_manage_documentation(request):
+        return JSONResponse({"error": "permission"}, status_code=403)
+    refs = _treatment_item_refs(item_refs, document_ids)
+    with SessionLocal() as db:
+        reviewed = [
+            _treatment_review_item(
                 db,
-                vehicle_id=document.vehicle_id,
-                document_id=document.id,
-                category=category,
-                value=value,
-                free_text=None,
-                user_id=user_id,
+                kind=kind,
+                item_id=item_id,
+                action=action,
+                invoice_nature=invoice_nature,
+                plate=plate,
+                reason=reason,
             )
-    for free_text in (
-        value.strip() for value in re.split(r"[,;\n]+", other_custom or "") if value.strip()
-    ):
-        add_quick_classification(
-            db,
-            vehicle_id=document.vehicle_id,
-            document_id=document.id,
-            category="other",
-            value=None,
-            free_text=free_text,
-            user_id=user_id,
-        )
-    db.add(
-        DocumentEvent(
-            document_id=document.id,
-            action="document.service_classification_saved",
-            old_value=None,
-            new_value=json.dumps(values_by_category, ensure_ascii=False),
-            user_id=user_id,
-        )
+            for kind, item_id in refs
+        ]
+    compatible = [item for item in reviewed if item["compatible"]]
+    incompatible = [
+        {
+            **item,
+            "reason_label": TREATMENT_REASON_LABELS.get(item["reason"], item["reason"]),
+        }
+        for item in reviewed
+        if not item["compatible"]
+    ]
+    return JSONResponse(
+        {
+            "total": len(reviewed),
+            "compatible": compatible,
+            "incompatible": incompatible,
+            "requires_common_plate_confirmation": bool(
+                action == "associate" and plate.strip() and len(compatible) > 1
+            ),
+        }
     )
 
 
 @web_router.post("/v2-clean/documentation/treatment/bulk")
 def clean_documentation_treatment_bulk(
     request: Request,
+    item_refs: list[str] = Form([]),
     document_ids: list[int] = Form([]),
     action: str = Form(...),
     invoice_nature: str = Form(""),
@@ -12112,6 +12465,7 @@ def clean_documentation_treatment_bulk(
     ipo: list[str] = Form([]),
     other: list[str] = Form([]),
     other_custom: str = Form(""),
+    confirm_common_plate: str = Form(""),
     return_url: str = Form("/v2-clean/documentation/treatment"),
 ):
     denied = clean_experience_denied(request)
@@ -12120,27 +12474,76 @@ def clean_documentation_treatment_bulk(
     target = _clean_v2_return_url(return_url, "/v2-clean/documentation/treatment")
     if not can_manage_documentation(request):
         return RedirectResponse(_append_query_flag(target, bulk_error="permission"), status_code=303)
-    unique_ids = list(dict.fromkeys(document_ids))[:100]
-    if not unique_ids:
+    refs = _treatment_item_refs(item_refs, document_ids)
+    if not refs:
         return RedirectResponse(_append_query_flag(target, bulk_error="empty"), status_code=303)
+    if (
+        action == "associate"
+        and plate.strip()
+        and len(refs) > 1
+        and confirm_common_plate != "1"
+    ):
+        return RedirectResponse(
+            _append_query_flag(
+                target,
+                bulk_processed="0",
+                bulk_failed=str(len(refs)),
+                bulk_reason="common_plate_confirmation_required",
+            ),
+            status_code=303,
+        )
     user_id = get_web_user_id(request)
     processed = 0
     failed = 0
-    with SessionLocal() as db:
-        documents = {
-            document.id: document
-            for document in db.scalars(select(Document).where(Document.id.in_(unique_ids))).all()
-        }
-        for document_id in unique_ids:
-            document = documents.get(document_id)
-            if not document:
-                failed += 1
-                continue
-            try:
-                with db.begin_nested():
-                    if service_classification_present == "1":
+    results: list[dict[str, str | bool]] = []
+    first_reason = ""
+    legacy_service_submission = bool(document_ids) and not item_refs
+    for kind, item_id in refs:
+        extraction_failed = False
+        try:
+            with SessionLocal() as item_db:
+                review = _treatment_review_item(
+                    item_db,
+                    kind=kind,
+                    item_id=item_id,
+                    action=action,
+                    invoice_nature=invoice_nature,
+                    plate=plate,
+                    reason=reason,
+                )
+                if not review["compatible"]:
+                    raise ValueError(str(review["reason"]))
+                if kind == "expected":
+                    record = item_db.get(VehicleDocumentRecord, item_id)
+                    if not record:
+                        raise ValueError("document_required")
+                    if action == "associate":
+                        associate_expected_invoice(
+                            item_db,
+                            record=record,
+                            plate=plate,
+                            user_id=user_id,
+                        )
+                    elif action == "reconcile":
+                        reconciliation = reconcile_pending_invoices(
+                            item_db,
+                            user_id=user_id,
+                            record_ids={record.id},
+                        )
+                        if not reconciliation["fulfilled"]:
+                            item_db.commit()
+                            raise ValueError("expected_invoice_requires_real_document")
+                    item_db.commit()
+                else:
+                    document = item_db.get(Document, item_id)
+                    if not document:
+                        raise ValueError("document_required")
+                    should_save_services = service_classification_present == "1" and (
+                        action == "save_services" or legacy_service_submission
+                    )
+                    if should_save_services:
                         _save_treatment_service_classification(
-                            db,
+                            item_db,
                             document=document,
                             values_by_category={
                                 "maintenance": maintenance,
@@ -12153,22 +12556,85 @@ def clean_documentation_treatment_bulk(
                             other_custom=other_custom,
                             user_id=user_id,
                         )
-                    _apply_document_treatment_action(
-                        db,
-                        document=document,
-                        action=action,
-                        user_id=user_id,
-                        reason=reason,
-                        invoice_nature=invoice_nature,
-                        destination=destination,
-                        plate=plate,
-                    )
+                    if action != "save_services":
+                        state = get_or_create_workflow_state(item_db, document)
+                        compatible, reason_code = document_action_compatibility(
+                            document,
+                            state,
+                            action=action,
+                            invoice_nature=invoice_nature,
+                            plate=plate,
+                            reason=reason,
+                            saved_service_count=service_count(item_db, document.id),
+                        )
+                        if not compatible:
+                            raise ValueError(reason_code)
+                        extraction_succeeded: bool | None = None
+                        if action in {"extract", "reprocess"}:
+                            if clean_vehicle_document_group(document) == "invoices":
+                                extraction_result = _reprocess_invoice_document(
+                                    item_db,
+                                    document=document,
+                                    user_id=user_id,
+                                )
+                                extraction_succeeded = bool(
+                                    extraction_result.get("extracted_text")
+                                    and not extraction_result.get("error")
+                                )
+                            else:
+                                profile = ensure_diagnostic_profile(item_db, document)
+                                source_path = _document_resolved_file(document)
+                                if not source_path or source_path.suffix.lower() != ".pdf":
+                                    extraction_succeeded = False
+                                else:
+                                    payload = extract_diagnostic_pdf(source_path)
+                                    persist_diagnostic_extraction(item_db, profile, payload)
+                                    extraction_succeeded = True
+                        apply_document_treatment_action(
+                            item_db,
+                            document=document,
+                            action=action,
+                            user_id=user_id,
+                            reason=reason,
+                            invoice_nature=invoice_nature,
+                            destination=destination,
+                            plate=plate,
+                            extraction_succeeded=extraction_succeeded,
+                        )
+                        extraction_failed = extraction_succeeded is False
+                    item_db.commit()
+                    if extraction_failed:
+                        raise ValueError("extraction_required")
                 processed += 1
-            except ValueError:
-                failed += 1
-        db.commit()
+                results.append(
+                    {
+                        "ref": f"{kind}:{item_id}",
+                        "title": str(review["title"])[:120],
+                        "success": True,
+                        "reason": "",
+                    }
+                )
+        except Exception as exc:  # Cada item falha de forma isolada e devolve resultado próprio.
+            failed += 1
+            reason_code = str(exc) or "action_not_supported"
+            first_reason = first_reason or reason_code
+            results.append(
+                {
+                    "ref": f"{kind}:{item_id}",
+                    "title": f"{kind} #{item_id}",
+                    "success": False,
+                    "reason": TREATMENT_REASON_LABELS.get(reason_code, reason_code),
+                }
+            )
+    if hasattr(request, "session"):
+        request.session["documentation_treatment_bulk_results"] = results[:20]
     return RedirectResponse(
-        _append_query_flag(target, bulk_processed=str(processed), bulk_failed=str(failed)),
+        _append_query_flag(
+            target,
+            bulk_processed=str(processed),
+            bulk_failed=str(failed),
+            **({"bulk_reason": first_reason} if first_reason else {}),
+        ),
         status_code=303,
     )
 
@@ -12243,6 +12709,127 @@ def clean_documentation_treatment_audit_task(
         )
         db.commit()
     return RedirectResponse(_append_query_flag(target, audit_task_created="1"), status_code=303)
+
+
+@web_router.get("/v2-clean/documentation/by-vehicle", response_class=HTMLResponse)
+def clean_documentation_by_vehicle(
+    request: Request,
+    pending_page: int = 1,
+    divergence_page: int = 1,
+    services_page: int = 1,
+    page_size: int = 10,
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request) or not can_view_fleet(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    clean_page_size = min(max(page_size, 5), 25)
+
+    def paged(rows: list[dict[str, Any]], requested_page: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        clean_requested = max(requested_page, 1)
+        pagination = _documentation_pagination(len(rows), clean_requested, clean_page_size)
+        start = (pagination["page"] - 1) * clean_page_size
+        return rows[start : start + clean_page_size], pagination
+
+    with SessionLocal() as db:
+        overview = documentation_by_vehicle_overview(db)
+        pending_rows, pending_pagination = paged(
+            overview["pending_invoices"],
+            pending_page,
+        )
+        divergence_rows, divergence_pagination = paged(
+            overview["divergence"],
+            divergence_page,
+        )
+        service_rows, services_pagination = paged(
+            overview["repeated_services"],
+            services_page,
+        )
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_by_vehicle.html",
+            {
+                "pending_rows": pending_rows,
+                "divergence_rows": divergence_rows,
+                "service_rows": service_rows,
+                "pending_pagination": pending_pagination,
+                "divergence_pagination": divergence_pagination,
+                "services_pagination": services_pagination,
+                "page_size": clean_page_size,
+            },
+        )
+
+
+@web_router.get(
+    "/v2-clean/documentation/by-vehicle/{vehicle_id}",
+    response_class=HTMLResponse,
+)
+def clean_documentation_vehicle_preview(request: Request, vehicle_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_view_documentation(request) or not can_view_fleet(request):
+        return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        vehicle = db.get(Vehicle, vehicle_id)
+        if not vehicle:
+            return RedirectResponse(
+                "/v2-clean/documentation/by-vehicle?error=vehicle_not_found",
+                status_code=303,
+            )
+        module_ctx = vehicle_document_module_context(
+            db,
+            vehicle,
+            materialize_sources=False,
+            include_all_document_sources=True,
+        )
+        invoice_rows = [
+            row
+            for row in module_ctx["archive_rows"]
+            if row.get("archive_group") == "invoices"
+        ]
+        expected_rows = [
+            row
+            for row in invoice_rows
+            if row.get("kind") == "pending_record"
+        ]
+        real_invoice_rows = [
+            row
+            for row in invoice_rows
+            if row.get("kind") == "document"
+        ]
+        work_order_rows = [
+            row
+            for row in module_ctx["structured_rows"]
+            if row.get("main_group") == "work_orders"
+        ]
+        diagnostic_rows = [
+            row
+            for row in module_ctx["archive_rows"]
+            if row.get("archive_group") == "diagnostics"
+        ]
+        other_rows = [
+            row
+            for row in module_ctx["archive_rows"]
+            if row.get("archive_group") not in {"invoices", "diagnostics"}
+        ]
+        return templates.TemplateResponse(
+            request,
+            "clean_documentation_vehicle_preview.html",
+            {
+                "vehicle": vehicle,
+                "module_ctx": module_ctx,
+                "real_invoice_rows": real_invoice_rows,
+                "expected_rows": expected_rows,
+                "work_order_rows": work_order_rows,
+                "diagnostic_rows": diagnostic_rows,
+                "other_rows": other_rows,
+                "comparison_rows": module_ctx["comparison_rows"],
+                "timeline_events": module_ctx["timeline_events"],
+                "can_manage_documents": can_manage_documentation(request),
+            },
+        )
 
 RENTWAY_TAB_IMPORT_TYPES = {
     "fleet": {"rentway_fleet"},
@@ -13159,140 +13746,113 @@ def clean_documentation_invoices(
         return denied
     if not can_view_documentation(request):
         return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
-    clean_page, clean_page_size, offset = _documentation_page(page, page_size)
-    conditions: list[Any] = [_documentation_invoice_condition()]
-    if q.strip():
-        token = f"%{q.strip()}%"
-        conditions.append(
-            or_(
-                Document.title.ilike(token),
-                Document.original_name.ilike(token),
-                Document.supplier_name.ilike(token),
-                Document.plate.ilike(token),
-                Document.contract_number.ilike(token),
-            )
-        )
-    if nature in INVOICE_NATURES:
-        if nature == "operacional":
-            conditions.append(
-                or_(
-                    DocumentWorkflowState.invoice_nature == "operacional",
-                    (
-                        DocumentWorkflowState.id.is_(None)
-                        & (Document.document_type == "workshop_supplier_invoice")
-                    ),
-                )
-            )
-        elif nature == "financeira":
-            conditions.append(
-                or_(
-                    DocumentWorkflowState.invoice_nature == "financeira",
-                    (
-                        DocumentWorkflowState.id.is_(None)
-                        & (Document.document_type == "finance_supplier_invoice")
-                    ),
-                )
-            )
-        else:
-            conditions.append(DocumentWorkflowState.invoice_nature == nature)
     with SessionLocal() as db:
-        pending_conditions: list[Any] = [
-            VehicleDocumentRecord.source_record_type == "pending_import",
-            VehicleDocumentRecord.main_group == "invoices",
-            VehicleDocumentRecord.status == "pending",
-        ]
-        if q.strip():
-            token = f"%{q.strip()}%"
-            pending_conditions.append(
-                or_(
-                    VehicleDocumentRecord.external_reference.ilike(token),
-                    VehicleDocumentRecord.supplier_name.ilike(token),
-                    VehicleDocumentRecord.plate.ilike(token),
-                    VehicleDocumentRecord.vin.ilike(token),
-                )
-            )
-        pending_records = db.scalars(
-            select(VehicleDocumentRecord)
-            .where(*pending_conditions)
-            .order_by(
-                VehicleDocumentRecord.document_date.desc().nullslast(),
-                VehicleDocumentRecord.id.desc(),
-            )
-            .limit(250)
-        ).all()
-        pending_rows = []
-        for record in pending_records:
-            vehicle = db.get(Vehicle, record.vehicle_id) if record.vehicle_id else None
-            metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
-            pending_rows.append(
-                {
-                    "record": record,
-                    "vehicle": vehicle,
-                    "supplier_nif": str(metadata.get("supplier_nif") or ""),
-                    "unit_number": str(metadata.get("unit_number") or ""),
-                    "expected_total": metadata.get("expected_total"),
-                }
-            )
-        pending_associated = sum(row["record"].vehicle_id is not None for row in pending_rows)
-        pending_unassociated = len(pending_rows) - pending_associated
-        total = int(
-            db.scalar(
-                select(func.count())
-                .select_from(Document)
-                .outerjoin(
-                    DocumentWorkflowState,
-                    DocumentWorkflowState.document_id == Document.id,
-                )
-                .where(*conditions)
-            )
-            or 0
-        )
-        records = db.execute(
-            select(Document, DocumentWorkflowState)
-            .outerjoin(
-                DocumentWorkflowState,
-                DocumentWorkflowState.document_id == Document.id,
-            )
-            .where(*conditions)
-            .order_by(
-                Document.document_date.desc().nullslast(),
-                Document.id.desc(),
-            )
-            .offset(offset)
-            .limit(clean_page_size)
-        ).all()
-        count_rows = db.execute(
-            select(DocumentWorkflowState.invoice_nature, func.count())
+        invoice_base = (
+            select(func.count())
             .select_from(Document)
             .outerjoin(
                 DocumentWorkflowState,
                 DocumentWorkflowState.document_id == Document.id,
             )
             .where(_documentation_invoice_condition())
-            .group_by(DocumentWorkflowState.invoice_nature)
-        ).all()
-        nature_counts = {key or "legacy": int(value) for key, value in count_rows}
+            .where(~Document.status.in_({"removed", "deleted"}))
+        )
+        expected_base = [
+            VehicleDocumentRecord.source_record_type == "pending_import",
+            VehicleDocumentRecord.main_group == "invoices",
+            VehicleDocumentRecord.status == "pending",
+        ]
+        saved_services = select(VehicleDocumentRecordTag.id).where(
+            VehicleDocumentRecordTag.document_id == Document.id
+        ).exists()
+        received = int(db.scalar(invoice_base) or 0)
+        expected = int(
+            db.scalar(
+                select(func.count())
+                .select_from(VehicleDocumentRecord)
+                .where(*expected_base)
+            )
+            or 0
+        )
+        counters = {
+            "received": received,
+            "expected": expected,
+            "unclassified": int(
+                db.scalar(
+                    invoice_base.where(
+                        or_(
+                            DocumentWorkflowState.id.is_(None),
+                            DocumentWorkflowState.invoice_nature.is_(None),
+                            DocumentWorkflowState.invoice_nature == "por_classificar",
+                        )
+                    )
+                )
+                or 0
+            ),
+            "unassociated": int(
+                db.scalar(
+                    invoice_base.where(
+                        or_(
+                            DocumentWorkflowState.id.is_(None),
+                            DocumentWorkflowState.association_status != "associated",
+                        )
+                    )
+                )
+                or 0
+            )
+            + int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(VehicleDocumentRecord)
+                    .where(*expected_base, VehicleDocumentRecord.vehicle_id.is_(None))
+                )
+                or 0
+            ),
+            "unextracted": int(
+                db.scalar(
+                    invoice_base.where(
+                        or_(
+                            DocumentWorkflowState.id.is_(None),
+                            DocumentWorkflowState.extraction_status != "extracted",
+                        )
+                    )
+                )
+                or 0
+            ),
+            "services_pending": int(
+                db.scalar(
+                    invoice_base.where(
+                        or_(
+                            DocumentWorkflowState.invoice_nature == "operacional",
+                            (
+                                DocumentWorkflowState.id.is_(None)
+                                & (Document.document_type == "workshop_supplier_invoice")
+                            ),
+                        ),
+                        ~saved_services,
+                    )
+                )
+                or 0
+            ),
+            "validation_pending": int(
+                db.scalar(
+                    invoice_base.where(
+                        or_(
+                            DocumentWorkflowState.id.is_(None),
+                            DocumentWorkflowState.validation_status != "human_validated",
+                        )
+                    )
+                )
+                or 0
+            ),
+        }
         return templates.TemplateResponse(
             request,
             "clean_documentation_invoices.html",
             {
-                "rows": [
-                    _documentation_row(document, state)
-                    for document, state in records
-                ],
-                "pending_rows": pending_rows,
-                "pending_associated": pending_associated,
-                "pending_unassociated": pending_unassociated,
-                "nature_counts": nature_counts,
-                "pagination": _documentation_pagination(
-                    total,
-                    clean_page,
-                    clean_page_size,
-                ),
+                "counters": counters,
                 "q": q,
                 "nature": nature,
-                "invoice_natures": INVOICE_NATURES,
-                "workflow_labels": WORKFLOW_LABELS,
             },
         )
 
@@ -13353,7 +13913,10 @@ def clean_documentation_invoice_nature(
 
 
 @web_router.post("/v2-clean/documentation/invoices/reconcile-pending")
-def clean_documentation_reconcile_pending_invoices(request: Request):
+def clean_documentation_reconcile_pending_invoices(
+    request: Request,
+    return_url: str = Form("/v2-clean/documentation/invoices"),
+):
     denied = clean_experience_denied(request)
     if denied:
         return denied
@@ -13362,6 +13925,7 @@ def clean_documentation_reconcile_pending_invoices(request: Request):
             "/v2-clean/documentation/invoices?error=permission",
             status_code=303,
         )
+    target = _clean_v2_return_url(return_url, "/v2-clean/documentation/invoices")
     with SessionLocal() as db:
         result = reconcile_pending_invoices(
             db,
@@ -13369,14 +13933,12 @@ def clean_documentation_reconcile_pending_invoices(request: Request):
         )
         db.commit()
     return RedirectResponse(
-        "/v2-clean/documentation/invoices?"
-        + urlencode(
-            {
-                "reconciled": result["fulfilled"],
-                "associated": result["associated"],
-                "ambiguous": result["ambiguous"],
-                "unmatched": result["unmatched"],
-            }
+        _append_query_flag(
+            target,
+            reconciled=str(result["fulfilled"]),
+            associated=str(result["associated"]),
+            ambiguous=str(result["ambiguous"]),
+            unmatched=str(result["unmatched"]),
         ),
         status_code=303,
     )
@@ -19335,6 +19897,11 @@ def clean_fleet_documents_save_classification_row(
     denied = clean_experience_denied(request)
     if denied:
         return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse(
+            f"/v2-clean/fleet/{vehicle_id}/documents?error=permission",
+            status_code=303,
+        )
     user_id = get_web_user_id(request)
     category_values: dict[str, list[str]] = {
         "maintenance": maintenance,
@@ -19344,60 +19911,24 @@ def clean_fleet_documents_save_classification_row(
         "ipo": ipo,
         "other": other,
     }
-    custom_other_values = [
-        item.strip()
-        for item in re.split(r"[,;\n]+", other_custom or "")
-        if item.strip()
-    ]
-    categories = list(category_values)
     should_validate = classification_action == "validate"
-
-    def normalized_values(values: list[str]) -> list[str]:
-        cleaned = list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
-        if len(cleaned) > 1 and "undefined" in cleaned:
-            cleaned.remove("undefined")
-        return cleaned
 
     with SessionLocal() as db:
         if record_id:
             record = db.get(VehicleDocumentRecord, record_id)
             if not record or record.vehicle_id != vehicle_id:
                 return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
-            db.execute(
-                delete(VehicleDocumentRecordTag).where(
-                    VehicleDocumentRecordTag.vehicle_id == vehicle_id,
-                    VehicleDocumentRecordTag.record_id == record_id,
-                    VehicleDocumentRecordTag.category.in_(categories),
-                )
+            save_service_classifications(
+                db,
+                vehicle_id=vehicle_id,
+                record_id=record_id,
+                values_by_category=category_values,
+                other_custom=other_custom,
+                manual_note=manual_note,
+                user_id=user_id,
             )
-            for category, values in category_values.items():
-                for clean_value in normalized_values(values):
-                    add_quick_classification(
-                        db,
-                        vehicle_id=vehicle_id,
-                        record_id=record_id,
-                        category=category,
-                        value=clean_value,
-                        free_text=None,
-                        user_id=user_id,
-                    )
-            for free_text in custom_other_values:
-                add_quick_classification(
-                    db,
-                    vehicle_id=vehicle_id,
-                    record_id=record_id,
-                    category="other",
-                    value=None,
-                    free_text=free_text,
-                    user_id=user_id,
-                )
             record.status = "classified" if should_validate else "pending_validation"
             record.comparison_state = "validado" if should_validate else "por_validar"
-            record.metadata_json = {
-                **(record.metadata_json or {}),
-                "manual_note": manual_note.strip(),
-            }
-            record.updated_by_id = user_id
         elif document_id:
             document = db.get(Document, document_id)
             vehicle = db.get(Vehicle, vehicle_id)
@@ -19412,34 +19943,23 @@ def clean_fleet_documents_save_classification_row(
                 )
             ):
                 return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
-            db.execute(
-                delete(VehicleDocumentRecordTag).where(
-                    VehicleDocumentRecordTag.vehicle_id == vehicle_id,
-                    VehicleDocumentRecordTag.document_id == document_id,
-                    VehicleDocumentRecordTag.category.in_(categories),
-                )
-            )
-            for category, values in category_values.items():
-                for clean_value in normalized_values(values):
-                    add_quick_classification(
-                        db,
-                        vehicle_id=vehicle_id,
-                        document_id=document_id,
-                        category=category,
-                        value=clean_value,
-                        free_text=None,
-                        user_id=user_id,
-                    )
-            for free_text in custom_other_values:
-                add_quick_classification(
+            if document.vehicle_id is None:
+                apply_document_treatment_action(
                     db,
-                    vehicle_id=vehicle_id,
-                    document_id=document_id,
-                    category="other",
-                    value=None,
-                    free_text=free_text,
+                    document=document,
+                    action="associate",
                     user_id=user_id,
+                    reason="Associação confirmada na ficha da viatura",
+                    plate=vehicle.plate or document.plate or "",
                 )
+            save_service_classifications(
+                db,
+                vehicle_id=vehicle_id,
+                document_id=document_id,
+                values_by_category=category_values,
+                other_custom=other_custom,
+                user_id=user_id,
+            )
             document.status = "classified" if should_validate else "pending_validation"
             db.add(
                 DocumentEvent(
@@ -19466,6 +19986,68 @@ def clean_fleet_documents_save_classification_row(
     if open_item:
         query += f"&open_item={quote_plus(open_item)}"
     return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents?{query}", status_code=303)
+
+
+@web_router.post("/v2-clean/fleet/{vehicle_id}/documents/{document_id}/nature")
+def clean_fleet_invoice_nature(
+    request: Request,
+    vehicle_id: int,
+    document_id: int,
+    nature: str = Form(...),
+    decision_reason: str = Form(""),
+    return_group: str = Form("invoices"),
+    open_item: str = Form(""),
+):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    if not can_manage_documentation(request):
+        return RedirectResponse(
+            f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=permission",
+            status_code=303,
+        )
+    with SessionLocal() as db:
+        document = db.get(Document, document_id)
+        vehicle = db.get(Vehicle, vehicle_id)
+        if (
+            not document
+            or not vehicle
+            or not db.scalar(
+                select(Document.id).where(
+                    Document.id == document.id,
+                    document_vehicle_predicate(vehicle),
+                )
+            )
+        ):
+            return RedirectResponse(
+                f"/v2-clean/fleet/{vehicle_id}/documents?main_group=invoices&error=document",
+                status_code=303,
+            )
+        classify_invoice_nature(
+            db,
+            document=document,
+            nature=nature,
+            user_id=get_web_user_id(request),
+            decision_reason=decision_reason.strip() or "Classificação na ficha da viatura",
+        )
+        if nature.strip().lower() == "stock":
+            ensure_invoice_import(
+                db,
+                document=document,
+                user_id=get_web_user_id(request),
+            )
+        db.commit()
+    query = urlencode(
+        {
+            "main_group": return_group or "invoices",
+            "nature_saved": document_id,
+            **({"open_item": open_item} if open_item else {}),
+        }
+    )
+    return RedirectResponse(
+        f"/v2-clean/fleet/{vehicle_id}/documents?{query}",
+        status_code=303,
+    )
 
 
 @web_router.post("/v2-clean/fleet/{vehicle_id}/documents/link-work-order")

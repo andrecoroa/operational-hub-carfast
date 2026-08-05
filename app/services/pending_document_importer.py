@@ -285,6 +285,7 @@ def reconcile_pending_invoices(
     *,
     user_id: int | None,
     document_ids: set[int] | None = None,
+    record_ids: set[int] | None = None,
 ) -> dict[str, int]:
     """Link expected invoices to real documents without accepting ambiguous matches."""
     result = {
@@ -299,6 +300,11 @@ def reconcile_pending_invoices(
             VehicleDocumentRecord.source_record_type == "pending_import",
             VehicleDocumentRecord.main_group == "invoices",
             VehicleDocumentRecord.status == "pending",
+            *(
+                (VehicleDocumentRecord.id.in_(record_ids),)
+                if record_ids is not None
+                else ()
+            ),
         )
     ).all()
     if not pending:

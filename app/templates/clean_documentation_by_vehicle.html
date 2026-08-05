@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "documentation_by_vehicle" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content doc-arch-page doc-by-vehicle-page">
+    {% set doc_nav = "by_vehicle" %}
+    {% include "_clean_documentation_nav.html" %}
+    <header class="doc-arch-header">
+      <div>
+        <p class="eyebrow">Documentação</p>
+        <h1>Por viatura</h1>
+        <p>Prioridades documentais agregadas sem duplicar ações nem estados.</p>
+      </div>
+      <a class="button-link" href="/v2-clean/documentation/treatment?family=invoices">Abrir Tratamento</a>
+    </header>
+
+    <section class="doc-arch-card doc-vehicle-priority-card" id="pending-invoices-by-vehicle">
+      <div class="doc-arch-card-heading"><div><h2>Viaturas com mais faturas por tratar</h2><p>Faturas reais pendentes e faturas esperadas ainda não reconciliadas.</p></div></div>
+      <div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Viatura</th><th>Recebidas por tratar</th><th>Esperadas</th><th>Total</th><th>Ação</th></tr></thead><tbody>
+        {% for row in pending_rows %}<tr><td><strong>{{ row.vehicle.plate or row.vehicle.vin or row.vehicle.rentway_unit_nr }}</strong><small>{{ row.vehicle.brand or '' }} {{ row.vehicle.model or '' }}</small></td><td>{{ row.actual_pending }}</td><td>{{ row.expected_pending }}</td><td><strong>{{ row.total }}</strong></td><td><a class="doc-vehicle-preview-link" href="/v2-clean/documentation/by-vehicle/{{ row.vehicle_id }}">Abrir preview central</a></td></tr>{% else %}<tr><td colspan="5" class="doc-arch-empty">Sem faturas pendentes associadas a viaturas.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <nav class="doc-arch-pagination">{% if pending_pagination.has_previous %}<a href="?pending_page={{ pending_pagination.previous_page }}&divergence_page={{ request.query_params.get('divergence_page', 1) }}&services_page={{ request.query_params.get('services_page', 1) }}&page_size={{ page_size }}#pending-invoices-by-vehicle">Anterior</a>{% endif %}<span>Página {{ pending_pagination.page }} de {{ pending_pagination.total_pages }}</span>{% if pending_pagination.has_next %}<a href="?pending_page={{ pending_pagination.next_page }}&divergence_page={{ request.query_params.get('divergence_page', 1) }}&services_page={{ request.query_params.get('services_page', 1) }}&page_size={{ page_size }}#pending-invoices-by-vehicle">Seguinte</a>{% endif %}</nav>
+    </section>
+
+    <section class="doc-arch-card doc-vehicle-priority-card" id="fo-invoice-divergence">
+      <div class="doc-arch-card-heading"><div><h2>Maior divergência entre FO e faturas</h2><p>Regra explicável: pares confirmados vêm de ligações guardadas; pares sugeridos usam apenas a contagem disponível. Não alteram dados.</p></div></div>
+      <div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Viatura</th><th>FO</th><th>Faturas</th><th>Pares confirmados</th><th>Pares sugeridos</th><th>FO sem fatura</th><th>Fatura sem FO</th><th>Ação</th></tr></thead><tbody>
+        {% for row in divergence_rows %}<tr><td><strong>{{ row.vehicle.plate or row.vehicle.vin }}</strong></td><td>{{ row.work_orders }}</td><td>{{ row.invoices }}</td><td>{{ row.confirmed_pairs }}</td><td>{{ row.suggested_pairs }}</td><td>{{ row.fo_without_invoice }}</td><td>{{ row.invoice_without_fo }}</td><td><a class="doc-vehicle-preview-link" href="/v2-clean/documentation/by-vehicle/{{ row.vehicle_id }}#fo-invoice">Rever correspondência</a></td></tr>{% else %}<tr><td colspan="8" class="doc-arch-empty">Sem dados suficientes para calcular divergências.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <nav class="doc-arch-pagination">{% if divergence_pagination.has_previous %}<a href="?pending_page={{ request.query_params.get('pending_page', 1) }}&divergence_page={{ divergence_pagination.previous_page }}&services_page={{ request.query_params.get('services_page', 1) }}&page_size={{ page_size }}#fo-invoice-divergence">Anterior</a>{% endif %}<span>Página {{ divergence_pagination.page }} de {{ divergence_pagination.total_pages }}</span>{% if divergence_pagination.has_next %}<a href="?pending_page={{ request.query_params.get('pending_page', 1) }}&divergence_page={{ divergence_pagination.next_page }}&services_page={{ request.query_params.get('services_page', 1) }}&page_size={{ page_size }}#fo-invoice-divergence">Seguinte</a>{% endif %}</nav>
+    </section>
+
+    <section class="doc-arch-card doc-vehicle-priority-card" id="repeated-services">
+      <div class="doc-arch-card-heading"><div><h2>Serviços repetidos ou próximos</h2><p>Regras simples: mesma categoria/opção guardada, com menor intervalo classificado em 30, 60 ou 90 dias. Sem algoritmo opaco.</p></div></div>
+      <div class="doc-arch-table-wrap"><table class="doc-arch-table"><thead><tr><th>Viatura</th><th>Serviço</th><th>Ocorrências</th><th>Menor intervalo</th><th>Período</th><th>Ação</th></tr></thead><tbody>
+        {% for row in service_rows %}<tr><td><strong>{{ row.vehicle.plate or row.vehicle.vin }}</strong></td><td>{{ row.service }}</td><td>{{ row.occurrences }}</td><td>{{ row.interval }}</td><td>{{ row.first_date.strftime('%d/%m/%Y') }}–{{ row.last_date.strftime('%d/%m/%Y') }}</td><td><a class="doc-vehicle-preview-link" href="/v2-clean/documentation/by-vehicle/{{ row.vehicle_id }}#services">Ver histórico</a></td></tr>{% else %}<tr><td colspan="6" class="doc-arch-empty">Sem repetições documentadas.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <nav class="doc-arch-pagination">{% if services_pagination.has_previous %}<a href="?pending_page={{ request.query_params.get('pending_page', 1) }}&divergence_page={{ request.query_params.get('divergence_page', 1) }}&services_page={{ services_pagination.previous_page }}&page_size={{ page_size }}#repeated-services">Anterior</a>{% endif %}<span>Página {{ services_pagination.page }} de {{ services_pagination.total_pages }}</span>{% if services_pagination.has_next %}<a href="?pending_page={{ request.query_params.get('pending_page', 1) }}&divergence_page={{ request.query_params.get('divergence_page', 1) }}&services_page={{ services_pagination.next_page }}&page_size={{ page_size }}#repeated-services">Seguinte</a>{% endif %}</nav>
+    </section>
+  </main>
+</div>
+{% endblock %}

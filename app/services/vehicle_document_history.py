@@ -1349,14 +1349,21 @@ def import_contracts_xlsx(
     return imported
 
 
-def _load_vehicle_documents(db: Session, vehicle: Vehicle) -> list[Document]:
+def _load_vehicle_documents(
+    db: Session,
+    vehicle: Vehicle,
+    *,
+    include_all_sources: bool = False,
+) -> list[Document]:
+    conditions = [
+        or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
+        v2_clean_document_visible_condition(),
+    ]
+    if not include_all_sources:
+        conditions.append(Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES))
     return db.scalars(
         select(Document)
-        .where(
-            or_(Document.vehicle_id == vehicle.id, Document.plate == vehicle.plate),
-            Document.source.in_(V2_CLEAN_DOCUMENT_SOURCES),
-            v2_clean_document_visible_condition(),
-        )
+        .where(*conditions)
         .order_by(Document.document_date.desc().nullslast(), Document.updated_at.desc(), Document.id.desc())
     ).all()
 
@@ -2546,11 +2553,20 @@ def vehicle_document_module_context(
     vehicle: Vehicle,
     *,
     materialize_sources: bool = True,
+    include_all_document_sources: bool = False,
 ) -> dict[str, Any]:
-    documents = _load_vehicle_documents(db, vehicle)
+    documents = _load_vehicle_documents(
+        db,
+        vehicle,
+        include_all_sources=include_all_document_sources,
+    )
     if materialize_sources and _ensure_structured_sources_materialized(db, vehicle=vehicle, documents=documents):
         db.flush()
-        documents = _load_vehicle_documents(db, vehicle)
+        documents = _load_vehicle_documents(
+            db,
+            vehicle,
+            include_all_sources=include_all_document_sources,
+        )
     record_tags, document_tags = _tag_maps(db, vehicle.id)
     persisted_records = db.scalars(
         select(VehicleDocumentRecord)

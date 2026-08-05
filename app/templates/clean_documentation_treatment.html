@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block body %}
+{% macro dimension_badge(dimension) -%}
+  <span class="doc-dimension-state is-{{ dimension.status }}">{{ dimension.label }}</span>
+{%- endmacro %}
 <div class="app-shell clean-shell">
   {% set active_menu = "documentation_treatment" %}
   {% include "_sidebar.html" %}
@@ -10,28 +13,46 @@
       <div>
         <p class="eyebrow">Documentação</p>
         <h1>Tratamento</h1>
-        <p>Fila única para classificar, associar, extrair, validar e concluir.</p>
+        <p>Fila única para classificar, associar, extrair, guardar serviços, validar e concluir.</p>
       </div>
+      {% if document_family == "invoices" and can_manage_documents %}
+        <form method="post" action="/v2-clean/documentation/invoices/reconcile-pending">
+          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <button type="submit">Reconciliar faturas esperadas</button>
+        </form>
+      {% endif %}
     </header>
     {% include "_clean_documentation_family_nav.html" %}
 
     {% if request.query_params.get('bulk_processed') %}
       <div class="doc-arch-notice success">
-        Lote concluído: {{ request.query_params.get('bulk_processed') }} documentos tratados{% if request.query_params.get('bulk_failed') != '0' %}; {{ request.query_params.get('bulk_failed') }} ficaram pendentes por incompatibilidade{% endif %}.
+        Lote concluído: {{ request.query_params.get('bulk_processed') }} itens tratados{% if request.query_params.get('bulk_failed') != '0' %}; {{ request.query_params.get('bulk_failed') }} incompatíveis ou com erro{% endif %}.
       </div>
     {% elif request.query_params.get('bulk_error') %}
       <div class="doc-arch-notice danger">Não foi possível executar a ação em lote.</div>
     {% endif %}
+    {% if request.query_params.get('bulk_reason') %}
+      <div class="doc-arch-notice warning">{{ treatment_reason_labels.get(request.query_params.get('bulk_reason'), request.query_params.get('bulk_reason')) }}</div>
+    {% endif %}
+    {% if bulk_results %}
+      <details class="doc-treatment-result-list" open>
+        <summary>Resultado individual ({{ bulk_results|length }} itens apresentados)</summary>
+        <ul>{% for result in bulk_results %}<li class="{% if result.success %}is-success{% else %}is-error{% endif %}"><strong>{{ result.title }}</strong><span>{{ 'Concluído' if result.success else result.reason }}</span></li>{% endfor %}</ul>
+      </details>
+    {% endif %}
 
     <form class="doc-arch-filters doc-treatment-filters" method="get">
       <input type="hidden" name="family" value="{{ document_family }}">
-      <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, matrícula…">
+      <input name="q" value="{{ q }}" placeholder="Documento, fornecedor, NIF ou matrícula…">
       <select name="stage">
-        <option value="">Todas as etapas</option>
+        <option value="">Todos os processos em falta</option>
+        <option value="classify" {% if stage == 'classify' %}selected{% endif %}>Classificar natureza</option>
         <option value="associate" {% if stage == 'associate' %}selected{% endif %}>Associar</option>
         <option value="extract" {% if stage == 'extract' %}selected{% endif %}>Extrair / reprocessar</option>
+        <option value="services" {% if stage == 'services' %}selected{% endif %}>Guardar serviços</option>
         <option value="validate" {% if stage == 'validate' %}selected{% endif %}>Validar</option>
         <option value="complete" {% if stage == 'complete' %}selected{% endif %}>Concluir</option>
+        {% if document_family == "invoices" %}<option value="reconcile" {% if stage == 'reconcile' %}selected{% endif %}>Reconciliar esperadas</option>{% endif %}
       </select>
       {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group }}">{% endif %}
       <button type="submit">Aplicar filtros</button>
@@ -45,9 +66,7 @@
           <span>{{ item.count }} pendentes · mais antigo {{ item.oldest_display }}</span>
           {% if item.unassociated or item.failed %}<small>{% if item.unassociated %}{{ item.unassociated }} sem associação{% endif %}{% if item.unassociated and item.failed %} · {% endif %}{% if item.failed %}{{ item.failed }} com erro{% endif %}</small>{% endif %}
         </a>
-      {% else %}
-        <div class="doc-arch-muted">Não existem grupos pendentes nesta família.</div>
-      {% endfor %}
+      {% else %}<div class="doc-arch-muted">Não existem grupos pendentes nesta família.</div>{% endfor %}
     </section>
 
     <form method="post" action="/v2-clean/documentation/treatment/bulk" id="doc-treatment-form">
@@ -57,20 +76,21 @@
         <div class="doc-treatment-bulk-controls">
           <select name="action" id="doc-treatment-action" required>
             <option value="">Selecionar ação…</option>
-            <option value="classify">Classificar</option>
+            <option value="classify">Classificar / guardar pendente</option>
             <option value="associate">Associar à viatura</option>
-            <option value="extract">Extrair / reprocessar</option>
+            <option value="extract">Extrair</option>
+            <option value="reprocess">Reprocessar</option>
             <option value="validate">Validar</option>
-            <option value="resolve">Resolver exceção</option>
+            <option value="resolve">Concluir com exceção</option>
             <option value="complete">Concluir tratamento</option>
             <option value="archive">Arquivar</option>
           </select>
           <select name="invoice_nature">
             <option value="">Manter natureza</option>
+            <option value="por_classificar">Por classificar</option>
             <option value="operacional">Operacional</option>
             <option value="financeira">Financeira</option>
             <option value="stock">Fatura de stock</option>
-            <option value="por_classificar">Por classificar</option>
           </select>
           <select name="destination">
             <option value="">Manter destino</option>
@@ -79,7 +99,7 @@
             <option value="archive">Arquivo</option>
             <option value="triage">Triagem</option>
           </select>
-          <input name="plate" placeholder="Matrícula comum (opcional)">
+          <input name="plate" placeholder="Matrícula comum">
           <input name="reason" placeholder="Motivo / observação">
           <button type="button" id="doc-treatment-review-bulk">Rever lote</button>
         </div>
@@ -89,75 +109,86 @@
         <div class="doc-arch-card-heading">
           <div>
             <h2>{% if selected_group %}{{ selected_group }}{% else %}{{ family_label }} por tratar{% endif %}</h2>
-            <p>Ordenado do documento mais antigo para o mais recente.</p>
+            <p>Cada coluna mostra um processo independente: concluído, pendente, bloqueado ou erro.</p>
           </div>
           {% if rows %}<button type="button" class="secondary" id="doc-treatment-select-visible">Selecionar visíveis</button>{% endif %}
         </div>
         <div class="doc-arch-table-wrap">
-          <table class="doc-arch-table doc-treatment-table">
-            <thead><tr><th><input type="checkbox" id="doc-treatment-select-all" aria-label="Selecionar todos"></th><th>Data</th><th>Documento</th><th>Grupo</th><th>Viatura</th><th>Etapa</th><th>Estado</th><th>Ação</th></tr></thead>
+          <table class="doc-arch-table doc-treatment-table doc-treatment-dimension-table">
+            <thead>
+              <tr><th><input type="checkbox" id="doc-treatment-select-all" aria-label="Selecionar todos"></th><th>Data</th><th>Documento</th><th>Fornecedor/Grupo</th><th>Viatura</th><th>Natureza</th><th>Associação</th><th>Extração</th><th>Serviços</th><th>Validação</th><th>Próxima ação</th></tr>
+            </thead>
             <tbody>
               {% for row in rows %}
-                <tr>
-                  <td><input class="doc-treatment-check" type="checkbox" name="document_ids" value="{{ row.document.id }}" aria-label="Selecionar {{ row.title }}"></td>
+                <tr class="{% if row.kind == 'expected' %}is-expected-invoice{% endif %}">
+                  <td><input class="doc-treatment-check" type="checkbox" name="item_refs" value="{{ row.item_ref }}" aria-label="Selecionar {{ row.title }}" {% if not can_manage_documents %}disabled{% endif %}></td>
                   <td>{{ row.date_display }}</td>
-                  <td><strong>{{ row.title }}</strong><small>{{ row.origin }}</small></td>
-                  <td>{{ row.group_label }}</td>
-                  <td>{{ row.document.plate or "-" }}</td>
-                  <td><span class="doc-arch-badge {% if row.stage == 'extract' and row.workflow.extraction_status == 'failed' %}danger{% elif row.stage in ['associate', 'validate'] %}warning{% endif %}">{{ {'associate':'Associar','extract':'Extrair','validate':'Validar','complete':'Concluir'}.get(row.stage, row.stage) }}</span></td>
-                  <td>{{ workflow_labels.get(row.workflow.validation_status, row.workflow.validation_status) }}</td>
                   <td>
+                    <strong>{{ row.title }}</strong>
+                    <small>{{ row.origin }}</small>
+                    {% if row.kind == 'expected' %}<span class="doc-expected-invoice-label">Fatura esperada</span>{% endif %}
+                  </td>
+                  <td>{{ row.group_label }}{% if row.kind == 'expected' and row.supplier_nif %}<small>NIF {{ row.supplier_nif }}</small>{% endif %}</td>
+                  <td>{% if row.kind == 'document' %}{{ row.document.plate or '—' }}{% elif row.vehicle %}{{ row.vehicle.plate or row.vehicle.vin }}{% else %}—{% endif %}</td>
+                  <td>{{ dimension_badge(row.dimensions.nature) }}</td>
+                  <td>{{ dimension_badge(row.dimensions.association) }}</td>
+                  <td>{{ dimension_badge(row.dimensions.extraction) }}</td>
+                  <td>{{ dimension_badge(row.dimensions.services) }}</td>
+                  <td>{{ dimension_badge(row.dimensions.validation) }}</td>
+                  <td>
+                    <span class="doc-next-action">{{ row.dimensions.next_action.label }}</span>
                     <button
                       type="button"
                       class="doc-treatment-preview-trigger"
-                      data-document-id="{{ row.document.id }}"
+                      data-kind="{{ row.kind }}"
+                      data-item-ref="{{ row.item_ref }}"
+                      data-document-id="{{ row.document.id if row.kind == 'document' else '' }}"
+                      data-record-id="{{ row.record.id if row.kind == 'expected' else '' }}"
                       data-document-title="{{ row.title }}"
-                      data-preview-src="{{ row.preview_href }}"
-                      data-detail-href="{{ row.detail_href }}?return_to={{ return_url|urlencode }}"
-                      data-nature="{{ row.workflow.invoice_nature or '' }}"
-                      data-destination="{{ row.workflow.destination_status or '' }}"
-                      data-plate="{{ row.document.plate or '' }}"
-                      data-content-template="doc-treatment-content-{{ row.document.id }}"
+                      data-preview-src="{{ row.preview_href if row.kind == 'document' else '' }}"
+                      data-detail-href="{{ (row.detail_href ~ '?return_to=' ~ (return_url|urlencode)) if row.kind == 'document' else ('/v2-clean/documentation/by-vehicle/' ~ row.record.vehicle_id if row.record.vehicle_id else '#') }}"
+                      data-nature="{{ row.workflow.invoice_nature or '' if row.kind == 'document' else '' }}"
+                      data-destination="{{ row.workflow.destination_status or '' if row.kind == 'document' else '' }}"
+                      data-plate="{{ row.document.plate or '' if row.kind == 'document' else (row.vehicle.plate or '' if row.vehicle else '') }}"
+                      data-content-template="doc-treatment-content-{{ row.kind }}-{{ row.document.id if row.kind == 'document' else row.record.id }}"
                     >Tratar</button>
-                    <template id="doc-treatment-content-{{ row.document.id }}">
-                      <section class="doc-treatment-extracted">
-                        <h3>Dados extraídos</h3>
-                        <div class="doc-treatment-extracted-fields">
-                          {% for field in row.extracted_fields %}
-                            <div><span>{{ field.label }}</span><strong>{{ field.value }}</strong></div>
-                          {% else %}<p>Não existem campos extraídos disponíveis.</p>{% endfor %}
-                        </div>
-                        {% if row.extracted_lines %}
-                          <details open>
-                            <summary>{{ row.extracted_lines|length }} linhas extraídas</summary>
-                            <div class="doc-treatment-lines-wrap"><table><thead><tr><th>Referência</th><th>Descrição</th><th>Qtd.</th><th>Total</th></tr></thead><tbody>
-                              {% for line in row.extracted_lines %}<tr><td>{{ line.reference or '-' }}</td><td>{{ line.description or line.designation or '-' }}</td><td>{{ line.quantity or '-' }}</td><td>{{ line.amount or line.total or '-' }}</td></tr>{% endfor %}
-                            </tbody></table></div>
-                          </details>
+                    <template id="doc-treatment-content-{{ row.kind }}-{{ row.document.id if row.kind == 'document' else row.record.id }}">
+                      {% if row.kind == 'document' %}
+                        <section class="doc-treatment-extracted">
+                          <h3>Dados extraídos — apoio à decisão</h3>
+                          <p class="doc-treatment-help">Estes dados e linhas não classificam serviços automaticamente.</p>
+                          <div class="doc-treatment-extracted-fields">
+                            {% for field in row.extracted_fields %}<div><span>{{ field.label }}</span><strong>{{ field.value }}</strong></div>{% else %}<p>Não existem campos extraídos disponíveis.</p>{% endfor %}
+                          </div>
+                          {% if row.extracted_lines %}
+                            <details open><summary>{{ row.extracted_lines|length }} linhas extraídas</summary><div class="doc-treatment-lines-wrap"><table><thead><tr><th>Referência</th><th>Descrição</th><th>Qtd.</th><th>Total</th></tr></thead><tbody>{% for line in row.extracted_lines %}<tr><td>{{ line.reference or '-' }}</td><td>{{ line.description or line.designation or '-' }}</td><td>{{ line.quantity or '-' }}</td><td>{{ line.amount or line.total or '-' }}</td></tr>{% endfor %}</tbody></table></div></details>
+                          {% endif %}
+                        </section>
+                        {% if document_family == 'invoices' %}
+                          <section class="doc-treatment-services">
+                            <h3>Serviços da fatura — classificador comum</h3>
+                            {% if row.document.vehicle_id %}
+                              <input type="hidden" name="service_classification_present" value="1">
+                              <div class="doc-treatment-service-grid">
+                                {% for category in ['maintenance', 'pads', 'discs', 'tyres', 'ipo', 'other'] %}
+                                  <fieldset><legend>{{ quick_classification_labels.get(category, category) }}</legend>{% for code, label in quick_classifications.get(category, []) %}<label><input type="checkbox" name="{{ category }}" value="{{ code }}" {% if code in row.service_codes.get(category, []) %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</fieldset>
+                                {% endfor %}
+                              </div>
+                              <label>Vários serviços / texto livre<textarea name="other_custom" rows="2" placeholder="Separar por vírgula, ponto e vírgula ou linha"></textarea></label>
+                            {% else %}<p>Associa primeiro a fatura a uma viatura para guardar serviços.</p>{% endif %}
+                          </section>
                         {% endif %}
-                      </section>
-                      {% if document_family == 'invoices' %}
-                        <section class="doc-treatment-services">
-                          <h3>Serviços da fatura</h3>
-                          {% if row.document.vehicle_id %}
-                            <input type="hidden" name="service_classification_present" value="1">
-                            <div class="doc-treatment-service-grid">
-                              {% for category in ['maintenance', 'pads', 'discs', 'tyres', 'ipo', 'other'] %}
-                                <fieldset><legend>{{ quick_classification_labels.get(category, category) }}</legend>
-                                  {% for code, label in quick_classifications.get(category, []) %}
-                                    <label><input type="checkbox" name="{{ category }}" value="{{ code }}" {% if code in row.service_codes.get(category, []) %}checked{% endif %}><span>{{ label }}</span></label>
-                                  {% endfor %}
-                                </fieldset>
-                              {% endfor %}
-                            </div>
-                            <label>Outro serviço<input name="other_custom" placeholder="Descrição opcional"></label>
-                          {% else %}<p>Associa primeiro a fatura a uma viatura para classificar os serviços.</p>{% endif %}
+                      {% else %}
+                        <section class="doc-treatment-expected-summary">
+                          <h3>Fatura esperada</h3>
+                          <p>Ainda não existe PDF. Associação e reconciliação estão disponíveis; extração, serviços, validação e conclusão permanecem bloqueados.</p>
+                          <dl><div><dt>Referência</dt><dd>{{ row.record.external_reference or '—' }}</dd></div><div><dt>Fornecedor</dt><dd>{{ row.record.supplier_name or '—' }}</dd></div><div><dt>NIF</dt><dd>{{ row.supplier_nif or '—' }}</dd></div><div><dt>Valor esperado</dt><dd>{{ row.expected_total if row.expected_total is not none else '—' }}</dd></div></dl>
                         </section>
                       {% endif %}
                     </template>
                   </td>
                 </tr>
-              {% else %}<tr><td colspan="8" class="doc-arch-empty">Não existem documentos pendentes neste grupo.</td></tr>{% endfor %}
+              {% else %}<tr><td colspan="11" class="doc-arch-empty">Não existem itens pendentes neste grupo.</td></tr>{% endfor %}
             </tbody>
           </table>
         </div>
@@ -166,40 +197,46 @@
 
     <nav class="doc-arch-pagination">
       {% if pagination.has_previous %}<a href="?family={{ document_family }}&group={{ selected_group|urlencode }}&stage={{ stage }}&q={{ q|urlencode }}&page={{ pagination.previous_page }}&page_size={{ pagination.page_size }}">Anterior</a>{% endif %}
-      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} registos</span>
+      <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} itens</span>
       {% if pagination.has_next %}<a href="?family={{ document_family }}&group={{ selected_group|urlencode }}&stage={{ stage }}&q={{ q|urlencode }}&page={{ pagination.next_page }}&page_size={{ pagination.page_size }}">Seguinte</a>{% endif %}
     </nav>
 
     <dialog class="doc-treatment-dialog" id="doc-treatment-preview">
       <header>
         <div><p class="eyebrow">Tratamento integral</p><h2 id="doc-treatment-preview-title">Documento</h2></div>
-        <button type="button" class="secondary" data-close-treatment-preview>Fechar</button>
+        <div class="doc-treatment-header-actions"><a class="button-link secondary-link" id="doc-treatment-preview-expand" href="#" target="_blank" rel="noopener">Ampliar PDF</a><button type="button" class="secondary" data-close-treatment-preview>Fechar</button></div>
       </header>
       <div class="doc-treatment-preview-grid">
         <div class="doc-treatment-document-pane" id="doc-treatment-document-pane"></div>
         <form method="post" action="/v2-clean/documentation/treatment/bulk" class="doc-treatment-preview-form">
-          <input type="hidden" name="document_ids" id="doc-treatment-preview-id">
+          <input type="hidden" name="item_refs" id="doc-treatment-preview-ref">
           <input type="hidden" name="return_url" value="{{ return_url }}">
-          <section><h3>Classificar</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option><option value="por_classificar">Por classificar</option></select></label></section>
-          <section><h3>Associar e encaminhar</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
+          <section data-real-document-section><h3>Natureza da fatura</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label></section>
+          <section><h3>Associação</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label data-real-document-section>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
           <div id="doc-treatment-inline-content"></div>
-          <section><h3>Validar e concluir</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
-          <footer>
-            <button type="submit" name="action" value="classify" class="secondary">Guardar pendente</button>
-            <button type="submit" name="action" value="validate" class="secondary">Validar documento</button>
-            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve">Concluir com exceção</button>
-            <button type="submit" class="secondary" id="doc-treatment-audit-task">Criar tarefa de auditoria</button>
-            <button type="submit" class="danger" id="doc-treatment-remove">Remover documento</button>
-            <button type="submit" name="action" value="complete">Concluir tratamento</button>
-          </footer>
+          <section data-real-document-section><h3>Decisão e auditoria</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><p class="doc-treatment-exception-help"><strong>Concluir com exceção</strong> fecha o tratamento apesar de pré-requisitos em falta; exige motivo e deixa auditoria explícita.</p><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
+          {% if can_manage_documents %}<footer>
+            <button type="submit" name="action" value="save_services" class="secondary" data-real-action>Guardar serviços</button>
+            <button type="submit" name="action" value="classify" class="secondary" data-real-action>Guardar pendente</button>
+            <button type="submit" name="action" value="associate" class="secondary" data-real-action>Associar viatura</button>
+            <button type="submit" name="action" value="reprocess" class="secondary" data-real-action>Extrair / reprocessar</button>
+            <button type="submit" name="action" value="validate" class="secondary" data-real-action>Validar documento</button>
+            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve" data-real-action>Concluir com exceção</button>
+            <button type="submit" class="secondary" id="doc-treatment-audit-task" data-real-action>Criar tarefa de auditoria</button>
+            <button type="submit" class="danger" id="doc-treatment-remove" data-real-action>Remover documento</button>
+            <button type="submit" name="action" value="complete" data-real-action>Concluir tratamento</button>
+            <button type="submit" name="action" value="associate" class="secondary" data-expected-action hidden>Associar fatura esperada</button>
+            <button type="submit" name="action" value="reconcile" data-expected-action hidden>Reconciliar documento real</button>
+          </footer>{% else %}<p class="doc-treatment-readonly-note">Consulta disponível. Não tem permissão para alterar o tratamento.</p>{% endif %}
         </form>
       </div>
     </dialog>
 
     <dialog class="doc-treatment-bulk-dialog" id="doc-treatment-bulk-review">
       <header><div><p class="eyebrow">Confirmação</p><h2>Rever ação em lote</h2></div><button type="button" class="secondary" data-close-bulk-review>Fechar</button></header>
-      <p><strong id="doc-treatment-review-count">0</strong> documentos selecionados. Os documentos incompatíveis ficam pendentes e serão indicados no resultado.</p>
-      <p id="doc-treatment-review-summary"></p>
+      <p><strong id="doc-treatment-review-count">0</strong> itens selecionados.</p>
+      <div class="doc-treatment-review-columns"><section><h3>Compatíveis</h3><ul id="doc-treatment-review-compatible"></ul></section><section><h3>Incompatíveis</h3><ul id="doc-treatment-review-incompatible"></ul></section></div>
+      <label class="doc-treatment-common-plate-confirm" hidden><input type="checkbox" name="confirm_common_plate" value="1" form="doc-treatment-form"> Confirmo que a matrícula comum deve ser aplicada a todos os itens compatíveis.</label>
       <footer><button type="button" class="secondary" data-close-bulk-review>Cancelar</button><button type="submit" form="doc-treatment-form">Confirmar lote</button></footer>
     </dialog>
   </main>
@@ -208,66 +245,68 @@
   (() => {
     const checks = Array.from(document.querySelectorAll('.doc-treatment-check'));
     const selectAll = document.getElementById('doc-treatment-select-all');
-    const selectVisible = document.getElementById('doc-treatment-select-visible');
     const bulkBar = document.getElementById('doc-treatment-bulk-bar');
     const selectedCount = document.getElementById('doc-treatment-selected-count');
     const updateSelection = () => {
       const count = checks.filter((check) => check.checked).length;
       selectedCount.textContent = String(count);
       bulkBar.hidden = count === 0;
-      if (selectAll) {
-        selectAll.checked = count === checks.length && checks.length > 0;
-        selectAll.indeterminate = count > 0 && count < checks.length;
-      }
+      if (selectAll) { selectAll.checked = count === checks.length && checks.length > 0; selectAll.indeterminate = count > 0 && count < checks.length; }
     };
     checks.forEach((check) => check.addEventListener('change', updateSelection));
     selectAll?.addEventListener('change', () => { checks.forEach((check) => { check.checked = selectAll.checked; }); updateSelection(); });
-    selectVisible?.addEventListener('click', () => { checks.forEach((check) => { check.checked = true; }); updateSelection(); });
+    document.getElementById('doc-treatment-select-visible')?.addEventListener('click', () => { checks.forEach((check) => { check.checked = true; }); updateSelection(); });
 
     const preview = document.getElementById('doc-treatment-preview');
     const previewPane = document.getElementById('doc-treatment-document-pane');
     const inlineContent = document.getElementById('doc-treatment-inline-content');
-    const previewForm = preview.querySelector('.doc-treatment-preview-form');
     const reasonField = document.getElementById('doc-treatment-preview-reason');
     const auditTask = document.getElementById('doc-treatment-audit-task');
     const removeDocument = document.getElementById('doc-treatment-remove');
-    document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => {
-      button.addEventListener('click', () => {
-        document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
-        document.getElementById('doc-treatment-preview-id').value = button.dataset.documentId || '';
-        document.getElementById('doc-treatment-preview-nature').value = button.dataset.nature || '';
-        document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
-        document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
-        document.getElementById('doc-treatment-detail-link').href = button.dataset.detailHref || '#';
-        const treatmentTemplate = document.getElementById(button.dataset.contentTemplate || '');
-        inlineContent.replaceChildren(treatmentTemplate ? treatmentTemplate.content.cloneNode(true) : document.createTextNode(''));
-        reasonField.value = '';
-        auditTask.formAction = `/v2-clean/documentation/treatment/${button.dataset.documentId}/audit-task`;
-        removeDocument.formAction = `/v2-clean/documents/${button.dataset.documentId}/remove`;
-        previewPane.innerHTML = '';
-        const iframe = document.createElement('iframe');
-        iframe.src = `${button.dataset.previewSrc || ''}#toolbar=1&navpanes=0`;
-        iframe.title = button.dataset.documentTitle || 'Documento';
-        previewPane.appendChild(iframe);
-        preview.showModal();
-      });
-    });
+    const expandPdf = document.getElementById('doc-treatment-preview-expand');
+    document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => button.addEventListener('click', () => {
+      const isExpected = button.dataset.kind === 'expected';
+      document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
+      document.getElementById('doc-treatment-preview-ref').value = button.dataset.itemRef || '';
+      document.getElementById('doc-treatment-preview-nature').value = button.dataset.nature || '';
+      document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
+      document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
+      document.getElementById('doc-treatment-detail-link').href = button.dataset.detailHref || '#';
+      inlineContent.replaceChildren(document.getElementById(button.dataset.contentTemplate || '')?.content.cloneNode(true) || document.createTextNode(''));
+      reasonField.value = '';
+      document.querySelectorAll('[data-real-document-section]').forEach((section) => { section.hidden = isExpected; section.querySelectorAll('input,select,textarea').forEach((field) => { field.disabled = isExpected; }); });
+      document.querySelectorAll('[data-real-action]').forEach((action) => { action.hidden = isExpected; });
+      document.querySelectorAll('[data-expected-action]').forEach((action) => { action.hidden = !isExpected; });
+      if (auditTask) auditTask.formAction = `/v2-clean/documentation/treatment/${button.dataset.documentId}/audit-task`;
+      if (removeDocument) removeDocument.formAction = `/v2-clean/documents/${button.dataset.documentId}/remove`;
+      previewPane.innerHTML = '';
+      expandPdf.hidden = isExpected;
+      if (isExpected) {
+        previewPane.innerHTML = '<div class="doc-treatment-no-document"><strong>Fatura esperada</strong><span>O PDF ficará disponível aqui após a reconciliação.</span></div>';
+      } else {
+        const iframe = document.createElement('iframe'); iframe.src = `${button.dataset.previewSrc || ''}#toolbar=1&navpanes=0`; iframe.title = button.dataset.documentTitle || 'Documento'; previewPane.appendChild(iframe); expandPdf.href = button.dataset.previewSrc || '#';
+      }
+      preview.showModal();
+    }));
     document.querySelectorAll('[data-close-treatment-preview]').forEach((button) => button.addEventListener('click', () => { preview.close(); previewPane.innerHTML = ''; }));
-    document.getElementById('doc-treatment-resolve')?.addEventListener('click', (event) => {
-      if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); }
-    });
-    removeDocument?.addEventListener('click', (event) => {
-      if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); return; }
-      if (!window.confirm('Remover este documento da aplicação? O registo fica preservado para auditoria.')) event.preventDefault();
-    });
+    document.getElementById('doc-treatment-resolve')?.addEventListener('click', (event) => { if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); } });
+    removeDocument?.addEventListener('click', (event) => { if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); return; } if (!window.confirm('Remover este documento? O registo e o motivo ficam preservados para auditoria.')) event.preventDefault(); });
 
     const review = document.getElementById('doc-treatment-bulk-review');
-    document.getElementById('doc-treatment-review-bulk')?.addEventListener('click', () => {
-      const count = checks.filter((check) => check.checked).length;
+    const reviewCompatible = document.getElementById('doc-treatment-review-compatible');
+    const reviewIncompatible = document.getElementById('doc-treatment-review-incompatible');
+    const commonPlateConfirm = document.querySelector('.doc-treatment-common-plate-confirm');
+    document.getElementById('doc-treatment-review-bulk')?.addEventListener('click', async () => {
+      const form = document.getElementById('doc-treatment-form');
       const action = document.getElementById('doc-treatment-action');
+      const count = checks.filter((check) => check.checked).length;
       if (!count || !action.value) { action.focus(); return; }
-      document.getElementById('doc-treatment-review-count').textContent = String(count);
-      document.getElementById('doc-treatment-review-summary').textContent = `Ação: ${action.options[action.selectedIndex].text}. A operação fica registada individualmente em cada documento.`;
+      const response = await fetch('/v2-clean/documentation/treatment/bulk/review', { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' } });
+      const result = await response.json();
+      document.getElementById('doc-treatment-review-count').textContent = String(result.total || count);
+      reviewCompatible.replaceChildren(...(result.compatible || []).map((item) => { const li = document.createElement('li'); li.textContent = item.title; return li; }));
+      reviewIncompatible.replaceChildren(...(result.incompatible || []).map((item) => { const li = document.createElement('li'); li.textContent = `${item.title}: ${item.reason_label}`; return li; }));
+      commonPlateConfirm.hidden = !(result.requires_common_plate_confirmation);
       review.showModal();
     });
     document.querySelectorAll('[data-close-bulk-review]').forEach((button) => button.addEventListener('click', () => review.close()));

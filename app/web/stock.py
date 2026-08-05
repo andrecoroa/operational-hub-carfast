@@ -316,6 +316,27 @@ def stock_article_create(
     return RedirectResponse(f"/v2-clean/stock/articles/{article.id}?saved=1", status_code=303)
 
 
+@stock_router.post("/v2-clean/stock/articles/bulk-category")
+async def stock_articles_bulk_category(request: Request, db: DbSession):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    form = await request.form()
+    article_ids = [int(value) for value in form.getlist("article_ids") if str(value).isdigit()]
+    category_value = str(form.get("category_id") or "").strip()
+    category_id = int(category_value) if category_value.isdigit() else None
+    if not article_ids:
+        return RedirectResponse("/v2-clean/stock/articles?error=Seleciona artigos.", status_code=303)
+    if category_id and not db.get(StockCategory, category_id):
+        return RedirectResponse("/v2-clean/stock/articles?error=Categoria inválida.", status_code=303)
+    articles = db.scalars(select(StockArticle).where(StockArticle.id.in_(article_ids))).all()
+    for article in articles:
+        article.category_id = category_id
+    db.commit()
+    return RedirectResponse(
+        f"/v2-clean/stock/articles?bulk_updated={len(articles)}", status_code=303
+    )
+
+
 @stock_router.get("/v2-clean/stock/articles/{article_id}", response_class=HTMLResponse)
 def stock_article_detail(request: Request, article_id: int, db: DbSession):
     if denied := _denied(
@@ -1265,6 +1286,57 @@ def stock_orders(
             ).group_by(StockPurchaseOrderLine.purchase_order_id)
         ).all()
     }
+    order_catalog: dict[int, list[dict[str, object]]] = {}
+    active_suppliers = db.scalars(
+        select(StockSupplier)
+        .where(StockSupplier.active.is_(True))
+        .order_by(StockSupplier.name)
+    ).all()
+    for supplier in active_suppliers:
+        order_catalog[supplier.id] = []
+    linked_article_ids: dict[int, set[int]] = {
+        key: set() for key in order_catalog
+    }
+    for supplier_ref, article in db.execute(
+        select(StockArticleSupplierRef, StockArticle)
+        .join(StockArticle, StockArticle.id == StockArticleSupplierRef.article_id)
+        .where(StockArticle.active.is_(True))
+        .order_by(StockArticle.internal_ref)
+    ).all():
+        if supplier_ref.supplier_id not in order_catalog:
+            continue
+        order_catalog[supplier_ref.supplier_id].append(
+            {
+                "id": article.id,
+                "reference": article.internal_ref,
+                "description": article.name,
+                "supplier_ref": supplier_ref.supplier_ref or "",
+                "unit": article.unit,
+                "unit_price": str(supplier_ref.last_cost or ""),
+            }
+        )
+        linked_article_ids[supplier_ref.supplier_id].add(article.id)
+    for article in db.scalars(
+        select(StockArticle)
+        .where(
+            StockArticle.active.is_(True),
+            StockArticle.primary_supplier_id.is_not(None),
+        )
+        .order_by(StockArticle.internal_ref)
+    ).all():
+        supplier_key = int(article.primary_supplier_id)
+        if supplier_key not in order_catalog or article.id in linked_article_ids[supplier_key]:
+            continue
+        order_catalog[supplier_key].append(
+            {
+                "id": article.id,
+                "reference": article.internal_ref,
+                "description": article.name,
+                "supplier_ref": "",
+                "unit": article.unit,
+                "unit_price": "",
+            }
+        )
     return templates.TemplateResponse(
         request,
         "clean_stock_orders.html",
@@ -1277,11 +1349,7 @@ def stock_orders(
                 .where(StockSupplier.active.is_(True))
                 .order_by(StockSupplier.name)
             ).all(),
-            "articles": db.scalars(
-                select(StockArticle)
-                .where(StockArticle.active.is_(True))
-                .order_by(StockArticle.internal_ref)
-            ).all(),
+            "order_catalog": order_catalog,
             "locations": db.scalars(
                 select(StockLocation)
                 .where(StockLocation.active.is_(True))
@@ -1299,19 +1367,38 @@ async def stock_order_create(request: Request, db: DbSession):
         return denied
     form = await request.form()
     try:
+        supplier_id = int(str(form.get("supplier_id")))
         article_ids = form.getlist("article_id")
         supplier_refs = form.getlist("supplier_ref")
         quantities = form.getlist("quantity")
         units = form.getlist("unit")
         prices = form.getlist("unit_price")
         location_ids = form.getlist("line_location_id")
+        allowed_article_ids = set(
+            db.scalars(
+                select(StockArticleSupplierRef.article_id).where(
+                    StockArticleSupplierRef.supplier_id == supplier_id
+                )
+            ).all()
+        )
+        allowed_article_ids.update(
+            db.scalars(
+                select(StockArticle.id).where(
+                    StockArticle.primary_supplier_id == supplier_id,
+                    StockArticle.active.is_(True),
+                )
+            ).all()
+        )
         lines = []
         for index, raw_article_id in enumerate(article_ids):
             if not raw_article_id:
                 continue
+            article_id = int(raw_article_id)
+            if article_id not in allowed_article_ids:
+                raise ValueError("O artigo selecionado não pertence a este fornecedor.")
             lines.append(
                 StockPurchaseOrderLineCreate(
-                    article_id=int(raw_article_id),
+                    article_id=article_id,
                     supplier_ref=str(supplier_refs[index]).strip() or None,
                     quantity=_parse_decimal(str(quantities[index])),
                     unit=str(units[index]).strip() or "un.",
@@ -1319,8 +1406,49 @@ async def stock_order_create(request: Request, db: DbSession):
                     location_id=int(str(location_ids[index])),
                 )
             )
+        new_internal_ref = str(form.get("new_internal_ref") or "").strip()
+        new_name = str(form.get("new_name") or "").strip()
+        if new_internal_ref or new_name:
+            if not new_internal_ref or not new_name:
+                raise ValueError("O novo artigo precisa de referência e descrição.")
+            if db.scalar(
+                select(StockArticle.id).where(StockArticle.internal_ref == new_internal_ref)
+            ):
+                raise ValueError("Já existe um artigo com esta referência interna.")
+            new_article = StockArticle(
+                internal_ref=new_internal_ref,
+                name=new_name,
+                unit=str(form.get("new_unit") or "un.").strip() or "un.",
+                primary_supplier_id=supplier_id,
+                status="active",
+                active=True,
+            )
+            db.add(new_article)
+            db.flush()
+            new_supplier_ref = str(form.get("new_supplier_ref") or "").strip()
+            if new_supplier_ref:
+                db.add(
+                    StockArticleSupplierRef(
+                        article_id=new_article.id,
+                        supplier_id=supplier_id,
+                        supplier_ref=new_supplier_ref,
+                        supplier_description=new_name,
+                        last_cost=_parse_decimal(str(form.get("new_unit_price") or "0")),
+                        preferred=True,
+                    )
+                )
+            lines.append(
+                StockPurchaseOrderLineCreate(
+                    article_id=new_article.id,
+                    supplier_ref=new_supplier_ref or None,
+                    quantity=_parse_decimal(str(form.get("new_quantity") or "")),
+                    unit=new_article.unit,
+                    unit_price=_parse_decimal(str(form.get("new_unit_price") or "0")),
+                    location_id=int(str(form.get("new_location_id") or "")),
+                )
+            )
         command = StockPurchaseOrderCreate(
-            supplier_id=int(str(form.get("supplier_id"))),
+            supplier_id=supplier_id,
             effective_date=_parse_date(str(form.get("effective_date") or "")) or date.today(),
             commercial_status=str(form.get("commercial_status") or "draft"),
             notes=str(form.get("notes") or "") or None,

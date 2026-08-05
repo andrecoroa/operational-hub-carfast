@@ -4,7 +4,10 @@ from sqlalchemy import func, select
 
 from app.models.documents import Document
 from app.models.stock import (
+    StockArticle,
+    StockArticleSupplierRef,
     StockArticleVehicleCompatibility,
+    StockCategory,
     StockInventorySession,
     StockInvoiceImport,
     StockInvoiceLine,
@@ -71,7 +74,96 @@ def test_article_table_is_short_and_integer_formatted(authenticated_client):
 
     orders = authenticated_client.get("/v2-clean/stock/orders")
     assert "<th>Referência</th><th>Descrição</th>" in orders.text
-    assert 'data-description="Artigo SHORT-001"' in orders.text
+    assert "Artigos do fornecedor" in orders.text
+    assert "Seleciona primeiro o fornecedor" in orders.text
+
+
+def test_articles_can_be_classified_in_bulk(authenticated_client, db_session):
+    first_id = _article(authenticated_client, "BULK-CAT-1")
+    second_id = _article(authenticated_client, "BULK-CAT-2")
+    category = StockCategory(code="bulk-test", name="Categoria em lote", active=True)
+    db_session.add(category)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/stock/articles/bulk-category",
+        data={
+            "article_ids": [str(first_id), str(second_id)],
+            "category_id": str(category.id),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "bulk_updated=2" in response.headers["location"]
+    db_session.expire_all()
+    assert db_session.get(StockArticle, first_id).category_id == category.id
+    assert db_session.get(StockArticle, second_id).category_id == category.id
+
+
+def test_order_catalog_is_supplier_specific_and_can_create_article(
+    authenticated_client, db_session
+):
+    supplier = _supplier(db_session, "Fornecedor Encomenda A")
+    other_supplier = _supplier(db_session, "Fornecedor Encomenda B")
+    linked_id = _article(authenticated_client, "ORDER-LINKED")
+    hidden_id = _article(authenticated_client, "ORDER-HIDDEN")
+    db_session.add_all(
+        [
+            StockArticleSupplierRef(
+                article_id=linked_id,
+                supplier_id=supplier.id,
+                supplier_ref="REF-A",
+                supplier_description="Artigo ligado",
+                preferred=True,
+            ),
+            StockArticleSupplierRef(
+                article_id=hidden_id,
+                supplier_id=other_supplier.id,
+                supplier_ref="REF-B",
+                supplier_description="Artigo de outro fornecedor",
+                preferred=True,
+            ),
+        ]
+    )
+    db_session.commit()
+    page = authenticated_client.get("/v2-clean/stock/orders")
+    assert "Artigo ORDER-LINKED" in page.text
+    assert "REF-A" in page.text
+    assert "Pesquisar referência ou descrição" in page.text
+
+    workshop = db_session.scalar(
+        select(StockLocation).where(StockLocation.code == "WORKSHOP")
+    )
+    response = authenticated_client.post(
+        "/v2-clean/stock/orders",
+        data={
+            "supplier_id": str(supplier.id),
+            "commercial_status": "draft",
+            "new_internal_ref": "CREATED-IN-ORDER",
+            "new_name": "Artigo criado na encomenda",
+            "new_supplier_ref": "SUP-CREATED",
+            "new_quantity": "3",
+            "new_unit": "un.",
+            "new_unit_price": "12.50",
+            "new_location_id": str(workshop.id),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    created = db_session.scalar(
+        select(StockArticle).where(StockArticle.internal_ref == "CREATED-IN-ORDER")
+    )
+    assert created is not None
+    assert created.primary_supplier_id == supplier.id
+    assert db_session.scalar(
+        select(StockArticleSupplierRef).where(
+            StockArticleSupplierRef.article_id == created.id,
+            StockArticleSupplierRef.supplier_id == supplier.id,
+        )
+    ) is not None
 
 
 def test_receipt_responsible_is_always_the_authenticated_user(

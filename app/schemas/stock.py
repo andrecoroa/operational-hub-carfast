@@ -189,6 +189,7 @@ class StockCompatibilityDecision(BaseModel):
 
 class StockInventorySessionCreate(BaseModel):
     location_id: int
+    category_id: int | None = None
     effective_date: date = Field(default_factory=date.today)
     idempotency_key: str | None = Field(default=None, max_length=120)
     notes: str | None = None

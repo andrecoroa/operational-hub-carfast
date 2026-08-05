@@ -1022,6 +1022,11 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
                 .where(StockLocation.active.is_(True))
                 .order_by(StockLocation.name)
             ).all(),
+            "categories": db.scalars(
+                select(StockCategory)
+                .where(StockCategory.active.is_(True))
+                .order_by(StockCategory.name)
+            ).all(),
             "receipt_responsible": db.get(User, _user_id(request)),
             "supplier_article_matches": supplier_article_matches,
         },
@@ -1710,6 +1715,7 @@ def stock_inventory_start(
     request: Request,
     db: DbSession,
     location_id: int = Form(...),
+    category_id: int | None = Form(None),
     effective_date: str = Form(""),
     notes: str = Form(""),
     idempotency_key: str = Form(""),
@@ -1721,6 +1727,7 @@ def stock_inventory_start(
             db,
             command=StockInventorySessionCreate(
                 location_id=location_id,
+                category_id=category_id,
                 effective_date=_parse_date(effective_date) or date.today(),
                 notes=notes or None,
                 idempotency_key=idempotency_key or None,

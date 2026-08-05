@@ -4,7 +4,7 @@
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
   <main class="content clean-content clean-admin-content">
-    <header class="clean-header-shell clean-card-wide">
+    <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
         <div>
           <p class="eyebrow">Nova experiência / sistema</p>
@@ -85,10 +85,15 @@
     {% endif %}
 
     {% if admin_section == "users" %}
+      <div class="clean-admin-section-heading clean-card-wide">
+        <div><p class="eyebrow">Pessoas e acessos</p><h3>Utilizadores</h3><p>Consulta primeiro; criação e alterações ficam recolhidas até serem necessárias.</p></div>
+      </div>
       <section class="clean-admin-split clean-card-wide">
         {% if can_manage_credentials %}
-          <form class="clean-panel clean-admin-form" method="post" action="/v2-clean/admin/users">
-            <div><p class="eyebrow">Novo acesso local</p><h3>Criar utilizador</h3></div>
+          <details class="clean-panel clean-admin-create-disclosure">
+          <summary>Criar utilizador</summary>
+          <form class="clean-admin-form" method="post" action="/v2-clean/admin/users">
+            <div><p class="eyebrow">Novo acesso local</p><h3>Dados do utilizador</h3></div>
             <label>Nome<input name="name" maxlength="160" required></label>
             <label>E-mail<input name="email" type="email" required></label>
             <label>Password temporária<input name="password" type="password" minlength="10" required></label>
@@ -119,6 +124,7 @@
             <button type="submit">Criar utilizador</button>
             <small>A password é local e nunca aparece na auditoria.</small>
           </form>
+          </details>
         {% endif %}
 
         <article class="clean-panel">
@@ -195,14 +201,20 @@
     {% endif %}
 
     {% if admin_section == "roles" %}
+      <div class="clean-admin-section-heading clean-card-wide">
+        <div><p class="eyebrow">Perfis de acesso</p><h3>Perfis e permissões</h3><p>Abra um perfil para consultar ou alterar a matriz completa numa área larga.</p></div>
+      </div>
       {% if can_manage %}
-        <form class="clean-panel clean-card-wide clean-admin-inline-form" method="post" action="/v2-clean/admin/roles">
+        <details class="clean-panel clean-card-wide clean-admin-create-disclosure">
+        <summary>Criar perfil funcional</summary>
+        <form class="clean-admin-inline-form" method="post" action="/v2-clean/admin/roles">
           <div><p class="eyebrow">Novo perfil</p><h3>Criar perfil funcional</h3></div>
           <label>Código<input name="code" placeholder="ex.: gestor_frota" required></label>
           <label>Nome<input name="name" required></label>
           <label>Descrição<input name="description"></label>
           <button type="submit">Criar perfil</button>
         </form>
+        </details>
       {% endif %}
       <section class="clean-admin-role-grid clean-card-wide">
         {% for role in roles %}

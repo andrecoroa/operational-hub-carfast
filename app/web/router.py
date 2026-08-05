@@ -277,7 +277,7 @@ from app.services.diagnostic_ocr import (
 )
 from app.services.users import create_user
 from app.services.vehicles import normalize_identifier
-from app.web.clean_admin import clean_admin_router, clean_admin_user_has
+from app.web.clean_admin import ADMIN_NAV, clean_admin_router, clean_admin_user_has
 
 templates = Jinja2Templates(directory="app/templates")
 web_router = APIRouter(include_in_schema=False)
@@ -5264,7 +5264,13 @@ def clean_workshop_models_admin(request: Request):
             "admin.manage",
         ):
             return RedirectResponse("/v2-clean/admin?admin_error=forbidden", status_code=303)
+        current_admin_email = current_user.email if current_user else ""
         admin_permissions = get_user_permission_codes(db, current_user) if current_user else set()
+        admin_nav = [
+            {"code": code, "label": label, "href": href}
+            for code, label, href, required in ADMIN_NAV
+            if admin_permissions.intersection(required)
+        ]
         ensure_workshop_configuration_defaults(db)
         db.commit()
         template_rows: list[dict[str, object]] = []
@@ -5294,6 +5300,9 @@ def clean_workshop_models_admin(request: Request):
         request,
         "clean_workshop_models_admin.html",
         {
+            "admin_section": "workshop_models",
+            "admin_nav": admin_nav,
+            "current_admin_email": current_admin_email,
             "template_rows": template_rows,
             "diagnostics": diagnostics,
             "can_manage_models": bool(

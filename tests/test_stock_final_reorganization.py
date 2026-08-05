@@ -8,6 +8,7 @@ from app.models.stock import (
     StockArticleSupplierRef,
     StockArticleVehicleCompatibility,
     StockCategory,
+    StockInventoryCount,
     StockInventorySession,
     StockInvoiceImport,
     StockInvoiceLine,
@@ -239,6 +240,57 @@ def test_blind_inventory_html_and_api_do_not_expose_snapshot(authenticated_clien
     assert "Filtros inventário" in page.text
     assert 'data-inventory-category-filter' in page.text
     assert 'data-close-inventory' in page.text
+
+
+def test_inventory_draft_can_be_partial_and_session_can_target_one_category(
+    authenticated_client, db_session
+):
+    counted_id = _article(authenticated_client, "CATEGORY-COUNTED")
+    excluded_id = _article(authenticated_client, "CATEGORY-EXCLUDED")
+    counted_category = StockCategory(name="Categoria contada", code="COUNTED", active=True)
+    excluded_category = StockCategory(name="Categoria excluída", code="EXCLUDED", active=True)
+    db_session.add_all([counted_category, excluded_category])
+    db_session.flush()
+    db_session.get(StockArticle, counted_id).category_id = counted_category.id
+    db_session.get(StockArticle, excluded_id).category_id = excluded_category.id
+    db_session.commit()
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+
+    created = authenticated_client.post(
+        "/v2-clean/stock/inventory",
+        data={
+            "location_id": workshop.id,
+            "category_id": counted_category.id,
+            "idempotency_key": "category-draft-001",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    inventory_id = int(created.headers["location"].rstrip("/").split("/")[-1])
+    snapshot_ids = set(
+        db_session.scalars(
+            select(StockInventoryCount.article_id).where(
+                StockInventoryCount.session_id == inventory_id
+            )
+        ).all()
+    )
+    assert snapshot_ids == {counted_id}
+
+    page = authenticated_client.get(f"/v2-clean/stock/inventory/{inventory_id}")
+    assert 'formnovalidate' in page.text
+    assert 'name="counted_quantity"' in page.text
+    assert 'name="counted_quantity" type="number"' in page.text
+    assert 'type="number" min="0" step="1"' in page.text
+    assert 'step="1" value="" required' not in page.text
+
+    saved = authenticated_client.post(
+        f"/v2-clean/stock/inventory/{inventory_id}/counts",
+        data={"action": "save"},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(StockInventorySession, inventory_id).status == "counting"
 
 
 def test_inventory_confirmation_is_idempotent(authenticated_client, db_session):

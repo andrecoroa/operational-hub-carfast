@@ -3,19 +3,26 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean_admin" %}
   {% include "_sidebar.html" %}
-  <main class="content clean-content">
-    <header class="clean-header-shell clean-card-wide">
+  <main class="content clean-content clean-admin-content">
+    <header class="clean-header-shell clean-card-wide clean-admin-header">
       <div class="clean-header-topbar">
-        <p class="eyebrow">Administração / Oficina</p>
-        <a class="button-link secondary-link" href="/v2-clean/admin">Voltar</a>
-      </div>
-      <div class="clean-header-hero-row single">
-        <div class="clean-header-hero-main">
-          <h2>Modelos de Oficina</h2>
-          <p>Configuração versionada de fases, campos, evidências, validações, responsáveis, diagnósticos e pontos de materiais.</p>
+        <div>
+          <p class="eyebrow">Nova experiência / sistema</p>
+          <h2>Administração</h2>
+          <p>Utilizadores, perfis, configuração, auditoria e integrações da experiência Clean.</p>
         </div>
+        <span class="pill muted-pill">{{ current_admin_email }}</span>
       </div>
+      <nav class="clean-admin-nav" aria-label="Secções de administração">
+        {% for item in admin_nav %}
+          <a href="{{ item.href }}" {% if admin_section == item.code %}class="active"{% endif %}>{{ item.label }}</a>
+        {% endfor %}
+      </nav>
     </header>
+
+    <div class="clean-admin-section-heading clean-card-wide">
+      <div><p class="eyebrow">Operação / Oficina</p><h3>Modelos da Oficina</h3><p>Configuração versionada para novos processos, sem alterar processos já iniciados.</p></div>
+    </div>
 
     <section class="clean-panel clean-card-wide">
       <div class="table-heading flat-heading">

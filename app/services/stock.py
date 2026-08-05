@@ -944,9 +944,18 @@ def create_inventory_session(
     location = db.get(StockLocation, command.location_id)
     if not location or not location.active:
         raise StockDomainError("Localização de Stock inválida ou inativa.")
-    article_ids = db.scalars(
-        select(StockArticle.id).where(StockArticle.active.is_(True)).order_by(StockArticle.id)
-    ).all()
+    article_statement = select(StockArticle.id).where(StockArticle.active.is_(True))
+    category = None
+    if command.category_id is not None:
+        category = db.get(StockCategory, command.category_id)
+        if not category or not category.active:
+            raise StockDomainError("Categoria de Stock inválida ou inativa.")
+        article_statement = article_statement.where(
+            StockArticle.category_id == category.id
+        )
+    article_ids = db.scalars(article_statement.order_by(StockArticle.id)).all()
+    if not article_ids:
+        raise StockDomainError("Não existem artigos ativos para o âmbito selecionado.")
     balances = stock_balances(db, article_ids=article_ids)
     inventory = StockInventorySession(
         location_id=location.id,
@@ -971,10 +980,14 @@ def create_inventory_session(
         action="stock.inventory.created",
         entity_type="stock_inventory_session",
         entity_id=inventory.id,
-        detail=f"Snapshot cego criado para {location.name}.",
+        detail=(
+            f"Snapshot cego criado para {location.name}"
+            f" · categoria {category.name if category else 'todas'}."
+        ),
         user_id=user_id,
         after_json={
             "location_id": location.id,
+            "category_id": category.id if category else None,
             "article_count": len(article_ids),
             "effective_date": command.effective_date.isoformat(),
         },

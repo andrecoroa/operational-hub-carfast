@@ -3880,6 +3880,14 @@ def clean_task_prefill_from_context(
     return context
 
 
+@web_router.get("/v2-clean/tasks/new")
+def clean_tasks_new_shortcut(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    return RedirectResponse("/v2-clean/tasks?create=1#new-task", status_code=303)
+
+
 @web_router.get("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_center(
     request: Request,

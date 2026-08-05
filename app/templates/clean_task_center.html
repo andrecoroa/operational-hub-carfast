@@ -44,7 +44,7 @@
     </section>
 
     {% if writable_workspaces %}
-      <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
+      <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if request.query_params.get("create") == "1" or prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
         <summary>
           <span><b>Nova tarefa</b><small>Criação curta; o restante acompanhamento é feito no detalhe.</small></span>
           <span class="clean-task-summary-action">Criar</span>

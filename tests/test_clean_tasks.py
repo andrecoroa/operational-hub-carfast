@@ -17,6 +17,17 @@ from app.models import (
 )
 
 
+def test_clean_task_shortcut_opens_creation_form(authenticated_client):
+    shortcut = authenticated_client.get("/v2-clean/tasks/new", follow_redirects=False)
+
+    assert shortcut.status_code == 303
+    assert shortcut.headers["location"] == "/v2-clean/tasks?create=1#new-task"
+
+    form = authenticated_client.get(shortcut.headers["location"])
+    assert form.status_code == 200
+    assert 'id="new-task" open' in form.text
+
+
 def test_clean_task_center_creates_document_task_with_audit(authenticated_client, db_session):
     response = authenticated_client.post(
         "/v2-clean/tasks",

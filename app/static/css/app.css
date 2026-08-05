@@ -26007,3 +26007,45 @@ body.clean-task-preview-open {
   .sale-market-stack { gap: 6px; }
   .sale-table-panel { overflow: visible; background: transparent; border: 0; }
 }
+.stock-inventory-category-filter {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stock-inventory-category-filter > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.stock-inventory-category-options {
+  display: flex;
+  flex: 1 1 420px;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.stock-inventory-category-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-treatment-inline-status {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid #173b68;
+  background: #eef4fb;
+}
+
+.doc-treatment-inline-status.success {
+  border-left-color: #16794b;
+  background: #edf8f2;
+}
+
+.doc-treatment-inline-status.danger {
+  border-left-color: #b42318;
+  background: #fff1f0;
+}

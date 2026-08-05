@@ -1746,8 +1746,9 @@ def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSe
     if not inventory:
         return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
     db_rows = db.execute(
-        select(StockInventoryCount, StockArticle)
+        select(StockInventoryCount, StockArticle, StockCategory)
         .join(StockArticle, StockArticle.id == StockInventoryCount.article_id)
+        .outerjoin(StockCategory, StockCategory.id == StockArticle.category_id)
         .where(StockInventoryCount.session_id == inventory.id)
         .order_by(StockArticle.internal_ref)
     ).all()
@@ -1758,13 +1759,15 @@ def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSe
                 "article_id": article.id,
                 "internal_ref": article.internal_ref,
                 "name": article.name,
+                "category_id": category.id if category else None,
+                "category_name": category.name if category else "Sem categoria",
                 "expected": count.expected_snapshot,
                 "counted": count.counted_quantity,
                 "difference": (count.counted_quantity or ZERO) - count.expected_snapshot,
                 "justification": count.justification,
                 "adjustment_movement_id": count.adjustment_movement_id,
             }
-            for count, article in db_rows
+            for count, article, category in db_rows
         ]
     else:
         # Deliberately build a redacted structure: expected/minimum/status never reach HTML.
@@ -1773,10 +1776,19 @@ def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSe
                 "article_id": article.id,
                 "internal_ref": article.internal_ref,
                 "name": article.name,
+                "category_id": category.id if category else None,
+                "category_name": category.name if category else "Sem categoria",
                 "counted": count.counted_quantity,
             }
-            for count, article in db_rows
+            for count, article, category in db_rows
         ]
+    inventory_categories = sorted(
+        {
+            (row["category_id"], row["category_name"])
+            for row in rows
+        },
+        key=lambda item: (item[1].casefold(), item[0] or 0),
+    )
     return templates.TemplateResponse(
         request,
         "clean_stock_inventory_session.html",
@@ -1785,6 +1797,7 @@ def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSe
             "inventory": inventory,
             "location": db.get(StockLocation, inventory.location_id),
             "rows": rows,
+            "inventory_categories": inventory_categories,
             "reveal": reveal,
         },
     )

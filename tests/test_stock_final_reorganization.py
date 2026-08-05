@@ -204,6 +204,11 @@ def test_receipt_responsible_is_always_the_authenticated_user(
 
 def test_blind_inventory_html_and_api_do_not_expose_snapshot(authenticated_client, db_session):
     article_id = _article(authenticated_client, "BLIND-001")
+    category = StockCategory(name="Filtros inventário", code="INV-FILTERS", active=True)
+    db_session.add(category)
+    db_session.flush()
+    db_session.get(StockArticle, article_id).category_id = category.id
+    db_session.commit()
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
     receipt = authenticated_client.post(
         "/api/stock/receipts",
@@ -230,6 +235,10 @@ def test_blind_inventory_html_and_api_do_not_expose_snapshot(authenticated_clien
     assert "expected_snapshot" not in page.text
     assert "expected_quantity" not in api.text
     assert "difference_quantity" not in api.text
+    assert "Categorias" in page.text
+    assert "Filtros inventário" in page.text
+    assert 'data-inventory-category-filter' in page.text
+    assert 'data-close-inventory' in page.text
 
 
 def test_inventory_confirmation_is_idempotent(authenticated_client, db_session):

@@ -10,8 +10,15 @@
     {% if request.query_params.get('error') %}<div class="stock-notice danger">{{ request.query_params.get('error') }}</div>{% endif %}
     {% if not reveal %}
       <form method="post" action="/v2-clean/stock/inventory/{{ inventory.id }}/counts">
-        <section class="stock-card flat-card"><div class="stock-table-wrap"><table class="stock-table stock-table-compact blind-count-table"><thead><tr><th>Referência</th><th>Artigo</th><th>Contado</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.internal_ref }}</td><td>{{ row.name }}</td><td><input type="hidden" name="article_id" value="{{ row.article_id }}"><input name="counted_quantity" type="number" min="0" step="1" value="{{ row.counted|int if row.counted is not none else '' }}" required aria-label="Quantidade contada para {{ row.internal_ref }}"></td></tr>{% else %}<tr><td colspan="3" class="stock-empty">Não existem artigos ativos no snapshot.</td></tr>{% endfor %}</tbody></table></div></section>
-        {% if can_count_inventory %}<div class="stock-actions sticky-actions"><button name="action" value="save" class="secondary">Guardar rascunho</button><button name="action" value="close">Fechar contagem</button></div>{% endif %}
+        <section class="stock-card flat-card stock-inventory-category-filter" aria-label="Filtrar artigos por categoria">
+          <div><strong>Categorias</strong><small>Seleciona uma ou várias para contar por blocos.</small></div>
+          <div class="stock-inventory-category-options">
+            {% for category_id, category_name in inventory_categories %}<label><input type="checkbox" value="{{ category_id if category_id is not none else 'none' }}" data-inventory-category-filter> {{ category_name }}</label>{% endfor %}
+          </div>
+          <button type="button" class="secondary compact-link" data-clear-inventory-categories>Mostrar todas</button>
+        </section>
+        <section class="stock-card flat-card"><div class="stock-table-wrap"><table class="stock-table stock-table-compact blind-count-table"><thead><tr><th>Referência</th><th>Artigo</th><th>Categoria</th><th>Contado</th></tr></thead><tbody>{% for row in rows %}<tr data-inventory-row data-category-id="{{ row.category_id if row.category_id is not none else 'none' }}"><td>{{ row.internal_ref }}</td><td>{{ row.name }}</td><td>{{ row.category_name }}</td><td><input type="hidden" name="article_id" value="{{ row.article_id }}" data-count-field><input name="counted_quantity" type="number" min="0" step="1" value="{{ row.counted|int if row.counted is not none else '' }}" required data-count-field aria-label="Quantidade contada para {{ row.internal_ref }}"></td></tr>{% else %}<tr><td colspan="4" class="stock-empty">Não existem artigos ativos no snapshot.</td></tr>{% endfor %}</tbody></table></div></section>
+        {% if can_count_inventory %}<div class="stock-actions sticky-actions"><span data-inventory-filter-notice hidden>Limpa os filtros para fechar a contagem completa.</span><button name="action" value="save" class="secondary">Guardar rascunho</button><button name="action" value="close" data-close-inventory>Fechar contagem</button></div>{% endif %}
       </form>
     {% else %}
       <form method="post" action="/v2-clean/stock/inventory/{{ inventory.id }}/confirm">
@@ -21,4 +28,5 @@
     {% endif %}
   </main>
 </div>
+{% if not reveal %}<script>(()=>{const filters=Array.from(document.querySelectorAll('[data-inventory-category-filter]'));const rows=Array.from(document.querySelectorAll('[data-inventory-row]'));const closeButton=document.querySelector('[data-close-inventory]');const notice=document.querySelector('[data-inventory-filter-notice]');const apply=()=>{const selected=new Set(filters.filter(input=>input.checked).map(input=>input.value));const active=selected.size>0;rows.forEach(row=>{const visible=!active||selected.has(row.dataset.categoryId);row.hidden=!visible;row.querySelectorAll('[data-count-field]').forEach(field=>{field.disabled=!visible})});if(closeButton)closeButton.disabled=active;if(notice)notice.hidden=!active};filters.forEach(input=>input.addEventListener('change',apply));document.querySelector('[data-clear-inventory-categories]')?.addEventListener('click',()=>{filters.forEach(input=>{input.checked=false});apply()});apply()})();</script>{% endif %}
 {% endblock %}

@@ -162,7 +162,7 @@
               {% for row in rows %}
                 <tr>
                   <td><input type="checkbox" name="vehicle_ids" value="{{ row.vehicle.id }}" data-sale-row-checkbox aria-label="Selecionar {{ row.vehicle.plate or row.vehicle.id }}"></td>
-                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small><small>{{ row.km|int if row.km is not none else '-' }} KM</small></td>
+                  <td class="sale-vehicle-cell"><div><strong>{{ row.vehicle.plate or "-" }}</strong><span>{{ row.vehicle.brand or "-" }} {{ row.vehicle.model or "" }}</span></div><small>{{ row.vehicle.version or '-' }}</small><small>Grupo {{ row.rentway_group or '-' }} · Unit {{ row.vehicle.rentway_unit_nr or "-" }} · {{ row.registration_display }}</small><small>{{ row.km|int if row.km is not none else '-' }} KM</small></td>
                   <td><div class="sale-situation-stack"><span class="sale-badge sale-state-{{ row.vehicle_state }}">{{ row.vehicle_state_label }}</span><span class="sale-badge sale-status-{{ row.status }}">{{ row.status_label }}</span></div></td>
                   <td title="{{ row.finance_entity or 'Sem financiamento' }}"><div class="sale-finance-stack"><strong>{{ row.finance_entity_display }}</strong><small>{{ row.contract_number or 'Sem contrato' }}</small></div></td>
                   <td><div class="sale-value-stack sale-value-stack-three">

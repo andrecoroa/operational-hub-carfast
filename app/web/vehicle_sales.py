@@ -272,6 +272,8 @@ def _sale_row(
         "registration": registration,
         "registration_display": registration.strftime("%d/%m/%Y") if registration else "-",
         "colour": vehicle_context.get("colour") or "-",
+        "fuel": vehicle_context.get("fuel") or "-",
+        "gearbox": vehicle_context.get("gearbox") or "-",
         "rentway_group": str(vehicle_context.get("groupid") or "").strip(),
         "finance_entity": finance_entity,
         "finance_entity_display": compact_finance_entity(finance_entity),
@@ -574,9 +576,10 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "brand": vehicle.brand,
         "model": vehicle.model,
         "version": vehicle.version,
-        "year": vehicle.year,
         "registration": row["registration_display"],
         "colour": row.get("colour") or "-",
+        "fuel": row.get("fuel") or "-",
+        "gearbox": row.get("gearbox") or "-",
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
     }
@@ -1542,7 +1545,8 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Modelo",
         "Versão",
         "Cor",
-        "Ano",
+        "Combustível",
+        "Caixa",
         "Unit",
         "KM",
         "Preço",
@@ -1557,7 +1561,7 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         sheet.append([
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
-            data.get("year"), data.get("unit"), data.get("km"), line.proposed_price,
+            data.get("fuel"), data.get("gearbox"), data.get("unit"), data.get("km"), line.proposed_price,
             line.notes,
         ])
     for column in sheet.columns:
@@ -1600,7 +1604,8 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
         "Data matrícula",
         "Viatura",
         "Cor",
-        "Ano",
+        "Combustível",
+        "Caixa",
         "Unit",
         "KM",
         "Preço",
@@ -1612,13 +1617,14 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
             item.get("plate") or "-",
             item.get("registration") or "-",
             " ".join(str(value or "") for value in (item.get("brand"), item.get("model"), item.get("version"))).strip(),
-            item.get("colour") or "-", item.get("year") or "-", item.get("unit") or "-", item.get("km") or "-",
+            item.get("colour") or "-", item.get("fuel") or "-", item.get("gearbox") or "-",
+            item.get("unit") or "-", item.get("km") or "-",
             money(line.proposed_price), line.notes or "",
         ])
     table = Table(
         data,
         repeatRows=1,
-        colWidths=[58, 65, 190, 60, 38, 50, 55, 70, 150],
+        colWidths=[55, 62, 170, 52, 62, 52, 43, 48, 62, 125],
     )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#173B68")),

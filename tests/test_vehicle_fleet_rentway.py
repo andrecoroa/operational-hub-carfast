@@ -23,6 +23,7 @@ REAL_RENTWAY_HEADERS = [
     "Vehicle Category",
     "Group ID",
     "Fuel Type",
+    "Transmission Type",
     "Number Of Seats",
     "Color",
     "Current Status",
@@ -45,6 +46,7 @@ def _real_rentway_row(plate: str = "AA-10-BB", seats: int = 5):
         "Light Commercial Vehicle",
         "C1",
         "Diesel",
+        "CVM6",
         seats,
         "Branco",
         "RENT",
@@ -76,6 +78,7 @@ def test_rentway_mapping_real_headers_normalizes_filter_fields_and_zero_seats():
     assert payload["rentway_category"] == "Comerciais"
     assert payload["rentway_group"] == "C1"
     assert payload["rentway_fuel"] == "Diesel"
+    assert payload["rentway_gearbox"] == "CVM6"
     assert payload["rentway_seats"] is None
     assert payload["rentway_colour"] == "Branco"
     assert payload["rentway_status"] == "RENT"
@@ -110,6 +113,7 @@ def test_rentway_preview_lists_created_fields_and_import_keeps_raw_snapshot(
     )
 
     assert vehicle.rentway_group == "C1"
+    assert vehicle.rentway_gearbox == "CVM6"
     assert vehicle.rentway_client == "Cliente Atual, Lda."
     assert raw.raw_json["Client Name"] == "Cliente Atual, Lda."
     assert snapshot.data_json["Number Of Seats"] == 5
@@ -258,6 +262,8 @@ def test_sales_multiselect_filters_and_return_state(
     assert "MS-10-AA" in response.text
     assert "MS-20-BB" in response.text
     assert "MS-30-CC" not in response.text
-    assert response.text.count('option value="Peugeot" selected') == 1
+    assert response.text.count(
+        'type="checkbox" name="brand" value="Peugeot" checked'
+    ) == 1
     assert "return_to=" in response.text
     assert "brand%3DPeugeot" in response.text

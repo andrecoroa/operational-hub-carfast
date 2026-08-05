@@ -438,6 +438,13 @@ def rentway_vehicle_context(
         "seats": snapshot_value(data, ["seats", "lugares", "passageiros"]),
         "colour": snapshot_value(data, ["colour", "color", "cor"]),
         "fuel": snapshot_value(data, ["fuel", "combustivel"]),
+        "gearbox": snapshot_value(
+            data,
+            [
+                "gearbox", "gear_box", "transmission", "transmission_type",
+                "caixa", "caixa_de_velocidades", "tipo_de_caixa",
+            ],
+        ),
         "plate_date": snapshot_value(data, ["plate_date", "platedate", "data_matricula", "registration_date"]),
         "purchase_date": snapshot_value(data, ["purchase_date", "purchase_dat", "purchasedate", "data_compra"]),
         "inspection_date": snapshot_value(data, ["inspection_date", "inspectiondate", "data_ipo"]),
@@ -470,6 +477,7 @@ def rentway_vehicle_context(
                 "seats": vehicle.rentway_seats or context["seats"],
                 "colour": vehicle.rentway_colour or context["colour"],
                 "fuel": vehicle.rentway_fuel or context["fuel"],
+                "gearbox": vehicle.rentway_gearbox or context["gearbox"],
                 "plate_date": (
                     vehicle.rentway_registration_date.isoformat()
                     if vehicle.rentway_registration_date
@@ -7392,6 +7400,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
             "seats": vehicle_context.get("seats") or "-",
             "colour": vehicle_context.get("colour") or "-",
             "fuel": vehicle_context.get("fuel") or "-",
+            "gearbox": vehicle_context.get("gearbox") or "-",
             "rentway_status": commercial_context.get("current_status") or "-",
             "purchase_supplier": commercial_context.get("purchase_supplier") or "-",
             "current_km": clean_km(

@@ -153,6 +153,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert line.base_price == Decimal("21000.00")
     assert line.snapshot_json["registration"] == "15/01/2022"
     assert line.snapshot_json["colour"] == "Azul"
+    assert line.snapshot_json["fuel"] == "Diesel"
+    assert line.snapshot_json["gearbox"] == "EAT8"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -207,8 +209,13 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     headers = [cell.value for cell in sheet[3]]
     assert "Data matrícula" in headers
     assert "Cor" in headers
+    assert "Combustível" in headers
+    assert "Caixa" in headers
+    assert "Ano" not in headers
     assert sheet.cell(row=4, column=headers.index("Data matrícula") + 1).value == "15/01/2022"
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
+    assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
+    assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "EAT8"
     pdf = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/pdf"
     )
@@ -292,6 +299,8 @@ def create_sale_vehicle(db_session) -> Vehicle:
             data_json={
                 "plate_date": "2022-01-15",
                 "colour": "Azul",
+                "fuel": "Diesel",
+                "transmission_type": "EAT8",
                 "purchase_date": "2026-07-01",
                 "acquisition_value": "15609.76",
                 "value_with_tax": "19200",

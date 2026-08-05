@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ RENTWAY_FIELD_LABELS = {
     "rentway_category": "Categoria",
     "rentway_group": "Grupo Rentway",
     "rentway_fuel": "Combustível",
+    "rentway_gearbox": "Caixa de velocidades",
     "rentway_seats": "Lugares",
     "rentway_colour": "Cor",
     "rentway_status": "Estado Rentway",
@@ -121,6 +123,20 @@ def clean_seats(value: Any) -> int | None:
     return seats if seats is not None and seats > 0 else None
 
 
+def normalize_rentway_gearbox(value: Any, version: Any = None) -> str | None:
+    text = clean_text(value)
+    if text:
+        return text
+    version_text = clean_text(version) or ""
+    match = re.search(
+        r"\b(CVM\s*\d+|BVM\s*\d+|EAT\s*\d+|DSG\s*\d*|DCT\s*\d*|CVT|"
+        r"AUTOM[AÁ]TIC[AO]?|AUTOMATIC|MANUAL)\b",
+        version_text,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\s+", "", match.group(1)).upper() if match else None
+
+
 def _audit_value(value: Any) -> Any:
     return value.isoformat() if isinstance(value, (date, datetime)) else value
 
@@ -197,13 +213,14 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
         "VehicleType",
     )
 
+    version = clean_text(_rentway_value(row, col, "Version", "Versão", "Versao"))
     return {
         "plate": plate,
         "vin": vin,
         "rentway_unit_nr": rentway_unit_nr,
         "brand": clean_text(_rentway_value(row, col, "BrandId", "Brand", "Marca")),
         "model": clean_text(_rentway_value(row, col, "ModelId", "Model", "Modelo")),
-        "version": clean_text(_rentway_value(row, col, "Version", "Versão", "Versao")),
+        "version": version,
         "year": clean_int(_rentway_value(row, col, "Year", "Ano")),
         "lifecycle_status": lifecycle_status,
         "operational_status": operational_status,
@@ -221,6 +238,20 @@ def build_vehicle_payload(row: tuple[Any, ...], col: dict[str, int]) -> dict[str
         ),
         "rentway_fuel": clean_text(
             _rentway_value(row, col, "Fuel", "FuelType", "Fuel Type", "Combustível", "Combustivel")
+        ),
+        "rentway_gearbox": normalize_rentway_gearbox(
+            _rentway_value(
+                row,
+                col,
+                "Gearbox",
+                "Gear Box",
+                "Transmission",
+                "Transmission Type",
+                "Caixa",
+                "Caixa de velocidades",
+                "Tipo de caixa",
+            ),
+            version,
         ),
         "rentway_seats": clean_seats(
             _rentway_value(

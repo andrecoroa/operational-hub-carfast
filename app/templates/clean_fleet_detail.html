@@ -15,6 +15,7 @@
           <span><b>Unit</b><em>{{ ctx.identity.unit or '-' }}</em></span>
           <span><b>Fornecedor</b><em>{{ ctx.identity.purchase_supplier }}</em></span>
           <span><b>Combustível</b><em>{{ ctx.identity.fuel }}</em></span>
+          <span><b>Caixa</b><em>{{ ctx.identity.gearbox }}</em></span>
           <span><b>Compra</b><em>{{ ctx.dates.purchase }}</em></span>
           <span><b>Próx. manutenção</b><em>{{ ctx.maintenance.next_display }}</em></span>
           <span><b>Próxima IPO</b><em>{{ ctx.dates.calculated_ipo }}</em></span>
@@ -86,6 +87,7 @@
             <div><span>Categoria</span><strong>{{ ctx.rules.rule_category_label }}</strong></div>
             <div><span>Cor</span><strong>{{ ctx.identity.colour }}</strong></div>
             <div><span>Combustível</span><strong>{{ ctx.identity.fuel }}</strong></div>
+            <div><span>Caixa de velocidades</span><strong>{{ ctx.identity.gearbox }}</strong></div>
             <div data-legacy-label="Categoria / grupo Rentway"><span>Grupo Rentway</span><strong>{{ ctx.identity.groupid }}</strong></div>
             <div><span>Lugares</span><strong>{{ ctx.identity.seats }}</strong></div>
             <div><span>Estado Rentway</span><strong>{{ ctx.identity.rentway_status }}</strong></div>

@@ -28,6 +28,7 @@ class Vehicle(TimestampMixin, Base):
     rentway_category: Mapped[str | None] = mapped_column(String(40), index=True)
     rentway_group: Mapped[str | None] = mapped_column(String(80), index=True)
     rentway_fuel: Mapped[str | None] = mapped_column(String(80), index=True)
+    rentway_gearbox: Mapped[str | None] = mapped_column(String(80))
     rentway_seats: Mapped[int | None] = mapped_column(Integer)
     rentway_colour: Mapped[str | None] = mapped_column(String(120))
     rentway_status: Mapped[str | None] = mapped_column(String(120), index=True)

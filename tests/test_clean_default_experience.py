@@ -119,6 +119,10 @@ def test_reopening_application_resets_persisted_legacy_experience(
     legacy = authenticated_client.get("/?legacy_entry=1", follow_redirects=False)
     assert legacy.status_code == 200
 
+    restored_same_url = authenticated_client.get("/?legacy_entry=1", follow_redirects=False)
+    assert restored_same_url.status_code == 303
+    assert restored_same_url.headers["location"] == "/v2-clean"
+
     reopened = authenticated_client.get("/", follow_redirects=False)
     assert reopened.status_code == 303
     assert reopened.headers["location"] == "/v2-clean"
@@ -152,7 +156,7 @@ def test_operator_cannot_see_or_open_legacy_experience(client, db_session):
 
     direct = client.get("/", follow_redirects=False)
     assert direct.status_code == 303
-    assert direct.headers["location"] == "/v2-clean?error=legacy_access_denied"
+    assert direct.headers["location"] == "/v2-clean"
     assert (
         db_session.scalar(
             select(AuditLog).where(
@@ -164,7 +168,7 @@ def test_operator_cannot_see_or_open_legacy_experience(client, db_session):
     )
 
 
-def test_direct_legacy_entry_for_admin_is_audited(
+def test_direct_legacy_entry_for_admin_returns_to_clean_without_audit(
     authenticated_client,
     db_session,
 ):
@@ -174,15 +178,14 @@ def test_direct_legacy_entry_for_admin_is_audited(
         follow_redirects=False,
     )
 
-    assert direct.status_code == 200
+    assert direct.status_code == 303
+    assert direct.headers["location"] == "/v2-clean"
     audit = db_session.scalar(
         select(AuditLog)
         .where(AuditLog.action == "web.legacy_experience.open")
         .order_by(AuditLog.id.desc())
     )
-    assert audit is not None
-    assert audit.after_json["origin"] == "/v2-clean/fleet"
-    assert audit.after_json["destination_route"] == "/fleet?scope=active"
+    assert audit is None
 
 
 def test_clean_return_urls_cannot_escape_to_previous_experience(

@@ -276,12 +276,15 @@ def is_legacy_experience_path(path: str) -> bool:
 
 def has_explicit_legacy_context(request: Request) -> bool:
     if request.query_params.get("legacy_entry") == "1":
-        return True
+        return bool(request.session.pop("legacy_entry_pending", False))
     referer = request.headers.get("referer", "")
     if not referer:
         return False
     referer_path = urlsplit(referer).path
-    return is_legacy_experience_path(referer_path)
+    return (
+        request.session.get("carfast_experience") == "current"
+        and is_legacy_experience_path(referer_path)
+    )
 
 
 def create_app() -> FastAPI:
@@ -312,12 +315,12 @@ def create_app() -> FastAPI:
             or any(path == prefix or path.startswith(f"{prefix}/") for prefix in PERMISSION_ALLOWED_PREFIXES)
         ):
             return await call_next(request)
-        if (
-            is_legacy_experience_path(path)
-            and request.session.get("user_id")
-            and request.session.get("carfast_experience") == "current"
-            and not has_explicit_legacy_context(request)
-        ):
+        legacy_context = (
+            has_explicit_legacy_context(request)
+            if is_legacy_experience_path(path) and request.session.get("user_id")
+            else False
+        )
+        if is_legacy_experience_path(path) and request.session.get("user_id") and not legacy_context:
             request.session["carfast_experience"] = "clean"
             return RedirectResponse("/v2-clean", status_code=303)
         if is_legacy_experience_path(path) and request.session.get("user_id"):

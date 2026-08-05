@@ -31021,6 +31021,7 @@ def switch_experience(
         )
         db.commit()
     request.session["carfast_experience"] = "current"
+    request.session["legacy_entry_pending"] = True
     separator = "&" if "?" in destination_route else "?"
     return RedirectResponse(
         f"{destination_route}{separator}legacy_entry=1",

@@ -1159,11 +1159,15 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
             "service_classification_present": "1",
             "maintenance": "revision",
             "tyres": "front",
-            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+            "return_url": (
+                "/v2-clean/documentation/treatment?family=invoices"
+                f"&open_item=document:{document.id}"
+            ),
         },
         follow_redirects=False,
     )
     assert saved.status_code == 303
+    assert f"open_item=document:{document.id}" in saved.headers["location"]
     tags = db_session.scalars(
         select(VehicleDocumentRecordTag).where(
             VehicleDocumentRecordTag.document_id == document.id
@@ -1178,12 +1182,16 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
         f"/v2-clean/documentation/treatment/{document.id}/audit-task",
         data={
             "reason": "Confirmar serviços faturados",
-            "return_url": "/v2-clean/documentation/treatment?family=invoices",
+            "return_url": (
+                "/v2-clean/documentation/treatment?family=invoices"
+                f"&open_item=document:{document.id}"
+            ),
         },
         follow_redirects=False,
     )
     db_session.expire_all()
     assert created.status_code == 303
+    assert f"open_item=document:{document.id}" in created.headers["location"]
     task = db_session.scalar(
         select(Task).where(Task.entity_type == "document", Task.entity_id == str(document.id))
     )

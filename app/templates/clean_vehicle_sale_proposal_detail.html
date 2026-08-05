@@ -6,8 +6,9 @@
     <header class="clean-workshop-header clean-workshop-header-final">
       <div><p class="eyebrow">Proposta comercial · {{ proposal.reference }}</p><h2>{{ proposal.title }}</h2><p>Versão {{ proposal.version }} · {{ status_labels.get(proposal.status, proposal.status) }}</p></div>
       <div class="clean-header-actions">
-        <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/xlsx">Excel</a>
-        <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/pdf">PDF</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/xlsx">Excel interno</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/customer.xlsx">Excel cliente</a>
+        <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/pdf">PDF cliente</a>
         <a class="button-link secondary-link" href="/v2-clean/fleet/sales/proposals">Fechar</a>
       </div>
     </header>
@@ -38,6 +39,10 @@
     <section class="clean-panel clean-card-wide sale-proposal-actions">
       {% if proposal.status == 'draft' %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/send"><button type="submit">Marcar como enviada</button></form>
       {% else %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/reopen"><button type="submit">Reabrir como nova versão</button></form>{% endif %}
+      {% if proposal.status not in ['completed', 'cancelled'] %}
+      <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/status"><input type="hidden" name="status" value="completed"><button type="submit" class="secondary">Marcar como terminada</button></form>
+      <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/status"><input type="hidden" name="status" value="cancelled"><button type="submit" class="danger">Cancelar proposta</button></form>
+      {% endif %}
     </section>
   </main>
 </div>

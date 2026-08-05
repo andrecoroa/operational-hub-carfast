@@ -73,6 +73,7 @@ PROPOSAL_STATUS_LABELS = {
     "draft": "Rascunho",
     "sent": "Enviada",
     "cancelled": "Cancelada",
+    "completed": "Terminada",
 }
 
 VEHICLE_IMAGE_MAX_SIZE = 10 * 1024 * 1024
@@ -1474,6 +1475,38 @@ def vehicle_sale_proposal_send(request: Request, proposal_id: int):
     )
 
 
+@vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/status")
+async def vehicle_sale_proposal_status(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    form = await request.form()
+    requested_status = str(form.get("status") or "").strip()
+    allowed_statuses = {"cancelled", "completed"}
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if proposal and requested_status in allowed_statuses:
+            previous_status = proposal.status
+            proposal.status = requested_status
+            proposal.updated_by_id = user_id
+            record_audit(
+                db,
+                action=f"vehicle.sale.proposal_{requested_status}",
+                entity_type="vehicle_sale_proposal",
+                entity_id=proposal.id,
+                detail=(
+                    f"Proposta {proposal.reference}: {previous_status} -> "
+                    f"{requested_status}"
+                ),
+                user_id=user_id,
+            )
+            db.commit()
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+    )
+
+
 @vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/reopen")
 def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
     denied = _sales_access_denied(request)
@@ -1586,6 +1619,59 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
     )
 
 
+@vehicle_sales_router.get(
+    "/v2-clean/fleet/sales/proposals/{proposal_id}/customer.xlsx"
+)
+def vehicle_sale_proposal_customer_xlsx(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal:
+            return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
+        lines = [line for line in _proposal_lines(db, proposal.id) if line.included]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Proposta"
+    sheet.append(
+        [proposal.reference, proposal.title, proposal.recipient or "", proposal.expires_on or ""]
+    )
+    sheet.append([])
+    headers = [
+        "Matrícula", "Data matrícula", "Marca", "Modelo", "Versão", "Cor",
+        "Combustível", "Caixa", "Unit", "KM", "Preço proposto", "Observações",
+    ]
+    sheet.append(headers)
+    for cell in sheet[3]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="173B68")
+    for line in lines:
+        data = line.snapshot_json or {}
+        sheet.append([
+            data.get("plate"), data.get("registration"), data.get("brand"),
+            data.get("model"), data.get("version"), data.get("colour"),
+            data.get("fuel"), data.get("gearbox"), data.get("unit"), data.get("km"),
+            line.proposed_price, line.notes,
+        ])
+    for column in sheet.columns:
+        letter = column[0].column_letter
+        sheet.column_dimensions[letter].width = min(
+            40, max(12, max(len(str(cell.value or "")) for cell in column) + 2)
+        )
+    output = io.BytesIO()
+    workbook.save(output)
+    return Response(
+        output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{proposal.reference}-cliente.xlsx"'
+            )
+        },
+    )
+
+
 @vehicle_sales_router.get("/v2-clean/fleet/sales/proposals/{proposal_id}/pdf")
 def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
     denied = _sales_access_denied(request)
@@ -1619,18 +1705,10 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
         "Unit",
         "KM",
         "Preço",
-        "Em dívida",
-        "Margem",
         "Observações",
     ]]
     for line in lines:
         item = line.snapshot_json or {}
-        debt = decimal_value(item.get("debt"))
-        negotiation_margin = (
-            line.proposed_price - debt
-            if line.proposed_price is not None and debt is not None
-            else None
-        )
         vehicle_label = " ".join(
             str(value or "")
             for value in (item.get("brand"), item.get("model"), item.get("version"))
@@ -1641,13 +1719,13 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
             Paragraph(vehicle_label or "-", styles["BodyText"]),
             item.get("colour") or "-", item.get("fuel") or "-", item.get("gearbox") or "-",
             item.get("unit") or "-", item.get("km") or "-",
-            money(line.proposed_price), money(debt), money(negotiation_margin),
+            money(line.proposed_price),
             Paragraph(line.notes or "", styles["BodyText"]),
         ])
     table = Table(
         data,
         repeatRows=1,
-        colWidths=[45, 52, 180, 42, 48, 45, 35, 40, 55, 55, 55, 75],
+        colWidths=[50, 58, 235, 48, 55, 48, 40, 45, 65, 110],
     )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#173B68")),
@@ -1665,7 +1743,9 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
     return Response(
         output.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{proposal.reference}.pdf"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{proposal.reference}-cliente.pdf"'
+        },
     )
 
 

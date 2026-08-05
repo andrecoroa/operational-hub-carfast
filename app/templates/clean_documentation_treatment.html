@@ -17,7 +17,7 @@
       </div>
       {% if document_family == "invoices" and can_manage_documents %}
         <form method="post" action="/v2-clean/documentation/invoices/reconcile-pending">
-          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <input type="hidden" name="return_url" id="doc-treatment-preview-return-url" value="{{ return_url }}">
           <button type="submit">Reconciliar faturas esperadas</button>
         </form>
       {% endif %}
@@ -216,15 +216,15 @@
           <div id="doc-treatment-inline-content"></div>
           <section data-real-document-section><h3>Decisão e auditoria</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><p class="doc-treatment-exception-help"><strong>Concluir com exceção</strong> fecha o tratamento apesar de pré-requisitos em falta; exige motivo e deixa auditoria explícita.</p><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
           {% if can_manage_documents %}<footer>
-            <button type="submit" name="action" value="save_services" class="secondary" data-real-action>Guardar serviços</button>
-            <button type="submit" name="action" value="classify" class="secondary" data-real-action>Guardar pendente</button>
-            <button type="submit" name="action" value="associate" class="secondary" data-real-action>Associar viatura</button>
-            <button type="submit" name="action" value="reprocess" class="secondary" data-real-action>Extrair / reprocessar</button>
-            <button type="submit" name="action" value="validate" class="secondary" data-real-action>Validar documento</button>
-            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve" data-real-action>Concluir com exceção</button>
-            <button type="submit" class="secondary" id="doc-treatment-audit-task" data-real-action>Criar tarefa de auditoria</button>
-            <button type="submit" class="danger" id="doc-treatment-remove" data-real-action>Remover documento</button>
-            <button type="submit" name="action" value="complete" data-real-action>Concluir tratamento</button>
+            <button type="submit" name="action" value="save_services" class="secondary" data-real-action title="Guarda apenas a classificação dos serviços da fatura.">Guardar serviços</button>
+            <button type="submit" name="action" value="classify" class="secondary" data-real-action title="Guarda a natureza selecionada e mantém o documento em tratamento.">Guardar pendente</button>
+            <button type="submit" name="action" value="associate" class="secondary" data-real-action title="Associa o documento à viatura indicada pela matrícula.">Associar viatura</button>
+            <button type="submit" name="action" value="reprocess" class="secondary" data-real-action title="Executa novamente a extração de dados do documento.">Extrair / reprocessar</button>
+            <button type="submit" name="action" value="validate" class="secondary" data-real-action title="Confirma que os dados e a classificação do documento foram verificados.">Validar documento</button>
+            <button type="submit" name="action" value="resolve" class="secondary" id="doc-treatment-resolve" data-real-action title="Conclui apesar de pré-requisitos em falta; exige motivo e fica auditado.">Concluir com exceção</button>
+            <button type="submit" class="secondary" id="doc-treatment-audit-task" data-real-action title="Cria uma tarefa na fila Auditoria; a observação passa para a descrição.">Criar tarefa de auditoria</button>
+            <button type="submit" class="danger" id="doc-treatment-remove" data-real-action title="Remove o documento após confirmação e motivo obrigatório.">Remover documento</button>
+            <button type="submit" name="action" value="complete" data-real-action title="Fecha o tratamento quando todos os pré-requisitos estão cumpridos.">Concluir tratamento</button>
             <button type="submit" name="action" value="associate" class="secondary" data-expected-action hidden>Associar fatura esperada</button>
             <button type="submit" name="action" value="reconcile" data-expected-action hidden>Reconciliar documento real</button>
           </footer>{% else %}<p class="doc-treatment-readonly-note">Consulta disponível. Não tem permissão para alterar o tratamento.</p>{% endif %}
@@ -264,6 +264,7 @@
     const auditTask = document.getElementById('doc-treatment-audit-task');
     const removeDocument = document.getElementById('doc-treatment-remove');
     const expandPdf = document.getElementById('doc-treatment-preview-expand');
+    const previewReturnUrl = document.getElementById('doc-treatment-preview-return-url');
     document.querySelectorAll('.doc-treatment-preview-trigger').forEach((button) => button.addEventListener('click', () => {
       const isExpected = button.dataset.kind === 'expected';
       document.getElementById('doc-treatment-preview-title').textContent = button.dataset.documentTitle || 'Documento';
@@ -271,6 +272,9 @@
       document.getElementById('doc-treatment-preview-nature').value = button.dataset.nature || '';
       document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
       document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
+      const returnTarget = new URL(window.location.href);
+      returnTarget.searchParams.set('open_item', button.dataset.itemRef || '');
+      if (previewReturnUrl) previewReturnUrl.value = `${returnTarget.pathname}${returnTarget.search}`;
       document.getElementById('doc-treatment-detail-link').href = button.dataset.detailHref || '#';
       inlineContent.replaceChildren(document.getElementById(button.dataset.contentTemplate || '')?.content.cloneNode(true) || document.createTextNode(''));
       reasonField.value = '';
@@ -288,6 +292,11 @@
       }
       preview.showModal();
     }));
+    const requestedItem = new URL(window.location.href).searchParams.get('open_item');
+    if (requestedItem) {
+      const matchingTrigger = Array.from(document.querySelectorAll('.doc-treatment-preview-trigger')).find((button) => button.dataset.itemRef === requestedItem);
+      matchingTrigger?.click();
+    }
     document.querySelectorAll('[data-close-treatment-preview]').forEach((button) => button.addEventListener('click', () => { preview.close(); previewPane.innerHTML = ''; }));
     document.getElementById('doc-treatment-resolve')?.addEventListener('click', (event) => { if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); } });
     removeDocument?.addEventListener('click', (event) => { if (!reasonField.value.trim()) { event.preventDefault(); reasonField.focus(); return; } if (!window.confirm('Remover este documento? O registo e o motivo ficam preservados para auditoria.')) event.preventDefault(); });

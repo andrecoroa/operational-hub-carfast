@@ -231,6 +231,17 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
     assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 17000
     assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 2800
+    customer_export = authenticated_client.get(
+        f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
+    )
+    assert customer_export.status_code == 200
+    customer_sheet = load_workbook(
+        io.BytesIO(customer_export.content), data_only=True
+    ).active
+    customer_headers = [cell.value for cell in customer_sheet[3]]
+    assert "Preço proposto" in customer_headers
+    assert "Valor em dívida" not in customer_headers
+    assert "Margem negocial" not in customer_headers
     pdf = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/pdf"
     )
@@ -243,6 +254,26 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Data matrícula" in pdf_text
     assert "15/01/2022" in pdf_text
     assert "Azul" in pdf_text
+    assert "Em dívida" not in pdf_text
+    assert "Margem" not in pdf_text
+
+    completed = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/status",
+        data={"status": "completed"},
+        follow_redirects=False,
+    )
+    assert completed.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(VehicleSaleProposal, proposals[1].id).status == "completed"
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}/status",
+        data={"status": "cancelled"},
+        follow_redirects=False,
+    )
+    assert cancelled.status_code == 303
+    db_session.expire_all()
+    assert db_session.get(VehicleSaleProposal, proposal.id).status == "cancelled"
 
 
 def test_unfinanced_vehicle_ignores_legacy_manual_debt():

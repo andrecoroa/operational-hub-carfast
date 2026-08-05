@@ -10,9 +10,10 @@
         <h2>Centro de Tarefas</h2>
         <p>Uma fila de cada vez, com responsabilidade, colaboração e contexto visíveis.</p>
       </div>
-      {% if writable_workspaces %}
+      {% if creatable_workspaces or can_manage_recurrence %}
         <div class="clean-module-hero-actions">
-          <button class="button-link" type="button" data-task-create-open>Nova tarefa</button>
+          {% if can_manage_recurrence %}<a class="button-link secondary-link" href="/v2-clean/tasks/recurring">Recorrentes</a>{% endif %}
+          {% if creatable_workspaces %}<button class="button-link" type="button" data-task-create-open>Nova tarefa</button>{% endif %}
         </div>
       {% endif %}
     </header>
@@ -43,7 +44,7 @@
       <a class="clean-task-kpi-link" href="/v2-clean/tasks?workspace=all&status=open&due=today"><span>Hoje</span><strong>{{ task_metrics.due_today }}</strong><em>com prazo</em></a>
     </section>
 
-    {% if writable_workspaces %}
+    {% if creatable_workspaces %}
       <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if request.query_params.get("create") == "1" or prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
         <summary>
           <span><b>Nova tarefa</b><small>Criação curta; o restante acompanhamento é feito no detalhe.</small></span>
@@ -58,7 +59,7 @@
             <label class="span-2">Título<input name="title" value="{{ prefill.title }}" required></label>
             <label>Natureza
               <select name="workspace">
-                {% for code, label in task_workspace_options if code in writable_workspaces %}
+                {% for code, label in task_workspace_options if code in creatable_workspaces %}
                   <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
@@ -115,7 +116,7 @@
       {% if filters.workspace == "mine" %}
         <nav class="clean-task-mine-tabs" aria-label="Relação com a tarefa">
           {% for code, label in [("all","Todas as minhas"),("assigned","Atribuídas"),("identified","Identificado"),("following","A acompanhar"),("support","Suporte solicitado"),("created","Criadas por mim")] %}
-            <a href="/v2-clean/tasks?workspace=mine&mine_kind={{ code }}" class="{% if filters.mine_kind == code %}active{% endif %}">{{ label }}</a>
+            <a href="/v2-clean/tasks?workspace=mine&mine_kind={{ code }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}" class="{% if filters.mine_kind == code %}active{% endif %}"><span>{{ label }}</span><b>{{ mine_counts.get(code, 0) }}</b></a>
           {% endfor %}
         </nav>
       {% endif %}
@@ -139,13 +140,16 @@
           <thead><tr><th>Prioridade</th><th>Tarefa</th><th>Contexto</th><th>Responsável</th><th>Criada em</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead>
           <tbody>
           {% for task in tasks %}
-            {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "administration" if task.task_type == "administration_task" else "operational" %}
+            {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
             {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
             <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
               <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
               <td>
                 <strong>{{ task.title }}</strong>
                 <small>{{ "Problema" if task_is_problem else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
+                {% if filters.workspace == "mine" and task_relations_by_task.get(task.id) %}
+                  <span class="clean-task-relation-list">{% for relation in task_relations_by_task.get(task.id, []) %}<em>{{ relation }}</em>{% endfor %}</span>
+                {% endif %}
                 {% for help in help_requests_by_task.get(task.id, []) if help.requested_user_id == current_user_id and help.status == "pending" %}
                   <span class="clean-task-support-flag">Suporte solicitado</span>
                 {% endfor %}
@@ -175,8 +179,9 @@
 </div>
 
 {% for task in tasks %}
-  {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "administration" if task.task_type == "administration_task" else "operational" %}
-  {% set can_write = task_workspace in writable_workspaces %}
+  {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
+  {% set can_write = task_workspace in updatable_workspaces %}
+  {% set can_close = task_workspace in closable_workspaces %}
   <section class="clean-task-preview" id="task-preview-{{ task.id }}" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="clean-task-preview-backdrop" data-task-close></div>
     <article class="clean-task-preview-dialog clean-preview-dialog">
@@ -238,7 +243,7 @@
               <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
-              <label>Fila<select name="workspace">{% for code, label in task_workspace_options if code in writable_workspaces %}<option value="{{ code }}" {% if code == task_workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label>Fila<select name="workspace">{% for code, label in task_workspace_options if code in updatable_workspaces %}<option value="{{ code }}" {% if code == task_workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Natureza<select name="category"><option value="">Selecionar</option>{% for value in task_nature_edit_options %}<option value="{{ value }}" {% if task.category == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
               <label>Categoria<select name="subcategory"><option value="">Selecionar</option>{% for value in task_category_options %}<option value="{{ value }}" {% if task.subcategory == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
               <div class="clean-task-edit-meta span-2"><span>As alterações ficam no histórico.</span><button type="submit">Guardar</button></div>
@@ -310,7 +315,7 @@
             {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
           </section>
           <section class="clean-task-close-zone">
-            {% if can_write %}
+            {% if can_close %}
               {% if task.closed_at or task.status in ["closed","resolved","cancelled"] %}
                 <form method="post" action="/v2-clean/tasks/{{ task.id }}/reopen"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Reabrir tarefa</button></form>
               {% else %}

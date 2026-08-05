@@ -70,6 +70,8 @@ from app.models.tasks import (
     TaskHelpRequest,
     TaskHistory,
     TaskParticipant,
+    TaskRecurrenceOccurrence,
+    TaskRecurrenceTemplate,
 )
 from app.models.vehicles import (
     Vehicle,
@@ -196,6 +198,8 @@ __all__ = [
     "TaskHelpRequest",
     "TaskHistory",
     "TaskParticipant",
+    "TaskRecurrenceOccurrence",
+    "TaskRecurrenceTemplate",
     "Team",
     "TeamMember",
     "User",

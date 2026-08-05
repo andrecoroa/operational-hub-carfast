@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell clean-shell">
+  {% set active_menu = "clean_tasks" %}
+  {% include "_sidebar.html" %}
+  <main class="content clean-content">
+    <header class="clean-module-hero clean-task-hero">
+      <div>
+        <p class="eyebrow">Centro de Tarefas</p>
+        <h2>Tarefas recorrentes</h2>
+        <p>Modelos com execução segura em {{ timezone }}; cada ocorrência entra na fila como tarefa normal.</p>
+      </div>
+      <div class="clean-module-hero-actions">
+        <a class="button-link secondary-link" href="/v2-clean/tasks">Voltar às tarefas</a>
+      </div>
+    </header>
+
+    {% if request.query_params.get("created") %}<div class="clean-alert-success">Modelo recorrente criado.</div>{% endif %}
+    {% if request.query_params.get("updated") %}<div class="clean-alert-success">Modelo recorrente atualizado.</div>{% endif %}
+    {% if request.query_params.get("toggled") %}<div class="clean-alert-success">Estado do modelo alterado.</div>{% endif %}
+    {% if generated_count %}<div class="clean-alert-success">{{ generated_count }} ocorrência(s) em atraso gerada(s) com segurança.</div>{% endif %}
+    {% if request.query_params.get("error") == "assignment_not_allowed" %}
+      <div class="clean-alert-warning">O responsável não respeita a hierarquia de atribuição.</div>
+    {% elif request.query_params.get("error") %}
+      <div class="clean-alert-warning">Não foi possível guardar o modelo. Confirma os campos e permissões da fila.</div>
+    {% endif %}
+
+    {% if workspace_options %}
+      <details class="clean-panel clean-card-wide clean-task-create-shell clean-recurrence-create" open>
+        <summary><span><b>Novo modelo</b><small>Define a periodicidade e os dados da tarefa gerada.</small></span><span class="clean-task-summary-action">Criar</span></summary>
+        <div class="clean-task-create-body">
+          <form method="post" action="/v2-clean/tasks/recurring" class="clean-recurrence-form">
+            <label>Nome do modelo<input name="name" required maxlength="200"></label>
+            <label>Título da tarefa<input name="task_title" required maxlength="200"></label>
+            <label>Fila<select name="workspace" required>{% for code, label in workspace_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select></label>
+            <label>Periodicidade<select name="frequency">{% for code, label in frequency_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Intervalo<input type="number" name="interval" min="1" max="365" value="1" required></label>
+            <label>Próxima execução<input type="datetime-local" name="next_run_at" required></label>
+            <label>Prazo após ocorrência (dias)<input type="number" name="due_offset_days" min="0" max="365" value="0"></label>
+            <label>Prioridade<select name="task_priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
+            <label>Natureza<input name="task_category" maxlength="80" placeholder="Opcional"></label>
+            <label class="span-2">Descrição<textarea name="task_description" rows="3"></textarea></label>
+            <div class="clean-task-create-actions span-2"><button type="submit">Criar modelo</button></div>
+          </form>
+        </div>
+      </details>
+    {% endif %}
+
+    <section class="clean-panel clean-card-wide clean-recurrence-list">
+      <div class="table-heading flat-heading"><div><h3>Modelos</h3><p>{{ models|length }} modelos configurados.</p></div></div>
+      <div class="clean-recurrence-grid">
+        {% for model in models %}
+          <article class="clean-recurrence-card {% if not model.enabled %}is-disabled{% endif %}">
+            <header>
+              <div><small>{{ workspace_labels.get(model.workspace, model.workspace) }} · Modelo #{{ model.id }}</small><h3>{{ model.name }}</h3></div>
+              <span class="clean-task-status {% if not model.enabled %}closed{% endif %}">{{ "Ativo" if model.enabled else "Inativo" }}</span>
+            </header>
+            <dl class="clean-recurrence-meta">
+              <div><dt>Próxima</dt><dd>{{ to_local(model.next_run_at).strftime("%d/%m/%Y %H:%M") }}</dd></div>
+              <div><dt>Última</dt><dd>{{ to_local(model.last_run_at).strftime("%d/%m/%Y %H:%M") if model.last_run_at else "Ainda não executado" }}</dd></div>
+              <div><dt>Periodicidade</dt><dd>{{ {"daily":"Diária","weekly":"Semanal","monthly":"Mensal"}.get(model.frequency, model.frequency) }} · {{ model.interval }}</dd></div>
+              <div><dt>Responsável</dt><dd>{{ users_by_id.get(model.assigned_to_id).name if users_by_id.get(model.assigned_to_id) else "Por atribuir" }}</dd></div>
+              <div><dt>Criador</dt><dd>{{ users_by_id.get(model.created_by_id).name if users_by_id.get(model.created_by_id) else "Utilizador" }}</dd></div>
+              <div><dt>Timezone</dt><dd>{{ model.timezone }}</dd></div>
+            </dl>
+            <p class="clean-recurrence-task"><b>Tarefa:</b> {{ model.task_title }}</p>
+            <div class="clean-recurrence-actions">
+              <form method="post" action="/v2-clean/tasks/recurring/{{ model.id }}/toggle"><button class="button-link secondary-link">{{ "Desativar" if model.enabled else "Ativar" }}</button></form>
+              <button class="button-link" type="button" data-recurrence-edit="recurrence-edit-{{ model.id }}">Editar</button>
+            </div>
+            <details class="clean-recurrence-occurrences">
+              <summary>Últimas ocorrências ({{ occurrences_by_template.get(model.id, [])|length }})</summary>
+              {% for occurrence in occurrences_by_template.get(model.id, [])[:8] %}
+                <a href="/v2-clean/tasks?workspace={{ model.workspace }}&open_task={{ occurrence.task_id }}">
+                  <span>{{ to_local(occurrence.scheduled_for).strftime("%d/%m/%Y %H:%M") }}</span><b>CF-TASK-{{ "%05d"|format(occurrence.task_id) }}</b>
+                </a>
+              {% else %}<p>Sem ocorrências geradas.</p>{% endfor %}
+            </details>
+          </article>
+
+          <section class="clean-task-preview" id="recurrence-edit-{{ model.id }}" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="clean-task-preview-backdrop" data-recurrence-close></div>
+            <article class="clean-task-preview-dialog clean-preview-dialog clean-recurrence-dialog">
+              <header class="clean-preview-header"><div><small>Modelo #{{ model.id }}</small><h2>Editar {{ model.name }}</h2></div><button class="button-link secondary-link" type="button" data-recurrence-close>Fechar</button></header>
+              <form method="post" action="/v2-clean/tasks/recurring/{{ model.id }}/update" class="clean-recurrence-form clean-recurrence-edit-form">
+                <label>Nome do modelo<input name="name" value="{{ model.name }}" required maxlength="200"></label>
+                <label>Título da tarefa<input name="task_title" value="{{ model.task_title }}" required maxlength="200"></label>
+                <label>Fila<select name="workspace">{% for code, label in workspace_options %}<option value="{{ code }}" {% if code == model.workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if user.id == model.assigned_to_id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+                <label>Periodicidade<select name="frequency">{% for code, label in frequency_options %}<option value="{{ code }}" {% if code == model.frequency %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Intervalo<input type="number" name="interval" min="1" max="365" value="{{ model.interval }}"></label>
+                <label>Próxima execução<input type="datetime-local" name="next_run_at" value="{{ to_local(model.next_run_at).strftime('%Y-%m-%dT%H:%M') }}" required></label>
+                <label>Prazo após ocorrência (dias)<input type="number" name="due_offset_days" min="0" max="365" value="{{ model.due_offset_days }}"></label>
+                <label>Prioridade<select name="task_priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if code == model.task_priority %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Natureza<input name="task_category" value="{{ model.task_category or '' }}" maxlength="80"></label>
+                <label class="span-2">Descrição<textarea name="task_description" rows="4">{{ model.task_description or '' }}</textarea></label>
+                <div class="clean-task-create-actions span-2"><button type="submit">Guardar alterações</button></div>
+              </form>
+            </article>
+          </section>
+        {% else %}
+          <p class="clean-recurrence-empty">Ainda não existem modelos recorrentes.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+document.querySelectorAll('[data-recurrence-edit]').forEach((button) => button.addEventListener('click', () => {
+  const dialog = document.getElementById(button.dataset.recurrenceEdit);
+  if (dialog) {
+    dialog.classList.add('is-open');
+    dialog.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('clean-task-preview-open');
+  }
+}));
+document.querySelectorAll('[data-recurrence-close]').forEach((button) => button.addEventListener('click', () => {
+  const dialog = button.closest('.clean-task-preview');
+  if (dialog) {
+    dialog.classList.remove('is-open');
+    dialog.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('clean-task-preview-open');
+  }
+}));
+</script>
+{% endblock %}

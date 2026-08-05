@@ -88,7 +88,7 @@
       {% if "dashboard.read" in nav_perms %}
         <a href="/" {% if active_menu == "dashboard" %}class="active"{% endif %}>Dashboard</a>
       {% endif %}
-      {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.administration.read", "tasks.administration.write") %}
+      {% if nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.administration.read", "tasks.administration.write", "tasks.recurring.manage") %}
         <a href="/task-board" {% if active_menu == "tasks" %}class="active"{% endif %}>
           Centro de Tarefas
           {% if nav_task_count is defined %}<span class="nav-badge">{{ nav_task_count }}</span>{% endif %}

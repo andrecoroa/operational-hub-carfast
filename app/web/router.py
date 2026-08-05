@@ -23,7 +23,7 @@ from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.change_notice import (
@@ -74,6 +74,8 @@ from app.models.tasks import (
     TaskHelpRequest,
     TaskHistory,
     TaskParticipant,
+    TaskRecurrenceOccurrence,
+    TaskRecurrenceTemplate,
 )
 from app.models.vehicles import (
     Vehicle,
@@ -147,6 +149,15 @@ from app.services.document_workflow import (
     workflow_values,
 )
 from app.services.stock import ensure_invoice_import
+from app.services.task_recurrence import (
+    RECURRENCE_FREQUENCIES,
+    RECURRENCE_TASK_TYPES,
+    RECURRENCE_TIMEZONE,
+    generate_due_recurring_tasks,
+    local_datetime_to_utc,
+    opportunistic_generate_recurring_tasks,
+    utc_datetime_to_local,
+)
 from app.services.management_center import (
     ACTION_STATUS_LABELS,
     AR_IMPORT_TYPE,
@@ -2309,7 +2320,6 @@ TASK_TYPE_CANONICAL_GROUP = {
     "task": "operational_task",
     "request": "request_info",
     "incident": "operational_incident",
-    "management_task": "administration_task",
 }
 TASK_TYPE_LEGACY_BY_CANONICAL = {
     "operational_task": ["task"],
@@ -2333,12 +2343,11 @@ TASK_WORKSPACES = [
     ("operational", "Operacional"),
     ("workshop", "Oficina"),
     ("audit", "Auditoria"),
+    ("management", "Gestão"),
     ("administration", "Administração"),
 ]
 TASK_WORKSPACE_LABELS = dict(TASK_WORKSPACES)
-TASK_WORKSPACE_ALIASES = {
-    "management": "administration",
-}
+TASK_WORKSPACE_ALIASES = {}
 TASK_WORKSPACE_CONFIG = {
     "operational": {
         "label": "Operacional",
@@ -2385,6 +2394,18 @@ TASK_WORKSPACE_CONFIG = {
         "default_category": "documents",
         "default_team_code": "support",
     },
+    "management": {
+        "label": "Gestão",
+        "eyebrow": "Coordenação e decisão",
+        "title": "Tarefas de gestão",
+        "breadcrumb": "Centro de Tarefas > Gestão",
+        "description": "Coordenação, decisão e acompanhamento de gestão, separados da Administração.",
+        "default_task_type": "management_task",
+        "primary_task_types": ["management_task"],
+        "secondary_task_types": [],
+        "default_category": "other",
+        "default_team_code": "management",
+    },
     "administration": {
         "label": "Administração",
         "eyebrow": "Centro reservado",
@@ -2406,6 +2427,7 @@ TASK_NATURE_OPTIONS = {
     "operational": ["Operação", "Cliente", "Reserva", "Contrato", "Sinistro", "Outro"],
     "workshop": ["Manutenção", "Reparação", "Diagnóstico", "Material", "Outro"],
     "audit": ["Faturas", "Folhas de obra", "Documentação", "Dados", "Outro"],
+    "management": ["Decisão", "Acompanhamento", "Coordenação", "Melhoria", "Outro"],
     "administration": ["Utilizadores", "Configuração", "Financeiro", "Integrações", "Outro"],
 }
 TASK_CATEGORY_OPTIONS = [
@@ -2439,6 +2461,13 @@ QUICK_RECORD_TYPES_BY_WORKSPACE = {
         ("invoice_check", "Fatura"),
         ("work_order_check", "Folha de obra"),
         ("compliance", "Conformidade"),
+        ("other", "Outro"),
+    ],
+    "management": [
+        ("decision", "Decisão"),
+        ("followup", "Acompanhamento"),
+        ("coordination", "Coordenação"),
+        ("improvement", "Melhoria"),
         ("other", "Outro"),
     ],
     "administration": [
@@ -2508,19 +2537,42 @@ def normalize_task_workspace(workspace: str | None) -> str:
 
 def task_workspace_read_permissions(workspace: str | None) -> set[str]:
     clean_workspace = normalize_task_workspace(workspace)
+    if clean_workspace == "management":
+        return {"tasks.management.read", "admin.manage"}
     return {f"tasks.{clean_workspace}.read", f"tasks.{clean_workspace}.write", "admin.manage"}
 
 
-def task_workspace_write_permissions(workspace: str | None) -> set[str]:
+def task_workspace_write_permissions(workspace: str | None, action: str = "update") -> set[str]:
     clean_workspace = normalize_task_workspace(workspace)
+    if clean_workspace == "management":
+        if action == "write":
+            return {
+                "tasks.management.create",
+                "tasks.management.update",
+                "tasks.management.close",
+                "admin.manage",
+            }
+        permission_action = action if action in {"create", "update", "close"} else "update"
+        return {f"tasks.management.{permission_action}", "admin.manage"}
     return {f"tasks.{clean_workspace}.write", "admin.manage"}
 
 
-def user_can_access_task_workspace(db, user: User | None, workspace: str | None, *, write: bool = False) -> bool:
+def user_can_access_task_workspace(
+    db,
+    user: User | None,
+    workspace: str | None,
+    *,
+    write: bool = False,
+    action: str | None = None,
+) -> bool:
     if not user or not user.active:
         return False
     permissions = get_user_permission_codes(db, user)
-    required = task_workspace_write_permissions(workspace) if write else task_workspace_read_permissions(workspace)
+    required = (
+        task_workspace_write_permissions(workspace, action or "write")
+        if write or action
+        else task_workspace_read_permissions(workspace)
+    )
     return bool(permissions.intersection(required))
 
 
@@ -2536,7 +2588,7 @@ def user_can_create_recurring_tasks(db, user: User | None) -> bool:
     if not user or not user.active:
         return False
     permissions = get_user_permission_codes(db, user)
-    return bool({"admin.manage", "tasks.create_recurring"} & permissions)
+    return bool({"admin.manage", "tasks.recurring.manage"} & permissions)
 
 
 def guided_flow_options_for_workspace(workspace: str) -> list[tuple[str, str]]:
@@ -3566,6 +3618,11 @@ def clean_experience_denied(request: Request) -> RedirectResponse | None:
         "vehicles.read",
         "workshop.read",
         "tasks.read",
+        "tasks.management.read",
+        "tasks.management.create",
+        "tasks.management.update",
+        "tasks.management.close",
+        "tasks.recurring.manage",
         "management_center.read",
         "documents.read",
         "admin.dashboard.read",
@@ -3671,6 +3728,14 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
             "Validação documental, faturas, folhas de obra e conformidade.",
             ["Faturas", "Folhas de obra", "Conformidade"],
             "Controlo",
+        ),
+        (
+            "management",
+            "GE",
+            "Gestão",
+            "Coordenação, decisão e acompanhamento de gestão.",
+            ["Decisão", "Acompanhamento", "Coordenação"],
+            "Reservado",
         ),
         (
             "administration",
@@ -3920,8 +3985,26 @@ def clean_tasks_center(
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
+        opportunistic_generate_recurring_tasks(db)
         readable_workspaces = user_task_workspace_codes(db, current_user)
-        writable_workspaces = user_task_workspace_codes(db, current_user, write=True)
+        creatable_workspaces = [
+            code
+            for code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, current_user, code, action="create")
+        ]
+        updatable_workspaces = [
+            code
+            for code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, current_user, code, action="update")
+        ]
+        closable_workspaces = [
+            code
+            for code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, current_user, code, action="close")
+        ]
+        writable_workspaces = sorted(
+            set(creatable_workspaces) | set(updatable_workspaces) | set(closable_workspaces)
+        )
         task_divisions = [
             item for item in clean_task_division_cards(db) if item["code"] in readable_workspaces
         ]
@@ -3948,6 +4031,12 @@ def clean_tasks_center(
         if active_kind == "all" and incoming_record_type in {"task", "problem"}:
             active_kind = incoming_record_type
         normalized_plate = prefill_context["plate"]
+        readable_task_type_codes = [
+            code
+            for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
+            if workspace_code in readable_workspaces
+            for code in codes
+        ]
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
@@ -3956,58 +4045,48 @@ def clean_tasks_center(
             for code in codes
         ]
         filters = [Task.task_type.in_(tuple(task_type_codes))]
+        mine_relation_conditions: dict[str, object] = {}
+        active_relation_filter = None
         if active_workspace == "mine" and user_id:
             participant_task_ids = select(TaskParticipant.task_id).where(
                 TaskParticipant.user_id == user_id,
                 TaskParticipant.status == "active",
             )
-            if active_mine_kind == "assigned":
-                filters.append(Task.assigned_to_id == user_id)
-            elif active_mine_kind == "identified":
-                filters.append(
-                    Task.id.in_(
-                        select(TaskParticipant.task_id).where(
-                            TaskParticipant.user_id == user_id,
-                            TaskParticipant.role.in_(("mentioned", "participant")),
-                            TaskParticipant.status == "active",
-                        )
-                    )
+            identified_condition = Task.id.in_(
+                select(TaskParticipant.task_id).where(
+                    TaskParticipant.user_id == user_id,
+                    TaskParticipant.role.in_(("mentioned", "participant")),
+                    TaskParticipant.status == "active",
                 )
-            elif active_mine_kind == "following":
-                filters.append(
-                    Task.id.in_(
-                        select(TaskParticipant.task_id).where(
-                            TaskParticipant.user_id == user_id,
-                            TaskParticipant.role == "follower",
-                            TaskParticipant.status == "active",
-                        )
-                    )
+            )
+            following_condition = Task.id.in_(
+                select(TaskParticipant.task_id).where(
+                    TaskParticipant.user_id == user_id,
+                    TaskParticipant.role == "follower",
+                    TaskParticipant.status == "active",
                 )
-            elif active_mine_kind == "created":
-                filters.append(Task.created_by_id == user_id)
-            elif active_mine_kind == "support":
-                filters.append(
-                    Task.id.in_(
-                        select(TaskHelpRequest.task_id).where(
-                            TaskHelpRequest.requested_user_id == user_id,
-                            TaskHelpRequest.status == "pending",
-                        )
-                    )
+            )
+            support_condition = Task.id.in_(
+                select(TaskHelpRequest.task_id).where(
+                    TaskHelpRequest.requested_user_id == user_id,
+                    TaskHelpRequest.status == "pending",
                 )
-            else:
-                filters.append(
-                    or_(
-                        Task.assigned_to_id == user_id,
-                        Task.created_by_id == user_id,
-                        Task.id.in_(participant_task_ids),
-                        Task.id.in_(
-                            select(TaskHelpRequest.task_id).where(
-                                TaskHelpRequest.requested_user_id == user_id,
-                                TaskHelpRequest.status == "pending",
-                            )
-                        ),
-                    )
-                )
+            )
+            mine_relation_conditions = {
+                "assigned": Task.assigned_to_id == user_id,
+                "identified": identified_condition,
+                "following": following_condition,
+                "support": support_condition,
+                "created": Task.created_by_id == user_id,
+            }
+            mine_relation_conditions["all"] = or_(
+                Task.assigned_to_id == user_id,
+                Task.created_by_id == user_id,
+                Task.id.in_(participant_task_ids),
+                support_condition,
+            )
+            active_relation_filter = mine_relation_conditions[active_mine_kind]
+            filters.append(active_relation_filter)
         if active_status == "open":
             filters.extend([Task.closed_at.is_(None), ~Task.status.in_(TASK_ARCHIVE_STATUSES)])
         elif active_status == "closed":
@@ -4035,6 +4114,23 @@ def clean_tasks_center(
                     Task.external_source_id.ilike(search),
                 )
             )
+        mine_counts = {code: 0 for code in ("all", "assigned", "identified", "following", "support", "created")}
+        if mine_relation_conditions:
+            counter_filters = [item for item in filters if item is not active_relation_filter]
+            counter_row = db.execute(
+                select(
+                    *[
+                        func.coalesce(
+                            func.sum(case((condition, 1), else_=0)),
+                            0,
+                        ).label(code)
+                        for code, condition in mine_relation_conditions.items()
+                    ]
+                )
+                .select_from(Task)
+                .where(*counter_filters)
+            ).one()
+            mine_counts = {code: int(getattr(counter_row, code) or 0) for code in mine_counts}
         page_size = 50
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
@@ -4057,6 +4153,7 @@ def clean_tasks_center(
         help_requests_by_task: dict[int, list[TaskHelpRequest]] = defaultdict(list)
         documents_by_task: dict[int, list[Document]] = defaultdict(list)
         email_by_task: dict[int, TaskEmailOrigin] = {}
+        task_relations_by_task: dict[int, list[str]] = defaultdict(list)
         if task_ids:
             for participant in db.scalars(
                 select(TaskParticipant)
@@ -4094,11 +4191,31 @@ def clean_tasks_center(
                 item.task_id: item
                 for item in db.scalars(select(TaskEmailOrigin).where(TaskEmailOrigin.task_id.in_(task_ids)))
             }
+        if active_workspace == "mine" and user_id:
+            for task in tasks:
+                if task.assigned_to_id == user_id:
+                    task_relations_by_task[task.id].append("Responsável")
+                participant_roles = {
+                    participant.role
+                    for participant in participants_by_task.get(task.id, [])
+                    if participant.user_id == user_id and participant.status == "active"
+                }
+                if participant_roles.intersection({"mentioned", "participant"}):
+                    task_relations_by_task[task.id].append("Identificado")
+                if "follower" in participant_roles:
+                    task_relations_by_task[task.id].append("A acompanhar")
+                if any(
+                    item.requested_user_id == user_id and item.status == "pending"
+                    for item in help_requests_by_task.get(task.id, [])
+                ):
+                    task_relations_by_task[task.id].append("Suporte solicitado")
+                if task.created_by_id == user_id:
+                    task_relations_by_task[task.id].append("Criador")
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
         open_filter = [
-            Task.task_type.in_(tuple([code for codes in TASK_WORKSPACE_TASK_TYPES.values() for code in codes])),
+            Task.task_type.in_(tuple(readable_task_type_codes)),
         ]
         task_metrics = {
             "divisions": len(task_divisions),
@@ -4116,16 +4233,20 @@ def clean_tasks_center(
                 )
             )
             or 0,
-            "audit": db.scalar(
-                select(func.count())
-                .select_from(Task)
-                .where(
-                    Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES["audit"])),
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+            "audit": (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Task)
+                    .where(
+                        Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES["audit"])),
+                        Task.closed_at.is_(None),
+                        ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    )
                 )
-            )
-            or 0,
+                or 0
+                if "audit" in readable_workspaces
+                else 0
+            ),
         }
         task_workspace_options = [
             ("mine", "Minhas"),
@@ -4138,6 +4259,7 @@ def clean_tasks_center(
             for value in db.scalars(
                 select(Task.category)
                 .where(
+                    Task.task_type.in_(tuple(task_type_codes)),
                     Task.category.is_not(None),
                     Task.category != "",
                 )
@@ -4160,6 +4282,7 @@ def clean_tasks_center(
                     for value in db.scalars(
                         select(Task.subcategory)
                         .where(
+                            Task.task_type.in_(tuple(task_type_codes)),
                             Task.subcategory.is_not(None),
                             Task.subcategory != "",
                         )
@@ -4196,9 +4319,15 @@ def clean_tasks_center(
                 "help_requests_by_task": help_requests_by_task,
                 "documents_by_task": documents_by_task,
                 "email_by_task": email_by_task,
+                "task_relations_by_task": task_relations_by_task,
+                "mine_counts": mine_counts,
                 "recent_documents": recent_documents,
                 "readable_workspaces": readable_workspaces,
                 "writable_workspaces": writable_workspaces,
+                "creatable_workspaces": creatable_workspaces,
+                "updatable_workspaces": updatable_workspaces,
+                "closable_workspaces": closable_workspaces,
+                "can_manage_recurrence": user_can_create_recurring_tasks(db, current_user),
                 "filters": {
                     "workspace": active_workspace,
                     "mine_kind": active_mine_kind,
@@ -4213,15 +4342,15 @@ def clean_tasks_center(
                     "record_type": effective_record_type,
                     "workspace": (
                         "audit"
-                        if "audit" in writable_workspaces
+                        if "audit" in creatable_workspaces
                         and (
                             "invoice" in entity_type.lower()
                             or "document" in entity_type.lower()
                             or "work_order" in entity_type.lower()
                         )
                         else active_workspace
-                        if active_workspace in writable_workspaces
-                        else ("workshop" if "workshop" in writable_workspaces else writable_workspaces[0] if writable_workspaces else "")
+                        if active_workspace in creatable_workspaces
+                        else ("workshop" if "workshop" in creatable_workspaces else creatable_workspaces[0] if creatable_workspaces else "")
                     ),
                     "title": prefill_context["title"],
                     "description": prefill_context["description"],
@@ -4245,6 +4374,247 @@ def clean_tasks_center(
                 },
             },
         )
+
+
+def _recurrence_form_datetime(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _recurrence_access(db, request: Request) -> tuple[User, int] | None:
+    user_id = get_web_user_id(request)
+    user = db.get(User, user_id) if user_id else None
+    if not user or not user_can_create_recurring_tasks(db, user):
+        return None
+    return user, user.id
+
+
+@web_router.get("/v2-clean/tasks/recurring", response_class=HTMLResponse)
+def clean_task_recurrence_models(request: Request):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    with SessionLocal() as db:
+        access = _recurrence_access(db, request)
+        if not access:
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        current_user, _user_id = access
+        generated = generate_due_recurring_tasks(db, commit=True)
+        templates_list = db.scalars(
+            select(TaskRecurrenceTemplate).order_by(
+                TaskRecurrenceTemplate.enabled.desc(),
+                TaskRecurrenceTemplate.next_run_at,
+                TaskRecurrenceTemplate.id.desc(),
+            )
+        ).all()
+        template_ids = [item.id for item in templates_list]
+        occurrences_by_template: dict[int, list[TaskRecurrenceOccurrence]] = defaultdict(list)
+        if template_ids:
+            for occurrence in db.scalars(
+                select(TaskRecurrenceOccurrence)
+                .where(TaskRecurrenceOccurrence.template_id.in_(template_ids))
+                .order_by(TaskRecurrenceOccurrence.scheduled_for.desc())
+                .limit(100)
+            ):
+                occurrences_by_template[occurrence.template_id].append(occurrence)
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        users_by_id = {item.id: item for item in users}
+        creatable_workspaces = [
+            code
+            for code in TASK_WORKSPACE_CONFIG
+            if user_can_access_task_workspace(db, current_user, code, action="create")
+        ]
+        return templates.TemplateResponse(
+            request,
+            "clean_task_recurrence.html",
+            {
+                "models": templates_list,
+                "occurrences_by_template": occurrences_by_template,
+                "users": users,
+                "users_by_id": users_by_id,
+                "workspace_options": [
+                    (code, label) for code, label in TASK_WORKSPACES if code in creatable_workspaces
+                ],
+                "workspace_labels": TASK_WORKSPACE_LABELS,
+                "frequency_options": [
+                    ("daily", "Diária"),
+                    ("weekly", "Semanal"),
+                    ("monthly", "Mensal"),
+                ],
+                "timezone": RECURRENCE_TIMEZONE,
+                "to_local": utc_datetime_to_local,
+                "generated_count": len(generated),
+            },
+        )
+
+
+@web_router.post("/v2-clean/tasks/recurring", response_class=HTMLResponse)
+def clean_task_recurrence_create(
+    request: Request,
+    name: str = Form(""),
+    task_title: str = Form(""),
+    task_description: str = Form(""),
+    workspace: str = Form("operational"),
+    task_priority: str = Form("normal"),
+    task_category: str = Form(""),
+    assigned_to_id: str = Form(""),
+    frequency: str = Form("weekly"),
+    interval: str = Form("1"),
+    next_run_at: str = Form(""),
+    due_offset_days: str = Form("0"),
+):
+    clean_name = name.strip()
+    clean_title = task_title.strip()
+    parsed_start = _recurrence_form_datetime(next_run_at)
+    clean_workspace = normalize_task_workspace(workspace)
+    if not clean_name or not clean_title or not parsed_start or frequency not in RECURRENCE_FREQUENCIES:
+        return RedirectResponse("/v2-clean/tasks/recurring?error=invalid", status_code=303)
+    with SessionLocal() as db:
+        access = _recurrence_access(db, request)
+        if not access:
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        current_user, user_id = access
+        if not user_can_access_task_workspace(db, current_user, clean_workspace, action="create"):
+            return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        if parsed_assignee_id and not is_assignment_allowed_for_workspace(
+            db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
+        ):
+            return RedirectResponse(
+                "/v2-clean/tasks/recurring?error=assignment_not_allowed", status_code=303
+            )
+        model = TaskRecurrenceTemplate(
+            name=clean_name[:200],
+            enabled=True,
+            timezone=RECURRENCE_TIMEZONE,
+            frequency=frequency,
+            interval=min(max(parse_int_from_text(interval) or 1, 1), 365),
+            next_run_at=local_datetime_to_utc(parsed_start),
+            workspace=clean_workspace,
+            task_type=RECURRENCE_TASK_TYPES[clean_workspace],
+            task_title=clean_title[:200],
+            task_description=task_description.strip() or None,
+            task_priority=(
+                task_priority if task_priority in {"low", "normal", "high", "urgent"} else "normal"
+            ),
+            task_category=(task_category.strip() or TASK_WORKSPACE_CONFIG[clean_workspace]["default_category"])[:80],
+            task_subcategory="task",
+            due_offset_days=min(max(parse_int_from_text(due_offset_days) or 0, 0), 365),
+            assigned_to_id=parsed_assignee_id,
+            created_by_id=user_id,
+            updated_by_id=user_id,
+        )
+        db.add(model)
+        db.flush()
+        record_audit(
+            db,
+            action="task.recurrence.template_created",
+            entity_type="task_recurrence_template",
+            entity_id=model.id,
+            detail=f"Modelo recorrente criado: {model.name}",
+            user_id=user_id,
+            after_json={"workspace": model.workspace, "next_run_at": model.next_run_at.isoformat()},
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/tasks/recurring?created=1", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/recurring/{template_id}/update", response_class=HTMLResponse)
+def clean_task_recurrence_update(
+    request: Request,
+    template_id: int,
+    name: str = Form(""),
+    task_title: str = Form(""),
+    task_description: str = Form(""),
+    workspace: str = Form("operational"),
+    task_priority: str = Form("normal"),
+    task_category: str = Form(""),
+    assigned_to_id: str = Form(""),
+    frequency: str = Form("weekly"),
+    interval: str = Form("1"),
+    next_run_at: str = Form(""),
+    due_offset_days: str = Form("0"),
+):
+    parsed_start = _recurrence_form_datetime(next_run_at)
+    clean_workspace = normalize_task_workspace(workspace)
+    if not name.strip() or not task_title.strip() or not parsed_start or frequency not in RECURRENCE_FREQUENCIES:
+        return RedirectResponse("/v2-clean/tasks/recurring?error=invalid", status_code=303)
+    with SessionLocal() as db:
+        access = _recurrence_access(db, request)
+        model = db.get(TaskRecurrenceTemplate, template_id)
+        if not access or not model:
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        current_user, user_id = access
+        if not user_can_access_task_workspace(db, current_user, clean_workspace, action="create"):
+            return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        if parsed_assignee_id and not is_assignment_allowed_for_workspace(
+            db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
+        ):
+            return RedirectResponse(
+                "/v2-clean/tasks/recurring?error=assignment_not_allowed", status_code=303
+            )
+        before = {
+            "workspace": model.workspace,
+            "next_run_at": model.next_run_at.isoformat(),
+            "enabled": model.enabled,
+        }
+        model.name = name.strip()[:200]
+        model.task_title = task_title.strip()[:200]
+        model.task_description = task_description.strip() or None
+        model.workspace = clean_workspace
+        model.task_type = RECURRENCE_TASK_TYPES[clean_workspace]
+        model.task_priority = task_priority if task_priority in {"low", "normal", "high", "urgent"} else "normal"
+        model.task_category = (task_category.strip() or TASK_WORKSPACE_CONFIG[clean_workspace]["default_category"])[:80]
+        model.assigned_to_id = parsed_assignee_id
+        model.frequency = frequency
+        model.interval = min(max(parse_int_from_text(interval) or 1, 1), 365)
+        model.next_run_at = local_datetime_to_utc(parsed_start)
+        model.due_offset_days = min(max(parse_int_from_text(due_offset_days) or 0, 0), 365)
+        model.updated_by_id = user_id
+        record_audit(
+            db,
+            action="task.recurrence.template_updated",
+            entity_type="task_recurrence_template",
+            entity_id=model.id,
+            detail=f"Modelo recorrente atualizado: {model.name}",
+            user_id=user_id,
+            before_json=before,
+            after_json={
+                "workspace": model.workspace,
+                "next_run_at": model.next_run_at.isoformat(),
+                "enabled": model.enabled,
+            },
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/tasks/recurring?updated=1", status_code=303)
+
+
+@web_router.post("/v2-clean/tasks/recurring/{template_id}/toggle", response_class=HTMLResponse)
+def clean_task_recurrence_toggle(request: Request, template_id: int):
+    with SessionLocal() as db:
+        access = _recurrence_access(db, request)
+        model = db.get(TaskRecurrenceTemplate, template_id)
+        if not access or not model:
+            return RedirectResponse("/v2-clean?error=forbidden", status_code=303)
+        _current_user, user_id = access
+        old_value = model.enabled
+        model.enabled = not model.enabled
+        model.updated_by_id = user_id
+        record_audit(
+            db,
+            action="task.recurrence.template_toggled",
+            entity_type="task_recurrence_template",
+            entity_id=model.id,
+            detail=f"Modelo recorrente {'ativado' if model.enabled else 'desativado'}: {model.name}",
+            user_id=user_id,
+            before_json={"enabled": old_value},
+            after_json={"enabled": model.enabled},
+        )
+        db.commit()
+    return RedirectResponse("/v2-clean/tasks/recurring?toggled=1", status_code=303)
 
 
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
@@ -4291,7 +4661,9 @@ def clean_tasks_create(
     now = datetime.now(UTC)
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, clean_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, clean_workspace, action="create"
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
         assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
@@ -4417,11 +4789,13 @@ def clean_tasks_update(
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
         current_user = db.get(User, user_id)
         task_workspace = workspace_for_task_type(task.task_type)
-        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace, action="update"
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         target_workspace = normalize_task_workspace(workspace or task_workspace)
         if target_workspace != task_workspace and not user_can_access_task_workspace(
-            db, current_user, target_workspace, write=True
+            db, current_user, target_workspace, action="update"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
@@ -4504,7 +4878,9 @@ def clean_tasks_update_context(
             return RedirectResponse("/v2-clean/tasks?error=not_found", status_code=303)
         current_user = db.get(User, user_id)
         task_workspace = workspace_for_task_type(task.task_type)
-        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace, action="update"
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         changes = {
             "description": (task.description, description.strip() or None),
@@ -4559,7 +4935,7 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
         task = db.get(Task, task_id)
         current_user = db.get(User, user_id)
         if task and not user_can_access_task_workspace(
-            db, current_user, workspace_for_task_type(task.task_type), write=True
+            db, current_user, workspace_for_task_type(task.task_type), action="close"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
@@ -4601,7 +4977,7 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
         task = db.get(Task, task_id)
         current_user = db.get(User, user_id)
         if task and not user_can_access_task_workspace(
-            db, current_user, workspace_for_task_type(task.task_type), write=True
+            db, current_user, workspace_for_task_type(task.task_type), action="close"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
@@ -4679,7 +5055,9 @@ def clean_tasks_participant(
             not task
             or not participant_user
             or not participant_user.active
-            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         exists = db.scalar(
@@ -4764,7 +5142,9 @@ def clean_tasks_help_request(
             not task
             or not requested_user
             or not requested_user.active
-            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         db.add(
@@ -4828,7 +5208,9 @@ def clean_tasks_link_document(
         if (
             not task
             or not document
-            or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type), write=True)
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         exists = db.scalar(

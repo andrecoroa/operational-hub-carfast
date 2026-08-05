@@ -20654,7 +20654,10 @@ body.clean-doc-modal-open {
 }
 
 .clean-task-queue-panel {
+  max-width: 100%;
+  min-width: 0;
   padding: 14px;
+  width: auto;
 }
 
 .clean-task-workspace-tabs {
@@ -20746,17 +20749,182 @@ body.clean-doc-modal-open {
 }
 
 .clean-task-mine-tabs a {
+  align-items: center;
   border-bottom: 2px solid transparent;
   color: #667085;
+  display: inline-flex;
   font-size: 12px;
   font-weight: 850;
+  gap: 6px;
   padding: 7px 9px;
   text-decoration: none;
+}
+
+.clean-task-mine-tabs a b {
+  align-items: center;
+  background: #eef2f6;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  justify-content: center;
+  min-width: 20px;
+  padding: 2px 5px;
 }
 
 .clean-task-mine-tabs a.active {
   border-color: #9f470f;
   color: #9f470f;
+}
+
+.clean-task-relation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.clean-task-relation-list em {
+  background: #edf4ff;
+  border: 1px solid #c9dcf5;
+  border-radius: 999px;
+  color: #174f91;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+  padding: 2px 6px;
+}
+
+.clean-recurrence-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.clean-recurrence-form label {
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 6px;
+}
+
+.clean-recurrence-form input,
+.clean-recurrence-form select,
+.clean-recurrence-form textarea {
+  width: 100%;
+}
+
+.clean-recurrence-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.clean-recurrence-card {
+  border: 1px solid #dce3ea;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.clean-recurrence-card.is-disabled {
+  background: #f8fafc;
+  opacity: .78;
+}
+
+.clean-recurrence-card > header,
+.clean-recurrence-actions,
+.clean-recurrence-occurrences a {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clean-recurrence-card h3 {
+  margin: 3px 0 0;
+}
+
+.clean-recurrence-meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 14px 0;
+}
+
+.clean-recurrence-meta div {
+  background: #f7f9fb;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.clean-recurrence-meta dt {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-recurrence-meta dd {
+  color: #1d2939;
+  font-size: 12px;
+  font-weight: 800;
+  margin: 4px 0 0;
+}
+
+.clean-recurrence-task {
+  color: #344054;
+  margin: 0 0 14px;
+}
+
+.clean-recurrence-actions {
+  justify-content: flex-end;
+}
+
+.clean-recurrence-actions form {
+  margin: 0;
+}
+
+.clean-recurrence-occurrences {
+  border-top: 1px solid #e4e7ec;
+  margin-top: 14px;
+  padding-top: 10px;
+}
+
+.clean-recurrence-occurrences summary {
+  color: #475467;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.clean-recurrence-occurrences a {
+  border-bottom: 1px solid #eef2f6;
+  color: #174f91;
+  font-size: 12px;
+  padding: 8px 0;
+  text-decoration: none;
+}
+
+.clean-recurrence-dialog {
+  max-width: 760px;
+}
+
+.clean-recurrence-edit-form {
+  padding: 18px;
+}
+
+@media (max-width: 760px) {
+  .clean-recurrence-form,
+  .clean-recurrence-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-recurrence-form .span-2 {
+    grid-column: auto;
+  }
+
+  .clean-recurrence-card > header {
+    align-items: flex-start;
+  }
 }
 
 .clean-task-filter-row {

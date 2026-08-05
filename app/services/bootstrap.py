@@ -52,7 +52,11 @@ INITIAL_PERMISSIONS = [
     ("tasks.assign.peer", "Atribuir tarefas a utilizadores do mesmo nível"),
     ("tasks.administration.read", "Ver centro de tarefas administração"),
     ("tasks.administration.write", "Gerir centro de tarefas administração"),
-    ("tasks.create_recurring", "Criar tarefas recorrentes"),
+    ("tasks.management.read", "Consultar fila de tarefas Gestão"),
+    ("tasks.management.create", "Criar tarefas na fila Gestão"),
+    ("tasks.management.update", "Alterar tarefas na fila Gestão"),
+    ("tasks.management.close", "Fechar e reabrir tarefas na fila Gestão"),
+    ("tasks.recurring.manage", "Gerir modelos de tarefas recorrentes"),
     ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
     ("stock.read", "Consultar Stock"),
@@ -144,7 +148,11 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.assign.peer",
         "tasks.administration.read",
         "tasks.administration.write",
-        "tasks.create_recurring",
+        "tasks.management.read",
+        "tasks.management.create",
+        "tasks.management.update",
+        "tasks.management.close",
+        "tasks.recurring.manage",
         "documents.read",
         "documents.write",
         "management_center.read",
@@ -211,6 +219,7 @@ INITIAL_TEAMS = [
     ("operations", "Operacoes", "operations"),
     ("workshop", "Oficina", "workshop"),
     ("finance", "Financeira", "administration"),
+    ("management", "Gestão", "management"),
 ]
 
 INITIAL_CATALOGS = {

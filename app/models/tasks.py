@@ -155,6 +155,52 @@ class TaskGuidedFlowStepRun(TimestampMixin, Base):
     generated_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
 
 
+class TaskRecurrenceTemplate(TimestampMixin, Base):
+    __tablename__ = "task_recurrence_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="Europe/Lisbon")
+    frequency: Mapped[str] = mapped_column(String(40), index=True)
+    interval: Mapped[int] = mapped_column(Integer, default=1)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    workspace: Mapped[str] = mapped_column(String(40), index=True)
+    task_type: Mapped[str] = mapped_column(String(80), index=True)
+    task_title: Mapped[str] = mapped_column(String(200))
+    task_description: Mapped[str | None] = mapped_column(Text)
+    task_priority: Mapped[str] = mapped_column(String(40), default="normal")
+    task_category: Mapped[str | None] = mapped_column(String(80))
+    task_subcategory: Mapped[str | None] = mapped_column(String(120))
+    due_offset_days: Mapped[int] = mapped_column(Integer, default=0)
+    assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class TaskRecurrenceOccurrence(Base):
+    __tablename__ = "task_recurrence_occurrences"
+    __table_args__ = (
+        UniqueConstraint(
+            "template_id",
+            "scheduled_for",
+            name="uq_task_recurrence_occurrence_schedule",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("task_recurrence_templates.id", ondelete="CASCADE"), index=True
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="created", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class QuickRecord(TimestampMixin, Base):
     __tablename__ = "quick_records"
 

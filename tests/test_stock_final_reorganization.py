@@ -256,6 +256,15 @@ def test_inventory_draft_can_be_partial_and_session_can_target_one_category(
     db_session.commit()
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
 
+    inventory_page = authenticated_client.get("/v2-clean/stock/inventory")
+    assert inventory_page.status_code == 200
+    assert f'<option value="{counted_category.id}">Categoria contada</option>' in (
+        inventory_page.text
+    )
+    assert f'<option value="{excluded_category.id}">Categoria excluída</option>' in (
+        inventory_page.text
+    )
+
     created = authenticated_client.post(
         "/v2-clean/stock/inventory",
         data={

@@ -1706,6 +1706,11 @@ def stock_inventory_sessions(request: Request, db: DbSession):
                 .where(StockLocation.active.is_(True))
                 .order_by(StockLocation.name)
             ).all(),
+            "categories": db.scalars(
+                select(StockCategory)
+                .where(StockCategory.active.is_(True))
+                .order_by(StockCategory.name, StockCategory.id)
+            ).all(),
         },
     )
 

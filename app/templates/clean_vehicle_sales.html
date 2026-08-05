@@ -176,7 +176,7 @@
                     <span class="{% if row.commercial_margin is not none %}{% if row.commercial_margin < 0 %}sale-negative{% else %}sale-positive{% endif %}{% endif %}"><small>Margem comercial</small>{{ money(row.commercial_margin) }}</span>
                   </div></td>
                   <td><div class="sale-operation-stack"><span><small>Cliente / localização</small>{{ row.client or '-' }}{% if row.location %} · {{ row.location }}{% endif %}</span><span><small>Avaliação</small>{{ row.market_valued_on.strftime('%d/%m/%Y') if row.market_valued_on else '-' }}</span><span><small>Devolução</small>Dev. {{ row.return_on_display }}</span></div></td>
-                  <td><div class="sale-market-stack"><span><small>Preço proposto</small><strong>{{ money(row.selling_price) }}</strong></span><span><small>Origem</small>{{ row.profile.market_value_source if row.profile and row.profile.market_value_source else '-' }}</span><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}?return_to={{ list_return_url|urlencode }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></div></td>
+                  <td><div class="sale-market-stack"><span><small>Origem</small>{{ row.profile.market_value_source if row.profile and row.profile.market_value_source else '-' }}</span><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}?return_to={{ list_return_url|urlencode }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></div></td>
                 </tr>
               {% else %}
                 <tr><td colspan="8" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>

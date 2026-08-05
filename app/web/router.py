@@ -125,6 +125,7 @@ from app.services.portal_access import (
 from app.services.rentway_fleet_importer import (
     import_rentway_fleet_xlsx,
     normalize_rentway_category,
+    normalize_rentway_gearbox,
     preview_rentway_fleet_xlsx,
 )
 from app.services.structured_financial_plan_importer import (
@@ -490,6 +491,12 @@ def rentway_vehicle_context(
                 ),
             }
         )
+    context["gearbox"] = normalize_rentway_gearbox(
+        context.get("gearbox"),
+        (vehicle.version if vehicle else None)
+        or snapshot_value(data, ["version", "versao"]),
+        context.get("groupid"),
+    )
     return context
 
 

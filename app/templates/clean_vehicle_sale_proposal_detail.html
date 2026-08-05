@@ -22,12 +22,13 @@
       <section class="clean-panel clean-card-wide">
         <div class="table-heading flat-heading"><div><h3>Viaturas da proposta</h3><p>Os ajustes abaixo aplicam-se apenas a esta proposta.</p></div></div>
         <div class="clean-doc-table-wrap"><table class="clean-doc-table sale-proposal-lines">
-          <thead><tr><th>Incluir</th><th>Viatura</th><th>Unit</th><th>KM</th><th>Preço geral</th><th>Preço proposto</th><th>Observação</th></tr></thead>
+          <thead><tr><th>Incluir</th><th>Viatura</th><th>Unit</th><th>KM</th><th>Preço geral</th><th>Valor em dívida</th><th>Preço proposto</th><th>Margem negocial</th><th>Observação</th></tr></thead>
           <tbody>{% for line in lines %}{% set item = line.snapshot_json or {} %}<tr>
             <td><input type="checkbox" name="included_line_ids" value="{{ line.id }}" {% if line.included %}checked{% endif %} {% if proposal.status != 'draft' %}disabled{% endif %}></td>
             <td><strong>{{ item.get('plate') or '-' }}</strong><small>{{ item.get('brand') or '' }} {{ item.get('model') or '' }} {{ item.get('version') or '' }}</small></td>
-            <td>{{ item.get('unit') or '-' }}</td><td>{{ item.get('km') or '-' }}</td><td>{{ money(line.base_price) }}</td>
-            <td><input type="number" step="0.01" min="0" name="price_{{ line.id }}" value="{{ line.proposed_price if line.proposed_price is not none else '' }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
+            <td>{{ item.get('unit') or '-' }}</td><td>{{ item.get('km') or '-' }}</td><td>{{ money(line.base_price) }}</td><td>{{ money(item.get('debt')) }}</td>
+            <td><input type="number" step="0.01" min="0" name="price_{{ line.id }}" value="{{ line.proposed_price if line.proposed_price is not none else '' }}" data-proposal-price data-debt="{{ item.get('debt') or '' }}" data-margin-target="proposal-margin-{{ line.id }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
+            <td><strong id="proposal-margin-{{ line.id }}">-</strong></td>
             <td><input name="notes_{{ line.id }}" value="{{ line.notes or '' }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
           </tr>{% endfor %}</tbody>
         </table></div>
@@ -40,4 +41,5 @@
     </section>
   </main>
 </div>
+<script>(()=>{const format=value=>new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(value);document.querySelectorAll('[data-proposal-price]').forEach(input=>{const target=document.getElementById(input.dataset.marginTarget);const update=()=>{const price=Number(input.value),debt=Number(input.dataset.debt);target.textContent=input.value!==''&&input.dataset.debt!==''?format(price-debt):'-'};input.addEventListener('input',update);update()})})();</script>
 {% endblock %}

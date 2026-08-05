@@ -134,6 +134,16 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         market_trade_value=Decimal("21000.00"),
     )
     db_session.add(profile)
+    db_session.add(
+        VehicleFinancialPlan(
+            vehicle_id=vehicle.id,
+            finance_entity="Santander",
+            contract_number="PROP-DEBT-1",
+            outstanding_amount=Decimal("17000.00"),
+            amount_reference_date=date(2026, 8, 1),
+            active=True,
+        )
+    )
     db_session.commit()
 
     created = authenticated_client.post(
@@ -154,7 +164,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert line.snapshot_json["registration"] == "15/01/2022"
     assert line.snapshot_json["colour"] == "Azul"
     assert line.snapshot_json["fuel"] == "Diesel"
-    assert line.snapshot_json["gearbox"] == "EAT8"
+    assert line.snapshot_json["gearbox"] == "Automática"
+    assert line.snapshot_json["debt"] == "17000.00"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -211,11 +222,15 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Cor" in headers
     assert "Combustível" in headers
     assert "Caixa" in headers
+    assert "Valor em dívida" in headers
+    assert "Margem negocial" in headers
     assert "Ano" not in headers
     assert sheet.cell(row=4, column=headers.index("Data matrícula") + 1).value == "15/01/2022"
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
-    assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "EAT8"
+    assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
+    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 17000
+    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 2800
     pdf = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/pdf"
     )

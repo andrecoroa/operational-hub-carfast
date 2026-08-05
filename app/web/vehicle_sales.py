@@ -580,6 +580,7 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "colour": row.get("colour") or "-",
         "fuel": row.get("fuel") or "-",
         "gearbox": row.get("gearbox") or "-",
+        "debt": str(row["debt"]) if row.get("debt") is not None else None,
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
     }
@@ -1550,6 +1551,8 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Unit",
         "KM",
         "Preço",
+        "Valor em dívida",
+        "Margem negocial",
         "Observações",
     ]
     sheet.append(headers)
@@ -1558,10 +1561,17 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         cell.fill = PatternFill("solid", fgColor="173B68")
     for line in lines:
         data = line.snapshot_json or {}
+        debt = decimal_value(data.get("debt"))
+        negotiation_margin = (
+            line.proposed_price - debt
+            if line.proposed_price is not None and debt is not None
+            else None
+        )
         sheet.append([
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
-            data.get("fuel"), data.get("gearbox"), data.get("unit"), data.get("km"), line.proposed_price,
+            data.get("fuel"), data.get("gearbox"), data.get("unit"), data.get("km"),
+            line.proposed_price, debt, negotiation_margin,
             line.notes,
         ])
     for column in sheet.columns:
@@ -1609,22 +1619,35 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
         "Unit",
         "KM",
         "Preço",
+        "Em dívida",
+        "Margem",
         "Observações",
     ]]
     for line in lines:
         item = line.snapshot_json or {}
+        debt = decimal_value(item.get("debt"))
+        negotiation_margin = (
+            line.proposed_price - debt
+            if line.proposed_price is not None and debt is not None
+            else None
+        )
+        vehicle_label = " ".join(
+            str(value or "")
+            for value in (item.get("brand"), item.get("model"), item.get("version"))
+        ).strip()
         data.append([
             item.get("plate") or "-",
             item.get("registration") or "-",
-            " ".join(str(value or "") for value in (item.get("brand"), item.get("model"), item.get("version"))).strip(),
+            Paragraph(vehicle_label or "-", styles["BodyText"]),
             item.get("colour") or "-", item.get("fuel") or "-", item.get("gearbox") or "-",
             item.get("unit") or "-", item.get("km") or "-",
-            money(line.proposed_price), line.notes or "",
+            money(line.proposed_price), money(debt), money(negotiation_margin),
+            Paragraph(line.notes or "", styles["BodyText"]),
         ])
     table = Table(
         data,
         repeatRows=1,
-        colWidths=[55, 62, 170, 52, 62, 52, 43, 48, 62, 125],
+        colWidths=[45, 52, 180, 42, 48, 45, 35, 40, 55, 55, 55, 75],
     )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#173B68")),

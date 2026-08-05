@@ -79,7 +79,7 @@ def test_rentway_mapping_real_headers_normalizes_filter_fields_and_zero_seats():
     assert payload["rentway_category"] == "Comerciais"
     assert payload["rentway_group"] == "C1"
     assert payload["rentway_fuel"] == "Diesel"
-    assert payload["rentway_gearbox"] == "CVM6"
+    assert payload["rentway_gearbox"] == "Manual"
     assert payload["rentway_seats"] is None
     assert payload["rentway_colour"] == "Branco"
     assert payload["rentway_status"] == "RENT"
@@ -95,8 +95,8 @@ def test_rentway_automatic_groups_supply_gearbox_when_source_is_empty():
     for group in ("B3", "C2", "c4", "c5", "d2", "d4", "e2", "G2", "G3", "I2", "J1", "J2", "J3", "L2"):
         assert normalize_rentway_gearbox(None, None, group) == "Automática"
 
-    assert normalize_rentway_gearbox("EAT8", None, "C2") == "EAT8"
-    assert normalize_rentway_gearbox(None, "1.5 BlueHDi CVM6", "C1") == "CVM6"
+    assert normalize_rentway_gearbox("EAT8", None, "C2") == "Automática"
+    assert normalize_rentway_gearbox(None, "1.5 BlueHDi CVM6", "C1") == "Manual"
 
 
 def test_rentway_preview_lists_created_fields_and_import_keeps_raw_snapshot(
@@ -122,7 +122,7 @@ def test_rentway_preview_lists_created_fields_and_import_keeps_raw_snapshot(
     )
 
     assert vehicle.rentway_group == "C1"
-    assert vehicle.rentway_gearbox == "CVM6"
+    assert vehicle.rentway_gearbox == "Manual"
     assert vehicle.rentway_client == "Cliente Atual, Lda."
     assert raw.raw_json["Client Name"] == "Cliente Atual, Lda."
     assert snapshot.data_json["Number Of Seats"] == 5

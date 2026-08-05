@@ -134,7 +134,15 @@ def normalize_rentway_gearbox(
 ) -> str | None:
     text = clean_text(value)
     if text:
-        return text
+        normalized = text.casefold()
+        if any(token in normalized for token in ("manual", "cvm", "bvm")):
+            return "Manual"
+        if any(
+            token in normalized
+            for token in ("auto", "eat", "dsg", "dct", "cvt", "edc", "tiptronic")
+        ):
+            return "Automática"
+        return None
     if (clean_text(rentway_group) or "").upper() in AUTOMATIC_RENTWAY_GROUPS:
         return "Automática"
     version_text = clean_text(version) or ""
@@ -144,7 +152,10 @@ def normalize_rentway_gearbox(
         version_text,
         flags=re.IGNORECASE,
     )
-    return re.sub(r"\s+", "", match.group(1)).upper() if match else None
+    if not match:
+        return None
+    code = re.sub(r"\s+", "", match.group(1)).upper()
+    return "Manual" if code.startswith(("CVM", "BVM", "MANUAL")) else "Automática"
 
 
 def _audit_value(value: Any) -> Any:

@@ -1297,6 +1297,14 @@ def stock_orders(
     linked_article_ids: dict[int, set[int]] = {
         key: set() for key in order_catalog
     }
+    category_names = {
+        category.id: category.name
+        for category in db.scalars(
+            select(StockCategory)
+            .where(StockCategory.active.is_(True))
+            .order_by(StockCategory.name)
+        ).all()
+    }
     for supplier_ref, article in db.execute(
         select(StockArticleSupplierRef, StockArticle)
         .join(StockArticle, StockArticle.id == StockArticleSupplierRef.article_id)
@@ -1310,6 +1318,7 @@ def stock_orders(
                 "id": article.id,
                 "reference": article.internal_ref,
                 "description": article.name,
+                "category": category_names.get(article.category_id, "Sem categoria"),
                 "supplier_ref": supplier_ref.supplier_ref or "",
                 "unit": article.unit,
                 "unit_price": str(supplier_ref.last_cost or ""),
@@ -1332,6 +1341,7 @@ def stock_orders(
                 "id": article.id,
                 "reference": article.internal_ref,
                 "description": article.name,
+                "category": category_names.get(article.category_id, "Sem categoria"),
                 "supplier_ref": "",
                 "unit": article.unit,
                 "unit_price": "",

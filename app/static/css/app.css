@@ -327,7 +327,31 @@
 .stock-counter { display: inline-flex; min-width: 24px; justify-content: center; margin-left: 8px; padding: 2px 7px; border-radius: 99px; color: #fff; background: #52657a; }
 .stock-collapsible > summary { cursor: pointer; color: #10233d; font-weight: 800; }
 .stock-collapsible[open] > summary { margin-bottom: 18px; }
-.stock-dialog-wide { width: min(1120px, calc(100vw - 32px)); }
+.stock-dialog-wide { width: min(1240px, calc(100vw - 32px)); }
+.stock-order-dialog { max-height: 94vh; padding: 0; overflow: hidden; }
+.stock-order-dialog > form { max-height: 94vh; gap: 0; overflow: auto; }
+.stock-order-dialog-header { position: sticky; z-index: 4; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #dce3ea; background: #fff; }
+.stock-order-dialog-header h2,
+.stock-order-dialog-header p { margin: 0; }
+.stock-order-dialog-header button { width: auto; }
+.stock-order-details { padding: 16px 20px; border-bottom: 1px solid #dce3ea; background: #f8fafc; }
+.stock-order-details textarea { min-height: 54px; resize: vertical; }
+.stock-order-catalog { display: grid; gap: 12px; padding: 18px 20px; }
+.stock-order-catalog-title { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.stock-order-catalog-title h3,
+.stock-order-catalog-title p { margin: 0; }
+.stock-order-catalog-title p { margin-top: 3px; color: #65758a; }
+.stock-order-catalog-title > strong { color: #52657a; white-space: nowrap; }
+.stock-order-catalog-filters { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(220px, .4fr); gap: 10px; align-items: start; }
+.stock-order-category-filter { position: relative; }
+.stock-order-category-filter[hidden] { display: none; }
+.stock-order-category-filter > summary { min-height: 42px; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cfd8e2; border-radius: 6px; color: #31465e; background: #fff; cursor: pointer; list-style: none; }
+.stock-order-category-filter > summary::-webkit-details-marker { display: none; }
+.stock-order-category-filter > summary::after { content: "▾"; float: right; }
+.stock-order-category-filter[open] > div { position: absolute; z-index: 6; top: calc(100% + 5px); right: 0; left: 0; display: grid; gap: 4px; max-height: 240px; padding: 8px; overflow: auto; border: 1px solid #cfd8e2; border-radius: 6px; background: #fff; box-shadow: 0 10px 28px rgba(16,35,61,.16); }
+.stock-order-category-filter label { display: flex; align-items: center; gap: 8px; padding: 7px; color: #31465e; cursor: pointer; }
+.stock-order-category-filter label:hover { background: #f1f5f9; }
+.stock-order-category-filter input { width: auto; }
 .stock-pending-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 14px; border: 1px solid #dce3ea; border-radius: 9px; background: #f8fafc; }
 .stock-pending-sources label { display: grid; gap: 6px; color: #42566d; font-size: .86rem; font-weight: 700; }
 .stock-pending-sources select { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #cfd8e2; border-radius: 8px; background: #fff; }
@@ -364,9 +388,22 @@
 .stock-conference-lines th:nth-child(6) { width: 8%; }
 .stock-conference-lines th:nth-child(7) { width: 12%; }
 .stock-conference-lines td { overflow-wrap: anywhere; vertical-align: top; }
-.stock-order-lines { min-width: 1050px; }
-.stock-order-lines th:nth-child(1) { width: 16%; }
-.stock-order-lines th:nth-child(2) { width: 22%; }
+.stock-order-lines { min-width: 1160px; table-layout: fixed; }
+.stock-order-lines th:nth-child(1) { width: 4%; }
+.stock-order-lines th:nth-child(2) { width: 13%; }
+.stock-order-lines th:nth-child(3) { width: 20%; }
+.stock-order-lines th:nth-child(4) { width: 12%; }
+.stock-order-lines th:nth-child(5) { width: 13%; }
+.stock-order-lines th:nth-child(6) { width: 8%; }
+.stock-order-lines th:nth-child(7) { width: 8%; }
+.stock-order-lines th:nth-child(8) { width: 9%; }
+.stock-order-lines th:nth-child(9) { width: 13%; }
+.stock-order-lines td { vertical-align: middle; overflow-wrap: anywhere; }
+.stock-order-lines td input,
+.stock-order-lines td select { min-width: 0; width: 100%; box-sizing: border-box; }
+.stock-order-lines td:first-child input { width: auto; }
+.stock-order-lines tr.is-selected td { background: #edf4ff; }
+.stock-order-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .doc-arch-kpis-five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 

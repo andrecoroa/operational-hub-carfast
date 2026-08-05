@@ -108,6 +108,10 @@ def test_order_catalog_is_supplier_specific_and_can_create_article(
     other_supplier = _supplier(db_session, "Fornecedor Encomenda B")
     linked_id = _article(authenticated_client, "ORDER-LINKED")
     hidden_id = _article(authenticated_client, "ORDER-HIDDEN")
+    category = StockCategory(code="order-filters", name="Filtros", active=True)
+    db_session.add(category)
+    db_session.flush()
+    db_session.get(StockArticle, linked_id).category_id = category.id
     db_session.add_all(
         [
             StockArticleSupplierRef(
@@ -131,6 +135,9 @@ def test_order_catalog_is_supplier_specific_and_can_create_article(
     assert "Artigo ORDER-LINKED" in page.text
     assert "REF-A" in page.text
     assert "Pesquisar referência ou descrição" in page.text
+    assert "Categorias" in page.text
+    assert "<th>Categoria</th>" in page.text
+    assert '"category": "Filtros"' in page.text
 
     workshop = db_session.scalar(
         select(StockLocation).where(StockLocation.code == "WORKSHOP")

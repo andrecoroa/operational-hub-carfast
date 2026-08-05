@@ -136,7 +136,7 @@ def test_automatic_destination_requires_known_high_confidence(
     assert confident_destination(suggestion, confidence) == expected
 
 
-def test_alembic_stock_revision_is_the_only_head():
+def test_alembic_task_recurrence_revision_is_the_only_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["f4b5c6d7e8f9"]
+    assert script.get_heads() == ["e8f9a0b1c2d3"]

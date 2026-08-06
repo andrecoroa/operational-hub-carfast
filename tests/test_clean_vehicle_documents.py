@@ -4300,6 +4300,11 @@ def test_clean_vehicle_documents_treats_cruz_allen_fs_reference_as_invoice(
     assert "Serviços relevantes da fatura" in page.text
     assert "Associar FO" in page.text
     assert f"/v2-clean/documents/{invoice.id}/remove" in page.text
+    assert 'aria-label="Etapas do tratamento da fatura"' in page.text
+    assert "clean-doc-invoice-document-preview" in page.text
+    assert "data-lazy-src=" in page.text
+    assert "Extrair / reprocessar" in page.text
+    assert "Validar documento" in page.text
 
     linked = authenticated_client.post(
         f"/v2-clean/fleet/{vehicle.id}/documents/link-work-order",

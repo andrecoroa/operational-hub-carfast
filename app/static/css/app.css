@@ -17995,7 +17995,7 @@ body.clean-doc-modal-open {
 .clean-doc-detail-open .clean-doc-expanded-detail {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: min(1560px, calc(100vw - 12px));
   height: min(96vh, 980px);
   max-height: 96vh;
@@ -18081,12 +18081,103 @@ body.clean-doc-modal-open {
   position: relative;
   height: 100%;
   min-height: 0;
-  grid-template-columns: minmax(0, 3fr) minmax(480px, 2fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    "document classification"
-    "lines classification";
-  align-items: stretch;
+  grid-template-columns: minmax(420px, 0.92fr) minmax(520px, 1.08fr);
+  grid-template-rows: none;
+  grid-template-areas: none;
+  align-content: start;
+  overflow-y: auto;
+  padding-bottom: 82px;
+}
+
+.clean-doc-invoice-workflow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #dce4ef;
+  background: #f8fafc;
+}
+
+.clean-doc-invoice-workflow span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.clean-doc-invoice-workflow span::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 2px;
+  background: #dce4ef;
+}
+
+.clean-doc-invoice-workflow span:last-child::after {
+  display: none;
+}
+
+.clean-doc-invoice-workflow b {
+  display: grid;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #fff;
+  color: #667085;
+}
+
+.clean-doc-invoice-workflow .is-complete,
+.clean-doc-invoice-workflow .is-complete b {
+  color: #176b36;
+}
+
+.clean-doc-invoice-workflow .is-complete b {
+  border-color: #78b88a;
+  background: #e7f5eb;
+}
+
+.clean-doc-invoice-workflow .is-complete::after {
+  background: #78b88a;
+}
+
+.clean-doc-invoice-workflow .is-current,
+.clean-doc-invoice-workflow .is-current b {
+  color: #9b3f20;
+}
+
+.clean-doc-invoice-workflow .is-current b {
+  border-color: #d27655;
+  background: #fff1eb;
+}
+
+.clean-doc-invoice-document-preview {
+  position: sticky;
+  top: 0;
+  grid-column: 1;
+  grid-row: 1 / span 20;
+  height: calc(96vh - 184px);
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #eef2f6;
+}
+
+.clean-doc-invoice-document-preview iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid > :not(.clean-doc-invoice-document-preview) {
+  grid-column: 2;
+  grid-area: auto;
 }
 
 .clean-doc-detail-document-card dl {
@@ -18104,19 +18195,16 @@ body.clean-doc-modal-open {
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-line-classification-card {
-  position: relative;
-  min-height: 0;
-  max-height: none;
-  height: 100%;
-  padding-bottom: 214px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  position: static;
+  height: auto;
+  padding-bottom: 16px;
+  overflow: visible;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-lines-card {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: auto;
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
@@ -18146,11 +18234,29 @@ body.clean-doc-modal-open {
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions {
-  display: none;
+  position: sticky;
+  bottom: -82px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid #dce4ef;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 -8px 20px rgba(15, 23, 42, 0.06);
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions h4 {
-  margin-bottom: 0;
+  margin: 0 auto 0 0;
+}
+
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions form,
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions .button-link,
+.clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-detail-actions button {
+  width: auto;
 }
 
 .clean-doc-detail-open .clean-doc-invoice-focus-grid .clean-doc-remove-menu {
@@ -18251,13 +18357,25 @@ body.clean-doc-modal-open {
 
   .clean-doc-detail-open .clean-doc-invoice-focus-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "document"
-      "classification"
-      "lines"
-      "note"
-      "actions"
-      "preview";
+    padding-bottom: 16px;
+  }
+
+  .clean-doc-detail-open .clean-doc-invoice-focus-grid > :not(.clean-doc-invoice-document-preview) {
+    grid-column: 1;
+  }
+
+  .clean-doc-invoice-document-preview {
+    position: relative;
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+    height: 52vh;
+    min-height: 360px;
+  }
+
+  .clean-doc-invoice-workflow {
+    grid-template-columns: repeat(5, minmax(96px, 1fr));
+    overflow-x: auto;
   }
 
   .clean-doc-detail-document-card dl {

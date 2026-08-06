@@ -581,9 +581,13 @@ def _proposal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "colour": row.get("colour") or "-",
         "fuel": row.get("fuel") or "-",
         "gearbox": row.get("gearbox") or "-",
+        "cost": str(row["cost"]) if row.get("cost") is not None else None,
         "debt": str(row["debt"]) if row.get("debt") is not None else None,
         "km": str(row["km"]) if row["km"] is not None else None,
         "status": row["status_label"],
+        "vehicle_state": row.get("vehicle_state_label") or "-",
+        "client": vehicle.rentway_client or "-",
+        "return_on": row.get("return_on_display") or "-",
     }
 
 
@@ -1567,6 +1571,14 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         if not proposal:
             return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
         lines = [line for line in _proposal_lines(db, proposal.id) if line.included]
+        vehicle_ids = [line.vehicle_id for line in lines]
+        current_rows = {
+            row["vehicle"].id: row
+            for row in _load_sale_rows(
+                db,
+                select(Vehicle).where(Vehicle.id.in_(vehicle_ids)),
+            )
+        } if vehicle_ids else {}
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Proposta"
@@ -1583,6 +1595,10 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Caixa",
         "Unit",
         "KM",
+        "Custo",
+        "Situação",
+        "Cliente",
+        "Data de devolução",
         "Preço",
         "Valor em dívida",
         "Margem negocial",
@@ -1594,6 +1610,8 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         cell.fill = PatternFill("solid", fgColor="173B68")
     for line in lines:
         data = line.snapshot_json or {}
+        current = current_rows.get(line.vehicle_id, {})
+        current_vehicle = current.get("vehicle")
         debt = decimal_value(data.get("debt"))
         negotiation_margin = (
             line.proposed_price - debt
@@ -1604,6 +1622,10 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
             data.get("fuel"), data.get("gearbox"), data.get("unit"), data.get("km"),
+            decimal_value(data.get("cost")) if data.get("cost") is not None else current.get("cost"),
+            data.get("vehicle_state") or current.get("vehicle_state_label") or "-",
+            data.get("client") or (current_vehicle.rentway_client if current_vehicle else None) or "-",
+            data.get("return_on") or current.get("return_on_display") or "-",
             line.proposed_price, debt, negotiation_margin,
             line.notes,
         ])

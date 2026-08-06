@@ -224,6 +224,10 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Caixa" in headers
     assert "Valor em dívida" in headers
     assert "Margem negocial" in headers
+    assert "Custo" in headers
+    assert "Situação" in headers
+    assert "Cliente" in headers
+    assert "Data de devolução" in headers
     assert "Ano" not in headers
     assert sheet.cell(row=4, column=headers.index("Data matrícula") + 1).value == "15/01/2022"
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
@@ -231,6 +235,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
     assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 17000
     assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 2800
+    assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
     )

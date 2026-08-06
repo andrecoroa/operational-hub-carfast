@@ -239,7 +239,7 @@
                 <td colspan="{{ 9 if table_mode == 'invoice' else 6 }}">
                   <details class="clean-doc-expanded-detail" {% if open_item == row_open_item %}open{% endif %}>
                     <summary>
-                      <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
+                        <span>Fatura {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
                         {% if row.kind == "document" and row.preview_href %}
@@ -265,7 +265,7 @@
                       {% endif %}
                       {% if row.source_label == "FA" or row.archive_group == "invoices" %}<div class="clean-doc-invoice-treatment-pane">{% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-document-card">
-                        <h4>Dados do documento</h4>
+                        <h4>1. Dados extraídos</h4>
                         <dl>
                           <div><dt>Fornecedor</dt><dd>{{ row.supplier_name }}</dd></div>
                           <div><dt>NIF fornecedor</dt><dd>{{ row.supplier_nif or "-" }}</dd></div>
@@ -282,8 +282,8 @@
                         {% if row.kind == "document" %}
                           <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-invoice-nature-card">
                             <div>
-                              <h4>Natureza da fatura</h4>
-                              <p>Usa o mesmo classificador auditado do Centro de Documentação.</p>
+                              <h4>2. Natureza da fatura</h4>
+                              <p>Define como esta fatura deve ser tratada.</p>
                             </div>
                             <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/{{ row.id }}/nature" class="clean-doc-invoice-nature-form">
                               <input type="hidden" name="return_group" value="invoices">
@@ -300,7 +300,7 @@
                           </section>
                         {% endif %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
-                          {{ render_classification_editor(row, form_id, "Serviços relevantes da fatura") }}
+                          {{ render_classification_editor(row, form_id, "4. Serviços da fatura") }}
                           <p class="clean-doc-help-text">Classifica apenas os serviços relevantes da fatura. As linhas faturadas ficam abaixo para consulta e análises futuras.</p>
                         </section>
                       {% endif %}
@@ -337,7 +337,7 @@
                           </div>
                         {% elif row.source_label == "FA" or row.archive_group == "invoices" %}
                           <div class="clean-doc-invoice-lines">
-                            <strong>Linhas faturadas</strong>
+                            <strong>3. Linhas faturadas e associação FO</strong>
                             <table>
                               <thead>
                                 <tr>

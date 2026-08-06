@@ -3735,7 +3735,7 @@ def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
 
     assert response.status_code == 200
     assert ">Faturas<" in response.text
-    assert "Documentação estruturada" in response.text
+    assert "Folhas de obra" in response.text
     assert "Timeline documental" in response.text
 
 
@@ -3888,12 +3888,19 @@ def test_clean_vehicle_documents_import_work_orders(authenticated_client, db_ses
     assert page.status_code == 200
     assert "Folhas de obra" in page.text
     assert "FO-1576" in page.text
-    assert "Documentação estruturada" in page.text
+    assert "Folhas de obra" in page.text
     assert "Fontes importadas" not in page.text
     assert "Manutenção" in page.text
     assert "Calços" in page.text
     assert "Discos" in page.text
     assert f"/v2-clean/fleet/{vehicle.id}/documents/classify-row" in page.text
+
+    invoice_page = authenticated_client.get(
+        f"/v2-clean/fleet/{vehicle.id}/documents?main_group=invoices"
+    )
+    assert invoice_page.status_code == 200
+    assert "FO-1576" in invoice_page.text
+    assert "Folhas de obra" in invoice_page.text
 
     fleet_page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}")
     assert fleet_page.status_code == 200
@@ -4914,7 +4921,7 @@ def test_clean_document_reprocess_structured_source_materializes_rows(authentica
 
     page = authenticated_client.get(f"/v2-clean/fleet/{vehicle.id}/documents")
     assert page.status_code == 200
-    assert "Documentação estruturada" in page.text
+    assert "Folhas de obra" in page.text
     assert "Reprocessar linhas" not in page.text
     assert "1682" in page.text
 

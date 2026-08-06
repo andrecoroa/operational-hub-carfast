@@ -17815,7 +17815,7 @@ button.clean-upload-preview-card {
   display: grid;
   align-items: center;
   justify-items: center;
-  background: rgba(15, 23, 42, 0.46);
+  background: rgba(15, 23, 42, 0.68);
   padding: 24px !important;
 }
 
@@ -17996,9 +17996,9 @@ body.clean-doc-modal-open {
   position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  width: min(1560px, calc(100vw - 12px));
-  height: min(96vh, 980px);
-  max-height: 96vh;
+  width: min(1560px, 90vw);
+  height: 90vh;
+  max-height: 90vh;
   overflow: hidden;
   border-radius: 10px;
   background: #fff;
@@ -18081,7 +18081,7 @@ body.clean-doc-modal-open {
   position: relative;
   height: 100%;
   min-height: 0;
-  grid-template-columns: minmax(420px, 0.92fr) minmax(520px, 1.08fr);
+  grid-template-columns: minmax(420px, 45fr) minmax(520px, 55fr);
   grid-template-rows: none;
   grid-template-areas: none;
   align-content: start;
@@ -18160,7 +18160,7 @@ body.clean-doc-modal-open {
   top: 0;
   grid-column: 1;
   grid-row: 1 / span 20;
-  height: calc(96vh - 184px);
+  height: calc(90vh - 184px);
   min-height: 560px;
   overflow: hidden;
   border: 1px solid #dce4ef;

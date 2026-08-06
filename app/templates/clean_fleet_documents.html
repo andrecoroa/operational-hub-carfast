@@ -242,6 +242,9 @@
                       <span>Detalhe {{ row.detail_label or "documento" }} {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                        {% if row.kind == "document" and row.preview_href %}
+                          <a class="button-link secondary-link clean-doc-summary-command" href="{{ row.preview_href }}" target="_blank" rel="noopener">Ampliar PDF</a>
+                        {% endif %}
                         <button type="button" class="button-link secondary-link clean-doc-detail-close clean-doc-summary-command">Fechar</button>
                       </span>
                     </summary>
@@ -268,7 +271,7 @@
                           <div><dt>Data</dt><dd>{{ row.date_display or "-" }}</dd></div>
                           <div><dt>Nº documento</dt><dd>{{ row.external_reference or row.document_number or "-" }}</dd></div>
                           <div><dt>Folha de obra</dt><dd>{{ row.work_order_reference or "-" }}</dd></div>
-                          <div><dt>KM</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
+                          <div><dt>KM extraídos</dt><dd>{{ row.km if row.km is not none else "-" }}</dd></div>
                           <div><dt>Total c/ IVA</dt><dd>{{ row.total_with_vat or "-" }}</dd></div>
                           <div><dt>Estado OCR</dt><dd>{{ row.ocr_status or row.extraction_state or "-" }}</dd></div>
                           <div><dt>Estado documento</dt><dd>{{ row.status }}</dd></div>
@@ -760,8 +763,8 @@
       <details class="clean-doc-collapsible clean-card-wide" open>
         <summary>
           <span>
-              <b>Documentação estruturada</b>
-              <small>Folhas de obra importadas para classificar por serviço</small>
+              <b>Folhas de obra</b>
+              <small>Detalhes, serviços e associação às faturas desta viatura</small>
             </span>
             <em>{{ structured_classification_rows_total }} linhas</em>
           </summary>
@@ -775,12 +778,12 @@
       </details>
 
       {% if comparison_rows %}
-      <section class="clean-doc-dual-grid">
-        <details class="clean-doc-collapsible clean-card-wide" open>
+      <section class="clean-doc-dual-grid clean-doc-correspondence-section">
+        <details class="clean-doc-collapsible clean-card-wide">
           <summary>
             <span>
-              <b>Comparação FO vs Fatura</b>
-              <small>Coerência financeira</small>
+              <b>Correspondências FO e faturas</b>
+              <small>Só é necessário abrir para rever associações ou documentos em falta</small>
             </span>
             <em>{{ comparison_rows_total }} linhas</em>
           </summary>

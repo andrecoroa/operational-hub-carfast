@@ -8448,7 +8448,13 @@ def clean_fleet_documents(
 
         structured_rows = []
         for row in module_ctx["structured_rows"]:
-            if clean_main_group and row["main_group"] != clean_main_group:
+            # The invoice workspace needs its work orders for association and review.
+            allowed_main_groups = (
+                {"invoices", "work_orders"}
+                if clean_main_group == "invoices"
+                else {clean_main_group}
+            )
+            if clean_main_group and row["main_group"] not in allowed_main_groups:
                 continue
             if status and row["status"] != status and row["comparison_state"] != status:
                 continue

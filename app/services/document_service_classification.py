@@ -23,6 +23,8 @@ SERVICE_CATEGORIES = ("maintenance", "pads", "discs", "tyres", "ipo", "other")
 
 
 def _normalized_values(category: str, values: list[str]) -> list[str]:
+    if category in {"pads", "discs", "tyres"} and "both" in values:
+        values = [value for value in values if value != "both"] + ["front", "rear"]
     allowed = {code for code, _label in DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS[category]}
     cleaned = list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
     invalid = [value for value in cleaned if value not in allowed]
@@ -73,7 +75,14 @@ def service_classification_snapshot(
         .where(VehicleDocumentRecordTag.category.in_(SERVICE_CATEGORIES))
         .order_by(VehicleDocumentRecordTag.id.asc())
     ).all()
-    return _tag_snapshot(list(tags))
+    snapshot = _tag_snapshot(list(tags))
+    normalized: list[dict[str, str | None]] = []
+    for item in snapshot:
+        if item["category"] in {"pads", "discs", "tyres"} and item["value"] == "both":
+            normalized.extend(({**item, "value": "front"}, {**item, "value": "rear"}))
+        else:
+            normalized.append(item)
+    return normalized
 
 
 def save_service_classifications(

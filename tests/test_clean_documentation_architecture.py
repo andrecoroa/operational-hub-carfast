@@ -1203,6 +1203,7 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
             new_value=json.dumps(
                 {
                     "document_number": "FT 44",
+                    "odometer_km": "8180",
                     "total_with_vat": "123.45",
                     "invoice_lines": [
                         {"reference": "OLEO", "description": "Mudança de óleo", "quantity": "1"}
@@ -1216,6 +1217,7 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
     page = authenticated_client.get("/v2-clean/documentation/treatment?family=invoices")
     assert page.status_code == 200
     assert "FT 44" in page.text
+    assert "8180" in page.text
     assert "Mudança de óleo" in page.text
     assert "Serviços da fatura" in page.text
     assert "Validar documento" in page.text
@@ -1230,6 +1232,10 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
         "6. Concluir tratamento"
     )
     assert "doc-treatment-inline-status" in page.text
+    assert "submitter.hasAttribute('formaction')" in page.text
+    assert "FR + TR" not in page.text
+    for label in ("Chaves", "Bateria", "Iluminação", "Lavagem"):
+        assert label in page.text
 
     saved = authenticated_client.post(
         "/v2-clean/documentation/treatment/bulk",
@@ -1378,7 +1384,7 @@ def test_save_services_does_not_change_nature_validation_or_completion(
             "action": "save_services",
             "service_classification_present": "1",
             "maintenance": ["revision", "degradation"],
-            "pads": ["front", "rear"],
+            "pads": "both",
             "return_url": "/v2-clean/documentation/treatment?family=invoices",
         },
         follow_redirects=False,

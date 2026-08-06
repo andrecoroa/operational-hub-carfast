@@ -340,7 +340,10 @@
       try {
         const payload = new FormData(previewForm);
         if (submitter.name) payload.set(submitter.name, submitter.value);
-        const response = await fetch(submitter.formAction || previewForm.action, { method: 'POST', body: payload });
+        const targetAction = submitter.hasAttribute('formaction')
+          ? submitter.formAction
+          : previewForm.action;
+        const response = await fetch(targetAction, { method: 'POST', body: payload });
         const resultUrl = new URL(response.url || window.location.href);
         const failed = Number(resultUrl.searchParams.get('bulk_failed') || 0);
         const reasonCode = resultUrl.searchParams.get('bulk_reason') || resultUrl.searchParams.get('task_error') || '';

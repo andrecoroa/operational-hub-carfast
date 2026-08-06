@@ -12191,7 +12191,12 @@ def clean_documentation_treatment(
             for tag in tags:
                 value = (tag.value or tag.free_text or "").strip()
                 if value:
-                    tags_by_document[tag.document_id][tag.category].append(value)
+                    values = (
+                        ["front", "rear"]
+                        if tag.category in {"pads", "discs", "tyres"} and value == "both"
+                        else [value]
+                    )
+                    tags_by_document[tag.document_id][tag.category].extend(values)
         for row in records_page:
             document = row["document"]
             metadata = _document_latest_ocr_metadata(events_by_document.get(document.id, []))
@@ -18048,6 +18053,10 @@ OCR_FIELD_LABELS = [
     ("vin", "Chassi"),
     ("vehicle_model", "Modelo"),
     ("km", "KM"),
+    ("kms", "KM"),
+    ("odometer_km", "KM"),
+    ("odometer", "KM"),
+    ("mileage", "KM"),
     ("opening_date", "Data abertura"),
     ("work_order_reference", "Folha de obra"),
     ("repair_order_reference", "O.R. fornecedor"),

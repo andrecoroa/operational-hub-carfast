@@ -114,6 +114,8 @@ from app.models.workshop_phased import (
     WorkshopTemplate,
     WorkshopTemplateVersion,
 )
+from app.models.stock import StockArticle, StockLocation
+from app.services.stock import stock_balances
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
     preview_pending_documents,
@@ -20634,6 +20636,8 @@ def clean_workshop_phase(
     history_preview = {"processes": [], "records": [], "diagnostics": []}
     diagnostic_suggestions: list[dict[str, object]] = []
     material_needs: list[WorkshopMaterialNeed] = []
+    stock_request_articles: list[dict[str, object]] = []
+    stock_request_locations: list[StockLocation] = []
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
         if process:
@@ -20692,6 +20696,29 @@ def clean_workshop_phase(
                 .where(WorkshopMaterialNeed.process_id == process.id)
                 .order_by(WorkshopMaterialNeed.created_at.desc())
             ).all()
+            if phase == "reparacao":
+                articles = db.scalars(
+                    select(StockArticle)
+                    .where(StockArticle.active.is_(True))
+                    .order_by(StockArticle.internal_ref, StockArticle.name)
+                ).all()
+                balances = stock_balances(db, article_ids=[item.id for item in articles])
+                stock_request_articles = [
+                    {
+                        "article": item,
+                        "available": sum(
+                            quantity
+                            for (article_id, _location_id), quantity in balances.items()
+                            if article_id == item.id
+                        ),
+                    }
+                    for item in articles
+                ]
+                stock_request_locations = db.scalars(
+                    select(StockLocation)
+                    .where(StockLocation.active.is_(True))
+                    .order_by(StockLocation.name)
+                ).all()
         else:
             vehicle_context = clean_workshop_vehicle_context(db, vehicle_id=vehicle_id, plate=plate)
             validation_prerequisites = clean_workshop_validation_prerequisites(
@@ -20769,6 +20796,8 @@ def clean_workshop_phase(
             "history_preview": history_preview,
             "diagnostic_suggestions": diagnostic_suggestions,
             "material_needs": material_needs,
+            "stock_request_articles": stock_request_articles,
+            "stock_request_locations": stock_request_locations,
             "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
             "phase_print_report": {
@@ -21163,8 +21192,9 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
     origin = str(form.get("origin") or "repair").strip()
     if origin not in {"entry", "diagnostic", "inspection", "repair"}:
         origin = "repair"
+    article_ids = [int(value) for value in form.getlist("article_id") if str(value).isdigit()]
     description = str(form.get("material_description") or "").strip()
-    if not description:
+    if not article_ids and not description:
         return RedirectResponse(
             f"/v2-clean/workshop/reparacao?process_id={process_id}&error=material_required",
             status_code=303,
@@ -21179,38 +21209,62 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
                 f"{clean_workshop_process_url(process)}&readonly=1", status_code=303
             )
         vehicle = db.get(Vehicle, process.vehicle_id) if process.vehicle_id else None
-        need = WorkshopMaterialNeed(
-            process_id=process.id,
-            phase_code="reparacao",
-            origin=origin,
-            operation_code=str(form.get("operation_code") or "repair_material").strip(),
-            operation_label=str(form.get("operation_label") or "Material para reparação").strip(),
-            vehicle_id=process.vehicle_id,
-            vehicle_variant=vehicle.version if vehicle else None,
-            technician_user_id=user_id,
-            location_id=vehicle.current_location_id if vehicle else None,
-            material_code=str(form.get("material_code") or "").strip() or None,
-            material_description=description,
-            requested_quantity=str(form.get("requested_quantity") or "").strip() or None,
-            stock_status="unavailable",
-            detail_json={
-                "stock_contract_version": 1,
-                "availability_requested": False,
-                "neutral_message": "Stock ainda não disponível",
-            },
-        )
-        db.add(need)
+        request_reference = f"OF-{process.id}-{uuid.uuid4().hex[:8].upper()}"
+        selected_articles = {
+            item.id: item
+            for item in db.scalars(select(StockArticle).where(StockArticle.id.in_(article_ids))).all()
+        }
+        lines = []
+        if article_ids:
+            for article_id in article_ids:
+                article = selected_articles.get(article_id)
+                quantity = str(form.get(f"quantity_{article_id}") or "").strip()
+                if not article or not quantity:
+                    continue
+                lines.append((article, quantity))
+        else:
+            lines.append((None, str(form.get("requested_quantity") or "").strip() or "1"))
+        if not lines:
+            return RedirectResponse(
+                f"/v2-clean/workshop/reparacao?process_id={process_id}&error=material_required",
+                status_code=303,
+            )
+        for article, quantity in lines:
+            need = WorkshopMaterialNeed(
+                process_id=process.id,
+                phase_code="reparacao",
+                origin=origin,
+                operation_code=str(form.get("operation_code") or "repair_material").strip(),
+                operation_label=str(form.get("operation_label") or "Material para reparação").strip(),
+                vehicle_id=process.vehicle_id,
+                vehicle_variant=vehicle.version if vehicle else None,
+                technician_user_id=user_id,
+                location_id=vehicle.current_location_id if vehicle else None,
+                material_code=article.internal_ref if article else str(form.get("material_code") or "").strip() or None,
+                material_description=article.name if article else description,
+                requested_quantity=quantity,
+                stock_status="requested",
+                stock_request_reference=request_reference,
+                detail_json={
+                    "stock_contract_version": 2,
+                    "article_id": article.id if article else None,
+                    "notes": str(form.get("notes") or "").strip() or None,
+                },
+            )
+            db.add(need)
         db.flush()
         record_audit(
             db,
             action="workshop.material_need.created",
             entity_type="workshop_material_need",
-            entity_id=need.id,
-            detail=description,
+            entity_id=process.id,
+            detail=request_reference,
             after_json={
                 "origin": origin,
-                "stock_status": "unavailable",
+                "stock_status": "requested",
                 "process_id": process.id,
+                "request_reference": request_reference,
+                "line_count": len(lines),
             },
             user_id=user_id,
         )

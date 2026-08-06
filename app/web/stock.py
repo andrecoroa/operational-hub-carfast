@@ -37,6 +37,8 @@ from app.models.stock import (
     StockReceiptLine,
     StockSupplier,
 )
+from app.models.vehicles import Vehicle
+from app.models.workshop_phased import WorkshopMaterialNeed, WorkshopPhasedProcess
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
     StockConferenceAction,
@@ -1793,6 +1795,98 @@ def stock_movements(request: Request, db: DbSession, movement_type: str = "", q:
     )
 
 
+@stock_router.get("/v2-clean/stock/workshop-requests", response_class=HTMLResponse)
+def stock_workshop_requests(request: Request, db: DbSession, scope: str = "pending"):
+    if denied := _denied(
+        request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
+    ):
+        return denied
+    statement = (
+        select(WorkshopMaterialNeed, WorkshopPhasedProcess, Vehicle)
+        .join(WorkshopPhasedProcess, WorkshopPhasedProcess.id == WorkshopMaterialNeed.process_id)
+        .outerjoin(Vehicle, Vehicle.id == WorkshopMaterialNeed.vehicle_id)
+        .where(WorkshopMaterialNeed.stock_request_reference.is_not(None))
+    )
+    if scope == "pending":
+        statement = statement.where(WorkshopMaterialNeed.stock_status == "requested")
+    elif scope == "completed":
+        statement = statement.where(WorkshopMaterialNeed.stock_status.in_(("delivered", "applied")))
+    rows = db.execute(
+        statement.order_by(WorkshopMaterialNeed.created_at, WorkshopMaterialNeed.id)
+    ).all()
+    grouped: dict[str, dict] = {}
+    for need, process, vehicle in rows:
+        reference = need.stock_request_reference or f"NEED-{need.id}"
+        group = grouped.setdefault(
+            reference,
+            {"reference": reference, "process": process, "vehicle": vehicle, "lines": []},
+        )
+        article_id = (need.detail_json or {}).get("article_id")
+        article = db.get(StockArticle, article_id) if article_id else None
+        group["lines"].append({"need": need, "article": article})
+    return templates.TemplateResponse(
+        request,
+        "clean_stock_workshop_requests.html",
+        {
+            **_page_context(request, db),
+            "requests": list(grouped.values()),
+            "locations": db.scalars(
+                select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
+            ).all(),
+            "scope": scope,
+        },
+    )
+
+
+@stock_router.post("/v2-clean/stock/workshop-requests/{request_reference}/deliver")
+async def deliver_stock_workshop_request(
+    request: Request, request_reference: str, db: DbSession
+):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    form = await request.form()
+    location_id = int(str(form.get("location_id") or "0"))
+    needs = db.scalars(
+        select(WorkshopMaterialNeed)
+        .where(WorkshopMaterialNeed.stock_request_reference == request_reference)
+        .with_for_update()
+    ).all()
+    if not needs:
+        return RedirectResponse("/v2-clean/stock/workshop-requests?error=missing", status_code=303)
+    try:
+        for need in needs:
+            if need.stock_status in {"delivered", "applied"}:
+                continue
+            article_id = int((need.detail_json or {}).get("article_id") or 0)
+            if not article_id:
+                raise StockDomainError("O pedido contém uma linha sem artigo de Stock associado.")
+            quantity = Decimal(str(need.requested_quantity or "0").replace(",", "."))
+            movement = create_manual_movement(
+                db,
+                command=StockMovementCreate(
+                    article_id=article_id,
+                    movement_type="exit",
+                    quantity=quantity,
+                    from_location_id=location_id,
+                    external_reference_type="workshop_material_request",
+                    external_reference_id=request_reference,
+                    reason=f"Entrega à Oficina · processo #{need.process_id}",
+                    effective_date=date.today(),
+                ),
+                user_id=_user_id(request),
+            )
+            need.stock_status = "delivered"
+            detail = dict(need.detail_json or {})
+            detail.update({"movement_id": movement.id, "stock_location_id": location_id})
+            need.detail_json = detail
+        db.commit()
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        return RedirectResponse(
+            f"/v2-clean/stock/workshop-requests?error={urlencode({'message': str(exc)})[8:]}",
+            status_code=303,
+        )
+    return RedirectResponse("/v2-clean/stock/workshop-requests?delivered=1", status_code=303)
 @stock_router.get("/v2-clean/stock/current", response_class=HTMLResponse)
 def stock_current(request: Request, db: DbSession, q: str = "", location_id: str = ""):
     query = {}

@@ -700,33 +700,16 @@
                 </div>
                 <section class="clean-stock-contract">
                   <div>
-                    <h4>Necessidade estruturada de material</h4>
-                    <p>A Oficina regista a operação e a origem. Disponibilidade, reserva, custos e movimentos serão responsabilidade do futuro Stock.</p>
+                    <h4>Pedidos ao Stock</h4>
+                    <p>O pedido fica pendente. As existências só são descontadas quando o Stock confirma a entrega.</p>
                   </div>
-                  <div class="clean-phase-field-grid">
-                    <label>Origem<select name="origin">
-                      <option value="entry">Entrada</option>
-                      <option value="diagnostic">Diagnóstico</option>
-                      <option value="inspection">Inspeção</option>
-                      <option value="repair" selected>Reparação</option>
-                    </select></label>
-                    <label>Operação<input name="operation_label" value="Material para reparação"></label>
-                    <label>Código da operação<input name="operation_code" value="repair_material"></label>
-                    <label>Código/referência<input name="material_code"></label>
-                    <label>Material<input name="material_description" placeholder="Descrição objetiva"></label>
-                    <label>Quantidade<input name="requested_quantity" placeholder="Ex.: 2 un."></label>
-                  </div>
-                  <button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Registar necessidade</button>
-                  <div class="clean-stock-state-line" aria-label="Estados previstos da integração Stock">
-                    <span>Solicitado</span><span>Reserva parcial</span><span>Reserva total</span><span>Entregue</span><span>Aplicado</span><span>Devolvido</span>
-                  </div>
-                  <strong class="clean-stock-unavailable">Stock ainda não disponível</strong>
+                  <button type="button" onclick="document.getElementById('workshop-stock-request').showModal()">Pedir artigos ao Stock</button>
                   {% if material_needs %}
                     <div class="clean-stock-needs-list">
                       {% for need in material_needs %}
                         <article>
                           <div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · origem {{ need.origin }} · {{ need.operation_label }}</span></div>
-                          <em>{{ "Stock ainda não disponível" if need.stock_status == "unavailable" else need.stock_status }}</em>
+                          <em>{{ {"requested":"Pendente no Stock","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em>
                           {% if need.stock_status == "delivered" %}
                             <button type="submit" formmethod="post" formaction="/v2-clean/workshop/material-needs/{{ need.id }}/confirm-applied" formnovalidate>Confirmar aplicação</button>
                           {% endif %}
@@ -735,6 +718,17 @@
                     </div>
                   {% endif %}
                 </section>
+                <dialog id="workshop-stock-request" class="stock-dialog clean-workshop-stock-dialog">
+                  <div class="stock-card-heading"><div><h3>Pedir artigos ao Stock</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>
+                  <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th></th><th>Referência</th><th>Artigo</th><th>Disponível</th><th>Qtd.</th></tr></thead><tbody>
+                    {% for row in stock_request_articles %}<tr><td><input type="checkbox" name="article_id" value="{{ row.article.id }}"></td><td>{{ row.article.internal_ref }}</td><td>{{ row.article.name }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><input type="number" min="1" step="1" name="quantity_{{ row.article.id }}" value="1"></td></tr>{% else %}<tr><td colspan="5">Sem artigos ativos.</td></tr>{% endfor %}
+                  </tbody></table></div>
+                  <div>
+                    <input type="hidden" name="origin" value="repair"><input type="hidden" name="operation_code" value="repair_material"><input type="hidden" name="operation_label" value="Material para reparação">
+                    <label>Notas<textarea name="notes" rows="2" placeholder="Observações para o Stock"></textarea></label>
+                    <div class="stock-actions"><button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Criar pedido</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
+                  </div>
+                </dialog>
                 <label>Fora da autorização / trabalhos adicionais não autorizados<textarea name="repair_outside_authorization" rows="5" placeholder="Registar exclusões, material não autorizado ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
               </div>
             </article>

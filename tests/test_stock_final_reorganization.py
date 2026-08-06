@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -20,6 +21,8 @@ from app.models.stock import (
     StockSupplier,
 )
 from app.models.workshop import WorkshopProcess
+from app.models.workshop_phased import WorkshopMaterialNeed, WorkshopPhasedProcess
+from app.models.vehicles import Vehicle
 from app.services.stock import stock_balances
 from app.services.users import create_user
 
@@ -48,6 +51,88 @@ def _login(client, email: str, password: str) -> None:
     )
     assert response.status_code == 303
     client.post("/change-notice", data={"next_url": "/v2-clean"}, follow_redirects=False)
+
+
+def test_workshop_request_only_moves_stock_when_delivery_is_confirmed(
+    authenticated_client, db_session
+):
+    vehicle = Vehicle(plate="ST-10-CK", active=True, lifecycle_status="active")
+    article = StockArticle(internal_ref="WORK-001", name="Filtro oficina", unit="un.")
+    location = StockLocation(code="WORKSHOP-TEST", name="Oficina teste", active=True)
+    db_session.add_all([vehicle, article, location])
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Reparação ST-10-CK",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="reparacao",
+        priority="normal",
+        initial_km=54321,
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.add(
+        StockMovement(
+            article_id=article.id,
+            movement_type="entry",
+            quantity=Decimal("5"),
+            unit="un.",
+            to_location_id=location.id,
+            reason="Stock inicial de teste",
+            effective_date=date.today(),
+        )
+    )
+    db_session.commit()
+
+    created = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/material-needs",
+        data={"article_id": str(article.id), f"quantity_{article.id}": "2", "origin": "repair"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    need = db_session.scalar(
+        select(WorkshopMaterialNeed).where(WorkshopMaterialNeed.process_id == process.id)
+    )
+    assert need is not None and need.stock_status == "requested"
+    assert db_session.scalar(select(func.count(StockMovement.id))) == 1
+    db_session.refresh(process)
+    assert (process.current_phase_code, process.initial_km, process.status) == (
+        "reparacao",
+        54321,
+        "open",
+    )
+
+    queue = authenticated_client.get("/v2-clean/stock/workshop-requests")
+    assert queue.status_code == 200
+    assert need.stock_request_reference in queue.text
+    assert "Filtro oficina" in queue.text
+
+    delivered = authenticated_client.post(
+        f"/v2-clean/stock/workshop-requests/{need.stock_request_reference}/deliver",
+        data={"location_id": str(location.id)},
+        follow_redirects=False,
+    )
+    assert delivered.status_code == 303
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count(StockMovement.id))) == 2
+    assert db_session.get(WorkshopMaterialNeed, need.id).stock_status == "delivered"
+    assert stock_balances(db_session)[(article.id, location.id)] == Decimal("3.000")
+
+    authenticated_client.post(
+        f"/v2-clean/stock/workshop-requests/{need.stock_request_reference}/deliver",
+        data={"location_id": str(location.id)},
+        follow_redirects=False,
+    )
+    assert db_session.scalar(select(func.count(StockMovement.id))) == 2
+    db_session.refresh(process)
+    assert (process.current_phase_code, process.initial_km, process.status) == (
+        "reparacao",
+        54321,
+        "open",
+    )
 
 
 def test_article_table_is_short_and_integer_formatted(authenticated_client):

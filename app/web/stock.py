@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import mimetypes
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -77,6 +78,13 @@ from app.web.router import document_archive_root, sanitize_archive_component, te
 stock_router = APIRouter()
 ZERO = Decimal("0")
 logger = logging.getLogger(__name__)
+
+TYRE_SIZE_RE = re.compile(
+    r"(?P<width>\d{3})\s*/\s*(?P<profile>\d{2,3})\s*R\s*(?P<rim>\d{2})"
+    r"(?:\s+(?:(?P<xl_before>XL)\s*)?(?P<load>\d{2,3})(?P<speed>[A-Z])"
+    r"(?:\s*(?P<xl_after>XL))?)?",
+    re.IGNORECASE,
+)
 
 
 def _user_id(request: Request) -> int | None:
@@ -175,6 +183,31 @@ def _article_rows(db: DbSession, articles: list[StockArticle]) -> list[dict]:
     return rows
 
 
+def _tyre_table_details(name: str) -> dict:
+    match = TYRE_SIZE_RE.search(name or "")
+    if not match:
+        return {"measure": None, "brand_model": name, "sort_key": (1, 0, 0, 0, 0, "", name)}
+    width = int(match.group("width"))
+    profile = int(match.group("profile"))
+    rim = int(match.group("rim"))
+    load = int(match.group("load")) if match.group("load") else 0
+    speed = (match.group("speed") or "").upper()
+    xl = bool(match.group("xl_before") or match.group("xl_after"))
+    measure = f"{width}/{profile} R{rim}"
+    if load and speed:
+        measure += f" {load}{speed}"
+    if xl:
+        measure += " XL"
+    remainder = f"{name[:match.start()]} {name[match.end():]}".strip(" -·")
+    remainder = re.sub(r"\s+", " ", remainder)
+    remainder = re.sub(r"^(?:PNEUS?)\s+", "", remainder, flags=re.IGNORECASE)
+    return {
+        "measure": measure,
+        "brand_model": remainder or "Por confirmar",
+        "sort_key": (0, width, profile, rim, load, speed, remainder.casefold()),
+    }
+
+
 @stock_router.get("/v2-clean/stock", response_class=HTMLResponse)
 def stock_dashboard(request: Request, db: DbSession):
     if denied := _denied(
@@ -261,13 +294,22 @@ def stock_articles(
                 row["display_available"] = row["by_location"].get(location.code, ZERO)
     if low_stock:
         rows = [row for row in rows if row["low"]]
+    categories = db.scalars(select(StockCategory).order_by(StockCategory.name)).all()
+    selected_category = next(
+        (category for category in categories if category.id == clean_category_id), None
+    )
+    tyre_view = bool(selected_category and selected_category.name.strip().casefold() == "pneus")
+    if tyre_view:
+        for row in rows:
+            row["tyre"] = _tyre_table_details(row["article"].name)
+        rows.sort(key=lambda row: (row["tyre"]["sort_key"], row["article"].internal_ref))
     return templates.TemplateResponse(
         request,
         "clean_stock_articles.html",
         {
             **_page_context(request, db),
             "rows": rows,
-            "categories": db.scalars(select(StockCategory).order_by(StockCategory.name)).all(),
+            "categories": categories,
             "suppliers": db.scalars(select(StockSupplier).order_by(StockSupplier.name)).all(),
             "locations": db.scalars(select(StockLocation).order_by(StockLocation.name)).all(),
             "filters": {
@@ -278,6 +320,7 @@ def stock_articles(
                 "state": state,
                 "low_stock": low_stock,
             },
+            "tyre_view": tyre_view,
         },
     )
 

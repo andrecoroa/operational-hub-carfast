@@ -55,14 +55,8 @@ def test_article_table_is_short_and_integer_formatted(authenticated_client):
     response = authenticated_client.get("/v2-clean/stock/articles")
 
     assert response.status_code == 200
-    for heading in (
-        "Referência",
-        "Designação curta",
-        "Categoria",
-        "Fornecedor",
-        "Disponível",
-        "Estado",
-    ):
+    assert '<th class="stock-reference-column">Referência</th>' in response.text
+    for heading in ("Designação curta", "Categoria", "Fornecedor", "Disponível", "Estado"):
         assert f"<th>{heading}</th>" in response.text
     assert "<th>Custo" not in response.text
     assert "<th>Mínimo" not in response.text
@@ -77,6 +71,53 @@ def test_article_table_is_short_and_integer_formatted(authenticated_client):
     assert "<th>Referência</th><th>Descrição</th>" in orders.text
     assert "Artigos do fornecedor" in orders.text
     assert "Seleciona primeiro o fornecedor" in orders.text
+
+
+def test_article_table_separates_and_sorts_tyre_measure_only_in_tyre_view(
+    authenticated_client, db_session
+):
+    tyre_category = StockCategory(code="tyres-table", name="Pneus", active=True)
+    other_category = StockCategory(code="parts-table", name="Peças", active=True)
+    db_session.add_all([tyre_category, other_category])
+    db_session.flush()
+    articles = [
+        StockArticle(
+            internal_ref="TYRE-195",
+            name="195/55R16 87V AQUILA PRO PNEU",
+            category_id=tyre_category.id,
+            unit="un.",
+        ),
+        StockArticle(
+            internal_ref="TYRE-185",
+            name="185/65R15 XL 92V QUATRAC VREDESTEIN",
+            category_id=tyre_category.id,
+            unit="un.",
+        ),
+        StockArticle(
+            internal_ref="PART-001",
+            name="Filtro de óleo",
+            category_id=other_category.id,
+            unit="un.",
+        ),
+    ]
+    db_session.add_all(articles)
+    db_session.commit()
+
+    tyre_page = authenticated_client.get(
+        f"/v2-clean/stock/articles?category_id={tyre_category.id}"
+    )
+    assert tyre_page.status_code == 200
+    assert "<th class=\"stock-tyre-measure-column\">Medida</th>" in tyre_page.text
+    assert "Marca / modelo" in tyre_page.text
+    assert "185/65 R15 92V XL" in tyre_page.text
+    assert "QUATRAC VREDESTEIN" in tyre_page.text
+    assert tyre_page.text.index("TYRE-185") < tyre_page.text.index("TYRE-195")
+
+    mixed_page = authenticated_client.get("/v2-clean/stock/articles")
+    assert mixed_page.status_code == 200
+    assert "Designação curta" in mixed_page.text
+    assert "Filtro de óleo" in mixed_page.text
+    assert "stock-tyre-measure-column\">Medida" not in mixed_page.text
 
 
 def test_articles_can_be_classified_in_bulk(authenticated_client, db_session):

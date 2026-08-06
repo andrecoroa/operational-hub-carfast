@@ -21,13 +21,12 @@
     </form>
     <section class="stock-card flat-card"><form method="post" action="/v2-clean/stock/articles/bulk-category" id="stock-bulk-category">
       {% if can_operate_stock %}<div class="stock-actions stock-bulk-actions"><strong><span id="stock-selected-count">0</span> selecionados</strong><select name="category_id" aria-label="Categoria a aplicar"><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select><button type="submit" disabled id="stock-apply-category">Aplicar categoria</button></div>{% endif %}
-      <div class="stock-table-wrap"><table class="stock-table stock-table-compact">
-        <thead><tr>{% if can_operate_stock %}<th><input type="checkbox" id="stock-select-all" aria-label="Selecionar todos"></th>{% endif %}<th>Referência</th><th>Designação curta</th><th>Categoria</th><th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead>
+      <div class="stock-table-wrap"><table class="stock-table stock-table-compact stock-article-table{% if tyre_view %} is-tyre-view{% endif %}">
+        <thead><tr>{% if can_operate_stock %}<th class="stock-select-column"><input type="checkbox" id="stock-select-all" aria-label="Selecionar todos"></th>{% endif %}<th class="stock-reference-column">Referência</th>{% if tyre_view %}<th class="stock-tyre-measure-column">Medida</th><th>Marca / modelo</th>{% else %}<th>Designação curta</th><th>Categoria</th>{% endif %}<th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
-          {% if can_operate_stock %}<td><input type="checkbox" name="article_ids" value="{{ row.article.id }}" class="stock-row-select" aria-label="Selecionar {{ row.article.internal_ref }}"></td>{% endif %}
-          <td><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td>
-          <td class="stock-short-name" title="{{ row.article.name }}">{{ row.article.name }}</td>
-          <td>{{ row.category.name if row.category else '-' }}</td>
+          {% if can_operate_stock %}<td class="stock-select-column"><input type="checkbox" name="article_ids" value="{{ row.article.id }}" class="stock-row-select" aria-label="Selecionar {{ row.article.internal_ref }}"></td>{% endif %}
+          <td class="stock-reference-column"><a href="/v2-clean/stock/articles/{{ row.article.id }}">{{ row.article.internal_ref }}</a></td>
+          {% if tyre_view %}<td class="stock-tyre-measure-column"><strong>{{ row.tyre.measure or 'Por identificar' }}</strong></td><td class="stock-short-name" title="{{ row.article.name }}">{{ row.tyre.brand_model }}</td>{% else %}<td class="stock-short-name" title="{{ row.article.name }}">{{ row.article.name }}</td><td>{{ row.category.name if row.category else '-' }}</td>{% endif %}
           <td>{{ row.supplier.name if row.supplier else '-' }}</td>
           <td><strong>{{ row.display_available|default(row.available)|int }}</strong> {{ row.article.unit }}</td>
           <td><span class="stock-badge {{ 'neutral' if not row.article.active else ('warning' if row.low else 'success') }}">{{ {'active':'Ativo','inactive':'Inativo','discontinued':'Descontinuado'}.get(row.article.status, 'Ativo' if row.article.active else 'Inativo') }}</span></td>

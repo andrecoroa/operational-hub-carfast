@@ -321,6 +321,10 @@
 .stock-row-details dt { color: #65758a; font-size: .72rem; font-weight: 700; }
 .stock-row-details dd { margin: 3px 0 0; }
 .stock-short-name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stock-article-table .stock-select-column { width: 42px; padding-left: 8px; padding-right: 4px; text-align: center; }
+.stock-article-table .stock-reference-column { width: 150px; padding-left: 4px; }
+.stock-article-table .stock-tyre-measure-column { width: 160px; white-space: nowrap; }
+.stock-article-table.is-tyre-view .stock-short-name { max-width: 280px; }
 .stock-badge.danger { color: #9c2d25; background: #fff0ee; }
 .stock-row-divergent td { background: #fff6f2; }
 .stock-active-row td { background: #edf4ff; }

@@ -263,6 +263,7 @@
                           <iframe title="{{ row.detail_label or row.archive_label or row.title or 'Documento' }}" data-lazy-src="{{ row.preview_href }}#toolbar=1&navpanes=0"></iframe>
                         </section>
                       {% endif %}
+                      {% if row.source_label == "FA" or row.archive_group == "invoices" %}<div class="clean-doc-invoice-treatment-pane">{% endif %}
                       <section class="clean-doc-detail-card clean-doc-detail-document-card">
                         <h4>Dados do documento</h4>
                         <dl>
@@ -467,6 +468,7 @@
                         {% endif %}
                         <button type="button" class="button-link secondary-link clean-doc-detail-close">Fechar detalhes</button>
                       </section>
+                      {% if row.source_label == "FA" or row.archive_group == "invoices" %}</div>{% endif %}
                     </div>
                     {% if row.kind == "document" %}
                       <form id="remove-document-{{ row.id }}" method="post" action="/v2-clean/documents/{{ row.id }}/remove" hidden>

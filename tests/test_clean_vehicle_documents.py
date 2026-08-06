@@ -4214,6 +4214,72 @@ def test_clean_vehicle_documents_saves_multiple_services_and_custom_values(authe
     assert {tag.free_text for tag in tags if tag.free_text} == {"Bateria", "Correia auxiliar"}
 
 
+def test_clean_vehicle_documents_reassociates_invoice_before_saving_services(
+    authenticated_client,
+    db_session,
+):
+    vehicle = _create_vehicle(db_session)
+    previous_vehicle = Vehicle(
+        plate="ZZ-99-ZZ",
+        brand="Previous",
+        model="Vehicle",
+        lifecycle_status="active",
+        active=True,
+    )
+    db_session.add(previous_vehicle)
+    db_session.flush()
+    invoice = Document(
+        title="Fatura com associação antiga",
+        document_type="workshop_supplier_invoice",
+        source="v2_clean_manual",
+        entry_channel="v2_clean_manual",
+        original_name="fatura-associacao-antiga.pdf",
+        file_name="fatura-associacao-antiga.pdf",
+        storage_provider="local",
+        storage_path="Frota/fatura-associacao-antiga.pdf",
+        folder_path="Frota/Faturas",
+        status="received",
+        vehicle_id=previous_vehicle.id,
+        plate=vehicle.plate,
+    )
+    db_session.add(invoice)
+    db_session.commit()
+    db_session.refresh(invoice)
+
+    response = authenticated_client.post(
+        f"/v2-clean/fleet/{vehicle.id}/documents/classify-row",
+        data={
+            "document_id": str(invoice.id),
+            "return_group": "invoices",
+            "open_item": f"document-{invoice.id}",
+            "maintenance": "revision",
+            "classification_action": "validate",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert f"open_item=document-{invoice.id}" in response.headers["location"]
+    db_session.refresh(invoice)
+    assert invoice.vehicle_id == vehicle.id
+    assert invoice.plate == vehicle.plate
+    assert invoice.status == "classified"
+    tags = db_session.scalars(
+        select(VehicleDocumentRecordTag).where(
+            VehicleDocumentRecordTag.document_id == invoice.id
+        )
+    ).all()
+    assert {(tag.category, tag.value) for tag in tags} == {("maintenance", "revision")}
+    events = db_session.scalars(
+        select(DocumentEvent).where(DocumentEvent.document_id == invoice.id)
+    ).all()
+    association_events = [
+        event for event in events if event.action == "document.treatment.associate"
+    ]
+    assert len(association_events) == 1
+    assert "Associação corrigida" in (association_events[0].new_value or "")
+
+
 def test_clean_vehicle_documents_shows_existing_invoice_ocr_lines(authenticated_client, db_session):
     vehicle = _create_vehicle(db_session)
     invoice = Document(

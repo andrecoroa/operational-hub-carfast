@@ -20090,13 +20090,17 @@ def clean_fleet_documents_save_classification_row(
                 )
             ):
                 return RedirectResponse(f"/v2-clean/fleet/{vehicle_id}/documents", status_code=303)
-            if document.vehicle_id is None:
+            if document.vehicle_id != vehicle_id:
                 apply_document_treatment_action(
                     db,
                     document=document,
                     action="associate",
                     user_id=user_id,
-                    reason="Associação confirmada na ficha da viatura",
+                    reason=(
+                        "Associação corrigida e confirmada na ficha da viatura"
+                        if document.vehicle_id is not None
+                        else "Associação confirmada na ficha da viatura"
+                    ),
                     plate=vehicle.plate or document.plate or "",
                 )
             save_service_classifications(

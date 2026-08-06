@@ -26244,3 +26244,9 @@ body.clean-task-preview-open {
   border-left-color: #b42318;
   background: #fff1f0;
 }
+.doc-plate-warning {
+  display: block;
+  margin-top: 0.35rem;
+  color: #9a4a16;
+  font-weight: 700;
+}

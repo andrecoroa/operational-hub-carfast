@@ -100,6 +100,12 @@
             <option value="triage">Triagem</option>
           </select>
           <input name="plate" placeholder="Matrícula comum">
+          <select name="plate_context">
+            <option value="">Manter situação da matrícula</option>
+            <option value="historical_fleet">Frota antiga</option>
+            <option value="incorrect">Incorreta no documento</option>
+            <option value="unidentified">Inexistente / não identificada</option>
+          </select>
           <input name="reason" placeholder="Motivo / observação">
           <button type="button" id="doc-treatment-review-bulk">Rever lote</button>
         </div>
@@ -129,7 +135,11 @@
                     {% if row.kind == 'expected' %}<span class="doc-expected-invoice-label">Fatura esperada</span>{% endif %}
                   </td>
                   <td>{{ row.group_label }}{% if row.kind == 'expected' and row.supplier_nif %}<small>NIF {{ row.supplier_nif }}</small>{% endif %}</td>
-                  <td>{% if row.kind == 'document' %}{{ row.document.plate or '—' }}{% elif row.vehicle %}{{ row.vehicle.plate or row.vehicle.vin }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% if row.kind == 'document' %}{{ row.document.plate or '—' }}{% elif row.vehicle %}{{ row.vehicle.plate or row.vehicle.vin }}{% else %}—{% endif %}
+                    {% if row.kind == 'document' and row.plate_context_label %}<small class="doc-plate-warning">{{ row.plate_context_label }}</small>{% endif %}
+                    {% if row.kind == 'document' and row.plate_association_warning %}<small class="doc-plate-warning">{{ row.plate_association_warning }}</small>{% endif %}
+                  </td>
                   <td>{{ dimension_badge(row.dimensions.nature) }}</td>
                   <td>{{ dimension_badge(row.dimensions.association) }}</td>
                   <td>{{ dimension_badge(row.dimensions.extraction) }}</td>
@@ -150,6 +160,8 @@
                       data-nature="{{ row.workflow.invoice_nature or '' if row.kind == 'document' else '' }}"
                       data-destination="{{ row.workflow.destination_status or '' if row.kind == 'document' else '' }}"
                       data-plate="{{ row.document.plate or '' if row.kind == 'document' else (row.vehicle.plate or '' if row.vehicle else '') }}"
+                      data-plate-context="{{ row.plate_context if row.kind == 'document' else '' }}"
+                      data-plate-warning="{{ row.plate_association_warning if row.kind == 'document' else '' }}"
                       data-nature-status="{{ row.dimensions.nature.status }}"
                       data-association-status="{{ row.dimensions.association.status }}"
                       data-extraction-status="{{ row.dimensions.extraction.status }}"
@@ -217,7 +229,14 @@
           <input type="hidden" name="item_refs" id="doc-treatment-preview-ref">
           <input type="hidden" name="return_url" value="{{ return_url }}">
           <section data-real-document-section><h3>Natureza da fatura</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label></section>
-          <section><h3>Associação</h3><label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label><label data-real-document-section>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label></section>
+          <section>
+            <h3>Associação</h3>
+            <label>Matrícula<input name="plate" id="doc-treatment-preview-plate" placeholder="Matrícula"></label>
+            <label data-real-document-section>Destino<select name="destination" id="doc-treatment-preview-destination"><option value="">Manter destino</option><option value="invoices">Faturas</option><option value="diagnostics">Diagnósticos</option><option value="archive">Arquivo</option><option value="triage">Triagem</option></select></label>
+            <label data-real-document-section>Situação da matrícula<select name="plate_context" id="doc-treatment-preview-plate-context"><option value="">Sem indicação especial</option><option value="historical_fleet">Matrícula de frota antiga</option><option value="incorrect">Matrícula incorreta no documento</option><option value="unidentified">Matrícula inexistente ou não identificada</option></select></label>
+            <p class="doc-plate-warning" id="doc-treatment-preview-plate-warning" hidden></p>
+            <p class="doc-treatment-help">A indicação fica no histórico do documento. Ao trocar a associação para outra matrícula, a alteração também fica registada para consulta futura.</p>
+          </section>
           <div id="doc-treatment-inline-content"></div>
           <section data-real-document-section><h3>Decisão e auditoria</h3><label>Motivo / observação<textarea id="doc-treatment-preview-reason" name="reason" rows="3" placeholder="Obrigatório para concluir com exceção ou remover"></textarea></label><div class="doc-treatment-action-help"><p><strong>Guardar natureza/pendente:</strong> guarda a classificação escolhida sem concluir o documento.</p><p><strong>Associar viatura:</strong> valida a matrícula e liga definitivamente esta fatura à ficha da viatura.</p><p><strong>Criar tarefa de auditoria:</strong> cria uma tarefa na fila Auditoria e usa esta observação como descrição.</p><p><strong>Concluir com exceção:</strong> fecha apesar de pré-requisitos em falta; exige motivo e deixa auditoria explícita.</p></div><a id="doc-treatment-detail-link" href="#">Abrir ficha técnica completa</a></section>
           {% if can_manage_documents %}<footer>
@@ -301,6 +320,12 @@
       document.getElementById('doc-treatment-preview-nature').value = button.dataset.nature || '';
       document.getElementById('doc-treatment-preview-destination').value = button.dataset.destination || '';
       document.getElementById('doc-treatment-preview-plate').value = button.dataset.plate || '';
+      document.getElementById('doc-treatment-preview-plate-context').value = button.dataset.plateContext || '';
+      const plateWarning = document.getElementById('doc-treatment-preview-plate-warning');
+      if (plateWarning) {
+        plateWarning.textContent = button.dataset.plateWarning || '';
+        plateWarning.hidden = !button.dataset.plateWarning;
+      }
       const returnTarget = new URL(window.location.href);
       returnTarget.searchParams.set('open_item', button.dataset.itemRef || '');
       if (previewReturnUrl) previewReturnUrl.value = `${returnTarget.pathname}${returnTarget.search}`;

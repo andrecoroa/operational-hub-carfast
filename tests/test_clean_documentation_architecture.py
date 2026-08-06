@@ -1294,6 +1294,134 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
     ) is not None
 
 
+def test_treatment_preview_reopens_outside_current_filter_and_keeps_plate_context(
+    authenticated_client,
+    db_session,
+):
+    document = Document(
+        title="Fatura de viatura antiga",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="frota-antiga.pdf",
+        file_name="frota-antiga.pdf",
+        storage_provider="local",
+        storage_path="Faturas/frota-antiga.pdf",
+        status="pending_validation",
+        plate="OLD-01",
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="received",
+            association_status="unassociated",
+            extraction_status="not_requested",
+            validation_status="pending",
+            destination_status="invoices",
+        )
+    )
+    db_session.commit()
+
+    saved = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": f"document:{document.id}",
+            "action": "classify",
+            "invoice_nature": "operacional",
+            "plate_context": "historical_fleet",
+            "return_url": (
+                "/v2-clean/documentation/treatment?family=invoices&stage=classify"
+                f"&open_item=document:{document.id}"
+            ),
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert saved.status_code == 303
+    assert f"open_item=document:{document.id}" in saved.headers["location"]
+    page = authenticated_client.get(saved.headers["location"])
+    assert page.status_code == 200
+    assert "Fatura de viatura antiga" in page.text
+    assert "Matrícula de frota antiga" in page.text
+    assert f'data-item-ref="document:{document.id}"' in page.text
+    assert db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "document.plate_context",
+            DocumentEvent.new_value == "historical_fleet",
+        )
+    ) is not None
+
+
+def test_treatment_association_change_leaves_permanent_plate_warning(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(plate="NEW-02", active=True)
+    document = Document(
+        title="Fatura com matrícula corrigida",
+        document_type="workshop_supplier_invoice",
+        classification="invoice",
+        source="document_inbox",
+        original_name="matricula-corrigida.pdf",
+        file_name="matricula-corrigida.pdf",
+        storage_provider="local",
+        storage_path="Faturas/matricula-corrigida.pdf",
+        status="pending_validation",
+        plate="WRONG-01",
+    )
+    db_session.add_all([vehicle, document])
+    db_session.flush()
+    db_session.add(
+        DocumentWorkflowState(
+            document_id=document.id,
+            ingestion_status="completed",
+            association_status="unassociated",
+            extraction_status="extracted",
+            validation_status="pending",
+            destination_status="invoices",
+            invoice_nature="operacional",
+        )
+    )
+    db_session.commit()
+
+    response = authenticated_client.post(
+        "/v2-clean/documentation/treatment/bulk",
+        data={
+            "item_refs": f"document:{document.id}",
+            "action": "associate",
+            "plate": vehicle.plate,
+            "plate_context": "incorrect",
+            "return_url": (
+                "/v2-clean/documentation/treatment?family=invoices"
+                f"&open_item=document:{document.id}"
+            ),
+        },
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert response.status_code == 303
+    stored = db_session.get(Document, document.id)
+    assert stored.vehicle_id == vehicle.id
+    assert stored.plate == "NEW-02"
+    change = db_session.scalar(
+        select(DocumentEvent).where(
+            DocumentEvent.document_id == document.id,
+            DocumentEvent.action == "document.association_plate_changed",
+        )
+    )
+    assert change is not None
+    assert change.old_value == "WRONG-01"
+    assert change.new_value == "NEW-02"
+    page = authenticated_client.get(response.headers["location"])
+    assert "Matrícula incorreta no documento" in page.text
+    assert "Associação alterada de WRONG-01 para NEW-02" in page.text
+
+
 @pytest.mark.parametrize(
     "path, expected_label",
     [

@@ -11862,6 +11862,7 @@ def clean_documentation_treatment(
     stage: str = "",
     page: int = 1,
     page_size: int = 25,
+    open_item: str = "",
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -12006,6 +12007,28 @@ def clean_documentation_treatment(
             if actual_limit
             else []
         )
+        requested_document_id = (
+            parse_int_from_text(open_item.removeprefix("document:"))
+            if open_item.startswith("document:")
+            else None
+        )
+        if requested_document_id and all(
+            document.id != requested_document_id for document, _state in records_page_raw
+        ):
+            requested_row = db.execute(
+                select(Document, DocumentWorkflowState)
+                .outerjoin(
+                    DocumentWorkflowState,
+                    DocumentWorkflowState.document_id == Document.id,
+                )
+                .where(
+                    Document.id == requested_document_id,
+                    _documentation_family_condition(clean_family),
+                    ~Document.status.in_({"archived", "removed", "deleted"}),
+                )
+            ).first()
+            if requested_row:
+                records_page_raw.append(requested_row)
         expected_limit = clean_page_size - len(records_page_raw)
         expected_offset = max(offset - actual_total, 0) if offset >= actual_total else 0
         expected_records = (
@@ -12208,6 +12231,34 @@ def clean_documentation_treatment(
             row["extracted_fields"] = _document_ocr_extracted_fields(metadata)
             row["extracted_lines"] = metadata.get("invoice_lines") or metadata.get("lines") or []
             row["service_codes"] = tags_by_document.get(document.id, {})
+            plate_context = next(
+                (
+                    event
+                    for event in events_by_document.get(document.id, [])
+                    if event.action == "document.plate_context"
+                ),
+                None,
+            )
+            plate_change = next(
+                (
+                    event
+                    for event in events_by_document.get(document.id, [])
+                    if event.action == "document.association_plate_changed"
+                ),
+                None,
+            )
+            row["plate_context"] = plate_context.new_value if plate_context else ""
+            row["plate_context_label"] = {
+                "historical_fleet": "Matrícula de frota antiga",
+                "incorrect": "Matrícula incorreta no documento",
+                "unidentified": "Matrícula inexistente ou não identificada",
+            }.get(row["plate_context"], "")
+            row["plate_association_warning"] = (
+                f"Associação alterada de {plate_change.old_value or 'sem matrícula'} "
+                f"para {plate_change.new_value or 'sem matrícula'}"
+                if plate_change
+                else ""
+            )
             row["group_label"] = _documentation_treatment_group_label(
                 document,
                 clean_family,
@@ -12477,6 +12528,7 @@ def clean_documentation_treatment_bulk(
     invoice_nature: str = Form(""),
     destination: str = Form(""),
     plate: str = Form(""),
+    plate_context: str = Form(""),
     reason: str = Form(""),
     service_classification_present: str = Form(""),
     maintenance: list[str] = Form([]),
@@ -12559,6 +12611,36 @@ def clean_documentation_treatment_bulk(
                     document = item_db.get(Document, item_id)
                     if not document:
                         raise ValueError("document_required")
+                    clean_plate_context = plate_context.strip().lower()
+                    allowed_plate_contexts = {
+                        "",
+                        "historical_fleet",
+                        "incorrect",
+                        "unidentified",
+                    }
+                    if clean_plate_context not in allowed_plate_contexts:
+                        raise ValueError("action_not_supported")
+                    latest_plate_context = item_db.scalar(
+                        select(DocumentEvent)
+                        .where(
+                            DocumentEvent.document_id == document.id,
+                            DocumentEvent.action == "document.plate_context",
+                        )
+                        .order_by(DocumentEvent.id.desc())
+                    )
+                    previous_plate_context = (
+                        latest_plate_context.new_value if latest_plate_context else ""
+                    )
+                    if clean_plate_context and clean_plate_context != previous_plate_context:
+                        item_db.add(
+                            DocumentEvent(
+                                document_id=document.id,
+                                action="document.plate_context",
+                                old_value=previous_plate_context or None,
+                                new_value=clean_plate_context,
+                                user_id=user_id,
+                            )
+                        )
                     should_save_services = service_classification_present == "1" and (
                         action == "save_services" or legacy_service_submission
                     )
@@ -12578,6 +12660,7 @@ def clean_documentation_treatment_bulk(
                             user_id=user_id,
                         )
                     if action != "save_services":
+                        previous_plate = (document.plate or "").strip()
                         state = get_or_create_workflow_state(item_db, document)
                         compatible, reason_code = document_action_compatibility(
                             document,
@@ -12622,6 +12705,22 @@ def clean_documentation_treatment_bulk(
                             plate=plate,
                             extraction_succeeded=extraction_succeeded,
                         )
+                        current_plate = (document.plate or "").strip()
+                        if (
+                            action == "associate"
+                            and previous_plate
+                            and current_plate
+                            and previous_plate.casefold() != current_plate.casefold()
+                        ):
+                            item_db.add(
+                                DocumentEvent(
+                                    document_id=document.id,
+                                    action="document.association_plate_changed",
+                                    old_value=previous_plate,
+                                    new_value=current_plate,
+                                    user_id=user_id,
+                                )
+                            )
                         extraction_failed = extraction_succeeded is False
                     item_db.commit()
                     if extraction_failed:

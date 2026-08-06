@@ -6,10 +6,12 @@
     {% set stock_nav="articles" %}{% include "_clean_stock_nav.html" %}
     <header class="stock-header compact-header">
       <div><p class="eyebrow">Stock</p><h1>Artigos e existências</h1><p>Catálogo e disponibilidade confirmada numa única consulta.</p></div>
-      {% if can_operate_stock %}<button type="button" class="button-link" onclick="document.getElementById('new-article').showModal()">Novo artigo</button>{% endif %}
+      {% if can_operate_stock or can_manage_stock %}<div class="stock-actions">{% if can_manage_stock %}<button type="button" class="secondary" onclick="document.getElementById('manage-stock-categories').showModal()">Gerir categorias</button>{% endif %}{% if can_operate_stock %}<button type="button" class="button-link" onclick="document.getElementById('new-article').showModal()">Novo artigo</button>{% endif %}</div>{% endif %}
     </header>
     {% if request.query_params.get('error') %}<div class="stock-notice danger">Não foi possível concluir: {{ request.query_params.get('error') }}</div>{% endif %}
     {% if request.query_params.get('bulk_updated') %}<div class="stock-notice success">Categoria atualizada em {{ request.query_params.get('bulk_updated') }} artigo(s).</div>{% endif %}
+    {% if request.query_params.get('category_saved') %}<div class="stock-notice success">Categoria guardada.</div>{% endif %}
+    {% if request.query_params.get('category_error') %}<div class="stock-notice danger">{{ request.query_params.get('category_error') }}</div>{% endif %}
     <form class="stock-filters" method="get">
       <input name="q" value="{{ filters.q }}" placeholder="Referência ou designação">
       <select name="category_id"><option value="">Todas as categorias</option>{% for item in categories %}<option value="{{ item.id }}" {% if filters.category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
@@ -21,7 +23,7 @@
       <button type="submit">Filtrar</button>
     </form>
     <section class="stock-card flat-card"><form method="post" action="/v2-clean/stock/articles/bulk-category" id="stock-bulk-category">
-      {% if can_operate_stock %}<div class="stock-actions stock-bulk-actions"><strong><span id="stock-selected-count">0</span> selecionados</strong><select name="category_id" aria-label="Categoria a aplicar"><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select><button type="submit" disabled id="stock-apply-category">Aplicar categoria</button></div>{% endif %}
+      {% if can_operate_stock %}<div class="stock-actions stock-bulk-actions"><strong><span id="stock-selected-count">0</span> selecionados</strong><select name="category_id" aria-label="Categoria a aplicar"><option value="">Sem categoria</option>{% for item in active_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select><button type="submit" disabled id="stock-apply-category">Aplicar categoria</button></div>{% endif %}
       <div class="stock-table-wrap"><table class="stock-table stock-table-compact stock-article-table{% if tyre_view %} is-tyre-view{% endif %}">
         <thead><tr>{% if can_operate_stock %}<th class="stock-select-column"><input type="checkbox" id="stock-select-all" aria-label="Selecionar todos"></th>{% endif %}<th class="stock-reference-column">Referência</th>{% if tyre_view %}<th class="stock-tyre-measure-column">Medida</th><th>Marca / modelo</th>{% else %}<th>Designação curta</th><th>Categoria</th>{% endif %}<th>Fornecedor</th><th>Disponível</th><th>Estado</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
@@ -40,7 +42,7 @@
       <label>Descrição<input name="name" required></label>
       <label>Descrição detalhada <small>Opcional</small><textarea name="description"></textarea></label>
       <div class="stock-form-grid">
-        <label>Categoria<select name="category_id"><option value="">Sem categoria</option>{% for item in categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+        <label>Categoria<select name="category_id"><option value="">Sem categoria</option>{% for item in active_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
         <label>Classificação<input name="classification"></label>
         <label>Unidade<input name="unit" value="un." required></label>
         <label>Fornecedor principal<select name="primary_supplier_id"><option value="">Sem fornecedor</option>{% for item in suppliers %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
@@ -48,6 +50,22 @@
       </div>
       <div class="stock-actions"><button type="submit">Criar artigo</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
     </form></dialog>{% endif %}
+    {% if can_manage_stock %}<dialog id="manage-stock-categories" class="stock-dialog stock-category-dialog">
+      <header class="stock-dialog-header"><div><p class="eyebrow">Catálogo</p><h2>Gerir categorias</h2><p>Cria, renomeia ou desativa categorias sem alterar o histórico dos artigos.</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></header>
+      <form method="post" action="/v2-clean/stock/categories" class="stock-category-create-form">
+        <label>Nova categoria<input name="name" maxlength="160" required placeholder="Ex.: Material elétrico"></label>
+        <button type="submit">Criar categoria</button>
+      </form>
+      <div class="stock-table-wrap"><table class="stock-table stock-table-compact stock-category-table">
+        <thead><tr><th>Categoria</th><th>Artigos</th><th>Estado</th><th>Ação</th></tr></thead>
+        <tbody>{% for row in category_rows %}<tr>
+          <td><form id="stock-category-{{ row.category.id }}" method="post" action="/v2-clean/stock/categories/{{ row.category.id }}"></form><input form="stock-category-{{ row.category.id }}" name="name" value="{{ row.category.name }}" maxlength="160" required aria-label="Nome da categoria {{ row.category.name }}"></td>
+          <td>{{ row.article_count }}</td>
+          <td><label class="stock-check"><input form="stock-category-{{ row.category.id }}" type="checkbox" name="active" {% if row.category.active %}checked{% endif %}> Ativa</label></td>
+          <td><button form="stock-category-{{ row.category.id }}" type="submit" class="secondary">Guardar</button></td>
+        </tr>{% else %}<tr><td colspan="4" class="stock-empty">Ainda não existem categorias.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </dialog>{% endif %}
   </main>
 </div>
 <script>(()=>{const all=document.getElementById('stock-select-all'),rows=[...document.querySelectorAll('.stock-row-select')],count=document.getElementById('stock-selected-count'),apply=document.getElementById('stock-apply-category');if(!rows.length)return;const sync=()=>{const n=rows.filter(item=>item.checked).length;if(count)count.textContent=n;if(apply)apply.disabled=!n;if(all){all.checked=n===rows.length;all.indeterminate=n>0&&n<rows.length}};all?.addEventListener('change',()=>{rows.forEach(item=>item.checked=all.checked);sync()});rows.forEach(item=>item.addEventListener('change',sync));sync()})();</script>

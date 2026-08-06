@@ -296,6 +296,21 @@
 .stock-dialog h2 { margin: 0; color: #10233d; }
 .stock-dialog button.secondary,
 .stock-card-heading button.secondary { color: #31465e; background: #fff; border-color: #cfd8e2; }
+.stock-category-dialog { width: min(920px, calc(100vw - 32px)); max-height: 90vh; overflow: auto; }
+.stock-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.stock-dialog-header p { margin: 3px 0 0; color: #65758a; }
+.stock-dialog-header button { flex: 0 0 auto; width: auto; }
+.stock-category-create-form { grid-template-columns: minmax(260px, 1fr) auto; align-items: end; margin-bottom: 18px; padding: 14px; border: 1px solid #dce3ea; border-radius: 8px; background: #f7f9fb; }
+.stock-category-create-form button { width: auto; }
+.stock-category-table { min-width: 620px; }
+.stock-category-table th:nth-child(2),
+.stock-category-table td:nth-child(2) { width: 90px; text-align: center; }
+.stock-category-table th:nth-child(3),
+.stock-category-table td:nth-child(3) { width: 120px; }
+.stock-category-table th:last-child,
+.stock-category-table td:last-child { width: 110px; text-align: right; }
+.stock-category-table input[name="name"] { width: 100%; min-width: 220px; }
+.stock-category-table button { width: auto; }
 
 .stock-header.compact-header { align-items: flex-end; }
 .stock-header.compact-header h1 { font-size: clamp(1.65rem, 3vw, 2.15rem); }

@@ -4,6 +4,7 @@ import hashlib
 import logging
 import mimetypes
 import re
+import unicodedata
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -90,6 +91,12 @@ TYRE_SIZE_RE = re.compile(
     r"(?:\s*(?P<xl_after>XL))?)?",
     re.IGNORECASE,
 )
+
+
+def _stock_category_code(name: str) -> str:
+    folded = unicodedata.normalize("NFKD", name)
+    ascii_name = "".join(char for char in folded if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name.casefold()).strip("-")[:70] or "categoria"
 
 
 def _user_id(request: Request) -> int | None:
@@ -305,6 +312,13 @@ def stock_articles(
     elif availability == "out_of_stock":
         rows = [row for row in rows if row.get("display_available", row["available"]) <= ZERO]
     categories = db.scalars(select(StockCategory).order_by(StockCategory.name)).all()
+    article_counts = dict(
+        db.execute(
+            select(StockArticle.category_id, func.count(StockArticle.id))
+            .where(StockArticle.category_id.is_not(None))
+            .group_by(StockArticle.category_id)
+        ).all()
+    )
     selected_category = next(
         (category for category in categories if category.id == clean_category_id), None
     )
@@ -320,6 +334,11 @@ def stock_articles(
             **_page_context(request, db),
             "rows": rows,
             "categories": categories,
+            "active_categories": [category for category in categories if category.active],
+            "category_rows": [
+                {"category": category, "article_count": article_counts.get(category.id, 0)}
+                for category in categories
+            ],
             "suppliers": db.scalars(select(StockSupplier).order_by(StockSupplier.name)).all(),
             "locations": db.scalars(select(StockLocation).order_by(StockLocation.name)).all(),
             "filters": {
@@ -334,6 +353,93 @@ def stock_articles(
             "tyre_view": tyre_view,
         },
     )
+
+
+@stock_router.post("/v2-clean/stock/categories")
+def stock_category_create(
+    request: Request,
+    db: DbSession,
+    name: str = Form(...),
+):
+    if denied := _denied(request, db, "stock.manage", "admin.manage"):
+        return denied
+    clean_name = name.strip()
+    if not clean_name:
+        return RedirectResponse("/v2-clean/stock/articles?category_error=Nome obrigatório.", status_code=303)
+    duplicate = next(
+        (
+            category
+            for category in db.scalars(select(StockCategory)).all()
+            if category.name.strip().casefold() == clean_name.casefold()
+        ),
+        None,
+    )
+    if duplicate:
+        return RedirectResponse("/v2-clean/stock/articles?category_error=Categoria já existente.", status_code=303)
+    base_code = _stock_category_code(clean_name)
+    code = base_code
+    suffix = 2
+    while db.scalar(select(StockCategory.id).where(StockCategory.code == code)):
+        code = f"{base_code[:65]}-{suffix}"
+        suffix += 1
+    category = StockCategory(code=code, name=clean_name, active=True)
+    db.add(category)
+    db.flush()
+    record_audit(
+        db,
+        action="stock.category.created",
+        entity_type="stock_category",
+        entity_id=category.id,
+        detail=clean_name,
+        user_id=_user_id(request),
+        after_json={"code": code, "name": clean_name, "active": True},
+    )
+    db.commit()
+    return RedirectResponse("/v2-clean/stock/articles?category_saved=1", status_code=303)
+
+
+@stock_router.post("/v2-clean/stock/categories/{category_id}")
+def stock_category_update(
+    request: Request,
+    category_id: int,
+    db: DbSession,
+    name: str = Form(...),
+    active: str | None = Form(None),
+):
+    if denied := _denied(request, db, "stock.manage", "admin.manage"):
+        return denied
+    category = db.get(StockCategory, category_id)
+    if not category:
+        return RedirectResponse("/v2-clean/stock/articles?category_error=Categoria inexistente.", status_code=303)
+    clean_name = name.strip()
+    if not clean_name:
+        return RedirectResponse("/v2-clean/stock/articles?category_error=Nome obrigatório.", status_code=303)
+    duplicate = next(
+        (
+            item
+            for item in db.scalars(select(StockCategory)).all()
+            if item.id != category.id
+            and item.name.strip().casefold() == clean_name.casefold()
+        ),
+        None,
+    )
+    if duplicate:
+        return RedirectResponse("/v2-clean/stock/articles?category_error=Categoria já existente.", status_code=303)
+    before = {"name": category.name, "active": category.active}
+    category.name = clean_name
+    category.active = active == "on"
+    record_audit(
+        db,
+        action="stock.category.updated",
+        entity_type="stock_category",
+        entity_id=category.id,
+        detail=clean_name,
+        user_id=_user_id(request),
+        before_json=before,
+        after_json={"name": category.name, "active": category.active},
+    )
+    db.commit()
+    return RedirectResponse("/v2-clean/stock/articles?category_saved=1", status_code=303)
 
 
 @stock_router.post("/v2-clean/stock/articles")

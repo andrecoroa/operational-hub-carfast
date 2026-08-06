@@ -332,6 +332,52 @@ def test_articles_can_be_classified_in_bulk(authenticated_client, db_session):
     assert db_session.get(StockArticle, second_id).category_id == category.id
 
 
+def test_stock_categories_can_be_created_and_deactivated_without_losing_articles(
+    authenticated_client, db_session
+):
+    created = authenticated_client.post(
+        "/v2-clean/stock/categories",
+        data={"name": "Material elétrico"},
+        follow_redirects=False,
+    )
+
+    assert created.status_code == 303
+    category = db_session.scalar(
+        select(StockCategory).where(StockCategory.name == "Material elétrico")
+    )
+    assert category is not None
+    assert category.code == "material-eletrico"
+    article_id = _article(authenticated_client, "CATEGORY-HISTORY")
+    article = db_session.get(StockArticle, article_id)
+    article.category_id = category.id
+    db_session.commit()
+
+    duplicate = authenticated_client.post(
+        "/v2-clean/stock/categories",
+        data={"name": "MATERIAL ELÉTRICO"},
+        follow_redirects=False,
+    )
+    assert duplicate.status_code == 303
+    assert "category_error" in duplicate.headers["location"]
+
+    updated = authenticated_client.post(
+        f"/v2-clean/stock/categories/{category.id}",
+        data={"name": "Material elétrico e iluminação"},
+        follow_redirects=False,
+    )
+
+    assert updated.status_code == 303
+    db_session.expire_all()
+    category = db_session.get(StockCategory, category.id)
+    assert category.name == "Material elétrico e iluminação"
+    assert category.active is False
+    assert db_session.get(StockArticle, article_id).category_id == category.id
+
+    page = authenticated_client.get("/v2-clean/stock/articles?availability=all")
+    assert "Gerir categorias" in page.text
+    assert "Material elétrico e iluminação" in page.text
+
+
 def test_order_catalog_is_supplier_specific_and_can_create_article(
     authenticated_client, db_session
 ):

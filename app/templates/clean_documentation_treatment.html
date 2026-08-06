@@ -341,8 +341,8 @@
         const payload = new FormData(previewForm);
         if (submitter.name) payload.set(submitter.name, submitter.value);
         const targetAction = submitter.hasAttribute('formaction')
-          ? submitter.formAction
-          : previewForm.action;
+          ? new URL(submitter.getAttribute('formaction'), window.location.href).toString()
+          : new URL(previewForm.getAttribute('action'), window.location.href).toString();
         const response = await fetch(targetAction, { method: 'POST', body: payload });
         const resultUrl = new URL(response.url || window.location.href);
         const failed = Number(resultUrl.searchParams.get('bulk_failed') || 0);

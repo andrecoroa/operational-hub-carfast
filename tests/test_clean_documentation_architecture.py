@@ -1232,6 +1232,8 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
         "6. Concluir tratamento"
     )
     assert "doc-treatment-inline-status" in page.text
+    assert "previewForm.getAttribute('action')" in page.text
+    assert "submitter.getAttribute('formaction')" in page.text
     assert "submitter.hasAttribute('formaction')" in page.text
     assert "FR + TR" not in page.text
     for label in ("Chaves", "Bateria", "Iluminação", "Lavagem"):

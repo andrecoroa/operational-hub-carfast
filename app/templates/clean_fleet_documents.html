@@ -242,6 +242,24 @@
                         <span>Fatura {{ row.external_reference or row.document_number or row.title }}</span>
                       <span class="clean-doc-detail-summary-actions">
                         <span class="clean-doc-status-pill">{{ row.comparison_label or row.extraction_state or row.status }}</span>
+                        {% if row.source_label == "FA" or row.archive_group == "invoices" %}
+                          <a class="button-link secondary-link clean-doc-summary-command" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
+                          {% if row.kind == "document" %}
+                            <button type="submit" form="reprocess-invoice-{{ row.id }}" class="button-link clean-doc-summary-command {% if row.invoice_lines %}is-complete{% else %}is-pending{% endif %}">3. Extrair</button>
+                          {% endif %}
+                          <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link clean-doc-summary-command {% if row.comparison_state == 'validado' or row.status == 'classified' %}is-complete{% else %}is-pending{% endif %}">4. Guardar serviços</button>
+                          <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link clean-doc-summary-command {% if row.status == 'classified' %}is-complete{% else %}is-pending{% endif %}">5. Validar</button>
+                          {% if row.kind == "document" %}
+                            <details class="clean-doc-remove-menu clean-doc-summary-remove">
+                              <summary>Remover</summary>
+                              <form method="post" action="/v2-clean/documents/{{ row.id }}/remove">
+                                <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or '' }}">
+                                <input type="text" name="reason" placeholder="Motivo obrigatório" required>
+                                <button type="submit">Confirmar remoção</button>
+                              </form>
+                            </details>
+                          {% endif %}
+                        {% endif %}
                         {% if row.kind == "document" and row.preview_href %}
                           <a class="button-link secondary-link clean-doc-summary-command" href="{{ row.preview_href }}" target="_blank" rel="noopener">Ampliar PDF</a>
                         {% endif %}
@@ -298,6 +316,9 @@
                               <button type="submit" class="button-link secondary-link">Guardar natureza</button>
                             </form>
                           </section>
+                          <form id="reprocess-invoice-{{ row.id }}" method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" hidden>
+                            <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or 'invoices' }}&open_item=document%3A{{ row.id }}">
+                          </form>
                         {% endif %}
                         <section class="clean-doc-detail-card clean-doc-detail-card-wide clean-doc-line-classification-card">
                           {{ render_classification_editor(row, form_id, "4. Serviços da fatura") }}
@@ -424,7 +445,7 @@
                           <div class="clean-doc-inline-preview-body" data-inline-preview-body></div>
                         </section>
                       {% endif %}
-                      <section class="clean-doc-detail-card clean-doc-detail-actions">
+                      <section class="clean-doc-detail-card clean-doc-detail-actions{% if (row.source_label == 'FA' or row.archive_group == 'invoices') and row.kind == 'document' %} clean-doc-invoice-support-actions{% endif %}">
                         <h4>Tratamento</h4>
                         {% if row.kind == "pending_record" %}
                           <form method="post" action="/v2-clean/fleet/{{ vehicle.id }}/documents/attach" class="clean-doc-classify-detail-form">
@@ -438,15 +459,19 @@
                             <button type="submit">Associar</button>
                           </form>
                         {% endif %}
-                        <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
-                        {% if row.kind == "document" and (row.source_label == "FA" or row.archive_group == "invoices") %}
+                        {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
+                          <a class="button-link secondary-link" href="/v2-clean/tasks?plate={{ ctx.identity.plate }}&workspace=workshop&record_type=task&category=documentacao&entity_type=vehicle_document_record&entity_id={{ row.id }}&return_url=/v2-clean/fleet/{{ vehicle.id }}/documents">Criar tarefa</a>
+                        {% endif %}
+                        {% if row.kind == "document" and not (row.source_label == "FA" or row.archive_group == "invoices") %}
                           <form method="post" action="/v2-clean/documents/{{ row.id }}/reprocess-ocr" class="clean-doc-classify-detail-form">
                             <input type="hidden" name="return_url" value="/v2-clean/fleet/{{ vehicle.id }}/documents?main_group={{ row.archive_group or row.main_group or 'invoices' }}&open_item=document%3A{{ row.id }}">
                             <button type="submit" class="button-link secondary-link">Extrair / reprocessar</button>
                           </form>
                         {% endif %}
-                        <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link secondary-link" aria-label="Guardar classificação de serviços">Guardar serviços</button>
-                        <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link primary-link">Validar documento</button>
+                        {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
+                          <button type="submit" form="{{ form_id }}" name="classification_action" value="save" class="button-link secondary-link" aria-label="Guardar classificação de serviços">Guardar serviços</button>
+                          <button type="submit" form="{{ form_id }}" name="classification_action" value="validate" class="button-link primary-link">Validar documento</button>
+                        {% endif %}
                         {% if row.kind == "document" %}
                           <details class="clean-doc-remove-menu">
                             <summary>Remover documento</summary>
@@ -466,7 +491,9 @@
                             </form>
                           </details>
                         {% endif %}
-                        <button type="button" class="button-link secondary-link clean-doc-detail-close">Fechar detalhes</button>
+                        {% if not (row.source_label == "FA" or row.archive_group == "invoices") %}
+                          <button type="button" class="button-link secondary-link clean-doc-detail-close">Fechar detalhes</button>
+                        {% endif %}
                       </section>
                       {% if row.source_label == "FA" or row.archive_group == "invoices" %}</div>{% endif %}
                     </div>

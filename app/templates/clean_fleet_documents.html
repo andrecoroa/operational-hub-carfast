@@ -1026,72 +1026,81 @@
         <div class="clean-doc-preview-body" id="clean-doc-preview-body"></div>
       </div>
     </div>
+    <dialog class="clean-doc-treatment-dialog clean-doc-detail-open" id="clean-doc-treatment-dialog" aria-label="Tratamento da fatura"></dialog>
   </main>
 </div>
 <script>
-  const initiallyOpenDocumentDetail = document.querySelector(".clean-doc-classify-detail-row.clean-doc-detail-open");
-  if (initiallyOpenDocumentDetail) {
-    document.documentElement.classList.add("clean-doc-modal-open");
-    document.body.classList.add("clean-doc-modal-open");
-    initiallyOpenDocumentDetail.querySelectorAll("iframe[data-lazy-src]").forEach((frame) => {
+  const treatmentDialog = document.getElementById("clean-doc-treatment-dialog");
+  let activeDetailRow = null;
+  const showDocumentDetail = (detailRow) => {
+    if (!detailRow || !treatmentDialog) return;
+    if (activeDetailRow && activeDetailRow !== detailRow) closeOpenDocumentDetail();
+    const detail = detailRow.querySelector("details");
+    if (!detail) return;
+    activeDetailRow = detailRow;
+    detailRow.hidden = true;
+    detailRow.classList.add("clean-doc-detail-open");
+    detail.open = true;
+    treatmentDialog.appendChild(detail);
+    if (!treatmentDialog.open) treatmentDialog.showModal();
+    detail.querySelectorAll("iframe[data-lazy-src]").forEach((frame) => {
       if (!frame.getAttribute("src")) frame.src = frame.dataset.lazySrc || "";
     });
-  }
+    document.documentElement.classList.add("clean-doc-modal-open");
+    document.body.classList.add("clean-doc-modal-open");
+    document.querySelectorAll(`.clean-doc-detail-toggle[data-detail-target="${detailRow.id}"]`).forEach((button) => {
+      button.textContent = "Fechar detalhes";
+    });
+  };
   document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
     button.addEventListener("click", () => {
       const detailRow = document.getElementById(button.dataset.detailTarget || "");
       if (!detailRow) return;
-      const detail = detailRow.querySelector("details");
-      const willOpen = detailRow.hidden;
-      document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
-        if (row !== detailRow) {
-          row.hidden = true;
-          row.classList.remove("clean-doc-detail-open");
-          const openDetail = row.querySelector("details");
-          if (openDetail) openDetail.open = false;
-        }
-      });
-      detailRow.hidden = !willOpen;
-      detailRow.classList.toggle("clean-doc-detail-open", willOpen);
-      if (detail) detail.open = willOpen;
-      if (willOpen) {
-        detailRow.querySelectorAll("iframe[data-lazy-src]").forEach((frame) => {
-          if (!frame.getAttribute("src")) frame.src = frame.dataset.lazySrc || "";
-        });
-      }
-      document.documentElement.classList.toggle("clean-doc-modal-open", willOpen);
-      document.body.classList.toggle("clean-doc-modal-open", willOpen);
-      button.textContent = willOpen ? "Fechar detalhes" : "Ver detalhes";
+      if (activeDetailRow === detailRow) closeOpenDocumentDetail();
+      else showDocumentDetail(detailRow);
     });
   });
-  const closeOpenDocumentDetail = () => {
-    document.querySelectorAll(".clean-doc-classify-detail-row.clean-doc-detail-open").forEach((row) => {
-      row.querySelectorAll(".clean-doc-inline-preview").forEach((preview) => {
+  function closeOpenDocumentDetail() {
+    if (activeDetailRow) {
+      const detail = treatmentDialog?.querySelector(".clean-doc-expanded-detail");
+      detail?.querySelectorAll(".clean-doc-inline-preview").forEach((preview) => {
         preview.hidden = true;
         const body = preview.querySelector("[data-inline-preview-body]");
         if (body) body.innerHTML = "";
       });
-      row.hidden = true;
-      row.classList.remove("clean-doc-detail-open");
-      const detail = row.querySelector("details");
-      if (detail) detail.open = false;
-    });
+      if (detail) {
+        detail.open = false;
+        activeDetailRow.querySelector("td")?.appendChild(detail);
+      }
+      activeDetailRow.hidden = true;
+      activeDetailRow.classList.remove("clean-doc-detail-open");
+      activeDetailRow = null;
+    }
+    if (treatmentDialog?.open) treatmentDialog.close();
     document.querySelectorAll(".clean-doc-detail-toggle[data-detail-target]").forEach((button) => {
       button.textContent = "Ver detalhes";
     });
     document.documentElement.classList.remove("clean-doc-modal-open");
     document.body.classList.remove("clean-doc-modal-open");
-  };
+  }
+  const initiallyOpenDocumentDetail = document.querySelector(".clean-doc-classify-detail-row.clean-doc-detail-open");
+  if (initiallyOpenDocumentDetail) showDocumentDetail(initiallyOpenDocumentDetail);
   document.querySelectorAll(".clean-doc-detail-close").forEach((button) => {
     button.addEventListener("click", closeOpenDocumentDetail);
   });
   document.querySelectorAll(".clean-doc-classify-detail-row .clean-doc-expanded-detail > summary").forEach((summary) => {
     summary.addEventListener("click", (event) => {
-      const detailRow = summary.closest(".clean-doc-classify-detail-row.clean-doc-detail-open");
-      if (!detailRow) return;
+      if (!summary.closest("#clean-doc-treatment-dialog")) return;
       event.preventDefault();
       closeOpenDocumentDetail();
     });
+  });
+  treatmentDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeOpenDocumentDetail();
+  });
+  treatmentDialog?.addEventListener("click", (event) => {
+    if (event.target === treatmentDialog) closeOpenDocumentDetail();
   });
 
   const documentPreviewModal = document.getElementById("clean-doc-preview-modal");

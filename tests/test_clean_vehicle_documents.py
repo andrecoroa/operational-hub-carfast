@@ -3737,6 +3737,8 @@ def test_clean_vehicle_documents_page_renders(authenticated_client, db_session):
     assert ">Faturas<" in response.text
     assert "Folhas de obra" in response.text
     assert "Timeline documental" in response.text
+    assert 'id="clean-doc-treatment-dialog"' in response.text
+    assert "showDocumentDetail" in response.text
 
 
 def test_clean_vehicle_documents_page_renders_with_regressive_km_alert(authenticated_client, db_session):

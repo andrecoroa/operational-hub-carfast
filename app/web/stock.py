@@ -1808,7 +1808,9 @@ def stock_workshop_requests(request: Request, db: DbSession, scope: str = "pendi
         .where(WorkshopMaterialNeed.stock_request_reference.is_not(None))
     )
     if scope == "pending":
-        statement = statement.where(WorkshopMaterialNeed.stock_status == "requested")
+        statement = statement.where(
+            WorkshopMaterialNeed.stock_status.in_(("requested", "usage_reported"))
+        )
     elif scope == "completed":
         statement = statement.where(WorkshopMaterialNeed.stock_status.in_(("delivered", "applied")))
     rows = db.execute(
@@ -1832,6 +1834,11 @@ def stock_workshop_requests(request: Request, db: DbSession, scope: str = "pendi
             "requests": list(grouped.values()),
             "locations": db.scalars(
                 select(StockLocation).where(StockLocation.active.is_(True)).order_by(StockLocation.name)
+            ).all(),
+            "articles": db.scalars(
+                select(StockArticle)
+                .where(StockArticle.active.is_(True))
+                .order_by(StockArticle.internal_ref, StockArticle.name)
             ).all(),
             "scope": scope,
         },
@@ -1857,9 +1864,17 @@ async def deliver_stock_workshop_request(
         for need in needs:
             if need.stock_status in {"delivered", "applied"}:
                 continue
-            article_id = int((need.detail_json or {}).get("article_id") or 0)
+            selected_article_id = str(form.get(f"article_id_{need.id}") or "").strip()
+            article_id = int(
+                selected_article_id
+                or (need.detail_json or {}).get("article_id")
+                or 0
+            )
             if not article_id:
                 raise StockDomainError("O pedido contém uma linha sem artigo de Stock associado.")
+            article = db.get(StockArticle, article_id)
+            if not article:
+                raise StockDomainError("O artigo associado ao pedido já não existe.")
             quantity = Decimal(str(need.requested_quantity or "0").replace(",", "."))
             movement = create_manual_movement(
                 db,
@@ -1872,12 +1887,25 @@ async def deliver_stock_workshop_request(
                     external_reference_id=request_reference,
                     reason=f"Entrega à Oficina · processo #{need.process_id}",
                     effective_date=date.today(),
+                    unit_cost=article.average_cost or article.last_cost,
                 ),
                 user_id=_user_id(request),
             )
-            need.stock_status = "delivered"
+            direct_usage = (need.detail_json or {}).get("request_mode") == "direct_usage"
+            need.stock_status = "applied" if direct_usage else "delivered"
+            if direct_usage:
+                need.applied_confirmed_by_id = _user_id(request)
+                need.applied_confirmed_at = datetime.now(UTC)
             detail = dict(need.detail_json or {})
-            detail.update({"movement_id": movement.id, "stock_location_id": location_id})
+            detail.update(
+                {
+                    "article_id": article.id,
+                    "movement_id": movement.id,
+                    "stock_location_id": location_id,
+                    "unit_cost": str(article.average_cost or article.last_cost),
+                    "total_cost": str((article.average_cost or article.last_cost) * quantity),
+                }
+            )
             need.detail_json = detail
         db.commit()
     except (ValueError, StockDomainError) as exc:

@@ -135,6 +135,82 @@ def test_workshop_request_only_moves_stock_when_delivery_is_confirmed(
     )
 
 
+def test_workshop_direct_usage_records_consumption_without_delivery(
+    authenticated_client, db_session
+):
+    vehicle = Vehicle(plate="ST-20-CK", active=True, lifecycle_status="active")
+    article = StockArticle(
+        internal_ref="OIL-200",
+        name="Óleo de bidão",
+        unit="l",
+        average_cost=Decimal("4.50"),
+    )
+    location = StockLocation(code="REPAIR-AREA", name="Zona reparação", active=True)
+    db_session.add_all([vehicle, article, location])
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Reparação ST-20-CK",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="reparacao",
+        priority="normal",
+        initial_km=64000,
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.add(
+        StockMovement(
+            article_id=article.id,
+            movement_type="entry",
+            quantity=Decimal("200"),
+            unit="l",
+            to_location_id=location.id,
+            reason="Bidão disponível junto à reparação",
+            effective_date=date.today(),
+        )
+    )
+    db_session.commit()
+
+    created = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/material-needs",
+        data={
+            "article_id": str(article.id),
+            f"quantity_{article.id}": "5",
+            "origin": "repair",
+            "request_mode": "direct_usage",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    need = db_session.scalar(
+        select(WorkshopMaterialNeed).where(WorkshopMaterialNeed.process_id == process.id)
+    )
+    assert need is not None and need.stock_status == "usage_reported"
+    assert (need.detail_json or {})["billing_candidate"] is True
+    assert db_session.scalar(select(func.count(StockMovement.id))) == 1
+
+    consumed = authenticated_client.post(
+        f"/v2-clean/stock/workshop-requests/{need.stock_request_reference}/deliver",
+        data={"location_id": str(location.id)},
+        follow_redirects=False,
+    )
+    assert consumed.status_code == 303
+    db_session.expire_all()
+    stored_need = db_session.get(WorkshopMaterialNeed, need.id)
+    assert stored_need.stock_status == "applied"
+    assert (stored_need.detail_json or {})["total_cost"] == "22.5000"
+    assert stock_balances(db_session)[(article.id, location.id)] == Decimal("195.000")
+    stored_process = db_session.get(WorkshopPhasedProcess, process.id)
+    assert (stored_process.current_phase_code, stored_process.initial_km, stored_process.status) == (
+        "reparacao",
+        64000,
+        "open",
+    )
+
+
 def test_article_table_is_short_and_integer_formatted(authenticated_client):
     article_id = _article(authenticated_client, "SHORT-001")
 

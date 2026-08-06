@@ -114,7 +114,12 @@ from app.models.workshop_phased import (
     WorkshopTemplate,
     WorkshopTemplateVersion,
 )
-from app.models.stock import StockArticle, StockLocation
+from app.models.stock import (
+    StockArticle,
+    StockArticleVehicleCompatibility,
+    StockCategory,
+    StockLocation,
+)
 from app.services.stock import stock_balances
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
@@ -20646,6 +20651,7 @@ def clean_workshop_phase(
     diagnostic_suggestions: list[dict[str, object]] = []
     material_needs: list[WorkshopMaterialNeed] = []
     stock_request_articles: list[dict[str, object]] = []
+    stock_request_categories: list[StockCategory] = []
     stock_request_locations: list[StockLocation] = []
     with SessionLocal() as db:
         process = db.get(WorkshopPhasedProcess, process_id) if process_id else None
@@ -20712,9 +20718,32 @@ def clean_workshop_phase(
                     .order_by(StockArticle.internal_ref, StockArticle.name)
                 ).all()
                 balances = stock_balances(db, article_ids=[item.id for item in articles])
+                category_by_id = {
+                    item.id: item
+                    for item in db.scalars(
+                        select(StockCategory).where(StockCategory.active.is_(True))
+                    ).all()
+                }
+                compatible_article_ids: set[int] = set()
+                if vehicle_context.get("brand") and vehicle_context.get("model"):
+                    compatible_article_ids = set(
+                        db.scalars(
+                            select(StockArticleVehicleCompatibility.article_id).where(
+                                StockArticleVehicleCompatibility.brand
+                                == vehicle_context.get("brand"),
+                                StockArticleVehicleCompatibility.model
+                                == vehicle_context.get("model"),
+                                StockArticleVehicleCompatibility.status.in_(
+                                    ("suggested", "confirmed", "validated")
+                                ),
+                            )
+                        ).all()
+                    )
                 stock_request_articles = [
                     {
                         "article": item,
+                        "category": category_by_id.get(item.category_id),
+                        "suggested": item.id in compatible_article_ids,
                         "available": sum(
                             quantity
                             for (article_id, _location_id), quantity in balances.items()
@@ -20723,6 +20752,9 @@ def clean_workshop_phase(
                     }
                     for item in articles
                 ]
+                stock_request_categories = sorted(
+                    category_by_id.values(), key=lambda item: item.name.casefold()
+                )
                 stock_request_locations = db.scalars(
                     select(StockLocation)
                     .where(StockLocation.active.is_(True))
@@ -20806,6 +20838,7 @@ def clean_workshop_phase(
             "diagnostic_suggestions": diagnostic_suggestions,
             "material_needs": material_needs,
             "stock_request_articles": stock_request_articles,
+            "stock_request_categories": stock_request_categories,
             "stock_request_locations": stock_request_locations,
             "workshop_stock_statuses": WORKSHOP_STOCK_STATUSES,
             "phase_error": CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES.get(error or ""),
@@ -21203,6 +21236,9 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
         origin = "repair"
     article_ids = [int(value) for value in form.getlist("article_id") if str(value).isdigit()]
     description = str(form.get("material_description") or "").strip()
+    request_mode = str(form.get("request_mode") or "request").strip()
+    if request_mode not in {"request", "direct_usage"}:
+        request_mode = "request"
     if not article_ids and not description:
         return RedirectResponse(
             f"/v2-clean/workshop/reparacao?process_id={process_id}&error=material_required",
@@ -21252,11 +21288,16 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
                 material_code=article.internal_ref if article else str(form.get("material_code") or "").strip() or None,
                 material_description=article.name if article else description,
                 requested_quantity=quantity,
-                stock_status="requested",
+                stock_status="usage_reported" if request_mode == "direct_usage" else "requested",
                 stock_request_reference=request_reference,
                 detail_json={
                     "stock_contract_version": 2,
                     "article_id": article.id if article else None,
+                    "request_mode": request_mode,
+                    "billing_candidate": True,
+                    "unit_cost_snapshot": str(article.average_cost or article.last_cost)
+                    if article
+                    else None,
                     "notes": str(form.get("notes") or "").strip() or None,
                 },
             )
@@ -21270,7 +21311,8 @@ async def clean_workshop_create_material_need(request: Request, process_id: int)
             detail=request_reference,
             after_json={
                 "origin": origin,
-                "stock_status": "requested",
+                "stock_status": "usage_reported" if request_mode == "direct_usage" else "requested",
+                "request_mode": request_mode,
                 "process_id": process.id,
                 "request_reference": request_reference,
                 "line_count": len(lines),

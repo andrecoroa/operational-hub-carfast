@@ -43,6 +43,7 @@
         <div class="clean-context-action-row">
           {% if workshop_process and not workshop_admin.is_cancelled and not workshop_admin.is_closed %}
             <a class="button-link secondary-link" href="/v2-clean/tasks?workspace=workshop&record_type=task&entity_type=workshop_phased_process&entity_id={{ workshop_process.id }}&phase={{ phase_key }}&plate={{ workshop_process.plate_snapshot or '' }}&category=Oficina&return_url={{ request.url.path }}%3Fprocess_id%3D{{ workshop_process.id }}">Criar tarefa</a>
+            {% if phase_key == "reparacao" %}<button type="button" class="button-link" onclick="document.getElementById('workshop-stock-request').showModal()">Pedido ao Stock</button>{% endif %}
           {% else %}
             <span class="clean-context-action-empty">Sem ações operacionais disponíveis nesta fase.</span>
           {% endif %}
@@ -703,13 +704,13 @@
                     <h4>Pedidos ao Stock</h4>
                     <p>O pedido fica pendente. As existências só são descontadas quando o Stock confirma a entrega.</p>
                   </div>
-                  <button type="button" onclick="document.getElementById('workshop-stock-request').showModal()">Pedir artigos ao Stock</button>
+                  <button type="button" class="secondary" onclick="document.getElementById('workshop-stock-request').showModal()">Abrir pedidos</button>
                   {% if material_needs %}
                     <div class="clean-stock-needs-list">
                       {% for need in material_needs %}
                         <article>
                           <div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · origem {{ need.origin }} · {{ need.operation_label }}</span></div>
-                          <em>{{ {"requested":"Pendente no Stock","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em>
+                          <em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em>
                           {% if need.stock_status == "delivered" %}
                             <button type="submit" formmethod="post" formaction="/v2-clean/workshop/material-needs/{{ need.id }}/confirm-applied" formnovalidate>Confirmar aplicação</button>
                           {% endif %}
@@ -719,16 +720,34 @@
                   {% endif %}
                 </section>
                 <dialog id="workshop-stock-request" class="stock-dialog clean-workshop-stock-dialog">
-                  <div class="stock-card-heading"><div><h3>Pedir artigos ao Stock</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>
-                  <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th></th><th>Referência</th><th>Artigo</th><th>Disponível</th><th>Qtd.</th></tr></thead><tbody>
-                    {% for row in stock_request_articles %}<tr><td><input type="checkbox" name="article_id" value="{{ row.article.id }}"></td><td>{{ row.article.internal_ref }}</td><td>{{ row.article.name }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><input type="number" min="1" step="1" name="quantity_{{ row.article.id }}" value="1"></td></tr>{% else %}<tr><td colspan="5">Sem artigos ativos.</td></tr>{% endfor %}
+                  <div class="stock-card-heading"><div><h3>Material da reparação</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>
+                  <fieldset class="clean-stock-request-mode"><legend>Operação</legend><label><input type="radio" name="request_mode" value="request" checked> Solicitar entrega</label><label><input type="radio" name="request_mode" value="direct_usage"> Informar utilização direta</label><small>Na utilização direta, o Stock regista o consumo e o custo sem entregar material.</small></fieldset>
+                  <div class="clean-stock-request-filters"><label>Categoria<select id="workshop-stock-category"><option value="">Todas</option>{% for category in stock_request_categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}</select></label><label><input type="checkbox" id="workshop-stock-suggested"> Sugeridos para a viatura</label><label>Pesquisar<input id="workshop-stock-search" placeholder="Referência ou artigo"></label></div>
+                  <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th></th><th>Referência</th><th>Artigo</th><th>Categoria</th><th>Disponível</th><th>Qtd.</th></tr></thead><tbody id="workshop-stock-article-rows">
+                    {% for row in stock_request_articles %}<tr data-category="{{ row.category.id if row.category else '' }}" data-suggested="{{ '1' if row.suggested else '0' }}" data-search="{{ (row.article.internal_ref ~ ' ' ~ row.article.name)|lower }}"><td><input type="checkbox" name="article_id" value="{{ row.article.id }}"></td><td>{{ row.article.internal_ref }}</td><td>{{ row.article.name }}{% if row.suggested %}<small>Sugerido</small>{% endif %}</td><td>{{ row.category.name if row.category else 'Sem categoria' }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><input type="number" min="0.001" step="0.001" name="quantity_{{ row.article.id }}" value="1"></td></tr>{% else %}<tr><td colspan="6">Sem artigos ativos.</td></tr>{% endfor %}
                   </tbody></table></div>
                   <div>
                     <input type="hidden" name="origin" value="repair"><input type="hidden" name="operation_code" value="repair_material"><input type="hidden" name="operation_label" value="Material para reparação">
+                    <details class="clean-stock-free-request"><summary>Não encontro a referência</summary><div><label>Tipo de peça / material<input name="material_description" placeholder="Ex.: filtro de combustível"></label><label>Quantidade<input type="number" min="0.001" step="0.001" name="requested_quantity" value="1"></label><label>Referência conhecida (opcional)<input name="material_code"></label></div></details>
                     <label>Notas<textarea name="notes" rows="2" placeholder="Observações para o Stock"></textarea></label>
-                    <div class="stock-actions"><button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Criar pedido</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
+                    <div class="stock-actions"><button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Registar pedido</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
                   </div>
                 </dialog>
+                <script>
+                  (() => {
+                    const category = document.getElementById('workshop-stock-category');
+                    const suggested = document.getElementById('workshop-stock-suggested');
+                    const search = document.getElementById('workshop-stock-search');
+                    const rows = Array.from(document.querySelectorAll('#workshop-stock-article-rows tr[data-search]'));
+                    const filterRows = () => rows.forEach((row) => {
+                      const categoryMatch = !category.value || row.dataset.category === category.value;
+                      const suggestedMatch = !suggested.checked || row.dataset.suggested === '1';
+                      const searchMatch = !search.value.trim() || row.dataset.search.includes(search.value.trim().toLowerCase());
+                      row.hidden = !(categoryMatch && suggestedMatch && searchMatch);
+                    });
+                    category?.addEventListener('change', filterRows); suggested?.addEventListener('change', filterRows); search?.addEventListener('input', filterRows);
+                  })();
+                </script>
                 <label>Fora da autorização / trabalhos adicionais não autorizados<textarea name="repair_outside_authorization" rows="5" placeholder="Registar exclusões, material não autorizado ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
               </div>
             </article>

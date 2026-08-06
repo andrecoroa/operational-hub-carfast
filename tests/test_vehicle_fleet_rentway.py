@@ -4,7 +4,13 @@ from pathlib import Path
 from openpyxl import Workbook
 from sqlalchemy import select
 
-from app.models import Document, Vehicle, VehicleExternalSnapshot, VehicleSaleProfile
+from app.models import (
+    Document,
+    Vehicle,
+    VehicleExternalSnapshot,
+    VehicleIdentifier,
+    VehicleSaleProfile,
+)
 from app.models.imports import ImportRawRow
 from app.services.rentway_fleet_importer import (
     build_vehicle_payload,
@@ -177,6 +183,46 @@ def test_fleet_filters_and_pagination_preserve_query_page_and_return_anchor(
     assert "return_to=" in page.text
     assert "page%3D2" in page.text
     assert "%23vehicle-" in page.text
+
+
+def test_fleet_search_finds_normalized_and_historical_vin(authenticated_client, db_session):
+    canonical = Vehicle(
+        plate="VIN-01-AA",
+        vin="VR3EDYHT9RJ968630",
+        active=True,
+        lifecycle_status="active",
+    )
+    historical = Vehicle(
+        plate="VIN-02-AA",
+        active=True,
+        lifecycle_status="active",
+    )
+    db_session.add_all([canonical, historical])
+    db_session.flush()
+    db_session.add(
+        VehicleIdentifier(
+            vehicle_id=historical.id,
+            identifier_type="vin",
+            identifier_value="VF7YBBPFCPG030533",
+            source_system="rentway",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    normalized = authenticated_client.get(
+        "/v2-clean/fleet", params={"q": "VR3 EDYHT9 RJ968630"}
+    )
+    fallback = authenticated_client.get(
+        "/v2-clean/fleet", params={"q": "YBBPFCPG0305"}
+    )
+
+    assert normalized.status_code == 200
+    assert "VIN-01-AA" in normalized.text
+    assert "VIN-02-AA" not in normalized.text
+    assert fallback.status_code == 200
+    assert "VIN-02-AA" in fallback.text
+    assert "VIN-01-AA" not in fallback.text
 
 
 def test_vehicle_detail_exposes_versioned_lazy_maintenance_plan(

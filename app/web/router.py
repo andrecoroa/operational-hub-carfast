@@ -82,6 +82,7 @@ from app.models.vehicles import (
     VehicleExternalSnapshot,
     VehicleFinancialPlan,
     VehicleFinancialPlanInstallment,
+    VehicleIdentifier,
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
@@ -8155,10 +8156,26 @@ def clean_fleet_page(
             )
         if raw_query:
             normalized_plate = func.replace(func.replace(func.upper(Vehicle.plate), "-", ""), " ", "")
+            normalized_vin = func.replace(
+                func.replace(func.upper(Vehicle.vin), "-", ""), " ", ""
+            )
+            normalized_identifier = func.replace(
+                func.replace(func.upper(VehicleIdentifier.identifier_value), "-", ""),
+                " ",
+                "",
+            )
             stmt = stmt.where(
                 Vehicle.plate.ilike(f"%{raw_query}%")
                 | normalized_plate.ilike(f"%{normalized_query}%")
                 | Vehicle.vin.ilike(f"%{raw_query}%")
+                | normalized_vin.ilike(f"%{normalized_query}%")
+                | Vehicle.id.in_(
+                    select(VehicleIdentifier.vehicle_id).where(
+                        VehicleIdentifier.active.is_(True),
+                        VehicleIdentifier.identifier_type.in_(("vin", "chassis")),
+                        normalized_identifier.ilike(f"%{normalized_query}%"),
+                    )
+                )
                 | Vehicle.rentway_unit_nr.ilike(f"%{raw_query}%")
                 | Vehicle.brand.ilike(f"%{raw_query}%")
                 | Vehicle.model.ilike(f"%{raw_query}%")

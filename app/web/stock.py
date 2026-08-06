@@ -4,7 +4,7 @@ import hashlib
 import logging
 import mimetypes
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
@@ -53,11 +53,14 @@ from app.schemas.stock import (
     StockReceiptLineCreate,
 )
 from app.services.authorization import get_user_permission_codes
+from app.services.audit import record_audit
 from app.services.document_workflow import classify_invoice_nature
 from app.services.stock import (
     StockDomainError,
     _authorized_document_path,
     apply_conference_action,
+    archive_inventory_session,
+    cancel_inventory_session,
     conference_comparison,
     confirm_inventory_session,
     create_inventory_session,
@@ -235,7 +238,7 @@ def stock_dashboard(request: Request, db: DbSession):
         db.scalar(
             select(func.count())
             .select_from(StockInventorySession)
-            .where(StockInventorySession.status != "completed")
+            .where(StockInventorySession.status.in_(("draft", "counting", "review")))
         )
         or 0
     )
@@ -264,6 +267,7 @@ def stock_articles(
     supplier_id: str = "",
     location_id: str = "",
     state: str = "active",
+    availability: str = "in_stock",
     low_stock: bool = False,
 ):
     if denied := _denied(
@@ -294,6 +298,10 @@ def stock_articles(
                 row["display_available"] = row["by_location"].get(location.code, ZERO)
     if low_stock:
         rows = [row for row in rows if row["low"]]
+    if availability == "in_stock":
+        rows = [row for row in rows if row.get("display_available", row["available"]) > ZERO]
+    elif availability == "out_of_stock":
+        rows = [row for row in rows if row.get("display_available", row["available"]) <= ZERO]
     categories = db.scalars(select(StockCategory).order_by(StockCategory.name)).all()
     selected_category = next(
         (category for category in categories if category.id == clean_category_id), None
@@ -318,6 +326,7 @@ def stock_articles(
                 "supplier_id": clean_supplier_id,
                 "location_id": clean_location_id,
                 "state": state,
+                "availability": availability,
                 "low_stock": low_stock,
             },
             "tyre_view": tyre_view,
@@ -669,6 +678,7 @@ def stock_invoices(
         .join(Document, Document.id == StockInvoiceImport.document_id)
         .outerjoin(StockSupplier, StockSupplier.id == StockInvoiceImport.supplier_id)
         .order_by(StockInvoiceImport.created_at.asc(), StockInvoiceImport.id.asc())
+        .where(StockInvoiceImport.status != "cancelled")
     )
     if status_filter in {"pending", "divergent", "conferred"}:
         statement = statement.where(StockInvoiceImport.conference_status == status_filter)
@@ -813,6 +823,73 @@ def stock_invoice_document(request: Request, invoice_import_id: int, db: DbSessi
         f'inline; filename="{original_name.replace(chr(34), "")}"'
     )
     return response
+
+
+@stock_router.post("/v2-clean/stock/invoices/{invoice_import_id}/remove")
+def stock_invoice_remove(
+    request: Request,
+    invoice_import_id: int,
+    db: DbSession,
+    reason: str = Form(""),
+):
+    if denied := _denied(request, db, "stock.manage", "admin.manage"):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?error=missing_removal_reason", status_code=303
+        )
+    linked_receipts = int(
+        db.scalar(
+            select(func.count())
+            .select_from(StockReceiptInvoiceLink)
+            .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
+        )
+        or 0
+    )
+    if linked_receipts:
+        return RedirectResponse(
+            "/v2-clean/stock/invoices?error=invoice_has_receipts", status_code=303
+        )
+    document = db.get(Document, invoice_import.document_id)
+    previous_import_status = invoice_import.status
+    previous_document_status = document.status if document else None
+    invoice_import.status = "cancelled"
+    invoice_import.conference_status = "cancelled"
+    invoice_import.conference_notes = " · ".join(
+        part for part in (invoice_import.conference_notes, clean_reason) if part
+    )
+    if document:
+        document.status = "removed"
+        document.updated_by_id = _user_id(request)
+        document.updated_at = datetime.now(UTC)
+        db.add(
+            DocumentEvent(
+                document_id=document.id,
+                action="stock.invoice.removed",
+                old_value=previous_document_status,
+                new_value=clean_reason,
+                user_id=_user_id(request),
+            )
+        )
+    record_audit(
+        db,
+        action="stock.invoice.removed",
+        entity_type="stock_invoice_import",
+        entity_id=invoice_import.id,
+        detail=clean_reason,
+        user_id=_user_id(request),
+        before_json={
+            "status": previous_import_status,
+            "document_status": previous_document_status,
+        },
+        after_json={"status": "cancelled", "document_status": "removed"},
+    )
+    db.commit()
+    return RedirectResponse("/v2-clean/stock/invoices?removed=1", status_code=303)
 
 
 @stock_router.post("/v2-clean/stock/invoices/{invoice_import_id}/conference")
@@ -1728,14 +1805,20 @@ def stock_current(request: Request, db: DbSession, q: str = "", location_id: str
 
 
 @stock_router.get("/v2-clean/stock/inventory", response_class=HTMLResponse)
-def stock_inventory_sessions(request: Request, db: DbSession):
+def stock_inventory_sessions(request: Request, db: DbSession, scope: str = "open"):
     if denied := _denied(
         request, db, "stock.read", "stock.operate", "stock.manage", "admin.manage"
     ):
         return denied
+    statement = select(StockInventorySession, StockLocation).join(
+        StockLocation, StockLocation.id == StockInventorySession.location_id
+    )
+    if scope == "archived":
+        statement = statement.where(StockInventorySession.status.like("archived_%"))
+    elif scope != "all":
+        statement = statement.where(~StockInventorySession.status.like("archived_%"))
     rows = db.execute(
-        select(StockInventorySession, StockLocation)
-        .join(StockLocation, StockLocation.id == StockInventorySession.location_id)
+        statement
         .order_by(StockInventorySession.created_at.desc(), StockInventorySession.id.desc())
     ).all()
     return templates.TemplateResponse(
@@ -1744,6 +1827,7 @@ def stock_inventory_sessions(request: Request, db: DbSession):
         {
             **_page_context(request, db),
             "rows": rows,
+            "scope": scope,
             "locations": db.scalars(
                 select(StockLocation)
                 .where(StockLocation.active.is_(True))
@@ -1756,6 +1840,42 @@ def stock_inventory_sessions(request: Request, db: DbSession):
             ).all(),
         },
     )
+
+
+@stock_router.post("/v2-clean/stock/inventory/{inventory_id}/cancel")
+def stock_inventory_cancel(
+    request: Request, inventory_id: int, db: DbSession, reason: str = Form("")
+):
+    if denied := _denied(request, db, "stock.inventory.count", "stock.manage", "admin.manage"):
+        return denied
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
+    try:
+        cancel_inventory_session(db, inventory=inventory, reason=reason, user_id=_user_id(request))
+        db.commit()
+        query = {"cancelled": inventory.id}
+    except StockDomainError as exc:
+        db.rollback()
+        query = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/inventory?{urlencode(query)}", status_code=303)
+
+
+@stock_router.post("/v2-clean/stock/inventory/{inventory_id}/archive")
+def stock_inventory_archive(request: Request, inventory_id: int, db: DbSession):
+    if denied := _denied(request, db, "stock.inventory.confirm", "stock.manage", "admin.manage"):
+        return denied
+    inventory = db.get(StockInventorySession, inventory_id)
+    if not inventory:
+        return RedirectResponse("/v2-clean/stock/inventory?error=missing", status_code=303)
+    try:
+        archive_inventory_session(db, inventory=inventory, user_id=_user_id(request))
+        db.commit()
+        query = {"archived": inventory.id}
+    except StockDomainError as exc:
+        db.rollback()
+        query = {"error": str(exc)}
+    return RedirectResponse(f"/v2-clean/stock/inventory?{urlencode(query)}", status_code=303)
 
 
 @stock_router.post("/v2-clean/stock/inventory")
@@ -1807,7 +1927,7 @@ def stock_inventory_session_detail(request: Request, inventory_id: int, db: DbSe
         .where(StockInventoryCount.session_id == inventory.id)
         .order_by(StockArticle.internal_ref)
     ).all()
-    reveal = inventory.status in {"review", "completed"}
+    reveal = inventory.status in {"review", "completed", "archived_completed"}
     if reveal:
         rows = [
             {

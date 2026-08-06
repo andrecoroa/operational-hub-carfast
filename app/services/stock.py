@@ -1035,6 +1035,58 @@ def save_inventory_counts(
     return inventory
 
 
+def cancel_inventory_session(
+    db: Session,
+    *,
+    inventory: StockInventorySession,
+    reason: str,
+    user_id: int | None,
+) -> StockInventorySession:
+    clean_reason = reason.strip()
+    if inventory.status not in {"draft", "counting"}:
+        raise StockDomainError("Só é possível cancelar uma sessão ainda em contagem.")
+    if not clean_reason:
+        raise StockDomainError("Indica o motivo do cancelamento.")
+    previous_status = inventory.status
+    inventory.status = "cancelled"
+    inventory.notes = " · ".join(part for part in (inventory.notes, clean_reason) if part)
+    inventory.closed_by_id = user_id
+    inventory.closed_at = datetime.now(UTC)
+    record_audit(
+        db,
+        action="stock.inventory.cancelled",
+        entity_type="stock_inventory_session",
+        entity_id=inventory.id,
+        detail=clean_reason,
+        user_id=user_id,
+        before_json={"status": previous_status},
+        after_json={"status": inventory.status},
+    )
+    return inventory
+
+
+def archive_inventory_session(
+    db: Session,
+    *,
+    inventory: StockInventorySession,
+    user_id: int | None,
+) -> StockInventorySession:
+    if inventory.status not in {"completed", "cancelled"}:
+        raise StockDomainError("Só é possível arquivar uma sessão concluída ou cancelada.")
+    previous_status = inventory.status
+    inventory.status = f"archived_{previous_status}"
+    record_audit(
+        db,
+        action="stock.inventory.archived",
+        entity_type="stock_inventory_session",
+        entity_id=inventory.id,
+        user_id=user_id,
+        before_json={"status": previous_status},
+        after_json={"status": inventory.status},
+    )
+    return inventory
+
+
 def confirm_inventory_session(
     db: Session,
     *,

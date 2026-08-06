@@ -325,6 +325,17 @@
 .stock-article-table .stock-reference-column { width: 150px; padding-left: 4px; }
 .stock-article-table .stock-tyre-measure-column { width: 160px; white-space: nowrap; }
 .stock-article-table.is-tyre-view .stock-short-name { max-width: 280px; }
+.stock-scope-tabs { display: flex; gap: 8px; margin: 0 0 12px; }
+.stock-scope-tabs a { padding: 8px 11px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 700; }
+.stock-scope-tabs a.active { border-color: #c33b2f; color: #9f2f25; }
+.stock-row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stock-row-actions form { display: flex; gap: 6px; margin: 0; }
+.stock-row-actions details form { margin-top: 7px; }
+.stock-row-actions input { width: 180px; min-height: 34px; }
+.stock-danger-zone { margin-top: 14px; padding-top: 10px; border-top: 1px solid #ead2cf; }
+.stock-danger-zone summary { color: #a52f25; font-weight: 800; cursor: pointer; }
+.stock-danger-zone form { display: flex; gap: 8px; align-items: end; margin-top: 10px; }
+.stock-danger-zone label { flex: 1; }
 .stock-badge.danger { color: #9c2d25; background: #fff0ee; }
 .stock-row-divergent td { background: #fff6f2; }
 .stock-active-row td { background: #edf4ff; }

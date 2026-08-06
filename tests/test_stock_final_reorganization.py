@@ -16,6 +16,7 @@ from app.models.stock import (
     StockMovement,
     StockPurchaseOrder,
     StockReceipt,
+    StockReceiptInvoiceLink,
     StockSupplier,
 )
 from app.models.workshop import WorkshopProcess
@@ -104,7 +105,7 @@ def test_article_table_separates_and_sorts_tyre_measure_only_in_tyre_view(
     db_session.commit()
 
     tyre_page = authenticated_client.get(
-        f"/v2-clean/stock/articles?category_id={tyre_category.id}"
+        f"/v2-clean/stock/articles?category_id={tyre_category.id}&availability=all"
     )
     assert tyre_page.status_code == 200
     assert "<th class=\"stock-tyre-measure-column\">Medida</th>" in tyre_page.text
@@ -113,11 +114,38 @@ def test_article_table_separates_and_sorts_tyre_measure_only_in_tyre_view(
     assert "QUATRAC VREDESTEIN" in tyre_page.text
     assert tyre_page.text.index("TYRE-185") < tyre_page.text.index("TYRE-195")
 
-    mixed_page = authenticated_client.get("/v2-clean/stock/articles")
+    mixed_page = authenticated_client.get("/v2-clean/stock/articles?availability=all")
     assert mixed_page.status_code == 200
     assert "Designação curta" in mixed_page.text
     assert "Filtro de óleo" in mixed_page.text
     assert "stock-tyre-measure-column\">Medida" not in mixed_page.text
+
+
+def test_article_table_defaults_to_articles_with_available_stock(
+    authenticated_client, db_session
+):
+    available_id = _article(authenticated_client, "AVAILABLE-001")
+    empty_id = _article(authenticated_client, "EMPTY-001")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    receipt = authenticated_client.post(
+        "/api/stock/receipts",
+        json={
+            "location_id": workshop.id,
+            "source_type": "manual",
+            "manual_reason": "Teste de disponibilidade",
+            "lines": [{"article_id": available_id, "accepted_quantity": 2}],
+        },
+    )
+    assert receipt.status_code == 201
+
+    default_page = authenticated_client.get("/v2-clean/stock/articles")
+    all_page = authenticated_client.get("/v2-clean/stock/articles?availability=all")
+
+    assert 'value="in_stock" selected' in default_page.text
+    assert "AVAILABLE-001" in default_page.text
+    assert "EMPTY-001" not in default_page.text
+    assert "AVAILABLE-001" in all_page.text
+    assert "EMPTY-001" in all_page.text
 
 
 def test_articles_can_be_classified_in_bulk(authenticated_client, db_session):
@@ -343,6 +371,43 @@ def test_inventory_draft_can_be_partial_and_session_can_target_one_category(
     assert db_session.get(StockInventorySession, inventory_id).status == "counting"
 
 
+def test_inventory_can_be_cancelled_then_archived_without_movements(
+    authenticated_client, db_session
+):
+    _article(authenticated_client, "CANCEL-INVENTORY")
+    workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    created = authenticated_client.post(
+        "/v2-clean/stock/inventory",
+        data={"location_id": workshop.id, "idempotency_key": "cancel-inventory-001"},
+        follow_redirects=False,
+    )
+    inventory_id = int(created.headers["location"].rstrip("/").split("/")[-1])
+    movements_before = db_session.scalar(select(func.count()).select_from(StockMovement))
+
+    cancelled = authenticated_client.post(
+        f"/v2-clean/stock/inventory/{inventory_id}/cancel",
+        data={"reason": "Sessão criada por engano"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+    assert cancelled.status_code == 303
+    assert db_session.get(StockInventorySession, inventory_id).status == "cancelled"
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == movements_before
+
+    archived = authenticated_client.post(
+        f"/v2-clean/stock/inventory/{inventory_id}/archive", follow_redirects=False
+    )
+    db_session.expire_all()
+    assert archived.status_code == 303
+    assert db_session.get(StockInventorySession, inventory_id).status == "archived_cancelled"
+    assert f"#{inventory_id}" not in authenticated_client.get(
+        "/v2-clean/stock/inventory"
+    ).text
+    assert f"#{inventory_id}" in authenticated_client.get(
+        "/v2-clean/stock/inventory?scope=archived"
+    ).text
+
+
 def test_inventory_confirmation_is_idempotent(authenticated_client, db_session):
     article_id = _article(authenticated_client, "IDEMP-COUNT")
     workshop = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
@@ -519,6 +584,72 @@ def test_conference_listing_lazy_loads_document_only_in_modal(authenticated_clie
     assert "Admin Testes" in responsible_field
     assert "readonly" in responsible_field
     assert "name=" not in responsible_field
+
+
+def test_stock_invoice_removal_is_logical_and_blocked_after_receipt(
+    authenticated_client, db_session
+):
+    removable_document = Document(
+        title="Fatura removível",
+        document_type="finance_supplier_invoice",
+        classification="finance",
+        source="stock_test",
+        entry_channel="stock",
+        original_name="removable.pdf",
+        file_name="removable.pdf",
+        storage_provider="local",
+        storage_path="Stock/removable.pdf",
+        status="received",
+    )
+    linked_document = Document(
+        title="Fatura ligada",
+        document_type="finance_supplier_invoice",
+        classification="finance",
+        source="stock_test",
+        entry_channel="stock",
+        original_name="linked.pdf",
+        file_name="linked.pdf",
+        storage_provider="local",
+        storage_path="Stock/linked.pdf",
+        status="received",
+    )
+    db_session.add_all([removable_document, linked_document])
+    db_session.flush()
+    removable = StockInvoiceImport(document_id=removable_document.id, status="needs_review")
+    linked = StockInvoiceImport(document_id=linked_document.id, status="needs_review")
+    db_session.add_all([removable, linked])
+    db_session.flush()
+    location = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    receipt = StockReceipt(
+        location_id=location.id,
+        source_type="manual",
+        manual_reason="Receção já confirmada",
+        status="completed",
+    )
+    db_session.add(receipt)
+    db_session.flush()
+    db_session.add(
+        StockReceiptInvoiceLink(receipt_id=receipt.id, invoice_import_id=linked.id)
+    )
+    db_session.commit()
+
+    removed = authenticated_client.post(
+        f"/v2-clean/stock/invoices/{removable.id}/remove",
+        data={"reason": "Documento duplicado"},
+        follow_redirects=False,
+    )
+    blocked = authenticated_client.post(
+        f"/v2-clean/stock/invoices/{linked.id}/remove",
+        data={"reason": "Tentativa indevida"},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert removed.status_code == blocked.status_code == 303
+    assert db_session.get(StockInvoiceImport, removable.id).status == "cancelled"
+    assert db_session.get(Document, removable_document.id).status == "removed"
+    assert "invoice_has_receipts" in blocked.headers["location"]
+    assert db_session.get(StockInvoiceImport, linked.id).status == "needs_review"
 
 
 def test_validated_invoice_is_pending_until_a_physical_receipt(

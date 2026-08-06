@@ -216,45 +216,93 @@
         </form>
         </details>
       {% endif %}
-      <section class="clean-admin-role-grid clean-card-wide">
+      <section class="clean-panel clean-card-wide clean-admin-role-overview">
+        <div class="table-wrap">
+          <table class="clean-admin-role-table">
+            <thead><tr><th>Perfil</th><th>Tipo</th><th>Estado</th><th>Permissões</th><th>Ação</th></tr></thead>
+            <tbody>
+              {% for role in roles %}
+                <tr>
+                  <td><strong>{{ role.name }}</strong><small>{{ role.description or role.code }}</small></td>
+                  <td>{{ "Sistema" if role.is_system else "Personalizado" }}</td>
+                  <td><span class="pill {{ 'priority-high' if role.active else 'muted-pill' }}">{{ "Ativo" if role.active else "Inativo" }}</span></td>
+                  <td><strong>{{ role_permissions.get(role.id, [])|length }}</strong> de {{ permission_groups.values()|map('length')|sum }}</td>
+                  <td><button class="secondary clean-admin-role-select" type="button" data-role-id="{{ role.id }}">Gerir</button></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="clean-panel clean-card-wide clean-admin-role-workspace">
+        <header class="clean-admin-role-workspace-head">
+          <div><p class="eyebrow">Matriz de permissões</p><h3 id="clean-admin-selected-role">Selecionar perfil</h3><p>Uma linha por permissão, agrupada por módulo.</p></div>
+          <label>Perfil
+            <select id="clean-admin-role-picker">
+              {% for role in roles %}<option value="{{ role.id }}">{{ role.name }} · {{ role_permissions.get(role.id, [])|length }} permissões</option>{% endfor %}
+            </select>
+          </label>
+        </header>
         {% for role in roles %}
-          <article class="clean-panel clean-admin-role-card">
-            <div class="clean-admin-card-heading">
-              <div><strong>{{ role.name }}</strong><span><code>{{ role.code }}</code> · {{ "Sistema" if role.is_system else "Personalizado" }}</span></div>
-              <span class="pill {{ 'priority-high' if role.active else 'muted-pill' }}">{{ "Ativo" if role.active else "Inativo" }}</span>
+          <div class="clean-admin-role-editor" data-role-editor="{{ role.id }}" data-role-name="{{ role.name }}" {% if not loop.first %}hidden{% endif %}>
+            <div class="clean-admin-role-editor-summary">
+              <span><strong>{{ role.name }}</strong><small><code>{{ role.code }}</code> · {{ "Sistema" if role.is_system else "Personalizado" }}</small></span>
+              {% if role.code == "admin" %}<span class="pill muted-pill">Protegido</span>{% endif %}
             </div>
-            <p>{{ role.description or "Sem descrição." }}</p>
-            <p><strong>{{ role_permissions.get(role.id, [])|length }}</strong> permissões</p>
-            <details>
-              <summary>Ver matriz de permissões</summary>
-              <form class="clean-admin-permission-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/permissions">
-                {% for group, group_permissions in permission_groups.items() %}
-                  <fieldset>
-                    <legend>{{ group }}</legend>
-                    <div class="clean-admin-check-grid">
+            <form class="clean-admin-permission-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/permissions">
+              <div class="table-wrap clean-admin-permission-table-wrap">
+                <table class="clean-admin-permission-table">
+                  <thead><tr><th>Módulo</th><th>Permissão</th><th>Código técnico</th><th>Atribuída</th></tr></thead>
+                  <tbody>
+                    {% for group, group_permissions in permission_groups.items() %}
                       {% for permission in group_permissions %}
-                        <label title="{{ permission.name }}">
-                          <input type="checkbox" name="permission_codes" value="{{ permission.code }}"
+                        <tr>
+                          {% if loop.first %}<th rowspan="{{ group_permissions|length }}" scope="rowgroup">{{ group }}</th>{% endif %}
+                          <td><strong>{{ permission.name or permission.code }}</strong></td>
+                          <td><code>{{ permission.code }}</code></td>
+                          <td><label class="clean-admin-permission-toggle"><input type="checkbox" name="permission_codes" value="{{ permission.code }}"
                             {% if role.code == "admin" or permission.code in role_permissions.get(role.id, []) %}checked{% endif %}
-                            {% if role.code == "admin" or not can_manage %}disabled{% endif %}>
-                          {{ permission.code }}
-                        </label>
+                            {% if role.code == "admin" or not can_manage %}disabled{% endif %}><span>Permitir</span></label></td>
+                        </tr>
                       {% endfor %}
-                    </div>
-                  </fieldset>
-                {% endfor %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <footer class="clean-admin-role-actions">
                 {% if can_manage and role.code != "admin" %}<button type="submit">Guardar permissões</button>{% endif %}
-              </form>
-            </details>
+                {% if role.code == "admin" %}<small>O perfil Admin mantém todas as permissões.</small>{% endif %}
+              </footer>
+            </form>
             {% if can_manage and role.code != "admin" %}
-              <form method="post" action="/v2-clean/admin/roles/{{ role.id }}/toggle">
+              <form class="clean-admin-role-toggle-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/toggle">
                 <button class="secondary" type="submit">{{ "Desativar perfil" if role.active else "Ativar perfil" }}</button>
               </form>
             {% endif %}
-            {% if role.code == "admin" %}<small>Perfil protegido: mantém todas as permissões.</small>{% endif %}
-          </article>
+          </div>
         {% endfor %}
       </section>
+      <script>
+        (() => {
+          const picker = document.getElementById("clean-admin-role-picker");
+          const title = document.getElementById("clean-admin-selected-role");
+          const editors = [...document.querySelectorAll("[data-role-editor]")];
+          if (!picker || !editors.length) return;
+          const selectRole = (roleId) => {
+            const selected = editors.find((editor) => editor.dataset.roleEditor === String(roleId)) || editors[0];
+            editors.forEach((editor) => { editor.hidden = editor !== selected; });
+            picker.value = selected.dataset.roleEditor;
+            title.textContent = selected.dataset.roleName;
+            selected.scrollIntoView({ block: "nearest" });
+          };
+          picker.addEventListener("change", () => selectRole(picker.value));
+          document.querySelectorAll(".clean-admin-role-select").forEach((button) => {
+            button.addEventListener("click", () => selectRole(button.dataset.roleId));
+          });
+          selectRole(picker.value);
+        })();
+      </script>
     {% endif %}
 
     {% if admin_section == "organization" %}

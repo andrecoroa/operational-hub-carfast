@@ -24329,6 +24329,144 @@ body.clean-task-preview-open {
   min-width: 0;
 }
 
+.clean-admin-role-overview,
+.clean-admin-role-workspace {
+  min-width: 0;
+}
+
+.clean-admin-role-table td:first-child strong,
+.clean-admin-role-table td:first-child small {
+  display: block;
+}
+
+.clean-admin-role-table td:first-child small {
+  color: #617783;
+  margin-top: 3px;
+}
+
+.clean-admin-role-table th:last-child,
+.clean-admin-role-table td:last-child {
+  text-align: right;
+  width: 92px;
+}
+
+.clean-admin-role-workspace-head {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  margin-bottom: 18px;
+}
+
+.clean-admin-role-workspace-head label {
+  color: #45626c;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.clean-admin-role-workspace-head select {
+  background: #fff;
+  border: 1px solid #cbd8de;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.clean-admin-role-editor[hidden] {
+  display: none;
+}
+
+.clean-admin-role-editor-summary {
+  align-items: center;
+  background: #f4f7f8;
+  border: 1px solid var(--clean-admin-border);
+  border-radius: 7px 7px 0 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.clean-admin-role-editor-summary span:first-child strong,
+.clean-admin-role-editor-summary span:first-child small {
+  display: block;
+}
+
+.clean-admin-permission-table-wrap {
+  border: 1px solid var(--clean-admin-border);
+  border-top: 0;
+  max-height: 58vh;
+  overflow: auto;
+}
+
+.clean-admin-permission-table {
+  min-width: 760px;
+}
+
+.clean-admin-permission-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.clean-admin-permission-table th,
+.clean-admin-permission-table td {
+  overflow-wrap: normal;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.clean-admin-permission-table th:first-child {
+  background: #f4f7f8;
+  color: #17333d;
+  min-width: 150px;
+  text-transform: capitalize;
+  vertical-align: top;
+}
+
+.clean-admin-permission-table td:nth-child(2) {
+  min-width: 240px;
+}
+
+.clean-admin-permission-table td:nth-child(3) {
+  min-width: 250px;
+}
+
+.clean-admin-permission-table td:nth-child(3) code {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.clean-admin-permission-table th:last-child,
+.clean-admin-permission-table td:last-child {
+  text-align: center;
+  width: 112px;
+}
+
+.clean-admin-permission-toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.clean-admin-role-actions {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 54px;
+  padding-top: 12px;
+}
+
+.clean-admin-role-toggle-form {
+  border-top: 1px solid var(--clean-admin-border);
+  margin-top: 12px;
+  padding-top: 12px;
+  text-align: right;
+}
+
 .clean-admin-role-card:has(> details[open]) {
   grid-column: 1 / -1;
 }
@@ -24387,6 +24525,10 @@ body.clean-task-preview-open {
   }
 
   .clean-admin-role-card:has(> details[open]) .clean-admin-permission-form {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-admin-role-workspace-head {
     grid-template-columns: 1fr;
   }
 

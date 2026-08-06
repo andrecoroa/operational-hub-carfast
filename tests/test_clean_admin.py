@@ -42,6 +42,12 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
         assert response.status_code == 200
         assert marker in response.text
 
+    roles_page = authenticated_client.get("/v2-clean/admin/roles")
+    assert "clean-admin-role-table" in roles_page.text
+    assert "clean-admin-role-picker" in roles_page.text
+    assert "Matriz de permissões" in roles_page.text
+    assert "Código técnico" in roles_page.text
+
 
 def test_user_admin_is_limited_to_assigned_admin_sections(client, db_session):
     create_user(

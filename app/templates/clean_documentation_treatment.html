@@ -17,7 +17,7 @@
       </div>
       {% if document_family == "invoices" and can_manage_documents %}
         <form method="post" action="/v2-clean/documentation/invoices/reconcile-pending">
-          <input type="hidden" name="return_url" id="doc-treatment-preview-return-url" value="{{ return_url }}">
+          <input type="hidden" name="return_url" value="{{ return_url }}">
           <button type="submit">Reconciliar faturas esperadas</button>
         </form>
       {% endif %}
@@ -227,7 +227,7 @@
         <div class="doc-treatment-document-pane" id="doc-treatment-document-pane"></div>
         <form method="post" action="/v2-clean/documentation/treatment/bulk" class="doc-treatment-preview-form">
           <input type="hidden" name="item_refs" id="doc-treatment-preview-ref">
-          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <input type="hidden" name="return_url" id="doc-treatment-preview-return-url" value="{{ return_url }}">
           <section data-real-document-section><h3>Natureza da fatura</h3><label>Natureza<select name="invoice_nature" id="doc-treatment-preview-nature"><option value="">Manter natureza</option><option value="por_classificar">Por classificar</option><option value="operacional">Operacional</option><option value="financeira">Financeira</option><option value="stock">Fatura de stock</option></select></label></section>
           <section>
             <h3>Associação</h3>

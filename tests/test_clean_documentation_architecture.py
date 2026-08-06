@@ -1232,6 +1232,11 @@ def test_treatment_preview_saves_services_and_creates_linked_audit_task(
         "6. Concluir tratamento"
     )
     assert "doc-treatment-inline-status" in page.text
+    assert page.text.count('id="doc-treatment-preview-return-url"') == 1
+    assert (
+        '<input type="hidden" name="return_url" id="doc-treatment-preview-return-url"'
+        in page.text
+    )
     assert "previewForm.getAttribute('action')" in page.text
     assert "submitter.getAttribute('formaction')" in page.text
     assert "submitter.hasAttribute('formaction')" in page.text

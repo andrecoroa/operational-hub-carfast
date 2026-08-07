@@ -188,8 +188,18 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         follow_redirects=False,
     )
     assert sent.status_code == 303
+    plan = db_session.scalar(
+        select(VehicleFinancialPlan).where(
+            VehicleFinancialPlan.vehicle_id == vehicle.id,
+            VehicleFinancialPlan.active.is_(True),
+            VehicleFinancialPlan.contract_number == "PROP-DEBT-1",
+        )
+    )
+    plan.outstanding_amount = Decimal("16000.00")
+    db_session.commit()
     reopened = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}/reopen",
+        data={"refresh_financials": "1"},
         follow_redirects=False,
     )
     assert reopened.status_code == 303
@@ -200,6 +210,19 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert [item.version for item in proposals] == [1, 2]
     assert proposals[0].status == "sent"
     assert proposals[1].status == "draft"
+    first_version_line = db_session.scalar(
+        select(VehicleSaleProposalLine).where(
+            VehicleSaleProposalLine.proposal_id == proposals[0].id
+        )
+    )
+    second_version_line = db_session.scalar(
+        select(VehicleSaleProposalLine).where(
+            VehicleSaleProposalLine.proposal_id == proposals[1].id
+        )
+    )
+    assert first_version_line.snapshot_json["debt"] == "20910.00"
+    assert second_version_line.snapshot_json["debt"] == "19680.00"
+    assert second_version_line.proposed_price == Decimal("19800.00")
 
     listing = authenticated_client.get("/v2-clean/fleet/sales/proposals")
     assert listing.status_code == 200
@@ -233,8 +256,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
-    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 20910
-    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == -1110
+    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 19680
+    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 120
     assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"

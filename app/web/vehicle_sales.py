@@ -1512,11 +1512,13 @@ async def vehicle_sale_proposal_status(request: Request, proposal_id: int):
 
 
 @vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/reopen")
-def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
+async def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
     denied = _sales_access_denied(request)
     if denied:
         return denied
     user_id = int(base_router.get_web_user_id(request))
+    form = await request.form()
+    refresh_financials = str(form.get("refresh_financials") or "") == "1"
     with base_router.SessionLocal() as db:
         previous = db.get(VehicleSaleProposal, proposal_id)
         if not previous:
@@ -1541,12 +1543,39 @@ def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
         db.flush()
         root_reference = previous.reference.split("-V", 1)[0]
         proposal.reference = f"{root_reference}-V{proposal.version}"
-        for line in _proposal_lines(db, previous.id):
+        previous_lines = _proposal_lines(db, previous.id)
+        refreshed_rows = (
+            {
+                row["vehicle"].id: row
+                for row in _load_sale_rows(
+                    db,
+                    select(Vehicle).where(
+                        Vehicle.id.in_([line.vehicle_id for line in previous_lines])
+                    ),
+                )
+            }
+            if refresh_financials and previous_lines
+            else {}
+        )
+        for line in previous_lines:
+            snapshot = dict(line.snapshot_json or {})
+            refreshed_row = refreshed_rows.get(line.vehicle_id)
+            if refreshed_row:
+                snapshot["cost"] = (
+                    str(refreshed_row["cost"])
+                    if refreshed_row.get("cost") is not None
+                    else None
+                )
+                snapshot["debt"] = (
+                    str(refreshed_row["debt"])
+                    if refreshed_row.get("debt") is not None
+                    else None
+                )
             db.add(
                 VehicleSaleProposalLine(
                     proposal_id=proposal.id,
                     vehicle_id=line.vehicle_id,
-                    snapshot_json=dict(line.snapshot_json or {}),
+                    snapshot_json=snapshot,
                     base_price=line.base_price,
                     proposed_price=line.proposed_price,
                     notes=line.notes,
@@ -1554,6 +1583,21 @@ def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
                     sort_order=line.sort_order,
                 )
             )
+        record_audit(
+            db,
+            action="vehicle.sale.proposal_reopened",
+            entity_type="vehicle_sale_proposal",
+            entity_id=proposal.id,
+            detail=(
+                f"Nova versão {proposal.reference} criada"
+                + (" com custo e dívida atualizados" if refresh_financials else "")
+            ),
+            after_json={
+                "previous_version_id": previous.id,
+                "refresh_financials": refresh_financials,
+            },
+            user_id=user_id,
+        )
         db.commit()
         new_id = proposal.id
     return RedirectResponse(

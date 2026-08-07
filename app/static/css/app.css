@@ -25094,6 +25094,33 @@ body.clean-task-preview-open {
 .sale-proposal-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sale-proposal-reopen-form {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) auto;
+  gap: 4px 16px;
+  align-items: center;
+}
+
+.sale-proposal-refresh-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.sale-proposal-reopen-form small {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.sale-proposal-reopen-form button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 @media (max-width: 760px) {
@@ -25103,6 +25130,16 @@ body.clean-task-preview-open {
 
   .sale-proposal-notes {
     grid-column: auto;
+  }
+
+  .sale-proposal-reopen-form {
+    grid-template-columns: 1fr;
+  }
+
+  .sale-proposal-reopen-form button,
+  .sale-proposal-reopen-form small {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 

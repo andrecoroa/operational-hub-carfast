@@ -38,7 +38,11 @@
     </form>
     <section class="clean-panel clean-card-wide sale-proposal-actions">
       {% if proposal.status == 'draft' %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/send"><button type="submit">Marcar como enviada</button></form>
-      {% else %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/reopen"><button type="submit">Reabrir como nova versão</button></form>{% endif %}
+      {% else %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/reopen" class="sale-proposal-reopen-form">
+        <label class="sale-proposal-refresh-option"><input type="checkbox" name="refresh_financials" value="1"> Atualizar custo atual e valor em dívida a partir da ficha</label>
+        <small>A versão anterior mantém os valores originais. Preços propostos e notas são copiados sem alterações.</small>
+        <button type="submit">Criar nova versão</button>
+      </form>{% endif %}
       {% if proposal.status not in ['completed', 'cancelled'] %}
       <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/status"><input type="hidden" name="status" value="completed"><button type="submit" class="secondary">Marcar como terminada</button></form>
       <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/status"><input type="hidden" name="status" value="cancelled"><button type="submit" class="danger">Cancelar proposta</button></form>

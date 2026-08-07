@@ -5,6 +5,31 @@ from decimal import Decimal
 from typing import Any, Callable, Iterable
 
 
+MONEY = Decimal("0.01")
+STANDARD_VAT_MULTIPLIER = Decimal("1.23")
+
+
+def _money(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value)).quantize(MONEY)
+    except (ValueError, TypeError):
+        return None
+
+
+def _outstanding_with_vat(plan: Any | None, installment: Any | None) -> Decimal | None:
+    if not plan:
+        return None
+    explicit = _money(getattr(installment, "outstanding_with_vat", None))
+    if explicit is not None:
+        return explicit
+    outstanding = _money(getattr(plan, "outstanding_amount", None))
+    if outstanding is None:
+        return None
+    return (outstanding * STANDARD_VAT_MULTIPLIER).quantize(MONEY)
+
+
 def _latest_applied_installment(installments: Iterable[Any], reference: date) -> Any | None:
     candidates = [
         installment
@@ -85,7 +110,7 @@ def canonical_vehicle_financial_values(
         "current_value_with_vat": current_value,
         "current_value_date": current_value_date,
         "amortization_month": amortization_month,
-        "outstanding_with_vat": getattr(plan, "outstanding_amount", None) if plan else None,
+        "outstanding_with_vat": _outstanding_with_vat(plan, applied_installment),
         "debt_reference_date": getattr(plan, "amount_reference_date", None) if plan else None,
         "applied_installment": applied_installment,
         "installment_count": len(installment_list),

@@ -7879,7 +7879,7 @@ def clean_vehicle_display_context(db: Session, vehicle: Vehicle) -> dict[str, ob
                 else "-"
             ),
             "debt_with_vat": format_eur(
-                active_financial_plan.outstanding_amount
+                financial_values.get("outstanding_with_vat")
                 if active_financial_plan
                 else debt_value
             ),

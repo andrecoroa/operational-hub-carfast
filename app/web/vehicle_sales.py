@@ -245,7 +245,7 @@ def _sale_row(
     cost = decimal_value(financial_values.get("current_value_with_vat"))
     # A financial margin only exists when an active financial plan supplies a balance.
     # Legacy manual debt fields must not make an unfinanced vehicle look financed.
-    debt = decimal_value(financial_plan.outstanding_amount) if financial_plan else None
+    debt = decimal_value(financial_values.get("outstanding_with_vat"))
     market_trade = decimal_value(profile.market_trade_value) if profile else None
     market_retail = decimal_value(profile.market_retail_value) if profile else None
     financial_margin = margin(cost, debt)
@@ -529,7 +529,7 @@ def _financial_audit_rows(db) -> list[dict[str, Any]]:
                 "end_date": plan.end_date.isoformat() if plan and plan.end_date else "",
                 "installment_with_vat": plan.installment_with_vat if plan else None,
                 "residual_with_vat": residual,
-                "outstanding_with_vat": plan.outstanding_amount if plan else None,
+                "outstanding_with_vat": financial_values.get("outstanding_with_vat"),
                 "amount_reference_date": (
                     plan.amount_reference_date.isoformat()
                     if plan and plan.amount_reference_date else ""

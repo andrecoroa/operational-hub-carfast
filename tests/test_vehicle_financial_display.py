@@ -11,6 +11,7 @@ from app.web.router import (
     residual_amount_for_vehicle,
     rentway_commercial_context,
 )
+from app.services.vehicle_financials import canonical_vehicle_financial_values
 
 
 def test_financial_contract_key_normalizes_entity_aliases():
@@ -65,6 +66,49 @@ def test_financial_plan_cost_always_uses_rentway_value():
 def test_outstanding_capital_is_displayed_with_standard_vat():
     assert amount_with_standard_vat("1000") == 1230
     assert amount_with_standard_vat("1.234,56") == Decimal("1518.51")
+
+
+def test_canonical_debt_applies_vat_when_plan_only_has_net_balance():
+    plan = SimpleNamespace(
+        outstanding_amount=Decimal("6244.26"),
+        start_date=None,
+        amount_reference_date=date(2026, 8, 1),
+        initial_amount=None,
+    )
+
+    values = canonical_vehicle_financial_values(
+        cost_context={},
+        plan=plan,
+        current_value_calculator=lambda *args: None,
+        reference=date(2026, 8, 7),
+    )
+
+    assert values["outstanding_with_vat"] == Decimal("7680.44")
+
+
+def test_canonical_debt_uses_explicit_monthly_vat_without_applying_it_twice():
+    plan = SimpleNamespace(
+        outstanding_amount=Decimal("6244.26"),
+        start_date=None,
+        amount_reference_date=date(2026, 8, 1),
+        initial_amount=None,
+    )
+    installment = SimpleNamespace(
+        period_end=date(2026, 8, 1),
+        period_number=38,
+        amortization_amount=Decimal("100.00"),
+        outstanding_with_vat=Decimal("7679.99"),
+    )
+
+    values = canonical_vehicle_financial_values(
+        cost_context={},
+        plan=plan,
+        installments=[installment],
+        current_value_calculator=lambda *args: None,
+        reference=date(2026, 8, 7),
+    )
+
+    assert values["outstanding_with_vat"] == Decimal("7679.99")
 
 
 def test_current_value_uses_rentway_amortization_instead_of_bank_capital():

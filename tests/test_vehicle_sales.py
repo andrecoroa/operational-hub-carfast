@@ -165,7 +165,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert line.snapshot_json["colour"] == "Azul"
     assert line.snapshot_json["fuel"] == "Diesel"
     assert line.snapshot_json["gearbox"] == "Automática"
-    assert line.snapshot_json["debt"] == "17000.00"
+    assert line.snapshot_json["debt"] == "20910.00"
 
     saved = authenticated_client.post(
         f"/v2-clean/fleet/sales/proposals/{proposal.id}",
@@ -233,8 +233,8 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Cor") + 1).value == "Azul"
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
-    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 17000
-    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 2800
+    assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 20910
+    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == -1110
     assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
@@ -413,7 +413,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert "Dev. 18/10/2026" in page.text
     assert "Custo CarFast − valor em dívida" in page.text
     assert "Valor comércio − custo CarFast" in page.text
-    assert "15 000,00 €" in page.text
+    assert "18 450,00 €" in page.text
     assert 'name="rentway_group"' in page.text
     assert 'value="C1" checked' in page.text
     assert "Valor de custo" in page.text
@@ -430,7 +430,7 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
 
     detail = authenticated_client.get(f"/v2-clean/fleet/sales/{vehicle.id}")
     assert detail.status_code == 200
-    assert "15 000,00 €" in detail.text
+    assert "18 450,00 €" in detail.text
 
     values = authenticated_client.post(
         "/v2-clean/fleet/sales/bulk",

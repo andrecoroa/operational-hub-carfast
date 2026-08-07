@@ -153,7 +153,7 @@
             <div><span>Fim</span><strong>{{ ctx.finance.end_date }}</strong></div>
             <div><span>Prestação / renda</span><strong>{{ ctx.finance.installment_with_vat }}</strong><small>Com IVA quando esse valor existe; caso contrário, mostra a renda da fonte.</small></div>
             <div><span>Valor residual com IVA</span><strong>{{ ctx.finance.residual_with_vat }}</strong></div>
-            <div><span>Capital em dívida com IVA</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo atual indicado pela entidade financeira, sem nova aplicação de IVA.</small></div>
+            <div><span>Capital em dívida com IVA</span><strong>{{ ctx.finance.debt_with_vat }}</strong><small>Saldo com IVA; quando a fonte só indica capital líquido, o IVA é aplicado uma única vez.</small></div>
             <div><span>Data do valor do capital em dívida</span><strong>{{ ctx.finance.debt_reference_date }}</strong><small>Data do saldo indicada pela entidade financeira.</small></div>
             <div><span>Custo inicial com IVA</span><strong>{{ ctx.finance.initial_cost_with_vat }}</strong><small>Valor de aquisição Rentway com IVA.</small></div>
             <div><span>Mês amortização</span><strong>{{ ctx.finance.amortization_month }}</strong></div>

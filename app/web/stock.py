@@ -74,6 +74,7 @@ from app.services.stock import (
     ensure_invoice_import,
     extract_stock_invoice,
     low_stock_rows,
+    link_invoice_to_receipt,
     regularize_discrepancy,
     review_and_validate_invoice,
     save_inventory_counts,
@@ -1211,6 +1212,38 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
         .where(StockReceiptInvoiceLink.invoice_import_id == invoice_import.id)
         .order_by(StockReceipt.confirmed_at.desc(), StockReceipt.id.desc())
     ).all()
+    receipt_line_count = (
+        select(func.count(StockReceiptLine.id))
+        .where(StockReceiptLine.receipt_id == StockReceipt.id)
+        .correlate(StockReceipt)
+        .scalar_subquery()
+    )
+    candidate_receipts = []
+    if invoice_import.status == "validated" and invoice_import.supplier_id:
+        candidate_receipts = db.execute(
+            select(
+                StockReceipt,
+                StockLocation,
+                StockPurchaseOrder,
+                receipt_line_count.label("line_count"),
+            )
+            .join(StockLocation, StockLocation.id == StockReceipt.location_id)
+            .outerjoin(
+                StockPurchaseOrder,
+                StockPurchaseOrder.id == StockReceipt.purchase_order_id,
+            )
+            .where(
+                StockReceipt.supplier_id == invoice_import.supplier_id,
+                StockReceipt.status == "completed",
+                ~StockReceipt.id.in_(
+                    select(StockReceiptInvoiceLink.receipt_id).where(
+                        StockReceiptInvoiceLink.invoice_import_id == invoice_import.id
+                    )
+                ),
+            )
+            .order_by(StockReceipt.effective_date.desc(), StockReceipt.id.desc())
+            .limit(100)
+        ).all()
     articles = db.scalars(
         select(StockArticle)
         .where(StockArticle.active.is_(True))
@@ -1244,6 +1277,7 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
             "line_rows": line_rows,
             "raw": raw,
             "linked_receipts": linked_receipts,
+            "candidate_receipts": candidate_receipts,
             "articles": articles,
             "locations": db.scalars(
                 select(StockLocation)
@@ -1258,6 +1292,39 @@ def stock_invoice_review(request: Request, invoice_import_id: int, db: DbSession
             "receipt_responsible": db.get(User, _user_id(request)),
             "supplier_article_matches": supplier_article_matches,
         },
+    )
+
+
+@stock_router.post(
+    "/v2-clean/stock/invoices/{invoice_import_id}/link-existing-receipt"
+)
+async def stock_invoice_link_existing_receipt(
+    request: Request, invoice_import_id: int, db: DbSession
+):
+    if denied := _denied(request, db, "stock.operate", "stock.manage", "admin.manage"):
+        return denied
+    invoice_import = db.get(StockInvoiceImport, invoice_import_id)
+    if not invoice_import:
+        return RedirectResponse("/v2-clean/stock/invoices?error=missing", status_code=303)
+    form = await request.form()
+    try:
+        receipt = db.get(StockReceipt, int(str(form.get("receipt_id") or "")))
+        if not receipt:
+            raise StockDomainError("Receção de Stock inexistente.")
+        link_invoice_to_receipt(
+            db,
+            receipt=receipt,
+            invoice_import=invoice_import,
+            user_id=_user_id(request),
+        )
+        db.commit()
+        notice = {"linked_receipt": str(receipt.id)}
+    except (ValueError, StockDomainError) as exc:
+        db.rollback()
+        notice = {"error": str(exc)}
+    return RedirectResponse(
+        f"/v2-clean/stock/invoices/{invoice_import_id}?{urlencode(notice)}",
+        status_code=303,
     )
 
 

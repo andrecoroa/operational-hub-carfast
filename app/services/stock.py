@@ -442,6 +442,12 @@ def link_invoice_to_receipt(
     invoice_import: StockInvoiceImport,
     user_id: int | None,
 ) -> StockReceiptInvoiceLink:
+    if (
+        receipt.supplier_id
+        and invoice_import.supplier_id
+        and receipt.supplier_id != invoice_import.supplier_id
+    ):
+        raise StockDomainError("A receção e a fatura pertencem a fornecedores diferentes.")
     existing = db.scalar(
         select(StockReceiptInvoiceLink).where(
             StockReceiptInvoiceLink.receipt_id == receipt.id,

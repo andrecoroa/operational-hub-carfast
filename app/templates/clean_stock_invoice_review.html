@@ -12,6 +12,7 @@
   {% if request.query_params.get('extraction_review') %}<div class="stock-notice danger">Não foi possível reconhecer automaticamente esta fatura. O documento ficou disponível para revisão manual.</div>{% endif %}
   {% if request.query_params.get('validated') %}<div class="stock-notice success">Conferência guardada. Agora podes preparar e confirmar a receção.</div>{% endif %}
   {% if request.query_params.get('received') %}<div class="stock-notice success">Receção #{{ request.query_params.get('received') }} confirmada e existências atualizadas.</div>{% endif %}
+  {% if request.query_params.get('linked_receipt') %}<div class="stock-notice success">Fatura associada à receção #{{ request.query_params.get('linked_receipt') }}. As existências não foram alteradas.</div>{% endif %}
   {% if invoice_import.error_details %}<div class="stock-notice{% if invoice_import.status != 'validated' %} danger{% endif %}">{{ invoice_import.error_details }}</div>{% endif %}
 
   {% if invoice_import.status != 'validated' %}
@@ -37,13 +38,31 @@
   <section class="stock-card">
     <div class="stock-card-heading"><div><h2>1. Conferência guardada</h2><p>{{ supplier.name if supplier else 'Fornecedor' }} · {{ invoice_import.invoice_number }} · {{ invoice_import.gross_total or '-' }} €</p></div><span class="stock-status success">Validada</span></div>
   </section>
+  <section class="stock-card">
+    <div class="stock-card-heading"><div><h2>2. Associar receção já realizada</h2><p>Usa esta opção quando o material já entrou por encomenda, guia ou registo manual. A associação não volta a aumentar o stock.</p></div></div>
+    {% if candidate_receipts %}
+    <form method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/link-existing-receipt">
+      <div class="stock-form-grid">
+        <label class="stock-form-wide">Receção do mesmo fornecedor
+          <select name="receipt_id" required>
+            <option value="">Selecionar receção</option>
+            {% for receipt, location, order, line_count in candidate_receipts %}
+            <option value="{{ receipt.id }}">#{{ receipt.id }} · {{ receipt.effective_date.strftime('%d/%m/%Y') }} · {{ location.name }} · {% if order %}{{ order.order_number }}{% else %}sem encomenda{% endif %} · {{ receipt.source_reference or receipt.source_type }} · {{ line_count }} linha(s)</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="stock-actions"><button type="submit" class="secondary" {% if not can_operate_stock %}disabled{% endif %}>Associar sem movimentar stock</button></div>
+    </form>
+    {% else %}<p class="stock-empty">Não existem outras receções concluídas deste fornecedor por associar.</p>{% endif %}
+  </section>
   <form class="stock-review-form" method="post" action="/v2-clean/stock/invoices/{{ invoice_import.id }}/receive">
     <section class="stock-card" id="stock-receipt-lines">
-      <div class="stock-card-heading"><div><h2>2. Artigos e quantidades recebidas</h2><p>Associa cada linha a um artigo existente ou cria um novo. Quantidade zero fica por receber.</p></div></div>
+      <div class="stock-card-heading"><div><h2>3. Artigos e quantidades recebidas numa nova receção</h2><p>Usa apenas se estes artigos ainda não tiverem entrada física. Quantidade zero fica por receber.</p></div></div>
       <div class="stock-table-wrap"><table class="stock-table stock-review-table"><thead><tr><th>Fatura</th><th>Artigo existente</th><th>Novo artigo</th><th>Recebido</th><th>Diferença</th></tr></thead><tbody>{% for line in line_rows %}{% set suggested_id = line.article_id or supplier_article_matches.get(line.supplier_ref or '') %}<tr><td><strong>{{ line.supplier_ref or 'Sem ref.' }}</strong><br>{{ line.description }}<br><small>Faturado: {{ line.quantity }} {{ line.unit }}</small><input type="hidden" name="invoice_line_id" value="{{ line.id }}"></td><td><select name="article_id"><option value="">Criar novo</option>{% for article in articles %}<option value="{{ article.id }}" {% if suggested_id==article.id %}selected{% endif %}>{{ article.internal_ref }} · {{ article.name }}</option>{% endfor %}</select></td><td><input name="internal_ref" value="{{ line.supplier_ref or '' }}" placeholder="Referência interna"><input name="article_name" value="{{ line.description }}" placeholder="Nome"><input name="classification" placeholder="Categoria/classificação"></td><td><input name="accepted_quantity" inputmode="decimal" value="{{ line.quantity }}"><small>{{ line.unit }} · {{ line.unit_cost }} €/un.</small></td><td><input name="divergence_reason" placeholder="Motivo se parcial/diferente"></td></tr>{% endfor %}</tbody></table></div>
     </section>
     <section class="stock-card">
-      <div class="stock-card-heading"><div><h2>3. Confirmar receção física</h2><p>Apenas esta ação cria movimentos imutáveis e atualiza as existências.</p></div></div>
+      <div class="stock-card-heading"><div><h2>4. Confirmar receção física nova</h2><p>Apenas esta ação cria movimentos imutáveis e atualiza as existências.</p></div></div>
       <div class="stock-form-grid"><label>Localização<select name="location_id" required><option value="">Selecionar</option>{% for location in locations %}<option value="{{ location.id }}">{{ location.name }}</option>{% endfor %}</select></label><label>Documento físico<select name="source_type"><option value="invoice">Fatura</option><option value="delivery_note">Guia de transporte</option><option value="manual">Receção manual</option></select></label><label>Referência<input name="source_reference" value="{{ invoice_import.invoice_number or '' }}"></label><label>Responsável pela receção<input value="{{ receipt_responsible.name }}" readonly aria-readonly="true"></label><label class="stock-form-wide">Notas<textarea name="notes" placeholder="Condição, diferenças ou observações"></textarea></label></div>
       <div class="stock-actions"><button type="submit" {% if not can_operate_stock %}disabled{% endif %}>Confirmar quantidades recebidas</button></div>
     </section>

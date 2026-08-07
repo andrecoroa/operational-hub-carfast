@@ -18,6 +18,7 @@ from app.models.stock import (
     StockPurchaseOrder,
     StockReceipt,
     StockReceiptInvoiceLink,
+    StockReceiptLine,
     StockSupplier,
 )
 from app.models.workshop import WorkshopProcess
@@ -914,6 +915,99 @@ def test_validated_invoice_is_pending_until_a_physical_receipt(
     assert "1 artigos" in page.text
     assert "Validar artigos e receber" in page.text
     assert f'/v2-clean/stock/invoices/{invoice_id}#stock-receipt-lines' in page.text
+
+
+def test_validated_invoice_can_link_existing_order_receipt_without_duplicate_stock(
+    authenticated_client, db_session
+):
+    supplier = _supplier(db_session, "Fornecedor receção existente")
+    article = StockArticle(
+        internal_ref="LINK-EXISTING-1",
+        name="Artigo já recebido",
+        unit="un.",
+        primary_supplier_id=supplier.id,
+    )
+    location = db_session.scalar(select(StockLocation).where(StockLocation.code == "WORKSHOP"))
+    order = StockPurchaseOrder(
+        order_number="ENC-EXISTING-1",
+        supplier_id=supplier.id,
+        commercial_status="sent",
+        receiving_status="complete",
+        effective_date=date.today(),
+    )
+    document = Document(
+        title="Fatura posterior à receção",
+        document_type="finance_supplier_invoice",
+        classification="finance",
+        source="stock_test",
+        entry_channel="stock",
+        original_name="existing-receipt.pdf",
+        file_name="existing-receipt.pdf",
+        storage_provider="local",
+        storage_path="Stock/existing-receipt.pdf",
+        status="received",
+    )
+    db_session.add_all([article, order, document])
+    db_session.flush()
+    receipt = StockReceipt(
+        supplier_id=supplier.id,
+        location_id=location.id,
+        source_type="invoice",
+        source_reference="FT-MENCIONADA-1",
+        effective_date=date.today(),
+        purchase_order_id=order.id,
+        status="completed",
+    )
+    invoice = StockInvoiceImport(
+        document_id=document.id,
+        supplier_id=supplier.id,
+        invoice_number="FT-MENCIONADA-1",
+        status="validated",
+        conference_status="conferred",
+    )
+    db_session.add_all([receipt, invoice])
+    db_session.flush()
+    receipt_line = StockReceiptLine(
+        receipt_id=receipt.id,
+        article_id=article.id,
+        accepted_quantity=Decimal("2"),
+        unit_cost=Decimal("10"),
+    )
+    db_session.add(receipt_line)
+    db_session.flush()
+    db_session.add(
+        StockMovement(
+            article_id=article.id,
+            movement_type="entry",
+            quantity=Decimal("2"),
+            unit="un.",
+            unit_cost=Decimal("10"),
+            to_location_id=location.id,
+            receipt_line_id=receipt_line.id,
+            effective_date=date.today(),
+        )
+    )
+    db_session.commit()
+    movement_count = db_session.scalar(select(func.count()).select_from(StockMovement))
+    balance_before = stock_balances(db_session).copy()
+
+    page = authenticated_client.get(f"/v2-clean/stock/invoices/{invoice.id}")
+    linked = authenticated_client.post(
+        f"/v2-clean/stock/invoices/{invoice.id}/link-existing-receipt",
+        data={"receipt_id": str(receipt.id)},
+        follow_redirects=False,
+    )
+    db_session.expire_all()
+
+    assert page.status_code == 200
+    assert "Associar receção já realizada" in page.text
+    assert "ENC-EXISTING-1" in page.text
+    assert "FT-MENCIONADA-1" in page.text
+    assert linked.status_code == 303
+    assert f"linked_receipt={receipt.id}" in linked.headers["location"]
+    assert db_session.scalar(select(func.count()).select_from(StockReceiptInvoiceLink)) == 1
+    assert db_session.scalar(select(func.count()).select_from(StockMovement)) == movement_count
+    assert stock_balances(db_session) == balance_before
 
 
 def test_fractional_quantities_are_rejected(authenticated_client, db_session):

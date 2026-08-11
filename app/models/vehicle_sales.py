@@ -160,6 +160,7 @@ class VehicleSaleProposalLine(TimestampMixin, Base):
     snapshot_json: Mapped[dict] = mapped_column(JSON)
     base_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     proposed_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    customer_counteroffer: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     included: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

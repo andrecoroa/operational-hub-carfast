@@ -13,6 +13,12 @@
       </div>
     </header>
     {% if saved %}<div class="success">Proposta guardada.</div>{% endif %}
+    <details class="clean-panel clean-card-wide sale-proposal-versions">
+      <summary>Histórico de versões <span>{{ versions|length }}</span></summary>
+      <div class="clean-doc-table-wrap"><table class="clean-doc-table"><thead><tr><th>Versão</th><th>Referência</th><th>Estado</th><th>Criada em</th><th>Ação</th></tr></thead><tbody>
+        {% for version in versions %}<tr><td>{{ version.version }}</td><td>{{ version.reference }}</td><td>{{ status_labels.get(version.status, version.status) }}</td><td>{{ version.created_at.strftime('%d/%m/%Y %H:%M') if version.created_at else '-' }}</td><td>{% if version.id == proposal.id %}<strong>Atual</strong>{% else %}<a href="/v2-clean/fleet/sales/proposals/{{ version.id }}">Consultar</a>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </details>
     <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}">
       <section class="clean-panel clean-card-wide sale-proposal-summary">
         <label>Título<input name="title" value="{{ proposal.title }}" maxlength="240" {% if proposal.status != 'draft' %}disabled{% endif %}></label>
@@ -23,13 +29,15 @@
       <section class="clean-panel clean-card-wide">
         <div class="table-heading flat-heading"><div><h3>Viaturas da proposta</h3><p>Os ajustes abaixo aplicam-se apenas a esta proposta.</p></div></div>
         <div class="clean-doc-table-wrap"><table class="clean-doc-table sale-proposal-lines">
-          <thead><tr><th>Incluir</th><th>Viatura</th><th>Unit</th><th>KM</th><th>Preço geral</th><th>Valor em dívida</th><th>Preço proposto</th><th>Margem negocial</th><th>Observação</th></tr></thead>
+          <thead><tr><th>Incluir</th><th>Viatura</th><th>Unit</th><th>KM</th><th>Preço geral</th><th>Valor em dívida</th><th>Proposto CarFast</th><th>Margem CarFast</th><th>Contraproposta cliente</th><th>Margem contraproposta</th><th>Observação</th></tr></thead>
           <tbody>{% for line in lines %}{% set item = line.snapshot_json or {} %}<tr>
             <td><input type="checkbox" name="included_line_ids" value="{{ line.id }}" {% if line.included %}checked{% endif %} {% if proposal.status != 'draft' %}disabled{% endif %}></td>
             <td><strong>{{ item.get('plate') or '-' }}</strong><small>{{ item.get('brand') or '' }} {{ item.get('model') or '' }} {{ item.get('version') or '' }}</small></td>
             <td>{{ item.get('unit') or '-' }}</td><td>{{ item.get('km') or '-' }}</td><td>{{ money(line.base_price) }}</td><td>{{ money(item.get('debt')) }}</td>
             <td><input type="number" step="0.01" min="0" name="price_{{ line.id }}" value="{{ line.proposed_price if line.proposed_price is not none else '' }}" data-proposal-price data-debt="{{ item.get('debt') or '' }}" data-margin-target="proposal-margin-{{ line.id }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
             <td><strong id="proposal-margin-{{ line.id }}">-</strong></td>
+            <td><input type="number" step="0.01" min="0" name="counteroffer_{{ line.id }}" value="{{ line.customer_counteroffer if line.customer_counteroffer is not none else '' }}" data-proposal-price data-debt="{{ item.get('debt') or '' }}" data-margin-target="counteroffer-margin-{{ line.id }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
+            <td><strong id="counteroffer-margin-{{ line.id }}">-</strong></td>
             <td><input name="notes_{{ line.id }}" value="{{ line.notes or '' }}" {% if proposal.status != 'draft' %}disabled{% endif %}></td>
           </tr>{% endfor %}</tbody>
         </table></div>
@@ -40,7 +48,7 @@
       {% if proposal.status == 'draft' %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/send"><button type="submit">Marcar como enviada</button></form>
       {% else %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/reopen" class="sale-proposal-reopen-form">
         <label class="sale-proposal-refresh-option"><input type="checkbox" name="refresh_financials" value="1"> Atualizar custo atual e valor em dívida a partir da ficha</label>
-        <small>A versão anterior mantém os valores originais. Preços propostos e notas são copiados sem alterações.</small>
+        <small>A versão anterior mantém os valores originais. Proposto CarFast, contraproposta e notas são copiados sem alterações.</small>
         <button type="submit">Criar nova versão</button>
       </form>{% endif %}
       {% if proposal.status not in ['completed', 'cancelled'] %}

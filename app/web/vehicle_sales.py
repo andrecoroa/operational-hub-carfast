@@ -4,6 +4,7 @@ import io
 import secrets
 import uuid
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -771,6 +772,28 @@ def _filter_rows(rows: list[dict[str, Any]], filters: dict[str, Any]) -> list[di
     return filtered
 
 
+def _sort_sale_rows(
+    rows: list[dict[str, Any]], sort_code: str, descending: bool
+) -> list[dict[str, Any]]:
+    getters = {
+        "plate": lambda row: str(row["vehicle"].plate or "").casefold(),
+        "unit": lambda row: str(row["vehicle"].rentway_unit_nr or "").casefold(),
+        "registration": lambda row: row.get("registration"),
+        "group": lambda row: str(row.get("rentway_group") or "").casefold(),
+        "km": lambda row: row.get("km"),
+        "return": lambda row: row.get("return_on"),
+        "cost": lambda row: row.get("cost"),
+        "debt": lambda row: row.get("debt"),
+        "financial_margin": lambda row: row.get("financial_margin"),
+        "trade": lambda row: row.get("market_trade"),
+        "commercial_margin": lambda row: row.get("commercial_margin"),
+    }
+    getter = getters.get(sort_code, getters["registration"])
+    valued = [row for row in rows if getter(row) is not None]
+    missing = [row for row in rows if getter(row) is None]
+    return sorted(valued, key=getter, reverse=descending) + missing
+
+
 @vehicle_sales_router.get("/v2-clean/fleet/sales", response_class=HTMLResponse)
 def vehicle_sales_page(
     request: Request,
@@ -789,6 +812,9 @@ def vehicle_sales_page(
     commercial_margin_min: str = "",
     commercial_margin_max: str = "",
     market_state: str = "",
+    view: str = "combined",
+    sort: str = "registration",
+    direction: str = "desc",
     page: int = 1,
     updated: int | None = None,
     error: str = "",
@@ -828,6 +854,12 @@ def vehicle_sales_page(
         "commercial_margin_min": commercial_margin_min.strip(),
         "commercial_margin_max": commercial_margin_max.strip(),
         "market_state": market_state if market_state in {"missing_trade", "missing_retail"} else "",
+        "view": view if view in {"combined", "commercial", "operation"} else "combined",
+        "sort": sort if sort in {
+            "plate", "unit", "registration", "group", "km", "return", "cost",
+            "debt", "financial_margin", "trade", "commercial_margin"
+        } else "registration",
+        "direction": "asc" if direction == "asc" else "desc",
     }
     with base_router.SessionLocal() as db:
         vehicle_stmt = select(Vehicle).where(Vehicle.active.is_(True))
@@ -894,7 +926,11 @@ def vehicle_sales_page(
             )
         vehicle_stmt = vehicle_stmt.order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(5000)
         all_rows = _load_sale_rows(db, vehicle_stmt)
-        rows = _filter_rows(all_rows, filters)
+        rows = _sort_sale_rows(
+            _filter_rows(all_rows, filters),
+            filters["sort"],
+            filters["direction"] == "desc",
+        )
         page_size = 100
         total_pages = max(1, (len(rows) + page_size - 1) // page_size)
         current_page = min(max(1, page), total_pages)
@@ -1231,18 +1267,38 @@ async def vehicle_sales_bulk_update(request: Request):
             db.add(proposal)
             db.flush()
             proposal.reference = _proposal_reference(proposal.id)
+            apply_rule = str(form.get("proposal_apply_rule") or "") == "1"
+            proposal_base = str(form.get("proposal_price_base") or "trade")
+            proposal_margin_mode = str(form.get("proposal_margin_mode") or "value")
+            proposal_margin_value = decimal_value(form.get("proposal_margin_value")) or Decimal("0")
+            proposal_rounding_mode = str(form.get("proposal_rounding_mode") or "none")
+            proposal_rounding_increment = form.get("proposal_rounding_increment")
             for position, vehicle_id in enumerate(selected_ids):
                 row = selected.get(vehicle_id)
                 if not row:
                     continue
                 base_price = row["market_trade"] or row["selling_price"]
+                proposed_price = base_price
+                if apply_rule:
+                    rule_base = {
+                        "cost": row.get("cost"),
+                        "trade": row.get("market_trade"),
+                        "retail": row.get("market_retail"),
+                    }.get(proposal_base)
+                    proposed_price = calculate_selling_price(
+                        rule_base,
+                        proposal_margin_mode,
+                        proposal_margin_value,
+                        proposal_rounding_mode,
+                        proposal_rounding_increment,
+                    )
                 db.add(
                     VehicleSaleProposalLine(
                         proposal_id=proposal.id,
                         vehicle_id=vehicle_id,
                         snapshot_json=_proposal_snapshot(row),
                         base_price=base_price,
-                        proposed_price=base_price,
+                        proposed_price=proposed_price,
                         included=True,
                         sort_order=position,
                     )
@@ -1361,14 +1417,33 @@ async def vehicle_sales_bulk_update(request: Request):
 
 
 @vehicle_sales_router.get("/v2-clean/fleet/sales/proposals", response_class=HTMLResponse)
-def vehicle_sale_proposals_page(request: Request):
+def vehicle_sale_proposals_page(request: Request, status: str = "active", q: str = ""):
     denied = _sales_access_denied(request)
     if denied:
         return denied
     with base_router.SessionLocal() as db:
-        proposals = db.scalars(
+        all_proposals = db.scalars(
             select(VehicleSaleProposal).order_by(VehicleSaleProposal.id.desc()).limit(200)
         ).all()
+        status_set = {
+            "active": {"draft", "sent"},
+            "draft": {"draft"},
+            "sent": {"sent"},
+            "closed": {"cancelled", "completed"},
+            "all": set(PROPOSAL_STATUS_LABELS),
+        }.get(status, {"draft", "sent"})
+        grouped: dict[str, list[VehicleSaleProposal]] = {}
+        for proposal in all_proposals:
+            root = proposal.reference.split("-V", 1)[0]
+            grouped.setdefault(root, []).append(proposal)
+        proposal_groups = []
+        for root, versions in grouped.items():
+            versions.sort(key=lambda item: item.version, reverse=True)
+            latest = versions[0]
+            haystack = f"{root} {latest.title} {latest.recipient or ''}".casefold()
+            if latest.status not in status_set or (q.strip() and q.strip().casefold() not in haystack):
+                continue
+            proposal_groups.append({"root": root, "latest": latest, "versions": versions})
         line_counts = {
             proposal_id: count
             for proposal_id, count in db.execute(
@@ -1382,9 +1457,11 @@ def vehicle_sale_proposals_page(request: Request):
         request,
         "clean_vehicle_sale_proposals.html",
         {
-            "proposals": proposals,
+            "proposal_groups": proposal_groups,
             "line_counts": line_counts,
             "status_labels": PROPOSAL_STATUS_LABELS,
+            "status_filter": status,
+            "q": q.strip(),
         },
     )
 
@@ -1401,6 +1478,15 @@ def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int 
         if not proposal:
             return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
         lines = _proposal_lines(db, proposal.id)
+        root_reference = proposal.reference.split("-V", 1)[0]
+        versions = db.scalars(
+            select(VehicleSaleProposal)
+            .where(or_(
+                VehicleSaleProposal.reference == root_reference,
+                VehicleSaleProposal.reference.like(f"{root_reference}-V%"),
+            ))
+            .order_by(VehicleSaleProposal.version.desc())
+        ).all()
     return base_router.templates.TemplateResponse(
         request,
         "clean_vehicle_sale_proposal_detail.html",
@@ -1410,6 +1496,7 @@ def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int 
             "saved": saved,
             "status_labels": PROPOSAL_STATUS_LABELS,
             "money": money,
+            "versions": versions,
         },
     )
 
@@ -1438,6 +1525,9 @@ async def vehicle_sale_proposal_update(request: Request, proposal_id: int):
         for line in _proposal_lines(db, proposal.id):
             line.included = line.id in included_ids
             line.proposed_price = decimal_value(form.get(f"price_{line.id}"))
+            line.customer_counteroffer = decimal_value(
+                form.get(f"counteroffer_{line.id}")
+            )
             line.notes = str(form.get(f"notes_{line.id}") or "").strip() or None
         record_audit(
             db,
@@ -1578,6 +1668,7 @@ async def vehicle_sale_proposal_reopen(request: Request, proposal_id: int):
                     snapshot_json=snapshot,
                     base_price=line.base_price,
                     proposed_price=line.proposed_price,
+                    customer_counteroffer=line.customer_counteroffer,
                     notes=line.notes,
                     included=line.included,
                     sort_order=line.sort_order,
@@ -1643,9 +1734,11 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
         "Situação",
         "Cliente",
         "Data de devolução",
-        "Preço",
+        "Proposto CarFast",
         "Valor em dívida",
-        "Margem negocial",
+        "Margem CarFast",
+        "Contraproposta cliente",
+        "Margem contraproposta",
         "Observações",
     ]
     sheet.append(headers)
@@ -1662,6 +1755,11 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             if line.proposed_price is not None and debt is not None
             else None
         )
+        counteroffer_margin = (
+            line.customer_counteroffer - debt
+            if line.customer_counteroffer is not None and debt is not None
+            else None
+        )
         sheet.append([
             data.get("plate"), data.get("registration"), data.get("brand"),
             data.get("model"), data.get("version"), data.get("colour"),
@@ -1671,6 +1769,7 @@ def vehicle_sale_proposal_xlsx(request: Request, proposal_id: int):
             data.get("client") or (current_vehicle.rentway_client if current_vehicle else None) or "-",
             data.get("return_on") or current.get("return_on_display") or "-",
             line.proposed_price, debt, negotiation_margin,
+            line.customer_counteroffer, counteroffer_margin,
             line.notes,
         ])
     for column in sheet.columns:
@@ -1706,7 +1805,7 @@ def vehicle_sale_proposal_customer_xlsx(request: Request, proposal_id: int):
     sheet.append([])
     headers = [
         "Matrícula", "Data matrícula", "Marca", "Modelo", "Versão", "Cor",
-        "Combustível", "Caixa", "Unit", "KM", "Preço proposto", "Observações",
+        "Combustível", "Caixa", "Unit", "KM", "Proposto CarFast", "Observações",
     ]
     sheet.append(headers)
     for cell in sheet[3]:
@@ -1770,7 +1869,7 @@ def vehicle_sale_proposal_pdf(request: Request, proposal_id: int):
         "Caixa",
         "Unit",
         "KM",
-        "Preço",
+        "Proposto CarFast",
         "Observações",
     ]]
     for line in lines:

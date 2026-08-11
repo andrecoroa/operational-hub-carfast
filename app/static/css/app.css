@@ -25398,6 +25398,25 @@ body.clean-task-preview-open {
   gap: 12px;
 }
 
+.sale-proposal-list-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 240px auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+.sale-proposal-list-filters label { display: grid; gap: 6px; font-weight: 700; }
+.sale-proposal-list-filters input,
+.sale-proposal-list-filters select { min-height: 42px; }
+.sale-proposal-versions > summary { cursor: pointer; font-weight: 800; }
+.sale-proposal-versions > summary span { margin-left: 8px; color: var(--muted); }
+.sale-rule-toggle { grid-column: 1 / -1; display: flex !important; align-items: center; gap: 8px; }
+.sale-proposal-lines { min-width: 1400px; }
+
+@media (max-width: 760px) {
+  .sale-proposal-list-filters { grid-template-columns: 1fr; }
+}
+
 .sale-table-footer a {
   color: var(--blue);
   font-weight: 700;

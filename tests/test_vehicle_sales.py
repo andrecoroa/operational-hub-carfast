@@ -174,6 +174,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
             "recipient": "Comerciante teste",
             "included_line_ids": [str(line.id)],
             f"price_{line.id}": "19800",
+            f"counteroffer_{line.id}": "19400",
             f"notes_{line.id}": "Preço exclusivo do lote",
         },
         follow_redirects=False,
@@ -181,6 +182,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert saved.status_code == 303
     db_session.expire_all()
     assert db_session.get(VehicleSaleProposalLine, line.id).proposed_price == Decimal("19800.00")
+    assert db_session.get(VehicleSaleProposalLine, line.id).customer_counteroffer == Decimal("19400.00")
     assert db_session.get(VehicleSaleProfile, profile.id).market_trade_value == Decimal("21000.00")
 
     sent = authenticated_client.post(
@@ -223,6 +225,7 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert first_version_line.snapshot_json["debt"] == "20910.00"
     assert second_version_line.snapshot_json["debt"] == "19680.00"
     assert second_version_line.proposed_price == Decimal("19800.00")
+    assert second_version_line.customer_counteroffer == Decimal("19400.00")
 
     listing = authenticated_client.get("/v2-clean/fleet/sales/proposals")
     assert listing.status_code == 200
@@ -246,7 +249,9 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert "Combustível" in headers
     assert "Caixa" in headers
     assert "Valor em dívida" in headers
-    assert "Margem negocial" in headers
+    assert "Margem CarFast" in headers
+    assert "Contraproposta cliente" in headers
+    assert "Margem contraproposta" in headers
     assert "Custo" in headers
     assert "Situação" in headers
     assert "Cliente" in headers
@@ -257,7 +262,9 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert sheet.cell(row=4, column=headers.index("Combustível") + 1).value == "Diesel"
     assert sheet.cell(row=4, column=headers.index("Caixa") + 1).value == "Automática"
     assert sheet.cell(row=4, column=headers.index("Valor em dívida") + 1).value == 19680
-    assert sheet.cell(row=4, column=headers.index("Margem negocial") + 1).value == 120
+    assert sheet.cell(row=4, column=headers.index("Margem CarFast") + 1).value == 120
+    assert sheet.cell(row=4, column=headers.index("Contraproposta cliente") + 1).value == 19400
+    assert sheet.cell(row=4, column=headers.index("Margem contraproposta") + 1).value == -280
     assert sheet.cell(row=4, column=headers.index("Custo") + 1).value is not None
     customer_export = authenticated_client.get(
         f"/v2-clean/fleet/sales/proposals/{proposals[1].id}/customer.xlsx"
@@ -267,7 +274,10 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
         io.BytesIO(customer_export.content), data_only=True
     ).active
     customer_headers = [cell.value for cell in customer_sheet[3]]
-    assert "Preço proposto" in customer_headers
+    assert "Proposto CarFast" in customer_headers
+    assert "Contraproposta cliente" not in customer_headers
+    assert "Valor em dívida" not in customer_headers
+    assert "Margem CarFast" not in customer_headers
     assert "Valor em dívida" not in customer_headers
     assert "Margem negocial" not in customer_headers
     pdf = authenticated_client.get(

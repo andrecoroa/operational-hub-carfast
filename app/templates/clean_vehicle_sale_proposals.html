@@ -4,20 +4,25 @@
   {% set active_menu = "fleet_sales" %}{% include "_sidebar.html" %}
   <main class="content clean-content sale-page">
     <header class="clean-workshop-header clean-workshop-header-final">
-      <div><p class="eyebrow">Frota / venda</p><h2>Propostas comerciais</h2><p>Lotes preparados sem alterar os valores gerais das viaturas.</p></div>
+      <div><p class="eyebrow">Frota / venda</p><h2>Propostas comerciais</h2><p>Cada linha representa uma negociação; as versões ficam reunidas no respetivo histórico.</p></div>
       <div class="clean-header-actions"><a class="button-link secondary-link" href="/v2-clean/fleet/sales">Voltar às viaturas</a></div>
     </header>
     <section class="clean-panel clean-card-wide">
-      <div class="table-heading flat-heading"><div><h3>Histórico de propostas</h3><p>{{ proposals|length }} registos recentes.</p></div></div>
+      <form method="get" class="sale-proposal-list-filters">
+        <label>Pesquisar<input type="search" name="q" value="{{ q }}" placeholder="Referência, título ou destinatário"></label>
+        <label>Estado<select name="status"><option value="active" {% if status_filter == 'active' %}selected{% endif %}>Rascunhos e enviadas</option><option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Rascunhos</option><option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Enviadas</option><option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Terminadas e canceladas</option><option value="all" {% if status_filter == 'all' %}selected{% endif %}>Todas</option></select></label>
+        <button type="submit">Filtrar</button>
+      </form>
+      <div class="table-heading flat-heading"><div><h3>Negociações</h3><p>{{ proposal_groups|length }} propostas nos filtros atuais.</p></div></div>
       <div class="clean-doc-table-wrap"><table class="clean-doc-table">
-        <thead><tr><th>Referência</th><th>Destinatário</th><th>Viaturas</th><th>Validade</th><th>Estado</th><th>Ação</th></tr></thead>
-        <tbody>{% for proposal in proposals %}<tr>
-          <td><strong>{{ proposal.reference }}</strong><small>Versão {{ proposal.version }}</small></td>
-          <td>{{ proposal.recipient or "Por definir" }}</td><td>{{ line_counts.get(proposal.id, 0) }}</td>
+        <thead><tr><th>Referência</th><th>Destinatário</th><th>Viaturas</th><th>Versão atual</th><th>Validade</th><th>Estado</th><th>Ação</th></tr></thead>
+        <tbody>{% for group in proposal_groups %}{% set proposal = group.latest %}<tr>
+          <td><strong>{{ group.root }}</strong><small>{{ group.versions|length }} versão{% if group.versions|length != 1 %}ões{% endif %}</small></td>
+          <td>{{ proposal.recipient or "Por definir" }}</td><td>{{ line_counts.get(proposal.id, 0) }}</td><td>Versão {{ proposal.version }}</td>
           <td>{{ proposal.expires_on.strftime("%d/%m/%Y") if proposal.expires_on else "-" }}</td>
           <td><span class="status-pill">{{ status_labels.get(proposal.status, proposal.status) }}</span></td>
           <td><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/proposals/{{ proposal.id }}">Abrir</a></td>
-        </tr>{% else %}<tr><td colspan="6">Ainda não existem propostas. Seleciona viaturas na página de venda e usa “Criar proposta”.</td></tr>{% endfor %}</tbody>
+        </tr>{% else %}<tr><td colspan="7">Não existem propostas para estes filtros.</td></tr>{% endfor %}</tbody>
       </table></div>
     </section>
   </main>

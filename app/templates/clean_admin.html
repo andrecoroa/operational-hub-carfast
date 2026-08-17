@@ -155,7 +155,7 @@
               {% if can_manage %}
                 <details>
                   <summary>Gerir acessos</summary>
-                  <form class="clean-admin-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/access">
+                  <form class="clean-admin-form clean-admin-user-access-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/access">
                     <label class="checkbox-label"><input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}> Utilizador ativo</label>
                     <fieldset>
                       <legend>Perfis</legend>

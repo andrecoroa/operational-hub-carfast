@@ -24298,7 +24298,7 @@ body.clean-task-preview-open {
 .clean-admin-user-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .clean-admin-user-card,
@@ -24332,14 +24332,15 @@ body.clean-task-preview-open {
 
 .clean-admin-user-card dl {
   display: grid;
-  gap: 7px;
+  gap: 10px 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
 }
 
 .clean-admin-user-card dl div {
   display: grid;
-  gap: 8px;
-  grid-template-columns: 105px 1fr;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .clean-admin-user-card dt {
@@ -24351,6 +24352,29 @@ body.clean-task-preview-open {
 
 .clean-admin-user-card dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.clean-admin-user-access-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.clean-admin-user-access-form > .checkbox-label,
+.clean-admin-user-access-form > button {
+  grid-column: 1 / -1;
+}
+
+.clean-admin-user-access-form fieldset {
+  min-width: 0;
+}
+
+.clean-admin-user-access-form .clean-admin-check-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.clean-admin-user-access-form .clean-admin-check-grid label {
+  align-items: center;
+  min-width: 0;
 }
 
 .clean-admin-user-card details,
@@ -24446,6 +24470,11 @@ body.clean-task-preview-open {
   .clean-admin-filter-form,
   .clean-admin-inline-form,
   .clean-admin-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-admin-user-card dl,
+  .clean-admin-user-access-form {
     grid-template-columns: 1fr;
   }
 

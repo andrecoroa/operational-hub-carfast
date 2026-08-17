@@ -111,6 +111,40 @@ def test_canonical_debt_uses_explicit_monthly_vat_without_applying_it_twice():
     assert values["outstanding_with_vat"] == Decimal("7679.99")
 
 
+def test_canonical_debt_uses_current_month_plan_before_rental_due_date():
+    plan = SimpleNamespace(
+        outstanding_amount=Decimal("7000.00"),
+        start_date=None,
+        amount_reference_date=date(2026, 7, 31),
+        initial_amount=None,
+    )
+    july = SimpleNamespace(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 10),
+        period_number=12,
+        amortization_amount=Decimal("100.00"),
+        outstanding_with_vat=Decimal("7000.00"),
+    )
+    august = SimpleNamespace(
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 10),
+        period_number=13,
+        amortization_amount=Decimal("100.00"),
+        outstanding_with_vat=Decimal("6877.00"),
+    )
+
+    values = canonical_vehicle_financial_values(
+        cost_context={},
+        plan=plan,
+        installments=[july, august],
+        current_value_calculator=lambda *args: None,
+        reference=date(2026, 8, 1),
+    )
+
+    assert values["outstanding_with_vat"] == Decimal("6877.00")
+    assert values["debt_reference_date"] == date(2026, 8, 1)
+
+
 def test_current_value_uses_rentway_amortization_instead_of_bank_capital():
     result = current_value_with_financial_amortization(
         "24.600,00",

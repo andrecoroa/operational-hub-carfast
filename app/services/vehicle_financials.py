@@ -45,6 +45,39 @@ def _latest_applied_installment(installments: Iterable[Any], reference: date) ->
     )
 
 
+def _installment_for_calendar_month(
+    installments: Iterable[Any], reference: date
+) -> Any | None:
+    """Return the rental-plan line applicable to the current calendar month.
+
+    The commercial debt position is set at the start of the month.  A rental
+    collected on (for example) day 10 still belongs to that month, so it must
+    be reflected on day 1 instead of waiting for its collection date.
+    """
+
+    month_start = reference.replace(day=1)
+    if reference.month == 12:
+        next_month = date(reference.year + 1, 1, 1)
+    else:
+        next_month = date(reference.year, reference.month + 1, 1)
+
+    matches = []
+    for installment in installments:
+        period_start = getattr(installment, "period_start", None)
+        period_end = getattr(installment, "period_end", None)
+        if period_end is None:
+            continue
+        starts_before_next_month = period_start is None or period_start < next_month
+        ends_in_or_after_month = period_end >= month_start
+        if starts_before_next_month and ends_in_or_after_month:
+            matches.append(installment)
+    return min(
+        matches,
+        key=lambda item: (getattr(item, "period_end", date.max), getattr(item, "period_number", 0)),
+        default=None,
+    )
+
+
 def _date_value(value: Any) -> date | None:
     if isinstance(value, date):
         return value
@@ -74,7 +107,12 @@ def canonical_vehicle_financial_values(
 
     as_of = reference or date.today()
     installment_list = list(installments)
-    applied_installment = _latest_applied_installment(installment_list, as_of)
+    # Financial debt is the forecast for the whole calendar month, not the
+    # latest rental already collected. This makes it available on day one.
+    monthly_installment = _installment_for_calendar_month(installment_list, as_of)
+    applied_installment = monthly_installment
+    if applied_installment is None:
+        applied_installment = _latest_applied_installment(installment_list, as_of)
     amortization_month = cost_context.get("amortization_month")
     current_value_date = None
 
@@ -111,7 +149,11 @@ def canonical_vehicle_financial_values(
         "current_value_date": current_value_date,
         "amortization_month": amortization_month,
         "outstanding_with_vat": _outstanding_with_vat(plan, applied_installment),
-        "debt_reference_date": getattr(plan, "amount_reference_date", None) if plan else None,
+        "debt_reference_date": (
+            as_of.replace(day=1)
+            if monthly_installment
+            else getattr(plan, "amount_reference_date", None) if plan else None
+        ),
         "applied_installment": applied_installment,
         "installment_count": len(installment_list),
     }

@@ -44,6 +44,7 @@
         <div><p class="eyebrow">Filtros de seleção</p><h3>Encontrar as viaturas certas</h3></div>
       </div>
       <form method="get" action="/v2-clean/fleet/sales" class="sale-filter-grid">
+        <input type="hidden" name="search" value="1">
         <label class="sale-filter-wide">Matrícula, Unit ou modelo
           <input type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar viatura">
         </label>
@@ -197,7 +198,7 @@
                   <td><div class="sale-market-stack"><span><small>Origem</small>{{ row.profile.market_value_source if row.profile and row.profile.market_value_source else '-' }}</span><a class="button-link secondary-link compact-link" href="/v2-clean/fleet/sales/{{ row.vehicle.id }}?return_to={{ list_return_url|urlencode }}" data-sale-preview data-sale-label="{{ row.vehicle.plate or 'Viatura' }}">Preparar</a></div></td>
                 </tr>
               {% else %}
-                <tr><td colspan="8" class="sale-empty">Sem viaturas para os filtros selecionados.</td></tr>
+                <tr><td colspan="8" class="sale-empty">{% if search_active %}Sem viaturas para os filtros selecionados.{% else %}A tabela começa vazia. Escolhe os filtros necessários e carrega em Aplicar filtros para iniciar um processo comercial.{% endif %}</td></tr>
               {% endfor %}
             </tbody>
           </table>

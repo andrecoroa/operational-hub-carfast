@@ -568,6 +568,84 @@ def test_vehicle_sales_filters_bulk_values_and_price_rule(authenticated_client, 
     assert profile.market_trade_value == Decimal("18800.00")
 
 
+def test_sales_starts_empty_but_filters_return_vehicles(authenticated_client, db_session):
+    vehicle = create_sale_vehicle(db_session)
+
+    empty = authenticated_client.get("/v2-clean/fleet/sales")
+    assert empty.status_code == 200
+    assert "A tabela começa vazia" in empty.text
+    assert vehicle.plate not in empty.text
+
+    searched = authenticated_client.get(
+        "/v2-clean/fleet/sales", params={"search": "1", "q": vehicle.plate}
+    )
+    assert searched.status_code == 200
+    assert vehicle.plate in searched.text
+
+
+def test_draft_proposal_can_add_and_remove_vehicles(authenticated_client, db_session):
+    first = create_sale_vehicle(db_session)
+    second = Vehicle(
+        plate="34-CD-56",
+        vin="VF3SECONDVEHICLE1",
+        rentway_unit_nr="UNIT456",
+        brand="Citroen",
+        model="C4",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(second)
+    db_session.flush()
+    db_session.add(
+        VehicleExternalSnapshot(
+            vehicle_id=second.id,
+            source_system="rentway",
+            data_json={"groupid": "C2", "km": "12345"},
+        )
+    )
+    db_session.commit()
+
+    created = authenticated_client.post(
+        "/v2-clean/fleet/sales/bulk",
+        data={"vehicle_ids": [str(first.id)], "action": "proposal"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    proposal = db_session.scalar(select(VehicleSaleProposal))
+    assert proposal is not None
+
+    added = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}/vehicles",
+        data={"vehicle_ids": [str(second.id)]},
+        follow_redirects=False,
+    )
+    assert added.status_code == 303
+    db_session.expire_all()
+    lines = db_session.scalars(
+        select(VehicleSaleProposalLine).where(
+            VehicleSaleProposalLine.proposal_id == proposal.id
+        )
+    ).all()
+    assert {line.vehicle_id for line in lines} == {first.id, second.id}
+    assert next(line for line in lines if line.vehicle_id == second.id).snapshot_json["plate"] == "34-CD-56"
+
+    second_line = next(line for line in lines if line.vehicle_id == second.id)
+    removed = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}",
+        data={"remove_line_id": str(second_line.id)},
+        follow_redirects=False,
+    )
+    assert removed.status_code == 303
+    db_session.expire_all()
+    remaining = db_session.scalars(
+        select(VehicleSaleProposalLine).where(
+            VehicleSaleProposalLine.proposal_id == proposal.id
+        )
+    ).all()
+    assert [line.vehicle_id for line in remaining] == [first.id]
+
+
 def test_vehicle_financial_audit_exports_missing_fields_and_latest_rentway_cost(
     authenticated_client,
     db_session,

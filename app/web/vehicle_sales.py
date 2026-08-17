@@ -797,6 +797,7 @@ def _sort_sale_rows(
 @vehicle_sales_router.get("/v2-clean/fleet/sales", response_class=HTMLResponse)
 def vehicle_sales_page(
     request: Request,
+    search: str = "",
     q: str = "",
     brand: str = "",
     sale_status: str = "",
@@ -835,6 +836,7 @@ def vehicle_sales_page(
     ]
     selected_groups = [value for value in request.query_params.getlist("rentway_group") if value]
     filters = {
+        "search": "1" if search == "1" else "",
         "q": q.strip(),
         "brand": selected_brands,
         "sale_status": selected_sale_statuses,
@@ -862,6 +864,24 @@ def vehicle_sales_page(
         "direction": "asc" if direction == "asc" else "desc",
     }
     with base_router.SessionLocal() as db:
+        has_search_criteria = bool(
+            filters["search"]
+            or filters["q"]
+            or filters["brand"]
+            or filters["sale_status"]
+            or filters["finance_entity"]
+            or filters["vehicle_state"]
+            or filters["rentway_group"]
+            or filters["registration_from"]
+            or filters["registration_to"]
+            or filters["return_from"]
+            or filters["return_to"]
+            or filters["financial_margin_min"]
+            or filters["financial_margin_max"]
+            or filters["commercial_margin_min"]
+            or filters["commercial_margin_max"]
+            or filters["market_state"]
+        )
         vehicle_stmt = select(Vehicle).where(Vehicle.active.is_(True))
         if filters["q"]:
             pattern = f"%{filters['q']}%"
@@ -926,10 +946,14 @@ def vehicle_sales_page(
             )
         vehicle_stmt = vehicle_stmt.order_by(Vehicle.updated_at.desc(), Vehicle.id.desc()).limit(5000)
         all_rows = _load_sale_rows(db, vehicle_stmt)
-        rows = _sort_sale_rows(
-            _filter_rows(all_rows, filters),
-            filters["sort"],
-            filters["direction"] == "desc",
+        rows = (
+            _sort_sale_rows(
+                _filter_rows(all_rows, filters),
+                filters["sort"],
+                filters["direction"] == "desc",
+            )
+            if has_search_criteria
+            else []
         )
         page_size = 100
         total_pages = max(1, (len(rows) + page_size - 1) // page_size)
@@ -995,6 +1019,7 @@ def vehicle_sales_page(
         {
             "rows": visible_rows,
             "total_filtered": len(rows),
+            "search_active": has_search_criteria,
             "counts": counts,
             "filters": filters,
             "sale_statuses": SALE_STATUSES,
@@ -1478,6 +1503,38 @@ def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int 
         if not proposal:
             return RedirectResponse("/v2-clean/fleet/sales/proposals", status_code=303)
         lines = _proposal_lines(db, proposal.id)
+        candidate_rows = []
+        add_q = request.query_params.get("add_q", "").strip()
+        if proposal.status == "draft":
+            candidate_stmt = (
+                select(Vehicle)
+                .where(Vehicle.active.is_(True))
+                .order_by(Vehicle.updated_at.desc(), Vehicle.id.desc())
+                .limit(500)
+            )
+            candidate_rows = [
+                row
+                for row in _load_sale_rows(db, candidate_stmt)
+                if row["vehicle"].id not in {line.vehicle_id for line in lines}
+            ]
+            if add_q:
+                needle = add_q.casefold()
+                candidate_rows = [
+                    row
+                    for row in candidate_rows
+                    if needle in " ".join(
+                        str(value or "")
+                        for value in (
+                            row["vehicle"].plate,
+                            row["vehicle"].rentway_unit_nr,
+                            row["vehicle"].vin,
+                            row["vehicle"].brand,
+                            row["vehicle"].model,
+                            row["rentway_group"],
+                        )
+                    ).casefold()
+                ]
+            candidate_rows = candidate_rows[:50]
         root_reference = proposal.reference.split("-V", 1)[0]
         versions = db.scalars(
             select(VehicleSaleProposal)
@@ -1497,6 +1554,8 @@ def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int 
             "status_labels": PROPOSAL_STATUS_LABELS,
             "money": money,
             "versions": versions,
+            "candidate_rows": candidate_rows,
+            "add_q": add_q,
         },
     )
 
@@ -1513,6 +1572,29 @@ async def vehicle_sale_proposal_update(request: Request, proposal_id: int):
         if not proposal or proposal.status != "draft":
             return RedirectResponse(
                 f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+            )
+        remove_line_id = str(form.get("remove_line_id") or "").strip()
+        if remove_line_id.isdigit():
+            line = db.scalar(
+                select(VehicleSaleProposalLine).where(
+                    VehicleSaleProposalLine.id == int(remove_line_id),
+                    VehicleSaleProposalLine.proposal_id == proposal.id,
+                )
+            )
+            if line:
+                db.delete(line)
+                record_audit(
+                    db,
+                    action="vehicle.sale.proposal_line_removed",
+                    entity_type="vehicle_sale_proposal",
+                    entity_id=proposal.id,
+                    detail=f"Viatura removida do rascunho {proposal.reference}",
+                    after_json={"vehicle_id": line.vehicle_id},
+                    user_id=user_id,
+                )
+                db.commit()
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}?saved=1", status_code=303
             )
         proposal.recipient = str(form.get("recipient") or "").strip()[:200] or None
         proposal.title = str(form.get("title") or "Proposta de viaturas").strip()[:240]
@@ -1538,6 +1620,74 @@ async def vehicle_sale_proposal_update(request: Request, proposal_id: int):
             user_id=user_id,
         )
         db.commit()
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{proposal_id}?saved=1", status_code=303
+    )
+
+
+@vehicle_sales_router.post("/v2-clean/fleet/sales/proposals/{proposal_id}/vehicles")
+async def vehicle_sale_proposal_add_vehicles(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    form = await request.form()
+    vehicle_ids = [
+        int(value) for value in form.getlist("vehicle_ids") if str(value).isdigit()
+    ]
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal or proposal.status != "draft" or not vehicle_ids:
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+            )
+        existing_ids = set(
+            db.scalars(
+                select(VehicleSaleProposalLine.vehicle_id).where(
+                    VehicleSaleProposalLine.proposal_id == proposal.id
+                )
+            ).all()
+        )
+        requested_ids = list(dict.fromkeys(vehicle_ids))
+        new_ids = [vehicle_id for vehicle_id in requested_ids if vehicle_id not in existing_ids]
+        rows = {
+            row["vehicle"].id: row
+            for row in _load_sale_rows(
+                db,
+                select(Vehicle).where(Vehicle.id.in_(new_ids), Vehicle.active.is_(True)),
+            )
+        }
+        next_position = (max((line.sort_order for line in _proposal_lines(db, proposal.id)), default=-1) + 1)
+        added_ids = []
+        for position, vehicle_id in enumerate(new_ids, start=next_position):
+            row = rows.get(vehicle_id)
+            if not row:
+                continue
+            base_price = row["market_trade"] or row["selling_price"]
+            db.add(
+                VehicleSaleProposalLine(
+                    proposal_id=proposal.id,
+                    vehicle_id=vehicle_id,
+                    snapshot_json=_proposal_snapshot(row),
+                    base_price=base_price,
+                    proposed_price=base_price,
+                    included=True,
+                    sort_order=position,
+                )
+            )
+            added_ids.append(vehicle_id)
+        if added_ids:
+            proposal.updated_by_id = user_id
+            record_audit(
+                db,
+                action="vehicle.sale.proposal_lines_added",
+                entity_type="vehicle_sale_proposal",
+                entity_id=proposal.id,
+                detail=f"{len(added_ids)} viatura(s) adicionada(s) ao rascunho {proposal.reference}",
+                after_json={"vehicle_ids": added_ids},
+                user_id=user_id,
+            )
+            db.commit()
     return RedirectResponse(
         f"/v2-clean/fleet/sales/proposals/{proposal_id}?saved=1", status_code=303
     )

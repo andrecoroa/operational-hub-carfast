@@ -751,8 +751,28 @@ def email_approve(request: Request, thread_id: int, message_id: int):
         ):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         channel = db.get(EmailChannel, thread.channel_id)
+        prior_messages = db.scalars(
+            select(EmailMessage)
+            .where(
+                EmailMessage.thread_id == thread.id,
+                EmailMessage.external_message_id.is_not(None),
+            )
+            .order_by(EmailMessage.id)
+        ).all()
+        parent_message_id = (
+            prior_messages[-1].external_message_id if prior_messages else None
+        )
+        references = [
+            item.external_message_id for item in prior_messages if item.external_message_id
+        ]
         try:
-            result = send_message(message, channel.address)
+            result = send_message(
+                message,
+                channel.address,
+                reply_to=channel.address,
+                parent_message_id=parent_message_id,
+                references=references,
+            )
             message.state, message.sent_at, message.approved_by_id, message.approved_at = (
                 "sent",
                 datetime.now(UTC),

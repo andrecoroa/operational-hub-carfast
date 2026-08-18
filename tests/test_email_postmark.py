@@ -1,4 +1,5 @@
 import base64
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
@@ -13,7 +14,7 @@ from app.models.email import (
     EmailThread,
     EmailWebhookEvent,
 )
-from app.services.email_postmark import ingest_inbound, webhook_authorized
+from app.services.email_postmark import ingest_inbound, send_message, webhook_authorized
 
 
 def _payload(message_id: str = "pm-test-1") -> dict:
@@ -194,6 +195,87 @@ def test_pdf_attachment_with_generic_content_type_opens_inline(
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"] == "inline"
     assert response.content.startswith(b"%PDF")
+
+
+def test_inbound_reply_is_added_to_existing_thread(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    thread, _ = ingest_inbound(db_session, _payload("pm-original"))
+    outbound = EmailMessage(
+        thread_id=thread.id,
+        external_message_id="pm-outbound",
+        direction="outbound",
+        state="sent",
+        sender="hub@carfast.pt",
+        recipients_json=[{"Email": "cliente@example.com"}],
+        subject="Re: Pedido de informação",
+    )
+    db_session.add(outbound)
+    db_session.commit()
+
+    reply = _payload("pm-reply")
+    reply["Subject"] = "Re: Pedido de informação"
+    reply["Headers"] = [
+        {"Name": "In-Reply-To", "Value": "<pm-outbound>"},
+        {"Name": "References", "Value": "<pm-original> <pm-outbound>"},
+    ]
+    reply_thread, created = ingest_inbound(db_session, reply)
+
+    assert created is True
+    assert reply_thread.id == thread.id
+    assert db_session.scalar(select(func.count()).select_from(EmailThread)) == 1
+
+
+def test_send_message_uses_hub_sender_and_thread_headers(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"MessageID":"pm-sent"}'
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data)
+        captured["token"] = request.headers["X-postmark-server-token"]
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(settings, "email_outbound_enabled", True)
+    monkeypatch.setattr(settings, "postmark_server_token", "test-token")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    message = EmailMessage(
+        id=42,
+        thread_id=7,
+        direction="outbound",
+        state="pending_approval",
+        sender="hub@carfast.pt",
+        recipients_json=[{"Email": "cliente@example.com"}],
+        subject="Re: Pedido",
+        text_body="Resposta de teste",
+    )
+
+    result = send_message(
+        message,
+        "hub@carfast.pt",
+        reply_to="hub@carfast.pt",
+        parent_message_id="pm-inbound",
+        references=["pm-first"],
+    )
+
+    assert result["MessageID"] == "pm-sent"
+    assert captured["body"]["From"] == "hub@carfast.pt"
+    assert captured["body"]["ReplyTo"] == "hub@carfast.pt"
+    assert captured["body"]["To"] == "cliente@example.com"
+    assert captured["body"]["Headers"] == [
+        {"Name": "In-Reply-To", "Value": "<pm-inbound>"},
+        {"Name": "References", "Value": "<pm-first> <pm-inbound>"},
+    ]
+    assert captured["token"] == "test-token"
+    assert captured["timeout"] == 20
 
 
 def test_mailbox_access_requires_explicit_assignment_for_regular_users(

@@ -61,6 +61,27 @@ def _event_key(payload: dict) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _headers(payload: dict) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in payload.get("Headers") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("Name") or "").strip().lower()
+        value = str(item.get("Value") or "").strip()
+        if name and value:
+            result[name] = value
+    return result
+
+
+def _message_ids(value: str | None) -> list[str]:
+    if not value:
+        return []
+    bracketed = re.findall(r"<([^>]+)>", value)
+    if bracketed:
+        return [item.strip() for item in bracketed if item.strip()]
+    return [item.strip().strip("<>") for item in value.split() if item.strip()]
+
+
 def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
     ensure_email_channels(db)
     mailbox_hash = str(payload.get("MailboxHash") or "").strip()
@@ -104,12 +125,23 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
     sender = _address(payload.get("From"))
+    headers = _headers(payload)
     conversation_id = str(payload.get("OriginalMessageID") or "").strip() or None
     thread = None
     if conversation_id:
         thread = db.scalar(
             select(EmailThread).where(EmailThread.external_conversation_id == conversation_id)
         )
+    reply_ids = _message_ids(headers.get("in-reply-to"))
+    reply_ids.extend(_message_ids(headers.get("references")))
+    if not thread and reply_ids:
+        parent = db.scalar(
+            select(EmailMessage)
+            .where(EmailMessage.external_message_id.in_(reply_ids))
+            .order_by(EmailMessage.id.desc())
+        )
+        if parent:
+            thread = db.get(EmailThread, parent.thread_id)
     if not thread:
         thread = EmailThread(
             channel_id=channel.id,
@@ -169,7 +201,14 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     return thread, True
 
 
-def send_message(message: EmailMessage, from_address: str) -> dict:
+def send_message(
+    message: EmailMessage,
+    from_address: str,
+    *,
+    reply_to: str | None = None,
+    parent_message_id: str | None = None,
+    references: list[str] | None = None,
+) -> dict:
     if not settings.email_outbound_enabled:
         raise RuntimeError("O envio externo está desligado neste ambiente.")
     if not settings.postmark_server_token:
@@ -190,6 +229,23 @@ def send_message(message: EmailMessage, from_address: str) -> dict:
             "carfast_message_id": str(message.id),
         },
     }
+    if reply_to:
+        body["ReplyTo"] = reply_to
+    outbound_headers = []
+    if parent_message_id:
+        outbound_headers.append({"Name": "In-Reply-To", "Value": f"<{parent_message_id}>"})
+    reference_ids = [item for item in (references or []) if item]
+    if parent_message_id and parent_message_id not in reference_ids:
+        reference_ids.append(parent_message_id)
+    if reference_ids:
+        body["Headers"] = outbound_headers + [
+            {
+                "Name": "References",
+                "Value": " ".join(f"<{item}>" for item in reference_ids),
+            }
+        ]
+    elif outbound_headers:
+        body["Headers"] = outbound_headers
     request = urllib.request.Request(
         "https://api.postmarkapp.com/email",
         data=json.dumps(body).encode(),

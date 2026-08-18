@@ -64,23 +64,68 @@
         </nav>
         <div class="clean-workshop-list-head">
           <span>Viatura / processo</span>
+          <span>Abertura / tempo</span>
+          <span>Local</span>
+          <span>Motivo da entrada</span>
           <span>Classificação</span>
           <span>Fase atual</span>
           <span>Situação</span>
         </div>
         <div class="clean-workshop-process-list">
-          {% for process in recent_processes %}
+          {% for row in process_rows %}
+            {% set process = row.process %}
             {% set phase = process.current_phase_code or "entrada" %}
             {% set process_url = "/v2-clean/workshop-entry?process_id=" ~ process.id if phase == "entrada" else "/v2-clean/workshop/" ~ phase ~ "?process_id=" ~ process.id %}
-            <a class="clean-workshop-process-item" href="{{ process_url }}">
-              <div>
+            <div class="clean-workshop-process-item" id="workshop-process-{{ process.id }}">
+              <a class="clean-workshop-process-link" href="{{ process_url }}">
                 <strong>{{ process.plate_snapshot or "Sem matrícula" }}</strong>
                 <span>{{ process.public_reference or process.title or "Processo de oficina" }}</span>
+              </a>
+              <div class="clean-workshop-process-fact">
+                <strong>{{ row.opened_at.strftime('%d/%m/%Y · %H:%M') if row.opened_at else '-' }}</strong>
+                <span>{% if row.elapsed_days == 0 %}Hoje · 0 dias{% elif row.elapsed_days == 1 %}1 dia decorrido{% else %}{{ row.elapsed_days }} dias decorridos{% endif %}</span>
+              </div>
+              <div class="clean-workshop-process-fact">
+                <strong class="{% if row.location_type == 'Externa' %}is-external{% endif %}">{{ row.location_type }}</strong>
+                <span>{{ row.location_detail }}</span>
+              </div>
+              <div class="clean-workshop-process-fact clean-workshop-process-reason">
+                <strong>{{ row.entry_reason }}</strong>
+                <span>{{ row.entry_description or 'Sem descrição adicional' }}</span>
               </div>
               <em>{{ "Histórico" if process.creation_mode == "historical" else "Operacional" }}</em>
               <em>{{ phase|replace("_", " ")|title }}</em>
-              <b>{% if process.status == "cancelled" %}Cancelado{% elif process.status == "closed" %}Fechado{% else %}Em curso{% endif %}</b>
-            </a>
+              <div class="clean-workshop-situation-cell">
+                <b class="situation-{{ row.operational_situation }}">
+                  {% if row.operational_situation == "waiting" %}A aguardar{% elif row.operational_situation == "closed" %}Fechado{% elif row.operational_situation == "cancelled" %}Cancelado{% else %}Em curso{% endif %}
+                </b>
+                {% if row.waiting_reason %}<span>{{ row.waiting_reason }}</span>{% endif %}
+                {% if process.status not in ['closed', 'cancelled'] %}
+                  {% if row.operational_situation == 'waiting' %}
+                    <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
+                      <input type="hidden" name="scope" value="{{ scope }}">
+                      <button type="submit" name="action" value="resume" class="clean-workshop-situation-action">Retomar</button>
+                    </form>
+                  {% else %}
+                    <details class="clean-workshop-wait-control">
+                      <summary>Colocar em espera</summary>
+                      <form method="post" action="/v2-clean/workshop/{{ process.id }}/operational-situation">
+                        <input type="hidden" name="scope" value="{{ scope }}">
+                        <select name="waiting_reason" required>
+                          <option value="">Motivo da espera</option>
+                          <option>A aguardar peças</option>
+                          <option>A aguardar orçamento</option>
+                          <option>A aguardar aprovação</option>
+                          <option>A aguardar oficina externa</option>
+                          <option>Outro</option>
+                        </select>
+                        <button type="submit" name="action" value="wait">Confirmar</button>
+                      </form>
+                    </details>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </div>
           {% else %}
             <p class="muted">
               {% if scope == "closed" %}

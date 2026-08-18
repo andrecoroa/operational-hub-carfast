@@ -14195,7 +14195,7 @@ button.clean-upload-preview-card {
 
 .clean-workshop-process-item {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(150px, .9fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
   gap: 10px;
   align-items: center;
   border: 1px solid #e5eaf2;
@@ -14203,7 +14203,6 @@ button.clean-upload-preview-card {
   background: #fff;
   color: #0f2a5f;
   padding: 10px 12px;
-  text-decoration: none;
 }
 
 .clean-workshop-process-item:hover {
@@ -20498,6 +20497,107 @@ body.clean-doc-modal-open {
 
 .clean-task-create-form .span-2 {
   grid-column: 1 / -1;
+}
+
+.clean-workshop-list-head {
+  display: grid;
+  grid-template-columns: minmax(150px, .9fr) minmax(145px, .9fr) minmax(120px, .7fr) minmax(210px, 1.35fr) minmax(95px, .6fr) minmax(90px, .55fr) minmax(150px, .9fr);
+  gap: 10px;
+  padding: 0 12px;
+  color: #667085;
+  font-size: var(--clean-font-xs);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.clean-workshop-process-list {
+  overflow-x: auto;
+}
+
+.clean-workshop-process-link {
+  color: #0f2a5f;
+  text-decoration: none;
+}
+
+.clean-workshop-process-fact strong {
+  font-size: var(--clean-font-sm);
+}
+
+.clean-workshop-process-fact strong.is-external {
+  color: #b54708;
+}
+
+.clean-workshop-process-reason span {
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-workshop-situation-cell {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.clean-workshop-situation-cell b.situation-waiting {
+  border-color: #fedf89;
+  background: #fffaeb;
+  color: #b54708;
+}
+
+.clean-workshop-situation-action,
+.clean-workshop-wait-control summary,
+.clean-workshop-wait-control button {
+  border: 0;
+  background: transparent;
+  color: #b42318;
+  cursor: pointer;
+  font-size: var(--clean-font-xs);
+  font-weight: 850;
+  padding: 0;
+}
+
+@media (max-width: 1100px) {
+  .clean-workshop-list-head,
+  .clean-workshop-process-item {
+    min-width: 1080px;
+  }
+}
+
+.clean-workshop-wait-control {
+  position: relative;
+}
+
+.clean-workshop-wait-control summary {
+  list-style: none;
+}
+
+.clean-workshop-wait-control form {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  top: 22px;
+  width: 210px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, .12);
+}
+
+.clean-workshop-wait-control select {
+  width: 100%;
+}
+
+.clean-workshop-wait-control button {
+  min-height: 32px;
+  border-radius: 5px;
+  background: #b54732;
+  color: #fff;
 }
 
 .clean-task-classification-row,

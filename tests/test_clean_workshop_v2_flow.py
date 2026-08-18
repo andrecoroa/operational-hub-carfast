@@ -224,6 +224,94 @@ def test_admin_can_cancel_and_reopen_workshop_process(authenticated_client, db_s
     assert process.status == "open"
 
 
+def test_workshop_dashboard_shows_operational_context_and_updates_situation(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(
+        plate="WX-10-AA",
+        vin="VINWX10AA123456789",
+        brand="PEUGEOT",
+        model="208",
+        active=True,
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    process = WorkshopPhasedProcess(
+        process_type="workshop",
+        title="Oficina WX-10-AA",
+        creation_mode="operational",
+        status="open",
+        vehicle_id=vehicle.id,
+        plate_snapshot=vehicle.plate,
+        current_phase_code="entrada",
+        priority="normal",
+        metadata_json={},
+    )
+    db_session.add(process)
+    db_session.flush()
+    db_session.add(
+        WorkshopPhasedProcessPhase(
+            process_id=process.id,
+            phase_code="entrada",
+            name="Entrada",
+            status="completed",
+            sort_order=1,
+            data_json={
+                "entry_reasons": ["Avaria", "Travões"],
+                "short_description": "Ruído ao travar",
+                "external_repair": "yes",
+                "historical_supplier": "Oficina Parceira",
+            },
+        )
+    )
+    db_session.commit()
+
+    dashboard = authenticated_client.get("/v2-clean/workshop")
+
+    assert dashboard.status_code == 200
+    assert "Avaria · Travões" in dashboard.text
+    assert "Ruído ao travar" in dashboard.text
+    assert "Oficina Parceira" in dashboard.text
+    assert "Colocar em espera" in dashboard.text
+
+    missing_reason = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data={"action": "wait", "scope": "open"},
+        follow_redirects=False,
+    )
+    assert missing_reason.status_code == 303
+    assert "situation_error=invalid" in missing_reason.headers["location"]
+
+    waiting = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data={
+            "action": "wait",
+            "waiting_reason": "A aguardar peças",
+            "scope": "open",
+        },
+        follow_redirects=False,
+    )
+    assert waiting.status_code == 303
+    db_session.refresh(process)
+    assert process.metadata_json["operational_situation"] == "waiting"
+    assert process.metadata_json["operational_waiting_reason"] == "A aguardar peças"
+
+    waiting_dashboard = authenticated_client.get("/v2-clean/workshop")
+    assert "A aguardar peças" in waiting_dashboard.text
+    assert "Retomar" in waiting_dashboard.text
+
+    resumed = authenticated_client.post(
+        f"/v2-clean/workshop/{process.id}/operational-situation",
+        data={"action": "resume", "scope": "open"},
+        follow_redirects=False,
+    )
+    assert resumed.status_code == 303
+    db_session.refresh(process)
+    assert process.metadata_json["operational_situation"] == "in_progress"
+    assert "operational_waiting_reason" not in process.metadata_json
+
+
 def test_workshop_print_reports_and_repair_material_fields(authenticated_client, db_session):
     vehicle = Vehicle(
         plate="AA-11-AA",

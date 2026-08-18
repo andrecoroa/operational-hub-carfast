@@ -5779,6 +5779,59 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                 WorkshopPhasedProcess.updated_at.desc(), WorkshopPhasedProcess.id.desc()
             ).limit(40)
         ).all()
+        process_rows: list[dict[str, object]] = []
+        now = datetime.now(UTC)
+        for process in recent_processes:
+            entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
+            entry_data = (
+                dict(entry_phase.data_json or {})
+                if entry_phase and isinstance(entry_phase.data_json, dict)
+                else {}
+            )
+            metadata = (
+                dict(process.metadata_json or {})
+                if isinstance(process.metadata_json, dict)
+                else {}
+            )
+            opened_at = process.opened_at or process.received_at or process.created_at
+            opened_utc = opened_at
+            if opened_utc and opened_utc.tzinfo is None:
+                opened_utc = opened_utc.replace(tzinfo=UTC)
+            elapsed_days = max(0, (now.date() - opened_utc.astimezone(UTC).date()).days) if opened_utc else 0
+            raw_entry_reasons = entry_data.get("entry_reasons") or metadata.get("entry_reasons") or []
+            if isinstance(raw_entry_reasons, str):
+                raw_entry_reasons = [raw_entry_reasons]
+            entry_reasons = [
+                str(value).strip()
+                for value in raw_entry_reasons
+                if str(value).strip()
+            ]
+            entry_description = str(
+                entry_data.get("short_description")
+                or entry_data.get("requested_service")
+                or process.initial_observation
+                or ""
+            ).strip()
+            external_repair = str(entry_data.get("external_repair") or "no").lower() == "yes"
+            external_name = str(entry_data.get("historical_supplier") or "").strip()
+            operational_situation = str(metadata.get("operational_situation") or "in_progress")
+            if process.status == "closed":
+                operational_situation = "closed"
+            elif process.status == "cancelled":
+                operational_situation = "cancelled"
+            process_rows.append(
+                {
+                    "process": process,
+                    "opened_at": opened_at,
+                    "elapsed_days": elapsed_days,
+                    "entry_reason": " · ".join(entry_reasons) or "Por classificar",
+                    "entry_description": entry_description,
+                    "location_type": "Externa" if external_repair else "Interna",
+                    "location_detail": external_name if external_repair and external_name else ("Oficina externa" if external_repair else "Oficina Carfast"),
+                    "operational_situation": operational_situation,
+                    "waiting_reason": str(metadata.get("operational_waiting_reason") or "").strip(),
+                }
+            )
         return templates.TemplateResponse(
             request,
             "clean_workshop_dashboard.html",
@@ -5793,9 +5846,64 @@ def clean_workshop_dashboard(request: Request, scope: str = "open"):
                     "pending_validation": pending_validation,
                 },
                 "recent_processes": recent_processes,
+                "process_rows": process_rows,
                 "scope": scope,
             },
         )
+
+
+@web_router.post("/v2-clean/workshop/{process_id}/operational-situation")
+async def clean_workshop_operational_situation_save(request: Request, process_id: int):
+    denied = clean_experience_denied(request)
+    if denied:
+        return denied
+    form = await request.form()
+    action = str(form.get("action") or "").strip().lower()
+    waiting_reason = str(form.get("waiting_reason") or "").strip()
+    return_scope = str(form.get("scope") or "open").strip().lower()
+    if return_scope not in {"open", "closed", "cancelled", "all"}:
+        return_scope = "open"
+    if action not in {"wait", "resume"} or (action == "wait" and not waiting_reason):
+        return RedirectResponse(
+            f"/v2-clean/workshop?scope={return_scope}&situation_error=invalid",
+            status_code=303,
+        )
+    with SessionLocal() as db:
+        process = db.get(WorkshopPhasedProcess, process_id)
+        if not process or process.status in {"closed", "cancelled"}:
+            return RedirectResponse(f"/v2-clean/workshop?scope={return_scope}", status_code=303)
+        metadata = dict(process.metadata_json or {}) if isinstance(process.metadata_json, dict) else {}
+        before = {
+            "operational_situation": metadata.get("operational_situation"),
+            "operational_waiting_reason": metadata.get("operational_waiting_reason"),
+        }
+        if action == "wait":
+            metadata["operational_situation"] = "waiting"
+            metadata["operational_waiting_reason"] = waiting_reason
+            audit_detail = f"Processo colocado em espera: {waiting_reason}"
+        else:
+            metadata["operational_situation"] = "in_progress"
+            metadata.pop("operational_waiting_reason", None)
+            audit_detail = "Processo retomado"
+        process.metadata_json = metadata
+        record_audit(
+            db,
+            action="workshop.operational_situation.updated",
+            entity_type="workshop_phased_process",
+            entity_id=process.id,
+            detail=audit_detail,
+            before_json=before,
+            after_json={
+                "operational_situation": metadata.get("operational_situation"),
+                "operational_waiting_reason": metadata.get("operational_waiting_reason"),
+            },
+            user_id=get_web_user_id(request),
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/workshop?scope={return_scope}#workshop-process-{process_id}",
+        status_code=303,
+    )
 
 
 

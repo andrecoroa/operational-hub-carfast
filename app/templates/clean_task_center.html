@@ -29,6 +29,8 @@
     {% endif %}
     {% if request.query_params.get("error") == "missing_title" %}
       <div class="clean-alert-warning">Indica um título antes de criar o registo.</div>
+    {% elif request.query_params.get("error") == "missing_classification" %}
+      <div class="clean-alert-warning">Seleciona a fila de trabalho, a natureza e a categoria.</div>
     {% elif request.query_params.get("error") == "duplicate_email" %}
       <div class="clean-alert-warning">Este email já deu origem a uma tarefa.</div>
     {% elif request.query_params.get("error") == "forbidden" %}
@@ -51,19 +53,34 @@
           <span class="clean-task-summary-action">Criar</span>
         </summary>
         <div class="clean-task-create-body">
-          <form method="post" action="/v2-clean/tasks" class="clean-task-create-form">
+          <form method="post" action="/v2-clean/tasks" class="clean-task-create-form" enctype="multipart/form-data">
+            <input type="hidden" name="classification_version" value="2">
             <input type="hidden" name="entity_type" value="{{ prefill.entity_type }}">
             <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
-            <input type="hidden" name="category" value="{{ prefill.category }}">
             <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
             <label class="span-2">Título<input name="title" value="{{ prefill.title }}" required></label>
-            <label>Natureza
-              <select name="workspace">
+            <div class="clean-task-classification-row span-2">
+            <label>Fila de trabalho
+              <select name="workspace" required data-task-workspace>
+                <option value="">Selecionar fila</option>
                 {% for code, label in task_workspace_options if code in creatable_workspaces %}
                   <option value="{{ code }}" {% if code == prefill.workspace %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
             </label>
+            <label>Natureza
+              <select name="category" required data-task-nature>
+                <option value="">Selecionar natureza</option>
+                {% for value in task_nature_edit_options %}<option value="{{ value }}" {% if value == prefill.category %}selected{% endif %}>{{ value }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Categoria
+              <select name="subcategory" required>
+                <option value="">Selecionar categoria</option>
+                {% for value in task_category_options %}<option value="{{ value }}" {% if value == prefill.subcategory %}selected{% endif %}>{{ value }}</option>{% endfor %}
+              </select>
+            </label>
+            </div>
             <label>Responsável
               <select name="assigned_to_id">
                 <option value="">Por atribuir</option>
@@ -77,10 +94,13 @@
               </select>
             </label>
             <label>Prazo<input type="date" name="due_on"></label>
-            <label>Matrícula<input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE"></label>
-            <label>Reserva<input name="reservation_number"></label>
-            <label>Contrato<input name="contract_number"></label>
-            <label>N.º fatura<input name="invoice_number"></label>
+            <div class="clean-task-reference-row span-2">
+              <label>Matrícula<input name="plate" value="{{ filters.plate }}" placeholder="BB-69-TE"></label>
+              <label>Reserva<input name="reservation_number"></label>
+              <label>Contrato<input name="contract_number"></label>
+              <label>N.º fatura<input name="invoice_number"></label>
+            </div>
+            <label class="span-2 clean-task-upload-label">Anexar documentos<input type="file" name="attachments" multiple></label>
             <label class="span-2">Descrição<textarea name="description" rows="3">{{ prefill.description }}</textarea></label>
             <details class="clean-task-email-origin span-2">
               <summary>Criada a partir de email</summary>
@@ -124,6 +144,9 @@
         <input type="hidden" name="workspace" value="{{ filters.workspace }}">
         <input type="hidden" name="mine_kind" value="{{ filters.mine_kind }}">
         <input type="hidden" name="due" value="{{ filters.due }}">
+        <label>Ordenar<select name="sort">
+          {% for code, label in [("priority","Prioridade e prazo"),("due_asc","Prazo: mais próximo"),("due_desc","Prazo: mais distante"),("created_desc","Mais recentes"),("created_asc","Mais antigas"),("updated_desc","Atualizadas recentemente")] %}<option value="{{ code }}" {% if filters.sort == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
         <label>Estado<select name="status">{% for code, label in task_status_options %}<option value="{{ code }}" {% if filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         <label>Natureza
           <select name="nature">
@@ -169,9 +192,9 @@
       </div>
       {% if pagination.total_pages > 1 %}
         <nav class="doc-arch-pagination" aria-label="Paginação das tarefas">
-          {% if pagination.has_previous %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&page={{ pagination.previous_page }}">Anterior</a>{% endif %}
+          {% if pagination.has_previous %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&sort={{ filters.sort }}&page={{ pagination.previous_page }}">Anterior</a>{% endif %}
           <span>Página {{ pagination.page }} de {{ pagination.total_pages }} · {{ pagination.total }} tarefas</span>
-          {% if pagination.has_next %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&page={{ pagination.next_page }}">Seguinte</a>{% endif %}
+          {% if pagination.has_next %}<a href="?workspace={{ filters.workspace }}&mine_kind={{ filters.mine_kind }}&status={{ filters.status }}&kind={{ filters.kind }}&nature={{ filters.nature|urlencode }}&due={{ filters.due }}&plate={{ filters.plate|urlencode }}&q={{ filters.q|urlencode }}&sort={{ filters.sort }}&page={{ pagination.next_page }}">Seguinte</a>{% endif %}
         </nav>
       {% endif %}
     </section>
@@ -314,6 +337,16 @@
             <h3>Documentos</h3>
             {% for document in documents_by_task.get(task.id, []) %}<a href="/v2-clean/documents/{{ document.id }}?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">{{ document.title or document.original_name }}</a>{% else %}<p>Sem documentos associados.</p>{% endfor %}
           </section>
+          {% if can_write %}
+          <section>
+            <h3>Anexar documentos</h3>
+            <form method="post" action="/v2-clean/tasks/{{ task.id }}/attachments" enctype="multipart/form-data" class="clean-task-side-form">
+              <input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}">
+              <input type="file" name="attachments" multiple required>
+              <button>Anexar</button>
+            </form>
+          </section>
+          {% endif %}
           <section class="clean-task-close-zone">
             {% if can_close %}
               {% if task.closed_at or task.status in ["closed","resolved","cancelled"] %}

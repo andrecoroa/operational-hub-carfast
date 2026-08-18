@@ -26,6 +26,85 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
     form = authenticated_client.get(shortcut.headers["location"])
     assert form.status_code == 200
     assert 'id="new-task" open' in form.text
+    assert '<option value="">Selecionar fila</option>' in form.text
+    assert 'name="workspace" required' in form.text
+    assert 'name="category" required' in form.text
+    assert 'name="subcategory" required' in form.text
+
+
+def test_clean_task_creation_requires_three_classifications(authenticated_client):
+    response = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={"title": "Sem classificação", "classification_version": "2"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=missing_classification" in response.headers["location"]
+
+
+def test_clean_task_creation_accepts_document_attachments(
+    authenticated_client,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.web.router.document_archive_root", lambda: tmp_path)
+
+    response = authenticated_client.post(
+        "/v2-clean/tasks",
+        data={
+            "title": "Tarefa com anexo",
+            "classification_version": "2",
+            "workspace": "operational",
+            "category": "Operação",
+            "subcategory": "Pedido",
+        },
+        files={"attachments": ("pedido.txt", b"conteudo", "text/plain")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    task = db_session.scalar(select(Task).where(Task.title == "Tarefa com anexo"))
+    assert task is not None
+    document = db_session.scalar(select(Document).where(Document.task_id == task.id))
+    assert document is not None
+    assert document.original_name == "pedido.txt"
+    assert document.file_size == 8
+    assert db_session.scalar(
+        select(TaskDocument).where(
+            TaskDocument.task_id == task.id,
+            TaskDocument.document_id == document.id,
+        )
+    ) is not None
+
+
+def test_clean_task_center_supports_explicit_sorting(authenticated_client, db_session):
+    older = Task(
+        title="Prazo distante",
+        task_type="operational_task",
+        category="Operação",
+        subcategory="Pedido",
+        status="new",
+        priority="normal",
+        due_on=date(2026, 9, 20),
+    )
+    sooner = Task(
+        title="Prazo próximo",
+        task_type="operational_task",
+        category="Operação",
+        subcategory="Pedido",
+        status="new",
+        priority="normal",
+        due_on=date(2026, 8, 20),
+    )
+    db_session.add_all([older, sooner])
+    db_session.commit()
+
+    page = authenticated_client.get("/v2-clean/tasks?workspace=operational&sort=due_asc")
+
+    assert page.status_code == 200
+    assert page.text.index("Prazo próximo") < page.text.index("Prazo distante")
 
 
 def test_clean_task_center_creates_document_task_with_audit(authenticated_client, db_session):
@@ -235,7 +314,8 @@ def test_clean_task_center_prefills_document_context(authenticated_client, db_se
     assert "Problema: Faturas FAC 2026/42" in response.text
     assert "Fornecedor: Fornecedor Teste" in response.text
     assert "Descrição: Mudança de óleo" in response.text
-    assert 'value="documentacao"' in response.text
+    assert '<option value="Documentação" selected>Documentação</option>' in response.text
+    assert '<option value="Validação" selected>Validação</option>' in response.text
 
 
 def test_clean_task_center_supports_mine_participants_email_and_documents(authenticated_client, db_session):

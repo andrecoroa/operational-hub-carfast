@@ -3984,6 +3984,7 @@ def clean_tasks_center(
     due: str = "",
     plate: str = "",
     q: str = "",
+    sort: str = "priority",
     record_type: str = "",
     type: str = "",
     title: str = "",
@@ -4157,10 +4158,43 @@ def clean_tasks_center(
         ) or 0
         total_pages = max(1, (total_tasks + page_size - 1) // page_size)
         active_page = min(max(page, 1), total_pages)
+        valid_sorts = {
+            "priority",
+            "due_asc",
+            "due_desc",
+            "created_desc",
+            "created_asc",
+            "updated_desc",
+        }
+        active_sort = sort if sort in valid_sorts else "priority"
+        sort_expressions = {
+            "priority": (
+                Task.closed_at.is_not(None),
+                Task.priority.desc(),
+                Task.due_on.is_(None),
+                Task.due_on,
+                Task.id.desc(),
+            ),
+            "due_asc": (
+                Task.closed_at.is_not(None),
+                Task.due_on.is_(None),
+                Task.due_on.asc(),
+                Task.id.desc(),
+            ),
+            "due_desc": (
+                Task.closed_at.is_not(None),
+                Task.due_on.is_(None),
+                Task.due_on.desc(),
+                Task.id.desc(),
+            ),
+            "created_desc": (Task.created_at.desc(), Task.id.desc()),
+            "created_asc": (Task.created_at.asc(), Task.id.asc()),
+            "updated_desc": (Task.updated_at.desc(), Task.id.desc()),
+        }
         tasks = db.scalars(
             select(Task)
             .where(*filters)
-            .order_by(Task.closed_at.is_not(None), Task.priority.desc(), Task.due_on.is_(None), Task.due_on, Task.id.desc())
+            .order_by(*sort_expressions[active_sort])
             .offset((active_page - 1) * page_size)
             .limit(page_size)
         ).all()
@@ -4315,6 +4349,16 @@ def clean_tasks_center(
         task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
         task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
+        raw_prefill_category = str(prefill_context["category"] or "").strip()
+        prefill_nature_aliases = {
+            "documentacao": "Documentação",
+            "documentação": "Documentação",
+            "fatura": "Faturas",
+            "faturas": "Faturas",
+            "oficina": "Reparação",
+            "stock": "Material",
+        }
+        prefill_nature = prefill_nature_aliases.get(raw_prefill_category.lower(), raw_prefill_category)
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
@@ -4357,6 +4401,7 @@ def clean_tasks_center(
                     "plate": normalized_plate,
                     "q": q.strip(),
                     "due": active_due,
+                    "sort": active_sort,
                 },
                 "prefill": {
                     "record_type": effective_record_type,
@@ -4369,12 +4414,13 @@ def clean_tasks_center(
                             or "work_order" in entity_type.lower()
                         )
                         else active_workspace
-                        if active_workspace in creatable_workspaces
-                        else ("workshop" if "workshop" in creatable_workspaces else creatable_workspaces[0] if creatable_workspaces else "")
+                        if active_workspace in creatable_workspaces and (title.strip() or entity_type.strip())
+                        else ""
                     ),
                     "title": prefill_context["title"],
                     "description": prefill_context["description"],
-                    "category": prefill_context["category"],
+                    "category": prefill_nature,
+                    "subcategory": "Validação" if entity_type.strip() else "",
                     "entity_type": entity_type.strip(),
                     "entity_id": entity_id.strip(),
                     "return_url": return_url.strip(),
@@ -4642,7 +4688,7 @@ def clean_tasks_create(
     request: Request,
     title: str = Form(""),
     description: str = Form(""),
-    workspace: str = Form("workshop"),
+    workspace: str = Form(""),
     record_type: str = Form("task"),
     priority: str = Form("normal"),
     plate: str = Form(""),
@@ -4651,6 +4697,8 @@ def clean_tasks_create(
     invoice_number: str = Form(""),
     due_on: str = Form(""),
     category: str = Form(""),
+    subcategory: str = Form(""),
+    classification_version: str = Form(""),
     entity_type: str = Form(""),
     entity_id: str = Form(""),
     assigned_to_id: str = Form(""),
@@ -4662,6 +4710,7 @@ def clean_tasks_create(
     email_mailbox: str = Form(""),
     email_source_url: str = Form(""),
     return_url: str = Form(""),
+    attachments: list[UploadFile] = File(default=[]),
 ):
     denied = clean_experience_denied(request)
     if denied:
@@ -4672,6 +4721,12 @@ def clean_tasks_create(
     clean_title = title.strip()
     if not clean_title:
         return RedirectResponse("/v2-clean/tasks?error=missing_title", status_code=303)
+    clean_category = category.strip()[:80]
+    clean_subcategory = subcategory.strip()[:120]
+    if classification_version == "2" and (
+        not workspace.strip() or not clean_category or not clean_subcategory
+    ):
+        return RedirectResponse("/v2-clean/tasks?create=1&error=missing_classification#new-task", status_code=303)
     clean_workspace = normalize_task_workspace(workspace)
     workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
     is_problem = record_type == "problem" and clean_workspace == "workshop"
@@ -4702,8 +4757,8 @@ def clean_tasks_create(
             description=description.strip() or None,
             task_type=workspace_config["default_task_type"],
             source="v2_clean",
-            category=(category.strip() or workspace_config["default_category"])[:80],
-            subcategory="problem" if is_problem else (category.strip() or "task")[:120],
+            category=(clean_category or workspace_config["default_category"])[:80],
+            subcategory="problem" if is_problem else (clean_subcategory or clean_category or "task")[:120],
             status="new",
             priority=priority if priority in {"low", "normal", "high", "urgent"} else "normal",
             plate=normalized_plate,
@@ -4724,6 +4779,44 @@ def clean_tasks_create(
         )
         db.add(task)
         db.flush()
+        task_upload_root = document_archive_root() / "tasks" / str(task.id)
+        for upload in attachments:
+            original_name = Path(upload.filename or "").name[:255]
+            if not original_name:
+                continue
+            content = upload.file.read()
+            if not content:
+                continue
+            task_upload_root.mkdir(parents=True, exist_ok=True)
+            suffix = Path(original_name).suffix.lower()[:12]
+            stored_path = task_upload_root / f"{uuid.uuid4().hex}{suffix}"
+            stored_path.write_bytes(content)
+            linked_document = Document(
+                title=original_name,
+                document_type="task_attachment",
+                classification="task_attachment",
+                source="task",
+                entry_channel="task_upload",
+                original_name=original_name,
+                file_name=stored_path.name,
+                file_type=(upload.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream")[:120],
+                file_size=len(content),
+                storage_provider="local",
+                storage_path=str(stored_path),
+                status="received",
+                task_id=task.id,
+                plate=normalized_plate,
+                uploaded_by_id=user_id,
+            )
+            db.add(linked_document)
+            db.flush()
+            db.add(
+                TaskDocument(
+                    task_id=task.id,
+                    document_id=linked_document.id,
+                    category="Anexo",
+                )
+            )
         if clean_source == "email":
             db.add(
                 TaskEmailOrigin(
@@ -5242,6 +5335,79 @@ def clean_tasks_link_document(
         if not exists:
             db.add(TaskDocument(task_id=task.id, document_id=document.id, category="attachment"))
             db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="document_linked")
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/attachments", response_class=HTMLResponse)
+def clean_tasks_upload_attachments(
+    request: Request,
+    task_id: int,
+    attachments: list[UploadFile] = File(...),
+    return_url: str = Form(""),
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        user = db.get(User, user_id)
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        upload_root = document_archive_root() / "tasks" / str(task.id)
+        uploaded = 0
+        for upload in attachments:
+            original_name = Path(upload.filename or "").name[:255]
+            if not original_name:
+                continue
+            content = upload.file.read()
+            if not content:
+                continue
+            upload_root.mkdir(parents=True, exist_ok=True)
+            suffix = Path(original_name).suffix.lower()[:12]
+            stored_path = upload_root / f"{uuid.uuid4().hex}{suffix}"
+            stored_path.write_bytes(content)
+            document = Document(
+                title=original_name,
+                document_type="task_attachment",
+                classification="task_attachment",
+                source="task",
+                entry_channel="task_upload",
+                original_name=original_name,
+                file_name=stored_path.name,
+                file_type=(upload.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream")[:120],
+                file_size=len(content),
+                storage_provider="local",
+                storage_path=str(stored_path),
+                status="received",
+                task_id=task.id,
+                plate=task.plate,
+                uploaded_by_id=user_id,
+            )
+            db.add(document)
+            db.flush()
+            db.add(
+                TaskDocument(
+                    task_id=task.id,
+                    document_id=document.id,
+                    category="Anexo",
+                )
+            )
+            uploaded += 1
+        if uploaded:
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    field_name="attachments",
+                    new_value=f"{uploaded} documento(s) anexado(s)",
+                )
+            )
+        db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="document_linked")
 
 

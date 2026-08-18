@@ -20500,6 +20500,38 @@ body.clean-doc-modal-open {
   grid-column: 1 / -1;
 }
 
+.clean-task-classification-row,
+.clean-task-reference-row {
+  display: grid;
+  gap: 12px;
+}
+
+.clean-task-classification-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.clean-task-reference-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.clean-task-upload-label input[type="file"] {
+  padding: 7px 10px;
+}
+
+@media (max-width: 900px) {
+  .clean-task-classification-row,
+  .clean-task-reference-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .clean-task-classification-row,
+  .clean-task-reference-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .clean-task-create-actions {
   display: flex;
   justify-content: flex-end;

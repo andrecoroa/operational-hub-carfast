@@ -36,6 +36,10 @@ class EmailThread(TimestampMixin, Base):
     channel_id: Mapped[int] = mapped_column(ForeignKey("email_channels.id"), index=True)
     subject: Mapped[str] = mapped_column(String(500), index=True)
     status: Mapped[str] = mapped_column(String(60), default="triage", index=True)
+    content_type: Mapped[str | None] = mapped_column(String(60), index=True)
+    nature: Mapped[str | None] = mapped_column(String(60), index=True)
+    document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    triage_notes: Mapped[str | None] = mapped_column(Text)
     sender_email: Mapped[str | None] = mapped_column(String(255), index=True)
     sender_name: Mapped[str | None] = mapped_column(String(255))
     task_id: Mapped[int | None] = mapped_column(
@@ -87,6 +91,11 @@ class EmailAttachment(TimestampMixin, Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     storage_path: Mapped[str] = mapped_column(Text)
     sha256: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    nature: Mapped[str | None] = mapped_column(String(60), index=True)
+    destination: Mapped[str | None] = mapped_column(String(60), index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class EmailWebhookEvent(TimestampMixin, Base):

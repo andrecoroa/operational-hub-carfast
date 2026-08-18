@@ -7,6 +7,26 @@
       frame?.contentDocument?.querySelectorAll("img[data-email-src]").forEach((image) => { image.src = image.dataset.emailSrc; image.style.display = "inline-block"; });
       button.remove();
     }));
+    root.querySelectorAll("[data-email-attachment-preview]").forEach((button) => button.addEventListener("click", async () => {
+      const attachmentDialog = root.querySelector("[data-email-attachment-dialog]");
+      if (!attachmentDialog) return;
+      attachmentDialog.innerHTML = '<div class="email-preview-loading">A abrir anexo…</div>';
+      attachmentDialog.showModal();
+      const response = await fetch(`/v2-clean/email/attachments/${button.dataset.emailAttachmentPreview}/preview`, {headers: {"X-Requested-With": "fetch"}});
+      attachmentDialog.innerHTML = await response.text();
+      attachmentDialog.querySelector("[data-email-attachment-close]")?.addEventListener("click", () => attachmentDialog.close());
+      const attachmentForm = attachmentDialog.querySelector(".email-attachment-form");
+      attachmentForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const save = attachmentForm.querySelector('button[type="submit"]');
+        if (save) save.disabled = true;
+        const result = await fetch(attachmentForm.action, {method: "POST", body: new FormData(attachmentForm), credentials: "same-origin", headers: {"X-Requested-With": "fetch"}});
+        const notice = document.createElement("div");
+        notice.innerHTML = await result.text();
+        attachmentForm.prepend(notice);
+        if (save) save.disabled = false;
+      });
+    }));
     root.querySelectorAll("form").forEach((form) => form.addEventListener("submit", async (event) => {
       if (!dialog || !dialog.open || !form.closest("#email-preview-dialog")) return;
       event.preventDefault();

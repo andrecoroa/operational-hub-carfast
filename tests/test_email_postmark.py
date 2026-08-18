@@ -5,7 +5,14 @@ from sqlalchemy.orm import sessionmaker
 
 import app.web.email as email_web
 from app.core.config import settings
-from app.models.email import EmailAttachment, EmailMessage, EmailThread, EmailWebhookEvent
+from app.models.admin import User
+from app.models.email import (
+    EmailAttachment,
+    EmailChannelUser,
+    EmailMessage,
+    EmailThread,
+    EmailWebhookEvent,
+)
 from app.services.email_postmark import ingest_inbound, webhook_authorized
 
 
@@ -94,7 +101,10 @@ def test_email_preview_sanitizes_html_and_task_uses_operational_queue(
         sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
     )
     payload = _payload("pm-ui-safe")
-    payload["HtmlBody"] = '<p>Olá <strong>CarFast</strong></p><script>alert(1)</script><img src="https://example.com/logo.png" onerror="alert(2)">'
+    payload["HtmlBody"] = (
+        '<p>Olá <strong>CarFast</strong></p><script>alert(1)</script>'
+        '<img src="https://example.com/logo.png" onerror="alert(2)">'
+    )
     thread, _ = ingest_inbound(db_session, payload)
     message = db_session.scalar(select(EmailMessage).where(EmailMessage.thread_id == thread.id))
 
@@ -113,3 +123,76 @@ def test_email_preview_sanitizes_html_and_task_uses_operational_queue(
     assert refreshed.task_id is not None
     task = db_session.get(email_web.Task, refreshed.task_id)
     assert task.task_type == "operational_task"
+
+
+def test_email_triage_is_reused_by_task_and_attachment_is_opened_on_demand(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("pm-ui-triage"))
+    attachment = db_session.scalar(select(EmailAttachment))
+
+    triage = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/triage",
+        data={
+            "content_type": "document",
+            "nature": "stock",
+            "document_type": "invoice",
+            "triage_notes": "Validar entrada de material.",
+        },
+        follow_redirects=False,
+    )
+    preview = authenticated_client.get(f"/v2-clean/email/attachments/{attachment.id}/preview")
+    task_response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/task", follow_redirects=False
+    )
+    db_session.expire_all()
+
+    assert triage.status_code == 303
+    assert preview.status_code == 200
+    assert "Decidir tratamento" in preview.text
+    assert task_response.status_code == 303
+    refreshed = db_session.get(EmailThread, thread.id)
+    task = db_session.get(email_web.Task, refreshed.task_id)
+    assert refreshed.nature == "stock"
+    assert task.category == "stock"
+    assert task.subcategory == "invoice"
+    assert "Validar entrada de material" in task.description
+
+
+def test_mailbox_access_requires_explicit_assignment_for_regular_users(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    thread, _ = ingest_inbound(db_session, _payload("pm-access"))
+    user = db_session.scalar(select(User).order_by(User.id))
+
+    assert email_web._channel_access(db_session, user.id, {"email.read"}) == {}
+
+    db_session.add(
+        EmailChannelUser(
+            channel_id=thread.channel_id,
+            user_id=user.id,
+            can_reply=True,
+            can_approve=False,
+        )
+    )
+    db_session.commit()
+    access = email_web._channel_access(db_session, user.id, {"email.read"})
+
+    assert thread.channel_id in access
+    assert (
+        email_web._can_use_channel(db_session, user.id, {"email.read"}, thread.channel_id, "reply")
+        is True
+    )
+    assert (
+        email_web._can_use_channel(
+            db_session, user.id, {"email.read"}, thread.channel_id, "approve"
+        )
+        is False
+    )

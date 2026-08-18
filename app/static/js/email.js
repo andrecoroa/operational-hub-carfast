@@ -27,7 +27,37 @@
         if (save) save.disabled = false;
       });
     }));
+    root.querySelectorAll("[data-email-approve]").forEach((button) => button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const form = button.form;
+      if (!form || button.disabled) return;
+      button.disabled = true;
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: {"X-Requested-With": "fetch"},
+      });
+      const resultUrl = new URL(response.url, window.location.origin);
+      if (resultUrl.searchParams.has("error")) {
+        const notice = document.createElement("div");
+        notice.className = "email-notice warning";
+        notice.textContent = resultUrl.searchParams.get("error") === "send_disabled"
+          ? "A resposta foi aprovada, mas o envio externo está desligado ou incompleto."
+          : "Não foi possível aprovar e enviar a resposta.";
+        form.closest(".email-approval")?.prepend(notice);
+        button.disabled = false;
+        return;
+      }
+      if (response.ok) {
+        await openPreview(button.dataset.emailThreadId);
+      } else {
+        button.disabled = false;
+      }
+    }));
     root.querySelectorAll("form").forEach((form) => form.addEventListener("submit", async (event) => {
+      if (event.submitter?.matches("[data-email-approve]")) return;
       if (!dialog || !dialog.open || !form.closest("#email-preview-dialog")) return;
       event.preventDefault();
       const submitter = event.submitter;

@@ -320,3 +320,16 @@ def test_email_modal_submits_the_clicked_action():
     assert "const submitter = event.submitter" in script
     assert "payload.set(submitter.name, submitter.value)" in script
     assert "body: payload" in script
+
+
+def test_email_modal_approval_has_an_explicit_click_handler():
+    root = Path(__file__).parents[1]
+    script = (root / "app" / "static" / "js" / "email.js").read_text(encoding="utf-8")
+    template = (root / "app" / "templates" / "_email_thread_content.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'data-email-approve data-email-thread-id="{{ thread.id }}"' in template
+    assert 'querySelectorAll("[data-email-approve]")' in script
+    assert 'event.submitter?.matches("[data-email-approve]")' in script
+    assert 'resultUrl.searchParams.has("error")' in script

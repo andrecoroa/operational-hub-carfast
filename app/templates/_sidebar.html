@@ -46,6 +46,9 @@
       {% if nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}
+      {% if nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
+        <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
+      {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
       <details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
         <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>

@@ -16,6 +16,7 @@ from app.services.authorization import get_user_permission_codes
 from app.web.portal import portal_router
 from app.web.router import web_router
 from app.web.stock import stock_router
+from app.web.email import email_router
 from app.web.vehicle_sales import vehicle_sales_router
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
@@ -63,6 +64,13 @@ EXPERIENCE_NEUTRAL_PREFIXES = (
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
+    (
+        ("/v2-clean/email",),
+        {
+            "GET": {"email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage"},
+            "POST": {"email.triage", "email.reply", "email.approve", "email.manage", "tasks.write", "admin.manage"},
+        },
+    ),
     (
         ("/v2-clean/admin",),
         {
@@ -409,6 +417,7 @@ def create_app() -> FastAPI:
     app.include_router(portal_router)
     app.include_router(vehicle_sales_router)
     app.include_router(stock_router)
+    app.include_router(email_router)
     app.include_router(web_router)
     return app
 

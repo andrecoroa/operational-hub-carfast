@@ -17,6 +17,15 @@ from app.models.documents import (
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
+from app.models.email import (
+    EmailAttachment,
+    EmailAuditEvent,
+    EmailChannel,
+    EmailChannelUser,
+    EmailMessage,
+    EmailThread,
+    EmailWebhookEvent,
+)
 from app.models.management_center import (
     ClaimIncident,
     ClaimRefstroLine,
@@ -143,6 +152,13 @@ __all__ = [
     "VehicleDocumentRecordTag",
     "EmailIntake",
     "EmailIntakeAttachment",
+    "EmailAttachment",
+    "EmailAuditEvent",
+    "EmailChannel",
+    "EmailChannelUser",
+    "EmailMessage",
+    "EmailThread",
+    "EmailWebhookEvent",
     "Incident",
     "IncidentEvent",
     "IncidentEvidence",

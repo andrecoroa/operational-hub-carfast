@@ -16,6 +16,16 @@ class Settings(BaseSettings):
     document_invoice_inbox_path: str | None = None
     vehicle_sale_media_root: str | None = None
     vehicle_sales_public_base_url: str | None = None
+    email_inbound_enabled: bool = False
+    email_outbound_enabled: bool = False
+    email_public_base_url: str | None = None
+    email_storage_root: str | None = None
+    email_max_attachment_bytes: int = 15_000_000
+    email_initial_address: str = "hub@carfast.pt"
+    postmark_server_token: str | None = None
+    postmark_message_stream: str = "outbound"
+    postmark_inbound_basic_user: str | None = None
+    postmark_inbound_basic_password: str | None = None
 
     @property
     def enable_docs(self) -> bool:

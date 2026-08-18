@@ -32,9 +32,11 @@
       event.preventDefault();
       const submitter = event.submitter;
       if (submitter) submitter.disabled = true;
+      const payload = new FormData(form);
+      if (submitter?.name) payload.set(submitter.name, submitter.value);
       const response = await fetch(form.action, {
         method: (form.method || "post").toUpperCase(),
-        body: new FormData(form),
+        body: payload,
         credentials: "same-origin",
         headers: {"X-Requested-With": "fetch"},
       });

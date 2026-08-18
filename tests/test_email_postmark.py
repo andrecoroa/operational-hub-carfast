@@ -1,5 +1,6 @@
 import base64
 import json
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
@@ -309,3 +310,13 @@ def test_mailbox_access_requires_explicit_assignment_for_regular_users(
         )
         is False
     )
+
+
+def test_email_modal_submits_the_clicked_action():
+    script = (Path(__file__).parents[1] / "app" / "static" / "js" / "email.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "const submitter = event.submitter" in script
+    assert "payload.set(submitter.name, submitter.value)" in script
+    assert "body: payload" in script

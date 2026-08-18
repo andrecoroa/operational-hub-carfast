@@ -2,20 +2,11 @@
 {% block body %}
 <div class="app-shell clean-shell">
   {% set active_menu="email" %}{% include "_sidebar.html" %}
-  <main class="content clean-content email-page">
-    <header class="email-thread-header"><div><p class="eyebrow">{{ channel.name }}</p><h1>{{ thread.subject }}</h1><p>{{ thread.sender_name or thread.sender_email }}</p></div><a class="button-link secondary-link" href="/v2-clean/email">Voltar</a></header>
+  <main class="content clean-content email-page email-thread-page">
     {% if request.query_params.get('error') == 'send_disabled' %}<div class="email-notice warning">Resposta aprovada, mas o envio externo ainda está desligado ou incompleto.</div>{% endif %}
     {% if request.query_params.get('saved') %}<div class="email-notice success">Alteração guardada.</div>{% endif %}
-    <section class="email-thread-toolbar">
-      <form method="post" action="/v2-clean/email/{{ thread.id }}/status"><label>Estado<select name="status">{% for code, label in status_labels.items() %}<option value="{{ code }}" {% if thread.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button>Guardar estado</button></form>
-      {% if not thread.task_id %}<form method="post" action="/v2-clean/email/{{ thread.id }}/task"><button class="secondary">Criar tarefa</button></form>{% else %}<a class="button-link secondary-link" href="/v2-clean/tasks/{{ thread.task_id }}">Tarefa #{{ thread.task_id }}</a>{% endif %}
-    </section>
-    <div class="email-thread-grid">
-      <section class="email-timeline">{% for item in messages %}<article class="email-message {{ item.direction }}"><header><strong>{{ item.sender }}</strong><span>{{ item.received_at or item.sent_at or item.created_at }}</span></header><p>{{ item.text_body or 'Mensagem sem versão de texto.' }}</p><footer>{{ item.state }}</footer></article>{% endfor %}</section>
-      <aside class="email-compose"><h2>Preparar resposta</h2>{% if can_reply %}<form method="post" action="/v2-clean/email/{{ thread.id }}/reply"><textarea name="body" required placeholder="Escrever resposta"></textarea><div class="email-compose-actions"><button name="submit" value="draft" class="secondary">Guardar rascunho</button><button name="submit" value="approval">Pedir aprovação</button></div></form>{% endif %}
-        <h3>Aprovação</h3>{% for item in messages if item.state == 'pending_approval' %}<div class="email-approval"><p>{{ item.text_body }}</p>{% if can_approve %}<form method="post" action="/v2-clean/email/{{ thread.id }}/messages/{{ item.id }}/approve"><button {% if not outbound_enabled %}title="O envio externo está desligado"{% endif %}>Aprovar e enviar</button></form>{% endif %}</div>{% else %}<p>Sem respostas a aguardar aprovação.</p>{% endfor %}
-      </aside>
-    </div>
+    {% include "_email_thread_content.html" %}
   </main>
 </div>
+<script src="/static/js/email.js"></script>
 {% endblock %}

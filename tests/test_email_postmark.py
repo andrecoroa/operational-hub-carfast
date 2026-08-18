@@ -80,4 +80,36 @@ def test_clean_email_inbox_and_thread_render(
     assert inbox.status_code == 200
     assert "Pedido de informação" in inbox.text
     assert detail.status_code == 200
-    assert "Preparar resposta" in detail.text
+    assert "Responder" in detail.text
+    assert "/v2-clean/email/messages/" in detail.text
+
+
+def test_email_preview_sanitizes_html_and_task_uses_operational_queue(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    payload = _payload("pm-ui-safe")
+    payload["HtmlBody"] = '<p>Olá <strong>CarFast</strong></p><script>alert(1)</script><img src="https://example.com/logo.png" onerror="alert(2)">'
+    thread, _ = ingest_inbound(db_session, payload)
+    message = db_session.scalar(select(EmailMessage).where(EmailMessage.thread_id == thread.id))
+
+    preview = authenticated_client.get(f"/v2-clean/email/{thread.id}/preview")
+    body = authenticated_client.get(f"/v2-clean/email/messages/{message.id}/body")
+    authenticated_client.post(f"/v2-clean/email/{thread.id}/task", follow_redirects=False)
+    db_session.expire_all()
+
+    assert preview.status_code == 200
+    assert "Abrir página completa" in preview.text
+    assert body.status_code == 200
+    assert "<script" not in body.text
+    assert "onerror" not in body.text
+    assert 'data-email-src="https://example.com/logo.png"' in body.text
+    refreshed = db_session.get(EmailThread, thread.id)
+    assert refreshed.task_id is not None
+    task = db_session.get(email_web.Task, refreshed.task_id)
+    assert task.task_type == "operational_task"

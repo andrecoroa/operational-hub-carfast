@@ -1,0 +1,37 @@
+<section class="email-modal-shell" data-email-thread-id="{{ thread.id }}">
+  <header class="email-modal-header">
+    <div><h2>{{ thread.subject }}</h2><p>{{ thread.sender_name or thread.sender_email }}</p></div>
+    <form method="post" action="/v2-clean/email/{{ thread.id }}/status" class="email-modal-status">
+      <select name="status" aria-label="Estado da conversa">{% for code, label in status_labels.items() %}<option value="{{ code }}" {% if thread.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <button type="submit" class="secondary">Guardar</button>
+    </form>
+    {% if not thread.task_id %}<form method="post" action="/v2-clean/email/{{ thread.id }}/task"><button class="secondary">Criar tarefa</button></form>{% else %}<a class="button-link secondary-link" href="/v2-clean/tasks?open_task={{ thread.task_id }}">Tarefa #{{ thread.task_id }}</a>{% endif %}
+    {% if embedded %}<a class="button-link secondary-link" href="/v2-clean/email/{{ thread.id }}">Abrir página completa</a><button type="button" class="email-modal-close" data-email-modal-close aria-label="Fechar">×</button>{% else %}<a class="button-link secondary-link" href="/v2-clean/email">Voltar</a>{% endif %}
+  </header>
+  <div class="email-reader-grid">
+    <section class="email-conversation">
+      {% for item in messages %}
+      <article class="email-message-card {{ item.direction }}">
+        <header><span class="email-avatar">{{ (thread.sender_name or item.sender or 'E')[:2]|upper }}</span><div><strong>{{ thread.sender_name or item.sender }}</strong><small>{{ item.sender }}</small><small>Para: {{ channel.address }}</small></div><time>{{ (item.received_at or item.sent_at or item.created_at).strftime('%d/%m/%Y %H:%M') }}</time></header>
+        {% if item.html_body %}<button type="button" class="email-show-images" data-email-show-images="email-body-{{ item.id }}">Mostrar imagens</button>{% endif %}
+        <iframe id="email-body-{{ item.id }}" class="email-body-frame" sandbox="allow-same-origin" src="/v2-clean/email/messages/{{ item.id }}/body" title="Corpo da mensagem"></iframe>
+        <details class="email-quoted"><summary>Mensagem anterior</summary><p>O histórico anterior permanece disponível no documento recebido.</p></details>
+      </article>
+      {% endfor %}
+    </section>
+    <aside class="email-reply-pane">
+      <h3>Responder</h3>
+      {% if can_reply %}<form method="post" action="/v2-clean/email/{{ thread.id }}/reply" class="email-reply-form">
+        <label><span>De</span><input value="{{ channel.address }}" readonly></label>
+        <label><span>Para</span><input value="{{ thread.sender_email }}" readonly></label>
+        <label><span>Cc</span><input placeholder="Opcional" disabled></label>
+        <label><span>Assunto</span><input value="Re: {{ thread.subject }}" readonly></label>
+        <div class="email-editor-toolbar" aria-label="Formatação"><button type="button" title="Negrito"><b>B</b></button><button type="button" title="Itálico"><i>I</i></button><button type="button" title="Lista">☷</button><button type="button" title="Ligação">🔗</button><button type="button" title="Anexar">📎</button></div>
+        <textarea name="body" required placeholder="Escrever resposta..."></textarea>
+        <p class="email-approval-summary">A resposta só é enviada depois da aprovação.</p>
+        <footer><button name="submit" value="draft" class="secondary">Guardar rascunho</button><button name="submit" value="approval">Pedir aprovação</button></footer>
+      </form>{% endif %}
+      {% for item in messages if item.state == 'pending_approval' %}<section class="email-approval"><strong>A aguardar aprovação</strong><p>{{ item.text_body }}</p>{% if can_approve %}<form method="post" action="/v2-clean/email/{{ thread.id }}/messages/{{ item.id }}/approve"><button>Aprovar e enviar</button></form>{% endif %}</section>{% endfor %}
+    </aside>
+  </div>
+</section>

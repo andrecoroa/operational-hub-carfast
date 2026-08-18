@@ -14,9 +14,11 @@
       <button type="submit">Filtrar</button>
     </form>
     <section class="email-table-wrap"><table class="email-table"><thead><tr><th>Última mensagem</th><th>Caixa</th><th>Remetente</th><th>Assunto</th><th>Estado</th><th>Tarefa</th><th></th></tr></thead><tbody>
-      {% for thread, channel in rows %}<tr><td>{{ thread.last_message_at.strftime('%d/%m/%Y %H:%M') if thread.last_message_at else '-' }}</td><td>{{ channel.name }}</td><td>{{ thread.sender_name or thread.sender_email }}</td><td><strong>{{ thread.subject }}</strong></td><td><span class="email-badge status-{{ thread.status }}">{{ status_labels.get(thread.status, thread.status) }}</span></td><td>{{ '#'+thread.task_id|string if thread.task_id else '-' }}</td><td><a class="button-link" href="/v2-clean/email/{{ thread.id }}">Abrir</a></td></tr>
+      {% for thread, channel in rows %}<tr class="email-inbox-row" data-email-preview="{{ thread.id }}" tabindex="0"><td>{{ thread.last_message_at.strftime('%d/%m/%Y %H:%M') if thread.last_message_at else '-' }}</td><td>{{ channel.name }}</td><td>{{ thread.sender_name or thread.sender_email }}</td><td><strong>{{ thread.subject }}</strong></td><td><span class="email-badge status-{{ thread.status }}">{{ status_labels.get(thread.status, thread.status) }}</span></td><td>{% if thread.task_id %}<a href="/v2-clean/tasks?open_task={{ thread.task_id }}">#{{ thread.task_id }}</a>{% else %}-{% endif %}</td><td><button type="button" class="button-link" data-email-preview-trigger="{{ thread.id }}">Abrir</button></td></tr>
       {% else %}<tr><td colspan="7" class="email-empty">Sem conversas nestes filtros.</td></tr>{% endfor %}
     </tbody></table></section>
   </main>
 </div>
+<dialog class="email-preview-dialog" id="email-preview-dialog"><div class="email-preview-loading">A abrir conversa…</div></dialog>
+<script src="/static/js/email.js"></script>
 {% endblock %}

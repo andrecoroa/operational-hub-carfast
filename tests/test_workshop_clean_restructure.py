@@ -283,3 +283,114 @@ def test_admin_publishes_validated_template_config_and_edits_diagnostic_catalog(
     assert diagnostic.requirement == "required"
     assert diagnostic.validity_days == 14
     assert diagnostic.applicability_json == {"models": ["208"]}
+
+
+def test_admin_publishes_workshop_model_from_visual_form_preserving_advanced_fields(
+    authenticated_client,
+    db_session: Session,
+):
+    authenticated_client.get("/v2-clean/admin/workshop-models")
+    template = db_session.scalar(
+        select(WorkshopTemplate).where(WorkshopTemplate.code == "general_minimum")
+    )
+    previous = db_session.scalar(
+        select(WorkshopTemplateVersion)
+        .where(WorkshopTemplateVersion.template_id == template.id)
+        .order_by(WorkshopTemplateVersion.version_number.desc())
+    )
+    entry_before = next(
+        phase for phase in previous.config_json["phases"] if phase["code"] == "entrada"
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/workshop-models/{template.id}/new-version",
+        data={
+            "template_name": "Modelo geral operacional",
+            "template_description": "Gerido pelo formulário visual.",
+            "entry_reason_code": "",
+            "change_note": "Reordenação visual",
+            "phase_included": ["0", "1", "2"],
+            "phase_required": ["0", "2"],
+            "phase_order": ["1", "2", "3"],
+            "phase_code": ["entrada", "diagnostico", "fecho"],
+            "phase_name": ["Entrada compacta", "Diagnóstico", "Fecho"],
+            "phase_responsible_role": ["workshop", "technician", "workshop_manager"],
+            "phase_transition_rules": [
+                "entry_km_present, entry_reason_present",
+                "reports_validated_or_reserved",
+                "closure_conditions_met",
+            ],
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "published=" in response.headers["location"]
+    db_session.expire_all()
+    template = db_session.get(WorkshopTemplate, template.id)
+    newest = db_session.scalar(
+        select(WorkshopTemplateVersion)
+        .where(WorkshopTemplateVersion.template_id == template.id)
+        .order_by(WorkshopTemplateVersion.version_number.desc())
+    )
+    assert template.name == "Modelo geral operacional"
+    assert template.entry_reason_code is None
+    assert newest.version_number == previous.version_number + 1
+    assert [phase["code"] for phase in newest.config_json["phases"]] == [
+        "entrada",
+        "diagnostico",
+        "fecho",
+    ]
+    entry_after = newest.config_json["phases"][0]
+    assert entry_after["required_fields"] == entry_before["required_fields"]
+    assert entry_after["transition_rules"] == ["entry_km_present", "entry_reason_present"]
+    assert newest.config_json["template_name"] == "Modelo geral operacional"
+    assert newest.config_json["entry_reason_code"] is None
+    assert newest.config_json["rules"]["fallback"] is True
+
+
+def test_visual_workshop_model_validation_does_not_mutate_template_metadata(
+    authenticated_client,
+    db_session: Session,
+):
+    authenticated_client.get("/v2-clean/admin/workshop-models")
+    template = db_session.scalar(
+        select(WorkshopTemplate).where(WorkshopTemplate.code == "scheduled_maintenance")
+    )
+    original_name = template.name
+    original_version_count = len(
+        db_session.scalars(
+            select(WorkshopTemplateVersion).where(
+                WorkshopTemplateVersion.template_id == template.id
+            )
+        ).all()
+    )
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/workshop-models/{template.id}/new-version",
+        data={
+            "template_name": "Nome que não deve persistir",
+            "change_note": "Inválida sem fecho",
+            "phase_included": ["0"],
+            "phase_required": ["0"],
+            "phase_order": ["1"],
+            "phase_code": ["entrada"],
+            "phase_name": ["Entrada"],
+            "phase_responsible_role": ["workshop"],
+            "phase_transition_rules": ["entry_km_present"],
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    db_session.expire_all()
+    template = db_session.get(WorkshopTemplate, template.id)
+    assert template.name == original_name
+    assert len(
+        db_session.scalars(
+            select(WorkshopTemplateVersion).where(
+                WorkshopTemplateVersion.template_id == template.id
+            )
+        ).all()
+    ) == original_version_count

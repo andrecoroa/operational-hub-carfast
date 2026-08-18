@@ -48,15 +48,61 @@
             </dl>
             <div class="clean-admin-model-actions">
               {% if can_publish_models %}
-                <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/new-version">
-                  <input name="change_note" placeholder="Nota da nova versão" required>
-                  <details>
-                    <summary>Editar configuração JSON</summary>
-                    <p class="clean-field-help">A publicação cria sempre uma nova versão. Fases, campos, evidências, regras, diagnósticos e pontos de materiais podem ser ajustados neste contrato.</p>
-                    <textarea name="config_json" rows="18" spellcheck="false">{{ row.latest.config_json | tojson(indent=2) if row.latest else "{}" }}</textarea>
-                  </details>
-                  <button type="submit">Publicar nova versão</button>
-                </form>
+                <details class="clean-admin-model-editor">
+                  <summary>Configurar e publicar nova versão</summary>
+                  <form class="clean-admin-model-form" method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/new-version">
+                    <div class="clean-admin-model-basics">
+                      <label>Nome do modelo<input name="template_name" value="{{ row.template.name }}" maxlength="160" required></label>
+                      <label>Motivo de entrada<input name="entry_reason_code" value="{{ row.template.entry_reason_code or '' }}" placeholder="Sem motivo = modelo de recurso"></label>
+                      <label class="clean-admin-model-description">Descrição<textarea name="template_description" rows="2">{{ row.template.description or '' }}</textarea></label>
+                      <label>Nota da nova versão<input name="change_note" placeholder="O que muda nesta versão" required></label>
+                    </div>
+                    <div class="clean-admin-phase-heading">
+                      <div><strong>Fases e regras de passagem</strong><span>Ordene numericamente e desmarque fases opcionais que não devam integrar a nova versão.</span></div>
+                      <button class="secondary compact-button" type="button" data-add-phase>Adicionar fase</button>
+                    </div>
+                    <div class="clean-admin-phase-list" data-phase-list>
+                      {% for phase in row.phases %}
+                        <fieldset class="clean-admin-phase-row">
+                          <legend>Fase {{ loop.index }}</legend>
+                          <label class="clean-admin-phase-enabled">
+                            {% if phase.code in ["entrada", "fecho"] %}
+                              <input type="hidden" name="phase_included" value="{{ loop.index0 }}"><input type="checkbox" checked disabled>
+                            {% else %}
+                              <input type="checkbox" name="phase_included" value="{{ loop.index0 }}" checked>
+                            {% endif %}
+                            Incluir
+                          </label>
+                          <label>Ordem<input type="number" name="phase_order" min="1" value="{{ loop.index }}" required></label>
+                          <label>Código técnico<input name="phase_code" value="{{ phase.code }}" pattern="[a-z][a-z0-9_-]{1,79}" required></label>
+                          <label>Nome apresentado<input name="phase_name" value="{{ phase.name }}" required></label>
+                          <label>Responsável<input name="phase_responsible_role" value="{{ phase.responsible_role or '' }}" placeholder="ex.: technician"></label>
+                          <label class="clean-admin-phase-rules">Regras de passagem<input name="phase_transition_rules" value="{{ (phase.transition_rules or [])|join(', ') }}" placeholder="Separadas por vírgulas"></label>
+                          <label class="checkbox-label"><input type="checkbox" name="phase_required" value="{{ loop.index0 }}" {% if phase.required %}checked{% endif %}> Obrigatória</label>
+                        </fieldset>
+                      {% endfor %}
+                    </div>
+                    <template data-phase-template>
+                      <fieldset class="clean-admin-phase-row">
+                        <legend>Nova fase</legend>
+                        <label class="clean-admin-phase-enabled"><input type="checkbox" name="phase_included" checked> Incluir</label>
+                        <label>Ordem<input type="number" name="phase_order" min="1" required></label>
+                        <label>Código técnico<input name="phase_code" pattern="[a-z][a-z0-9_-]{1,79}" placeholder="nova_fase" required></label>
+                        <label>Nome apresentado<input name="phase_name" required></label>
+                        <label>Responsável<input name="phase_responsible_role" placeholder="ex.: technician"></label>
+                        <label class="clean-admin-phase-rules">Regras de passagem<input name="phase_transition_rules" placeholder="Separadas por vírgulas"></label>
+                        <label class="checkbox-label"><input type="checkbox" name="phase_required"> Obrigatória</label>
+                      </fieldset>
+                    </template>
+                    <details class="clean-admin-advanced-json">
+                      <summary>Área avançada · contrato JSON completo</summary>
+                      <p class="clean-field-help">Use apenas para campos que ainda não estão no formulário visual. Ao ativar esta opção, o JSON substitui os valores visuais nesta publicação.</p>
+                      <label class="checkbox-label"><input type="checkbox" name="use_advanced_json"> Publicar a configuração JSON abaixo</label>
+                      <textarea name="advanced_config_json" rows="18" spellcheck="false">{{ row.latest.config_json | tojson(indent=2) if row.latest else "{}" }}</textarea>
+                    </details>
+                    <div class="clean-admin-publish-bar"><span>A publicação cria v{{ (row.latest.version_number + 1) if row.latest else 1 }} e não altera processos iniciados.</span><button type="submit">Validar e publicar nova versão</button></div>
+                  </form>
+                </details>
               {% endif %}
               {% if can_manage_models and row.template.code != "general_minimum" %}
                 <form method="post" action="/v2-clean/admin/workshop-models/{{ row.template.id }}/toggle">
@@ -140,4 +186,18 @@
     </section>
   </main>
 </div>
+<script>
+  document.querySelectorAll(".clean-admin-model-form").forEach((form) => {
+    form.querySelector("[data-add-phase]")?.addEventListener("click", () => {
+      const list = form.querySelector("[data-phase-list]");
+      const fragment = form.querySelector("[data-phase-template]").content.cloneNode(true);
+      const index = list.querySelectorAll(".clean-admin-phase-row").length;
+      fragment.querySelector("legend").textContent = `Fase ${index + 1}`;
+      fragment.querySelector("[name='phase_included']").value = index;
+      fragment.querySelector("[name='phase_required']").value = index;
+      fragment.querySelector("[name='phase_order']").value = index + 1;
+      list.appendChild(fragment);
+    });
+  });
+</script>
 {% endblock %}

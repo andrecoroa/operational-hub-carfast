@@ -1,5 +1,6 @@
 import csv
 from collections import defaultdict
+from copy import deepcopy
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -5462,6 +5463,7 @@ def clean_workshop_models_admin(request: Request):
                     "latest": latest,
                     "versions": versions,
                     "phase_count": phase_count,
+                    "phases": (latest.config_json or {}).get("phases", []) if latest else [],
                 }
             )
         diagnostics = db.scalars(
@@ -5501,6 +5503,77 @@ def clean_workshop_models_admin(request: Request):
         },
     )
 
+
+def _workshop_config_from_visual_form(form, current_config: dict[str, Any]) -> dict[str, Any]:
+    """Build the versioned contract while retaining non-visual advanced fields."""
+
+    codes = [str(value).strip().lower() for value in form.getlist("phase_code")]
+    names = [str(value).strip() for value in form.getlist("phase_name")]
+    roles = [str(value).strip() for value in form.getlist("phase_responsible_role")]
+    transitions = [str(value).strip() for value in form.getlist("phase_transition_rules")]
+    orders = [str(value).strip() for value in form.getlist("phase_order")]
+    included = {str(value) for value in form.getlist("phase_included")}
+    required = {str(value) for value in form.getlist("phase_required")}
+    if not codes or len(names) != len(codes):
+        raise ValueError("Indique as fases e os respetivos nomes.")
+
+    current_phases = {
+        str(phase.get("code") or ""): phase
+        for phase in current_config.get("phases", [])
+        if isinstance(phase, dict)
+    }
+    phases: list[tuple[int, int, dict[str, Any]]] = []
+    phase_code_pattern = re.compile(r"^[a-z][a-z0-9_-]{1,79}$")
+    for index, code in enumerate(codes):
+        if str(index) not in included:
+            continue
+        name = names[index] if index < len(names) else ""
+        if not phase_code_pattern.fullmatch(code) or not name:
+            raise ValueError(f"A fase {index + 1} precisa de código técnico e nome válidos.")
+        phase = deepcopy(current_phases.get(code, {}))
+        phase.update(
+            {
+                "code": code,
+                "name": name,
+                "required": str(index) in required,
+                "responsible_role": roles[index] if index < len(roles) else "",
+                "transition_rules": [
+                    rule.strip()
+                    for rule in re.split(
+                        r"[,\n]",
+                        transitions[index] if index < len(transitions) else "",
+                    )
+                    if rule.strip()
+                ],
+            }
+        )
+        for list_key in (
+            "required_fields",
+            "optional_fields",
+            "photo_requirements",
+            "document_requirements",
+            "substeps",
+            "material_points",
+        ):
+            phase.setdefault(list_key, [])
+        try:
+            sort_order = int(orders[index]) if index < len(orders) else index + 1
+        except ValueError as exc:
+            raise ValueError(f"A ordem da fase {name} deve ser numérica.") from exc
+        phases.append((sort_order, index, phase))
+
+    config = deepcopy(current_config)
+    config["phases"] = [phase for _order, _index, phase in sorted(phases)]
+    config["template_name"] = str(form.get("template_name") or "").strip()
+    config["template_description"] = str(form.get("template_description") or "").strip()
+    rules = deepcopy(config.get("rules") or {})
+    reason_code = str(form.get("entry_reason_code") or "").strip().lower()
+    config["entry_reason_code"] = reason_code or None
+    rules["reason_codes"] = [reason_code] if reason_code else []
+    config["rules"] = rules
+    return validate_workshop_template_config(config)
+
+
 @web_router.post("/v2-clean/admin/workshop-models/{template_id}/new-version")
 async def clean_workshop_model_new_version(request: Request, template_id: int):
     denied = clean_experience_denied(request)
@@ -5524,12 +5597,33 @@ async def clean_workshop_model_new_version(request: Request, template_id: int):
                 "/v2-clean/admin/workshop-models?error=missing", status_code=303
             )
         try:
-            supplied_config = str(form.get("config_json") or "").strip()
-            config_json = (
-                validate_workshop_template_config(json.loads(supplied_config))
-                if supplied_config
-                else None
-            )
+            current = latest_published_template_version(db, template)
+            if not current:
+                raise ValueError("O modelo não tem uma versão publicada para clonar.")
+            visual_submission = bool(form.getlist("phase_code"))
+            visual_name = str(form.get("template_name") or "").strip()
+            visual_reason = str(form.get("entry_reason_code") or "").strip().lower()
+            if visual_submission and (not visual_name or len(visual_name) > 160):
+                raise ValueError("O nome do modelo é obrigatório e deve ter até 160 caracteres.")
+            if visual_submission and visual_reason and not re.fullmatch(
+                r"[a-z][a-z0-9_-]{1,79}", visual_reason
+            ):
+                raise ValueError("O motivo de entrada deve usar um código técnico válido.")
+            legacy_config = str(form.get("config_json") or "").strip()
+            advanced_config = str(form.get("advanced_config_json") or "").strip()
+            if legacy_config:
+                config_json = validate_workshop_template_config(json.loads(legacy_config))
+            elif form.get("use_advanced_json") == "on":
+                config_json = validate_workshop_template_config(json.loads(advanced_config))
+            elif visual_submission:
+                config_json = _workshop_config_from_visual_form(form, current.config_json or {})
+            else:
+                config_json = None
+            before_metadata = {
+                "name": template.name,
+                "description": template.description,
+                "entry_reason_code": template.entry_reason_code,
+            }
             version = clone_published_template_version(
                 db,
                 template,
@@ -5537,6 +5631,10 @@ async def clean_workshop_model_new_version(request: Request, template_id: int):
                 change_note=str(form.get("change_note") or ""),
                 config_json=config_json,
             )
+            if visual_submission:
+                template.name = visual_name
+                template.description = str(form.get("template_description") or "").strip() or None
+                template.entry_reason_code = visual_reason or None
         except (json.JSONDecodeError, ValueError) as exc:
             db.rollback()
             return RedirectResponse(
@@ -5552,6 +5650,12 @@ async def clean_workshop_model_new_version(request: Request, template_id: int):
             after_json={
                 "version_id": version.id,
                 "version_number": version.version_number,
+                "metadata_before": before_metadata,
+                "metadata_after": {
+                    "name": template.name,
+                    "description": template.description,
+                    "entry_reason_code": template.entry_reason_code,
+                },
             },
             user_id=user_id,
         )

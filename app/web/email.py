@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from html import escape
 from html.parser import HTMLParser
+from mimetypes import guess_type
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -569,11 +570,24 @@ def email_attachment_file(request: Request, attachment_id: int):
         path = Path(attachment.storage_path)
         if not path.is_file():
             return HTMLResponse("Ficheiro indisponível.", status_code=404)
+
+        guessed_type = guess_type(attachment.file_name or path.name)[0]
+        stored_type = (attachment.content_type or "").split(";", 1)[0].strip().lower()
+        if stored_type in {"", "application/octet-stream", "binary/octet-stream"}:
+            media_type = guessed_type or "application/octet-stream"
+        else:
+            media_type = stored_type
+        can_preview = (
+            media_type == "application/pdf"
+            or media_type.startswith("image/")
+            or media_type.startswith("text/")
+        )
+
         return FileResponse(
             path,
-            media_type=attachment.content_type or "application/octet-stream",
-            filename=attachment.file_name,
-            content_disposition_type="inline",
+            media_type=media_type,
+            filename=None if can_preview else attachment.file_name,
+            headers={"Content-Disposition": "inline"} if can_preview else None,
         )
 
 

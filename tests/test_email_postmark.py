@@ -165,6 +165,37 @@ def test_email_triage_is_reused_by_task_and_attachment_is_opened_on_demand(
     assert "Validar entrada de material" in task.description
 
 
+def test_pdf_attachment_with_generic_content_type_opens_inline(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    payload = _payload("pm-pdf-preview")
+    payload["Attachments"] = [
+        {
+            "Name": "fatura.PDF",
+            "ContentType": "application/octet-stream",
+            "Content": base64.b64encode(b"%PDF-1.4\n%test").decode(),
+            "ContentID": "",
+        }
+    ]
+    ingest_inbound(db_session, payload)
+    attachment = db_session.scalar(select(EmailAttachment))
+
+    response = authenticated_client.get(
+        f"/v2-clean/email/attachments/{attachment.id}/file"
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == "inline"
+    assert response.content.startswith(b"%PDF")
+
+
 def test_mailbox_access_requires_explicit_assignment_for_regular_users(
     db_session, tmp_path, monkeypatch
 ):

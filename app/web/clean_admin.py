@@ -35,6 +35,72 @@ templates = Jinja2Templates(directory="app/templates")
 
 CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
 
+SETTINGS_CATALOG_LABELS = {
+    "vehicle_lifecycle_status": "Estado do ciclo de vida da viatura",
+    "vehicle_operational_status": "Estado operacional da viatura",
+    "task_status": "Estado das tarefas",
+    "task_priority": "Prioridade das tarefas",
+    "task_area": "Área das tarefas",
+    "task_category": "Categoria das tarefas",
+    "task_subcategory": "Subcategoria das tarefas",
+    "document_type": "Tipos de documento",
+    "import_type": "Tipos de importação",
+}
+
+SETTINGS_VALUE_LABELS = {
+    "active": "Ativa",
+    "for_sale": "Para venda",
+    "sold": "Vendida",
+    "inactive": "Inativa",
+    "written_off": "Abatida",
+    "in_contract": "Em contrato",
+    "free": "Livre",
+    "in_impro": "Em IMPRO",
+    "in_preparation": "Em preparação",
+    "blocked": "Bloqueada",
+    "in_maintenance": "Em manutenção",
+    "reserved": "Reservada",
+    "in_transfer": "Em transferência",
+    "planned": "Planeada",
+    "new": "Nova",
+    "in_execution": "Em execução",
+    "delegated": "Delegada",
+    "waiting": "Em espera",
+    "execution_done": "Execução concluída",
+    "ready_validation": "Pronta para validação",
+    "closed": "Fechada",
+    "cancelled": "Cancelada",
+    "no_action_needed": "Sem ação necessária",
+    "normal": "Normal",
+    "high": "Alta",
+    "urgent": "Urgente",
+    "operations": "Operações",
+    "workshop": "Oficina",
+    "documents": "Documentação",
+    "fleet": "Frota",
+    "administration": "Administração",
+    "request": "Pedido",
+    "information": "Informação",
+    "invoice": "Fatura",
+    "work_order": "Folha de obra",
+    "diagnostic": "Diagnóstico",
+    "compliance": "Conformidade",
+    "other": "Outro",
+    "validation": "Validação",
+    "missing_document": "Documento em falta",
+    "data_mismatch": "Dados divergentes",
+    "follow_up": "Acompanhamento",
+    "support": "Suporte",
+    "general": "Documento geral",
+    "report": "Relatório",
+    "photo": "Fotografia",
+    "contract": "Contrato",
+    "rentway_fleet": "Frota Rentway",
+    "rentway_contracts": "Contratos Rentway",
+    "rentway_impros": "IMPRO Rentway",
+    "trade_debt": "Dívida comercial",
+}
+
 ADMIN_NAV = (
     (
         "overview",
@@ -321,6 +387,9 @@ def clean_admin_users(request: Request):
         user_roles: dict[int, set[str]] = {}
         user_units: dict[int, set[str]] = {}
         user_teams: dict[int, set[str]] = {}
+        role_names = {item.code: item.name for item in roles}
+        unit_names = {item.code: item.name for item in units}
+        team_names = {item.code: item.name for item in teams}
         for target_id, code in role_rows:
             user_roles.setdefault(target_id, set()).add(code)
         for target_id, code in unit_rows:
@@ -339,6 +408,9 @@ def clean_admin_users(request: Request):
             user_roles=user_roles,
             user_units=user_units,
             user_teams=user_teams,
+            role_names=role_names,
+            unit_names=unit_names,
+            team_names=team_names,
             active_admin_count=_active_admin_count(db),
             can_manage=bool(
                 permissions.intersection({"admin.users.manage", "users.manage", "admin.manage"})
@@ -1009,6 +1081,14 @@ def clean_admin_settings(request: Request):
             "settings",
             catalogs=catalogs,
             values_by_catalog=values_by_catalog,
+            catalog_display_names={
+                catalog.id: SETTINGS_CATALOG_LABELS.get(catalog.code, catalog.name)
+                for catalog in catalogs
+            },
+            value_display_labels={
+                value.id: SETTINGS_VALUE_LABELS.get(value.code, value.label)
+                for value in values
+            },
             can_manage=bool(
                 permissions.intersection(
                     {"admin.settings.manage", "settings.manage", "admin.manage"}

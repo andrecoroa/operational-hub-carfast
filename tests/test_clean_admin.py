@@ -49,6 +49,31 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     assert "Código técnico" in roles_page.text
 
 
+def test_clean_admin_users_uses_compact_table_and_wide_access_dialog(authenticated_client):
+    response = authenticated_client.get("/v2-clean/admin/users")
+
+    assert response.status_code == 200
+    assert 'class="clean-admin-user-table"' in response.text
+    assert 'data-label="Último acesso"' in response.text
+    assert 'class="clean-admin-dialog"' in response.text
+    assert "Gestão de acessos" in response.text
+    assert "O último Super Admin não pode ser desativado" in response.text
+    assert 'class="clean-admin-user-grid"' not in response.text
+
+
+def test_clean_admin_settings_shows_portuguese_labels_without_changing_codes(
+    authenticated_client,
+):
+    response = authenticated_client.get("/v2-clean/admin/settings")
+
+    assert response.status_code == 200
+    assert "Tipos de documento" in response.text
+    assert "Tipos de importação" in response.text
+    assert "Código técnico: <code>document_type</code>" in response.text
+    assert "Código técnico: <code>import_type</code>" in response.text
+    assert "Frota Rentway" in response.text
+
+
 def test_user_admin_is_limited_to_assigned_admin_sections(client, db_session):
     create_user(
         db_session,

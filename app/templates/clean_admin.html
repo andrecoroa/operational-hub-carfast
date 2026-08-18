@@ -37,7 +37,7 @@
         <div class="metric"><span>Erros integração</span><strong>{{ metrics.integration_errors }}</strong><small>Entradas a rever</small></div>
       </section>
 
-      <section class="clean-admin-overview-grid clean-card-wide">
+      <section class="clean-admin-overview-strip clean-card-wide">
         <article class="clean-panel">
           <p class="eyebrow">Autenticação</p>
           <h3>Modo local</h3>
@@ -88,7 +88,7 @@
       <div class="clean-admin-section-heading clean-card-wide">
         <div><p class="eyebrow">Pessoas e acessos</p><h3>Utilizadores</h3><p>Consulta primeiro; criação e alterações ficam recolhidas até serem necessárias.</p></div>
       </div>
-      <section class="clean-admin-split clean-card-wide">
+      <section class="clean-admin-user-tools clean-card-wide">
         {% if can_manage_credentials %}
           <details class="clean-panel clean-admin-create-disclosure">
           <summary>Criar utilizador</summary>
@@ -127,7 +127,7 @@
           </details>
         {% endif %}
 
-        <article class="clean-panel">
+        <article class="clean-panel clean-admin-protection-note">
           <p class="eyebrow">Proteção administrativa</p>
           <h3>{{ active_admin_count }} Super Admin ativo{% if active_admin_count != 1 %}s{% endif %}</h3>
           <p>O último Super Admin não pode ser desativado nem perder o perfil Admin.</p>
@@ -139,65 +139,57 @@
         <div class="table-heading flat-heading">
           <div><p class="eyebrow">Acessos</p><h3>Utilizadores</h3><p>{{ users|length }} registos apresentados</p></div>
         </div>
-        <div class="clean-admin-user-grid">
-          {% for item in users %}
-            <article class="clean-admin-user-card">
-              <div class="clean-admin-card-heading">
-                <div><strong>{{ item.name }}</strong><span>{{ item.email }}</span></div>
-                <span class="pill {{ 'priority-high' if item.active else 'muted-pill' }}">{{ "Ativo" if item.active else "Inativo" }}</span>
-              </div>
-              <dl>
-                <div><dt>Último acesso</dt><dd>{{ item.last_login_at.strftime("%d/%m/%Y %H:%M") if item.last_login_at else "Nunca" }}</dd></div>
-                <div><dt>Perfis</dt><dd>{{ user_roles.get(item.id, [])|sort|join(", ") or "Sem perfil" }}</dd></div>
-                <div><dt>Áreas</dt><dd>{{ user_units.get(item.id, [])|sort|join(", ") or "Sem âmbito" }}</dd></div>
-                <div><dt>Equipas</dt><dd>{{ user_teams.get(item.id, [])|sort|join(", ") or "-" }}</dd></div>
-              </dl>
-              {% if can_manage %}
-                <details>
-                  <summary>Gerir acessos</summary>
-                  <form class="clean-admin-form clean-admin-user-access-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/access">
-                    <label class="checkbox-label"><input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}> Utilizador ativo</label>
-                    <fieldset>
-                      <legend>Perfis</legend>
-                      <div class="clean-admin-check-grid">
-                        {% for role in roles %}
-                          <label><input type="checkbox" name="role_codes" value="{{ role.code }}" {% if role.code in user_roles.get(item.id, []) %}checked{% endif %}> {{ role.name }}</label>
-                        {% endfor %}
-                      </div>
-                    </fieldset>
-                    <fieldset>
-                      <legend>Áreas</legend>
-                      <div class="clean-admin-check-grid">
-                        {% for unit in units %}
-                          <label><input type="checkbox" name="unit_codes" value="{{ unit.code }}" {% if unit.code in user_units.get(item.id, []) %}checked{% endif %}> {{ unit.name }}</label>
-                        {% endfor %}
-                      </div>
-                    </fieldset>
-                    <fieldset>
-                      <legend>Equipas</legend>
-                      <div class="clean-admin-check-grid">
-                        {% for team in teams %}
-                          <label><input type="checkbox" name="team_codes" value="{{ team.code }}" {% if team.code in user_teams.get(item.id, []) %}checked{% endif %}> {{ team.name }}</label>
-                        {% endfor %}
-                      </div>
-                    </fieldset>
-                    <button type="submit">Guardar acessos</button>
-                  </form>
-                </details>
-              {% endif %}
-              {% if can_manage_credentials %}
-                <details>
-                  <summary>Redefinir password local</summary>
-                  <form class="clean-admin-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/password">
-                    <label>Nova password temporária<input type="password" name="password" minlength="10" required></label>
-                    <button class="secondary" type="submit">Redefinir password</button>
-                  </form>
-                </details>
-              {% endif %}
-            </article>
-          {% endfor %}
+        <div class="table-wrap clean-admin-user-table-wrap">
+          <table class="clean-admin-user-table">
+            <thead><tr><th>Utilizador</th><th>Estado</th><th>Último acesso</th><th>Perfis</th><th>Áreas</th><th>Equipas</th><th><span class="sr-only">Ações</span></th></tr></thead>
+            <tbody>
+              {% for item in users %}
+                <tr>
+                  <td data-label="Utilizador"><strong>{{ item.name }}</strong><small>{{ item.email }}</small></td>
+                  <td data-label="Estado"><span class="pill {{ 'priority-high' if item.active else 'muted-pill' }}">{{ "Ativo" if item.active else "Inativo" }}</span></td>
+                  <td data-label="Último acesso">{{ item.last_login_at.strftime("%d/%m/%Y %H:%M") if item.last_login_at else "Nunca" }}</td>
+                  <td data-label="Perfis">{% for code in user_roles.get(item.id, [])|sort %}<span class="clean-admin-tag">{{ role_names.get(code, code) }}</span>{% else %}<span class="muted">Sem perfil</span>{% endfor %}</td>
+                  <td data-label="Áreas">{% for code in user_units.get(item.id, [])|sort %}<span class="clean-admin-tag">{{ unit_names.get(code, code) }}</span>{% else %}<span class="muted">Sem âmbito</span>{% endfor %}</td>
+                  <td data-label="Equipas">{% for code in user_teams.get(item.id, [])|sort %}<span class="clean-admin-tag">{{ team_names.get(code, code) }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+                  <td class="clean-admin-row-actions" data-label="Ações">
+                    {% if can_manage %}<button type="button" class="secondary compact-button" data-dialog-open="access-{{ item.id }}">Acessos</button>{% endif %}
+                    {% if can_manage_credentials %}<button type="button" class="secondary compact-button" data-dialog-open="password-{{ item.id }}">Password</button>{% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="7">Sem utilizadores.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </section>
+
+      {% for item in users %}
+        {% if can_manage %}
+          <dialog class="clean-admin-dialog" id="access-{{ item.id }}" aria-labelledby="access-title-{{ item.id }}">
+            <form class="clean-admin-form clean-admin-access-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/access">
+              <header><div><p class="eyebrow">Gestão de acessos</p><h3 id="access-title-{{ item.id }}">{{ item.name }}</h3><p>{{ item.email }}</p></div><button type="button" class="secondary compact-button" data-dialog-close>Fechar</button></header>
+              <label class="checkbox-label clean-admin-active-toggle"><input type="checkbox" name="active" value="on" {% if item.active %}checked{% endif %}> Utilizador ativo</label>
+              <div class="clean-admin-access-matrix">
+                <fieldset><legend>Perfis</legend><div class="clean-admin-check-grid">{% for role in roles %}<label><input type="checkbox" name="role_codes" value="{{ role.code }}" {% if role.code in user_roles.get(item.id, []) %}checked{% endif %}> <span>{{ role.name }}<small>{{ role.code }}</small></span></label>{% endfor %}</div></fieldset>
+                <fieldset><legend>Áreas</legend><div class="clean-admin-check-grid">{% for unit in units %}<label><input type="checkbox" name="unit_codes" value="{{ unit.code }}" {% if unit.code in user_units.get(item.id, []) %}checked{% endif %}> <span>{{ unit.name }}<small>{{ unit.code }}</small></span></label>{% endfor %}</div></fieldset>
+                <fieldset><legend>Equipas</legend><div class="clean-admin-check-grid">{% for team in teams %}<label><input type="checkbox" name="team_codes" value="{{ team.code }}" {% if team.code in user_teams.get(item.id, []) %}checked{% endif %}> <span>{{ team.name }}<small>{{ team.code }}</small></span></label>{% endfor %}</div></fieldset>
+              </div>
+              <footer><small>O último Super Admin não pode ser desativado nem perder o perfil Admin.</small><button type="submit">Guardar acessos</button></footer>
+            </form>
+          </dialog>
+        {% endif %}
+        {% if can_manage_credentials %}
+          <dialog class="clean-admin-dialog clean-admin-password-dialog" id="password-{{ item.id }}" aria-labelledby="password-title-{{ item.id }}">
+            <form class="clean-admin-form" method="post" action="/v2-clean/admin/users/{{ item.id }}/password">
+              <header><div><p class="eyebrow">Credencial local</p><h3 id="password-title-{{ item.id }}">Redefinir password</h3><p>{{ item.name }} · {{ item.email }}</p></div><button type="button" class="secondary compact-button" data-dialog-close>Fechar</button></header>
+              <label>Nova password temporária<input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+              <p class="clean-field-help">Mínimo de 10 caracteres. A password nunca é guardada na auditoria.</p>
+              <button type="submit">Redefinir password</button>
+            </form>
+          </dialog>
+        {% endif %}
+      {% endfor %}
     {% endif %}
 
     {% if admin_section == "roles" %}
@@ -377,7 +369,7 @@
         {% for catalog in catalogs %}
           <article class="clean-panel clean-admin-catalog-card">
             <div class="clean-admin-card-heading">
-              <div><strong>{{ catalog.name }}</strong><span><code>{{ catalog.code }}</code></span></div>
+              <div><strong>{{ catalog_display_names.get(catalog.id, catalog.name) }}</strong><span>Código técnico: <code>{{ catalog.code }}</code></span></div>
               <span class="pill {{ 'priority-high' if catalog.active else 'muted-pill' }}">{{ "Ativo" if catalog.active else "Inativo" }}</span>
             </div>
             <p>{{ catalog.description or "Sem descrição." }}</p>
@@ -395,7 +387,7 @@
             <div class="clean-admin-record-list">
               {% for value in values_by_catalog.get(catalog.id, []) %}
                 <details>
-                  <summary><strong>{{ value.label }}</strong><span>{{ value.code }} · {{ "ativo" if value.active else "inativo" }}</span></summary>
+                  <summary><strong>{{ value_display_labels.get(value.id, value.label) }}</strong><span>Código: {{ value.code }} · {{ "ativo" if value.active else "inativo" }}</span></summary>
                   <form class="clean-admin-form" method="post" action="/v2-clean/admin/settings/values/{{ value.id }}">
                     <label>Etiqueta<input name="label" value="{{ value.label }}" required></label>
                     <label>Descrição<input name="description" value="{{ value.description or '' }}"></label>
@@ -566,4 +558,17 @@ DEPOIS
     {% endif %}
   </main>
 </div>
+<script>
+  document.querySelectorAll("[data-dialog-open]").forEach((button) => {
+    button.addEventListener("click", () => document.getElementById(button.dataset.dialogOpen)?.showModal());
+  });
+  document.querySelectorAll("[data-dialog-close]").forEach((button) => {
+    button.addEventListener("click", () => button.closest("dialog")?.close());
+  });
+  document.querySelectorAll(".clean-admin-dialog").forEach((dialog) => {
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+</script>
 {% endblock %}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from html import escape
 from html.parser import HTMLParser
@@ -83,6 +84,8 @@ STATUS_LABELS = {
     "resolved": "Resolvido",
     "archived": "Arquivado",
 }
+
+EMAIL_ADDRESS_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class _SafeEmailHTMLParser(HTMLParser):
@@ -1126,7 +1129,7 @@ def email_reply(
     request: Request,
     thread_id: int,
     body: str = Form(...),
-    sender_channel_id: int | None = Form(None),
+    recipient_email: str = Form(""),
     submit: str = Form("draft"),
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
@@ -1137,9 +1140,7 @@ def email_reply(
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
-        sender_channel = db.get(
-            EmailChannel, sender_channel_id or thread.channel_id
-        )
+        sender_channel = db.get(EmailChannel, thread.channel_id)
         if (
             not sender_channel
             or not sender_channel.active
@@ -1156,6 +1157,11 @@ def email_reply(
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
             )
+        clean_recipient = recipient_email.strip() or thread.sender_email.strip()
+        if not EMAIL_ADDRESS_PATTERN.fullmatch(clean_recipient):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=invalid_recipient", status_code=303
+            )
         state = {
             "approval": "pending_approval",
             "send": "approved",
@@ -1165,7 +1171,7 @@ def email_reply(
             direction="outbound",
             state=state,
             sender=sender_channel.address,
-            recipients_json=[{"Email": thread.sender_email}],
+            recipients_json=[{"Email": clean_recipient}],
             subject=f"Re: {thread.subject}",
             text_body=body,
             created_by_id=user_id,
@@ -1217,6 +1223,7 @@ def email_reply(
                 details_json={
                     "sender_channel_id": sender_channel.id,
                     "sender": sender_channel.address,
+                    "recipient": clean_recipient,
                 },
             )
         )

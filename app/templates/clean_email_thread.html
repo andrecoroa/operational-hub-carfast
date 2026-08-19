@@ -3,7 +3,7 @@
 <div class="app-shell clean-shell">
   {% set active_menu="email" %}{% include "_sidebar.html" %}
   <main class="content clean-content email-page email-thread-page">
-    {% if request.query_params.get('error') == 'send_disabled' %}<div class="email-notice warning">Resposta aprovada, mas o envio externo ainda está desligado ou incompleto.</div>{% endif %}
+    {% if request.query_params.get('error') == 'send_disabled' %}<div class="email-notice warning">Resposta aprovada, mas o envio externo ainda está desligado ou incompleto.</div>{% elif request.query_params.get('error') == 'invalid_recipient' %}<div class="email-notice warning">Indica um endereço válido em “Responder para”.</div>{% endif %}
     {% if request.query_params.get('saved') %}<div class="email-notice success">Alteração guardada.</div>{% endif %}
     {% include "_email_thread_content.html" %}
   </main>

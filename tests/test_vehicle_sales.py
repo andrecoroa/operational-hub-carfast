@@ -314,6 +314,127 @@ def test_sale_proposal_keeps_vehicle_values_independent(authenticated_client, db
     assert db_session.get(VehicleSaleProposal, proposal.id).status == "cancelled"
 
 
+def test_proposal_vehicle_status_updates_only_included_and_blocks_other_lots(
+    authenticated_client, db_session
+):
+    included_vehicle = create_sale_vehicle(db_session)
+    excluded_vehicle = Vehicle(
+        plate="98-ZZ-76",
+        vin="VF3TESTVEHICLE0002",
+        brand="Peugeot",
+        model="208",
+        lifecycle_status="active",
+        operational_status="free",
+        active=True,
+    )
+    db_session.add(excluded_vehicle)
+    db_session.flush()
+    proposal = VehicleSaleProposal(
+        reference="PC-TEST-LOT-1-V2",
+        version=2,
+        status="draft",
+        title="Lote protegido",
+    )
+    db_session.add(proposal)
+    db_session.flush()
+    db_session.add_all(
+        [
+            VehicleSaleProposalLine(
+                proposal_id=proposal.id,
+                vehicle_id=included_vehicle.id,
+                snapshot_json={"plate": included_vehicle.plate},
+                included=True,
+                sort_order=0,
+            ),
+            VehicleSaleProposalLine(
+                proposal_id=proposal.id,
+                vehicle_id=excluded_vehicle.id,
+                snapshot_json={"plate": excluded_vehicle.plate},
+                included=False,
+                sort_order=1,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    reserved = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{proposal.id}/vehicle-status",
+        data={"status": "reserved"},
+        follow_redirects=False,
+    )
+    assert reserved.status_code == 303
+    assert "vehicle_status_saved=reserved" in reserved.headers["location"]
+    db_session.expire_all()
+    included_profile = db_session.scalar(
+        select(VehicleSaleProfile).where(
+            VehicleSaleProfile.vehicle_id == included_vehicle.id
+        )
+    )
+    excluded_profile = db_session.scalar(
+        select(VehicleSaleProfile).where(
+            VehicleSaleProfile.vehicle_id == excluded_vehicle.id
+        )
+    )
+    assert included_profile.status == "reserved"
+    assert included_profile.status_reference == "PC-TEST-LOT-1"
+    assert excluded_profile is None
+    listing = authenticated_client.get(
+        "/v2-clean/fleet/sales",
+        params={"search": "1", "q": included_vehicle.plate},
+    )
+    assert listing.status_code == 200
+    assert "Reservada · lote PC-TEST-LOT-1" in listing.text
+
+    other_proposal = VehicleSaleProposal(
+        reference="PC-TEST-LOT-2",
+        version=1,
+        status="draft",
+        title="Outro lote",
+    )
+    db_session.add(other_proposal)
+    db_session.flush()
+    db_session.add(
+        VehicleSaleProposalLine(
+            proposal_id=other_proposal.id,
+            vehicle_id=included_vehicle.id,
+            snapshot_json={"plate": included_vehicle.plate},
+            included=True,
+            sort_order=0,
+        )
+    )
+    db_session.commit()
+
+    conflict = authenticated_client.post(
+        f"/v2-clean/fleet/sales/proposals/{other_proposal.id}/vehicle-status",
+        data={"status": "sold"},
+        follow_redirects=False,
+    )
+    assert conflict.status_code == 303
+    assert "vehicle_status_error=lot_conflict" in conflict.headers["location"]
+    db_session.expire_all()
+    included_profile = db_session.get(VehicleSaleProfile, included_profile.id)
+    assert included_profile.status == "reserved"
+    assert included_profile.status_reference == "PC-TEST-LOT-1"
+
+    manual = authenticated_client.post(
+        f"/v2-clean/fleet/sales/{included_vehicle.id}",
+        data={"status": "for_sale"},
+        follow_redirects=False,
+    )
+    assert manual.status_code == 303
+    db_session.expire_all()
+    included_profile = db_session.get(VehicleSaleProfile, included_profile.id)
+    assert included_profile.status == "for_sale"
+    assert included_profile.status_reference is None
+
+    audit = db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "vehicle.sale.proposal_vehicles_reserved"
+        )
+    )
+    assert audit is not None
+
+
 def test_unfinanced_vehicle_ignores_legacy_manual_debt():
     vehicle = Vehicle(
         plate="BS-13-UU",

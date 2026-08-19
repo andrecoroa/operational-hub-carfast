@@ -164,6 +164,7 @@ def _get_or_create_profile(db, vehicle: Vehicle) -> VehicleSaleProfile:
 def _profile_json(profile: VehicleSaleProfile) -> dict[str, Any]:
     return {
         "status": profile.status,
+        "status_reference": profile.status_reference,
         "market_trade_value": str(profile.market_trade_value)
         if profile.market_trade_value is not None
         else None,
@@ -255,6 +256,10 @@ def _sale_row(
     return_on = date_value(commercial.get("return_date"))
     state = _vehicle_state(vehicle, commercial)
     status = profile.status if profile else _default_sale_status(vehicle)
+    status_reference = profile.status_reference if profile else None
+    status_label = SALE_STATUS_LABELS.get(status, status)
+    if status in {"reserved", "sold"} and status_reference:
+        status_label = f"{status_label} · lote {status_reference}"
     finance_entity = str(
         (financial_plan.finance_entity if financial_plan else None)
         or manual.get("finance_entity")
@@ -266,7 +271,7 @@ def _sale_row(
         "snapshot": snapshot,
         "profile": profile,
         "status": status,
-        "status_label": SALE_STATUS_LABELS.get(status, status),
+        "status_label": status_label,
         "vehicle_state": state,
         "vehicle_state_label": VEHICLE_SALE_STATE_LABELS.get(state, state),
         "return_on": return_on,
@@ -1366,8 +1371,9 @@ async def vehicle_sales_bulk_update(request: Request):
                 status = str(form.get("bulk_status") or "")
                 if status not in SALE_STATUS_LABELS:
                     continue
-                if profile.status != status:
+                if profile.status != status or profile.status_reference:
                     profile.status = status
+                    profile.status_reference = None
                     profile.status_changed_at = datetime.now(UTC)
                     profile.status_changed_by_id = user_id
             elif action == "market_values":
@@ -1556,6 +1562,10 @@ def vehicle_sale_proposal_detail(request: Request, proposal_id: int, saved: int 
             "versions": versions,
             "candidate_rows": candidate_rows,
             "add_q": add_q,
+            "lot_reference": root_reference,
+            "vehicle_status_saved": request.query_params.get("vehicle_status_saved", ""),
+            "vehicle_status_error": request.query_params.get("vehicle_status_error", ""),
+            "vehicle_status_count": request.query_params.get("vehicle_status_count", ""),
         },
     )
 
@@ -1748,6 +1758,127 @@ async def vehicle_sale_proposal_status(request: Request, proposal_id: int):
             db.commit()
     return RedirectResponse(
         f"/v2-clean/fleet/sales/proposals/{proposal_id}", status_code=303
+    )
+
+
+@vehicle_sales_router.post(
+    "/v2-clean/fleet/sales/proposals/{proposal_id}/vehicle-status"
+)
+async def vehicle_sale_proposal_vehicle_status(request: Request, proposal_id: int):
+    denied = _sales_access_denied(request)
+    if denied:
+        return denied
+    user_id = int(base_router.get_web_user_id(request))
+    form = await request.form()
+    requested_status = str(form.get("status") or "").strip()
+    if requested_status not in {"reserved", "sold"}:
+        return RedirectResponse(
+            f"/v2-clean/fleet/sales/proposals/{proposal_id}"
+            "?vehicle_status_error=invalid_status",
+            status_code=303,
+        )
+    with base_router.SessionLocal() as db:
+        proposal = db.get(VehicleSaleProposal, proposal_id)
+        if not proposal or proposal.status == "cancelled":
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}"
+                "?vehicle_status_error=proposal_unavailable",
+                status_code=303,
+            )
+        lot_reference = proposal.reference.split("-V", 1)[0]
+        included_lines = db.scalars(
+            select(VehicleSaleProposalLine).where(
+                VehicleSaleProposalLine.proposal_id == proposal.id,
+                VehicleSaleProposalLine.included.is_(True),
+            )
+        ).all()
+        vehicle_ids = [line.vehicle_id for line in included_lines]
+        if not vehicle_ids:
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}"
+                "?vehicle_status_error=no_included_vehicles",
+                status_code=303,
+            )
+        vehicles = {
+            vehicle.id: vehicle
+            for vehicle in db.scalars(
+                select(Vehicle).where(Vehicle.id.in_(vehicle_ids))
+            ).all()
+        }
+        profiles = {
+            profile.vehicle_id: profile
+            for profile in db.scalars(
+                select(VehicleSaleProfile).where(
+                    VehicleSaleProfile.vehicle_id.in_(vehicle_ids)
+                )
+            ).all()
+        }
+        conflicts = [
+            profile
+            for profile in profiles.values()
+            if profile.status in {"reserved", "sold"}
+            and profile.status_reference != lot_reference
+        ]
+        if conflicts:
+            return RedirectResponse(
+                f"/v2-clean/fleet/sales/proposals/{proposal_id}"
+                f"?vehicle_status_error=lot_conflict&vehicle_status_count={len(conflicts)}",
+                status_code=303,
+            )
+
+        before_vehicles = []
+        after_vehicles = []
+        changed = 0
+        for vehicle_id in vehicle_ids:
+            vehicle = vehicles.get(vehicle_id)
+            if not vehicle:
+                continue
+            profile = profiles.get(vehicle_id)
+            if not profile:
+                profile = _get_or_create_profile(db, vehicle)
+                profiles[vehicle_id] = profile
+            before_vehicles.append(
+                {
+                    "vehicle_id": vehicle_id,
+                    "status": profile.status,
+                    "status_reference": profile.status_reference,
+                }
+            )
+            if (
+                profile.status != requested_status
+                or profile.status_reference != lot_reference
+            ):
+                changed += 1
+                profile.status = requested_status
+                profile.status_reference = lot_reference
+                profile.status_changed_at = datetime.now(UTC)
+                profile.status_changed_by_id = user_id
+                profile.updated_by_id = user_id
+            after_vehicles.append(
+                {
+                    "vehicle_id": vehicle_id,
+                    "status": profile.status,
+                    "status_reference": profile.status_reference,
+                }
+            )
+        record_audit(
+            db,
+            action=f"vehicle.sale.proposal_vehicles_{requested_status}",
+            entity_type="vehicle_sale_proposal",
+            entity_id=proposal.id,
+            detail=(
+                f"{len(after_vehicles)} viatura(s) do lote {lot_reference} "
+                f"marcada(s) como {SALE_STATUS_LABELS[requested_status].lower()}"
+            ),
+            before_json={"vehicles": before_vehicles},
+            after_json={"vehicles": after_vehicles},
+            user_id=user_id,
+        )
+        db.commit()
+    return RedirectResponse(
+        f"/v2-clean/fleet/sales/proposals/{proposal_id}"
+        f"?vehicle_status_saved={requested_status}&vehicle_status_count={changed}",
+        status_code=303,
     )
 
 
@@ -2191,10 +2322,11 @@ def vehicle_sale_update(
         profile = _get_or_create_profile(db, vehicle)
         before = _profile_json(profile)
         normalized_status = status if status in SALE_STATUS_LABELS else "candidate"
-        if profile.status != normalized_status:
+        if profile.status != normalized_status or profile.status_reference:
             profile.status_changed_at = datetime.now(UTC)
             profile.status_changed_by_id = user_id
         profile.status = normalized_status
+        profile.status_reference = None
         profile.market_trade_value = decimal_value(market_trade_value)
         profile.market_retail_value = decimal_value(market_retail_value)
         profile.selling_price = decimal_value(selling_price)

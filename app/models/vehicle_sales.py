@@ -29,6 +29,7 @@ class VehicleSaleProfile(TimestampMixin, Base):
         ForeignKey("vehicles.id", ondelete="CASCADE"), index=True
     )
     status: Mapped[str] = mapped_column(String(40), default="candidate", index=True)
+    status_reference: Mapped[str | None] = mapped_column(String(120), index=True)
     market_trade_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     market_retail_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     selling_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))

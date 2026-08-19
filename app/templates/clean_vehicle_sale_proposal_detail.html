@@ -13,6 +13,11 @@
       </div>
     </header>
     {% if saved %}<div class="success">Proposta guardada.</div>{% endif %}
+    {% if vehicle_status_saved %}<div class="success">Estado atualizado: {{ vehicle_status_count }} viatura(s) {% if vehicle_status_saved == 'reserved' %}reservada(s){% else %}vendida(s){% endif %} no lote {{ lot_reference }}.</div>{% endif %}
+    {% if vehicle_status_error == 'lot_conflict' %}<div class="error">Não foi feita qualquer alteração. {{ vehicle_status_count }} viatura(s) já estão reservadas ou vendidas noutro lote. Liberta ou corrige primeiro essas viaturas.</div>
+    {% elif vehicle_status_error == 'no_included_vehicles' %}<div class="error">A proposta não tem viaturas incluídas para atualizar.</div>
+    {% elif vehicle_status_error == 'proposal_unavailable' %}<div class="error">Uma proposta cancelada não pode alterar o estado das viaturas.</div>
+    {% elif vehicle_status_error %}<div class="error">Não foi possível atualizar o estado das viaturas.</div>{% endif %}
     <details class="clean-panel clean-card-wide sale-proposal-versions">
       <summary>Histórico de versões <span>{{ versions|length }}</span></summary>
       <div class="clean-doc-table-wrap"><table class="clean-doc-table"><thead><tr><th>Versão</th><th>Referência</th><th>Estado</th><th>Criada em</th><th>Ação</th></tr></thead><tbody>
@@ -68,6 +73,17 @@
       </section>
     </form>
     <section class="clean-panel clean-card-wide sale-proposal-actions">
+      {% set included_count = lines|selectattr('included')|list|length %}
+      {% if proposal.status != 'cancelled' %}
+      <div class="sale-proposal-lot-actions">
+        <strong>Estado das {{ included_count }} viaturas incluídas</strong>
+        <small>A ação fica registada na ficha de cada viatura com a referência {{ lot_reference }}. Viaturas ligadas a outro lote bloqueiam toda a operação.</small>
+        <div class="clean-header-actions">
+          <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/vehicle-status" onsubmit="return confirm('Reservar as viaturas incluídas para o lote {{ lot_reference }}?')"><input type="hidden" name="status" value="reserved"><button type="submit" class="secondary" {% if not included_count %}disabled{% endif %}>Marcar como reservadas</button></form>
+          <form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/vehicle-status" onsubmit="return confirm('Marcar como vendidas as viaturas incluídas no lote {{ lot_reference }}?')"><input type="hidden" name="status" value="sold"><button type="submit" {% if not included_count %}disabled{% endif %}>Marcar como vendidas</button></form>
+        </div>
+      </div>
+      {% endif %}
       {% if proposal.status == 'draft' %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/send"><button type="submit">Marcar como enviada</button></form>
       {% else %}<form method="post" action="/v2-clean/fleet/sales/proposals/{{ proposal.id }}/reopen" class="sale-proposal-reopen-form">
         <label class="sale-proposal-refresh-option"><input type="checkbox" name="refresh_financials" value="1"> Atualizar custo atual e valor em dívida a partir da ficha</label>

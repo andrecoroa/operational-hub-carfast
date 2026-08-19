@@ -433,8 +433,23 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "Entrada" in created.text
     assert db_session.scalars(select(WorkshopPhasedProcess)).all() == []
 
+    invalid_assistance = client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "plate": vehicle.plate,
+            "entry_mode": "Entrada em assistência em viagem",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+    assert invalid_assistance.status_code == 303
+    assert "error=travel_assistance_required" in invalid_assistance.headers["location"]
+
     entry_payload = {
-        "entry_mode": "Marcação",
+        "entry_mode": "Entrada em assistência em viagem",
+        "travel_assistance_destination": "external",
+        "travel_assistance_workshop": "Oficina externa Porto",
+        "travel_assistance_complaint": "Imobilização durante a viagem.",
         "entry_reasons": ["Revisão / degradação óleo", "Pneus"],
         "short_description": "Teste entrada",
         "requested_service": "Confirmar manutenção e pneus",
@@ -499,7 +514,10 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert len(entry_phase.data_json["uploads"]) == 2
     assert {item["slot"] for item in entry_phase.data_json["uploads"]} == {"dashboard", "front"}
     assert entry_phase.data_json["physical_checks"]["damage_matches_rentway"] == "not_checked"
-    assert entry_phase.data_json["entry_mode"] == "Marcação"
+    assert entry_phase.data_json["entry_mode"] == "Entrada em assistência em viagem"
+    assert entry_phase.data_json["travel_assistance_destination"] == "external"
+    assert entry_phase.data_json["travel_assistance_workshop"] == "Oficina externa Porto"
+    assert entry_phase.data_json["travel_assistance_complaint"] == "Imobilização durante a viagem."
     assert entry_phase.data_json["external_repair"] == "pending"
     assert entry_phase.data_json["minimum_checks"]["minimum_reason_selected"] == "yes"
     assert entry_phase.data_json["minimum_checks"]["minimum_km_confirmed"] == "yes"
@@ -525,7 +543,8 @@ def test_clean_workshop_entry_validation_and_diagnostic_flow(client, db_session)
     assert "clean-upload-preview-card" in entry_page.text
     assert "Já carregado · 1 imagem" in entry_page.text
     assert "Marcação / entrada" in entry_page.text
-    assert "Notas finais" in entry_page.text
+    assert "Notas finais" not in entry_page.text
+    assert "Entrada em assistência em viagem" in entry_page.text
     assert "Guardar fase" in entry_page.text
     assert 'value="not_applicable"' in entry_page.text
     assert "data-history-preview-open" not in entry_page.text
@@ -1124,3 +1143,58 @@ def test_closure_reserve_still_requires_an_identified_pending_owner():
     }
 
     assert clean_workshop_phase_advance_error("fecho", snapshot, []) == "closure_incomplete"
+
+
+def test_historical_workshop_uses_intervention_date_and_preserves_open_status(
+    authenticated_client,
+    db_session,
+):
+    vehicle = Vehicle(
+        plate="HI-20-ST",
+        vin="VINHI20ST123456789",
+        brand="PEUGEOT",
+        model="208",
+        active=True,
+        lifecycle_status="active",
+        operational_status="free",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+
+    missing_date = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "plate": vehicle.plate,
+            "process_mode": "historical",
+            "historical_process_status": "Em curso",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+    assert missing_date.status_code == 303
+    assert "error=historical_date_required" in missing_date.headers["location"]
+
+    saved = authenticated_client.post(
+        "/v2-clean/workshop-entry",
+        data={
+            "plate": vehicle.plate,
+            "process_mode": "historical",
+            "historical_intervention_date": "2026-07-14",
+            "historical_process_status": "Em curso",
+            "short_description": "Intervenção histórica em acompanhamento",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+
+    process = db_session.scalar(
+        select(WorkshopPhasedProcess).where(
+            WorkshopPhasedProcess.plate_snapshot == vehicle.plate,
+            WorkshopPhasedProcess.creation_mode == "historical",
+        )
+    )
+    assert process is not None
+    assert process.opened_at.date().isoformat() == "2026-07-14"
+    assert process.received_at.date().isoformat() == "2026-07-14"
+    assert process.metadata_json["historical_process_status"] == "Em curso"

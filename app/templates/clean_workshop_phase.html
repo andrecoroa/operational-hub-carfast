@@ -644,6 +644,108 @@
         </section>
 
       {% elif phase_key == "reparacao" %}
+        <section class="clean-panel clean-card-wide clean-workshop-simplified-phase">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Execução da reparação</p><h3>Trabalho, evidências e pendências</h3><p>Regista apenas factos da execução. A decisão de fecho é feita na fase seguinte.</p></div></div>
+          <div class="clean-workshop-summary-grid">
+            <section>
+              <h4>Trabalho autorizado e executado</h4>
+              <label>Serviços autorizados<textarea name="repair_authorized_services" rows="3" placeholder="Trabalho autorizado...">{{ phase_form.get("repair_authorized_services", "") }}</textarea></label>
+              <label>Trabalho executado / ponto de situação<textarea name="repair_summary" rows="4" placeholder="O que foi efetivamente executado...">{{ phase_form.get("repair_summary", "") }}</textarea></label>
+              <label>Fora da autorização<textarea name="repair_outside_authorization" rows="3" placeholder="Material ou trabalhos que exigem nova autorização...">{{ phase_form.get("repair_outside_authorization", "") }}</textarea></label>
+            </section>
+            <section>
+              <h4>Execução</h4>
+              <div class="clean-phase-field-grid">
+                <label>Estado<select name="repair_execution_status">{% for option in ["Em curso", "A aguardar peças", "A aguardar orçamento", "Concluída", "Bloqueada"] %}<option{% if phase_form.get("repair_execution_status", "Em curso") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Responsável / oficina<input name="repair_responsible" value="{{ phase_form.get('repair_responsible', '') }}"></label>
+                <label>Início<input type="date" name="repair_started_on" value="{{ phase_form.get('repair_started_on', '') }}"></label>
+                <label>Conclusão<input type="date" name="repair_finished_on" value="{{ phase_form.get('repair_finished_on', '') }}"></label>
+                <label>Previsão<input type="date" name="repair_eta" value="{{ phase_form.get('repair_eta', '') }}"></label>
+                <label>Tempo previsto<input name="repair_expected_duration" value="{{ phase_form.get('repair_expected_duration', '') }}" placeholder="Ex.: 2 h 30 min"></label>
+                <label>Tempo real<input name="repair_actual_duration" value="{{ phase_form.get('repair_actual_duration', '') }}" placeholder="Ex.: 3 h 10 min"></label>
+              </div>
+              <label>Observação<textarea name="repair_execution_note" rows="3" placeholder="Atrasos, dependências ou estado atual...">{{ phase_form.get("repair_execution_note", "") }}</textarea></label>
+            </section>
+            <section>
+              <h4>Evidências</h4>
+              <div class="clean-phase-field-grid">
+                <label>Folha de obra<select name="repair_fo_status">{% for option in ["Em falta", "Recebida", "Validada"] %}<option{% if phase_form.get("repair_fo_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Fotos<select name="repair_photos_status">{% for option in ["Em falta", "Parcial", "Recebidas"] %}<option{% if phase_form.get("repair_photos_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Relatório pós<select name="repair_post_report_status">{% for option in ["Em falta", "Pendente", "Recebido"] %}<option{% if phase_form.get("repair_post_report_status", "Em falta") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Campanha<select name="repair_campaign_proof_status">{% for option in ["N/A", "Pendente", "Recebido"] %}<option{% if phase_form.get("repair_campaign_proof_status", "N/A") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+              </div>
+              <div class="clean-upload-row">
+                <label class="clean-file-button">Anexar FO<input name="repair_work_order_file" type="file" accept="application/pdf,image/*"></label>
+                <label class="clean-file-button">Anexar fotos<input name="repair_photos_files" type="file" accept="image/*" multiple></label>
+                <label class="clean-file-button">Anexar relatório<input name="repair_post_report_file" type="file" accept="application/pdf,image/*"></label>
+              </div>
+            </section>
+            <section>
+              <h4>Desvios, custos e pendências</h4>
+              <div class="clean-phase-field-grid">
+                <label>Houve desvio?<select name="repair_deviation_exists">{% for option in ["Não", "Sim", "Por confirmar"] %}<option{% if phase_form.get("repair_deviation_exists", "Não") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label>Impacto financeiro<input name="repair_financial_impact" value="{{ phase_form.get('repair_financial_impact', '') }}" placeholder="0,00 €"></label>
+              </div>
+              <label>Motivo / ação necessária<textarea name="repair_deviation_reason" rows="3" placeholder="Desvio, custo, responsável e decisão necessária...">{{ phase_form.get("repair_deviation_reason", "") }}</textarea></label>
+              <label>Pendência para validação<textarea name="repair_reserve_reason" rows="3" placeholder="O que fica pendente, se aplicável...">{{ phase_form.get("repair_reserve_reason", "") }}</textarea></label>
+            </section>
+          </div>
+          <details class="clean-workshop-materials">
+            <summary>Material e pedidos ao Stock</summary>
+            <p>Consulta o material previsto, regista referências e abre pedidos ao Stock quando necessário.</p>
+            <div class="clean-repair-material-table">
+              <div class="clean-repair-material-row clean-repair-material-head"><b>Material</b><b>Referência</b><b>Quantidade</b><b>Estado / origem</b></div>
+              {% for index in range(1, 9) %}
+                <div class="clean-repair-material-row">
+                  <input name="repair_material_{{ index }}_name" value="{{ phase_form.get('repair_material_' ~ index ~ '_name', '') }}" aria-label="Material {{ index }}">
+                  <input name="repair_material_{{ index }}_reference" value="{{ phase_form.get('repair_material_' ~ index ~ '_reference', '') }}" aria-label="Referência material {{ index }}">
+                  <input name="repair_material_{{ index }}_quantity" value="{{ phase_form.get('repair_material_' ~ index ~ '_quantity', '') }}" aria-label="Quantidade material {{ index }}">
+                  <input name="repair_material_{{ index }}_origin" value="{{ phase_form.get('repair_material_' ~ index ~ '_origin', '') }}" aria-label="Estado ou origem material {{ index }}">
+                </div>
+              {% endfor %}
+            </div>
+            {% if material_needs %}
+              <div class="clean-stock-needs-list">
+                {% for need in material_needs %}
+                  <article><div><b>{{ need.material_description }}</b><span>{{ need.requested_quantity or "-" }} · {{ need.operation_label }}</span></div><em>{{ {"requested":"Pendente no Stock","usage_reported":"Utilização comunicada","delivered":"Entregue","applied":"Aplicado"}.get(need.stock_status, need.stock_status) }}</em></article>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <button type="button" class="secondary" onclick="document.getElementById('workshop-stock-request').showModal()">Abrir pedidos ao Stock</button>
+          </details>
+          <dialog id="workshop-stock-request" class="stock-dialog clean-workshop-stock-dialog">
+            <div class="stock-card-heading"><div><h3>Material da reparação</h3><p>{{ vehicle_context.plate or '' }} · Processo #{{ workshop_process.id }}</p></div><button type="button" class="secondary" onclick="this.closest('dialog').close()">Fechar</button></div>
+            <fieldset class="clean-stock-request-mode"><legend>Operação</legend><label><input type="radio" name="request_mode" value="request" checked> Solicitar entrega</label><label><input type="radio" name="request_mode" value="direct_usage"> Informar utilização direta</label><small>Na utilização direta, o Stock regista o consumo e o custo sem entregar material.</small></fieldset>
+            <div class="clean-stock-request-filters"><label>Categoria<select id="workshop-stock-category"><option value="">Todas</option>{% for category in stock_request_categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}</select></label><label><input type="checkbox" id="workshop-stock-suggested"> Sugeridos para a viatura</label><label>Pesquisar<input id="workshop-stock-search" placeholder="Referência ou artigo"></label></div>
+            <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th></th><th>Referência</th><th>Artigo</th><th>Categoria</th><th>Disponível</th><th>Qtd.</th></tr></thead><tbody id="workshop-stock-article-rows">
+              {% for row in stock_request_articles %}<tr data-category="{{ row.category.id if row.category else '' }}" data-suggested="{{ '1' if row.suggested else '0' }}" data-search="{{ (row.article.internal_ref ~ ' ' ~ row.article.name)|lower }}"><td><input type="checkbox" name="article_id" value="{{ row.article.id }}"></td><td>{{ row.article.internal_ref }}</td><td>{{ row.article.name }}{% if row.suggested %}<small>Sugerido</small>{% endif %}</td><td>{{ row.category.name if row.category else 'Sem categoria' }}</td><td>{{ row.available|int }} {{ row.article.unit }}</td><td><input type="number" min="0.001" step="0.001" name="quantity_{{ row.article.id }}" value="1"></td></tr>{% else %}<tr><td colspan="6">Sem artigos ativos.</td></tr>{% endfor %}
+            </tbody></table></div>
+            <input type="hidden" name="origin" value="repair"><input type="hidden" name="operation_code" value="repair_material"><input type="hidden" name="operation_label" value="Material para reparação">
+            <details class="clean-stock-free-request"><summary>Não encontro a referência</summary><div><label>Tipo de peça / material<input name="material_description" placeholder="Ex.: filtro de combustível"></label><label>Quantidade<input type="number" min="0.001" step="0.001" name="requested_quantity" value="1"></label><label>Referência conhecida (opcional)<input name="material_code"></label></div></details>
+            <label>Notas<textarea name="notes" rows="2" placeholder="Observações para o Stock"></textarea></label>
+            <div class="stock-actions"><button type="submit" formmethod="post" formaction="/v2-clean/workshop/{{ workshop_process.id }}/material-needs" formnovalidate>Registar pedido</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
+          </dialog>
+          <script>
+            (() => {
+              const category = document.getElementById('workshop-stock-category');
+              const suggested = document.getElementById('workshop-stock-suggested');
+              const search = document.getElementById('workshop-stock-search');
+              const rows = Array.from(document.querySelectorAll('#workshop-stock-article-rows tr[data-search]'));
+              const filterRows = () => rows.forEach((row) => {
+                const categoryMatch = !category.value || row.dataset.category === category.value;
+                const suggestedMatch = !suggested.checked || row.dataset.suggested === '1';
+                const searchMatch = !search.value.trim() || row.dataset.search.includes(search.value.trim().toLowerCase());
+                row.hidden = !(categoryMatch && suggestedMatch && searchMatch);
+              });
+              category?.addEventListener('change', filterRows);
+              suggested?.addEventListener('change', filterRows);
+              search?.addEventListener('input', filterRows);
+            })();
+          </script>
+          <input type="hidden" name="repair_closed" value="{% if phase_form.get('repair_execution_status') == 'Concluída' %}Sim{% else %}Com reservas{% endif %}">
+          <div class="clean-simplified-actions"><button type="submit" name="action" value="save">Guardar reparação</button><button type="submit" name="action" value="advance">Enviar para Validação e Fecho</button></div>
+        </section>
+        {% if false %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="ordem-reparacao">
@@ -821,8 +923,49 @@
             </article>
           </div>
         </section>
+        {% endif %}
 
       {% elif phase_key == "fecho" %}
+        <section class="clean-panel clean-card-wide clean-workshop-simplified-phase clean-workshop-closure">
+          <div class="table-heading flat-heading"><div><p class="eyebrow">Validação e fecho</p><h3>Decisão final do processo</h3><p>Resumo consolidado, verificações mínimas e uma única decisão.</p></div></div>
+          <div class="clean-workshop-closure-layout">
+            <section class="clean-workshop-closure-summary">
+              <h4>Resumo do processo</h4>
+              <dl>
+                <div><dt>Entrada</dt><dd>{{ entry_summary }}</dd></div>
+                <div><dt>KM entrada</dt><dd>{{ workshop_process.initial_km or '-' }}</dd></div>
+                <div><dt>Reparação</dt><dd>{{ repair_summary.summary or 'Sem resumo registado' }}</dd></div>
+                <div><dt>Estado da reparação</dt><dd>{{ repair_summary.status }}</dd></div>
+                <div><dt>Documentos</dt><dd>{{ repair_summary.document_count }} ficheiro(s) associado(s)</dd></div>
+                <div><dt>Tarefas abertas</dt><dd>{{ workshop_admin.open_task_count }}</dd></div>
+              </dl>
+              <label>Nota do validador<textarea name="closure_summary" rows="5" placeholder="Decisão, observações de saída e informação relevante...">{{ phase_form.get("closure_summary", "") }}</textarea></label>
+            </section>
+            <section class="clean-workshop-closure-checks">
+              <h4>Verificações</h4>
+              <label><input type="checkbox" name="closure_vehicle_validated" value="yes"{% if phase_form.get("closure_vehicle_validated") %} checked{% endif %}> Viatura validada e apta para a decisão selecionada</label>
+              <label><input type="checkbox" name="closure_min_docs_attached" value="yes"{% if phase_form.get("closure_min_docs_attached") %} checked{% endif %}> Documentos mínimos associados ou justificados</label>
+              <label><input type="checkbox" name="closure_history_updated" value="yes"{% if phase_form.get("closure_history_updated") %} checked{% endif %}> Histórico técnico atualizado</label>
+              <label><input type="checkbox" name="closure_fleet_state_defined" value="yes"{% if phase_form.get("closure_fleet_state_defined") %} checked{% endif %}> Estado de regresso à frota definido</label>
+              <label>Estado final<select name="closure_final_status">{% for option in ["Normal", "Com reserva", "Imobilizada"] %}<option{% if phase_form.get("closure_final_status", "Normal") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+            </section>
+            <section class="clean-workshop-closure-pending">
+              <h4>Pendência após fecho</h4>
+              <p>Preencher apenas quando o processo fecha com algo ainda por resolver.</p>
+              <div class="clean-phase-field-grid">
+                <label>Responsável<input name="closure_pending_owner" value="{{ phase_form.get('closure_pending_owner', '') }}" placeholder="Responsável"></label>
+                <label>Prazo<input type="date" name="closure_pending_due" value="{{ phase_form.get('closure_pending_due', '') }}"></label>
+              </div>
+              <label>Descrição<textarea name="closure_pending_description" rows="3" placeholder="O que falta e qual a ação esperada...">{{ phase_form.get("closure_pending_description", "") }}</textarea></label>
+            </section>
+          </div>
+          <div class="clean-closure-decision-actions">
+            <button type="submit" name="action" value="return_to_repair" class="secondary">Devolver à reparação</button>
+            <button type="submit" name="action" value="close_with_pending" class="secondary">Fechar com pendências</button>
+            <button type="submit" name="action" value="close_process">Fechar processo</button>
+          </div>
+        </section>
+        {% if false %}
         <section class="clean-phase-workbench clean-card-wide">
           <aside class="clean-substep-rail" aria-label="Subpassos da fase">
             <button class="clean-substep-card active" type="button" data-target="validacao-final">
@@ -935,6 +1078,7 @@
             </article>
           </div>
         </section>
+        {% endif %}
 
       {% else %}
         {% for section in phase.sections %}
@@ -977,6 +1121,8 @@
           <div class="clean-action-list">
             {% if workshop_process and workshop_process.status == "closed" %}
               <a class="next-phase-action" href="/v2-clean/workshop">Voltar ao Dashboard Oficina</a>
+            {% elif phase_key in ["reparacao", "fecho"] %}
+              <span class="clean-phase-action-note">As ações desta fase estão disponíveis no painel principal.</span>
             {% else %}
               <button type="submit" name="action" value="save_substep">Guardar fase</button>
             {% endif %}

@@ -28003,3 +28003,157 @@ body.clean-task-preview-open {
 @media (max-width: 620px) {
   .clean-task-classification-row { grid-template-columns: 1fr; }
 }
+
+/* Simplified workshop execution and closure */
+.clean-travel-assistance {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e4b45d;
+  background: #fff9ed;
+}
+
+.clean-travel-assistance[hidden] {
+  display: none;
+}
+
+.clean-workshop-simplified-phase {
+  padding: 18px;
+}
+
+.clean-workshop-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.clean-workshop-summary-grid > section,
+.clean-workshop-closure-layout > section {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d8e1eb;
+  background: #f8fafc;
+}
+
+.clean-workshop-summary-grid h4,
+.clean-workshop-closure-layout h4 {
+  margin: 0 0 12px;
+}
+
+.clean-workshop-materials {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #d8e1eb;
+  background: #f8fafc;
+}
+
+.clean-workshop-materials > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.clean-workshop-materials > p {
+  color: #607087;
+  font-size: 12px;
+}
+
+.clean-workshop-materials .clean-repair-material-table {
+  margin: 12px 0;
+}
+
+.clean-simplified-actions,
+.clean-closure-decision-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 16px -18px -18px;
+  padding: 14px 18px;
+  border-top: 1px solid #d8e1eb;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.clean-workshop-closure-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 14px;
+}
+
+.clean-workshop-closure-summary {
+  grid-row: span 2;
+}
+
+.clean-workshop-closure-summary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 14px;
+  background: #d8e1eb;
+}
+
+.clean-workshop-closure-summary dl > div {
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.clean-workshop-closure-summary dt {
+  color: #607087;
+  font-size: 12px;
+}
+
+.clean-workshop-closure-summary dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+
+.clean-workshop-closure-checks > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.clean-workshop-closure-checks > label:last-child {
+  display: grid;
+}
+
+.clean-workshop-closure-checks input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+}
+
+.clean-phase-action-note {
+  color: #607087;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .clean-workshop-summary-grid,
+  .clean-workshop-closure-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clean-workshop-closure-summary {
+    grid-row: auto;
+  }
+
+  .clean-simplified-actions,
+  .clean-closure-decision-actions {
+    position: static;
+    flex-direction: column;
+  }
+
+  .clean-simplified-actions button,
+  .clean-closure-decision-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .clean-workshop-closure-summary dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

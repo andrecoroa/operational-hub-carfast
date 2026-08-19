@@ -115,16 +115,12 @@
       <section class="clean-phase-workbench clean-card-wide">
         <aside class="clean-substep-rail" aria-label="Subpassos da entrada">
           <button class="clean-substep-card active" type="button" data-target="motivo">
-            <span><b>Marcação / entrada</b><em>Origem, pedido recebido e prioridade</em></span>
+            <span><b>Marcação / entrada</b><em>Viatura, motivo e encaminhamento</em></span>
             <strong>{{ entry_substep_status.motivo }}</strong>
           </button>
           <button class="clean-substep-card" type="button" data-target="danos">
             <span><b>Verificações físicas</b><em>Danos, documentos e equipamento</em></span>
             <strong>{{ entry_substep_status.danos }}</strong>
-          </button>
-          <button class="clean-substep-card" type="button" data-target="saida">
-            <span><b>Notas finais</b><em>Informações e encaminhamento</em></span>
-            <strong>{{ entry_substep_status.saida }}</strong>
           </button>
         </aside>
 
@@ -143,11 +139,17 @@
             {% if error == "missing_plate" %}
               <p class="clean-rule-note">Matrícula é obrigatória para criar o processo de oficina.</p>
             {% endif %}
+            {% if error == "travel_assistance_required" %}
+              <p class="clean-rule-note">Na assistência em viagem, indica onde a viatura entrou, a queixa e, quando aplicável, a oficina externa.</p>
+            {% endif %}
+            {% if error == "historical_date_required" %}
+              <p class="clean-rule-note">A data da intervenção é obrigatória num processo histórico.</p>
+            {% endif %}
             <div class="clean-phase-field-grid">
-              <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Ex.: BB-13-PT" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
+              <label>Matrícula<input id="clean-entry-plate-input" name="plate" list="clean-entry-plate-suggestions" autocomplete="off" placeholder="Começa a escrever a matrícula" value="{{ workshop_process.plate_snapshot if has_vehicle_plate else '' }}"><datalist id="clean-entry-plate-suggestions"></datalist></label>
               <label>KM entrada<input name="entry_km" inputmode="numeric" value="{{ saved_entry.entry_km or '' }}" required></label>
               <label>Tipo de registo<select name="entry_mode">
-                {% for option in ["Marcação", "Entrada"] %}
+                {% for option in ["Marcação", "Entrada", "Entrada em assistência em viagem"] %}
                   <option value="{{ option }}" {% if (saved_entry.entry_mode or "Entrada") == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select></label>
@@ -164,16 +166,27 @@
                 <label><input type="checkbox" name="entry_reasons" value="{{ reason }}" {% if saved_reasons and reason in saved_reasons %}checked{% endif %}> <span>{{ reason }}</span></label>
               {% endfor %}
             </div>
-            <div class="clean-phase-field-grid">
-              <label>Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
-              <label>Serviço solicitado<textarea name="requested_service" rows="3" placeholder="O que se pretende que a oficina faça ou confirme...">{{ saved_entry.requested_service or "" }}</textarea></label>
-            </div>
+            <label class="clean-full-label">Descrição curta<textarea name="short_description" rows="3" placeholder="Resumo objetivo do motivo selecionado, pedido ou sintoma...">{{ saved_entry.short_description or "" }}</textarea></label>
+            <input type="hidden" name="requested_service" value="{{ saved_entry.requested_service or '' }}">
+            <section class="clean-travel-assistance" id="clean-travel-assistance" {% if (saved_entry.entry_mode or '') != 'Entrada em assistência em viagem' %}hidden{% endif %}>
+              <div class="table-heading flat-heading"><div><p class="eyebrow">Assistência em viagem</p><h4>Local de entrada e queixa</h4></div></div>
+              <div class="clean-phase-field-grid">
+                <label>Onde entrou?<select name="travel_assistance_destination" id="clean-travel-assistance-destination">
+                  <option value="">Selecionar</option>
+                  <option value="internal"{% if saved_entry.travel_assistance_destination == "internal" %} selected{% endif %}>Oficina interna</option>
+                  <option value="external"{% if saved_entry.travel_assistance_destination == "external" %} selected{% endif %}>Oficina externa</option>
+                </select></label>
+                <label id="clean-travel-assistance-workshop-label">Oficina externa<input name="travel_assistance_workshop" placeholder="Nome da oficina" value="{{ saved_entry.travel_assistance_workshop or '' }}"></label>
+                <label class="clean-full-label">Queixa / ocorrência<textarea name="travel_assistance_complaint" rows="3" placeholder="Descrever a ocorrência que originou a assistência...">{{ saved_entry.travel_assistance_complaint or '' }}</textarea></label>
+              </div>
+            </section>
             {% if is_historical %}
               <div class="clean-history-mode-panel">
                 <strong>Reconstrução de histórico</strong>
                 <span>Usar quando a intervenção já aconteceu e estás a carregar documentos antigos para teste, auditoria e extração de dados.</span>
                 <div class="clean-phase-field-grid">
-                  <label>Data da intervenção<input type="date" name="historical_intervention_date" value="{{ saved_entry.historical_intervention_date or '' }}"></label>
+                  <label>Data da intervenção<input type="date" name="historical_intervention_date" value="{{ saved_entry.historical_intervention_date or '' }}" required></label>
+                  <label>Estado do processo<select name="historical_process_status">{% for option in ["Em curso", "Fechado"] %}<option{% if (saved_entry.historical_process_status or "Fechado") == option %} selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
                   <label>Km conhecido<input name="historical_km" inputmode="numeric" placeholder="Km, se conhecido" value="{{ saved_entry.historical_km or '' }}"></label>
                   <label>Oficina / fornecedor<input name="historical_supplier" placeholder="Fornecedor ou oficina" value="{{ saved_entry.historical_supplier or '' }}"></label>
                   <label>Nível de confiança<select name="historical_confidence">
@@ -190,19 +203,23 @@
                   <option {% if (saved_entry.reported_by or "Operador") == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select></label>
-              <label>Prioridade<select name="priority">
-                {% for option in ["Normal", "Alta", "Crítica"] %}
-                  <option {% if (saved_entry.priority or "Normal") == option %}selected{% endif %}>{{ option }}</option>
-                {% endfor %}
-              </select></label>
+              <input type="hidden" name="priority" value="{{ saved_entry.priority or 'Normal' }}">
               <label>Viatura pode circular?<select name="can_drive">
                 {% for option in ["Por confirmar", "Sim", "Não"] %}
                   <option {% if (saved_entry.can_drive or "Por confirmar") == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select></label>
+              <label>Saída prevista<input name="expected_exit" type="datetime-local" value="{{ saved_entry.expected_exit or '' }}"></label>
+              <label>Encaminhar para reparação externa?<select name="external_repair">
+                <option value="no" {% if (saved_entry.external_repair or "no") == "no" %}selected{% endif %}>Não</option>
+                <option value="yes" {% if saved_entry.external_repair == "yes" %}selected{% endif %}>Sim</option>
+                <option value="pending" {% if saved_entry.external_repair == "pending" %}selected{% endif %}>Por decidir</option>
+              </select></label>
             </div>
+            <label class="clean-full-label">Informação para validação<textarea name="validation_notes" rows="3" placeholder="Registar apenas informação relevante para a fase seguinte...">{{ saved_entry.validation_notes or "" }}</textarea></label>
             <div class="clean-substep-savebar">
               <button type="submit" name="action" value="save">Guardar fase</button>
+              <button type="submit" name="action" value="advance">Avançar para Validação Administrativa</button>
             </div>
           </article>
 
@@ -330,38 +347,7 @@
             </div>
             <div class="clean-substep-savebar">
               <button type="submit" name="action" value="save">Guardar fase</button>
-            </div>
-          </article>
-
-          <article class="clean-substep-panel" id="clean-substep-saida">
-            <div class="table-heading flat-heading">
-              <div>
-                <p class="eyebrow">Notas finais</p>
-                <h3>Informação a registar ou comunicar</h3>
-                <p>{% if is_historical %}Guardar reconstrução histórica ou avançar quando houver informação suficiente para classificar documentos e validar evidências.{% else %}Guardar o registo inicial ou avançar para validação administrativa quando o mínimo obrigatório estiver completo.{% endif %}</p>
-              </div>
-            </div>
-            <div class="clean-validation-decision clean-exit-decision">
-              <div class="clean-exit-fields">
-                <label>Saída prevista<input name="expected_exit" type="datetime-local" value="{{ saved_entry.expected_exit or '' }}"></label>
-                <label>Encaminhar para reparação externa?<select name="external_repair">
-                  <option value="no" {% if (saved_entry.external_repair or "no") == "no" %}selected{% endif %}>Não</option>
-                  <option value="yes" {% if saved_entry.external_repair == "yes" %}selected{% endif %}>Sim</option>
-                  <option value="pending" {% if saved_entry.external_repair == "pending" %}selected{% endif %}>Por decidir</option>
-                </select></label>
-                <label class="clean-full-label">Notas a registar / informar<textarea name="validation_notes" rows="4" placeholder="Informação para a validação, reparação externa ou fase seguinte...">{{ saved_entry.validation_notes or "" }}</textarea></label>
-              </div>
-              {% set missing_items = [] %}
-              {% if not saved_reasons %}{% set _ = missing_items.append("motivo da entrada") %}{% endif %}
-              {% if not saved_entry.entry_km %}{% set _ = missing_items.append("KM de entrada") %}{% endif %}
-              {% if not dashboard_uploads and not is_historical %}{% set _ = missing_items.append("foto do quadrante") %}{% endif %}
-              {% if missing_items %}
-                <p class="clean-rule-note"><strong>Pontos em falta:</strong> {{ missing_items | join(", ") }}.</p>
-              {% endif %}
-              <div class="clean-action-list">
-                <button type="submit" name="action" value="save">Guardar entrada</button>
-                <button type="submit" name="action" value="advance">Avançar para Validação Administrativa</button>
-              </div>
+              <button type="submit" name="action" value="advance">Avançar para Validação Administrativa</button>
             </div>
           </article>
         </div>
@@ -450,6 +436,22 @@
     });
     plateInput.addEventListener("change", selectPlateIfExact);
   }
+
+  const entryMode = document.querySelector('select[name="entry_mode"]');
+  const travelAssistance = document.getElementById("clean-travel-assistance");
+  const travelDestination = document.getElementById("clean-travel-assistance-destination");
+  const travelWorkshopLabel = document.getElementById("clean-travel-assistance-workshop-label");
+  const syncTravelAssistance = () => {
+    const enabled = entryMode?.value === "Entrada em assistência em viagem";
+    if (travelAssistance) travelAssistance.hidden = !enabled;
+    travelAssistance?.querySelectorAll("select, input, textarea").forEach((field) => {
+      field.required = enabled && (field.name !== "travel_assistance_workshop" || travelDestination?.value === "external");
+    });
+    if (travelWorkshopLabel) travelWorkshopLabel.hidden = !enabled || travelDestination?.value !== "external";
+  };
+  entryMode?.addEventListener("change", syncTravelAssistance);
+  travelDestination?.addEventListener("change", syncTravelAssistance);
+  syncTravelAssistance();
 
   const imagePreviewModal = document.getElementById("clean-image-preview-modal");
   const imagePreviewImg = document.getElementById("clean-image-preview-img");

@@ -7442,6 +7442,7 @@ CLEAN_WORKSHOP_PHASE_ERROR_MESSAGES = {
     "audit_incomplete": "Regista a decisão da auditoria e fecha a fase antes de avançar.",
     "repair_incomplete": "A reparação deve estar concluída ou fechada com reserva devidamente justificada.",
     "closure_incomplete": "Confirma as condições mínimas de fecho e o tratamento das pendências.",
+    "closure_pending_required": "Para fechar com pendências, indica o responsável, o prazo e a descrição do que falta.",
 }
 
 
@@ -21249,12 +21250,47 @@ async def clean_workshop_entry_save(request: Request):
     entry_reasons = [str(value) for value in form.getlist("entry_reasons") if str(value).strip()]
     external_repair = str(form.get("external_repair") or "no").strip()
     template_code = str(form.get("template_code") or "").strip() or None
+    entry_mode = str(form.get("entry_mode") or "Entrada").strip()
+    assistance_destination = str(form.get("travel_assistance_destination") or "").strip()
+    assistance_workshop = str(form.get("travel_assistance_workshop") or "").strip()
+    assistance_complaint = str(form.get("travel_assistance_complaint") or "").strip()
+    historical_intervention_date = str(
+        form.get("historical_intervention_date") or ""
+    ).strip()
 
     if not process_id and not submitted_plate:
         suffix = clean_workshop_query_suffix(historical=is_historical, new_entry=True)
         separator = "&" if suffix else "?"
         return RedirectResponse(
             f"/v2-clean/workshop-entry{suffix}{separator}error=missing_plate", status_code=303
+        )
+    if entry_mode == "Entrada em assistência em viagem" and (
+        assistance_destination not in {"internal", "external"}
+        or not assistance_complaint
+        or (assistance_destination == "external" and not assistance_workshop)
+    ):
+        suffix = clean_workshop_query_suffix(
+            process_id=process_id,
+            plate=submitted_plate,
+            historical=is_historical,
+            new_entry=True,
+        )
+        separator = "&" if suffix else "?"
+        return RedirectResponse(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=travel_assistance_required",
+            status_code=303,
+        )
+    if is_historical and not historical_intervention_date:
+        suffix = clean_workshop_query_suffix(
+            process_id=process_id,
+            plate=submitted_plate,
+            historical=True,
+            new_entry=True,
+        )
+        separator = "&" if suffix else "?"
+        return RedirectResponse(
+            f"/v2-clean/workshop-entry{suffix}{separator}error=historical_date_required",
+            status_code=303,
         )
 
     with SessionLocal() as db:
@@ -21318,18 +21354,20 @@ async def clean_workshop_entry_save(request: Request):
                 "entry_reasons": entry_reasons,
                 "short_description": str(form.get("short_description") or "").strip(),
                 "requested_service": str(form.get("requested_service") or "").strip(),
-                "entry_mode": str(form.get("entry_mode") or "Entrada").strip(),
+                "entry_mode": entry_mode,
+                "travel_assistance_destination": assistance_destination,
+                "travel_assistance_workshop": assistance_workshop,
+                "travel_assistance_complaint": assistance_complaint,
                 "entry_km": str(form.get("entry_km") or "").strip(),
                 "entry_km_source": "manual" if str(form.get("entry_km") or "").strip() else "",
                 "reported_by": str(form.get("reported_by") or "").strip(),
                 "priority": str(form.get("priority") or "").strip(),
                 "can_drive": str(form.get("can_drive") or "").strip(),
-                "historical_intervention_date": str(
-                    form.get("historical_intervention_date") or ""
-                ).strip(),
+                "historical_intervention_date": historical_intervention_date,
                 "historical_km": str(form.get("historical_km") or "").strip(),
                 "historical_supplier": str(form.get("historical_supplier") or "").strip(),
                 "historical_confidence": str(form.get("historical_confidence") or "").strip(),
+                "historical_process_status": str(form.get("historical_process_status") or "").strip(),
                 "physical_checks": physical_checks,
                 "physical_check_note": str(form.get("physical_check_note") or "").strip(),
                 "expected_exit": str(form.get("expected_exit") or "").strip(),
@@ -21379,7 +21417,14 @@ async def clean_workshop_entry_save(request: Request):
             "entry_reasons": entry_reasons,
             "can_drive": entry_data.get("can_drive"),
             "expected_exit": entry_data.get("expected_exit"),
+            "historical_process_status": entry_data.get("historical_process_status"),
+            "travel_assistance_destination": assistance_destination,
+            "travel_assistance_workshop": assistance_workshop,
         }
+        if is_historical and entry_data.get("historical_intervention_date"):
+            intervention_date = datetime.fromisoformat(str(entry_data["historical_intervention_date"])).replace(tzinfo=UTC)
+            process.opened_at = intervention_date
+            process.received_at = intervention_date
         db.commit()
 
     if action == "advance":
@@ -21559,6 +21604,12 @@ def clean_workshop_phase(
     phase_data: dict[str, object] = {}
     phase_form: dict[str, object] = {}
     entry_form: dict[str, object] = {}
+    entry_summary = "Sem descrição"
+    repair_summary = {
+        "summary": "",
+        "status": "Por confirmar",
+        "document_count": 0,
+    }
     validation_prerequisites: list[dict[str, str | None]] = []
     technical_reports: list[WorkshopPhasedTechnicalReport] = []
     technical_reading_groups: list[dict[str, object]] = []
@@ -21607,6 +21658,24 @@ def clean_workshop_phase(
             entry_phase = clean_workshop_get_phase(db, process.id, "entrada")
             if entry_phase and isinstance(entry_phase.data_json, dict):
                 entry_form = dict(entry_phase.data_json)
+                entry_summary = str(entry_form.get("short_description") or "").strip()
+                if not entry_summary:
+                    raw_reasons = entry_form.get("entry_reasons")
+                    if isinstance(raw_reasons, list):
+                        entry_summary = ", ".join(str(item) for item in raw_reasons if item)
+                entry_summary = entry_summary or "Sem descrição"
+            repair_phase = clean_workshop_get_phase(db, process.id, "reparacao")
+            if repair_phase and isinstance(repair_phase.data_json, dict):
+                repair_phase_data = dict(repair_phase.data_json)
+                raw_repair_form = repair_phase_data.get("form_snapshot")
+                repair_form = raw_repair_form if isinstance(raw_repair_form, dict) else {}
+                repair_summary = {
+                    "summary": clean_form_value(repair_form, "repair_summary").strip(),
+                    "status": clean_form_value(
+                        repair_form, "repair_execution_status", "Por confirmar"
+                    ),
+                    "document_count": len(repair_phase_data.get("uploads") or []),
+                }
             validation_prerequisites = clean_workshop_validation_prerequisites(
                 db, process, vehicle_context
             )
@@ -21720,6 +21789,8 @@ def clean_workshop_phase(
             "active_step": phase,
             "phase_data": phase_data,
             "phase_form": phase_form,
+            "entry_summary": entry_summary,
+            "repair_summary": repair_summary,
             "phase_uploads": phase_uploads,
             "validation_service_rows": clean_workshop_validation_rows(phase_form, entry_form),
             "validation_substep_status": clean_workshop_validation_substep_status(
@@ -22417,6 +22488,38 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 values = [str(value) for value in form.getlist(key)]
                 form_snapshot[key] = values if len(values) > 1 else (values[0] if values else "")
 
+        requested_action = action
+        if phase == "reparacao" and action == "advance":
+            execution_status = clean_form_value(form_snapshot, "repair_execution_status")
+            reserve_reason = clean_form_value(form_snapshot, "repair_reserve_reason").strip()
+            form_snapshot["repair_closed"] = (
+                "Sim"
+                if execution_status == "Concluída"
+                else "Com reservas"
+                if reserve_reason
+                else "Por confirmar"
+            )
+        if phase == "fecho" and action == "close_process":
+            form_snapshot["closure_result"] = "Fechado com reparação"
+            form_snapshot["closure_pending_exists"] = "Não"
+            action = "advance"
+        elif phase == "fecho" and action == "close_with_pending":
+            pending_owner = clean_form_value(form_snapshot, "closure_pending_owner").strip()
+            pending_due = clean_form_value(form_snapshot, "closure_pending_due").strip()
+            pending_description = clean_form_value(
+                form_snapshot, "closure_pending_description"
+            ).strip()
+            if not pending_owner or not pending_due or not pending_description:
+                return RedirectResponse(
+                    f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+                    "&error=closure_pending_required",
+                    status_code=303,
+                )
+            form_snapshot["closure_result"] = "Fechado com reserva"
+            form_snapshot["closure_pending_exists"] = "Sim"
+            form_snapshot["closure_pending_assigned"] = "yes"
+            action = "advance"
+
         phase_data = dict(phase_row.data_json or {})
         stored_uploads = await clean_workshop_store_phase_uploads(
             db,
@@ -22457,6 +22560,30 @@ async def clean_workshop_phase_save(request: Request, phase: str):
         )
         phase_row.data_json = phase_data
         phase_row.started_at = phase_row.started_at or now
+
+        if phase == "fecho" and requested_action == "return_to_repair":
+            phase_row.status = "in_progress"
+            process.current_phase_code = "reparacao"
+            repair_phase = clean_workshop_get_phase(db, process.id, "reparacao")
+            if repair_phase:
+                repair_phase.status = "in_progress"
+                repair_phase.completed_at = None
+                repair_phase.completed_by_id = None
+            record_audit(
+                db,
+                action="workshop.process.returned_to_repair",
+                entity_type="workshop_phased_process",
+                entity_id=process.id,
+                detail="Processo devolvido à reparação na validação final.",
+                user_id=user_id,
+                before_json={"phase": "fecho"},
+                after_json={"phase": "reparacao"},
+            )
+            db.commit()
+            return RedirectResponse(
+                f"{clean_workshop_phase_path('reparacao')}?process_id={process.id}&returned=1",
+                status_code=303,
+            )
 
         if action == "advance":
             phase_reports = (
@@ -22499,6 +22626,23 @@ async def clean_workshop_phase_save(request: Request, phase: str):
                 process.status = "closed"
                 process.closed_at = now
                 redirect_url = f"{clean_workshop_phase_path(phase)}?process_id={process.id}&saved=1"
+                record_audit(
+                    db,
+                    action="workshop.process.closed",
+                    entity_type="workshop_phased_process",
+                    entity_id=process.id,
+                    detail=(
+                        "Processo fechado com pendências."
+                        if requested_action == "close_with_pending"
+                        else "Processo fechado após validação final."
+                    ),
+                    user_id=user_id,
+                    before_json={"status": "active", "phase": phase},
+                    after_json={
+                        "status": "closed",
+                        "result": clean_form_value(form_snapshot, "closure_result"),
+                    },
+                )
         elif action in {"save_substep", "advance_substep"}:
             target_substep = (
                 clean_workshop_next_substep_key(phase, current_substep, process)

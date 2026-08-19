@@ -24976,7 +24976,22 @@ body.clean-task-preview-open {
   padding: 20px;
 }
 
-.clean-admin-dialog header,
+.clean-admin-access-form > header {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.clean-admin-access-form > header > div {
+  min-width: 0;
+}
+
+.clean-admin-access-form > header > button {
+  align-self: start;
+  width: auto;
+}
+
 .clean-admin-dialog footer {
   align-items: center;
   display: flex;
@@ -24995,13 +25010,47 @@ body.clean-task-preview-open {
 }
 
 .clean-admin-access-matrix {
+  align-items: start;
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.clean-admin-access-matrix fieldset {
+  align-self: start;
+  min-width: 0;
+}
+
 .clean-admin-access-matrix .clean-admin-check-grid {
+  align-content: start;
   grid-template-columns: 1fr;
+}
+
+.clean-admin-access-form .clean-admin-access-option {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+  overflow-wrap: normal;
+  width: 100%;
+}
+
+.clean-admin-access-form .clean-admin-access-option > input {
+  height: 16px;
+  margin: 2px 0 0;
+  min-height: 0;
+  padding: 0;
+  width: 16px;
+}
+
+.clean-admin-access-form .clean-admin-access-option > span {
+  display: block;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: break-word;
+  white-space: normal;
+  word-break: normal;
 }
 
 .clean-admin-check-grid label span,
@@ -25339,12 +25388,20 @@ body.clean-task-preview-open {
     padding: 14px;
   }
 
-  .clean-admin-dialog header,
   .clean-admin-dialog footer,
   .clean-admin-phase-heading,
   .clean-admin-publish-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .clean-admin-access-form > header {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .clean-admin-access-form > header > button {
+    justify-self: stretch;
   }
 }
 

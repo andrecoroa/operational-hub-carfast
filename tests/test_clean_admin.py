@@ -56,6 +56,7 @@ def test_clean_admin_users_uses_compact_table_and_wide_access_dialog(authenticat
     assert 'class="clean-admin-user-table"' in response.text
     assert 'data-label="Último acesso"' in response.text
     assert 'class="clean-admin-dialog"' in response.text
+    assert 'class="clean-admin-access-option"' in response.text
     assert "Gestão de acessos" in response.text
     assert "O último Super Admin não pode ser desativado" in response.text
     assert 'class="clean-admin-user-grid"' not in response.text

@@ -260,6 +260,45 @@ def _can_use_channel(
     return False
 
 
+def _reply_channel_context(
+    db, user_id: int, permissions: set[str]
+) -> tuple[list[EmailChannel], dict[int, bool]]:
+    access = _channel_access(db, user_id, permissions)
+    channels = list(
+        db.scalars(
+            select(EmailChannel)
+            .where(
+                EmailChannel.active.is_(True),
+                EmailChannel.id.in_(list(access) or [-1]),
+            )
+            .order_by(EmailChannel.name, EmailChannel.address)
+        )
+    )
+    reply_channels = [
+        channel
+        for channel in channels
+        if _can_use_channel(db, user_id, permissions, channel.id, "reply")
+    ]
+    return reply_channels, {
+        channel.id: _can_use_channel(
+            db, user_id, permissions, channel.id, "send_direct"
+        )
+        for channel in reply_channels
+    }
+
+
+def _sender_channel(db, message: EmailMessage) -> EmailChannel | None:
+    sender = (message.sender or "").strip().lower()
+    if not sender:
+        return None
+    return db.scalar(
+        select(EmailChannel).where(
+            EmailChannel.active.is_(True),
+            func.lower(EmailChannel.address) == sender,
+        )
+    )
+
+
 def _thread_view_data(db, thread: EmailThread) -> dict:
     messages = list(
         db.scalars(
@@ -635,6 +674,9 @@ def email_thread(request: Request, thread_id: int):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         channel = db.get(EmailChannel, thread.channel_id)
         view_data = _thread_view_data(db, thread)
+        reply_channels, reply_channel_send_direct = _reply_channel_context(
+            db, user_id, permissions
+        )
         workflow_context = {
             **work_hierarchy_context(db),
             "email_users": list(
@@ -651,9 +693,20 @@ def email_thread(request: Request, thread_id: int):
                     .order_by(EmailTemplate.name)
                 )
             ),
-            "can_send_direct": _can_use_channel(
-                db, user_id, permissions, thread.channel_id, "send_direct"
-            ),
+            "reply_channels": reply_channels,
+            "reply_channel_send_direct": reply_channel_send_direct,
+            "approvable_message_ids": {
+                message.id
+                for message in view_data["messages"]
+                if permissions.intersection(
+                    {"email.approve", "email.manage", "admin.manage"}
+                )
+                and message.state == "pending_approval"
+                and (sender_channel := _sender_channel(db, message)) is not None
+                and _can_use_channel(
+                    db, user_id, permissions, sender_channel.id, "approve"
+                )
+            },
         }
         return templates.TemplateResponse(
             request,
@@ -675,10 +728,6 @@ def email_thread(request: Request, thread_id: int):
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
                 )
                 and _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"),
-                "can_approve": bool(
-                    permissions.intersection({"email.approve", "email.manage", "admin.manage"})
-                )
-                and _can_use_channel(db, user_id, permissions, thread.channel_id, "approve"),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": False,
             },
@@ -704,6 +753,9 @@ def email_thread_preview(request: Request, thread_id: int):
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
             return HTMLResponse("Conversa não encontrada.", status_code=404)
         view_data = _thread_view_data(db, thread)
+        reply_channels, reply_channel_send_direct = _reply_channel_context(
+            db, user_id, permissions
+        )
         workflow_context = {
             **work_hierarchy_context(db),
             "email_users": list(
@@ -720,9 +772,20 @@ def email_thread_preview(request: Request, thread_id: int):
                     .order_by(EmailTemplate.name)
                 )
             ),
-            "can_send_direct": _can_use_channel(
-                db, user_id, permissions, thread.channel_id, "send_direct"
-            ),
+            "reply_channels": reply_channels,
+            "reply_channel_send_direct": reply_channel_send_direct,
+            "approvable_message_ids": {
+                message.id
+                for message in view_data["messages"]
+                if permissions.intersection(
+                    {"email.approve", "email.manage", "admin.manage"}
+                )
+                and message.state == "pending_approval"
+                and (sender_channel := _sender_channel(db, message)) is not None
+                and _can_use_channel(
+                    db, user_id, permissions, sender_channel.id, "approve"
+                )
+            },
         }
         return templates.TemplateResponse(
             request,
@@ -741,10 +804,6 @@ def email_thread_preview(request: Request, thread_id: int):
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
                 )
                 and _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"),
-                "can_approve": bool(
-                    permissions.intersection({"email.approve", "email.manage", "admin.manage"})
-                )
-                and _can_use_channel(db, user_id, permissions, thread.channel_id, "approve"),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": True,
             },
@@ -1064,7 +1123,11 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
 
 @email_router.post("/v2-clean/email/{thread_id}/reply")
 def email_reply(
-    request: Request, thread_id: int, body: str = Form(...), submit: str = Form("draft")
+    request: Request,
+    thread_id: int,
+    body: str = Form(...),
+    sender_channel_id: int | None = Form(None),
+    submit: str = Form("draft"),
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
@@ -1074,9 +1137,21 @@ def email_reply(
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
-        channel = db.get(EmailChannel, thread.channel_id)
+        sender_channel = db.get(
+            EmailChannel, sender_channel_id or thread.channel_id
+        )
+        if (
+            not sender_channel
+            or not sender_channel.active
+            or not _can_use_channel(
+                db, user_id, permissions, sender_channel.id, "reply"
+            )
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
         if submit == "send" and not _can_use_channel(
-            db, user_id, permissions, thread.channel_id, "send_direct"
+            db, user_id, permissions, sender_channel.id, "send_direct"
         ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
@@ -1089,7 +1164,7 @@ def email_reply(
             thread_id=thread.id,
             direction="outbound",
             state=state,
-            sender=channel.address,
+            sender=sender_channel.address,
             recipients_json=[{"Email": thread.sender_email}],
             subject=f"Re: {thread.subject}",
             text_body=body,
@@ -1114,8 +1189,8 @@ def email_reply(
             try:
                 result = send_message(
                     message,
-                    channel.address,
-                    reply_to=channel.address,
+                    sender_channel.address,
+                    reply_to=sender_channel.address,
                     parent_message_id=parent_message_id,
                     references=references,
                 )
@@ -1135,7 +1210,14 @@ def email_reply(
             state = "sent"
         db.add(
             EmailAuditEvent(
-                thread_id=thread.id, message_id=message.id, user_id=user_id, action=state
+                thread_id=thread.id,
+                message_id=message.id,
+                user_id=user_id,
+                action=state,
+                details_json={
+                    "sender_channel_id": sender_channel.id,
+                    "sender": sender_channel.address,
+                },
             )
         )
         db.commit()
@@ -1151,14 +1233,18 @@ def email_approve(request: Request, thread_id: int, message_id: int):
     with SessionLocal() as db:
         message = db.get(EmailMessage, message_id)
         thread = db.get(EmailThread, thread_id)
+        sender_channel = _sender_channel(db, message) if message else None
         if (
             not thread
             or not message
             or message.thread_id != thread.id
-            or not _can_use_channel(db, user_id, auth[1], thread.channel_id, "approve")
+            or not _can_use_channel(db, user_id, auth[1], thread.channel_id)
+            or not sender_channel
+            or not _can_use_channel(
+                db, user_id, auth[1], sender_channel.id, "approve"
+            )
         ):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
-        channel = db.get(EmailChannel, thread.channel_id)
         prior_messages = db.scalars(
             select(EmailMessage)
             .where(
@@ -1176,8 +1262,8 @@ def email_approve(request: Request, thread_id: int, message_id: int):
         try:
             result = send_message(
                 message,
-                channel.address,
-                reply_to=channel.address,
+                sender_channel.address,
+                reply_to=sender_channel.address,
                 parent_message_id=parent_message_id,
                 references=references,
             )
@@ -1201,6 +1287,10 @@ def email_approve(request: Request, thread_id: int, message_id: int):
                 message_id=message.id,
                 user_id=user_id,
                 action="approved_and_sent",
+                details_json={
+                    "sender_channel_id": sender_channel.id,
+                    "sender": sender_channel.address,
+                },
             )
         )
         db.commit()

@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.models.admin import User
 from app.models.email import (
     EmailAttachment,
+    EmailChannel,
     EmailChannelUser,
     EmailMessage,
     EmailThread,
@@ -372,3 +373,102 @@ def test_email_modal_approval_has_an_explicit_click_handler():
     assert 'querySelectorAll("[data-email-approve]")' in script
     assert 'event.submitter?.matches("[data-email-approve]")' in script
     assert 'resultUrl.searchParams.has("error")' in script
+
+
+def test_email_reply_can_select_an_authorized_sender_channel(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("pm-sender-select"))
+    alternative = EmailChannel(
+        code="finance-test",
+        name="Financeiro",
+        address="financeiro@carfast.pt",
+        active=True,
+    )
+    db_session.add(alternative)
+    db_session.commit()
+
+    preview = authenticated_client.get(f"/v2-clean/email/{thread.id}/preview")
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Resposta preparada pela caixa financeira.",
+            "sender_channel_id": alternative.id,
+            "submit": "approval",
+        },
+        follow_redirects=False,
+    )
+
+    assert preview.status_code == 200
+    assert 'name="sender_channel_id"' in preview.text
+    assert "Financeiro · financeiro@carfast.pt" in preview.text
+    assert response.status_code == 303
+    message = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    assert message.sender == "financeiro@carfast.pt"
+    assert message.state == "pending_approval"
+
+
+def test_email_approval_sends_from_the_sender_selected_on_the_reply(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    thread, _ = ingest_inbound(db_session, _payload("pm-sender-approval"))
+    alternative = EmailChannel(
+        code="support-test",
+        name="Suporte",
+        address="suporte@carfast.pt",
+        active=True,
+    )
+    db_session.add(alternative)
+    db_session.commit()
+    authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Resposta a aprovar.",
+            "sender_channel_id": alternative.id,
+            "submit": "approval",
+        },
+    )
+    message = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    captured = {}
+
+    def fake_send_message(message, sender, **kwargs):
+        captured["message_id"] = message.id
+        captured["sender"] = sender
+        captured["reply_to"] = kwargs["reply_to"]
+        return {"MessageID": "pm-sender-sent"}
+
+    monkeypatch.setattr(email_web, "send_message", fake_send_message)
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/messages/{message.id}/approve",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert captured == {
+        "message_id": message.id,
+        "sender": "suporte@carfast.pt",
+        "reply_to": "suporte@carfast.pt",
+    }
+    db_session.refresh(message)
+    assert message.state == "sent"
+    assert message.external_message_id == "pm-sender-sent"

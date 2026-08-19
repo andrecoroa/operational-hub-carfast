@@ -47,9 +47,28 @@
       if (textarea && option?.dataset.body) textarea.value = option.dataset.body;
     }));
   };
+  const bindReplySenders = (root) => {
+    root.querySelectorAll("[data-email-reply-sender]").forEach((select) => {
+      const form = select.closest("form");
+      const summary = form?.querySelector("[data-email-approval-summary]");
+      const send = form?.querySelector("[data-email-direct-action]");
+      const approval = form?.querySelector("[data-email-approval-action]");
+      const refresh = () => {
+        const direct = select.selectedOptions[0]?.dataset.sendDirect === "true";
+        if (summary) summary.textContent = direct
+          ? "Esta caixa pode enviar diretamente com o teu perfil."
+          : "A resposta desta caixa só é enviada depois da aprovação.";
+        if (send) send.hidden = !direct;
+        if (approval) approval.hidden = direct;
+      };
+      select.addEventListener("change", refresh);
+      refresh();
+    });
+  };
   const bindThread = (root = document) => {
     bindWorkHierarchy(root);
     bindTemplates(root);
+    bindReplySenders(root);
     root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);

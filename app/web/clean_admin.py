@@ -17,6 +17,7 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
+from app.models.email import EmailChannel, EmailChannelRole, EmailTemplate
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import (
     OrganizationalUnit,
@@ -25,6 +26,14 @@ from app.models.organization import (
     UserOrganizationalUnit,
 )
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.work_hierarchy import (
+    RoleWorkScope,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSourceDefault,
+    WorkSubcategory,
+)
 from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
@@ -133,6 +142,12 @@ ADMIN_NAV = (
         ("admin.settings.read", "admin.settings.manage", "settings.manage", "admin.manage"),
     ),
     (
+        "work_classification",
+        "Filas e classificação",
+        "/v2-clean/admin/work-classification",
+        ("admin.settings.read", "admin.settings.manage", "settings.manage", "admin.manage"),
+    ),
+    (
         "workshop_models",
         "Modelos da Oficina",
         "/v2-clean/admin/workshop-models",
@@ -162,6 +177,14 @@ ADMIN_NAV = (
         ("admin.security.read", "admin.security.manage", "users.manage", "admin.manage"),
     ),
 )
+
+
+WORK_ENTITY_MODELS = {
+    "queue": WorkQueue,
+    "department": WorkDepartment,
+    "category": WorkCategory,
+    "subcategory": WorkSubcategory,
+}
 
 
 def clean_admin_user_has(db, user: User | None, *permission_codes: str) -> bool:
@@ -1096,6 +1119,442 @@ def clean_admin_settings(request: Request):
             ),
         )
     return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+@clean_admin_router.get(
+    "/v2-clean/admin/work-classification", response_class=HTMLResponse
+)
+def clean_admin_work_classification(request: Request):
+    access = _authorized(
+        request,
+        "admin.settings.read",
+        "admin.settings.manage",
+        "settings.manage",
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        queues = db.scalars(select(WorkQueue).order_by(WorkQueue.sort_order, WorkQueue.name)).all()
+        departments = db.scalars(
+            select(WorkDepartment).order_by(
+                WorkDepartment.queue_id, WorkDepartment.sort_order, WorkDepartment.name
+            )
+        ).all()
+        categories = db.scalars(
+            select(WorkCategory).order_by(
+                WorkCategory.department_id, WorkCategory.sort_order, WorkCategory.name
+            )
+        ).all()
+        subcategories = db.scalars(
+            select(WorkSubcategory).order_by(
+                WorkSubcategory.category_id,
+                WorkSubcategory.sort_order,
+                WorkSubcategory.name,
+            )
+        ).all()
+        roles = db.scalars(select(Role).where(Role.active.is_(True)).order_by(Role.name)).all()
+        scopes = db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
+        channels = db.scalars(select(EmailChannel).order_by(EmailChannel.name)).all()
+        channel_roles = db.scalars(
+            select(EmailChannelRole).order_by(
+                EmailChannelRole.channel_id, EmailChannelRole.role_id
+            )
+        ).all()
+        email_templates = db.scalars(
+            select(EmailTemplate).order_by(EmailTemplate.name)
+        ).all()
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        source_defaults = db.scalars(
+            select(WorkSourceDefault).order_by(
+                WorkSourceDefault.source_type, WorkSourceDefault.source_key
+            )
+        ).all()
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "work_classification",
+            work_queues=queues,
+            work_departments=departments,
+            work_categories=categories,
+            work_subcategories=subcategories,
+            work_queues_by_id={item.id: item for item in queues},
+            work_departments_by_id={item.id: item for item in departments},
+            work_categories_by_id={item.id: item for item in categories},
+            work_subcategories_by_id={item.id: item for item in subcategories},
+            roles=roles,
+            roles_by_id={item.id: item for item in roles},
+            work_scopes=scopes,
+            email_channels=channels,
+            email_channel_roles=channel_roles,
+            email_templates=email_templates,
+            active_users=users,
+            source_defaults=source_defaults,
+            can_manage=bool(
+                permissions.intersection(
+                    {"admin.settings.manage", "settings.manage", "admin.manage"}
+                )
+            ),
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+def _work_classification_manage_access(request: Request):
+    return _authorized(
+        request, "admin.settings.manage", "settings.manage", "admin.manage"
+    )
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/items/{entity_type}")
+def clean_admin_create_work_classification(
+    request: Request,
+    entity_type: str,
+    code: str = Form(""),
+    name: str = Form(""),
+    description: str = Form(""),
+    parent_id: int | None = Form(None),
+    sort_order: int = Form(0),
+    requires_description: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    model = WORK_ENTITY_MODELS.get(entity_type)
+    clean_code = code.strip().lower()
+    if not model or not CODE_PATTERN.fullmatch(clean_code) or not name.strip():
+        return _redirect(
+            "/v2-clean/admin/work-classification", "error", "invalid_classification"
+        )
+    parent_fields = {
+        "department": "queue_id",
+        "category": "department_id",
+        "subcategory": "category_id",
+    }
+    if entity_type != "queue" and not parent_id:
+        return _redirect(
+            "/v2-clean/admin/work-classification", "error", "missing_parent"
+        )
+    values = {
+        "code": clean_code,
+        "name": name.strip(),
+        "description": description.strip() or None,
+        "sort_order": sort_order,
+        "active": True,
+    }
+    if entity_type != "queue":
+        values[parent_fields[entity_type]] = parent_id
+        values["requires_description"] = requires_description == "on"
+    with SessionLocal() as db:
+        db.add(model(**values))
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/items/{entity_type}/{entity_id}"
+)
+def clean_admin_update_work_classification(
+    request: Request,
+    entity_type: str,
+    entity_id: int,
+    name: str = Form(""),
+    description: str = Form(""),
+    sort_order: int = Form(0),
+    active: str = Form(""),
+    requires_description: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    model = WORK_ENTITY_MODELS.get(entity_type)
+    if not model or not name.strip():
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid")
+    with SessionLocal() as db:
+        item = db.get(model, entity_id)
+        if not item:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        item.name = name.strip()
+        item.description = description.strip() or None
+        item.sort_order = sort_order
+        item.active = active == "on"
+        if hasattr(item, "requires_description"):
+            item.requires_description = requires_description == "on"
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/scopes")
+def clean_admin_save_work_scope(
+    request: Request,
+    role_id: int = Form(...),
+    queue_id: int = Form(...),
+    department_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+    can_read: str = Form(""),
+    can_create: str = Form(""),
+    can_update: str = Form(""),
+    can_assign: str = Form(""),
+    can_close: str = Form(""),
+    can_manage: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        scope = db.scalar(
+            select(RoleWorkScope).where(
+                RoleWorkScope.role_id == role_id,
+                RoleWorkScope.queue_id == queue_id,
+                RoleWorkScope.department_id == department_id,
+                RoleWorkScope.category_id == category_id,
+                RoleWorkScope.subcategory_id == subcategory_id,
+            )
+        ) or RoleWorkScope(
+            role_id=role_id,
+            queue_id=queue_id,
+            department_id=department_id,
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+        )
+        scope.can_read = can_read == "on"
+        scope.can_create = can_create == "on"
+        scope.can_update = can_update == "on"
+        scope.can_assign = can_assign == "on"
+        scope.can_close = can_close == "on"
+        scope.can_manage = can_manage == "on"
+        db.add(scope)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/scopes/{scope_id}/delete")
+def clean_admin_delete_work_scope(request: Request, scope_id: int):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        scope = db.get(RoleWorkScope, scope_id)
+        if scope:
+            db.delete(scope)
+            db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-channels/{channel_id}")
+def clean_admin_update_email_channel(
+    request: Request,
+    channel_id: int,
+    name: str = Form(""),
+    active: str = Form(""),
+    auto_task_mode: str = Form("none"),
+    default_queue_id: int | None = Form(None),
+    default_department_id: int | None = Form(None),
+    default_category_id: int | None = Form(None),
+    default_subcategory_id: int | None = Form(None),
+    default_document_type: str = Form(""),
+    default_assignee_id: int | None = Form(None),
+    default_due_days: int | None = Form(None),
+    default_wait_days: int | None = Form(None),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    if auto_task_mode not in {"none", "open", "complete"}:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_mode")
+    with SessionLocal() as db:
+        channel = db.get(EmailChannel, channel_id)
+        if not channel:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        channel.name = name.strip() or channel.name
+        channel.active = active == "on"
+        channel.auto_task_mode = auto_task_mode
+        channel.default_queue_id = default_queue_id
+        channel.default_department_id = default_department_id
+        channel.default_category_id = default_category_id
+        channel.default_subcategory_id = default_subcategory_id
+        channel.default_document_type = default_document_type.strip() or None
+        channel.default_assignee_id = default_assignee_id
+        channel.default_due_days = default_due_days
+        channel.default_wait_days = default_wait_days
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-channel-roles")
+def clean_admin_save_email_channel_role(
+    request: Request,
+    channel_id: int = Form(...),
+    role_id: int = Form(...),
+    can_read: str = Form(""),
+    can_reply: str = Form(""),
+    can_send_direct: str = Form(""),
+    can_approve: str = Form(""),
+    can_manage: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        grant = db.scalar(
+            select(EmailChannelRole).where(
+                EmailChannelRole.channel_id == channel_id,
+                EmailChannelRole.role_id == role_id,
+            )
+        ) or EmailChannelRole(channel_id=channel_id, role_id=role_id)
+        grant.can_read = can_read == "on"
+        grant.can_reply = can_reply == "on"
+        grant.can_send_direct = can_send_direct == "on"
+        grant.can_approve = can_approve == "on"
+        grant.can_manage = can_manage == "on"
+        db.add(grant)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-templates")
+def clean_admin_create_email_template(
+    request: Request,
+    code: str = Form(""),
+    name: str = Form(""),
+    subject_template: str = Form(""),
+    body_template: str = Form(""),
+    channel_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    clean_code = code.strip().lower()
+    if not CODE_PATTERN.fullmatch(clean_code) or not name.strip() or not body_template.strip():
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_template")
+    with SessionLocal() as db:
+        db.add(
+            EmailTemplate(
+                code=clean_code,
+                name=name.strip(),
+                subject_template=subject_template.strip() or None,
+                body_template=body_template.strip(),
+                channel_id=channel_id,
+                category_id=category_id,
+                subcategory_id=subcategory_id,
+                active=True,
+                created_by_id=access[0],
+            )
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-templates/{template_id}"
+)
+def clean_admin_update_email_template(
+    request: Request,
+    template_id: int,
+    name: str = Form(""),
+    subject_template: str = Form(""),
+    body_template: str = Form(""),
+    channel_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+    active: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    if not name.strip() or not body_template.strip():
+        return _redirect(
+            "/v2-clean/admin/work-classification", "error", "invalid_template"
+        )
+    with SessionLocal() as db:
+        item = db.get(EmailTemplate, template_id)
+        if not item:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "missing"
+            )
+        item.name = name.strip()
+        item.subject_template = subject_template.strip() or None
+        item.body_template = body_template.strip()
+        item.channel_id = channel_id
+        item.category_id = category_id
+        item.subcategory_id = subcategory_id
+        item.active = active == "on"
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+WORK_SOURCE_TYPES = {"recurring", "email", "documentation", "workshop", "stock"}
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/source-defaults")
+def clean_admin_create_source_default(
+    request: Request,
+    source_type: str = Form(""),
+    source_key: str = Form(""),
+    queue_id: int | None = Form(None),
+    department_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    clean_type = source_type.strip().lower()
+    clean_key = source_key.strip().lower()
+    if clean_type not in WORK_SOURCE_TYPES or not CODE_PATTERN.fullmatch(clean_key):
+        return _redirect(
+            "/v2-clean/admin/work-classification", "error", "invalid_source"
+        )
+    with SessionLocal() as db:
+        if db.scalar(
+            select(WorkSourceDefault).where(
+                WorkSourceDefault.source_type == clean_type,
+                WorkSourceDefault.source_key == clean_key,
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "duplicate_source"
+            )
+        db.add(
+            WorkSourceDefault(
+                source_type=clean_type,
+                source_key=clean_key,
+                queue_id=queue_id,
+                department_id=department_id,
+                category_id=category_id,
+                subcategory_id=subcategory_id,
+                active=True,
+            )
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/source-defaults/{default_id}"
+)
+def clean_admin_update_source_default(
+    request: Request,
+    default_id: int,
+    queue_id: int | None = Form(None),
+    department_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+    active: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        item = db.get(WorkSourceDefault, default_id)
+        if not item:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "missing"
+            )
+        item.queue_id = queue_id
+        item.department_id = department_id
+        item.category_id = category_id
+        item.subcategory_id = subcategory_id
+        item.active = active == "on"
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
 @clean_admin_router.post("/v2-clean/admin/settings/catalogs")

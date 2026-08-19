@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from html import escape
 from html.parser import HTMLParser
 from mimetypes import guess_type
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Form, Header, Request
@@ -14,16 +15,19 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.admin import User
+from app.models.admin import User, UserRole
 from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelRole,
     EmailChannelUser,
     EmailMessage,
+    EmailTemplate,
     EmailThread,
 )
 from app.models.tasks import Task, TaskEmailOrigin
+from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.services.authorization import get_user_permission_codes
 from app.services.email_postmark import (
     ensure_email_channels,
@@ -40,6 +44,8 @@ from app.services.work_classification import (
     message_reference,
     task_classification,
     thread_reference,
+    validate_work_hierarchy,
+    work_hierarchy_context,
 )
 
 email_router = APIRouter()
@@ -186,12 +192,52 @@ def _auth(request: Request, *required: str):
     return (int(raw_id), permissions) if permissions.intersection(required) else None
 
 
-def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, EmailChannelUser | None]:
+def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, object | None]:
     channels = list(db.scalars(select(EmailChannel).where(EmailChannel.active.is_(True))))
     if permissions.intersection({"email.manage", "admin.manage"}):
         return {channel.id: None for channel in channels}
-    grants = list(db.scalars(select(EmailChannelUser).where(EmailChannelUser.user_id == user_id)))
-    return {grant.channel_id: grant for grant in grants}
+    user_grants = list(
+        db.scalars(select(EmailChannelUser).where(EmailChannelUser.user_id == user_id))
+    )
+    role_ids = list(
+        db.scalars(select(UserRole.role_id).where(UserRole.user_id == user_id))
+    )
+    role_grants = list(
+        db.scalars(
+            select(EmailChannelRole).where(
+                EmailChannelRole.role_id.in_(role_ids or [-1]),
+                EmailChannelRole.can_read.is_(True),
+            )
+        )
+    )
+    merged: dict[int, object] = {}
+    for grant in role_grants:
+        current = merged.setdefault(
+            grant.channel_id,
+            SimpleNamespace(
+                can_reply=False,
+                can_send_direct=False,
+                can_approve=False,
+                can_manage=False,
+            ),
+        )
+        current.can_reply = current.can_reply or grant.can_reply
+        current.can_send_direct = current.can_send_direct or grant.can_send_direct
+        current.can_approve = current.can_approve or grant.can_approve
+        current.can_manage = current.can_manage or grant.can_manage
+    for grant in user_grants:
+        current = merged.setdefault(
+            grant.channel_id,
+            SimpleNamespace(
+                can_reply=False,
+                can_send_direct=False,
+                can_approve=False,
+                can_manage=False,
+            ),
+        )
+        current.can_reply = current.can_reply or grant.can_reply
+        current.can_approve = current.can_approve or grant.can_approve
+    return merged
 
 
 def _can_use_channel(
@@ -207,6 +253,10 @@ def _can_use_channel(
         return bool(grant.can_reply)
     if action == "approve":
         return bool(grant.can_approve)
+    if action == "send_direct":
+        return bool(grant.can_send_direct)
+    if action == "manage":
+        return bool(grant.can_manage)
     return False
 
 
@@ -256,6 +306,16 @@ def _classification_context() -> dict:
         "document_types": DOCUMENT_TYPES,
         "attachment_statuses": ATTACHMENT_STATUSES,
     }
+
+
+def _optional_datetime(value: str) -> datetime | None:
+    if not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
 @email_router.post("/api/webhooks/postmark/inbound")
@@ -325,6 +385,18 @@ def email_inbox(request: Request, status: str = "", channel: str = "", q: str = 
             if users
             else {}
         )
+        compose_channels = [
+            item
+            for item in channels
+            if _can_use_channel(db, user_id, permissions, item.id, "reply")
+        ]
+        email_templates = list(
+            db.scalars(
+                select(EmailTemplate)
+                .where(EmailTemplate.active.is_(True))
+                .order_by(EmailTemplate.name)
+            )
+        )
         return templates.TemplateResponse(
             request,
             "clean_email_inbox.html",
@@ -340,8 +412,166 @@ def email_inbox(request: Request, status: str = "", channel: str = "", q: str = 
                 "users": users,
                 "channel_grants": channel_grants,
                 "can_manage_channels": bool(users),
+                "compose_channels": compose_channels,
+                "email_templates": email_templates,
+                "channel_send_direct": {
+                    item.id: _can_use_channel(
+                        db, user_id, permissions, item.id, "send_direct"
+                    )
+                    for item in compose_channels
+                },
             },
         )
+
+
+@email_router.post("/v2-clean/email/new")
+def email_new_message(
+    request: Request,
+    channel_id: int = Form(...),
+    recipients: str = Form(""),
+    subject: str = Form(""),
+    body: str = Form(""),
+    template_id: str = Form(""),
+    submit: str = Form("draft"),
+):
+    auth = _auth(request, "email.reply", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+    user_id, permissions = auth
+    recipient_list = [
+        item.strip()
+        for item in recipients.replace(";", ",").split(",")
+        if item.strip()
+    ]
+    if not recipient_list or any(
+        "@" not in item or item.startswith("@") or item.endswith("@")
+        for item in recipient_list
+    ):
+        return RedirectResponse("/v2-clean/email?error=invalid_recipient", status_code=303)
+    with SessionLocal() as db:
+        channel = db.get(EmailChannel, channel_id)
+        if (
+            not channel
+            or not channel.active
+            or not _can_use_channel(db, user_id, permissions, channel.id, "reply")
+        ):
+            return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+        template = db.get(EmailTemplate, int(template_id)) if template_id.isdigit() else None
+        if template and (
+            not template.active
+            or template.channel_id not in {None, channel.id}
+        ):
+            template = None
+        clean_subject = subject.strip() or (template.subject_template if template else "") or ""
+        clean_body = body.strip() or (template.body_template if template else "") or ""
+        if not clean_subject or not clean_body:
+            return RedirectResponse("/v2-clean/email?error=missing_message", status_code=303)
+        if submit == "send" and not _can_use_channel(
+            db, user_id, permissions, channel.id, "send_direct"
+        ):
+            return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+
+        queue_id = channel.default_queue_id
+        department_id = channel.default_department_id
+        category_id = channel.default_category_id
+        subcategory_id = channel.default_subcategory_id
+        if template and template.category_id:
+            category_item = db.get(WorkCategory, template.category_id)
+            department_item = (
+                db.get(WorkDepartment, category_item.department_id) if category_item else None
+            )
+            queue_item = db.get(WorkQueue, department_item.queue_id) if department_item else None
+            if category_item and department_item and queue_item:
+                queue_id = queue_item.id
+                department_id = department_item.id
+                category_id = category_item.id
+                subcategory_item = (
+                    db.get(WorkSubcategory, template.subcategory_id)
+                    if template.subcategory_id
+                    else None
+                )
+                subcategory_id = (
+                    subcategory_item.id
+                    if subcategory_item
+                    and subcategory_item.category_id == category_item.id
+                    else None
+                )
+
+        now = datetime.now(UTC)
+        state = {
+            "approval": "pending_approval",
+            "send": "approved",
+        }.get(submit, "draft")
+        thread = EmailThread(
+            channel_id=channel.id,
+            subject=clean_subject[:500],
+            status="waiting_approval" if state == "pending_approval" else "in_progress",
+            sender_email=recipient_list[0][:255],
+            sender_name=recipient_list[0][:255],
+            work_queue_id=queue_id,
+            work_department_id=department_id,
+            work_category_id=category_id,
+            work_subcategory_id=subcategory_id,
+            classification_status=(
+                "classified" if queue_id and department_id else "unclassified"
+            ),
+            document_type=channel.default_document_type,
+            assigned_to_id=channel.default_assignee_id,
+            due_at=(
+                now + timedelta(days=channel.default_due_days)
+                if channel.default_due_days is not None
+                else None
+            ),
+            waiting_until=(
+                now + timedelta(days=channel.default_wait_days)
+                if channel.default_wait_days is not None
+                else None
+            ),
+            last_message_at=now,
+        )
+        db.add(thread)
+        db.flush()
+        message = EmailMessage(
+            thread_id=thread.id,
+            direction="outbound",
+            state=state,
+            sender=channel.address,
+            recipients_json=[{"Email": item} for item in recipient_list],
+            subject=clean_subject[:500],
+            text_body=clean_body,
+            created_by_id=user_id,
+        )
+        db.add(message)
+        db.flush()
+        audit_action = state
+        if submit == "send":
+            try:
+                result = send_message(message, channel.address, reply_to=channel.address)
+            except RuntimeError as exc:
+                message.postmark_error = str(exc)
+                db.commit()
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread.id}?error=send_disabled", status_code=303
+                )
+            message.state = "sent"
+            message.sent_at = now
+            message.approved_by_id = user_id
+            message.approved_at = now
+            message.external_message_id = result.get("MessageID") or None
+            thread.status = "waiting_reply"
+            audit_action = "sent"
+        db.add(
+            EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                user_id=user_id,
+                action=f"new_message_{audit_action}",
+                details_json={"template_id": template.id if template else None},
+            )
+        )
+        db.commit()
+        thread_id = thread.id
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved={audit_action}", status_code=303)
 
 
 @email_router.get("/v2-clean/email/{thread_id}", response_class=HTMLResponse)
@@ -364,6 +594,26 @@ def email_thread(request: Request, thread_id: int):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         channel = db.get(EmailChannel, thread.channel_id)
         view_data = _thread_view_data(db, thread)
+        workflow_context = {
+            **work_hierarchy_context(db),
+            "email_users": list(
+                db.scalars(select(User).where(User.active.is_(True)).order_by(User.name))
+            ),
+            "email_templates": list(
+                db.scalars(
+                    select(EmailTemplate)
+                    .where(
+                        EmailTemplate.active.is_(True),
+                        (EmailTemplate.channel_id.is_(None))
+                        | (EmailTemplate.channel_id == thread.channel_id),
+                    )
+                    .order_by(EmailTemplate.name)
+                )
+            ),
+            "can_send_direct": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "send_direct"
+            ),
+        }
         return templates.TemplateResponse(
             request,
             "clean_email_thread.html",
@@ -375,6 +625,7 @@ def email_thread(request: Request, thread_id: int):
                 "channel": channel,
                 **view_data,
                 **_classification_context(),
+                **workflow_context,
                 "status_labels": STATUS_LABELS,
                 "can_triage": bool(
                     permissions.intersection({"email.triage", "email.manage", "admin.manage"})
@@ -412,6 +663,26 @@ def email_thread_preview(request: Request, thread_id: int):
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
             return HTMLResponse("Conversa não encontrada.", status_code=404)
         view_data = _thread_view_data(db, thread)
+        workflow_context = {
+            **work_hierarchy_context(db),
+            "email_users": list(
+                db.scalars(select(User).where(User.active.is_(True)).order_by(User.name))
+            ),
+            "email_templates": list(
+                db.scalars(
+                    select(EmailTemplate)
+                    .where(
+                        EmailTemplate.active.is_(True),
+                        (EmailTemplate.channel_id.is_(None))
+                        | (EmailTemplate.channel_id == thread.channel_id),
+                    )
+                    .order_by(EmailTemplate.name)
+                )
+            ),
+            "can_send_direct": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "send_direct"
+            ),
+        }
         return templates.TemplateResponse(
             request,
             "_email_thread_content.html",
@@ -420,6 +691,7 @@ def email_thread_preview(request: Request, thread_id: int):
                 "channel": db.get(EmailChannel, thread.channel_id),
                 **view_data,
                 **_classification_context(),
+                **workflow_context,
                 "status_labels": STATUS_LABELS,
                 "can_triage": bool(
                     permissions.intersection({"email.triage", "email.manage", "admin.manage"})
@@ -478,6 +750,14 @@ def email_triage(
     nature: str = Form(""),
     document_type: str = Form(""),
     triage_notes: str = Form(""),
+    work_queue_id: str = Form(""),
+    work_department_id: str = Form(""),
+    work_category_id: str = Form(""),
+    work_subcategory_id: str = Form(""),
+    classification_other_text: str = Form(""),
+    assigned_to_id: str = Form(""),
+    due_at: str = Form(""),
+    waiting_until: str = Form(""),
 ):
     auth = _auth(request, "email.triage", "email.manage", "admin.manage")
     if not auth:
@@ -498,10 +778,48 @@ def email_triage(
         thread = db.get(EmailThread, thread_id)
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
+        hierarchy_selection = None
+        if work_queue_id.strip() or work_department_id.strip():
+            hierarchy_selection = validate_work_hierarchy(
+                db,
+                queue_id=int(work_queue_id) if work_queue_id.isdigit() else None,
+                department_id=(
+                    int(work_department_id) if work_department_id.isdigit() else None
+                ),
+                category_id=int(work_category_id) if work_category_id.isdigit() else None,
+                subcategory_id=(
+                    int(work_subcategory_id) if work_subcategory_id.isdigit() else None
+                ),
+                other_text=classification_other_text,
+            )
+            if not hierarchy_selection:
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
+                    status_code=303,
+                )
+        assignee = (
+            db.get(User, int(assigned_to_id)) if assigned_to_id.isdigit() else None
+        )
         thread.content_type = content_type or None
         thread.nature = nature or None
         thread.document_type = document_type or None
         thread.triage_notes = triage_notes.strip() or None
+        thread.assigned_to_id = assignee.id if assignee and assignee.active else None
+        thread.due_at = _optional_datetime(due_at)
+        thread.waiting_until = _optional_datetime(waiting_until)
+        if hierarchy_selection:
+            thread.work_queue_id = hierarchy_selection.queue.id
+            thread.work_department_id = hierarchy_selection.department.id
+            thread.work_category_id = (
+                hierarchy_selection.category.id if hierarchy_selection.category else None
+            )
+            thread.work_subcategory_id = (
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection.subcategory
+                else None
+            )
+            thread.classification_status = hierarchy_selection.status
+            thread.classification_other_text = hierarchy_selection.other_text
         thread.status = "in_progress" if thread.status == "triage" else thread.status
         db.add(
             EmailAuditEvent(
@@ -512,6 +830,11 @@ def email_triage(
                     "content_type": thread.content_type,
                     "nature": thread.nature,
                     "document_type": thread.document_type,
+                    "work_queue_id": thread.work_queue_id,
+                    "work_department_id": thread.work_department_id,
+                    "work_category_id": thread.work_category_id,
+                    "work_subcategory_id": thread.work_subcategory_id,
+                    "assigned_to_id": thread.assigned_to_id,
                 },
             )
         )
@@ -711,7 +1034,16 @@ def email_reply(
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         channel = db.get(EmailChannel, thread.channel_id)
-        state = "pending_approval" if submit == "approval" else "draft"
+        if submit == "send" and not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "send_direct"
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        state = {
+            "approval": "pending_approval",
+            "send": "approved",
+        }.get(submit, "draft")
         message = EmailMessage(
             thread_id=thread.id,
             direction="outbound",
@@ -725,6 +1057,41 @@ def email_reply(
         db.add(message)
         thread.status = "waiting_approval" if state == "pending_approval" else "in_progress"
         db.flush()
+        if submit == "send":
+            prior_messages = db.scalars(
+                select(EmailMessage)
+                .where(
+                    EmailMessage.thread_id == thread.id,
+                    EmailMessage.external_message_id.is_not(None),
+                )
+                .order_by(EmailMessage.id)
+            ).all()
+            parent_message_id = prior_messages[-1].external_message_id if prior_messages else None
+            references = [
+                item.external_message_id for item in prior_messages if item.external_message_id
+            ]
+            try:
+                result = send_message(
+                    message,
+                    channel.address,
+                    reply_to=channel.address,
+                    parent_message_id=parent_message_id,
+                    references=references,
+                )
+            except RuntimeError as exc:
+                message.postmark_error = str(exc)
+                db.commit()
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=send_disabled", status_code=303
+                )
+            now = datetime.now(UTC)
+            message.state = "sent"
+            message.sent_at = now
+            message.approved_by_id = user_id
+            message.approved_at = now
+            message.external_message_id = result.get("MessageID") or message.external_message_id
+            thread.status = "waiting_reply"
+            state = "sent"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id, message_id=message.id, user_id=user_id, action=state
@@ -810,7 +1177,21 @@ def email_create_task(request: Request, thread_id: int):
         if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         if not thread.task_id:
+            hierarchy = validate_work_hierarchy(
+                db,
+                queue_id=thread.work_queue_id,
+                department_id=thread.work_department_id,
+                category_id=thread.work_category_id,
+                subcategory_id=thread.work_subcategory_id,
+                other_text=thread.classification_other_text or "",
+            ) if thread.work_queue_id and thread.work_department_id else None
             task_type, category = task_classification(thread.nature)
+            if hierarchy:
+                task_type = (
+                    "administration_task"
+                    if hierarchy.queue.code == "administration"
+                    else "operational_task"
+                )
             task = Task(
                 title=thread.subject[:200],
                 description=(
@@ -820,10 +1201,20 @@ def email_create_task(request: Request, thread_id: int):
                 task_type=task_type,
                 category=category,
                 subcategory=thread.document_type or thread.content_type,
+                work_queue_id=thread.work_queue_id,
+                work_department_id=thread.work_department_id,
+                work_category_id=thread.work_category_id,
+                work_subcategory_id=thread.work_subcategory_id,
+                classification_status=thread.classification_status,
+                classification_other_text=thread.classification_other_text,
+                classification_updated_by_id=user_id,
+                classification_updated_at=datetime.now(UTC),
                 source="email",
                 status="new",
                 priority="normal",
                 customer_email=thread.sender_email,
+                assigned_to_id=thread.assigned_to_id,
+                due_on=thread.due_at.date() if thread.due_at else None,
                 created_by_id=user_id,
             )
             db.add(task)

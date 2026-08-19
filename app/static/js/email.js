@@ -1,6 +1,55 @@
 (() => {
   const dialog = document.getElementById("email-preview-dialog");
+  const bindWorkHierarchy = (root) => {
+    const source = root.querySelector("[data-email-work-hierarchy]");
+    const container = root.querySelector("[data-work-hierarchy]");
+    if (!source || !container) return;
+    let hierarchy;
+    try { hierarchy = JSON.parse(source.textContent || "{}"); } catch (_) { return; }
+    const levels = ["queue", "department", "category", "subcategory"];
+    const selects = Object.fromEntries(levels.map((level) => [level, container.querySelector(`[data-work-level="${level}"]`)]));
+    const records = {
+      department: hierarchy.departments || [],
+      category: hierarchy.categories || [],
+      subcategory: hierarchy.subcategories || [],
+    };
+    const otherLabel = container.querySelector(".clean-work-other");
+    const otherInput = otherLabel?.querySelector("input");
+    const selectedRecord = (level) => records[level]?.find((item) => String(item.id) === selects[level]?.value);
+    const refreshOther = () => {
+      const requiresDescription = ["department", "category", "subcategory"].some((level) => selectedRecord(level)?.requires_description);
+      if (otherLabel) otherLabel.hidden = !requiresDescription;
+      if (otherInput) otherInput.required = requiresDescription;
+    };
+    const refreshFrom = (levelIndex, clearChildren) => {
+      for (let index = Math.max(1, levelIndex + 1); index < levels.length; index += 1) {
+        const level = levels[index];
+        const parent = selects[levels[index - 1]];
+        const select = selects[level];
+        if (!select) continue;
+        if (clearChildren) select.value = "";
+        [...select.options].forEach((option) => {
+          if (!option.value) return;
+          option.hidden = !parent?.value || option.dataset.parent !== parent.value;
+          option.disabled = option.hidden;
+        });
+        select.disabled = !parent?.value;
+      }
+      refreshOther();
+    };
+    levels.forEach((level, index) => selects[level]?.addEventListener("change", () => refreshFrom(index, true)));
+    refreshFrom(0, false);
+  };
+  const bindTemplates = (root) => {
+    root.querySelectorAll("[data-email-template]").forEach((select) => select.addEventListener("change", () => {
+      const textarea = select.closest("form")?.querySelector('textarea[name="body"]');
+      const option = select.selectedOptions[0];
+      if (textarea && option?.dataset.body) textarea.value = option.dataset.body;
+    }));
+  };
   const bindThread = (root = document) => {
+    bindWorkHierarchy(root);
+    bindTemplates(root);
     root.querySelectorAll("[data-email-modal-close]").forEach((button) => button.addEventListener("click", () => dialog?.close()));
     root.querySelectorAll("[data-email-show-images]").forEach((button) => button.addEventListener("click", () => {
       const frame = document.getElementById(button.dataset.emailShowImages);

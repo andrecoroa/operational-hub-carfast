@@ -32,14 +32,17 @@
           <form method="post" action="/v2-clean/tasks/recurring" class="clean-recurrence-form">
             <label>Nome do modelo<input name="name" required maxlength="200"></label>
             <label>Título da tarefa<input name="task_title" required maxlength="200"></label>
-            <label>Fila<select name="workspace" required>{% for code, label in workspace_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label>Fila<select name="work_queue_id" data-work-level="queue" required><option value="">Selecionar</option>{% for item in work_queues %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+            <label>Departamento<select name="work_department_id" data-work-level="department" required><option value="">Selecionar fila</option></select></label>
+            <label>Categoria<select name="work_category_id" data-work-level="category"><option value="">Por classificar</option></select></label>
+            <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Por classificar</option></select></label>
             <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select></label>
             <label>Periodicidade<select name="frequency">{% for code, label in frequency_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
             <label>Intervalo<input type="number" name="interval" min="1" max="365" value="1" required></label>
             <label>Próxima execução<input type="datetime-local" name="next_run_at" required></label>
             <label>Prazo após ocorrência (dias)<input type="number" name="due_offset_days" min="0" max="365" value="0"></label>
             <label>Prioridade<select name="task_priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option><option value="low">Baixa</option></select></label>
-            <label>Natureza<input name="task_category" maxlength="80" placeholder="Opcional"></label>
+            <label data-work-other hidden>Descrição de “Outro”<input name="classification_other_text" maxlength="500"></label>
             <label class="span-2">Descrição<textarea name="task_description" rows="3"></textarea></label>
             <div class="clean-task-create-actions span-2"><button type="submit">Criar modelo</button></div>
           </form>
@@ -86,14 +89,17 @@
               <form method="post" action="/v2-clean/tasks/recurring/{{ model.id }}/update" class="clean-recurrence-form clean-recurrence-edit-form">
                 <label>Nome do modelo<input name="name" value="{{ model.name }}" required maxlength="200"></label>
                 <label>Título da tarefa<input name="task_title" value="{{ model.task_title }}" required maxlength="200"></label>
-                <label>Fila<select name="workspace">{% for code, label in workspace_options %}<option value="{{ code }}" {% if code == model.workspace %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Fila<select name="work_queue_id" data-work-level="queue" required><option value="">Selecionar</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if item.id == model.work_queue_id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+                <label>Departamento<select name="work_department_id" data-work-level="department" data-selected="{{ model.work_department_id or '' }}" required><option value="">Selecionar fila</option></select></label>
+                <label>Categoria<select name="work_category_id" data-work-level="category" data-selected="{{ model.work_category_id or '' }}"><option value="">Por classificar</option></select></label>
+                <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory" data-selected="{{ model.work_subcategory_id or '' }}"><option value="">Por classificar</option></select></label>
                 <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if user.id == model.assigned_to_id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
                 <label>Periodicidade<select name="frequency">{% for code, label in frequency_options %}<option value="{{ code }}" {% if code == model.frequency %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
                 <label>Intervalo<input type="number" name="interval" min="1" max="365" value="{{ model.interval }}"></label>
                 <label>Próxima execução<input type="datetime-local" name="next_run_at" value="{{ to_local(model.next_run_at).strftime('%Y-%m-%dT%H:%M') }}" required></label>
                 <label>Prazo após ocorrência (dias)<input type="number" name="due_offset_days" min="0" max="365" value="{{ model.due_offset_days }}"></label>
                 <label>Prioridade<select name="task_priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if code == model.task_priority %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-                <label>Natureza<input name="task_category" value="{{ model.task_category or '' }}" maxlength="80"></label>
+                <label data-work-other hidden>Descrição de “Outro”<input name="classification_other_text" maxlength="500"></label>
                 <label class="span-2">Descrição<textarea name="task_description" rows="4">{{ model.task_description or '' }}</textarea></label>
                 <div class="clean-task-create-actions span-2"><button type="submit">Guardar alterações</button></div>
               </form>
@@ -107,6 +113,34 @@
   </main>
 </div>
 <script>
+const workHierarchy = {{ work_hierarchy_json | tojson }};
+function bindHierarchy(form) {
+  const queue = form.querySelector('[data-work-level="queue"]');
+  const department = form.querySelector('[data-work-level="department"]');
+  const category = form.querySelector('[data-work-level="category"]');
+  const subcategory = form.querySelector('[data-work-level="subcategory"]');
+  const other = form.querySelector('[data-work-other]');
+  if (!queue || !department || !category || !subcategory) return;
+  function fill(select, rows, placeholder) {
+    const selected = select.dataset.selected || select.value;
+    select.innerHTML = `<option value="">${placeholder}</option>` + rows.map((row) => `<option value="${row.id}">${row.name}</option>`).join('');
+    if (rows.some((row) => String(row.id) === String(selected))) select.value = selected;
+    select.dataset.selected = '';
+  }
+  function refreshDepartments() { fill(department, workHierarchy.departments.filter((row) => String(row.parent_id) === queue.value), 'Selecionar'); refreshCategories(); }
+  function refreshCategories() { fill(category, workHierarchy.categories.filter((row) => String(row.parent_id) === department.value), 'Por classificar'); refreshSubcategories(); }
+  function refreshSubcategories() { fill(subcategory, workHierarchy.subcategories.filter((row) => String(row.parent_id) === category.value), 'Por classificar'); refreshOther(); }
+  function refreshOther() {
+    const ids = [department.value, category.value, subcategory.value];
+    const rows = [...workHierarchy.departments, ...workHierarchy.categories, ...workHierarchy.subcategories];
+    const required = rows.some((row) => ids.includes(String(row.id)) && row.requires_description);
+    other.hidden = !required;
+    const input = other.querySelector('input'); if (input) input.required = required;
+  }
+  queue.addEventListener('change', refreshDepartments); department.addEventListener('change', refreshCategories); category.addEventListener('change', refreshSubcategories); subcategory.addEventListener('change', refreshOther);
+  refreshDepartments();
+}
+document.querySelectorAll('.clean-recurrence-form').forEach(bindHierarchy);
 document.querySelectorAll('[data-recurrence-edit]').forEach((button) => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.recurrenceEdit);
   if (dialog) {

@@ -419,6 +419,10 @@
       </section>
     {% endif %}
 
+    {% if admin_section == "work_classification" %}
+      {% include "_clean_admin_work_classification.html" %}
+    {% endif %}
+
     {% if admin_section == "audit" %}
       <section class="clean-panel clean-card-wide">
         <div class="table-heading flat-heading">

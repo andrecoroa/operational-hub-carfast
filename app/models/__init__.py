@@ -14,18 +14,20 @@ from app.models.documents import (
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
 )
-from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
-from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
-from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailChannelRole,
     EmailChannelUser,
     EmailMessage,
+    EmailTemplate,
     EmailThread,
     EmailWebhookEvent,
 )
+from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
+from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.management_center import (
     ClaimIncident,
     ClaimRefstroLine,
@@ -82,6 +84,23 @@ from app.models.tasks import (
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
 )
+from app.models.vehicle_history_audit import (
+    VehicleHistoryAudit,
+    VehicleHistoryAuditDocument,
+    VehicleHistoryAuditIssue,
+    VehicleHistoryAuditReading,
+    VehicleHistoryAuditRule,
+    VehicleHistoryAuditService,
+    VehicleHistoryAuditTruth,
+)
+from app.models.vehicle_sales import (
+    VehicleImage,
+    VehicleSaleLead,
+    VehicleSaleProfile,
+    VehicleSaleProposal,
+    VehicleSaleProposalLine,
+    VehicleSalePublication,
+)
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
@@ -92,22 +111,13 @@ from app.models.vehicles import (
     VehicleManualField,
     VehicleOperationalStatusEvent,
 )
-from app.models.vehicle_sales import (
-    VehicleImage,
-    VehicleSaleLead,
-    VehicleSaleProposal,
-    VehicleSaleProposalLine,
-    VehicleSaleProfile,
-    VehicleSalePublication,
-)
-from app.models.vehicle_history_audit import (
-    VehicleHistoryAudit,
-    VehicleHistoryAuditDocument,
-    VehicleHistoryAuditIssue,
-    VehicleHistoryAuditReading,
-    VehicleHistoryAuditRule,
-    VehicleHistoryAuditService,
-    VehicleHistoryAuditTruth,
+from app.models.work_hierarchy import (
+    RoleWorkScope,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+    WorkSourceDefault,
+    WorkSubcategory,
 )
 from app.models.workshop import (
     WorkshopProcess,
@@ -156,6 +166,8 @@ __all__ = [
     "EmailAuditEvent",
     "EmailChannel",
     "EmailChannelUser",
+    "EmailChannelRole",
+    "EmailTemplate",
     "EmailMessage",
     "EmailThread",
     "EmailWebhookEvent",
@@ -261,4 +273,10 @@ __all__ = [
     "WorkshopPublicCounter",
     "WorkshopTemplate",
     "WorkshopTemplateVersion",
+    "RoleWorkScope",
+    "WorkCategory",
+    "WorkDepartment",
+    "WorkQueue",
+    "WorkSourceDefault",
+    "WorkSubcategory",
 ]

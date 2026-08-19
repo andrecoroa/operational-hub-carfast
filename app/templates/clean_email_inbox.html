@@ -3,7 +3,12 @@
 <div class="app-shell clean-shell">
   {% set active_menu="email" %}{% include "_sidebar.html" %}
   <main class="content clean-content email-page">
-    <header class="email-header"><div><p class="eyebrow">Comunicação</p><h1>Email</h1><p>Conversas recebidas e respostas preparadas por caixa.</p></div></header>
+    <header class="email-header"><div><p class="eyebrow">Comunicação</p><h1>Email</h1><p>Conversas recebidas e respostas preparadas por caixa.</p></div>{% if compose_channels %}<button type="button" data-email-compose-open>Novo email</button>{% endif %}</header>
+    {% if request.query_params.get('error') == 'invalid_recipient' %}<div class="clean-alert-warning">Indica um endereço de email válido.</div>{% elif request.query_params.get('error') == 'missing_message' %}<div class="clean-alert-warning">Indica o assunto e a mensagem.</div>{% endif %}
+    <nav class="email-channel-tabs" aria-label="Caixas de email">
+      <a href="/v2-clean/email{% if filters.status %}?status={{ filters.status }}{% endif %}" class="{% if not filters.channel %}active{% endif %}">Todas as caixas</a>
+      {% for item in channels %}<a href="/v2-clean/email?channel={{ item.code }}{% if filters.status %}&status={{ filters.status }}{% endif %}" class="{% if filters.channel == item.code %}active{% endif %}">{{ item.name }}</a>{% endfor %}
+    </nav>
     <section class="email-summary">
       {% for code, label in status_labels.items() %}<a href="?status={{ code }}" class="email-status-tile {% if filters.status == code %}active{% endif %}"><strong>{{ counts.get(code, 0) }}</strong><span>{{ label }}</span></a>{% endfor %}
     </section>
@@ -21,5 +26,57 @@
   </main>
 </div>
 <dialog class="email-preview-dialog" id="email-preview-dialog"><div class="email-preview-loading">A abrir conversa…</div></dialog>
+{% if compose_channels %}
+<dialog class="email-compose-dialog" id="email-compose-dialog">
+  <form method="post" action="/v2-clean/email/new" class="email-new-message-form">
+    <header><div><p class="eyebrow">Nova mensagem</p><h2>Novo email</h2></div><button type="button" class="secondary" data-email-compose-close>Fechar</button></header>
+    <label>De
+      <select name="channel_id" required data-email-compose-channel>{% for item in compose_channels %}<option value="{{ item.id }}">{{ item.name }} · {{ item.address }}</option>{% endfor %}</select>
+    </label>
+    <label>Para<input type="text" name="recipients" placeholder="nome@empresa.pt" required></label>
+    <label>Modelo
+      <select name="template_id" data-email-compose-template><option value="">Sem modelo</option>{% for item in email_templates %}<option value="{{ item.id }}" data-channel="{{ item.channel_id or '' }}" data-subject="{{ item.subject_template or '' }}" data-body="{{ item.body_template }}">{{ item.name }}</option>{% endfor %}</select>
+    </label>
+    <label>Assunto<input type="text" name="subject" required data-email-compose-subject></label>
+    <label>Mensagem<textarea name="body" rows="12" required data-email-compose-body></textarea></label>
+    <footer>
+      <button type="submit" name="submit" value="draft" class="secondary">Guardar rascunho</button>
+      <button type="submit" name="submit" value="approval" class="secondary">Pedir aprovação</button>
+      <button type="submit" name="submit" value="send" data-email-compose-send>Enviar</button>
+    </footer>
+  </form>
+</dialog>
+{% endif %}
 <script src="/static/js/email.js?v=20260818-email-approval"></script>
+{% if compose_channels %}<script>
+  (() => {
+    const dialog = document.getElementById('email-compose-dialog');
+    const channel = dialog?.querySelector('[data-email-compose-channel]');
+    const template = dialog?.querySelector('[data-email-compose-template]');
+    const subject = dialog?.querySelector('[data-email-compose-subject]');
+    const body = dialog?.querySelector('[data-email-compose-body]');
+    const send = dialog?.querySelector('[data-email-compose-send]');
+    const directByChannel = {{ channel_send_direct|tojson }};
+    const refresh = () => {
+      if (!channel || !template) return;
+      Array.from(template.options).forEach((option, index) => {
+        if (!index) return;
+        const visible = !option.dataset.channel || option.dataset.channel === channel.value;
+        option.hidden = !visible; option.disabled = !visible;
+      });
+      if (template.selectedOptions[0]?.disabled) template.value = '';
+      if (send) send.hidden = !directByChannel[channel.value];
+    };
+    document.querySelector('[data-email-compose-open]')?.addEventListener('click', () => dialog?.showModal());
+    dialog?.querySelector('[data-email-compose-close]')?.addEventListener('click', () => dialog.close());
+    channel?.addEventListener('change', refresh);
+    template?.addEventListener('change', () => {
+      const option = template.selectedOptions[0];
+      if (!option?.value) return;
+      subject.value = option.dataset.subject || '';
+      body.value = option.dataset.body || '';
+    });
+    refresh();
+  })();
+</script>{% endif %}
 {% endblock %}

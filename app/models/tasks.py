@@ -1,6 +1,17 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -29,6 +40,25 @@ class Task(TimestampMixin, Base):
     invoice_number: Mapped[str | None] = mapped_column(String(120), index=True)
     station: Mapped[str | None] = mapped_column(String(120), index=True)
     department: Mapped[str | None] = mapped_column(String(120), index=True)
+    work_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
+    )
+    work_department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_departments.id", ondelete="SET NULL"), index=True
+    )
+    work_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    work_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
+    classification_status: Mapped[str] = mapped_column(
+        String(40), default="unclassified", index=True
+    )
+    classification_other_text: Mapped[str | None] = mapped_column(Text)
+    legacy_classification: Mapped[str | None] = mapped_column(Text)
+    classification_updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    classification_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     external_source_id: Mapped[str | None] = mapped_column(String(255), index=True)
     entity_type: Mapped[str | None] = mapped_column(String(120), index=True)
     entity_id: Mapped[str | None] = mapped_column(String(120), index=True)
@@ -173,6 +203,18 @@ class TaskRecurrenceTemplate(TimestampMixin, Base):
     task_priority: Mapped[str] = mapped_column(String(40), default="normal")
     task_category: Mapped[str | None] = mapped_column(String(80))
     task_subcategory: Mapped[str | None] = mapped_column(String(120))
+    work_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
+    )
+    work_department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_departments.id", ondelete="SET NULL"), index=True
+    )
+    work_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    work_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
     due_offset_days: Mapped[int] = mapped_column(Integer, default=0)
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)

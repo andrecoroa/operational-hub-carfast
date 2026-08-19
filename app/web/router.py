@@ -78,6 +78,7 @@ from app.models.tasks import (
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
 )
+from app.models.work_hierarchy import WorkQueue
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
@@ -144,6 +145,13 @@ from app.services.structured_financial_plan_importer import (
     preview_financial_plan_workbook,
 )
 from app.services.vehicle_financials import canonical_vehicle_financial_values
+from app.services.work_classification import (
+    apply_source_work_default,
+    user_work_scope_allows,
+    user_work_scope_filter,
+    validate_work_hierarchy,
+    work_hierarchy_context,
+)
 from app.services.document_import_preview import (
     RENTWAY_IMPORT_KINDS,
     preview_structured_spreadsheet,
@@ -2721,6 +2729,13 @@ def create_next_recurring_task(db, task: Task, user_id: int | None) -> Task | No
         source=task.source,
         category=task.category,
         subcategory=task.subcategory,
+        work_queue_id=task.work_queue_id,
+        work_department_id=task.work_department_id,
+        work_category_id=task.work_category_id,
+        work_subcategory_id=task.work_subcategory_id,
+        classification_status=task.classification_status,
+        classification_other_text=task.classification_other_text,
+        legacy_classification=task.legacy_classification,
         status="planned",
         priority=task.priority,
         customer_name=task.customer_name,
@@ -3982,6 +3997,7 @@ def clean_tasks_center(
     status: str = "open",
     kind: str = "all",
     nature: str = "",
+    department: str = "",
     due: str = "",
     plate: str = "",
     q: str = "",
@@ -4030,8 +4046,55 @@ def clean_tasks_center(
         task_divisions = [
             item for item in clean_task_division_cards(db) if item["code"] in readable_workspaces
         ]
-        workspace_codes = set(readable_workspaces)
-        active_workspace = workspace if workspace in workspace_codes | {"mine", "all"} else "mine"
+        legacy_divisions = {item["code"]: item for item in task_divisions}
+        visible_queue_codes = {
+            code
+            for code, members in {
+                "tasks_support": {"operational", "workshop", "management"},
+                "administration": {"audit", "administration"},
+            }.items()
+            if set(readable_workspaces).intersection(members)
+        }
+        task_divisions = [
+            {
+                "code": queue_code,
+                "label": label,
+                "open": sum(
+                    int(legacy_divisions.get(code, {}).get("open", 0))
+                    for code in members
+                ),
+                "quick": sum(
+                    int(legacy_divisions.get(code, {}).get("quick", 0))
+                    for code in members
+                ),
+                "due_today": sum(
+                    int(legacy_divisions.get(code, {}).get("due_today", 0))
+                    for code in members
+                ),
+            }
+            for queue_code, label, members in (
+                (
+                    "tasks_support",
+                    "Tarefas e Suporte",
+                    {"operational", "workshop", "management"},
+                ),
+                ("administration", "Administração", {"audit", "administration"}),
+            )
+            if queue_code in visible_queue_codes
+        ]
+        legacy_queue_aliases = {
+            "operational": "tasks_support",
+            "workshop": "tasks_support",
+            "management": "tasks_support",
+            "audit": "administration",
+            "administration": "administration",
+        }
+        requested_workspace = legacy_queue_aliases.get(workspace, workspace)
+        active_workspace = (
+            requested_workspace
+            if requested_workspace in visible_queue_codes | {"mine", "all"}
+            else "mine"
+        )
         if active_workspace == "all" and not readable_workspaces:
             active_workspace = "mine"
         active_mine_kind = mine_kind if mine_kind in {"all", "assigned", "identified", "following", "created", "support"} else "all"
@@ -4059,14 +4122,24 @@ def clean_tasks_center(
             if workspace_code in readable_workspaces
             for code in codes
         ]
+        selected_legacy_workspaces = {
+            "tasks_support": {"operational", "workshop", "management"},
+            "administration": {"audit", "administration"},
+        }.get(active_workspace, set(readable_workspaces))
         task_type_codes = [
             code
             for workspace_code, codes in TASK_WORKSPACE_TASK_TYPES.items()
             if workspace_code in readable_workspaces
-            and (active_workspace in {"all", "mine"} or workspace_code == active_workspace)
+            and workspace_code in selected_legacy_workspaces
             for code in codes
         ]
         filters = [Task.task_type.in_(tuple(task_type_codes))]
+        if user_id:
+            hierarchy_scope = user_work_scope_filter(
+                db, user_id=user_id, task_model=Task, action="read"
+            )
+            if hierarchy_scope is not None:
+                filters.append(hierarchy_scope)
         mine_relation_conditions: dict[str, object] = {}
         active_relation_filter = None
         if active_workspace == "mine" and user_id:
@@ -4119,6 +4192,9 @@ def clean_tasks_center(
             filters.append(~or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")))
         if normalized_plate:
             filters.append(Task.plate == normalized_plate)
+        active_department_id = parse_int_from_text(department)
+        if active_department_id:
+            filters.append(Task.work_department_id == active_department_id)
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
@@ -4199,6 +4275,26 @@ def clean_tasks_center(
             .offset((active_page - 1) * page_size)
             .limit(page_size)
         ).all()
+        task_update_allowed_by_id = {
+            task.id: user_can_access_task_workspace(
+                db,
+                current_user,
+                workspace_for_task_type(task.task_type),
+                action="update",
+            )
+            and _task_hierarchy_scope_allows(db, user_id, task, action="update")
+            for task in tasks
+        }
+        task_close_allowed_by_id = {
+            task.id: user_can_access_task_workspace(
+                db,
+                current_user,
+                workspace_for_task_type(task.task_type),
+                action="close",
+            )
+            and _task_hierarchy_scope_allows(db, user_id, task, action="close")
+            for task in tasks
+        }
         task_ids = [task.id for task in tasks]
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
         users_by_id = {user.id: user for user in users}
@@ -4273,7 +4369,7 @@ def clean_tasks_center(
             Task.task_type.in_(tuple(readable_task_type_codes)),
         ]
         task_metrics = {
-            "divisions": len(task_divisions),
+            "divisions": len(visible_queue_codes),
             "open": sum(int(item["open"]) for item in task_divisions),
             "quick": sum(int(item["quick"]) for item in task_divisions),
             "due_today": sum(int(item["due_today"]) for item in task_divisions),
@@ -4306,7 +4402,14 @@ def clean_tasks_center(
         task_workspace_options = [
             ("mine", "Minhas"),
             ("all", "Todas"),
-            *[(code, TASK_WORKSPACE_LABELS[code]) for code in readable_workspaces],
+            *[
+                (code, label)
+                for code, label in (
+                    ("tasks_support", "Tarefas e Suporte"),
+                    ("administration", "Administração"),
+                )
+                if code in visible_queue_codes
+            ],
         ]
         task_status_options = [("open", "Abertas"), ("closed", "Fechadas"), ("all", "Todas")]
         task_nature_options = [
@@ -4347,7 +4450,12 @@ def clean_tasks_center(
                 ),
             }
         )
-        task_workspace_labels = {**TASK_WORKSPACE_LABELS, "all": "Todas"}
+        task_workspace_labels = {
+            **TASK_WORKSPACE_LABELS,
+            "tasks_support": "Tarefas e Suporte",
+            "administration": "Administração",
+            "all": "Todas",
+        }
         task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
         raw_prefill_category = str(prefill_context["category"] or "").strip()
@@ -4360,6 +4468,7 @@ def clean_tasks_center(
             "stock": "Material",
         }
         prefill_nature = prefill_nature_aliases.get(raw_prefill_category.lower(), raw_prefill_category)
+        hierarchy = work_hierarchy_context(db)
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
@@ -4385,6 +4494,8 @@ def clean_tasks_center(
                 "documents_by_task": documents_by_task,
                 "email_by_task": email_by_task,
                 "task_relations_by_task": task_relations_by_task,
+                "task_update_allowed_by_id": task_update_allowed_by_id,
+                "task_close_allowed_by_id": task_close_allowed_by_id,
                 "mine_counts": mine_counts,
                 "recent_documents": recent_documents,
                 "readable_workspaces": readable_workspaces,
@@ -4399,6 +4510,7 @@ def clean_tasks_center(
                     "status": active_status,
                     "kind": active_kind,
                     "nature": clean_nature,
+                    "department": str(active_department_id or ""),
                     "plate": normalized_plate,
                     "q": q.strip(),
                     "due": active_due,
@@ -4439,6 +4551,7 @@ def clean_tasks_center(
                     "previous_page": active_page - 1,
                     "next_page": active_page + 1,
                 },
+                **hierarchy,
             },
         )
 
@@ -4513,6 +4626,7 @@ def clean_task_recurrence_models(request: Request):
                 "timezone": RECURRENCE_TIMEZONE,
                 "to_local": utc_datetime_to_local,
                 "generated_count": len(generated),
+                **work_hierarchy_context(db),
             },
         )
 
@@ -4526,6 +4640,11 @@ def clean_task_recurrence_create(
     workspace: str = Form("operational"),
     task_priority: str = Form("normal"),
     task_category: str = Form(""),
+    work_queue_id: str = Form(""),
+    work_department_id: str = Form(""),
+    work_category_id: str = Form(""),
+    work_subcategory_id: str = Form(""),
+    classification_other_text: str = Form(""),
     assigned_to_id: str = Form(""),
     frequency: str = Form("weekly"),
     interval: str = Form("1"),
@@ -4545,6 +4664,37 @@ def clean_task_recurrence_create(
         current_user, user_id = access
         if not user_can_access_task_workspace(db, current_user, clean_workspace, action="create"):
             return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        hierarchy_selection = validate_work_hierarchy(
+            db,
+            queue_id=parse_int_from_text(work_queue_id),
+            department_id=parse_int_from_text(work_department_id),
+            category_id=parse_int_from_text(work_category_id),
+            subcategory_id=parse_int_from_text(work_subcategory_id),
+            other_text=classification_other_text,
+        )
+        if not hierarchy_selection:
+            return RedirectResponse(
+                "/v2-clean/tasks/recurring?error=missing_classification", status_code=303
+            )
+        if not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=hierarchy_selection.category.id if hierarchy_selection.category else None,
+            subcategory_id=(
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection.subcategory
+                else None
+            ),
+            action="create",
+        ):
+            return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        clean_workspace = (
+            "administration"
+            if hierarchy_selection.queue.code == "administration"
+            else "operational"
+        )
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
         if parsed_assignee_id and not is_assignment_allowed_for_workspace(
             db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
@@ -4568,6 +4718,16 @@ def clean_task_recurrence_create(
             ),
             task_category=(task_category.strip() or TASK_WORKSPACE_CONFIG[clean_workspace]["default_category"])[:80],
             task_subcategory="task",
+            work_queue_id=hierarchy_selection.queue.id,
+            work_department_id=hierarchy_selection.department.id,
+            work_category_id=(
+                hierarchy_selection.category.id if hierarchy_selection.category else None
+            ),
+            work_subcategory_id=(
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection.subcategory
+                else None
+            ),
             due_offset_days=min(max(parse_int_from_text(due_offset_days) or 0, 0), 365),
             assigned_to_id=parsed_assignee_id,
             created_by_id=user_id,
@@ -4598,6 +4758,11 @@ def clean_task_recurrence_update(
     workspace: str = Form("operational"),
     task_priority: str = Form("normal"),
     task_category: str = Form(""),
+    work_queue_id: str = Form(""),
+    work_department_id: str = Form(""),
+    work_category_id: str = Form(""),
+    work_subcategory_id: str = Form(""),
+    classification_other_text: str = Form(""),
     assigned_to_id: str = Form(""),
     frequency: str = Form("weekly"),
     interval: str = Form("1"),
@@ -4616,6 +4781,37 @@ def clean_task_recurrence_update(
         current_user, user_id = access
         if not user_can_access_task_workspace(db, current_user, clean_workspace, action="create"):
             return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        hierarchy_selection = validate_work_hierarchy(
+            db,
+            queue_id=parse_int_from_text(work_queue_id),
+            department_id=parse_int_from_text(work_department_id),
+            category_id=parse_int_from_text(work_category_id),
+            subcategory_id=parse_int_from_text(work_subcategory_id),
+            other_text=classification_other_text,
+        )
+        if not hierarchy_selection:
+            return RedirectResponse(
+                "/v2-clean/tasks/recurring?error=missing_classification", status_code=303
+            )
+        if not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=hierarchy_selection.category.id if hierarchy_selection.category else None,
+            subcategory_id=(
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection.subcategory
+                else None
+            ),
+            action="create",
+        ):
+            return RedirectResponse("/v2-clean/tasks/recurring?error=forbidden", status_code=303)
+        clean_workspace = (
+            "administration"
+            if hierarchy_selection.queue.code == "administration"
+            else "operational"
+        )
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
         if parsed_assignee_id and not is_assignment_allowed_for_workspace(
             db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
@@ -4635,6 +4831,16 @@ def clean_task_recurrence_update(
         model.task_type = RECURRENCE_TASK_TYPES[clean_workspace]
         model.task_priority = task_priority if task_priority in {"low", "normal", "high", "urgent"} else "normal"
         model.task_category = (task_category.strip() or TASK_WORKSPACE_CONFIG[clean_workspace]["default_category"])[:80]
+        model.work_queue_id = hierarchy_selection.queue.id
+        model.work_department_id = hierarchy_selection.department.id
+        model.work_category_id = (
+            hierarchy_selection.category.id if hierarchy_selection.category else None
+        )
+        model.work_subcategory_id = (
+            hierarchy_selection.subcategory.id
+            if hierarchy_selection.subcategory
+            else None
+        )
         model.assigned_to_id = parsed_assignee_id
         model.frequency = frequency
         model.interval = min(max(parse_int_from_text(interval) or 1, 1), 365)
@@ -4700,6 +4906,11 @@ def clean_tasks_create(
     category: str = Form(""),
     subcategory: str = Form(""),
     classification_version: str = Form(""),
+    work_queue_id: str = Form(""),
+    work_department_id: str = Form(""),
+    work_category_id: str = Form(""),
+    work_subcategory_id: str = Form(""),
+    classification_other_text: str = Form(""),
     entity_type: str = Form(""),
     entity_id: str = Form(""),
     assigned_to_id: str = Form(""),
@@ -4728,14 +4939,53 @@ def clean_tasks_create(
         not workspace.strip() or not clean_category or not clean_subcategory
     ):
         return RedirectResponse("/v2-clean/tasks?create=1&error=missing_classification#new-task", status_code=303)
-    clean_workspace = normalize_task_workspace(workspace)
-    workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
-    is_problem = record_type == "problem" and clean_workspace == "workshop"
-    effective_record_type = "problem" if is_problem else "task"
     parsed_due = parse_iso_or_dmy_date(due_on)
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
+        hierarchy_selection = None
+        if classification_version == "3" or work_queue_id.strip():
+            hierarchy_selection = validate_work_hierarchy(
+                db,
+                queue_id=parse_int_from_text(work_queue_id),
+                department_id=parse_int_from_text(work_department_id),
+                category_id=parse_int_from_text(work_category_id),
+                subcategory_id=parse_int_from_text(work_subcategory_id),
+                other_text=classification_other_text,
+            )
+            if not hierarchy_selection:
+                return RedirectResponse(
+                    "/v2-clean/tasks?create=1&error=missing_classification#new-task",
+                    status_code=303,
+                )
+            if not user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=hierarchy_selection.queue.id,
+                department_id=hierarchy_selection.department.id,
+                category_id=(
+                    hierarchy_selection.category.id if hierarchy_selection.category else None
+                ),
+                subcategory_id=(
+                    hierarchy_selection.subcategory.id
+                    if hierarchy_selection.subcategory
+                    else None
+                ),
+                action="create",
+            ):
+                return RedirectResponse(
+                    "/v2-clean/tasks?error=forbidden", status_code=303
+                )
+            clean_workspace = (
+                "administration"
+                if hierarchy_selection.queue.code == "administration"
+                else "operational"
+            )
+        else:
+            clean_workspace = normalize_task_workspace(workspace)
+        workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
+        is_problem = record_type == "problem" and clean_workspace == "workshop"
+        effective_record_type = "problem" if is_problem else "task"
         current_user = db.get(User, user_id)
         if not user_can_access_task_workspace(
             db, current_user, clean_workspace, action="create"
@@ -4772,6 +5022,28 @@ def clean_tasks_create(
             team_id=default_team_id(db, workspace_config["default_team_code"]),
             assigned_to_id=assignee.id if assignee and assignee.active else None,
             created_by_id=user_id,
+            work_queue_id=(hierarchy_selection.queue.id if hierarchy_selection else None),
+            work_department_id=(
+                hierarchy_selection.department.id if hierarchy_selection else None
+            ),
+            work_category_id=(
+                hierarchy_selection.category.id
+                if hierarchy_selection and hierarchy_selection.category
+                else None
+            ),
+            work_subcategory_id=(
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection and hierarchy_selection.subcategory
+                else None
+            ),
+            classification_status=(
+                hierarchy_selection.status if hierarchy_selection else "unclassified"
+            ),
+            classification_other_text=(
+                hierarchy_selection.other_text if hierarchy_selection else None
+            ),
+            classification_updated_by_id=(user_id if hierarchy_selection else None),
+            classification_updated_at=(now if hierarchy_selection else None),
             external_source_id=(
                 f"email:{clean_message_id}"
                 if clean_source == "email"
@@ -4873,6 +5145,12 @@ def clean_tasks_update(
     category: str = Form(""),
     subcategory: str = Form(""),
     workspace: str = Form(""),
+    classification_version: str = Form(""),
+    work_queue_id: str = Form(""),
+    work_department_id: str = Form(""),
+    work_category_id: str = Form(""),
+    work_subcategory_id: str = Form(""),
+    classification_other_text: str = Form(""),
     plate: str = Form(""),
     reservation_number: str = Form(""),
     contract_number: str = Form(""),
@@ -4905,9 +5183,47 @@ def clean_tasks_update(
         task_workspace = workspace_for_task_type(task.task_type)
         if not user_can_access_task_workspace(
             db, current_user, task_workspace, action="update"
-        ):
+        ) or not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        target_workspace = normalize_task_workspace(workspace or task_workspace)
+        hierarchy_selection = None
+        if classification_version == "3" or work_queue_id.strip():
+            hierarchy_selection = validate_work_hierarchy(
+                db,
+                queue_id=parse_int_from_text(work_queue_id),
+                department_id=parse_int_from_text(work_department_id),
+                category_id=parse_int_from_text(work_category_id),
+                subcategory_id=parse_int_from_text(work_subcategory_id),
+                other_text=classification_other_text,
+            )
+            if not hierarchy_selection:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="missing_classification"
+                )
+            if not user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=hierarchy_selection.queue.id,
+                department_id=hierarchy_selection.department.id,
+                category_id=(
+                    hierarchy_selection.category.id if hierarchy_selection.category else None
+                ),
+                subcategory_id=(
+                    hierarchy_selection.subcategory.id
+                    if hierarchy_selection.subcategory
+                    else None
+                ),
+                action="update",
+            ):
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="forbidden"
+                )
+            target_workspace = (
+                "administration"
+                if hierarchy_selection.queue.code == "administration"
+                else "operational"
+            )
+        else:
+            target_workspace = normalize_task_workspace(workspace or task_workspace)
         if target_workspace != task_workspace and not user_can_access_task_workspace(
             db, current_user, target_workspace, action="update"
         ):
@@ -4925,8 +5241,6 @@ def clean_tasks_update(
             "status": (task.status, clean_status),
             "priority": (task.priority, clean_priority),
             "due_on": (task.due_on, parsed_due),
-            "category": (task.category, category.strip()[:80] or None),
-            "subcategory": (task.subcategory, subcategory.strip()[:120] or None),
             "task_type": (task.task_type, target_config["default_task_type"]),
             "plate": (task.plate, normalized_plate),
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
@@ -4936,6 +5250,54 @@ def clean_tasks_update(
             "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
             "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
         }
+        if hierarchy_selection:
+            changes.update(
+                {
+                    "work_queue_id": (task.work_queue_id, hierarchy_selection.queue.id),
+                    "work_department_id": (
+                        task.work_department_id,
+                        hierarchy_selection.department.id,
+                    ),
+                    "work_category_id": (
+                        task.work_category_id,
+                        hierarchy_selection.category.id
+                        if hierarchy_selection.category
+                        else None,
+                    ),
+                    "work_subcategory_id": (
+                        task.work_subcategory_id,
+                        hierarchy_selection.subcategory.id
+                        if hierarchy_selection.subcategory
+                        else None,
+                    ),
+                    "classification_status": (
+                        task.classification_status,
+                        hierarchy_selection.status,
+                    ),
+                    "classification_other_text": (
+                        task.classification_other_text,
+                        hierarchy_selection.other_text,
+                    ),
+                    "classification_updated_by_id": (
+                        task.classification_updated_by_id,
+                        user_id,
+                    ),
+                    "classification_updated_at": (
+                        task.classification_updated_at,
+                        now,
+                    ),
+                }
+            )
+        else:
+            changes.update(
+                {
+                    "category": (task.category, category.strip()[:80] or None),
+                    "subcategory": (
+                        task.subcategory,
+                        subcategory.strip()[:120] or None,
+                    ),
+                }
+            )
         for field_name, (old_value, new_value) in changes.items():
             if old_value == new_value:
                 continue
@@ -4994,7 +5356,7 @@ def clean_tasks_update_context(
         task_workspace = workspace_for_task_type(task.task_type)
         if not user_can_access_task_workspace(
             db, current_user, task_workspace, action="update"
-        ):
+        ) or not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         changes = {
             "description": (task.description, description.strip() or None),
@@ -5052,6 +5414,18 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
             db, current_user, workspace_for_task_type(task.task_type), action="close"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if task and not _task_hierarchy_scope_allows(db, user_id, task, action="close"):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if task and task.work_queue_id and not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=task.work_queue_id,
+            department_id=task.work_department_id,
+            category_id=task.work_category_id,
+            subcategory_id=task.work_subcategory_id,
+            action="close",
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
             task.status = "closed"
@@ -5094,6 +5468,8 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
             db, current_user, workspace_for_task_type(task.task_type), action="close"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if task and not _task_hierarchy_scope_allows(db, user_id, task, action="close"):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
             task.status = "new"
@@ -5127,6 +5503,23 @@ def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> R
     return RedirectResponse(f"{target}{separator}{flag}=1&open_task={task_id}", status_code=303)
 
 
+def _task_hierarchy_scope_allows(db, user_id: int | None, task: Task, *, action: str) -> bool:
+    """Apply the shared hierarchy scope while keeping legacy tasks available for reclassification."""
+    if not user_id:
+        return False
+    if not task.work_queue_id:
+        return True
+    return user_work_scope_allows(
+        db,
+        user_id=user_id,
+        queue_id=task.work_queue_id,
+        department_id=task.work_department_id,
+        category_id=task.work_category_id,
+        subcategory_id=task.work_subcategory_id,
+        action=action,
+    )
+
+
 @web_router.post("/v2-clean/tasks/{task_id}/comments", response_class=HTMLResponse)
 def clean_tasks_comment(
     request: Request,
@@ -5141,7 +5534,13 @@ def clean_tasks_comment(
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         user = db.get(User, user_id)
-        if not task or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type)):
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="update"
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
         db.commit()
@@ -5172,6 +5571,7 @@ def clean_tasks_participant(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         exists = db.scalar(
@@ -5209,7 +5609,13 @@ def clean_tasks_participant_self(
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         user = db.get(User, user_id)
-        if not task or not user_can_access_task_workspace(db, user, workspace_for_task_type(task.task_type)):
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type), action="read"
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="read")
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         participant = db.scalar(
             select(TaskParticipant).where(
@@ -5259,6 +5665,7 @@ def clean_tasks_help_request(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         db.add(
@@ -5325,6 +5732,7 @@ def clean_tasks_link_document(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         exists = db.scalar(
@@ -5357,6 +5765,7 @@ def clean_tasks_upload_attachments(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         upload_root = document_archive_root() / "tasks" / str(task.id)
@@ -13198,6 +13607,12 @@ def clean_documentation_treatment_audit_task(
             team_id=default_team_id(db, TASK_WORKSPACE_CONFIG["audit"]["default_team_code"]),
             created_by_id=user_id,
             external_source_id=f"document:audit:{document.id}:{datetime.now(UTC).timestamp()}",
+        )
+        apply_source_work_default(
+            db,
+            task,
+            source_type="documentation",
+            source_key="audit_task",
         )
         db.add(task)
         db.flush()
@@ -24325,6 +24740,12 @@ def vehicle_create_task(
             entity_id=str(vehicle.id),
             plate=vehicle.plate,
             created_by_id=user_id,
+        )
+        apply_source_work_default(
+            db,
+            task,
+            source_type="workshop",
+            source_key="vehicle_task",
         )
         db.add(task)
         db.flush()

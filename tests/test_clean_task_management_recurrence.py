@@ -15,6 +15,8 @@ from app.models import (
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
     User,
+    WorkDepartment,
+    WorkQueue,
 )
 from app.services.task_recurrence import as_utc, generate_due_recurring_tasks
 from app.services.users import create_user
@@ -223,12 +225,22 @@ def test_recurring_area_requires_specific_permission(client, db_session):
     assert "Tarefas recorrentes" in allowed.text
     assert "Europe/Lisbon" in allowed.text
 
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "administration"))
+    department = db_session.scalar(
+        select(WorkDepartment).where(
+            WorkDepartment.queue_id == queue.id,
+            WorkDepartment.code == "audit",
+        )
+    )
+
     created = client.post(
         "/v2-clean/tasks/recurring",
         data={
             "name": "Modelo mensal limitado",
             "task_title": "Rever decisão mensal",
             "workspace": "management",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
             "frequency": "monthly",
             "interval": "1",
             "next_run_at": "2026-08-10T09:30",
@@ -243,7 +255,9 @@ def test_recurring_area_requires_specific_permission(client, db_session):
             TaskRecurrenceTemplate.name == "Modelo mensal limitado"
         )
     )
-    assert model is not None and model.workspace == "management"
+    assert model is not None and model.workspace == "administration"
+    assert model.work_queue_id == queue.id
+    assert model.work_department_id == department.id
 
     updated = client.post(
         f"/v2-clean/tasks/recurring/{model.id}/update",
@@ -251,6 +265,8 @@ def test_recurring_area_requires_specific_permission(client, db_session):
             "name": "Modelo mensal revisto",
             "task_title": "Rever decisão mensal atualizada",
             "workspace": "management",
+            "work_queue_id": str(queue.id),
+            "work_department_id": str(department.id),
             "frequency": "monthly",
             "interval": "2",
             "next_run_at": "2026-08-10T10:30",

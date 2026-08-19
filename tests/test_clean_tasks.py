@@ -27,9 +27,10 @@ def test_clean_task_shortcut_opens_creation_form(authenticated_client):
     assert form.status_code == 200
     assert 'id="new-task" open' in form.text
     assert '<option value="">Selecionar fila</option>' in form.text
-    assert 'name="workspace" required' in form.text
-    assert 'name="category" required' in form.text
-    assert 'name="subcategory" required' in form.text
+    assert 'name="work_queue_id" required' in form.text
+    assert 'name="work_department_id" required' in form.text
+    assert 'name="work_category_id"' in form.text
+    assert 'name="work_subcategory_id"' in form.text
 
 
 def test_clean_task_creation_requires_three_classifications(authenticated_client):
@@ -181,8 +182,8 @@ def test_clean_task_center_filters_due_today_and_shows_creation_date(
     assert "Tarefa com prazo hoje" in page.text
     assert "Tarefa para outro dia" not in page.text
     assert "Criada em" in page.text
-    assert 'name="category"><option value="">Selecionar</option>' in page.text
-    assert 'name="subcategory"><option value="">Selecionar</option>' in page.text
+    assert 'name="work_category_id"' in page.text
+    assert 'name="work_subcategory_id"' in page.text
     mine_page = authenticated_client.get("/v2-clean/tasks?workspace=mine")
     assert "Suporte solicitado" in mine_page.text
 
@@ -314,8 +315,8 @@ def test_clean_task_center_prefills_document_context(authenticated_client, db_se
     assert "Problema: Faturas FAC 2026/42" in response.text
     assert "Fornecedor: Fornecedor Teste" in response.text
     assert "Descrição: Mudança de óleo" in response.text
-    assert '<option value="Documentação" selected>Documentação</option>' in response.text
-    assert '<option value="Validação" selected>Validação</option>' in response.text
+    assert '<option value="">Selecionar fila</option>' in response.text
+    assert 'name="work_department_id"' in response.text
 
 
 def test_clean_task_center_supports_mine_participants_email_and_documents(authenticated_client, db_session):
@@ -528,7 +529,7 @@ def test_clean_task_context_is_editable_without_changing_management(authenticate
     )
     assert page.status_code == 200
     assert "Confirmar documentação" in page.text
-    assert ">Natureza<" in page.text
+    assert ">Departamento<" in page.text
     assert "Tarefas e problemas" not in page.text
 
 

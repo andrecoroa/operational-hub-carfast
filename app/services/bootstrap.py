@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.admin import Permission, Role, RolePermission
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.work_hierarchy import WorkDepartment, WorkQueue
 from app.services.management_center import ensure_management_defaults
 from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
@@ -271,10 +272,76 @@ def seed_initial_data(db: Session) -> None:
     seed_organizational_units(db)
     seed_teams(db)
     seed_catalogs(db)
+    seed_work_hierarchy(db)
     ensure_management_defaults(db)
     ensure_workshop_configuration_defaults(db)
     ensure_stock_defaults(db)
     db.commit()
+
+
+def seed_work_hierarchy(db: Session) -> None:
+    queue_definitions = (
+        (
+            "tasks_support",
+            "Tarefas e Suporte",
+            "Trabalho operacional, apoio e acompanhamento.",
+            10,
+        ),
+        (
+            "administration",
+            "Administração",
+            "Auditoria e trabalho administrativo reservado.",
+            20,
+        ),
+    )
+    queues = {item.code: item for item in db.scalars(select(WorkQueue)).all()}
+    for code, name, description, sort_order in queue_definitions:
+        if code in queues:
+            continue
+        queue = WorkQueue(
+            code=code,
+            name=name,
+            description=description,
+            active=True,
+            sort_order=sort_order,
+        )
+        db.add(queue)
+        db.flush()
+        queues[code] = queue
+
+    department_definitions = (
+        ("tasks_support", "operations", "Operações", False, 10),
+        ("tasks_support", "fleet", "Frota", False, 20),
+        ("tasks_support", "hr", "RH", False, 30),
+        (
+            "tasks_support",
+            "management_planning",
+            "Gestão e Planeamento",
+            False,
+            40,
+        ),
+        ("tasks_support", "other", "Outro", True, 90),
+        ("administration", "audit", "Auditoria", False, 10),
+        ("administration", "other", "Outro", True, 90),
+    )
+    existing_departments = {
+        (item.queue_id, item.code)
+        for item in db.scalars(select(WorkDepartment)).all()
+    }
+    for queue_code, code, name, requires_description, sort_order in department_definitions:
+        queue = queues[queue_code]
+        if (queue.id, code) in existing_departments:
+            continue
+        db.add(
+            WorkDepartment(
+                queue_id=queue.id,
+                code=code,
+                name=name,
+                requires_description=requires_description,
+                active=True,
+                sort_order=sort_order,
+            )
+        )
 
 
 def seed_permissions(db: Session) -> None:

@@ -131,6 +131,21 @@ def _create_task_for_occurrence(
         source="recurrence",
         category=template.task_category,
         subcategory=template.task_subcategory,
+        work_queue_id=template.work_queue_id,
+        work_department_id=template.work_department_id,
+        work_category_id=template.work_category_id,
+        work_subcategory_id=template.work_subcategory_id,
+        classification_status=(
+            "classified" if template.work_queue_id and template.work_department_id else "legacy"
+        ),
+        legacy_classification=(
+            " / ".join(
+                value
+                for value in (template.task_category, template.task_subcategory)
+                if value
+            )
+            or None
+        ),
         status="new",
         priority=template.task_priority,
         team_id=None,

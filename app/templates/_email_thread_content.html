@@ -18,9 +18,21 @@
     <aside class="email-triage-pane">
       <section class="email-triage-heading"><p class="eyebrow">Triagem</p><h3>Classificar conversa</h3><p>A mesma classificação acompanha a tarefa, quando criada.</p></section>
       {% if can_triage %}<form method="post" action="/v2-clean/email/{{ thread.id }}/triage" class="email-triage-form">
+        <input type="hidden" name="nature" value="{{ thread.nature or '' }}">
         <label>Tipo de conteúdo<select name="content_type"><option value="">Por classificar</option>{% for code,label in content_types.items() %}<option value="{{ code }}" {% if thread.content_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-        <label>Natureza / área<select name="nature"><option value="">Por classificar</option>{% for code,label in work_natures.items() %}<option value="{{ code }}" {% if thread.nature == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <div class="email-work-hierarchy" data-work-hierarchy>
+          <label>Fila<select name="work_queue_id" data-work-level="queue"><option value="">Por classificar</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if thread.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Departamento<select name="work_department_id" data-work-level="department"><option value="">Por classificar</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if thread.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Categoria<select name="work_category_id" data-work-level="category"><option value="">Por classificar</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if thread.work_category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory"><option value="">Por classificar</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if thread.work_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+          <label class="clean-work-other" {% if thread.classification_status != 'review' %}hidden{% endif %}>Descrição de “Outro”<input name="classification_other_text" value="{{ thread.classification_other_text or '' }}"></label>
+        </div>
         <label>Tipo de documento<select name="document_type"><option value="">Não aplicável</option>{% for code,label in document_types.items() %}<option value="{{ code }}" {% if thread.document_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <div class="email-mini-workflow">
+          <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in email_users %}<option value="{{ user.id }}" {% if thread.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+          <label>Prazo<input type="datetime-local" name="due_at" value="{{ thread.due_at.strftime('%Y-%m-%dT%H:%M') if thread.due_at else '' }}"></label>
+          <label>Aguardar resposta até<input type="datetime-local" name="waiting_until" value="{{ thread.waiting_until.strftime('%Y-%m-%dT%H:%M') if thread.waiting_until else '' }}"></label>
+        </div>
         <label>Observações<textarea name="triage_notes" rows="3" placeholder="Contexto útil para tratamento ou tarefa">{{ thread.triage_notes or '' }}</textarea></label>
         <button type="submit">Guardar triagem</button>
       </form>{% endif %}
@@ -28,10 +40,12 @@
       {% if not thread.task_id %}<form method="post" action="/v2-clean/email/{{ thread.id }}/task"><button class="secondary email-task-button">Criar tarefa com esta classificação</button></form>{% endif %}
       {% if can_reply %}<details class="email-reply-drawer"><summary>Responder</summary><form method="post" action="/v2-clean/email/{{ thread.id }}/reply" class="email-reply-form">
         <label><span>De</span><input value="{{ channel.address }}" readonly></label><label><span>Para</span><input value="{{ thread.sender_email }}" readonly></label><label><span>Assunto</span><input value="Re: {{ thread.subject }}" readonly></label>
-        <div class="email-editor-toolbar" aria-label="Formatação"><button type="button" title="Negrito"><b>B</b></button><button type="button" title="Itálico"><i>I</i></button><button type="button" title="Lista">☷</button><button type="button" title="Anexar">📎</button></div><textarea name="body" required placeholder="Escrever resposta..."></textarea><p class="email-approval-summary">A resposta só é enviada depois da aprovação.</p><footer><button name="submit" value="draft" class="secondary">Guardar rascunho</button><button name="submit" value="approval">Pedir aprovação</button></footer>
+        {% if email_templates %}<label><span>Modelo</span><select data-email-template><option value="">Sem modelo</option>{% for template in email_templates %}<option value="{{ template.id }}" data-subject="{{ template.subject_template or '' }}" data-body="{{ template.body_template|e }}">{{ template.name }}</option>{% endfor %}</select></label>{% endif %}
+        <div class="email-editor-toolbar" aria-label="Formatação"><button type="button" title="Negrito"><b>B</b></button><button type="button" title="Itálico"><i>I</i></button><button type="button" title="Lista">☷</button><button type="button" title="Anexar">Anexar</button></div><textarea name="body" required placeholder="Escrever resposta..."></textarea><p class="email-approval-summary">{% if can_send_direct %}Este perfil pode enviar diretamente.{% else %}A resposta só é enviada depois da aprovação.{% endif %}</p><footer><button name="submit" value="draft" class="secondary">Guardar rascunho</button>{% if can_send_direct %}<button name="submit" value="send">Enviar</button>{% else %}<button name="submit" value="approval">Pedir aprovação</button>{% endif %}</footer>
       </form></details>{% endif %}
       {% for item in messages if item.state == 'pending_approval' %}<section class="email-approval"><strong>A aguardar aprovação</strong><p>{{ item.text_body }}</p>{% if can_approve %}<form method="post" action="/v2-clean/email/{{ thread.id }}/messages/{{ item.id }}/approve"><button type="submit" data-email-approve data-email-thread-id="{{ thread.id }}">Aprovar e enviar</button></form>{% endif %}</section>{% endfor %}
     </aside>
   </div>
   <dialog class="email-attachment-dialog" data-email-attachment-dialog><div class="email-preview-loading">A abrir anexo…</div></dialog>
 </section>
+<script type="application/json" data-email-work-hierarchy>{{ work_hierarchy_json|tojson }}</script>

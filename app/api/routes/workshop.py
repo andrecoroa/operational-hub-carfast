@@ -37,6 +37,7 @@ from app.models.workshop_phased import (
 from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
+from app.services.work_classification import apply_source_work_default
 from app.services.workshop_configuration import WORKSHOP_STOCK_STATUSES
 from app.services.workshop_report_extractor import (
     extract_workshop_report_values,
@@ -2013,6 +2014,12 @@ def upsert_technical_check(
             entity_id=str(process.id),
             assigned_to_id=check_input.task_responsible_user_id,
         )
+        apply_source_work_default(
+            db,
+            task,
+            source_type="workshop",
+            source_key="technical_check",
+        )
         db.add(task)
         db.flush()
         task_id = task.id
@@ -2125,6 +2132,12 @@ def confirm_diagnosis_decision(
             assigned_to_id=decision.next_action_responsible_user_id,
             due_on=decision.next_action_due_at.date() if decision.next_action_due_at else None,
             created_by_id=decision.decided_by_id,
+        )
+        apply_source_work_default(
+            db,
+            task,
+            source_type="workshop",
+            source_key="diagnosis_decision",
         )
         db.add(task)
         db.flush()

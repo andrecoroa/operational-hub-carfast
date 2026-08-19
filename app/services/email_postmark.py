@@ -7,7 +7,7 @@ import json
 import re
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -22,6 +22,8 @@ from app.models.email import (
     EmailThread,
     EmailWebhookEvent,
 )
+from app.models.tasks import Task, TaskEmailOrigin
+from app.models.work_hierarchy import WorkQueue
 
 
 def ensure_email_channels(db: Session) -> None:
@@ -142,7 +144,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         )
         if parent:
             thread = db.get(EmailThread, parent.thread_id)
+    created_thread = thread is None
     if not thread:
+        now = datetime.now(UTC)
         thread = EmailThread(
             channel_id=channel.id,
             subject=subject,
@@ -150,7 +154,28 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             sender_email=sender,
             sender_name=payload.get("FromName"),
             external_conversation_id=conversation_id or external_id,
-            last_message_at=datetime.now(UTC),
+            work_queue_id=channel.default_queue_id,
+            work_department_id=channel.default_department_id,
+            work_category_id=channel.default_category_id,
+            work_subcategory_id=channel.default_subcategory_id,
+            classification_status=(
+                "classified"
+                if channel.default_queue_id and channel.default_department_id
+                else "unclassified"
+            ),
+            document_type=channel.default_document_type,
+            assigned_to_id=channel.default_assignee_id,
+            due_at=(
+                now + timedelta(days=channel.default_due_days)
+                if channel.default_due_days is not None
+                else None
+            ),
+            waiting_until=(
+                now + timedelta(days=channel.default_wait_days)
+                if channel.default_wait_days is not None
+                else None
+            ),
+            last_message_at=now,
         )
         db.add(thread)
         db.flush()
@@ -195,6 +220,56 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             )
         )
     thread.last_message_at = message.received_at
+    if created_thread and channel.auto_task_mode in {"open", "complete"}:
+        queue = db.get(WorkQueue, channel.default_queue_id) if channel.default_queue_id else None
+        now = datetime.now(UTC)
+        task = Task(
+            title=subject[:200],
+            description=f"Criada automaticamente a partir do email recebido de {sender}.",
+            task_type=(
+                "administration_task"
+                if queue and queue.code == "administration"
+                else "operational_task"
+            ),
+            source="email",
+            status="closed" if channel.auto_task_mode == "complete" else "new",
+            priority="normal",
+            customer_email=sender,
+            assigned_to_id=channel.default_assignee_id,
+            due_on=thread.due_at.date() if thread.due_at else None,
+            work_queue_id=thread.work_queue_id,
+            work_department_id=thread.work_department_id,
+            work_category_id=thread.work_category_id,
+            work_subcategory_id=thread.work_subcategory_id,
+            classification_status=thread.classification_status,
+            resolved_at=now if channel.auto_task_mode == "complete" else None,
+            closed_at=now if channel.auto_task_mode == "complete" else None,
+        )
+        db.add(task)
+        db.flush()
+        db.add(
+            TaskEmailOrigin(
+                task_id=task.id,
+                message_id=external_id,
+                sender=sender,
+                recipients_json=payload.get("ToFull") or [],
+                subject=subject,
+                received_at=message.received_at,
+                mailbox=channel.address,
+                source_url=f"/v2-clean/email/{thread.id}",
+                rule_code=f"email_channel:{channel.code}:{channel.auto_task_mode}",
+            )
+        )
+        thread.task_id = task.id
+        thread.status = "resolved" if channel.auto_task_mode == "complete" else "task_created"
+        db.add(
+            EmailAuditEvent(
+                thread_id=thread.id,
+                message_id=message.id,
+                action="task_created_automatically",
+                details_json={"task_id": task.id, "mode": channel.auto_task_mode},
+            )
+        )
     event.processed = True
     db.add(EmailAuditEvent(thread_id=thread.id, message_id=message.id, action="inbound_received"))
     db.commit()

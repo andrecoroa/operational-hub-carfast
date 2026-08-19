@@ -27,6 +27,25 @@ class EmailChannel(TimestampMixin, Base):
     inbound_hash: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     approval_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_task_mode: Mapped[str] = mapped_column(String(40), default="none", index=True)
+    default_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
+    )
+    default_department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_departments.id", ondelete="SET NULL"), index=True
+    )
+    default_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    default_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
+    default_document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    default_assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    default_due_days: Mapped[int | None] = mapped_column(Integer)
+    default_wait_days: Mapped[int | None] = mapped_column(Integer)
 
 
 class EmailThread(TimestampMixin, Base):
@@ -48,6 +67,24 @@ class EmailThread(TimestampMixin, Base):
     assigned_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    work_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
+    )
+    work_department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_departments.id", ondelete="SET NULL"), index=True
+    )
+    work_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    work_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
+    classification_status: Mapped[str] = mapped_column(
+        String(40), default="unclassified", index=True
+    )
+    classification_other_text: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    waiting_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     external_conversation_id: Mapped[str | None] = mapped_column(String(255), index=True)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -138,3 +175,43 @@ class EmailChannelUser(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     can_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     can_approve: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class EmailChannelRole(Base):
+    __tablename__ = "email_channel_roles"
+    __table_args__ = (UniqueConstraint("channel_id", "role_id", name="uq_email_channel_role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
+    )
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), index=True)
+    can_read: Mapped[bool] = mapped_column(Boolean, default=True)
+    can_reply: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_send_direct: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_approve: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_manage: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class EmailTemplate(TimestampMixin, Base):
+    __tablename__ = "email_templates"
+    __table_args__ = (UniqueConstraint("code", name="uq_email_template_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    subject_template: Mapped[str | None] = mapped_column(String(500))
+    body_template: Mapped[str] = mapped_column(Text)
+    channel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="SET NULL"), index=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )

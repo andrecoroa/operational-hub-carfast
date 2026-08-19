@@ -24754,6 +24754,87 @@ body.clean-task-preview-open {
   overflow: auto;
 }
 
+.clean-admin-permission-groups {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.clean-admin-permission-group {
+  border: 1px solid var(--clean-admin-border);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 0 12px 10px;
+}
+
+.clean-admin-permission-group legend {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  padding: 0 6px;
+}
+
+.clean-admin-permission-group legend span {
+  color: #17333d;
+  font-size: 14px;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.clean-admin-permission-group legend small {
+  color: #6b7f88;
+  font-size: 11px;
+}
+
+.clean-admin-permission-group-list {
+  display: grid;
+  gap: 2px;
+}
+
+.clean-admin-permission-item {
+  align-items: center;
+  border-bottom: 1px solid #e7edef;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  padding: 9px 4px;
+}
+
+.clean-admin-permission-item:last-child {
+  border-bottom: 0;
+}
+
+.clean-admin-permission-item > span,
+.clean-admin-permission-item strong,
+.clean-admin-permission-item code {
+  display: block;
+  min-width: 0;
+}
+
+.clean-admin-permission-item code {
+  color: #617783;
+  font-size: 11px;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.clean-admin-permission-item input[type="checkbox"] {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.clean-work-table-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.clean-work-table-actions form {
+  margin: 0;
+}
+
 .clean-admin-permission-table {
   min-width: 760px;
 }
@@ -25217,6 +25298,10 @@ body.clean-task-preview-open {
   }
 
   .clean-admin-role-card:has(> details[open]) .clean-admin-permission-form {
+    grid-template-columns: 1fr;
+  }
+
+  .clean-admin-permission-groups {
     grid-template-columns: 1fr;
   }
 

@@ -229,7 +229,7 @@
 
       <section class="clean-panel clean-card-wide clean-admin-role-workspace">
         <header class="clean-admin-role-workspace-head">
-          <div><p class="eyebrow">Matriz de permissões</p><h3 id="clean-admin-selected-role">Selecionar perfil</h3><p>Uma linha por permissão, agrupada por módulo.</p></div>
+          <div><p class="eyebrow">Matriz de permissões</p><h3 id="clean-admin-selected-role">Selecionar perfil</h3><p>Permissões agrupadas por módulo. Código técnico apresentado como informação secundária.</p></div>
           <label>Perfil
             <select id="clean-admin-role-picker">
               {% for role in roles %}<option value="{{ role.id }}">{{ role.name }} · {{ role_permissions.get(role.id, [])|length }} permissões</option>{% endfor %}
@@ -243,24 +243,22 @@
               {% if role.code == "admin" %}<span class="pill muted-pill">Protegido</span>{% endif %}
             </div>
             <form class="clean-admin-permission-form" method="post" action="/v2-clean/admin/roles/{{ role.id }}/permissions">
-              <div class="table-wrap clean-admin-permission-table-wrap">
-                <table class="clean-admin-permission-table">
-                  <thead><tr><th>Módulo</th><th>Permissão</th><th>Código técnico</th><th>Atribuída</th></tr></thead>
-                  <tbody>
-                    {% for group, group_permissions in permission_groups.items() %}
+              <div class="clean-admin-permission-groups">
+                {% for group, group_permissions in permission_groups.items() %}
+                  <fieldset class="clean-admin-permission-group">
+                    <legend><span>{{ group }}</span><small>{{ group_permissions|length }} permissões</small></legend>
+                    <div class="clean-admin-permission-group-list">
                       {% for permission in group_permissions %}
-                        <tr>
-                          {% if loop.first %}<th rowspan="{{ group_permissions|length }}" scope="rowgroup">{{ group }}</th>{% endif %}
-                          <td><strong>{{ permission.name or permission.code }}</strong></td>
-                          <td><code>{{ permission.code }}</code></td>
-                          <td><label class="clean-admin-permission-toggle"><input type="checkbox" name="permission_codes" value="{{ permission.code }}"
+                        <label class="clean-admin-permission-item">
+                          <span><strong>{{ permission.name or permission.code }}</strong><code>{{ permission.code }}</code></span>
+                          <input type="checkbox" name="permission_codes" value="{{ permission.code }}"
                             {% if role.code == "admin" or permission.code in role_permissions.get(role.id, []) %}checked{% endif %}
-                            {% if role.code == "admin" or not can_manage %}disabled{% endif %}><span>Permitir</span></label></td>
-                        </tr>
+                            {% if role.code == "admin" or not can_manage %}disabled{% endif %}>
+                        </label>
                       {% endfor %}
-                    {% endfor %}
-                  </tbody>
-                </table>
+                    </div>
+                  </fieldset>
+                {% endfor %}
               </div>
               <footer class="clean-admin-role-actions">
                 {% if can_manage and role.code != "admin" %}<button type="submit">Guardar permissões</button>{% endif %}

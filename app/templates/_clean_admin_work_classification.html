@@ -159,6 +159,19 @@
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar permissão</button></footer>
   </form>
 </dialog>
+{% for scope in work_scopes %}
+<dialog id="work-edit-scope-{{ scope.id }}" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}">
+    <header><div><small>Permissão do Centro de Tarefas</small><h3>Editar âmbito autorizado</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-hierarchy-fields">
+      <label>Perfil<select name="role_id" required>{% for role in roles %}<option value="{{ role.id }}" {% if role.id == scope.role_id %}selected{% endif %}>{{ role.name }}</option>{% endfor %}</select></label>
+      {{ hierarchy_selects(scope) }}
+    </div>
+    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_create','Criar'),('can_update','Alterar'),('can_assign','Atribuir'),('can_close','Fechar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if scope|attr(field) %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar alterações</button></footer>
+  </form>
+</dialog>
+{% endfor %}
 
 <dialog id="work-create-source" class="clean-work-editor is-wide">
   <form method="post" action="/v2-clean/admin/work-classification/source-defaults">
@@ -291,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <section class="clean-work-admin-view" data-work-admin-view="permissions" hidden>
   <div class="clean-work-view-heading"><div><h3>Permissões do Centro de Tarefas</h3><p>O acesso pode abranger uma fila completa ou um ramo específico.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-scope">Adicionar permissão</button>{% endif %}</div>
   <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Perfil</th><th>Âmbito autorizado</th><th>Ler</th><th>Criar</th><th>Alterar</th><th>Atribuir</th><th>Fechar</th><th>Gerir</th><th></th></tr></thead><tbody>
-    {% for scope in work_scopes %}<tr><td><strong>{{ roles_by_id[scope.role_id].name }}</strong></td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ 'Sim' if scope.can_read else '—' }}</td><td>{{ 'Sim' if scope.can_create else '—' }}</td><td>{{ 'Sim' if scope.can_update else '—' }}</td><td>{{ 'Sim' if scope.can_assign else '—' }}</td><td>{{ 'Sim' if scope.can_close else '—' }}</td><td>{{ 'Sim' if scope.can_manage else '—' }}</td><td>{% if can_manage %}<form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}
+    {% for scope in work_scopes %}<tr><td><strong>{{ roles_by_id[scope.role_id].name }}</strong></td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ 'Sim' if scope.can_read else '—' }}</td><td>{{ 'Sim' if scope.can_create else '—' }}</td><td>{{ 'Sim' if scope.can_update else '—' }}</td><td>{{ 'Sim' if scope.can_assign else '—' }}</td><td>{{ 'Sim' if scope.can_close else '—' }}</td><td>{{ 'Sim' if scope.can_manage else '—' }}</td><td>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-edit-scope-{{ scope.id }}">Editar</button><form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form></div>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
 

@@ -4,7 +4,7 @@ from app.models.admin import Role, User, UserRole
 from app.models.audit import AuditLog
 from app.models.documents import Document
 from app.models.tasks import Task
-from app.models.work_hierarchy import WorkDepartment, WorkQueue
+from app.models.work_hierarchy import RoleWorkScope, WorkDepartment, WorkQueue
 from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessPhase
 from app.services.users import create_user
 
@@ -46,6 +46,7 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     roles_page = authenticated_client.get("/v2-clean/admin/roles")
     assert "clean-admin-role-table" in roles_page.text
     assert "clean-admin-role-picker" in roles_page.text
+    assert "clean-admin-permission-groups" in roles_page.text
     assert "Matriz de permissões" in roles_page.text
     assert "Código técnico" in roles_page.text
 
@@ -74,6 +75,79 @@ def test_work_classification_uses_compact_hierarchy_table_and_editors(authentica
     assert 'data-work-edit-parent' in response.text
     assert "Código estável (não editável)" in response.text
     assert "Administração da hierarquia" in response.text
+
+
+def test_work_scope_permissions_have_an_edit_action(authenticated_client, db_session):
+    role = db_session.scalar(select(Role).where(Role.code == "operator"))
+    queue = db_session.scalar(select(WorkQueue).where(WorkQueue.code == "tasks_support"))
+    assert role is not None
+    assert queue is not None
+    scope = RoleWorkScope(
+        role_id=role.id,
+        queue_id=queue.id,
+        can_read=True,
+        can_create=False,
+        can_update=False,
+        can_assign=False,
+        can_close=False,
+        can_manage=False,
+    )
+    db_session.add(scope)
+    db_session.commit()
+
+    response = authenticated_client.get("/v2-clean/admin/work-classification")
+
+    assert response.status_code == 200
+    assert f'data-dialog-open="work-edit-scope-{scope.id}"' in response.text
+    assert f'action="/v2-clean/admin/work-classification/scopes/{scope.id}"' in response.text
+
+
+def test_work_scope_permissions_can_be_edited(authenticated_client, db_session):
+    role = db_session.scalar(select(Role).where(Role.code == "operator"))
+    tasks_queue = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "tasks_support")
+    )
+    admin_queue = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "administration")
+    )
+    assert role is not None
+    assert tasks_queue is not None
+    assert admin_queue is not None
+    audit_department = db_session.scalar(
+        select(WorkDepartment).where(
+            WorkDepartment.queue_id == admin_queue.id,
+            WorkDepartment.code == "audit",
+        )
+    )
+    assert audit_department is not None
+    scope = RoleWorkScope(role_id=role.id, queue_id=tasks_queue.id, can_read=True)
+    db_session.add(scope)
+    db_session.commit()
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/work-classification/scopes/{scope.id}",
+        data={
+            "role_id": role.id,
+            "queue_id": admin_queue.id,
+            "department_id": audit_department.id,
+            "can_read": "on",
+            "can_update": "on",
+            "can_assign": "on",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?saved=1")
+    db_session.expire_all()
+    updated = db_session.get(RoleWorkScope, scope.id)
+    assert updated is not None
+    assert updated.queue_id == admin_queue.id
+    assert updated.department_id == audit_department.id
+    assert updated.can_read is True
+    assert updated.can_update is True
+    assert updated.can_assign is True
+    assert updated.can_create is False
 
 
 def test_work_classification_editor_can_change_parent_and_fields(

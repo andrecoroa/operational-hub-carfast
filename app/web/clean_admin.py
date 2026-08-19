@@ -1246,6 +1246,30 @@ def _work_classification_manage_access(request: Request):
     )
 
 
+def _valid_work_scope_hierarchy(
+    db,
+    queue_id: int,
+    department_id: int | None,
+    category_id: int | None,
+    subcategory_id: int | None,
+) -> bool:
+    queue = db.get(WorkQueue, queue_id)
+    if not queue:
+        return False
+    department = db.get(WorkDepartment, department_id) if department_id else None
+    if department_id and (not department or department.queue_id != queue_id):
+        return False
+    category = db.get(WorkCategory, category_id) if category_id else None
+    if category_id and (
+        not department or not category or category.department_id != department.id
+    ):
+        return False
+    subcategory = db.get(WorkSubcategory, subcategory_id) if subcategory_id else None
+    return not subcategory_id or bool(
+        category and subcategory and subcategory.category_id == category.id
+    )
+
+
 @clean_admin_router.post("/v2-clean/admin/work-classification/items/{entity_type}")
 def clean_admin_create_work_classification(
     request: Request,
@@ -1370,6 +1394,12 @@ def clean_admin_save_work_scope(
     if not _work_classification_manage_access(request):
         return _denied(request)
     with SessionLocal() as db:
+        if not _valid_work_scope_hierarchy(
+            db, queue_id, department_id, category_id, subcategory_id
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_scope"
+            )
         scope = db.scalar(
             select(RoleWorkScope).where(
                 RoleWorkScope.role_id == role_id,
@@ -1392,6 +1422,65 @@ def clean_admin_save_work_scope(
         scope.can_close = can_close == "on"
         scope.can_manage = can_manage == "on"
         db.add(scope)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/scopes/{scope_id}")
+def clean_admin_update_work_scope(
+    request: Request,
+    scope_id: int,
+    role_id: int = Form(...),
+    queue_id: int = Form(...),
+    department_id: int | None = Form(None),
+    category_id: int | None = Form(None),
+    subcategory_id: int | None = Form(None),
+    can_read: str = Form(""),
+    can_create: str = Form(""),
+    can_update: str = Form(""),
+    can_assign: str = Form(""),
+    can_close: str = Form(""),
+    can_manage: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        scope = db.get(RoleWorkScope, scope_id)
+        if not scope:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "missing"
+            )
+        if not db.get(Role, role_id) or not _valid_work_scope_hierarchy(
+            db, queue_id, department_id, category_id, subcategory_id
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_scope"
+            )
+        duplicate = db.scalar(
+            select(RoleWorkScope).where(
+                RoleWorkScope.id != scope.id,
+                RoleWorkScope.role_id == role_id,
+                RoleWorkScope.queue_id == queue_id,
+                RoleWorkScope.department_id == department_id,
+                RoleWorkScope.category_id == category_id,
+                RoleWorkScope.subcategory_id == subcategory_id,
+            )
+        )
+        if duplicate:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "duplicate"
+            )
+        scope.role_id = role_id
+        scope.queue_id = queue_id
+        scope.department_id = department_id
+        scope.category_id = category_id
+        scope.subcategory_id = subcategory_id
+        scope.can_read = can_read == "on"
+        scope.can_create = can_create == "on"
+        scope.can_update = can_update == "on"
+        scope.can_assign = can_assign == "on"
+        scope.can_close = can_close == "on"
+        scope.can_manage = can_manage == "on"
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
 

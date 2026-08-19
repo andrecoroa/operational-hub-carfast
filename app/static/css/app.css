@@ -27457,16 +27457,34 @@ body.clean-task-preview-open {
   background:#fff3ef;
   color:#8f2f1f;
 }
-.email-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; }
-.email-status-tile { border:1px solid #d8e0ea; padding:12px; color:#14253f; text-decoration:none; background:#fff; }
-.email-status-tile strong,.email-status-tile span { display:block; }
-.email-status-tile strong { font-size:1.4rem; }
-.email-status-tile.active { border-color:#b94732; background:#fff3ef; }
-.email-filters { padding:12px; border:1px solid #d8e0ea; background:#fff; }
-.email-filters input { flex:1; }
+.email-summary { display:flex; gap:6px; overflow-x:auto; padding:0 0 4px; }
+.email-status-tile { display:flex; align-items:center; gap:7px; flex:0 0 auto; min-height:38px; border:1px solid #d8e0ea; padding:7px 10px; color:#33445c; text-decoration:none; background:#fff; }
+.email-status-tile strong { min-width:20px; color:#14253f; font-size:1rem; text-align:center; }
+.email-status-tile span { font-size:.82rem; font-weight:700; }
+.email-status-tile.active { border-color:#b94732; background:#fff3ef; color:#8f2f1f; }
+.email-filters { display:grid; grid-template-columns:minmax(260px,1.7fr) minmax(180px,.8fr) minmax(190px,.8fr) auto auto; align-items:end; padding:12px; border:1px solid #d8e0ea; background:#fff; }
+.email-filters label { display:grid; gap:5px; color:#33445c; font-size:.78rem; font-weight:800; }
+.email-filters input,.email-filters select { width:100%; }
 .email-table-wrap { overflow:auto; border:1px solid #d8e0ea; background:#fff; }
 .email-table { width:100%; border-collapse:collapse; }
-.email-table th,.email-table td { padding:12px; text-align:left; border-bottom:1px solid #e5e9ef; }
+.email-table th,.email-table td { padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid #e5e9ef; }
+.email-table th { color:#53647b; font-size:.72rem; text-transform:uppercase; }
+.email-work-table { min-width:1120px; table-layout:fixed; }
+.email-work-table th:nth-child(1) { width:150px; }
+.email-work-table th:nth-child(2) { width:28%; }
+.email-work-table th:nth-child(3) { width:15%; }
+.email-work-table th:nth-child(4) { width:13%; }
+.email-work-table th:nth-child(5) { width:150px; }
+.email-work-table th:nth-child(6) { width:140px; }
+.email-work-table th:nth-child(7) { width:70px; }
+.email-work-table th:nth-child(8) { width:76px; }
+.email-work-table td strong,.email-work-table td small { display:block; }
+.email-work-table td small { margin-top:3px; color:#66758b; overflow-wrap:anywhere; }
+.email-muted { color:#758297; }
+.email-due { display:inline-block; font-weight:700; white-space:nowrap; }
+.email-due-overdue { color:#b42318; }
+.email-due-today { color:#9a5b00; }
+.email-due-planned { color:#245f4a; }
 .email-badge { display:inline-block; padding:5px 8px; background:#fff0d6; color:#80520d; font-weight:700; }
 .email-badge.status-resolved,.email-badge.status-associated,.email-badge.status-task_created { background:#e1f3e9; color:#176c45; }
 .email-thread-toolbar { padding:12px; border:1px solid #d8e0ea; background:#fff; }
@@ -27482,7 +27500,7 @@ body.clean-task-preview-open {
 .email-approval { padding:12px; border:1px solid #e1b866; background:#fff8e8; }
 .email-notice { padding:12px; border-left:4px solid #16794b; background:#edf8f2; }
 .email-notice.warning { border-color:#b7791f; background:#fff8e8; }
-@media (max-width: 820px) { .email-thread-grid { grid-template-columns:1fr; } .email-filters,.email-thread-toolbar,.email-thread-header { align-items:stretch; flex-direction:column; } .email-table { min-width:760px; } }
+@media (max-width: 820px) { .email-thread-grid { grid-template-columns:1fr; } .email-filters { grid-template-columns:1fr; align-items:stretch; } .email-thread-toolbar,.email-thread-header { align-items:stretch; flex-direction:column; } .email-table { min-width:760px; } }
 
 .email-inbox-row { cursor:pointer; }
 .email-inbox-row:hover { background:#f7f9fc; }

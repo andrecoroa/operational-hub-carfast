@@ -16,6 +16,7 @@ from app.models.email import (
     EmailWebhookEvent,
 )
 from app.services.email_postmark import ingest_inbound, send_message, webhook_authorized
+from app.services.work_classification import thread_reference
 
 
 def _payload(message_id: str = "pm-test-1") -> dict:
@@ -88,9 +89,47 @@ def test_clean_email_inbox_and_thread_render(
 
     assert inbox.status_code == 200
     assert "Pedido de informação" in inbox.text
+    assert thread_reference(thread) in inbox.text
+    assert "Responsável" in inbox.text
+    assert "Prazo" in inbox.text
+    assert "Permissões por caixa" not in inbox.text
     assert detail.status_code == 200
     assert "Responder" in detail.text
     assert "/v2-clean/email/messages/" in detail.text
+
+
+def test_email_inbox_defaults_to_triage_and_searches_message_content(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    triage_thread, _ = ingest_inbound(db_session, _payload("pm-inbox-triage"))
+    archived_payload = _payload("pm-inbox-archived")
+    archived_payload["Subject"] = "Conversa arquivada"
+    archived_payload["TextBody"] = "Conteúdo reservado para pesquisa alargada."
+    archived_thread, _ = ingest_inbound(db_session, archived_payload)
+    archived_thread.status = "archived"
+    db_session.commit()
+
+    default_inbox = authenticated_client.get("/v2-clean/email")
+    all_inbox = authenticated_client.get("/v2-clean/email?status=all")
+    body_search = authenticated_client.get(
+        "/v2-clean/email?status=all&q=pesquisa+alargada"
+    )
+    reference_search = authenticated_client.get(
+        f"/v2-clean/email?status=all&q={thread_reference(archived_thread)}"
+    )
+
+    assert default_inbox.status_code == 200
+    assert triage_thread.subject in default_inbox.text
+    assert archived_thread.subject not in default_inbox.text
+    assert archived_thread.subject in all_inbox.text
+    assert archived_thread.subject in body_search.text
+    assert archived_thread.subject in reference_search.text
 
 
 def test_email_preview_sanitizes_html_and_task_uses_operational_queue(

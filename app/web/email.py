@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Form, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -340,7 +340,7 @@ async def postmark_events(request: Request, authorization: str | None = Header(d
 
 
 @email_router.get("/v2-clean/email", response_class=HTMLResponse)
-def email_inbox(request: Request, status: str = "", channel: str = "", q: str = ""):
+def email_inbox(request: Request, status: str = "triage", channel: str = "", q: str = ""):
     auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
     if not auth:
         return RedirectResponse("/login?next=/v2-clean/email", status_code=303)
@@ -349,17 +349,40 @@ def email_inbox(request: Request, status: str = "", channel: str = "", q: str = 
         ensure_email_channels(db)
         db.commit()
         channel_access = _channel_access(db, user_id, permissions)
+        selected_status = status if status in STATUS_LABELS or status == "all" else "triage"
         query = (
             select(EmailThread, EmailChannel)
             .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
             .where(EmailThread.channel_id.in_(list(channel_access) or [-1]))
         )
-        if status:
-            query = query.where(EmailThread.status == status)
+        if selected_status != "all":
+            query = query.where(EmailThread.status == selected_status)
         if channel:
             query = query.where(EmailChannel.code == channel)
-        if q:
-            query = query.where(EmailThread.subject.ilike(f"%{q}%"))
+        clean_query = q.strip()
+        if clean_query:
+            pattern = f"%{clean_query}%"
+            message_match = select(EmailMessage.thread_id).where(
+                EmailMessage.thread_id == EmailThread.id,
+                or_(
+                    EmailMessage.subject.ilike(pattern),
+                    EmailMessage.sender.ilike(pattern),
+                    EmailMessage.text_body.ilike(pattern),
+                    EmailMessage.html_body.ilike(pattern),
+                    EmailMessage.external_message_id.ilike(pattern),
+                ),
+            )
+            search_terms = [
+                EmailThread.subject.ilike(pattern),
+                EmailThread.sender_name.ilike(pattern),
+                EmailThread.sender_email.ilike(pattern),
+                EmailThread.external_conversation_id.ilike(pattern),
+                EmailThread.id.in_(message_match),
+            ]
+            reference_tail = clean_query.upper().split(".", 1)[0].rsplit("-", 1)[-1]
+            if reference_tail.isdigit():
+                search_terms.append(EmailThread.id == int(reference_tail))
+            query = query.where(or_(*search_terms))
         rows = db.execute(query.order_by(EmailThread.last_message_at.desc()).limit(100)).all()
         counts = dict(
             db.execute(
@@ -375,16 +398,32 @@ def email_inbox(request: Request, status: str = "", channel: str = "", q: str = 
                 .order_by(EmailChannel.name)
             )
         )
-        users = (
-            list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
-            if permissions.intersection({"email.manage", "admin.manage"})
-            else []
-        )
-        channel_grants = (
-            {(item.channel_id, item.user_id): item for item in db.scalars(select(EmailChannelUser))}
-            if users
-            else {}
-        )
+        users = list(db.scalars(select(User).order_by(User.name)))
+        users_by_id = {item.id: item for item in users}
+        now = datetime.now(UTC)
+        inbox_rows = []
+        for thread, thread_channel in rows:
+            due_at = thread.due_at
+            comparable_due_at = due_at
+            if comparable_due_at and comparable_due_at.tzinfo is None:
+                comparable_due_at = comparable_due_at.replace(tzinfo=UTC)
+            due_state = ""
+            if comparable_due_at:
+                if comparable_due_at < now:
+                    due_state = "overdue"
+                elif comparable_due_at.date() == now.date():
+                    due_state = "today"
+                else:
+                    due_state = "planned"
+            inbox_rows.append(
+                SimpleNamespace(
+                    thread=thread,
+                    channel=thread_channel,
+                    reference=thread_reference(thread),
+                    assignee=users_by_id.get(thread.assigned_to_id),
+                    due_state=due_state,
+                )
+            )
         compose_channels = [
             item
             for item in channels
@@ -404,14 +443,16 @@ def email_inbox(request: Request, status: str = "", channel: str = "", q: str = 
                 "active_menu": "email",
                 "current_user": db.get(User, user_id),
                 "permission_codes": permissions,
-                "rows": rows,
+                "rows": inbox_rows,
                 "channels": channels,
                 "counts": counts,
+                "total_count": sum(counts.values()),
                 "status_labels": STATUS_LABELS,
-                "filters": {"status": status, "channel": channel, "q": q},
-                "users": users,
-                "channel_grants": channel_grants,
-                "can_manage_channels": bool(users),
+                "filters": {
+                    "status": selected_status,
+                    "channel": channel,
+                    "q": clean_query,
+                },
                 "compose_channels": compose_channels,
                 "email_templates": email_templates,
                 "channel_send_direct": {

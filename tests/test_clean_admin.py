@@ -4,6 +4,7 @@ from app.models.admin import Role, User, UserRole
 from app.models.audit import AuditLog
 from app.models.documents import Document
 from app.models.tasks import Task
+from app.models.work_hierarchy import WorkDepartment, WorkQueue
 from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessPhase
 from app.services.users import create_user
 
@@ -70,7 +71,47 @@ def test_work_classification_uses_compact_hierarchy_table_and_editors(authentica
     assert 'data-work-level="category"' in response.text
     assert 'class="clean-table clean-work-structure-table"' in response.text
     assert 'class="clean-work-editor"' in response.text
+    assert 'data-work-edit-parent' in response.text
+    assert "Código estável (não editável)" in response.text
     assert "Administração da hierarquia" in response.text
+
+
+def test_work_classification_editor_can_change_parent_and_fields(
+    authenticated_client, db_session
+):
+    department = db_session.scalar(
+        select(WorkDepartment).where(WorkDepartment.code == "operations")
+    )
+    administration = db_session.scalar(
+        select(WorkQueue).where(WorkQueue.code == "administration")
+    )
+    assert department is not None
+    assert administration is not None
+
+    response = authenticated_client.post(
+        f"/v2-clean/admin/work-classification/items/department/{department.id}",
+        data={
+            "parent_id": administration.id,
+            "name": "Operações revistas",
+            "description": "Descrição atualizada pela edição.",
+            "sort_order": 35,
+            "requires_description": "on",
+            "active": "on",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("?saved=1")
+    db_session.expire_all()
+    updated = db_session.get(WorkDepartment, department.id)
+    assert updated is not None
+    assert updated.queue_id == administration.id
+    assert updated.name == "Operações revistas"
+    assert updated.description == "Descrição atualizada pela edição."
+    assert updated.sort_order == 35
+    assert updated.requires_description is True
+    assert updated.active is True
 
 
 def test_clean_admin_settings_shows_portuguese_labels_without_changing_codes(

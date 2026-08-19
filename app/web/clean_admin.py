@@ -1300,6 +1300,7 @@ def clean_admin_update_work_classification(
     entity_id: int,
     name: str = Form(""),
     description: str = Form(""),
+    parent_id: int | None = Form(None),
     sort_order: int = Form(0),
     active: str = Form(""),
     requires_description: str = Form(""),
@@ -1310,10 +1311,37 @@ def clean_admin_update_work_classification(
     model = WORK_ENTITY_MODELS.get(entity_type)
     if not model or not name.strip():
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid")
+    parent_definitions = {
+        "department": (WorkQueue, "queue_id"),
+        "category": (WorkDepartment, "department_id"),
+        "subcategory": (WorkCategory, "category_id"),
+    }
+    if entity_type in parent_definitions and not parent_id:
+        return _redirect(
+            "/v2-clean/admin/work-classification", "error", "missing_parent"
+        )
     with SessionLocal() as db:
         item = db.get(model, entity_id)
         if not item:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if entity_type in parent_definitions:
+            parent_model, parent_field = parent_definitions[entity_type]
+            if not db.get(parent_model, parent_id):
+                return _redirect(
+                    "/v2-clean/admin/work-classification", "error", "missing_parent"
+                )
+            duplicate = db.scalar(
+                select(model).where(
+                    getattr(model, parent_field) == parent_id,
+                    model.code == item.code,
+                    model.id != item.id,
+                )
+            )
+            if duplicate:
+                return _redirect(
+                    "/v2-clean/admin/work-classification", "error", "duplicate"
+                )
+            setattr(item, parent_field, parent_id)
         item.name = name.strip()
         item.description = description.strip() or None
         item.sort_order = sort_order

@@ -102,12 +102,24 @@
 </section>
 
 {% if can_manage %}
-{% macro edit_item_dialog(item, level, label, parent_name='', child_label='') -%}
+{% macro edit_item_dialog(item, level, label, parent_id=None, child_label='') -%}
 <dialog id="work-edit-{{ level }}-{{ item.id }}" class="clean-work-editor">
   <form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}/{{ item.id }}">
     <header><div><small>Editar {{ label|lower }}</small><h3>{{ item.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
-    <label>Código estável<input value="{{ item.code }}" disabled></label>
-    {% if parent_name %}<label>Nível superior<input value="{{ parent_name }}" disabled></label>{% endif %}
+    <label>Código estável (não editável)<input value="{{ item.code }}" disabled></label>
+    {% if level != 'queue' %}
+    <label>Nível superior
+      <select name="parent_id" data-work-edit-parent required>
+        {% if level == 'department' %}
+          {% for parent in work_queues %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
+        {% elif level == 'category' %}
+          {% for parent in work_departments %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativo{% endif %}</option>{% endfor %}
+        {% else %}
+          {% for parent in work_categories %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
+        {% endif %}
+      </select>
+    </label>
+    {% endif %}
     <label>Nome<input name="name" value="{{ item.name }}" required></label>
     <label>Descrição<textarea name="description">{{ item.description or '' }}</textarea></label>
     <label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label>
@@ -119,10 +131,10 @@
   </form>
 </dialog>
 {%- endmacro %}
-{% for item in work_queues %}{{ edit_item_dialog(item, 'queue', 'Fila', '', 'departamentos') }}{% endfor %}
-{% for item in work_departments %}{{ edit_item_dialog(item, 'department', 'Departamento', work_queues_by_id[item.queue_id].name, 'categorias') }}{% endfor %}
-{% for item in work_categories %}{{ edit_item_dialog(item, 'category', 'Categoria', work_departments_by_id[item.department_id].name, 'subcategorias') }}{% endfor %}
-{% for item in work_subcategories %}{{ edit_item_dialog(item, 'subcategory', 'Subcategoria', work_categories_by_id[item.category_id].name) }}{% endfor %}
+{% for item in work_queues %}{{ edit_item_dialog(item, 'queue', 'Fila', None, 'departamentos') }}{% endfor %}
+{% for item in work_departments %}{{ edit_item_dialog(item, 'department', 'Departamento', item.queue_id, 'categorias') }}{% endfor %}
+{% for item in work_categories %}{{ edit_item_dialog(item, 'category', 'Categoria', item.department_id, 'subcategorias') }}{% endfor %}
+{% for item in work_subcategories %}{{ edit_item_dialog(item, 'subcategory', 'Subcategoria', item.category_id) }}{% endfor %}
 
 {% for level, label in [('queue','Fila'),('department','Departamento'),('category','Categoria'),('subcategory','Subcategoria')] %}
 <dialog id="work-create-{{ level }}" class="clean-work-editor">

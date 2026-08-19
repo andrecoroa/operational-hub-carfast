@@ -1,46 +1,307 @@
-<header class="clean-admin-section-header clean-card-wide">
-  <div><p class="eyebrow">Tarefas e email</p><h2>Filas e classificação</h2><p>Uma hierarquia comum, com códigos estáveis, nomes editáveis e opções inativáveis.</p></div>
+<header class="clean-admin-section-header clean-card-wide clean-work-admin-header">
+  <div>
+    <p class="eyebrow">Tarefas e email</p>
+    <h2>Filas e classificação</h2>
+    <p>Gere a estrutura comum, os acessos e as predefinições sem alterar o histórico.</p>
+  </div>
 </header>
 
 {% macro hierarchy_selects(values=None, prefix='') -%}
-  <label>Fila<select name="{{ prefix }}queue_id"><option value="">Sem predefinição</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if values and values.queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-  <label>Departamento<select name="{{ prefix }}department_id"><option value="">Sem predefinição</option>{% for item in work_departments %}<option value="{{ item.id }}" {% if values and values.department_id == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}</option>{% endfor %}</select></label>
-  <label>Categoria<select name="{{ prefix }}category_id"><option value="">Por classificar</option>{% for item in work_categories %}<option value="{{ item.id }}" {% if values and values.category_id == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}</select></label>
-  <label>Subcategoria<select name="{{ prefix }}subcategory_id"><option value="">Por classificar</option>{% for item in work_subcategories %}<option value="{{ item.id }}" {% if values and values.subcategory_id == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}</option>{% endfor %}</select></label>
+  <label>Fila
+    <select name="{{ prefix }}queue_id" class="work-hierarchy-queue">
+      <option value="">Sem predefinição</option>
+      {% for item in work_queues %}<option value="{{ item.id }}" {% if values and values.queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Departamento
+    <select name="{{ prefix }}department_id" class="work-hierarchy-department">
+      <option value="">Sem predefinição</option>
+      {% for item in work_departments %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}" {% if values and values.department_id == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Categoria
+    <select name="{{ prefix }}category_id" class="work-hierarchy-category">
+      <option value="">Por classificar</option>
+      {% for item in work_categories %}<option value="{{ item.id }}" data-parent-id="{{ item.department_id }}" {% if values and values.category_id == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Subcategoria
+    <select name="{{ prefix }}subcategory_id" class="work-hierarchy-subcategory">
+      <option value="">Por classificar</option>
+      {% for item in work_subcategories %}<option value="{{ item.id }}" data-parent-id="{{ item.category_id }}" {% if values and values.subcategory_id == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}</option>{% endfor %}
+    </select>
+  </label>
 {%- endmacro %}
 
-<section class="clean-panel clean-card-wide clean-work-admin-section">
-  <div class="table-heading flat-heading"><div><h3>Estrutura de trabalho</h3><p>Fila → Departamento → Categoria → Subcategoria. Só as opções ativas aparecem em novas classificações.</p></div></div>
-  <div class="clean-work-admin-columns">
-    <div><h4>Filas</h4>{% for item in work_queues %}<details><summary><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ 'ativa' if item.active else 'inativa' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/items/queue/{{ item.id }}" class="clean-admin-form"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Descrição<input name="description" value="{{ item.description or '' }}"></label><label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativa</label><button>Guardar</button></form></details>{% endfor %}</div>
-    <div><h4>Departamentos</h4>{% for item in work_departments %}<details><summary><strong>{{ item.name }}</strong><small>{{ work_queues_by_id[item.queue_id].name }} · {{ item.code }} · {{ 'ativo' if item.active else 'inativo' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/items/department/{{ item.id }}" class="clean-admin-form"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Descrição<input name="description" value="{{ item.description or '' }}"></label><label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label><label class="checkbox-label"><input type="checkbox" name="requires_description" {% if item.requires_description %}checked{% endif %}> Exige descrição</label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativo</label><button>Guardar</button></form></details>{% endfor %}</div>
-    <div><h4>Categorias</h4>{% for item in work_categories %}<details><summary><strong>{{ item.name }}</strong><small>{{ work_departments_by_id[item.department_id].name }} · {{ item.code }} · {{ 'ativa' if item.active else 'inativa' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/items/category/{{ item.id }}" class="clean-admin-form"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Descrição<input name="description" value="{{ item.description or '' }}"></label><label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label><label class="checkbox-label"><input type="checkbox" name="requires_description" {% if item.requires_description %}checked{% endif %}> Exige descrição</label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativa</label><button>Guardar</button></form></details>{% else %}<p class="muted">Ainda sem categorias.</p>{% endfor %}</div>
-    <div><h4>Subcategorias</h4>{% for item in work_subcategories %}<details><summary><strong>{{ item.name }}</strong><small>{{ work_categories_by_id[item.category_id].name }} · {{ item.code }} · {{ 'ativa' if item.active else 'inativa' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/items/subcategory/{{ item.id }}" class="clean-admin-form"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Descrição<input name="description" value="{{ item.description or '' }}"></label><label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label><label class="checkbox-label"><input type="checkbox" name="requires_description" {% if item.requires_description %}checked{% endif %}> Exige descrição</label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativa</label><button>Guardar</button></form></details>{% else %}<p class="muted">Ainda sem subcategorias.</p>{% endfor %}</div>
+<nav class="clean-work-admin-nav" aria-label="Áreas de configuração">
+  <button type="button" class="is-active" data-work-admin-tab="structure">Estrutura</button>
+  <button type="button" data-work-admin-tab="permissions">Permissões</button>
+  <button type="button" data-work-admin-tab="sources">Origens</button>
+  <button type="button" data-work-admin-tab="channels">Caixas de email</button>
+  <button type="button" data-work-admin-tab="templates">Modelos</button>
+</nav>
+
+<section class="clean-work-admin-view" data-work-admin-view="structure">
+  <div class="clean-work-view-heading">
+    <div><h3>Administração da hierarquia</h3><p>Fila → Departamento → Categoria → Subcategoria</p></div>
+    <p class="clean-work-history-note">Inativar afeta apenas novas tarefas. O histórico mantém a classificação guardada.</p>
   </div>
-  {% if can_manage %}<details class="clean-work-admin-create"><summary>Criar opção</summary><div class="clean-work-admin-create-grid">{% for level, label in [('queue','Fila'),('department','Departamento'),('category','Categoria'),('subcategory','Subcategoria')] %}<form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}" class="clean-admin-form"><h4>{{ label }}</h4>{% if level != 'queue' %}<label>Associar a<select name="parent_id" required><option value="">Selecionar</option>{% if level == 'department' %}{% for parent in work_queues %}<option value="{{ parent.id }}">{{ parent.name }}</option>{% endfor %}{% elif level == 'category' %}{% for parent in work_departments %}<option value="{{ parent.id }}">{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}</option>{% endfor %}{% else %}{% for parent in work_categories %}<option value="{{ parent.id }}">{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}</option>{% endfor %}{% endif %}</select></label>{% endif %}<label>Código estável<input name="code" required placeholder="ex.: frota.vendas"></label><label>Nome<input name="name" required></label><label>Descrição<input name="description"></label><label>Ordem<input type="number" name="sort_order" value="0"></label>{% if level != 'queue' %}<label class="checkbox-label"><input type="checkbox" name="requires_description"> Exige descrição</label>{% endif %}<button>Criar</button></form>{% endfor %}</div></details>{% endif %}
+  <nav class="clean-work-level-tabs" aria-label="Nível da hierarquia">
+    <button type="button" class="is-active" data-work-level="queue">Filas <span>{{ work_queues|length }}</span></button>
+    <button type="button" data-work-level="department">Departamentos <span>{{ work_departments|length }}</span></button>
+    <button type="button" data-work-level="category">Categorias <span>{{ work_categories|length }}</span></button>
+    <button type="button" data-work-level="subcategory">Subcategorias <span>{{ work_subcategories|length }}</span></button>
+  </nav>
+  <div class="clean-work-admin-toolbar">
+    <label class="work-filter-parent work-filter-queue-wrap is-hidden">Fila
+      <select id="work-filter-queue"><option value="">Todas</option>{% for item in work_queues %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select>
+    </label>
+    <label class="work-filter-parent work-filter-department-wrap is-hidden">Departamento
+      <select id="work-filter-department"><option value="">Todos</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}">{{ item.name }}</option>{% endfor %}</select>
+    </label>
+    <label>Estado<select id="work-filter-state"><option value="">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></label>
+    <label class="clean-work-search">Pesquisar<input id="work-filter-search" placeholder="Código ou nome" autocomplete="off"></label>
+    {% if can_manage %}<button type="button" class="clean-work-new-button" data-work-create-open>Nova fila</button>{% endif %}
+  </div>
+  <div class="clean-table-scroll clean-work-structure-wrap">
+    <table class="clean-table clean-work-structure-table">
+      <thead><tr><th>Código</th><th>Nome</th><th>Nível superior</th><th>Estado</th><th>Utilização</th><th>Dependências</th><th>Alterado em</th><th>Ação</th></tr></thead>
+      <tbody>
+        {% for item in work_queues %}
+        <tr data-work-row data-level="queue" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }}">
+          <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>—</td>
+          <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
+          <td>{{ work_usage_counts.queue.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.queue.get(item.id, 0) }} departamentos</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-queue-{{ item.id }}">Editar</button>{% endif %}</td>
+        </tr>{% endfor %}
+        {% for item in work_departments %}
+        <tr data-work-row data-level="department" data-queue="{{ item.queue_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ work_queues_by_id[item.queue_id].name }}" hidden>
+          <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>{{ work_queues_by_id[item.queue_id].name }}</td>
+          <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativo' if item.active else 'Inativo' }}</span></td>
+          <td>{{ work_usage_counts.department.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.department.get(item.id, 0) }} categorias</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-department-{{ item.id }}">Editar</button>{% endif %}</td>
+        </tr>{% endfor %}
+        {% for item in work_categories %}{% set parent = work_departments_by_id[item.department_id] %}
+        <tr data-work-row data-level="category" data-queue="{{ parent.queue_id }}" data-department="{{ item.department_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ parent.name }}" hidden>
+          <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong>{% if item.requires_description %}<small>Exige descrição</small>{% endif %}</td><td>{{ parent.name }}</td>
+          <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
+          <td>{{ work_usage_counts.category.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.category.get(item.id, 0) }} subcategorias</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-category-{{ item.id }}">Editar</button>{% endif %}</td>
+        </tr>{% endfor %}
+        {% for item in work_subcategories %}{% set parent = work_categories_by_id[item.category_id] %}{% set department = work_departments_by_id[parent.department_id] %}
+        <tr data-work-row data-level="subcategory" data-queue="{{ department.queue_id }}" data-department="{{ parent.department_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ parent.name }}" hidden>
+          <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong>{% if item.requires_description %}<small>Exige descrição</small>{% endif %}</td><td>{{ parent.name }}</td>
+          <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
+          <td>{{ work_usage_counts.subcategory.get(item.id, 0) }} tarefas</td><td>—</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-subcategory-{{ item.id }}">Editar</button>{% endif %}</td>
+        </tr>{% endfor %}
+        <tr data-work-empty hidden><td colspan="8">Sem opções para os filtros selecionados.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
-<section class="clean-panel clean-card-wide clean-work-admin-section">
-  <div class="table-heading flat-heading"><div><h3>Permissões do Centro de Tarefas</h3><p>O perfil recebe acesso ao nível escolhido; campos inferiores vazios abrangem todo o ramo.</p></div></div>
-  <div class="clean-table-scroll"><table class="clean-table"><thead><tr><th>Perfil</th><th>Âmbito</th><th>Ler</th><th>Criar</th><th>Alterar</th><th>Atribuir</th><th>Fechar</th><th>Gerir</th><th></th></tr></thead><tbody>{% for scope in work_scopes %}<tr><td>{{ roles_by_id[scope.role_id].name }}</td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ 'Sim' if scope.can_read else 'Não' }}</td><td>{{ 'Sim' if scope.can_create else 'Não' }}</td><td>{{ 'Sim' if scope.can_update else 'Não' }}</td><td>{{ 'Sim' if scope.can_assign else 'Não' }}</td><td>{{ 'Sim' if scope.can_close else 'Não' }}</td><td>{{ 'Sim' if scope.can_manage else 'Não' }}</td><td><form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form></td></tr>{% else %}<tr><td colspan="9">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}</tbody></table></div>
-  {% if can_manage %}<details><summary>Adicionar permissão</summary><form method="post" action="/v2-clean/admin/work-classification/scopes" class="clean-admin-inline-form clean-work-scope-form"><label>Perfil<select name="role_id" required>{% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}</select></label>{{ hierarchy_selects() }}<label class="checkbox-label"><input type="checkbox" name="can_read" checked> Ler</label><label class="checkbox-label"><input type="checkbox" name="can_create"> Criar</label><label class="checkbox-label"><input type="checkbox" name="can_update"> Alterar</label><label class="checkbox-label"><input type="checkbox" name="can_assign"> Atribuir</label><label class="checkbox-label"><input type="checkbox" name="can_close"> Fechar</label><label class="checkbox-label"><input type="checkbox" name="can_manage"> Gerir</label><button>Guardar</button></form></details>{% endif %}
+{% if can_manage %}
+{% macro edit_item_dialog(item, level, label, parent_name='', child_label='') -%}
+<dialog id="work-edit-{{ level }}-{{ item.id }}" class="clean-work-editor">
+  <form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}/{{ item.id }}">
+    <header><div><small>Editar {{ label|lower }}</small><h3>{{ item.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <label>Código estável<input value="{{ item.code }}" disabled></label>
+    {% if parent_name %}<label>Nível superior<input value="{{ parent_name }}" disabled></label>{% endif %}
+    <label>Nome<input name="name" value="{{ item.name }}" required></label>
+    <label>Descrição<textarea name="description">{{ item.description or '' }}</textarea></label>
+    <label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label>
+    {% if level != 'queue' %}<label class="checkbox-label"><input type="checkbox" name="requires_description" {% if item.requires_description %}checked{% endif %}> Exige descrição</label>{% endif %}
+    <label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> {{ 'Ativo' if level == 'department' else 'Ativa' }}</label>
+    <p class="clean-work-inactive-warning">Inativar afeta apenas tarefas futuras. O histórico mantém o nome guardado.</p>
+    <div class="clean-work-dependencies">{% if child_label %}{{ work_child_counts[level].get(item.id, 0) }} {{ child_label }} · {% endif %}{{ work_usage_counts[level].get(item.id, 0) }} tarefas</div>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar alterações</button></footer>
+  </form>
+</dialog>
+{%- endmacro %}
+{% for item in work_queues %}{{ edit_item_dialog(item, 'queue', 'Fila', '', 'departamentos') }}{% endfor %}
+{% for item in work_departments %}{{ edit_item_dialog(item, 'department', 'Departamento', work_queues_by_id[item.queue_id].name, 'categorias') }}{% endfor %}
+{% for item in work_categories %}{{ edit_item_dialog(item, 'category', 'Categoria', work_departments_by_id[item.department_id].name, 'subcategorias') }}{% endfor %}
+{% for item in work_subcategories %}{{ edit_item_dialog(item, 'subcategory', 'Subcategoria', work_categories_by_id[item.category_id].name) }}{% endfor %}
+
+{% for level, label in [('queue','Fila'),('department','Departamento'),('category','Categoria'),('subcategory','Subcategoria')] %}
+<dialog id="work-create-{{ level }}" class="clean-work-editor">
+  <form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}">
+    <header><div><small>Nova opção</small><h3>{{ label }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    {% if level != 'queue' %}<label>Nível superior<select name="parent_id" required><option value="">Selecionar</option>{% if level == 'department' %}{% for parent in work_queues %}<option value="{{ parent.id }}">{{ parent.name }}</option>{% endfor %}{% elif level == 'category' %}{% for parent in work_departments %}<option value="{{ parent.id }}">{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}</option>{% endfor %}{% else %}{% for parent in work_categories %}<option value="{{ parent.id }}">{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}</option>{% endfor %}{% endif %}</select></label>{% endif %}
+    <label>Código estável<input name="code" required placeholder="ex.: frota.oficina"></label>
+    <label>Nome<input name="name" required></label>
+    <label>Descrição<textarea name="description"></textarea></label>
+    <label>Ordem<input type="number" name="sort_order" value="0"></label>
+    {% if level != 'queue' %}<label class="checkbox-label"><input type="checkbox" name="requires_description"> Exige descrição</label>{% endif %}
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar {{ label|lower }}</button></footer>
+  </form>
+</dialog>
+{% endfor %}
+
+<dialog id="work-create-scope" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/scopes">
+    <header><div><small>Permissão</small><h3>Adicionar âmbito a um perfil</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-hierarchy-fields"><label>Perfil<select name="role_id" required>{% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}</select></label>{{ hierarchy_selects() }}</div>
+    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_create','Criar'),('can_update','Alterar'),('can_assign','Atribuir'),('can_close','Fechar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar permissão</button></footer>
+  </form>
+</dialog>
+
+<dialog id="work-create-source" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/source-defaults">
+    <header><div><small>Origem</small><h3>Adicionar predefinição</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-hierarchy-fields"><label>Origem<select name="source_type"><option value="recurring">Recorrência</option><option value="documentation">Documentação</option><option value="workshop">Oficina</option><option value="stock">Stock</option><option value="email">Email</option></select></label><label>Chave estável<input name="source_key" required placeholder="ex.: workshop.audit"></label>{{ hierarchy_selects() }}</div>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar predefinição</button></footer>
+  </form>
+</dialog>
+{% for item in source_defaults %}
+<dialog id="work-edit-source-{{ item.id }}" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/source-defaults/{{ item.id }}">
+    <header><div><small>{{ item.source_type }}</small><h3>{{ item.source_key }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-hierarchy-fields">{{ hierarchy_selects(item) }}</div>
+    <label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativa</label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar alterações</button></footer>
+  </form>
+</dialog>
+{% endfor %}
+
+{% for channel in email_channels %}
+<dialog id="work-edit-channel-{{ channel.id }}" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/email-channels/{{ channel.id }}">
+    <header><div><small>Caixa de email</small><h3>{{ channel.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-dialog-grid"><label>Nome<input name="name" value="{{ channel.name }}" required></label><label>Ao receber<select name="auto_task_mode"><option value="none" {% if channel.auto_task_mode == 'none' %}selected{% endif %}>Só criar conversa</option><option value="open" {% if channel.auto_task_mode == 'open' %}selected{% endif %}>Criar tarefa aberta</option><option value="complete" {% if channel.auto_task_mode == 'complete' %}selected{% endif %}>Criar tarefa concluída</option></select></label></div>
+    <div class="clean-work-hierarchy-fields">{{ hierarchy_selects(channel, 'default_') }}</div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ channel.default_document_type or '' }}"></label><label>Responsável<select name="default_assignee_id"><option value="">Por atribuir</option>{% for user in active_users %}<option value="{{ user.id }}" {% if channel.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days" value="{{ channel.default_due_days if channel.default_due_days is not none else '' }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ channel.default_wait_days if channel.default_wait_days is not none else '' }}"></label></div>
+    <label class="checkbox-label"><input type="checkbox" name="active" {% if channel.active %}checked{% endif %}> Ativa</label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar caixa</button></footer>
+  </form>
+</dialog>
+{% endfor %}
+<dialog id="work-create-channel-role" class="clean-work-editor">
+  <form method="post" action="/v2-clean/admin/work-classification/email-channel-roles">
+    <header><div><small>Email</small><h3>Permissão por caixa</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <label>Caixa<select name="channel_id">{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+    <label>Perfil<select name="role_id">{% for item in roles %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_reply','Responder'),('can_send_direct','Enviar sem aprovação'),('can_approve','Aprovar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar acesso</button></footer>
+  </form>
+</dialog>
+
+{% for item in email_templates %}
+<dialog id="work-edit-template-{{ item.id }}" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/email-templates/{{ item.id }}">
+    <header><div><small>Modelo de email</small><h3>{{ item.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-dialog-grid"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Caixa<select name="channel_id"><option value="">Todas</option>{% for channel in email_channels %}<option value="{{ channel.id }}" {% if item.channel_id == channel.id %}selected{% endif %}>{{ channel.name }}</option>{% endfor %}</select></label><label>Categoria<select name="category_id"><option value="">Todas</option>{% for category in work_categories %}<option value="{{ category.id }}" {% if item.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select></label><label>Subcategoria<select name="subcategory_id"><option value="">Todas</option>{% for subcategory in work_subcategories %}<option value="{{ subcategory.id }}" {% if item.subcategory_id == subcategory.id %}selected{% endif %}>{{ subcategory.name }}</option>{% endfor %}</select></label></div>
+    <label>Assunto<input name="subject_template" value="{{ item.subject_template or '' }}"></label><label>Corpo<textarea name="body_template" required>{{ item.body_template }}</textarea></label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativo</label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar modelo</button></footer>
+  </form>
+</dialog>
+{% endfor %}
+<dialog id="work-create-template" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/email-templates">
+    <header><div><small>Email</small><h3>Novo modelo</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-dialog-grid"><label>Código<input name="code" required></label><label>Nome<input name="name" required></label><label>Caixa<select name="channel_id"><option value="">Todas</option>{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Categoria<select name="category_id"><option value="">Todas</option>{% for item in work_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Subcategoria<select name="subcategory_id"><option value="">Todas</option>{% for item in work_subcategories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label></div>
+    <label>Assunto<input name="subject_template"></label><label>Corpo<textarea name="body_template" required></textarea></label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar modelo</button></footer>
+  </form>
+</dialog>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const adminTabs = document.querySelectorAll('[data-work-admin-tab]');
+  const adminViews = document.querySelectorAll('[data-work-admin-view]');
+  adminTabs.forEach((button) => button.addEventListener('click', () => {
+    adminTabs.forEach((item) => item.classList.toggle('is-active', item === button));
+    adminViews.forEach((view) => { view.hidden = view.dataset.workAdminView !== button.dataset.workAdminTab; });
+  }));
+  let activeLevel = 'queue';
+  const levelTabs = document.querySelectorAll('[data-work-level]');
+  const rows = document.querySelectorAll('[data-work-row]');
+  const queueFilter = document.getElementById('work-filter-queue');
+  const departmentFilter = document.getElementById('work-filter-department');
+  const stateFilter = document.getElementById('work-filter-state');
+  const searchFilter = document.getElementById('work-filter-search');
+  const emptyRow = document.querySelector('[data-work-empty]');
+  const newButton = document.querySelector('[data-work-create-open]');
+  const queueWrap = document.querySelector('.work-filter-queue-wrap');
+  const departmentWrap = document.querySelector('.work-filter-department-wrap');
+  const labels = {queue:'fila', department:'departamento', category:'categoria', subcategory:'subcategoria'};
+  function filterDepartmentOptions() {
+    const queue = queueFilter?.value || '';
+    departmentFilter?.querySelectorAll('option[data-parent-id]').forEach((option) => { option.hidden = Boolean(queue && option.dataset.parentId !== queue); });
+    if (departmentFilter?.selectedOptions[0]?.hidden) departmentFilter.value = '';
+  }
+  function applyFilters() {
+    filterDepartmentOptions();
+    const queue = queueFilter?.value || '';
+    const department = departmentFilter?.value || '';
+    const state = stateFilter?.value || '';
+    const search = (searchFilter?.value || '').trim().toLowerCase();
+    let visible = 0;
+    rows.forEach((row) => {
+      const show = row.dataset.level === activeLevel && (!queue || row.dataset.queue === queue) && (!department || row.dataset.department === department) && (!state || row.dataset.state === state) && (!search || row.dataset.search.toLowerCase().includes(search));
+      row.hidden = !show; if (show) visible += 1;
+    });
+    if (emptyRow) emptyRow.hidden = visible !== 0;
+  }
+  levelTabs.forEach((button) => button.addEventListener('click', () => {
+    activeLevel = button.dataset.workLevel;
+    levelTabs.forEach((item) => item.classList.toggle('is-active', item === button));
+    queueWrap?.classList.toggle('is-hidden', activeLevel === 'queue');
+    departmentWrap?.classList.toggle('is-hidden', !['category', 'subcategory'].includes(activeLevel));
+    if (newButton) newButton.textContent = `Nova ${labels[activeLevel]}`;
+    applyFilters();
+  }));
+  [queueFilter, departmentFilter, stateFilter].forEach((input) => input?.addEventListener('change', applyFilters));
+  searchFilter?.addEventListener('input', applyFilters);
+  newButton?.addEventListener('click', () => document.getElementById(`work-create-${activeLevel}`)?.showModal());
+  document.querySelectorAll('[data-dialog-open]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.dialogOpen)?.showModal()));
+  document.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog')?.close()));
+  document.querySelectorAll('.clean-work-editor').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); }));
+  document.querySelectorAll('form').forEach((form) => {
+    const queue = form.querySelector('.work-hierarchy-queue'); const department = form.querySelector('.work-hierarchy-department');
+    const category = form.querySelector('.work-hierarchy-category'); const subcategory = form.querySelector('.work-hierarchy-subcategory');
+    if (!queue || !department) return;
+    const sync = () => {
+      const filter = (select, parent) => select?.querySelectorAll('option[data-parent-id]').forEach((option) => { option.hidden = Boolean(parent && option.dataset.parentId !== parent); });
+      filter(department, queue.value); if (department.selectedOptions[0]?.hidden) department.value = '';
+      filter(category, department.value); if (category?.selectedOptions[0]?.hidden) category.value = '';
+      filter(subcategory, category?.value || ''); if (subcategory?.selectedOptions[0]?.hidden) subcategory.value = '';
+    };
+    [queue, department, category].forEach((select) => select?.addEventListener('change', sync)); sync();
+  });
+  applyFilters();
+});
+</script>
+
+<section class="clean-work-admin-view" data-work-admin-view="permissions" hidden>
+  <div class="clean-work-view-heading"><div><h3>Permissões do Centro de Tarefas</h3><p>O acesso pode abranger uma fila completa ou um ramo específico.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-scope">Adicionar permissão</button>{% endif %}</div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Perfil</th><th>Âmbito autorizado</th><th>Ler</th><th>Criar</th><th>Alterar</th><th>Atribuir</th><th>Fechar</th><th>Gerir</th><th></th></tr></thead><tbody>
+    {% for scope in work_scopes %}<tr><td><strong>{{ roles_by_id[scope.role_id].name }}</strong></td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ 'Sim' if scope.can_read else '—' }}</td><td>{{ 'Sim' if scope.can_create else '—' }}</td><td>{{ 'Sim' if scope.can_update else '—' }}</td><td>{{ 'Sim' if scope.can_assign else '—' }}</td><td>{{ 'Sim' if scope.can_close else '—' }}</td><td>{{ 'Sim' if scope.can_manage else '—' }}</td><td>{% if can_manage %}<form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}
+  </tbody></table></div>
 </section>
 
-<section class="clean-panel clean-card-wide clean-work-admin-section">
-  <div class="table-heading flat-heading"><div><h3>Predefinições por origem</h3><p>Recorrências, Documentação, Oficina e Stock usam a mesma classificação quando criam tarefas.</p></div></div>
-  {% for item in source_defaults %}<details><summary><strong>{{ item.source_type }} · {{ item.source_key }}</strong><small>{{ 'ativa' if item.active else 'inativa' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/source-defaults/{{ item.id }}" class="clean-admin-form clean-work-channel-form">{{ hierarchy_selects(item) }}<label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativa</label><button>Guardar</button></form></details>{% else %}<p class="muted">Ainda sem predefinições adicionais.</p>{% endfor %}
-  {% if can_manage %}<details><summary>Adicionar predefinição</summary><form method="post" action="/v2-clean/admin/work-classification/source-defaults" class="clean-admin-form clean-work-channel-form"><label>Origem<select name="source_type"><option value="recurring">Recorrência</option><option value="documentation">Documentação</option><option value="workshop">Oficina</option><option value="stock">Stock</option><option value="email">Email</option></select></label><label>Chave estável<input name="source_key" required placeholder="ex.: workshop.audit"></label>{{ hierarchy_selects() }}<button>Criar predefinição</button></form></details>{% endif %}
+<section class="clean-work-admin-view" data-work-admin-view="sources" hidden>
+  <div class="clean-work-view-heading"><div><h3>Predefinições por origem</h3><p>Recorrências, Documentação, Oficina e Stock usam a mesma classificação.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-source">Adicionar origem</button>{% endif %}</div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Origem</th><th>Chave</th><th>Fila</th><th>Departamento</th><th>Categoria</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for item in source_defaults %}<tr><td><strong>{{ item.source_type|capitalize }}</strong></td><td><code>{{ item.source_key }}</code></td><td>{{ work_queues_by_id[item.queue_id].name if item.queue_id else '—' }}</td><td>{{ work_departments_by_id[item.department_id].name if item.department_id else '—' }}</td><td>{{ work_categories_by_id[item.category_id].name if item.category_id else '—' }}</td><td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-source-{{ item.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="7">Ainda sem predefinições adicionais.</td></tr>{% endfor %}
+  </tbody></table></div>
 </section>
 
-<section class="clean-panel clean-card-wide clean-work-admin-section">
-  <div class="table-heading flat-heading"><div><h3>Caixas de email</h3><p>Define classificação, responsável, prazo e criação automática de tarefa por caixa.</p></div></div>
-  {% for channel in email_channels %}<details class="clean-work-channel"><summary><strong>{{ channel.name }}</strong><span>{{ channel.address }} · {{ 'ativa' if channel.active else 'inativa' }}</span></summary><form method="post" action="/v2-clean/admin/work-classification/email-channels/{{ channel.id }}" class="clean-admin-form clean-work-channel-form"><label>Nome<input name="name" value="{{ channel.name }}" required></label><label>Ao receber<select name="auto_task_mode"><option value="none" {% if channel.auto_task_mode == 'none' %}selected{% endif %}>Só criar conversa</option><option value="open" {% if channel.auto_task_mode == 'open' %}selected{% endif %}>Criar tarefa aberta</option><option value="complete" {% if channel.auto_task_mode == 'complete' %}selected{% endif %}>Criar tarefa concluída</option></select></label>{{ hierarchy_selects(channel, 'default_') }}<label>Tipo de documento<input name="default_document_type" value="{{ channel.default_document_type or '' }}"></label><label>Responsável<select name="default_assignee_id"><option value="">Por atribuir</option>{% for user in active_users %}<option value="{{ user.id }}" {% if channel.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days" value="{{ channel.default_due_days if channel.default_due_days is not none else '' }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ channel.default_wait_days if channel.default_wait_days is not none else '' }}"></label><label class="checkbox-label"><input type="checkbox" name="active" {% if channel.active %}checked{% endif %}> Ativa</label><button>Guardar caixa</button></form></details>{% endfor %}
-  {% if can_manage %}<details><summary>Permissão de perfil por caixa</summary><form method="post" action="/v2-clean/admin/work-classification/email-channel-roles" class="clean-admin-inline-form"><label>Caixa<select name="channel_id">{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Perfil<select name="role_id">{% for item in roles %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label class="checkbox-label"><input type="checkbox" name="can_read" checked> Ler</label><label class="checkbox-label"><input type="checkbox" name="can_reply"> Responder</label><label class="checkbox-label"><input type="checkbox" name="can_send_direct"> Enviar sem aprovação</label><label class="checkbox-label"><input type="checkbox" name="can_approve"> Aprovar</label><label class="checkbox-label"><input type="checkbox" name="can_manage"> Gerir</label><button>Guardar</button></form></details>{% endif %}
-  <div class="clean-table-scroll"><table class="clean-table"><thead><tr><th>Caixa</th><th>Perfil</th><th>Ler</th><th>Responder</th><th>Envio direto</th><th>Aprovar</th><th>Gerir</th></tr></thead><tbody>{% for grant in email_channel_roles %}<tr><td>{% for channel in email_channels if channel.id == grant.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ roles_by_id[grant.role_id].name }}</td><td>{{ 'Sim' if grant.can_read else 'Não' }}</td><td>{{ 'Sim' if grant.can_reply else 'Não' }}</td><td>{{ 'Sim' if grant.can_send_direct else 'Não' }}</td><td>{{ 'Sim' if grant.can_approve else 'Não' }}</td><td>{{ 'Sim' if grant.can_manage else 'Não' }}</td></tr>{% else %}<tr><td colspan="7">Sem permissões por perfil configuradas.</td></tr>{% endfor %}</tbody></table></div>
+<section class="clean-work-admin-view" data-work-admin-view="channels" hidden>
+  <div class="clean-work-view-heading"><div><h3>Caixas de email</h3><p>Classificação, responsável, prazos e criação automática de tarefa por caixa.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-channel-role">Adicionar acesso</button>{% endif %}</div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Endereço</th><th>Tarefa automática</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for channel in email_channels %}<tr><td><strong>{{ channel.name }}</strong></td><td>{{ channel.address }}</td><td>{{ {'none':'Não','open':'Aberta','complete':'Concluída'}.get(channel.auto_task_mode, channel.auto_task_mode) }}</td><td>{% for user in active_users if user.id == channel.default_assignee_id %}{{ user.name }}{% else %}Por atribuir{% endfor %}</td><td>{{ channel.default_due_days if channel.default_due_days is not none else '—' }} dias</td><td><span class="clean-status-pill {{ 'is-active' if channel.active else 'is-inactive' }}">{{ 'Ativa' if channel.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-channel-{{ channel.id }}">Editar</button>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <div class="clean-work-subsection-heading"><h4>Acessos por perfil</h4><span>{{ email_channel_roles|length }} regras</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Perfil</th><th>Ler</th><th>Responder</th><th>Envio direto</th><th>Aprovar</th><th>Gerir</th></tr></thead><tbody>{% for grant in email_channel_roles %}<tr><td>{% for channel in email_channels if channel.id == grant.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ roles_by_id[grant.role_id].name }}</td><td>{{ 'Sim' if grant.can_read else '—' }}</td><td>{{ 'Sim' if grant.can_reply else '—' }}</td><td>{{ 'Sim' if grant.can_send_direct else '—' }}</td><td>{{ 'Sim' if grant.can_approve else '—' }}</td><td>{{ 'Sim' if grant.can_manage else '—' }}</td></tr>{% else %}<tr><td colspan="7">Sem permissões por perfil configuradas.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
-<section class="clean-panel clean-card-wide clean-work-admin-section">
-  <div class="table-heading flat-heading"><div><h3>Modelos de email</h3><p>Modelos globais ou associados a uma caixa, categoria ou subcategoria.</p></div></div>
-  {% for item in email_templates %}<details><summary><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ 'ativo' if item.active else 'inativo' }}</small></summary><form method="post" action="/v2-clean/admin/work-classification/email-templates/{{ item.id }}" class="clean-admin-form clean-work-channel-form"><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Caixa<select name="channel_id"><option value="">Todas</option>{% for channel in email_channels %}<option value="{{ channel.id }}" {% if item.channel_id == channel.id %}selected{% endif %}>{{ channel.name }}</option>{% endfor %}</select></label><label>Categoria<select name="category_id"><option value="">Todas</option>{% for category in work_categories %}<option value="{{ category.id }}" {% if item.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select></label><label>Subcategoria<select name="subcategory_id"><option value="">Todas</option>{% for subcategory in work_subcategories %}<option value="{{ subcategory.id }}" {% if item.subcategory_id == subcategory.id %}selected{% endif %}>{{ subcategory.name }}</option>{% endfor %}</select></label><label>Assunto<input name="subject_template" value="{{ item.subject_template or '' }}"></label><label>Corpo<textarea name="body_template" required>{{ item.body_template }}</textarea></label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativo</label><button>Guardar modelo</button></form></details>{% else %}<p class="muted">Sem modelos.</p>{% endfor %}
-  {% if can_manage %}<details><summary>Criar modelo</summary><form method="post" action="/v2-clean/admin/work-classification/email-templates" class="clean-admin-form"><label>Código<input name="code" required></label><label>Nome<input name="name" required></label><label>Caixa<select name="channel_id"><option value="">Todas</option>{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Categoria<select name="category_id"><option value="">Todas</option>{% for item in work_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Subcategoria<select name="subcategory_id"><option value="">Todas</option>{% for item in work_subcategories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Assunto<input name="subject_template"></label><label>Corpo<textarea name="body_template" required></textarea></label><button>Criar modelo</button></form></details>{% endif %}
+<section class="clean-work-admin-view" data-work-admin-view="templates" hidden>
+  <div class="clean-work-view-heading"><div><h3>Modelos de email</h3><p>Modelos globais ou associados a caixa, categoria ou subcategoria.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-template">Novo modelo</button>{% endif %}</div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Código</th><th>Nome</th><th>Caixa</th><th>Categoria</th><th>Subcategoria</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for item in email_templates %}<tr><td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>{% for channel in email_channels if channel.id == item.channel_id %}{{ channel.name }}{% else %}Todas{% endfor %}</td><td>{{ work_categories_by_id[item.category_id].name if item.category_id else 'Todas' }}</td><td>{{ work_subcategories_by_id[item.subcategory_id].name if item.subcategory_id else 'Todas' }}</td><td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativo' if item.active else 'Inativo' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-template-{{ item.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="7">Sem modelos.</td></tr>{% endfor %}
+  </tbody></table></div>
 </section>

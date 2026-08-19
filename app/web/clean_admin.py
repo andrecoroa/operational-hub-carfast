@@ -26,6 +26,7 @@ from app.models.organization import (
     UserOrganizationalUnit,
 )
 from app.models.settings import SettingsCatalog, SettingsValue
+from app.models.tasks import Task
 from app.models.work_hierarchy import (
     RoleWorkScope,
     WorkCategory,
@@ -1171,6 +1172,42 @@ def clean_admin_work_classification(request: Request):
                 WorkSourceDefault.source_type, WorkSourceDefault.source_key
             )
         ).all()
+        usage_fields = {
+            "queue": Task.work_queue_id,
+            "department": Task.work_department_id,
+            "category": Task.work_category_id,
+            "subcategory": Task.work_subcategory_id,
+        }
+        usage_counts = {
+            level: {
+                item_id: count
+                for item_id, count in db.execute(
+                    select(field, func.count(Task.id))
+                    .where(field.is_not(None))
+                    .group_by(field)
+                ).all()
+            }
+            for level, field in usage_fields.items()
+        }
+        child_counts = {
+            "queue": {
+                item.id: sum(1 for child in departments if child.queue_id == item.id)
+                for item in queues
+            },
+            "department": {
+                item.id: sum(
+                    1 for child in categories if child.department_id == item.id
+                )
+                for item in departments
+            },
+            "category": {
+                item.id: sum(
+                    1 for child in subcategories if child.category_id == item.id
+                )
+                for item in categories
+            },
+            "subcategory": {item.id: 0 for item in subcategories},
+        }
         context = _layout_context(
             db,
             user_id,
@@ -1192,6 +1229,8 @@ def clean_admin_work_classification(request: Request):
             email_templates=email_templates,
             active_users=users,
             source_defaults=source_defaults,
+            work_usage_counts=usage_counts,
+            work_child_counts=child_counts,
             can_manage=bool(
                 permissions.intersection(
                     {"admin.settings.manage", "settings.manage", "admin.manage"}

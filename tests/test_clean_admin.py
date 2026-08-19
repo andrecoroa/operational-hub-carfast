@@ -62,6 +62,17 @@ def test_clean_admin_users_uses_compact_table_and_wide_access_dialog(authenticat
     assert 'class="clean-admin-user-grid"' not in response.text
 
 
+def test_work_classification_uses_compact_hierarchy_table_and_editors(authenticated_client):
+    response = authenticated_client.get("/v2-clean/admin/work-classification")
+
+    assert response.status_code == 200
+    assert 'data-work-admin-tab="structure"' in response.text
+    assert 'data-work-level="category"' in response.text
+    assert 'class="clean-table clean-work-structure-table"' in response.text
+    assert 'class="clean-work-editor"' in response.text
+    assert "Administração da hierarquia" in response.text
+
+
 def test_clean_admin_settings_shows_portuguese_labels_without_changing_codes(
     authenticated_client,
 ):

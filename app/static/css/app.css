@@ -27604,66 +27604,375 @@ body.clean-task-preview-open {
   gap: 12px;
 }
 
-.clean-work-admin-section {
-  margin-top: 16px;
+.clean-work-admin-header {
+  padding-bottom: 18px;
 }
 
-.clean-work-admin-columns,
-.clean-work-admin-create-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.clean-work-admin-columns > div {
-  min-width: 0;
-  border: 1px solid #d9e1eb;
-  padding: 12px;
-}
-
-.clean-work-admin-columns details,
-.clean-work-channel {
-  border-top: 1px solid #e1e7ef;
-  padding: 9px 0;
-}
-
-.clean-work-admin-columns summary,
-.clean-work-channel summary {
+.clean-work-admin-nav {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
+  gap: 4px;
+  margin: 0 0 16px;
+  overflow-x: auto;
+  border-bottom: 1px solid #d7e0ea;
 }
 
-.clean-work-admin-columns summary small,
-.clean-work-channel summary span {
-  color: #607089;
+.clean-work-admin-nav button,
+.clean-work-level-tabs button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #42536a;
+  box-shadow: none;
+}
+
+.clean-work-admin-nav button {
+  padding: 12px 18px 11px;
+  border-bottom: 3px solid transparent;
+}
+
+.clean-work-admin-nav button:hover,
+.clean-work-admin-nav button.is-active {
+  color: #a63224;
+  border-bottom-color: #bd4331;
+  background: #fff7f4;
+}
+
+.clean-work-admin-view {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d7e0ea;
+  background: #fff;
+}
+
+.clean-work-admin-view[hidden] {
+  display: none;
+}
+
+.clean-work-view-heading,
+.clean-work-subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.clean-work-view-heading {
+  margin-bottom: 12px;
+}
+
+.clean-work-view-heading h3,
+.clean-work-subsection-heading h4 {
+  margin: 0 0 3px;
+}
+
+.clean-work-view-heading p,
+.clean-work-subsection-heading span {
+  margin: 0;
+  color: #64748b;
+}
+
+.clean-work-history-note {
+  max-width: 480px;
+  padding: 8px 10px;
+  border-left: 3px solid #d59a36;
+  background: #fff8e8;
+  color: #6a5128 !important;
+  font-size: 12px;
+}
+
+.clean-work-level-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid #d7e0ea;
+}
+
+.clean-work-level-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 13px;
+  border-bottom: 2px solid transparent;
+}
+
+.clean-work-level-tabs button.is-active {
+  color: #142c4c;
+  border-bottom-color: #bd4331;
+  font-weight: 700;
+}
+
+.clean-work-level-tabs span {
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #edf2f7;
+  color: #3e5067;
+  font-size: 11px;
+  text-align: center;
+}
+
+.clean-work-admin-toolbar {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(170px, .9fr) minmax(130px, .65fr) minmax(220px, 1.4fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.clean-work-admin-toolbar label,
+.clean-work-editor label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #42536a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.clean-work-admin-toolbar .is-hidden {
+  display: none;
+}
+
+.clean-work-new-button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.clean-work-structure-wrap {
+  max-height: min(62vh, 670px);
+  border: 1px solid #d7e0ea;
+}
+
+.clean-work-structure-table,
+.clean-work-compact-table {
+  min-width: 900px;
+  table-layout: auto;
+}
+
+.clean-work-structure-table th,
+.clean-work-structure-table td,
+.clean-work-compact-table th,
+.clean-work-compact-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.clean-work-structure-table thead th,
+.clean-work-compact-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f2f5f8;
+}
+
+.clean-work-structure-table td:nth-child(1) {
+  width: 16%;
+}
+
+.clean-work-structure-table td:nth-child(2) {
+  width: 20%;
+}
+
+.clean-work-structure-table td:nth-child(8) {
+  width: 88px;
+}
+
+.clean-work-structure-table td strong,
+.clean-work-structure-table td small {
+  display: block;
+}
+
+.clean-work-structure-table td small {
+  margin-top: 3px;
+  color: #8b5a20;
+  font-size: 11px;
+}
+
+.clean-work-structure-table code,
+.clean-work-compact-table code {
+  color: #31445c;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-.clean-work-channel-form {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.clean-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid #ccd5df;
+  background: #f3f5f7;
+  color: #506077;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.clean-work-scope-form {
-  grid-template-columns: repeat(5, minmax(130px, 1fr));
+.clean-status-pill.is-active {
+  border-color: #acd7c0;
+  background: #e7f5ed;
+  color: #167245;
+}
+
+.clean-work-subsection-heading {
+  margin: 20px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid #d7e0ea;
+}
+
+.clean-work-editor {
+  width: min(440px, calc(100vw - 24px));
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #12233d;
+}
+
+.clean-work-editor.is-wide {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.clean-work-editor::backdrop {
+  background: rgb(17 31 50 / 48%);
+}
+
+.clean-work-editor > form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.clean-work-editor header,
+.clean-work-editor footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clean-work-editor header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #d7e0ea;
+}
+
+.clean-work-editor header small {
+  color: #b23f2f;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clean-work-editor header h3 {
+  margin: 3px 0 0;
+}
+
+.clean-work-editor textarea {
+  min-height: 84px;
+}
+
+.clean-work-editor footer {
+  position: sticky;
+  bottom: -20px;
+  margin: auto -20px -20px;
+  padding: 14px 20px 20px;
+  border-top: 1px solid #d7e0ea;
+  background: #fff;
+}
+
+.clean-work-hierarchy-fields,
+.clean-work-dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.clean-work-hierarchy-fields label:first-child:last-child {
+  grid-column: 1 / -1;
+}
+
+.clean-work-permission-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d7e0ea;
+}
+
+.clean-work-permission-options legend {
+  padding: 0 5px;
+  color: #42536a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.clean-work-editor .checkbox-label,
+.clean-work-permission-options .checkbox-label {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.clean-work-editor .checkbox-label input,
+.clean-work-permission-options .checkbox-label input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.clean-work-inactive-warning,
+.clean-work-dependencies {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e7c27e;
+  background: #fff8e8;
+  color: #695027;
+  font-size: 12px;
+}
+
+.clean-work-dependencies {
+  border-color: #d7e0ea;
+  background: #f5f8fb;
+  color: #42536a;
 }
 
 @media (max-width: 980px) {
-  .clean-work-admin-columns,
-  .clean-work-admin-create-grid,
-  .clean-work-channel-form,
-  .clean-work-scope-form {
+  .clean-work-admin-toolbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .clean-work-new-button {
+    width: 100%;
   }
 }
 
 @media (max-width: 640px) {
-  .clean-work-admin-columns,
-  .clean-work-admin-create-grid,
-  .clean-work-channel-form,
-  .clean-work-scope-form {
+  .clean-work-admin-view {
+    padding: 12px;
+  }
+  .clean-work-view-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .clean-work-admin-toolbar,
+  .clean-work-hierarchy-fields,
+  .clean-work-dialog-grid,
+  .clean-work-permission-options {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .clean-work-editor,
+  .clean-work-editor.is-wide {
+    width: 100vw;
   }
 }
 

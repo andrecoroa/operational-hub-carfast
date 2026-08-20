@@ -10,38 +10,61 @@
   <label>Fila
     <select name="{{ prefix }}queue_id" class="work-hierarchy-queue">
       <option value="">Sem predefinição</option>
-      {% for item in work_queues %}<option value="{{ item.id }}" {% if values and (values|attr(prefix ~ 'queue_id')) == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      {% for item in work_queues if item.active or (values and (values|attr(prefix ~ 'queue_id')) == item.id) %}<option value="{{ item.id }}" {% if values and (values|attr(prefix ~ 'queue_id')) == item.id %}selected{% endif %}>{{ item.name }}{% if not item.active %} · Inativa{% endif %}</option>{% endfor %}
     </select>
   </label>
   <label>Departamento
     <select name="{{ prefix }}department_id" class="work-hierarchy-department">
       <option value="">Sem predefinição</option>
-      {% for item in work_departments %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}" {% if values and (values|attr(prefix ~ 'department_id')) == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_departments if item.active or (values and (values|attr(prefix ~ 'department_id')) == item.id) %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}" {% if values and (values|attr(prefix ~ 'department_id')) == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}{% if not item.active %} · Inativo{% endif %}</option>{% endfor %}
     </select>
   </label>
   <label>Categoria
     <select name="{{ prefix }}category_id" class="work-hierarchy-category">
       <option value="">Por classificar</option>
-      {% for item in work_categories %}<option value="{{ item.id }}" data-parent-id="{{ item.department_id }}" {% if values and (values|attr(prefix ~ 'category_id')) == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_categories if item.active or (values and (values|attr(prefix ~ 'category_id')) == item.id) %}<option value="{{ item.id }}" data-parent-id="{{ item.department_id }}" {% if values and (values|attr(prefix ~ 'category_id')) == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}{% if not item.active %} · Inativa{% endif %}</option>{% endfor %}
     </select>
   </label>
   <label>Subcategoria
     <select name="{{ prefix }}subcategory_id" class="work-hierarchy-subcategory">
       <option value="">Por classificar</option>
-      {% for item in work_subcategories %}<option value="{{ item.id }}" data-parent-id="{{ item.category_id }}" {% if values and (values|attr(prefix ~ 'subcategory_id')) == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_subcategories if item.active or (values and (values|attr(prefix ~ 'subcategory_id')) == item.id) %}<option value="{{ item.id }}" data-parent-id="{{ item.category_id }}" {% if values and (values|attr(prefix ~ 'subcategory_id')) == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}{% if not item.active %} · Inativa{% endif %}</option>{% endfor %}
     </select>
   </label>
 {%- endmacro %}
 
 <nav class="clean-work-admin-nav" aria-label="Áreas de configuração">
-  <button type="button" class="is-active" data-work-admin-tab="structure">Estrutura</button>
+  <button type="button" class="is-active" data-work-admin-tab="desk">Service Desk</button>
+  <button type="button" data-work-admin-tab="structure">Estrutura</button>
+  {% if can_view_profiles_config %}
   <button type="button" data-work-admin-tab="permissions">Permissões</button>
+  {% endif %}
+  {% if can_view_sources_config %}
   <button type="button" data-work-admin-tab="sources">Origens</button>
+  {% endif %}
+  {% if can_view_email_config %}
   <button type="button" data-work-admin-tab="channels">Caixas de email</button>
   <button type="button" data-work-admin-tab="templates">Modelos</button>
+  {% endif %}
 </nav>
+<div class="clean-work-area-search"><label>Pesquisar nesta área<input id="work-area-search" placeholder="Nome, código, caixa, perfil ou associação" autocomplete="off"></label></div>
 
-<section class="clean-work-admin-view" data-work-admin-view="structure">
+<section class="clean-work-admin-view" data-work-admin-view="desk">
+  <div class="clean-work-view-heading"><div><h3>Tipos e operação do Service Desk</h3><p>Supervisor, executores, atribuição e SLA são configurados ao nível da categoria.</p></div>{% if can_manage_service_desk %}<div class="clean-work-table-actions">{% if service_desk_manage_category_ids %}<button type="button" class="secondary" data-dialog-open="service-desk-add-supervisor">Adicionar supervisor</button><button type="button" class="secondary" data-dialog-open="service-desk-add-executor">Autorizar executor</button>{% endif %}<button type="button" data-dialog-open="service-desk-create-ticket-type">Novo tipo</button></div>{% endif %}</div>
+  <div class="clean-work-subsection-heading"><h4>Tipos de ticket</h4><span>{{ service_desk_ticket_types|length }} tipos</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Código estável</th><th>Nome</th><th>Descrição</th><th>Estado</th><th>Ação</th></tr></thead><tbody>{% for item in service_desk_ticket_types %}<tr><td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>{{ item.description or '—' }}</td><td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativo' if item.active else 'Inativo' }}</span></td><td>{% if can_manage_service_desk %}<button type="button" class="secondary" data-dialog-open="service-desk-ticket-type-{{ item.id }}">Editar</button>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="clean-work-subsection-heading"><h4>Políticas por categoria</h4><span>valores em minutos</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Categoria</th><th>Supervisor</th><th>Executores elegíveis</th><th>Atribuição</th><th>1.ª resposta</th><th>Resolução</th><th>Pausa</th><th>Ação</th></tr></thead><tbody>
+    {% for category in service_desk_categories %}{% set policy = service_desk_category_policies_by_category.get(category.id) %}<tr><td><strong>{{ category.name }}</strong><br><small>{{ work_departments_by_id[category.department_id].name }}</small></td><td>{% for row in service_desk_category_supervisors if row.category_id == category.id and row.active %}{{ users_by_id.get(row.user_id).name }}{% if not loop.last %}, {% endif %}{% else %}Por definir{% endfor %}</td><td>{{ service_desk_eligible_users_by_category.get(category.id, [])|length }} utilizadores · {{ service_desk_eligible_teams_by_category.get(category.id, [])|length }} equipas</td><td>{{ {'manual':'Manual','auto_user':'Automática a utilizador','auto_team':'Automática a equipa','team_claim':'Equipa para assumir'}.get(policy.assignment_mode if policy else 'manual') }}</td><td>{{ policy.first_response_minutes if policy and policy.first_response_minutes is not none else '—' }}</td><td>{{ policy.resolution_minutes if policy and policy.resolution_minutes is not none else '—' }}</td><td>{{ 'Pausa em espera' if not policy or policy.pause_on_waiting else 'Não pausa' }}</td><td>{% if category.id in service_desk_manage_category_ids %}<button type="button" class="secondary" data-dialog-open="service-desk-policy-{{ category.id }}">Configurar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="8">Sem categorias disponíveis no âmbito autorizado.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <div class="clean-work-subsection-heading"><h4>Supervisores e executores</h4><span>funções separadas</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Categoria</th><th>Função</th><th>Utilizador/equipa</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for item in service_desk_category_supervisors %}<tr><td>{{ work_categories_by_id[item.category_id].name }}</td><td>Supervisor</td><td>{{ users_by_id.get(item.user_id).name }}</td><td>{{ 'Ativo' if item.active else 'Inativo' }}</td><td>{% if item.category_id in service_desk_manage_category_ids %}<form method="post" action="/v2-clean/admin/work-classification/category-supervisors/{{ item.id }}/toggle"><button class="secondary">{{ 'Inativar' if item.active else 'Ativar' }}</button></form>{% endif %}</td></tr>{% endfor %}
+    {% for item in service_desk_category_executors %}<tr><td>{{ work_categories_by_id[item.category_id].name }}</td><td>Executor elegível</td><td>{{ users_by_id.get(item.user_id).name if item.user_id else teams_by_id.get(item.team_id).name ~ ' (equipa)' }}</td><td>{{ 'Ativo' if item.active else 'Inativo' }}</td><td>{% if item.category_id in service_desk_manage_category_ids %}<form method="post" action="/v2-clean/admin/work-classification/category-executors/{{ item.id }}/toggle"><button class="secondary">{{ 'Inativar' if item.active else 'Ativar' }}</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="clean-work-admin-view" data-work-admin-view="structure" hidden>
   <div class="clean-work-view-heading">
     <div><h3>Administração da hierarquia</h3><p>Fila → Departamento → Categoria → Subcategoria</p></div>
     <p class="clean-work-history-note">Inativar afeta apenas novas tarefas. O histórico mantém a classificação guardada.</p>
@@ -61,7 +84,7 @@
     </label>
     <label>Estado<select id="work-filter-state"><option value="">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></label>
     <label class="clean-work-search">Pesquisar<input id="work-filter-search" placeholder="Código ou nome" autocomplete="off"></label>
-    {% if can_manage %}<button type="button" class="clean-work-new-button" data-work-create-open>Nova fila</button>{% endif %}
+    {% if can_manage_service_desk %}<button type="button" class="clean-work-new-button" data-work-create-open>Nova fila</button>{% endif %}
   </div>
   <div class="clean-table-scroll clean-work-structure-wrap">
     <table class="clean-table clean-work-structure-table">
@@ -72,28 +95,28 @@
           <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>—</td>
           <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
           <td>{{ work_usage_counts.queue.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.queue.get(item.id, 0) }} departamentos</td>
-          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-queue-{{ item.id }}">Editar</button>{% endif %}</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if item.id in service_desk_manage_queue_ids %}<button type="button" class="secondary" data-dialog-open="work-edit-queue-{{ item.id }}">Editar</button>{% endif %}</td>
         </tr>{% endfor %}
         {% for item in work_departments %}
         <tr data-work-row data-level="department" data-queue="{{ item.queue_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ work_queues_by_id[item.queue_id].name }}" hidden>
           <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>{{ work_queues_by_id[item.queue_id].name }}</td>
           <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativo' if item.active else 'Inativo' }}</span></td>
           <td>{{ work_usage_counts.department.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.department.get(item.id, 0) }} categorias</td>
-          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-department-{{ item.id }}">Editar</button>{% endif %}</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if item.id in service_desk_manage_department_ids %}<button type="button" class="secondary" data-dialog-open="work-edit-department-{{ item.id }}">Editar</button>{% endif %}</td>
         </tr>{% endfor %}
         {% for item in work_categories %}{% set parent = work_departments_by_id[item.department_id] %}
         <tr data-work-row data-level="category" data-queue="{{ parent.queue_id }}" data-department="{{ item.department_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ parent.name }}" hidden>
           <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong>{% if item.requires_description %}<small>Exige descrição</small>{% endif %}</td><td>{{ parent.name }}</td>
           <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
           <td>{{ work_usage_counts.category.get(item.id, 0) }} tarefas</td><td>{{ work_child_counts.category.get(item.id, 0) }} subcategorias</td>
-          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-category-{{ item.id }}">Editar</button>{% endif %}</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if item.id in service_desk_manage_category_ids %}<button type="button" class="secondary" data-dialog-open="work-edit-category-{{ item.id }}">Editar</button>{% endif %}</td>
         </tr>{% endfor %}
         {% for item in work_subcategories %}{% set parent = work_categories_by_id[item.category_id] %}{% set department = work_departments_by_id[parent.department_id] %}
         <tr data-work-row data-level="subcategory" data-queue="{{ department.queue_id }}" data-department="{{ parent.department_id }}" data-state="{{ 'active' if item.active else 'inactive' }}" data-search="{{ item.code }} {{ item.name }} {{ parent.name }}" hidden>
           <td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong>{% if item.requires_description %}<small>Exige descrição</small>{% endif %}</td><td>{{ parent.name }}</td>
           <td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td>
           <td>{{ work_usage_counts.subcategory.get(item.id, 0) }} tarefas</td><td>—</td>
-          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-subcategory-{{ item.id }}">Editar</button>{% endif %}</td>
+          <td>{{ item.updated_at.strftime('%d/%m/%Y') if item.updated_at else '—' }}</td><td>{% if item.id in service_desk_manage_subcategory_ids %}<button type="button" class="secondary" data-dialog-open="work-edit-subcategory-{{ item.id }}">Editar</button>{% endif %}</td>
         </tr>{% endfor %}
         <tr data-work-empty hidden><td colspan="8">Sem opções para os filtros selecionados.</td></tr>
       </tbody>
@@ -101,7 +124,16 @@
   </div>
 </section>
 
-{% if can_manage %}
+{% if can_manage_service_desk %}
+<dialog id="service-desk-create-ticket-type" class="clean-work-editor">
+  <form method="post" action="/v2-clean/admin/work-classification/ticket-types"><header><div><small>Service Desk</small><h3>Novo tipo de ticket</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><label>Código estável<input name="code" required placeholder="ex.: pedido_cliente"></label><label>Nome<input name="name" required></label><label>Descrição<textarea name="description"></textarea></label><label>Ordem<input type="number" name="sort_order" value="100"></label><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar tipo</button></footer></form>
+</dialog>
+{% for item in service_desk_ticket_types %}<dialog id="service-desk-ticket-type-{{ item.id }}" class="clean-work-editor"><form method="post" action="/v2-clean/admin/work-classification/ticket-types/{{ item.id }}"><header><div><small><code>{{ item.code }}</code></small><h3>{{ item.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><label>Nome<input name="name" value="{{ item.name }}" required></label><label>Descrição<textarea name="description">{{ item.description or '' }}</textarea></label><label>Ordem<input type="number" name="sort_order" value="{{ item.sort_order }}"></label><label class="checkbox-label"><input type="checkbox" name="active" {% if item.active %}checked{% endif %}> Ativo para novos tickets</label><p class="clean-work-inactive-warning">O código e os tickets históricos não são alterados.</p><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar</button></footer></form></dialog>{% endfor %}
+{% for category in service_desk_categories if category.id in service_desk_manage_category_ids %}{% set policy = service_desk_category_policies_by_category.get(category.id) %}<dialog id="service-desk-policy-{{ category.id }}" class="clean-work-editor is-wide"><form method="post" action="/v2-clean/admin/work-classification/category-policies/{{ category.id }}"><header><div><small>{{ work_departments_by_id[category.department_id].name }}</small><h3>{{ category.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><div class="clean-work-dialog-grid"><label>Modo de atribuição<select name="assignment_mode"><option value="manual" {% if not policy or policy.assignment_mode == 'manual' %}selected{% endif %}>Manual · aguarda atribuição</option><option value="auto_user" {% if policy and policy.assignment_mode == 'auto_user' %}selected{% endif %}>Automática a utilizador</option><option value="auto_team" {% if policy and policy.assignment_mode == 'auto_team' %}selected{% endif %}>Automática a equipa</option><option value="team_claim" {% if policy and policy.assignment_mode == 'team_claim' %}selected{% endif %}>Equipa · por assumir</option></select></label><label>Executor utilizador<select name="default_executor_user_id"><option value="">Sem utilizador automático</option>{% for user in active_users if user.id in service_desk_eligible_users_by_category.get(category.id, []) %}<option value="{{ user.id }}" {% if policy and policy.default_executor_user_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Executor equipa<select name="default_executor_team_id"><option value="">Sem equipa automática</option>{% for team in active_teams if team.id in service_desk_eligible_teams_by_category.get(category.id, []) %}<option value="{{ team.id }}" {% if policy and policy.default_executor_team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label><label>1.ª resposta (minutos)<input type="number" min="0" name="first_response_minutes" value="{{ policy.first_response_minutes if policy and policy.first_response_minutes is not none else '' }}"></label><label>Resolução (minutos)<input type="number" min="0" name="resolution_minutes" value="{{ policy.resolution_minutes if policy and policy.resolution_minutes is not none else '' }}"></label><label>A terminar quando faltarem (minutos)<input type="number" min="0" name="warning_minutes" value="{{ policy.warning_minutes if policy else 60 }}"></label></div><label class="checkbox-label"><input type="checkbox" name="pause_on_waiting" {% if not policy or policy.pause_on_waiting %}checked{% endif %}> Pausar SLA quando o ticket entra em espera</label><label class="checkbox-label"><input type="checkbox" name="active" {% if not policy or policy.active %}checked{% endif %}> Política ativa</label><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar política</button></footer></form></dialog>{% endfor %}
+{% if service_desk_manage_category_ids %}
+<dialog id="service-desk-add-supervisor" class="clean-work-editor"><form method="post" action="/v2-clean/admin/work-classification/category-supervisors"><header><div><small>Responsabilidade</small><h3>Adicionar supervisor</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><label>Categoria<select name="category_id" required>{% for item in service_desk_categories if item.id in service_desk_manage_category_ids %}<option value="{{ item.id }}">{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}</select></label><label>Supervisor<select name="user_id" required>{% for item in active_users %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><p>Ser supervisor não torna o utilizador executor.</p><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Adicionar</button></footer></form></dialog>
+<dialog id="service-desk-add-executor" class="clean-work-editor"><form method="post" action="/v2-clean/admin/work-classification/category-executors"><header><div><small>Elegibilidade</small><h3>Autorizar executor</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><label>Categoria<select name="category_id" required>{% for item in service_desk_categories if item.id in service_desk_manage_category_ids %}<option value="{{ item.id }}">{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}</select></label><label>Tipo<select name="target_type" data-executor-type><option value="user">Utilizador</option><option value="team">Equipa</option></select></label><label>Utilizador/equipa<select name="target_id" required>{% for item in active_users %}<option value="{{ item.id }}" data-target-type="user">{{ item.name }}</option>{% endfor %}{% for item in active_teams %}<option value="{{ item.id }}" data-target-type="team">{{ item.name }} · equipa</option>{% endfor %}</select></label><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Autorizar</button></footer></form></dialog>
+{% endif %}
 {% macro edit_item_dialog(item, level, label, parent_id=None, child_label='') -%}
 <dialog id="work-edit-{{ level }}-{{ item.id }}" class="clean-work-editor">
   <form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}/{{ item.id }}">
@@ -111,11 +143,11 @@
     <label>Nível superior
       <select name="parent_id" data-work-edit-parent required>
         {% if level == 'department' %}
-          {% for parent in work_queues %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
+          {% for parent in work_queues if parent.id in service_desk_manage_queue_ids or parent.id == parent_id %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
         {% elif level == 'category' %}
-          {% for parent in work_departments %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativo{% endif %}</option>{% endfor %}
+          {% for parent in work_departments if parent.id in service_desk_manage_department_ids or parent.id == parent_id %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativo{% endif %}</option>{% endfor %}
         {% else %}
-          {% for parent in work_categories %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
+          {% for parent in work_categories if parent.id in service_desk_manage_category_ids or parent.id == parent_id %}<option value="{{ parent.id }}" {% if parent.id == parent_id %}selected{% endif %}>{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}{% if not parent.active %} · Inativa{% endif %}</option>{% endfor %}
         {% endif %}
       </select>
     </label>
@@ -131,16 +163,16 @@
   </form>
 </dialog>
 {%- endmacro %}
-{% for item in work_queues %}{{ edit_item_dialog(item, 'queue', 'Fila', None, 'departamentos') }}{% endfor %}
-{% for item in work_departments %}{{ edit_item_dialog(item, 'department', 'Departamento', item.queue_id, 'categorias') }}{% endfor %}
-{% for item in work_categories %}{{ edit_item_dialog(item, 'category', 'Categoria', item.department_id, 'subcategorias') }}{% endfor %}
-{% for item in work_subcategories %}{{ edit_item_dialog(item, 'subcategory', 'Subcategoria', item.category_id) }}{% endfor %}
+{% for item in work_queues if item.id in service_desk_manage_queue_ids %}{{ edit_item_dialog(item, 'queue', 'Fila', None, 'departamentos') }}{% endfor %}
+{% for item in work_departments if item.id in service_desk_manage_department_ids %}{{ edit_item_dialog(item, 'department', 'Departamento', item.queue_id, 'categorias') }}{% endfor %}
+{% for item in work_categories if item.id in service_desk_manage_category_ids %}{{ edit_item_dialog(item, 'category', 'Categoria', item.department_id, 'subcategorias') }}{% endfor %}
+{% for item in work_subcategories if item.id in service_desk_manage_subcategory_ids %}{{ edit_item_dialog(item, 'subcategory', 'Subcategoria', item.category_id) }}{% endfor %}
 
 {% for level, label in [('queue','Fila'),('department','Departamento'),('category','Categoria'),('subcategory','Subcategoria')] %}
 <dialog id="work-create-{{ level }}" class="clean-work-editor">
   <form method="post" action="/v2-clean/admin/work-classification/items/{{ level }}">
     <header><div><small>Nova opção</small><h3>{{ label }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
-    {% if level != 'queue' %}<label>Nível superior<select name="parent_id" required><option value="">Selecionar</option>{% if level == 'department' %}{% for parent in work_queues %}<option value="{{ parent.id }}">{{ parent.name }}</option>{% endfor %}{% elif level == 'category' %}{% for parent in work_departments %}<option value="{{ parent.id }}">{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}</option>{% endfor %}{% else %}{% for parent in work_categories %}<option value="{{ parent.id }}">{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}</option>{% endfor %}{% endif %}</select></label>{% endif %}
+    {% if level != 'queue' %}<label>Nível superior<select name="parent_id" required><option value="">Selecionar</option>{% if level == 'department' %}{% for parent in work_queues if parent.id in service_desk_manage_queue_ids %}<option value="{{ parent.id }}">{{ parent.name }}</option>{% endfor %}{% elif level == 'category' %}{% for parent in work_departments if parent.id in service_desk_manage_department_ids %}<option value="{{ parent.id }}">{{ work_queues_by_id[parent.queue_id].name }} / {{ parent.name }}</option>{% endfor %}{% else %}{% for parent in work_categories if parent.id in service_desk_manage_category_ids %}<option value="{{ parent.id }}">{{ work_departments_by_id[parent.department_id].name }} / {{ parent.name }}</option>{% endfor %}{% endif %}</select></label>{% endif %}
     <label>Código estável<input name="code" required placeholder="ex.: frota.oficina"></label>
     <label>Nome<input name="name" required></label>
     <label>Descrição<textarea name="description"></textarea></label>
@@ -151,11 +183,13 @@
 </dialog>
 {% endfor %}
 
+{% endif %}
+{% if can_manage %}
 <dialog id="work-create-scope" class="clean-work-editor is-wide">
   <form method="post" action="/v2-clean/admin/work-classification/scopes">
     <header><div><small>Permissão</small><h3>Adicionar âmbito a um perfil</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
     <div class="clean-work-hierarchy-fields"><label>Perfil<select name="role_id" required>{% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}</select></label>{{ hierarchy_selects() }}</div>
-    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_create','Criar'),('can_update','Alterar'),('can_assign','Atribuir'),('can_close','Fechar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <label>Visibilidade<select name="visibility_mode"><option value="scope_all">Todo o âmbito autorizado</option><option value="direct_only">Apenas relação direta</option><option value="consult">Consulta no âmbito</option></select></label><fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Consultar'),('can_create','Criar'),('can_assume','Assumir'),('can_assign','Atribuir'),('can_update','Alterar'),('can_respond','Responder'),('can_complete','Concluir'),('can_manage_sla','Gerir SLA'),('can_administer_classifications','Administrar classificações'),('can_manage','Gerir tudo')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar permissão</button></footer>
   </form>
 </dialog>
@@ -167,7 +201,7 @@
       <label>Perfil<select name="role_id" required>{% for role in roles %}<option value="{{ role.id }}" {% if role.id == scope.role_id %}selected{% endif %}>{{ role.name }}</option>{% endfor %}</select></label>
       {{ hierarchy_selects(scope) }}
     </div>
-    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_create','Criar'),('can_update','Alterar'),('can_assign','Atribuir'),('can_close','Fechar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if scope|attr(field) %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <label>Visibilidade<select name="visibility_mode"><option value="scope_all" {% if scope.visibility_mode == 'scope_all' %}selected{% endif %}>Todo o âmbito autorizado</option><option value="direct_only" {% if scope.visibility_mode == 'direct_only' %}selected{% endif %}>Apenas relação direta</option><option value="consult" {% if scope.visibility_mode == 'consult' %}selected{% endif %}>Consulta no âmbito</option></select></label><fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Consultar'),('can_create','Criar'),('can_assume','Assumir'),('can_assign','Atribuir'),('can_update','Alterar'),('can_respond','Responder'),('can_complete','Concluir'),('can_manage_sla','Gerir SLA'),('can_administer_classifications','Administrar classificações'),('can_manage','Gerir tudo')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if scope|attr(field) %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar alterações</button></footer>
   </form>
 </dialog>
@@ -197,7 +231,8 @@
     <header><div><small>Caixa de email</small><h3>{{ channel.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
     <div class="clean-work-dialog-grid"><label>Nome<input name="name" value="{{ channel.name }}" required></label><label>Ao receber<select name="auto_task_mode"><option value="none" {% if channel.auto_task_mode == 'none' %}selected{% endif %}>Só criar conversa</option><option value="open" {% if channel.auto_task_mode == 'open' %}selected{% endif %}>Criar tarefa aberta</option><option value="complete" {% if channel.auto_task_mode == 'complete' %}selected{% endif %}>Criar tarefa concluída</option></select></label></div>
     <div class="clean-work-hierarchy-fields">{{ hierarchy_selects(channel, 'default_') }}</div>
-    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ channel.default_document_type or '' }}"></label><label>Responsável<select name="default_assignee_id"><option value="">Por atribuir</option>{% for user in active_users %}<option value="{{ user.id }}" {% if channel.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days" value="{{ channel.default_due_days if channel.default_due_days is not none else '' }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ channel.default_wait_days if channel.default_wait_days is not none else '' }}"></label></div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ channel.default_document_type or '' }}"></label><label>Supervisor<select name="supervisor_user_id"><option value="">Por definir</option>{% for user in active_users %}<option value="{{ user.id }}" {% if channel.supervisor_user_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Modo de atribuição<select name="assignment_mode"><option value="manual" {% if channel.assignment_mode == 'manual' %}selected{% endif %}>Aguardar atribuição</option><option value="auto_user" {% if channel.assignment_mode == 'auto_user' %}selected{% endif %}>Automática a utilizador</option><option value="auto_team" {% if channel.assignment_mode == 'auto_team' %}selected{% endif %}>Automática a equipa</option><option value="team_claim" {% if channel.assignment_mode == 'team_claim' %}selected{% endif %}>Equipa para assumir</option></select></label><label>Executor utilizador<select name="default_assignee_id"><option value="">Por atribuir</option>{% for row in email_executor_eligibilities if row.channel_id == channel.id and row.category_id is none and row.user_id and row.active %}<option value="{{ row.user_id }}" {% if channel.default_assignee_id == row.user_id %}selected{% endif %}>{{ users_by_id.get(row.user_id).name }}</option>{% endfor %}</select></label><label>Executor equipa<select name="default_team_id"><option value="">Sem equipa</option>{% for row in email_executor_eligibilities if row.channel_id == channel.id and row.category_id is none and row.team_id and row.active %}<option value="{{ row.team_id }}" {% if channel.default_team_id == row.team_id %}selected{% endif %}>{{ teams_by_id.get(row.team_id).name }}</option>{% endfor %}</select></label><label>1.ª resposta<input type="number" min="0" name="first_response_value" value="{{ channel.first_response_minutes if channel.first_response_minutes is not none else '' }}"></label><label>Unidade<select name="first_response_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>Resolução<input type="number" min="0" name="resolution_value" value="{{ channel.resolution_minutes if channel.resolution_minutes is not none else '' }}"></label><label>Unidade<select name="resolution_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>A terminar (minutos)<input type="number" min="0" name="warning_minutes" value="{{ channel.warning_minutes }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ channel.default_wait_days if channel.default_wait_days is not none else '' }}"></label><label>Destino inbound exato<input type="email" name="inbound_forward_address" value="{{ channel.inbound_forward_address or '' }}" readonly><small>Derivado do MailboxHash confirmado no Postmark.</small></label></div>
+    <label class="checkbox-label"><input type="checkbox" name="pause_on_waiting" {% if channel.pause_on_waiting %}checked{% endif %}> Pausar SLA quando aguarda resposta</label>
     <label class="checkbox-label"><input type="checkbox" name="active" {% if channel.active %}checked{% endif %}> Ativa</label>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar caixa</button></footer>
   </form>
@@ -205,11 +240,11 @@
 {% endfor %}
 {% for rule in email_inbox_rules %}
 <dialog id="work-edit-inbox-rule-{{ rule.id }}" class="clean-work-editor is-wide">
-  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules/{{ rule.id }}">
+  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules/{{ rule.id }}" data-email-rule-eligibility data-email-channel="{{ rule.channel_id }}">
     <header><div><small>Regra da caixa</small><h3>{{ rule.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
     <div class="clean-work-dialog-grid"><label>Nome<input name="name" value="{{ rule.name }}" required></label><label>Assunto<input name="subject_match" value="{{ rule.subject_match }}" required></label><label>Correspondência<select name="match_type"><option value="contains" {% if rule.match_type == 'contains' %}selected{% endif %}>Contém</option><option value="exact" {% if rule.match_type == 'exact' %}selected{% endif %}>É exatamente</option></select></label><label>Prioridade<input type="number" name="sort_order" value="{{ rule.sort_order }}" min="0"></label></div>
     <div class="clean-work-dialog-grid">{{ hierarchy_selects(rule, 'default_') }}</div>
-    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ rule.default_document_type or '' }}"></label><label>Responsável<select name="default_assignee_id"><option value="">Manter predefinição da caixa</option>{% for user in active_users %}<option value="{{ user.id }}" {% if rule.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days" value="{{ rule.default_due_days if rule.default_due_days is not none else '' }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ rule.default_wait_days if rule.default_wait_days is not none else '' }}"></label></div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ rule.default_document_type or '' }}"></label><label>Supervisor<select name="supervisor_user_id"><option value="">Herdar da caixa</option>{% for user in active_users %}<option value="{{ user.id }}" {% if rule.supervisor_user_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Modo de atribuição<select name="assignment_mode"><option value="">Herdar da caixa</option><option value="manual" {% if rule.assignment_mode == 'manual' %}selected{% endif %}>Aguardar atribuição</option><option value="auto_user" {% if rule.assignment_mode == 'auto_user' %}selected{% endif %}>Automática a utilizador</option><option value="auto_team" {% if rule.assignment_mode == 'auto_team' %}selected{% endif %}>Automática a equipa</option><option value="team_claim" {% if rule.assignment_mode == 'team_claim' %}selected{% endif %}>Equipa para assumir</option></select></label><label>Executor utilizador<select name="default_assignee_id"><option value="">Herdar da caixa</option>{% for user in active_users %}<option value="{{ user.id }}" data-email-eligible="{{ email_user_eligibility_tokens.get(user.id, [])|join(' ') }}" {% if rule.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Executor equipa<select name="default_team_id"><option value="">Herdar da caixa</option>{% for team in active_teams %}<option value="{{ team.id }}" data-email-eligible="{{ email_team_eligibility_tokens.get(team.id, [])|join(' ') }}" {% if rule.default_team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label><label>1.ª resposta<input type="number" min="0" name="first_response_value" value="{{ rule.first_response_minutes if rule.first_response_minutes is not none else '' }}"></label><label>Unidade<select name="first_response_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>Resolução<input type="number" min="0" name="resolution_value" value="{{ rule.resolution_minutes if rule.resolution_minutes is not none else '' }}"></label><label>Unidade<select name="resolution_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>A terminar (minutos)<input type="number" min="0" name="warning_minutes" value="{{ rule.warning_minutes if rule.warning_minutes is not none else '' }}"></label><label>Pausa em espera<select name="pause_on_waiting"><option value="inherit" {% if rule.pause_on_waiting is none %}selected{% endif %}>Herdar</option><option value="on" {% if rule.pause_on_waiting is sameas true %}selected{% endif %}>Pausar</option><option value="off" {% if rule.pause_on_waiting is sameas false %}selected{% endif %}>Não pausar</option></select></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ rule.default_wait_days if rule.default_wait_days is not none else '' }}"></label></div>
     <label>Tarefa automática<select name="auto_task_mode"><option value="">Manter predefinição da caixa</option><option value="none" {% if rule.auto_task_mode == 'none' %}selected{% endif %}>Não criar</option><option value="open" {% if rule.auto_task_mode == 'open' %}selected{% endif %}>Criar aberta</option><option value="complete" {% if rule.auto_task_mode == 'complete' %}selected{% endif %}>Criar concluída</option></select></label>
     <label>Notas<textarea name="notes">{{ rule.notes or '' }}</textarea></label><label class="checkbox-label"><input type="checkbox" name="active" {% if rule.active %}checked{% endif %}> Ativa</label>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar regra</button></footer>
@@ -217,11 +252,11 @@
 </dialog>
 {% endfor %}
 <dialog id="work-create-inbox-rule" class="clean-work-editor is-wide">
-  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules">
+  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules" data-email-rule-eligibility>
     <header><div><small>Email</small><h3>Nova regra de entrada</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
     <div class="clean-work-dialog-grid"><label>Caixa<select name="channel_id" required>{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Nome<input name="name" required></label><label>Assunto<input name="subject_match" required></label><label>Correspondência<select name="match_type"><option value="contains">Contém</option><option value="exact">É exatamente</option></select></label><label>Prioridade<input type="number" name="sort_order" value="100" min="0"></label></div>
     <div class="clean-work-dialog-grid">{{ hierarchy_selects(None, 'default_') }}</div>
-    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type"></label><label>Responsável<select name="default_assignee_id"><option value="">Manter predefinição da caixa</option>{% for user in active_users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days"></label></div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type"></label><label>Supervisor<select name="supervisor_user_id"><option value="">Herdar da caixa</option>{% for user in active_users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select></label><label>Modo de atribuição<select name="assignment_mode"><option value="">Herdar da caixa</option><option value="manual">Aguardar atribuição</option><option value="auto_user">Automática a utilizador</option><option value="auto_team">Automática a equipa</option><option value="team_claim">Equipa para assumir</option></select></label><label>Executor utilizador<select name="default_assignee_id"><option value="">Herdar da caixa</option>{% for user in active_users %}<option value="{{ user.id }}" data-email-eligible="{{ email_user_eligibility_tokens.get(user.id, [])|join(' ') }}">{{ user.name }}</option>{% endfor %}</select></label><label>Executor equipa<select name="default_team_id"><option value="">Herdar da caixa</option>{% for team in active_teams %}<option value="{{ team.id }}" data-email-eligible="{{ email_team_eligibility_tokens.get(team.id, [])|join(' ') }}">{{ team.name }}</option>{% endfor %}</select></label><label>1.ª resposta<input type="number" min="0" name="first_response_value"></label><label>Unidade<select name="first_response_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>Resolução<input type="number" min="0" name="resolution_value"></label><label>Unidade<select name="resolution_unit"><option value="minutes">Minutos</option><option value="days">Dias</option></select></label><label>A terminar (minutos)<input type="number" min="0" name="warning_minutes"></label><label>Pausa em espera<select name="pause_on_waiting"><option value="inherit">Herdar</option><option value="on">Pausar</option><option value="off">Não pausar</option></select></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days"></label></div>
     <label>Tarefa automática<select name="auto_task_mode"><option value="">Manter predefinição da caixa</option><option value="none">Não criar</option><option value="open">Criar aberta</option><option value="complete">Criar concluída</option></select></label>
     <label>Notas<textarea name="notes"></textarea></label><label class="checkbox-label"><input type="checkbox" name="active" checked> Ativa</label>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar regra</button></footer>
@@ -232,10 +267,11 @@
     <header><div><small>Email</small><h3>Permissão por caixa</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
     <label>Caixa<select name="channel_id">{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
     <label>Perfil<select name="role_id">{% for item in roles %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
-    <fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Ler'),('can_reply','Responder'),('can_send_direct','Enviar sem aprovação'),('can_approve','Aprovar'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
+    <label>Visibilidade<select name="visibility_mode"><option value="scope_all">Toda a caixa</option><option value="direct_only">Apenas relação direta</option><option value="consult">Consulta</option></select></label><fieldset class="clean-work-permission-options"><legend>Ações permitidas</legend>{% for field,label in [('can_read','Consultar'),('can_reply','Responder'),('can_send_direct','Enviar sem aprovação'),('can_approve','Aprovar'),('can_assume','Assumir'),('can_assign','Atribuir'),('can_manage_sla','Gerir SLA'),('can_manage','Gerir')] %}<label class="checkbox-label"><input type="checkbox" name="{{ field }}" {% if field == 'can_read' %}checked{% endif %}> {{ label }}</label>{% endfor %}</fieldset>
     <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar acesso</button></footer>
   </form>
 </dialog>
+<dialog id="work-create-email-executor" class="clean-work-editor"><form method="post" action="/v2-clean/admin/work-classification/email-executors"><header><div><small>Email</small><h3>Autorizar executor</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header><label>Caixa<select name="channel_id" required>{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Classificação<select name="category_id"><option value="">Toda a caixa</option>{% for item in work_categories %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Tipo<select name="target_type" data-executor-type><option value="user">Utilizador</option><option value="team">Equipa</option></select></label><label>Utilizador/equipa<select name="target_id" required>{% for item in active_users %}<option value="{{ item.id }}" data-target-type="user">{{ item.name }}</option>{% endfor %}{% for item in active_teams %}<option value="{{ item.id }}" data-target-type="team">{{ item.name }} · equipa</option>{% endfor %}</select></label><footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Autorizar</button></footer></form></dialog>
 
 {% for item in email_templates %}
 <dialog id="work-edit-template-{{ item.id }}" class="clean-work-editor is-wide">
@@ -261,10 +297,26 @@
 document.addEventListener('DOMContentLoaded', () => {
   const adminTabs = document.querySelectorAll('[data-work-admin-tab]');
   const adminViews = document.querySelectorAll('[data-work-admin-view]');
+  const areaSearch = document.getElementById('work-area-search');
+  let activeAdminView = 'desk';
+  const applyAreaSearch = () => {
+    const value = (areaSearch?.value || '').trim().toLowerCase();
+    adminViews.forEach((view) => {
+      if (view.dataset.workAdminView === 'structure') return;
+      view.querySelectorAll('table tbody tr').forEach((row) => {
+        row.hidden = Boolean(value && !row.textContent.toLowerCase().includes(value));
+      });
+    });
+  };
   adminTabs.forEach((button) => button.addEventListener('click', () => {
+    activeAdminView = button.dataset.workAdminTab;
     adminTabs.forEach((item) => item.classList.toggle('is-active', item === button));
     adminViews.forEach((view) => { view.hidden = view.dataset.workAdminView !== button.dataset.workAdminTab; });
+    if (areaSearch) areaSearch.value = '';
+    areaSearch?.closest('.clean-work-area-search')?.classList.toggle('is-hidden', activeAdminView === 'structure');
+    applyAreaSearch();
   }));
+  areaSearch?.addEventListener('input', applyAreaSearch);
   let activeLevel = 'queue';
   const levelTabs = document.querySelectorAll('[data-work-level]');
   const rows = document.querySelectorAll('[data-work-row]');
@@ -309,6 +361,42 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-dialog-open]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.dialogOpen)?.showModal()));
   document.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog')?.close()));
   document.querySelectorAll('.clean-work-editor').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); }));
+  document.querySelectorAll('[data-executor-type]').forEach((typeSelect) => {
+    const targetSelect = typeSelect.form?.querySelector('[name="target_id"]');
+    const syncTargets = () => {
+      targetSelect?.querySelectorAll('[data-target-type]').forEach((option) => {
+        option.hidden = option.dataset.targetType !== typeSelect.value;
+        option.disabled = option.hidden;
+      });
+      if (targetSelect?.selectedOptions[0]?.disabled) {
+        targetSelect.value = targetSelect.querySelector(`option[data-target-type="${typeSelect.value}"]`)?.value || '';
+      }
+    };
+    typeSelect.addEventListener('change', syncTargets);
+    syncTargets();
+  });
+  document.querySelectorAll('[data-email-rule-eligibility]').forEach((form) => {
+    const channelSelect = form.querySelector('[name="channel_id"]');
+    const categorySelect = form.querySelector('[name="default_category_id"]');
+    const userSelect = form.querySelector('[name="default_assignee_id"]');
+    const teamSelect = form.querySelector('[name="default_team_id"]');
+    const syncEligibility = () => {
+      const channelId = form.dataset.emailChannel || channelSelect?.value || '';
+      const categoryId = categorySelect?.value || '0';
+      const eligibilityToken = `${channelId}:${categoryId}`;
+      [userSelect, teamSelect].forEach((select) => {
+        select?.querySelectorAll('option[data-email-eligible]').forEach((option) => {
+          const isEligible = option.dataset.emailEligible.split(' ').includes(eligibilityToken);
+          option.hidden = !isEligible;
+          option.disabled = !isEligible;
+        });
+        if (select?.selectedOptions[0]?.disabled) select.value = '';
+      });
+    };
+    channelSelect?.addEventListener('change', syncEligibility);
+    categorySelect?.addEventListener('change', syncEligibility);
+    syncEligibility();
+  });
   document.querySelectorAll('form').forEach((form) => {
     const queue = form.querySelector('.work-hierarchy-queue'); const department = form.querySelector('.work-hierarchy-department');
     const category = form.querySelector('.work-hierarchy-category'); const subcategory = form.querySelector('.work-hierarchy-subcategory');
@@ -325,29 +413,36 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+{% if can_view_profiles_config %}
 <section class="clean-work-admin-view" data-work-admin-view="permissions" hidden>
   <div class="clean-work-view-heading"><div><h3>Permissões do Centro de Tarefas</h3><p>O acesso pode abranger uma fila completa ou um ramo específico.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-scope">Adicionar permissão</button>{% endif %}</div>
-  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Perfil</th><th>Âmbito autorizado</th><th>Ler</th><th>Criar</th><th>Alterar</th><th>Atribuir</th><th>Fechar</th><th>Gerir</th><th></th></tr></thead><tbody>
-    {% for scope in work_scopes %}<tr><td><strong>{{ roles_by_id[scope.role_id].name }}</strong></td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ 'Sim' if scope.can_read else '—' }}</td><td>{{ 'Sim' if scope.can_create else '—' }}</td><td>{{ 'Sim' if scope.can_update else '—' }}</td><td>{{ 'Sim' if scope.can_assign else '—' }}</td><td>{{ 'Sim' if scope.can_close else '—' }}</td><td>{{ 'Sim' if scope.can_manage else '—' }}</td><td>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-edit-scope-{{ scope.id }}">Editar</button><form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form></div>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Perfil</th><th>Âmbito autorizado</th><th>Visibilidade</th><th>Ações</th><th></th></tr></thead><tbody>
+    {% for scope in work_scopes %}<tr><td><strong>{{ roles_by_id[scope.role_id].name }}</strong></td><td>{{ work_queues_by_id[scope.queue_id].name }}{% if scope.department_id %} / {{ work_departments_by_id[scope.department_id].name }}{% endif %}{% if scope.category_id %} / {{ work_categories_by_id[scope.category_id].name }}{% endif %}{% if scope.subcategory_id %} / {{ work_subcategories_by_id[scope.subcategory_id].name }}{% endif %}</td><td>{{ {'scope_all':'Todo o âmbito','direct_only':'Relação direta','consult':'Consulta'}.get(scope.visibility_mode, scope.visibility_mode) }}</td><td>{% for field,label in [('can_read','Consultar'),('can_create','Criar'),('can_assume','Assumir'),('can_assign','Atribuir'),('can_update','Alterar'),('can_respond','Responder'),('can_complete','Concluir'),('can_manage_sla','SLA'),('can_administer_classifications','Classificações'),('can_manage','Gerir')] if scope|attr(field) %}<span class="clean-status-pill is-active">{{ label }}</span> {% else %}—{% endfor %}</td><td>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-edit-scope-{{ scope.id }}">Editar</button><form method="post" action="/v2-clean/admin/work-classification/scopes/{{ scope.id }}/delete"><button class="secondary">Remover</button></form></div>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Sem restrições adicionais; mantêm-se as permissões atuais.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
+{% endif %}
 
+{% if can_view_sources_config %}
 <section class="clean-work-admin-view" data-work-admin-view="sources" hidden>
   <div class="clean-work-view-heading"><div><h3>Predefinições por origem</h3><p>Recorrências, Documentação, Oficina e Stock usam a mesma classificação.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-source">Adicionar origem</button>{% endif %}</div>
   <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Origem</th><th>Chave</th><th>Fila</th><th>Departamento</th><th>Categoria</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
     {% for item in source_defaults %}<tr><td><strong>{{ item.source_type|capitalize }}</strong></td><td><code>{{ item.source_key }}</code></td><td>{{ work_queues_by_id[item.queue_id].name if item.queue_id else '—' }}</td><td>{{ work_departments_by_id[item.department_id].name if item.department_id else '—' }}</td><td>{{ work_categories_by_id[item.category_id].name if item.category_id else '—' }}</td><td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativa' if item.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-source-{{ item.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="7">Ainda sem predefinições adicionais.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
+{% endif %}
 
+{% if can_view_email_config %}
 <section class="clean-work-admin-view" data-work-admin-view="channels" hidden>
-  <div class="clean-work-view-heading"><div><h3>Caixas de email</h3><p>Classificação, responsável, prazos, regras de entrada e criação automática de tarefa.</p></div>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-create-inbox-rule">Nova regra</button><button type="button" data-dialog-open="work-create-channel-role">Adicionar acesso</button></div>{% endif %}</div>
-  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Endereço</th><th>Tarefa automática</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
-    {% for channel in email_channels %}<tr><td><strong>{{ channel.name }}</strong></td><td>{{ channel.address }}</td><td>{{ {'none':'Não','open':'Aberta','complete':'Concluída'}.get(channel.auto_task_mode, channel.auto_task_mode) }}</td><td>{% for user in active_users if user.id == channel.default_assignee_id %}{{ user.name }}{% else %}Por atribuir{% endfor %}</td><td>{{ channel.default_due_days if channel.default_due_days is not none else '—' }} dias</td><td><span class="clean-status-pill {{ 'is-active' if channel.active else 'is-inactive' }}">{{ 'Ativa' if channel.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-channel-{{ channel.id }}">Editar</button>{% endif %}</td></tr>{% endfor %}
+  <div class="clean-work-view-heading"><div><h3>Caixas de email</h3><p>Operação independente por caixa/classificação, sem fundir Email com o Service Desk.</p></div>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-create-email-executor">Autorizar executor</button><button type="button" class="secondary" data-dialog-open="work-create-inbox-rule">Nova regra</button><button type="button" data-dialog-open="work-create-channel-role">Adicionar acesso</button></div>{% endif %}</div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Endereço / inbound</th><th>Atribuição</th><th>Supervisor</th><th>1.ª resposta</th><th>Resolução</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
+    {% for channel in email_channels %}<tr><td><strong>{{ channel.name }}</strong><br><small>Auto-ticket: {{ {'none':'não','open':'aberto','complete':'concluído'}.get(channel.auto_task_mode, channel.auto_task_mode) }}</small></td><td>{{ channel.address }}<br><small>{{ channel.inbound_forward_address or 'Inbound por configurar' }}</small></td><td>{{ {'manual':'A aguardar atribuição','auto_user':'Automática a utilizador','auto_team':'Automática a equipa','team_claim':'Equipa para assumir'}.get(channel.assignment_mode, channel.assignment_mode) }}</td><td>{{ users_by_id.get(channel.supervisor_user_id).name if users_by_id.get(channel.supervisor_user_id) else 'Por definir' }}</td><td>{{ channel.first_response_minutes if channel.first_response_minutes is not none else '—' }} min</td><td>{{ channel.resolution_minutes if channel.resolution_minutes is not none else '—' }} min</td><td><span class="clean-status-pill {{ 'is-active' if channel.active else 'is-inactive' }}">{{ 'Ativa' if channel.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-channel-{{ channel.id }}">Editar</button>{% endif %}</td></tr>{% endfor %}
   </tbody></table></div>
+  <div class="clean-work-subsection-heading"><h4>Executores elegíveis</h4><span>{{ email_executor_eligibilities|length }} associações</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Classificação</th><th>Executor</th><th>Estado</th><th></th></tr></thead><tbody>{% for item in email_executor_eligibilities %}<tr><td>{% for channel in email_channels if channel.id == item.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ work_categories_by_id.get(item.category_id).name if item.category_id else 'Toda a caixa' }}</td><td>{{ users_by_id.get(item.user_id).name if item.user_id else teams_by_id.get(item.team_id).name ~ ' · equipa' }}</td><td>{{ 'Ativo' if item.active else 'Inativo' }}</td><td>{% if can_manage %}<form method="post" action="/v2-clean/admin/work-classification/email-executors/{{ item.id }}/toggle"><button class="secondary">{{ 'Inativar' if item.active else 'Ativar' }}</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Sem executores autorizados.</td></tr>{% endfor %}</tbody></table></div>
   <div class="clean-work-subsection-heading"><h4>Regras por assunto</h4><span>{{ email_inbox_rules|length }} regras</span></div>
   <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Regra</th><th>Condição</th><th>Responsável</th><th>Prazo</th><th>Tarefa</th><th>Estado</th><th></th></tr></thead><tbody>{% for rule in email_inbox_rules %}<tr><td>{% for channel in email_channels if channel.id == rule.channel_id %}{{ channel.name }}{% endfor %}</td><td><strong>{{ rule.name }}</strong><br><small>Prioridade {{ rule.sort_order }}</small></td><td>Assunto {{ 'é' if rule.match_type == 'exact' else 'contém' }} “{{ rule.subject_match }}”</td><td>{% for user in active_users if user.id == rule.default_assignee_id %}{{ user.name }}{% else %}Predefinição da caixa{% endfor %}</td><td>{{ rule.default_due_days if rule.default_due_days is not none else 'Predefinição' }}</td><td>{{ {'none':'Não criar','open':'Criar aberta','complete':'Criar concluída'}.get(rule.auto_task_mode, 'Predefinição') }}</td><td><span class="clean-status-pill {{ 'is-active' if rule.active else 'is-inactive' }}">{{ 'Ativa' if rule.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-inbox-rule-{{ rule.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="8">Sem regras específicas. Aplicam-se as predefinições de cada caixa.</td></tr>{% endfor %}</tbody></table></div>
   <div class="clean-work-subsection-heading"><h4>Acessos por perfil</h4><span>{{ email_channel_roles|length }} regras</span></div>
-  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Perfil</th><th>Ler</th><th>Responder</th><th>Envio direto</th><th>Aprovar</th><th>Gerir</th></tr></thead><tbody>{% for grant in email_channel_roles %}<tr><td>{% for channel in email_channels if channel.id == grant.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ roles_by_id[grant.role_id].name }}</td><td>{{ 'Sim' if grant.can_read else '—' }}</td><td>{{ 'Sim' if grant.can_reply else '—' }}</td><td>{{ 'Sim' if grant.can_send_direct else '—' }}</td><td>{{ 'Sim' if grant.can_approve else '—' }}</td><td>{{ 'Sim' if grant.can_manage else '—' }}</td></tr>{% else %}<tr><td colspan="7">Sem permissões por perfil configuradas.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Perfil</th><th>Visibilidade</th><th>Ler / responder</th><th>Assumir / atribuir</th><th>SLA</th><th>Aprovar / gerir</th></tr></thead><tbody>{% for grant in email_channel_roles %}<tr><td>{% for channel in email_channels if channel.id == grant.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ roles_by_id[grant.role_id].name }}</td><td>{{ {'scope_all':'Toda a caixa','direct_only':'Relação direta','consult':'Consulta'}.get(grant.visibility_mode, grant.visibility_mode) }}</td><td>{{ 'Ler' if grant.can_read else '—' }}{% if grant.can_reply %} · Responder{% endif %}{% if grant.can_send_direct %} · Envio direto{% endif %}</td><td>{{ 'Assumir' if grant.can_assume else '—' }}{% if grant.can_assign %} · Atribuir{% endif %}</td><td>{{ 'Gerir' if grant.can_manage_sla else '—' }}</td><td>{{ 'Aprovar' if grant.can_approve else '—' }}{% if grant.can_manage %} · Gerir{% endif %}</td></tr>{% else %}<tr><td colspan="7">Sem permissões por perfil configuradas.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
 <section class="clean-work-admin-view" data-work-admin-view="templates" hidden>
@@ -356,3 +451,4 @@ document.addEventListener('DOMContentLoaded', () => {
     {% for item in email_templates %}<tr><td><code>{{ item.code }}</code></td><td><strong>{{ item.name }}</strong></td><td>{% for channel in email_channels if channel.id == item.channel_id %}{{ channel.name }}{% else %}Todas{% endfor %}</td><td>{{ work_categories_by_id[item.category_id].name if item.category_id else 'Todas' }}</td><td>{{ work_subcategories_by_id[item.subcategory_id].name if item.subcategory_id else 'Todas' }}</td><td><span class="clean-status-pill {{ 'is-active' if item.active else 'is-inactive' }}">{{ 'Ativo' if item.active else 'Inativo' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-template-{{ item.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="7">Sem modelos.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
+{% endif %}

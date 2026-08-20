@@ -27568,6 +27568,10 @@ body.clean-task-preview-open {
 .email-muted { color:#758297; }
 .email-due { display:inline-block; font-weight:700; white-space:nowrap; }
 .email-due-overdue { color:#b42318; }
+.email-due-warning { color:#9a5b00; }
+.email-due-within { color:#176c45; }
+.email-due-completed { color:#40546e; }
+.email-due-paused,.email-due-not_configured { color:#66758b; }
 .email-due-today { color:#9a5b00; }
 .email-due-planned { color:#245f4a; }
 .email-badge { display:inline-block; padding:5px 8px; background:#fff0d6; color:#80520d; font-weight:700; }
@@ -27628,6 +27632,9 @@ body.clean-task-preview-open {
 .email-message-meta b,.email-message-meta time { display:block; }
 .email-triage-pane { overflow:auto; padding:18px; background:#eef2f6; border-left:1px solid #cbd5e1; }
 .email-triage-heading h3,.email-triage-heading p { margin:0 0 6px; }
+.email-sla-summary { display:grid; grid-template-columns:auto minmax(0,1fr); gap:7px 12px; margin:12px 0 0; }
+.email-sla-summary dt { color:#64748b; font-size:12px; font-weight:800; }
+.email-sla-summary dd { margin:0; }
 .email-triage-form,.email-triage-status,.email-attachment-form { display:grid; gap:10px; }
 .email-triage-form label,.email-triage-status label,.email-attachment-form label { display:grid; gap:5px; font-weight:700; }
 .email-triage-form textarea,.email-attachment-form textarea { resize:vertical; }
@@ -27709,6 +27716,25 @@ body.clean-task-preview-open {
 
 .clean-work-admin-header {
   padding-bottom: 18px;
+}
+
+.clean-work-area-search {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 12px;
+}
+
+.clean-work-area-search label {
+  display: grid;
+  gap: 5px;
+  width: min(420px, 100%);
+  color: #42536a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.clean-work-area-search.is-hidden {
+  display: none;
 }
 
 .clean-work-admin-nav {
@@ -27917,6 +27943,26 @@ body.clean-task-preview-open {
   background: #e7f5ed;
   color: #167245;
 }
+
+.clean-sla-state {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border: 1px solid #cbd5e1;
+  background: #f3f6f9;
+  color: #506077;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.clean-sla-state.is-within { border-color:#acd7c0; background:#e7f5ed; color:#167245; }
+.clean-sla-state.is-warning { border-color:#e7c27e; background:#fff8e8; color:#80520d; }
+.clean-sla-state.is-overdue { border-color:#e6aaa2; background:#fff1ef; color:#a52c20; }
+.clean-sla-state.is-completed { border-color:#c7d2df; background:#eef2f6; color:#3d536d; }
+.clean-sla-state.is-paused,.clean-sla-state.is-not_configured { color:#64748b; }
 
 .clean-work-subsection-heading {
   margin: 20px 0 8px;

@@ -17,7 +17,13 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
-from app.models.email import EmailChannel, EmailChannelRole, EmailInboxRule, EmailTemplate
+from app.models.email import (
+    EmailChannel,
+    EmailChannelRole,
+    EmailExecutorEligibility,
+    EmailInboxRule,
+    EmailTemplate,
+)
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import (
     OrganizationalUnit,
@@ -29,6 +35,10 @@ from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.tasks import Task
 from app.models.work_hierarchy import (
     RoleWorkScope,
+    ServiceDeskCategoryExecutor,
+    ServiceDeskCategoryPolicy,
+    ServiceDeskCategorySupervisor,
+    ServiceDeskTicketType,
     WorkCategory,
     WorkDepartment,
     WorkQueue,
@@ -38,7 +48,20 @@ from app.models.work_hierarchy import (
 from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
+from app.services.bootstrap import postmark_inbound_address
+from app.services.service_desk import (
+    ASSIGNMENT_MODES,
+    assignment_target_user_allowed,
+    eligible_category_teams,
+    eligible_category_users,
+    category_team_is_eligible,
+    category_user_is_eligible,
+    duration_to_minutes,
+    email_eligible_teams,
+    email_eligible_users,
+)
 from app.services.users import create_user
+from app.services.work_classification import user_work_scope_allows
 
 clean_admin_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -146,7 +169,13 @@ ADMIN_NAV = (
         "work_classification",
         "Filas e classificação",
         "/v2-clean/admin/work-classification",
-        ("admin.settings.read", "admin.settings.manage", "settings.manage", "admin.manage"),
+        (
+            "service_desk.classifications.manage",
+            "admin.settings.read",
+            "admin.settings.manage",
+            "settings.manage",
+            "admin.manage",
+        ),
     ),
     (
         "workshop_models",
@@ -186,6 +215,17 @@ WORK_ENTITY_MODELS = {
     "category": WorkCategory,
     "subcategory": WorkSubcategory,
 }
+
+GLOBAL_WORK_CLASSIFICATION_MANAGE_PERMISSIONS = {
+    "admin.settings.manage",
+    "settings.manage",
+    "admin.manage",
+}
+GLOBAL_WORK_CLASSIFICATION_READ_PERMISSIONS = {
+    "admin.settings.read",
+    *GLOBAL_WORK_CLASSIFICATION_MANAGE_PERMISSIONS,
+}
+SERVICE_DESK_CLASSIFICATION_PERMISSION = "service_desk.classifications.manage"
 
 
 def clean_admin_user_has(db, user: User | None, *permission_codes: str) -> bool:
@@ -1123,6 +1163,7 @@ def clean_admin_settings(request: Request):
 def clean_admin_work_classification(request: Request):
     access = _authorized(
         request,
+        SERVICE_DESK_CLASSIFICATION_PERMISSION,
         "admin.settings.read",
         "admin.settings.manage",
         "settings.manage",
@@ -1131,43 +1172,240 @@ def clean_admin_work_classification(request: Request):
     if not access:
         return _denied(request)
     user_id, permissions = access
+    can_read_global_configuration = bool(
+        permissions.intersection(GLOBAL_WORK_CLASSIFICATION_READ_PERMISSIONS)
+    )
+    can_manage_global_configuration = bool(
+        permissions.intersection(GLOBAL_WORK_CLASSIFICATION_MANAGE_PERMISSIONS)
+    )
+    can_manage_service_desk = bool(
+        can_manage_global_configuration
+        or SERVICE_DESK_CLASSIFICATION_PERMISSION in permissions
+    )
     with SessionLocal() as db:
-        queues = db.scalars(select(WorkQueue).order_by(WorkQueue.sort_order, WorkQueue.name)).all()
-        departments = db.scalars(
+        all_queues = db.scalars(
+            select(WorkQueue).order_by(WorkQueue.sort_order, WorkQueue.name)
+        ).all()
+        all_departments = db.scalars(
             select(WorkDepartment).order_by(
                 WorkDepartment.queue_id, WorkDepartment.sort_order, WorkDepartment.name
             )
         ).all()
-        categories = db.scalars(
+        all_categories = db.scalars(
             select(WorkCategory).order_by(
                 WorkCategory.department_id, WorkCategory.sort_order, WorkCategory.name
             )
         ).all()
-        subcategories = db.scalars(
+        all_subcategories = db.scalars(
             select(WorkSubcategory).order_by(
                 WorkSubcategory.category_id,
                 WorkSubcategory.sort_order,
                 WorkSubcategory.name,
             )
         ).all()
-        roles = db.scalars(select(Role).where(Role.active.is_(True)).order_by(Role.name)).all()
-        scopes = db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
-        channels = db.scalars(select(EmailChannel).order_by(EmailChannel.name)).all()
-        channel_roles = db.scalars(
-            select(EmailChannelRole).order_by(EmailChannelRole.channel_id, EmailChannelRole.role_id)
-        ).all()
-        inbox_rules = db.scalars(
-            select(EmailInboxRule).order_by(
-                EmailInboxRule.channel_id, EmailInboxRule.sort_order, EmailInboxRule.name
+        all_queues_by_id = {item.id: item for item in all_queues}
+        all_departments_by_id = {item.id: item for item in all_departments}
+        all_categories_by_id = {item.id: item for item in all_categories}
+
+        if can_manage_global_configuration:
+            manageable_queue_ids = {item.id for item in all_queues}
+            manageable_department_ids = {item.id for item in all_departments}
+            manageable_category_ids = {item.id for item in all_categories}
+            manageable_subcategory_ids = {item.id for item in all_subcategories}
+        elif can_manage_service_desk:
+            manageable_queue_ids = {
+                item.id
+                for item in all_queues
+                if _service_desk_item_scope_allows(db, access, "queue", item)
+            }
+            manageable_department_ids = {
+                item.id
+                for item in all_departments
+                if _service_desk_item_scope_allows(db, access, "department", item)
+            }
+            manageable_category_ids = {
+                item.id
+                for item in all_categories
+                if _service_desk_item_scope_allows(db, access, "category", item)
+            }
+            manageable_subcategory_ids = {
+                item.id
+                for item in all_subcategories
+                if _service_desk_item_scope_allows(db, access, "subcategory", item)
+            }
+        else:
+            manageable_queue_ids = set()
+            manageable_department_ids = set()
+            manageable_category_ids = set()
+            manageable_subcategory_ids = set()
+
+        if can_read_global_configuration:
+            visible_queue_ids = {item.id for item in all_queues}
+            visible_department_ids = {item.id for item in all_departments}
+            visible_category_ids = {item.id for item in all_categories}
+            visible_subcategory_ids = {item.id for item in all_subcategories}
+        else:
+            visible_subcategory_ids = set(manageable_subcategory_ids)
+            visible_category_ids = manageable_category_ids | {
+                item.category_id
+                for item in all_subcategories
+                if item.id in visible_subcategory_ids
+            }
+            visible_department_ids = manageable_department_ids | {
+                all_categories_by_id[item_id].department_id
+                for item_id in visible_category_ids
+                if item_id in all_categories_by_id
+            }
+            visible_queue_ids = manageable_queue_ids | {
+                all_departments_by_id[item_id].queue_id
+                for item_id in visible_department_ids
+                if item_id in all_departments_by_id
+            }
+
+        queues = [item for item in all_queues if item.id in visible_queue_ids]
+        departments = [
+            item for item in all_departments if item.id in visible_department_ids
+        ]
+        categories = [item for item in all_categories if item.id in visible_category_ids]
+        subcategories = [
+            item for item in all_subcategories if item.id in visible_subcategory_ids
+        ]
+        service_desk_categories = (
+            list(all_categories)
+            if can_read_global_configuration
+            else [item for item in all_categories if item.id in manageable_category_ids]
+        )
+        service_desk_category_ids = {item.id for item in service_desk_categories}
+
+        roles = (
+            db.scalars(select(Role).where(Role.active.is_(True)).order_by(Role.name)).all()
+            if can_read_global_configuration
+            else []
+        )
+        scopes = (
+            db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
+            if can_read_global_configuration
+            else []
+        )
+        channels = (
+            db.scalars(select(EmailChannel).order_by(EmailChannel.name)).all()
+            if can_read_global_configuration
+            else []
+        )
+        channel_roles = (
+            db.scalars(
+                select(EmailChannelRole).order_by(
+                    EmailChannelRole.channel_id, EmailChannelRole.role_id
+                )
+            ).all()
+            if can_read_global_configuration
+            else []
+        )
+        inbox_rules = (
+            db.scalars(
+                select(EmailInboxRule).order_by(
+                    EmailInboxRule.channel_id,
+                    EmailInboxRule.sort_order,
+                    EmailInboxRule.name,
+                )
+            ).all()
+            if can_read_global_configuration
+            else []
+        )
+        email_templates = (
+            db.scalars(select(EmailTemplate).order_by(EmailTemplate.name)).all()
+            if can_read_global_configuration
+            else []
+        )
+        all_users = db.scalars(select(User).order_by(User.name)).all()
+        all_teams = db.scalars(select(Team).order_by(Team.name)).all()
+        users = [
+            item
+            for item in all_users
+            if item.active
+            and assignment_target_user_allowed(
+                db, actor_user_id=user_id, target_user_id=item.id
+            )
+        ]
+        teams = [item for item in all_teams if item.active]
+        ticket_types = db.scalars(
+            select(ServiceDeskTicketType).order_by(
+                ServiceDeskTicketType.sort_order, ServiceDeskTicketType.name
             )
         ).all()
-        email_templates = db.scalars(select(EmailTemplate).order_by(EmailTemplate.name)).all()
-        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-        source_defaults = db.scalars(
-            select(WorkSourceDefault).order_by(
-                WorkSourceDefault.source_type, WorkSourceDefault.source_key
+        category_policies = db.scalars(
+            select(ServiceDeskCategoryPolicy)
+            .where(
+                ServiceDeskCategoryPolicy.category_id.in_(
+                    service_desk_category_ids or {-1}
+                )
+            )
+            .order_by(ServiceDeskCategoryPolicy.category_id)
+        ).all()
+        category_supervisors = db.scalars(
+            select(ServiceDeskCategorySupervisor)
+            .where(
+                ServiceDeskCategorySupervisor.category_id.in_(
+                    service_desk_category_ids or {-1}
+                )
+            )
+            .order_by(
+                ServiceDeskCategorySupervisor.category_id,
+                ServiceDeskCategorySupervisor.user_id,
             )
         ).all()
+        category_executors = db.scalars(
+            select(ServiceDeskCategoryExecutor)
+            .where(
+                ServiceDeskCategoryExecutor.category_id.in_(
+                    service_desk_category_ids or {-1}
+                )
+            )
+            .order_by(
+                ServiceDeskCategoryExecutor.category_id,
+                ServiceDeskCategoryExecutor.id,
+            )
+        ).all()
+        email_executors = (
+            db.scalars(
+                select(EmailExecutorEligibility).order_by(
+                    EmailExecutorEligibility.channel_id,
+                    EmailExecutorEligibility.category_id,
+                    EmailExecutorEligibility.id,
+                )
+            ).all()
+            if can_read_global_configuration
+            else []
+        )
+        email_user_eligibility_tokens = {item.id: [] for item in users}
+        email_team_eligibility_tokens = {item.id: [] for item in teams}
+        for channel in channels:
+            for eligibility_category_id in [None, *(item.id for item in categories)]:
+                token = f"{channel.id}:{eligibility_category_id or 0}"
+                for eligible_user in email_eligible_users(
+                    db, channel.id, eligibility_category_id
+                ):
+                    if assignment_target_user_allowed(
+                        db,
+                        actor_user_id=user_id,
+                        target_user_id=eligible_user.id,
+                    ):
+                        email_user_eligibility_tokens.setdefault(
+                            eligible_user.id, []
+                        ).append(token)
+                for eligible_team in email_eligible_teams(
+                    db, channel.id, eligibility_category_id
+                ):
+                    email_team_eligibility_tokens.setdefault(eligible_team.id, []).append(token)
+        source_defaults = (
+            db.scalars(
+                select(WorkSourceDefault).order_by(
+                    WorkSourceDefault.source_type, WorkSourceDefault.source_key
+                )
+            ).all()
+            if can_read_global_configuration
+            else []
+        )
         usage_fields = {
             "queue": Task.work_queue_id,
             "department": Task.work_department_id,
@@ -1219,14 +1457,46 @@ def clean_admin_work_classification(request: Request):
             email_inbox_rules=inbox_rules,
             email_templates=email_templates,
             active_users=users,
+            active_teams=teams,
+            users_by_id={item.id: item for item in all_users},
+            teams_by_id={item.id: item for item in all_teams},
+            service_desk_ticket_types=ticket_types,
+            service_desk_categories=service_desk_categories,
+            service_desk_manage_queue_ids=manageable_queue_ids,
+            service_desk_manage_department_ids=manageable_department_ids,
+            service_desk_manage_category_ids=manageable_category_ids,
+            service_desk_manage_subcategory_ids=manageable_subcategory_ids,
+            service_desk_category_policies=category_policies,
+            service_desk_category_policies_by_category={
+                item.category_id: item for item in category_policies
+            },
+            service_desk_category_supervisors=category_supervisors,
+            service_desk_category_executors=category_executors,
+            service_desk_eligible_users_by_category={
+                item.id: [
+                    user.id
+                    for user in eligible_category_users(db, item.id)
+                    if assignment_target_user_allowed(
+                        db, actor_user_id=user_id, target_user_id=user.id
+                    )
+                ]
+                for item in service_desk_categories
+            },
+            service_desk_eligible_teams_by_category={
+                item.id: [team.id for team in eligible_category_teams(db, item.id)]
+                for item in service_desk_categories
+            },
+            email_executor_eligibilities=email_executors,
+            email_user_eligibility_tokens=email_user_eligibility_tokens,
+            email_team_eligibility_tokens=email_team_eligibility_tokens,
             source_defaults=source_defaults,
             work_usage_counts=usage_counts,
             work_child_counts=child_counts,
-            can_manage=bool(
-                permissions.intersection(
-                    {"admin.settings.manage", "settings.manage", "admin.manage"}
-                )
-            ),
+            can_manage=can_manage_global_configuration,
+            can_manage_service_desk=can_manage_service_desk,
+            can_view_profiles_config=can_read_global_configuration,
+            can_view_sources_config=can_read_global_configuration,
+            can_view_email_config=can_read_global_configuration,
         )
     return templates.TemplateResponse(request, "clean_admin.html", context)
 
@@ -1235,25 +1505,462 @@ def _work_classification_manage_access(request: Request):
     return _authorized(request, "admin.settings.manage", "settings.manage", "admin.manage")
 
 
+def _service_desk_classification_manage_access(request: Request):
+    return _authorized(
+        request,
+        SERVICE_DESK_CLASSIFICATION_PERMISSION,
+        *GLOBAL_WORK_CLASSIFICATION_MANAGE_PERMISSIONS,
+    )
+
+
+def _service_desk_scope_allows(
+    db,
+    access: tuple[int, set[str]],
+    *,
+    queue_id: int,
+    department_id: int | None = None,
+    category_id: int | None = None,
+    subcategory_id: int | None = None,
+) -> bool:
+    user_id, permissions = access
+    if permissions.intersection(GLOBAL_WORK_CLASSIFICATION_MANAGE_PERMISSIONS):
+        return True
+    if SERVICE_DESK_CLASSIFICATION_PERMISSION not in permissions:
+        return False
+    return user_work_scope_allows(
+        db,
+        user_id=user_id,
+        queue_id=queue_id,
+        department_id=department_id,
+        category_id=category_id,
+        subcategory_id=subcategory_id,
+        action="admin_classifications",
+    )
+
+
+def _service_desk_item_scope_allows(
+    db,
+    access: tuple[int, set[str]],
+    entity_type: str,
+    item,
+) -> bool:
+    if entity_type == "queue":
+        return _service_desk_scope_allows(db, access, queue_id=item.id)
+    if entity_type == "department":
+        return _service_desk_scope_allows(
+            db,
+            access,
+            queue_id=item.queue_id,
+            department_id=item.id,
+        )
+    if entity_type == "category":
+        department = db.get(WorkDepartment, item.department_id)
+        return bool(
+            department
+            and _service_desk_scope_allows(
+                db,
+                access,
+                queue_id=department.queue_id,
+                department_id=department.id,
+                category_id=item.id,
+            )
+        )
+    if entity_type == "subcategory":
+        category = db.get(WorkCategory, item.category_id)
+        department = db.get(WorkDepartment, category.department_id) if category else None
+        return bool(
+            category
+            and department
+            and _service_desk_scope_allows(
+                db,
+                access,
+                queue_id=department.queue_id,
+                department_id=department.id,
+                category_id=category.id,
+                subcategory_id=item.id,
+            )
+        )
+    return False
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/ticket-types")
+def clean_admin_create_ticket_type(
+    request: Request,
+    code: str = Form(""),
+    name: str = Form(""),
+    description: str = Form(""),
+    sort_order: int = Form(0),
+):
+    access = _service_desk_classification_manage_access(request)
+    clean_code = code.strip().lower()
+    if not access:
+        return _denied(request)
+    if not CODE_PATTERN.fullmatch(clean_code) or not name.strip():
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_ticket_type")
+    with SessionLocal() as db:
+        if db.scalar(select(ServiceDeskTicketType).where(ServiceDeskTicketType.code == clean_code)):
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        item = ServiceDeskTicketType(
+            code=clean_code,
+            name=name.strip(),
+            description=description.strip() or None,
+            active=True,
+            sort_order=sort_order,
+        )
+        db.add(item)
+        db.flush()
+        record_audit(
+            db,
+            action="service_desk.ticket_type.created",
+            entity_type="service_desk_ticket_type",
+            entity_id=item.id,
+            detail=f"Tipo de ticket criado: {item.name}",
+            user_id=access[0],
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/ticket-types/{type_id}")
+def clean_admin_update_ticket_type(
+    request: Request,
+    type_id: int,
+    name: str = Form(""),
+    description: str = Form(""),
+    sort_order: int = Form(0),
+    active: str = Form(""),
+):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if not name.strip():
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_ticket_type")
+    with SessionLocal() as db:
+        item = db.get(ServiceDeskTicketType, type_id)
+        if not item:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        before = {"name": item.name, "active": item.active}
+        item.name = name.strip()
+        item.description = description.strip() or None
+        item.sort_order = sort_order
+        item.active = active == "on"
+        record_audit(
+            db,
+            action="service_desk.ticket_type.updated",
+            entity_type="service_desk_ticket_type",
+            entity_id=item.id,
+            detail=f"Tipo de ticket atualizado: {item.code}",
+            user_id=access[0],
+            before_json=before,
+            after_json={"name": item.name, "active": item.active},
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/category-policies/{category_id}")
+def clean_admin_save_category_policy(
+    request: Request,
+    category_id: int,
+    assignment_mode: str = Form("manual"),
+    default_executor_user_id: int | None = Form(None),
+    default_executor_team_id: int | None = Form(None),
+    first_response_minutes: int | None = Form(None),
+    resolution_minutes: int | None = Form(None),
+    warning_minutes: int = Form(60),
+    pause_on_waiting: str = Form(""),
+    active: str = Form(""),
+):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if (
+        assignment_mode not in ASSIGNMENT_MODES
+        or first_response_minutes is not None
+        and first_response_minutes < 0
+        or resolution_minutes is not None
+        and resolution_minutes < 0
+        or warning_minutes < 0
+        or default_executor_user_id is not None
+        and default_executor_team_id is not None
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_policy")
+    with SessionLocal() as db:
+        category = db.get(WorkCategory, category_id)
+        if not category:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if not _service_desk_item_scope_allows(db, access, "category", category):
+            return _denied(request)
+        if default_executor_user_id and not category_user_is_eligible(
+            db, category_id, default_executor_user_id
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+        if default_executor_user_id and not assignment_target_user_allowed(
+            db,
+            actor_user_id=access[0],
+            target_user_id=default_executor_user_id,
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+        if default_executor_team_id and not category_team_is_eligible(
+            db, category_id, default_executor_team_id
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+        if assignment_mode == "auto_user" and not default_executor_user_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        if assignment_mode in {"auto_team", "team_claim"} and not default_executor_team_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        policy = db.scalar(
+            select(ServiceDeskCategoryPolicy).where(
+                ServiceDeskCategoryPolicy.category_id == category_id
+            )
+        ) or ServiceDeskCategoryPolicy(category_id=category_id)
+        policy.assignment_mode = assignment_mode
+        policy.default_executor_user_id = default_executor_user_id
+        policy.default_executor_team_id = default_executor_team_id
+        policy.first_response_minutes = first_response_minutes
+        policy.resolution_minutes = resolution_minutes
+        policy.warning_minutes = warning_minutes
+        policy.pause_on_waiting = pause_on_waiting == "on"
+        policy.timezone = "Europe/Lisbon"
+        policy.active = active == "on"
+        db.add(policy)
+        db.flush()
+        record_audit(
+            db,
+            action="service_desk.category_policy.saved",
+            entity_type="work_category",
+            entity_id=category_id,
+            detail="Política operacional, atribuição e SLA atualizada.",
+            user_id=access[0],
+            after_json={
+                "assignment_mode": policy.assignment_mode,
+                "first_response_minutes": policy.first_response_minutes,
+                "resolution_minutes": policy.resolution_minutes,
+                "pause_on_waiting": policy.pause_on_waiting,
+            },
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/category-supervisors")
+def clean_admin_save_category_supervisor(
+    request: Request,
+    category_id: int = Form(...),
+    user_id: int = Form(...),
+):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        category = db.get(WorkCategory, category_id)
+        user = db.get(User, user_id)
+        if (
+            not category
+            or not user
+            or not user.active
+            or not assignment_target_user_allowed(
+                db, actor_user_id=access[0], target_user_id=user_id
+            )
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_supervisor")
+        if not _service_desk_item_scope_allows(db, access, "category", category):
+            return _denied(request)
+        item = db.scalar(
+            select(ServiceDeskCategorySupervisor).where(
+                ServiceDeskCategorySupervisor.category_id == category_id,
+                ServiceDeskCategorySupervisor.user_id == user_id,
+            )
+        ) or ServiceDeskCategorySupervisor(category_id=category_id, user_id=user_id)
+        item.active = True
+        db.add(item)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/category-supervisors/{item_id}/toggle"
+)
+def clean_admin_toggle_category_supervisor(request: Request, item_id: int):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        item = db.get(ServiceDeskCategorySupervisor, item_id)
+        if not item:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        category = db.get(WorkCategory, item.category_id)
+        if not category:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if not _service_desk_item_scope_allows(db, access, "category", category):
+            return _denied(request)
+        item.active = not item.active
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/category-executors")
+def clean_admin_save_category_executor(
+    request: Request,
+    category_id: int = Form(...),
+    target_type: str = Form("user"),
+    target_id: int = Form(...),
+):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if target_type not in {"user", "team"}:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_executor")
+    with SessionLocal() as db:
+        category = db.get(WorkCategory, category_id)
+        user_id = target_id if target_type == "user" else None
+        team_id = target_id if target_type == "team" else None
+        target = db.get(User, user_id) if user_id else db.get(Team, team_id)
+        if (
+            not category
+            or not target
+            or not target.active
+            or (
+                user_id
+                and not assignment_target_user_allowed(
+                    db, actor_user_id=access[0], target_user_id=user_id
+                )
+            )
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_executor")
+        if not _service_desk_item_scope_allows(db, access, "category", category):
+            return _denied(request)
+        item = db.scalar(
+            select(ServiceDeskCategoryExecutor).where(
+                ServiceDeskCategoryExecutor.category_id == category_id,
+                ServiceDeskCategoryExecutor.user_id == user_id,
+                ServiceDeskCategoryExecutor.team_id == team_id,
+            )
+        ) or ServiceDeskCategoryExecutor(
+            category_id=category_id,
+            user_id=user_id,
+            team_id=team_id,
+        )
+        item.active = True
+        db.add(item)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/category-executors/{item_id}/toggle")
+def clean_admin_toggle_category_executor(request: Request, item_id: int):
+    access = _service_desk_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        item = db.get(ServiceDeskCategoryExecutor, item_id)
+        if not item:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        category = db.get(WorkCategory, item.category_id)
+        if not category:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if not _service_desk_item_scope_allows(db, access, "category", category):
+            return _denied(request)
+        item.active = not item.active
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-executors")
+def clean_admin_save_email_executor(
+    request: Request,
+    channel_id: int = Form(...),
+    category_id: int | None = Form(None),
+    target_type: str = Form("user"),
+    target_id: int = Form(...),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if target_type not in {"user", "team"}:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_executor")
+    with SessionLocal() as db:
+        user_id = target_id if target_type == "user" else None
+        team_id = target_id if target_type == "team" else None
+        target = db.get(User, user_id) if user_id else db.get(Team, team_id)
+        if (
+            not db.get(EmailChannel, channel_id)
+            or not target
+            or not target.active
+            or (
+                user_id
+                and not assignment_target_user_allowed(
+                    db, actor_user_id=access[0], target_user_id=user_id
+                )
+            )
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_executor")
+        if category_id and not db.get(WorkCategory, category_id):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_executor")
+        item = db.scalar(
+            select(EmailExecutorEligibility).where(
+                EmailExecutorEligibility.channel_id == channel_id,
+                EmailExecutorEligibility.category_id == category_id,
+                EmailExecutorEligibility.user_id == user_id,
+                EmailExecutorEligibility.team_id == team_id,
+            )
+        ) or EmailExecutorEligibility(
+            channel_id=channel_id,
+            category_id=category_id,
+            user_id=user_id,
+            team_id=team_id,
+        )
+        item.active = True
+        db.add(item)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-executors/{item_id}/toggle")
+def clean_admin_toggle_email_executor(request: Request, item_id: int):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    with SessionLocal() as db:
+        item = db.get(EmailExecutorEligibility, item_id)
+        if item:
+            item.active = not item.active
+            db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
 def _valid_work_scope_hierarchy(
     db,
     queue_id: int,
     department_id: int | None,
     category_id: int | None,
     subcategory_id: int | None,
+    *,
+    require_active: bool = False,
 ) -> bool:
     queue = db.get(WorkQueue, queue_id)
-    if not queue:
+    if not queue or (require_active and not queue.active):
         return False
     department = db.get(WorkDepartment, department_id) if department_id else None
-    if department_id and (not department or department.queue_id != queue_id):
+    if department_id and (
+        not department
+        or department.queue_id != queue_id
+        or (require_active and not department.active)
+    ):
         return False
     category = db.get(WorkCategory, category_id) if category_id else None
-    if category_id and (not department or not category or category.department_id != department.id):
+    if category_id and (
+        not department
+        or not category
+        or category.department_id != department.id
+        or (require_active and not category.active)
+    ):
         return False
     subcategory = db.get(WorkSubcategory, subcategory_id) if subcategory_id else None
     return not subcategory_id or bool(
-        category and subcategory and subcategory.category_id == category.id
+        category
+        and subcategory
+        and subcategory.category_id == category.id
+        and (not require_active or subcategory.active)
     )
 
 
@@ -1268,17 +1975,17 @@ def clean_admin_create_work_classification(
     sort_order: int = Form(0),
     requires_description: str = Form(""),
 ):
-    access = _work_classification_manage_access(request)
+    access = _service_desk_classification_manage_access(request)
     if not access:
         return _denied(request)
     model = WORK_ENTITY_MODELS.get(entity_type)
     clean_code = code.strip().lower()
     if not model or not CODE_PATTERN.fullmatch(clean_code) or not name.strip():
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_classification")
-    parent_fields = {
-        "department": "queue_id",
-        "category": "department_id",
-        "subcategory": "category_id",
+    parent_definitions = {
+        "department": (WorkQueue, "queue_id", "queue"),
+        "category": (WorkDepartment, "department_id", "department"),
+        "subcategory": (WorkCategory, "category_id", "category"),
     }
     if entity_type != "queue" and not parent_id:
         return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
@@ -1290,9 +1997,20 @@ def clean_admin_create_work_classification(
         "active": True,
     }
     if entity_type != "queue":
-        values[parent_fields[entity_type]] = parent_id
+        values[parent_definitions[entity_type][1]] = parent_id
         values["requires_description"] = requires_description == "on"
     with SessionLocal() as db:
+        if entity_type != "queue":
+            parent_model, _, parent_entity_type = parent_definitions[entity_type]
+            parent = db.get(parent_model, parent_id)
+            if not parent:
+                return _redirect(
+                    "/v2-clean/admin/work-classification", "error", "missing_parent"
+                )
+            if not _service_desk_item_scope_allows(
+                db, access, parent_entity_type, parent
+            ):
+                return _denied(request)
         db.add(model(**values))
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
@@ -1310,16 +2028,16 @@ def clean_admin_update_work_classification(
     active: str = Form(""),
     requires_description: str = Form(""),
 ):
-    access = _work_classification_manage_access(request)
+    access = _service_desk_classification_manage_access(request)
     if not access:
         return _denied(request)
     model = WORK_ENTITY_MODELS.get(entity_type)
     if not model or not name.strip():
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid")
     parent_definitions = {
-        "department": (WorkQueue, "queue_id"),
-        "category": (WorkDepartment, "department_id"),
-        "subcategory": (WorkCategory, "category_id"),
+        "department": (WorkQueue, "queue_id", "queue"),
+        "category": (WorkDepartment, "department_id", "department"),
+        "subcategory": (WorkCategory, "category_id", "category"),
     }
     if entity_type in parent_definitions and not parent_id:
         return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
@@ -1327,10 +2045,17 @@ def clean_admin_update_work_classification(
         item = db.get(model, entity_id)
         if not item:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        if not _service_desk_item_scope_allows(db, access, entity_type, item):
+            return _denied(request)
         if entity_type in parent_definitions:
-            parent_model, parent_field = parent_definitions[entity_type]
-            if not db.get(parent_model, parent_id):
+            parent_model, parent_field, parent_entity_type = parent_definitions[entity_type]
+            parent = db.get(parent_model, parent_id)
+            if not parent:
                 return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
+            if parent_id != getattr(item, parent_field) and not _service_desk_item_scope_allows(
+                db, access, parent_entity_type, parent
+            ):
+                return _denied(request)
             duplicate = db.scalar(
                 select(model).where(
                     getattr(model, parent_field) == parent_id,
@@ -1363,8 +2088,14 @@ def clean_admin_save_work_scope(
     can_create: str = Form(""),
     can_update: str = Form(""),
     can_assign: str = Form(""),
+    can_assume: str = Form(""),
     can_close: str = Form(""),
+    can_respond: str = Form(""),
+    can_complete: str = Form(""),
+    can_manage_sla: str = Form(""),
+    can_administer_classifications: str = Form(""),
     can_manage: str = Form(""),
+    visibility_mode: str = Form("scope_all"),
 ):
     if not _work_classification_manage_access(request):
         return _denied(request)
@@ -1392,8 +2123,18 @@ def clean_admin_save_work_scope(
         scope.can_create = can_create == "on"
         scope.can_update = can_update == "on"
         scope.can_assign = can_assign == "on"
+        scope.can_assume = can_assume == "on"
         scope.can_close = can_close == "on"
+        scope.can_respond = can_respond == "on"
+        scope.can_complete = can_complete == "on" or scope.can_close
+        scope.can_manage_sla = can_manage_sla == "on"
+        scope.can_administer_classifications = can_administer_classifications == "on"
         scope.can_manage = can_manage == "on"
+        scope.visibility_mode = (
+            visibility_mode
+            if visibility_mode in {"scope_all", "direct_only", "consult"}
+            else "scope_all"
+        )
         db.add(scope)
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
@@ -1412,8 +2153,14 @@ def clean_admin_update_work_scope(
     can_create: str = Form(""),
     can_update: str = Form(""),
     can_assign: str = Form(""),
+    can_assume: str = Form(""),
     can_close: str = Form(""),
+    can_respond: str = Form(""),
+    can_complete: str = Form(""),
+    can_manage_sla: str = Form(""),
+    can_administer_classifications: str = Form(""),
     can_manage: str = Form(""),
+    visibility_mode: str = Form("scope_all"),
 ):
     if not _work_classification_manage_access(request):
         return _denied(request)
@@ -1446,8 +2193,18 @@ def clean_admin_update_work_scope(
         scope.can_create = can_create == "on"
         scope.can_update = can_update == "on"
         scope.can_assign = can_assign == "on"
+        scope.can_assume = can_assume == "on"
         scope.can_close = can_close == "on"
+        scope.can_respond = can_respond == "on"
+        scope.can_complete = can_complete == "on" or scope.can_close
+        scope.can_manage_sla = can_manage_sla == "on"
+        scope.can_administer_classifications = can_administer_classifications == "on"
         scope.can_manage = can_manage == "on"
+        scope.visibility_mode = (
+            visibility_mode
+            if visibility_mode in {"scope_all", "direct_only", "consult"}
+            else "scope_all"
+        )
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
@@ -1477,17 +2234,106 @@ def clean_admin_update_email_channel(
     default_subcategory_id: int | None = Form(None),
     default_document_type: str = Form(""),
     default_assignee_id: int | None = Form(None),
+    default_team_id: int | None = Form(None),
+    supervisor_user_id: int | None = Form(None),
+    assignment_mode: str = Form("manual"),
+    first_response_value: int | None = Form(None),
+    first_response_unit: str = Form("minutes"),
+    resolution_value: int | None = Form(None),
+    resolution_unit: str = Form("minutes"),
+    warning_minutes: int = Form(60),
+    pause_on_waiting: str = Form(""),
+    inbound_forward_address: str = Form(""),
     default_due_days: int | None = Form(None),
     default_wait_days: int | None = Form(None),
 ):
-    if not _work_classification_manage_access(request):
+    access = _work_classification_manage_access(request)
+    if not access:
         return _denied(request)
-    if auto_task_mode not in {"none", "open", "complete"}:
+    if (
+        auto_task_mode not in {"none", "open", "complete"}
+        or assignment_mode not in ASSIGNMENT_MODES
+        or first_response_unit not in {"minutes", "days"}
+        or resolution_unit not in {"minutes", "days"}
+        or first_response_value is not None
+        and first_response_value < 0
+        or resolution_value is not None
+        and resolution_value < 0
+        or warning_minutes < 0
+        or default_due_days is not None
+        and default_due_days < 0
+        or default_wait_days is not None
+        and default_wait_days < 0
+        or default_assignee_id is not None
+        and default_team_id is not None
+    ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_mode")
     with SessionLocal() as db:
         channel = db.get(EmailChannel, channel_id)
         if not channel:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        hierarchy_ids = (
+            default_queue_id,
+            default_department_id,
+            default_category_id,
+            default_subcategory_id,
+        )
+        if any(hierarchy_ids) and (
+            not default_queue_id
+            or not _valid_work_scope_hierarchy(
+                db, *hierarchy_ids, require_active=True
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_hierarchy"
+            )
+        supervisor = db.get(User, supervisor_user_id) if supervisor_user_id else None
+        if supervisor_user_id and (
+            not supervisor
+            or not supervisor.active
+            or not assignment_target_user_allowed(
+                db, actor_user_id=access[0], target_user_id=supervisor_user_id
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_supervisor"
+            )
+        if default_assignee_id and default_assignee_id not in {
+            item.id
+            for item in email_eligible_users(db, channel.id, default_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_assignee_id and not assignment_target_user_allowed(
+            db, actor_user_id=access[0], target_user_id=default_assignee_id
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_team_id and default_team_id not in {
+            item.id
+            for item in email_eligible_teams(db, channel.id, default_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if assignment_mode == "auto_user" and not default_assignee_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        clean_forward = (
+            postmark_inbound_address(channel.inbound_hash)
+            if channel.inbound_hash
+            else inbound_forward_address.strip().lower() or None
+        )
+        if clean_forward and db.scalar(
+            select(EmailChannel).where(
+                EmailChannel.id != channel.id,
+                EmailChannel.inbound_forward_address == clean_forward,
+            )
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
         channel.name = name.strip() or channel.name
         channel.active = active == "on"
         channel.auto_task_mode = auto_task_mode
@@ -1497,6 +2343,20 @@ def clean_admin_update_email_channel(
         channel.default_subcategory_id = default_subcategory_id
         channel.default_document_type = default_document_type.strip() or None
         channel.default_assignee_id = default_assignee_id
+        channel.default_team_id = default_team_id
+        channel.supervisor_user_id = supervisor_user_id
+        channel.assignment_mode = assignment_mode
+        channel.first_response_minutes = duration_to_minutes(
+            first_response_value, first_response_unit
+        )
+        channel.resolution_minutes = (
+            duration_to_minutes(resolution_value, resolution_unit)
+            if resolution_value is not None
+            else duration_to_minutes(default_due_days, "days")
+        )
+        channel.warning_minutes = warning_minutes
+        channel.pause_on_waiting = pause_on_waiting == "on"
+        channel.inbound_forward_address = clean_forward
         channel.default_due_days = default_due_days
         channel.default_wait_days = default_wait_days
         db.commit()
@@ -1512,11 +2372,20 @@ def clean_admin_save_email_channel_role(
     can_reply: str = Form(""),
     can_send_direct: str = Form(""),
     can_approve: str = Form(""),
+    can_assume: str = Form(""),
+    can_assign: str = Form(""),
+    can_manage_sla: str = Form(""),
     can_manage: str = Form(""),
+    visibility_mode: str = Form("scope_all"),
 ):
-    if not _work_classification_manage_access(request):
+    access = _work_classification_manage_access(request)
+    if not access:
         return _denied(request)
+    if visibility_mode not in {"scope_all", "direct_only", "consult"}:
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
     with SessionLocal() as db:
+        if not db.get(EmailChannel, channel_id) or not db.get(Role, role_id):
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
         grant = db.scalar(
             select(EmailChannelRole).where(
                 EmailChannelRole.channel_id == channel_id,
@@ -1527,7 +2396,11 @@ def clean_admin_save_email_channel_role(
         grant.can_reply = can_reply == "on"
         grant.can_send_direct = can_send_direct == "on"
         grant.can_approve = can_approve == "on"
+        grant.can_assume = can_assume == "on"
+        grant.can_assign = can_assign == "on"
+        grant.can_manage_sla = can_manage_sla == "on"
         grant.can_manage = can_manage == "on"
+        grant.visibility_mode = visibility_mode
         db.add(grant)
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
@@ -1545,6 +2418,13 @@ def _save_email_inbox_rule(
     default_subcategory_id: int | None,
     default_document_type: str,
     default_assignee_id: int | None,
+    default_team_id: int | None,
+    supervisor_user_id: int | None,
+    assignment_mode: str,
+    first_response_minutes: int | None,
+    resolution_minutes: int | None,
+    warning_minutes: int | None,
+    pause_on_waiting: bool | None,
     default_due_days: int | None,
     default_wait_days: int | None,
     auto_task_mode: str,
@@ -1561,6 +2441,13 @@ def _save_email_inbox_rule(
     rule.default_subcategory_id = default_subcategory_id
     rule.default_document_type = default_document_type.strip() or None
     rule.default_assignee_id = default_assignee_id
+    rule.default_team_id = default_team_id
+    rule.supervisor_user_id = supervisor_user_id
+    rule.assignment_mode = assignment_mode or None
+    rule.first_response_minutes = first_response_minutes
+    rule.resolution_minutes = resolution_minutes
+    rule.warning_minutes = warning_minutes
+    rule.pause_on_waiting = pause_on_waiting
     rule.default_due_days = default_due_days
     rule.default_wait_days = default_wait_days
     rule.auto_task_mode = auto_task_mode or None
@@ -1582,6 +2469,15 @@ def clean_admin_create_email_inbox_rule(
     default_subcategory_id: int | None = Form(None),
     default_document_type: str = Form(""),
     default_assignee_id: int | None = Form(None),
+    default_team_id: int | None = Form(None),
+    supervisor_user_id: int | None = Form(None),
+    assignment_mode: str = Form(""),
+    first_response_value: int | None = Form(None),
+    first_response_unit: str = Form("minutes"),
+    resolution_value: int | None = Form(None),
+    resolution_unit: str = Form("minutes"),
+    warning_minutes: int | None = Form(None),
+    pause_on_waiting: str = Form("inherit"),
     default_due_days: int | None = Form(None),
     default_wait_days: int | None = Form(None),
     auto_task_mode: str = Form(""),
@@ -1589,18 +2485,86 @@ def clean_admin_create_email_inbox_rule(
     active: str = Form(""),
     notes: str = Form(""),
 ):
-    if not _work_classification_manage_access(request):
+    access = _work_classification_manage_access(request)
+    if not access:
         return _denied(request)
     if (
         not name.strip()
         or not subject_match.strip()
         or match_type not in {"contains", "exact"}
         or auto_task_mode not in {"", "none", "open", "complete"}
+        or assignment_mode not in {"", *ASSIGNMENT_MODES}
+        or first_response_unit not in {"minutes", "days"}
+        or resolution_unit not in {"minutes", "days"}
+        or first_response_value is not None
+        and first_response_value < 0
+        or resolution_value is not None
+        and resolution_value < 0
+        or warning_minutes is not None
+        and warning_minutes < 0
+        or default_due_days is not None
+        and default_due_days < 0
+        or default_wait_days is not None
+        and default_wait_days < 0
+        or default_assignee_id is not None
+        and default_team_id is not None
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
     with SessionLocal() as db:
-        if not db.get(EmailChannel, channel_id):
+        channel = db.get(EmailChannel, channel_id)
+        if not channel:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        hierarchy_ids = (
+            default_queue_id,
+            default_department_id,
+            default_category_id,
+            default_subcategory_id,
+        )
+        if any(hierarchy_ids) and (
+            not default_queue_id
+            or not _valid_work_scope_hierarchy(
+                db, *hierarchy_ids, require_active=True
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_hierarchy"
+            )
+        supervisor = db.get(User, supervisor_user_id) if supervisor_user_id else None
+        if supervisor_user_id and (
+            not supervisor
+            or not supervisor.active
+            or not assignment_target_user_allowed(
+                db, actor_user_id=access[0], target_user_id=supervisor_user_id
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_supervisor"
+            )
+        eligibility_category_id = default_category_id or channel.default_category_id
+        if default_assignee_id and default_assignee_id not in {
+            item.id
+            for item in email_eligible_users(db, channel_id, eligibility_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_assignee_id and not assignment_target_user_allowed(
+            db, actor_user_id=access[0], target_user_id=default_assignee_id
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_team_id and default_team_id not in {
+            item.id
+            for item in email_eligible_teams(db, channel_id, eligibility_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if assignment_mode == "auto_user" and not default_assignee_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         rule = EmailInboxRule(
             channel_id=channel_id, name=name.strip(), subject_match=subject_match.strip()
         )
@@ -1615,6 +2579,21 @@ def clean_admin_create_email_inbox_rule(
             default_subcategory_id=default_subcategory_id,
             default_document_type=default_document_type,
             default_assignee_id=default_assignee_id,
+            default_team_id=default_team_id,
+            supervisor_user_id=supervisor_user_id,
+            assignment_mode=assignment_mode,
+            first_response_minutes=duration_to_minutes(
+                first_response_value, first_response_unit
+            ),
+            resolution_minutes=(
+                duration_to_minutes(resolution_value, resolution_unit)
+                if resolution_value is not None
+                else duration_to_minutes(default_due_days, "days")
+            ),
+            warning_minutes=warning_minutes,
+            pause_on_waiting=(
+                None if pause_on_waiting == "inherit" else pause_on_waiting == "on"
+            ),
             default_due_days=default_due_days,
             default_wait_days=default_wait_days,
             auto_task_mode=auto_task_mode,
@@ -1640,6 +2619,15 @@ def clean_admin_update_email_inbox_rule(
     default_subcategory_id: int | None = Form(None),
     default_document_type: str = Form(""),
     default_assignee_id: int | None = Form(None),
+    default_team_id: int | None = Form(None),
+    supervisor_user_id: int | None = Form(None),
+    assignment_mode: str = Form(""),
+    first_response_value: int | None = Form(None),
+    first_response_unit: str = Form("minutes"),
+    resolution_value: int | None = Form(None),
+    resolution_unit: str = Form("minutes"),
+    warning_minutes: int | None = Form(None),
+    pause_on_waiting: str = Form("inherit"),
     default_due_days: int | None = Form(None),
     default_wait_days: int | None = Form(None),
     auto_task_mode: str = Form(""),
@@ -1647,19 +2635,87 @@ def clean_admin_update_email_inbox_rule(
     active: str = Form(""),
     notes: str = Form(""),
 ):
-    if not _work_classification_manage_access(request):
+    access = _work_classification_manage_access(request)
+    if not access:
         return _denied(request)
     if (
         not name.strip()
         or not subject_match.strip()
         or match_type not in {"contains", "exact"}
         or auto_task_mode not in {"", "none", "open", "complete"}
+        or assignment_mode not in {"", *ASSIGNMENT_MODES}
+        or first_response_unit not in {"minutes", "days"}
+        or resolution_unit not in {"minutes", "days"}
+        or first_response_value is not None
+        and first_response_value < 0
+        or resolution_value is not None
+        and resolution_value < 0
+        or warning_minutes is not None
+        and warning_minutes < 0
+        or default_due_days is not None
+        and default_due_days < 0
+        or default_wait_days is not None
+        and default_wait_days < 0
+        or default_assignee_id is not None
+        and default_team_id is not None
     ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
     with SessionLocal() as db:
         rule = db.get(EmailInboxRule, rule_id)
         if not rule:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        channel = db.get(EmailChannel, rule.channel_id)
+        hierarchy_ids = (
+            default_queue_id,
+            default_department_id,
+            default_category_id,
+            default_subcategory_id,
+        )
+        if any(hierarchy_ids) and (
+            not default_queue_id
+            or not _valid_work_scope_hierarchy(
+                db, *hierarchy_ids, require_active=True
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_hierarchy"
+            )
+        supervisor = db.get(User, supervisor_user_id) if supervisor_user_id else None
+        if supervisor_user_id and (
+            not supervisor
+            or not supervisor.active
+            or not assignment_target_user_allowed(
+                db, actor_user_id=access[0], target_user_id=supervisor_user_id
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_supervisor"
+            )
+        eligibility_category_id = default_category_id or channel.default_category_id
+        if default_assignee_id and default_assignee_id not in {
+            item.id
+            for item in email_eligible_users(db, channel.id, eligibility_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_assignee_id and not assignment_target_user_allowed(
+            db, actor_user_id=access[0], target_user_id=default_assignee_id
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if default_team_id and default_team_id not in {
+            item.id
+            for item in email_eligible_teams(db, channel.id, eligibility_category_id)
+        }:
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "executor_not_eligible"
+            )
+        if assignment_mode == "auto_user" and not default_assignee_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
+        if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         _save_email_inbox_rule(
             rule,
             name=name,
@@ -1671,6 +2727,21 @@ def clean_admin_update_email_inbox_rule(
             default_subcategory_id=default_subcategory_id,
             default_document_type=default_document_type,
             default_assignee_id=default_assignee_id,
+            default_team_id=default_team_id,
+            supervisor_user_id=supervisor_user_id,
+            assignment_mode=assignment_mode,
+            first_response_minutes=duration_to_minutes(
+                first_response_value, first_response_unit
+            ),
+            resolution_minutes=(
+                duration_to_minutes(resolution_value, resolution_unit)
+                if resolution_value is not None
+                else duration_to_minutes(default_due_days, "days")
+            ),
+            warning_minutes=warning_minutes,
+            pause_on_waiting=(
+                None if pause_on_waiting == "inherit" else pause_on_waiting == "on"
+            ),
             default_due_days=default_due_days,
             default_wait_days=default_wait_days,
             auto_task_mode=auto_task_mode,
@@ -1768,6 +2839,16 @@ def clean_admin_create_source_default(
     if clean_type not in WORK_SOURCE_TYPES or not CODE_PATTERN.fullmatch(clean_key):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_source")
     with SessionLocal() as db:
+        hierarchy_ids = (queue_id, department_id, category_id, subcategory_id)
+        if any(hierarchy_ids) and (
+            not queue_id
+            or not _valid_work_scope_hierarchy(
+                db, *hierarchy_ids, require_active=True
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_hierarchy"
+            )
         if db.scalar(
             select(WorkSourceDefault).where(
                 WorkSourceDefault.source_type == clean_type,
@@ -1806,6 +2887,16 @@ def clean_admin_update_source_default(
         item = db.get(WorkSourceDefault, default_id)
         if not item:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        hierarchy_ids = (queue_id, department_id, category_id, subcategory_id)
+        if any(hierarchy_ids) and (
+            not queue_id
+            or not _valid_work_scope_hierarchy(
+                db, *hierarchy_ids, require_active=True
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_hierarchy"
+            )
         item.queue_id = queue_id
         item.department_id = department_id
         item.category_id = category_id

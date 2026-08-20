@@ -1,10 +1,18 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.admin import Permission, Role, RolePermission
+from app.models.email import EmailChannel
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
-from app.models.work_hierarchy import WorkDepartment, WorkQueue
+from app.models.work_hierarchy import (
+    ServiceDeskCategoryPolicy,
+    ServiceDeskTicketType,
+    WorkCategory,
+    WorkDepartment,
+    WorkQueue,
+)
 from app.services.management_center import ensure_management_defaults
 from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
@@ -58,6 +66,15 @@ INITIAL_PERMISSIONS = [
     ("tasks.management.update", "Alterar tarefas na fila Gestão"),
     ("tasks.management.close", "Fechar e reabrir tarefas na fila Gestão"),
     ("tasks.recurring.manage", "Gerir modelos de tarefas recorrentes"),
+    ("service_desk.read", "Consultar tickets do Service Desk"),
+    ("service_desk.create", "Criar tickets do Service Desk"),
+    ("service_desk.assume", "Assumir tickets elegíveis"),
+    ("service_desk.assign", "Atribuir executores elegíveis"),
+    ("service_desk.update", "Alterar tickets do Service Desk"),
+    ("service_desk.respond", "Responder em tickets do Service Desk"),
+    ("service_desk.complete", "Concluir tickets do Service Desk"),
+    ("service_desk.sla.manage", "Gerir SLA do Service Desk"),
+    ("service_desk.classifications.manage", "Administrar classificações do Service Desk"),
     ("documents.read", "Ver documentos"),
     ("documents.write", "Gerir documentos"),
     ("email.read", "Consultar conversas de email"),
@@ -65,6 +82,9 @@ INITIAL_PERMISSIONS = [
     ("email.reply", "Preparar respostas de email"),
     ("email.approve", "Aprovar e enviar respostas de email"),
     ("email.manage", "Gerir caixas e conversas de email"),
+    ("email.assume", "Assumir conversas de email elegíveis"),
+    ("email.assign", "Atribuir conversas de email"),
+    ("email.sla.manage", "Gerir SLA de email"),
     ("stock.read", "Consultar Stock"),
     ("stock.operate", "Gerir artigos, receções e movimentos operacionais de Stock"),
     ("stock.manage", "Gerir fornecedores, mínimos, acertos e configuração de Stock"),
@@ -116,6 +136,18 @@ DEFAULT_ROLE_PERMISSIONS = {
         "email.reply",
         "email.approve",
         "email.manage",
+        "email.assume",
+        "email.assign",
+        "email.sla.manage",
+        "service_desk.read",
+        "service_desk.create",
+        "service_desk.assume",
+        "service_desk.assign",
+        "service_desk.update",
+        "service_desk.respond",
+        "service_desk.complete",
+        "service_desk.sla.manage",
+        "service_desk.classifications.manage",
         "stock.read",
         "stock.manage",
         "stock.compatibility.manage",
@@ -164,6 +196,14 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.management.update",
         "tasks.management.close",
         "tasks.recurring.manage",
+        "service_desk.read",
+        "service_desk.create",
+        "service_desk.assume",
+        "service_desk.assign",
+        "service_desk.update",
+        "service_desk.respond",
+        "service_desk.complete",
+        "service_desk.sla.manage",
         "documents.read",
         "documents.write",
         "management_center.read",
@@ -191,6 +231,12 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.audit.read",
         "tasks.audit.write",
         "tasks.assign.peer",
+        "service_desk.read",
+        "service_desk.create",
+        "service_desk.assume",
+        "service_desk.update",
+        "service_desk.respond",
+        "service_desk.complete",
         "documents.read",
         "documents.write",
         "management_center.read",
@@ -208,6 +254,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tasks.operational.read",
         "tasks.workshop.read",
         "tasks.audit.read",
+        "service_desk.read",
         "documents.read",
         "management_center.read",
         "stock.read",
@@ -273,10 +320,103 @@ def seed_initial_data(db: Session) -> None:
     seed_teams(db)
     seed_catalogs(db)
     seed_work_hierarchy(db)
+    seed_service_desk(db)
+    seed_email_channels(db)
     ensure_management_defaults(db)
     ensure_workshop_configuration_defaults(db)
     ensure_stock_defaults(db)
     db.commit()
+
+
+SERVICE_DESK_TICKET_TYPES = (
+    ("task", "Tarefa", "Trabalho a executar.", 10),
+    ("request", "Pedido", "Pedido de serviço ou informação.", 20),
+    ("communication", "Comunicação", "Comunicação a acompanhar.", 30),
+    ("internal_help", "Ajuda interna", "Pedido de apoio interno.", 40),
+    ("incident", "Incidente", "Interrupção ou anomalia operacional.", 50),
+    ("approval", "Aprovação", "Decisão ou aprovação formal.", 60),
+)
+
+
+POSTMARK_INBOUND_LOCAL_PART = "da0078240da719f585b6f441e02a1951"
+POSTMARK_INBOUND_DOMAIN = "inbound.postmarkapp.com"
+
+
+def postmark_inbound_address(mailbox_hash: str) -> str:
+    return f"{POSTMARK_INBOUND_LOCAL_PART}+{mailbox_hash}@{POSTMARK_INBOUND_DOMAIN}"
+
+
+EMAIL_CHANNEL_DEFINITIONS = (
+    ("test", "Caixa geral", None, "hub"),
+    ("multas", "Multas", "multas@carfast.pt", "multas"),
+    ("oficina", "Oficina", "oficina@carfast.pt", "oficina"),
+    ("sinistros", "Sinistros", "sinistros@carfast.pt", "sinistros"),
+    ("vvp", "VVP", "vvp@carfast.pt", "vvp"),
+)
+
+
+def seed_service_desk(db: Session) -> None:
+    ticket_types = {
+        item.code: item for item in db.scalars(select(ServiceDeskTicketType)).all()
+    }
+    for code, name, description, sort_order in SERVICE_DESK_TICKET_TYPES:
+        if code not in ticket_types:
+            db.add(
+                ServiceDeskTicketType(
+                    code=code,
+                    name=name,
+                    description=description,
+                    active=True,
+                    sort_order=sort_order,
+                )
+            )
+    db.flush()
+    policy_category_ids = set(db.scalars(select(ServiceDeskCategoryPolicy.category_id)))
+    for category in db.scalars(select(WorkCategory)).all():
+        if category.id not in policy_category_ids:
+            db.add(
+                ServiceDeskCategoryPolicy(
+                    category_id=category.id,
+                    assignment_mode="manual",
+                    warning_minutes=60,
+                    pause_on_waiting=True,
+                    timezone="Europe/Lisbon",
+                    active=True,
+                )
+            )
+
+
+def seed_email_channels(db: Session) -> None:
+    channels_by_code = {item.code: item for item in db.scalars(select(EmailChannel)).all()}
+    hub_address = settings.email_initial_address.strip().lower() or "hub@carfast.pt"
+    for code, name, configured_address, inbound_hash in EMAIL_CHANNEL_DEFINITIONS:
+        address = configured_address or hub_address
+        inbound_forward_address = postmark_inbound_address(inbound_hash)
+        existing = channels_by_code.get(code)
+        if existing:
+            if existing.address != address:
+                existing.address = address
+            if existing.inbound_hash != inbound_hash:
+                existing.inbound_hash = inbound_hash
+            if existing.inbound_forward_address != inbound_forward_address:
+                existing.inbound_forward_address = inbound_forward_address
+            continue
+        channel = EmailChannel(
+            code=code,
+            name=name,
+            address=address,
+            inbound_hash=inbound_hash,
+            inbound_forward_address=inbound_forward_address,
+            active=True,
+            approval_required=True,
+            auto_task_mode="none",
+            assignment_mode="manual",
+            warning_minutes=60,
+            pause_on_waiting=True,
+        )
+        db.add(channel)
+        db.flush()
+        channels_by_code[code] = channel
 
 
 def seed_work_hierarchy(db: Session) -> None:

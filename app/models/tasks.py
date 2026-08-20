@@ -3,6 +3,7 @@ from datetime import date, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -20,11 +21,31 @@ from app.models.mixins import TimestampMixin
 
 class Task(TimestampMixin, Base):
     __tablename__ = "tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "assignment_mode IN ('auto_user', 'auto_team', 'team_claim', 'manual')",
+            name="ck_tasks_assignment_mode",
+        ),
+        CheckConstraint(
+            "assignment_state IN "
+            "('assigned_user', 'assigned_team', 'team_unclaimed', 'waiting_assignment')",
+            name="ck_tasks_assignment_state",
+        ),
+        CheckConstraint(
+            "(sla_first_response_minutes IS NULL OR sla_first_response_minutes >= 0) AND "
+            "(sla_resolution_minutes IS NULL OR sla_resolution_minutes >= 0) AND "
+            "sla_warning_minutes >= 0 AND sla_total_paused_seconds >= 0",
+            name="ck_tasks_sla_minutes",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     task_type: Mapped[str] = mapped_column(String(80), default="task", index=True)
+    ticket_type_id: Mapped[int | None] = mapped_column(
+        ForeignKey("service_desk_ticket_types.id", ondelete="SET NULL"), index=True
+    )
     source: Mapped[str | None] = mapped_column(String(80), index=True)
     category: Mapped[str | None] = mapped_column(String(80), index=True)
     subcategory: Mapped[str | None] = mapped_column(String(120), index=True)
@@ -65,6 +86,21 @@ class Task(TimestampMixin, Base):
     parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    supervisor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assignment_mode: Mapped[str] = mapped_column(String(40), default="manual", index=True)
+    assignment_state: Mapped[str] = mapped_column(
+        String(40), default="waiting_assignment", index=True
+    )
+    assigned_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delegated_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     delegated_to_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     waiting_for_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
@@ -74,6 +110,19 @@ class Task(TimestampMixin, Base):
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     due_on: Mapped[date | None] = mapped_column(Date)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_response_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    resolution_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    sla_first_response_minutes: Mapped[int | None] = mapped_column(Integer)
+    sla_resolution_minutes: Mapped[int | None] = mapped_column(Integer)
+    sla_warning_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    sla_pause_on_waiting: Mapped[bool] = mapped_column(Boolean, default=True)
+    sla_timezone: Mapped[str] = mapped_column(String(80), default="Europe/Lisbon")
+    sla_paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sla_total_paused_seconds: Mapped[int] = mapped_column(Integer, default=0)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     planned_for: Mapped[date | None] = mapped_column(Date, index=True)
@@ -114,6 +163,43 @@ class TaskHistory(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskAssignmentEvent(Base):
+    __tablename__ = "task_assignment_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    from_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    from_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
+    to_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
+    details_json: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskSlaEvent(Base):
+    __tablename__ = "task_sla_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    details_json: Mapped[dict | None] = mapped_column(JSON)
 
 
 class TaskParticipant(Base):

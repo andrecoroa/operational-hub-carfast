@@ -3,8 +3,10 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -19,12 +21,28 @@ from app.models.mixins import TimestampMixin
 
 class EmailChannel(TimestampMixin, Base):
     __tablename__ = "email_channels"
+    __table_args__ = (
+        CheckConstraint(
+            "assignment_mode IN ('auto_user', 'auto_team', 'team_claim', 'manual')",
+            name="ck_email_channels_assignment_mode",
+        ),
+        CheckConstraint(
+            "(first_response_minutes IS NULL OR first_response_minutes >= 0) AND "
+            "(resolution_minutes IS NULL OR resolution_minutes >= 0) AND "
+            "warning_minutes >= 0",
+            name="ck_email_channels_sla_minutes",
+        ),
+        Index("ux_email_channels_inbound_forward_address", "inbound_forward_address", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160))
     address: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     inbound_hash: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    inbound_forward_address: Mapped[str | None] = mapped_column(
+        String(255), index=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     approval_required: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_task_mode: Mapped[str] = mapped_column(String(40), default="none", index=True)
@@ -44,12 +62,36 @@ class EmailChannel(TimestampMixin, Base):
     default_assignee_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    default_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
+    supervisor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assignment_mode: Mapped[str] = mapped_column(String(40), default="manual", index=True)
+    first_response_minutes: Mapped[int | None] = mapped_column(Integer)
+    resolution_minutes: Mapped[int | None] = mapped_column(Integer)
+    warning_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    pause_on_waiting: Mapped[bool] = mapped_column(Boolean, default=True)
     default_due_days: Mapped[int | None] = mapped_column(Integer)
     default_wait_days: Mapped[int | None] = mapped_column(Integer)
 
 
 class EmailInboxRule(TimestampMixin, Base):
     __tablename__ = "email_inbox_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "assignment_mode IS NULL OR "
+            "assignment_mode IN ('auto_user', 'auto_team', 'team_claim', 'manual')",
+            name="ck_email_inbox_rules_assignment_mode",
+        ),
+        CheckConstraint(
+            "(first_response_minutes IS NULL OR first_response_minutes >= 0) AND "
+            "(resolution_minutes IS NULL OR resolution_minutes >= 0) AND "
+            "(warning_minutes IS NULL OR warning_minutes >= 0)",
+            name="ck_email_inbox_rules_sla_minutes",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(
@@ -74,6 +116,17 @@ class EmailInboxRule(TimestampMixin, Base):
     default_assignee_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    default_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
+    supervisor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assignment_mode: Mapped[str | None] = mapped_column(String(40), index=True)
+    first_response_minutes: Mapped[int | None] = mapped_column(Integer)
+    resolution_minutes: Mapped[int | None] = mapped_column(Integer)
+    warning_minutes: Mapped[int | None] = mapped_column(Integer)
+    pause_on_waiting: Mapped[bool | None] = mapped_column(Boolean)
     default_due_days: Mapped[int | None] = mapped_column(Integer)
     default_wait_days: Mapped[int | None] = mapped_column(Integer)
     auto_task_mode: Mapped[str | None] = mapped_column(String(40), index=True)
@@ -84,6 +137,23 @@ class EmailInboxRule(TimestampMixin, Base):
 
 class EmailThread(TimestampMixin, Base):
     __tablename__ = "email_threads"
+    __table_args__ = (
+        CheckConstraint(
+            "assignment_mode IN ('auto_user', 'auto_team', 'team_claim', 'manual')",
+            name="ck_email_threads_assignment_mode",
+        ),
+        CheckConstraint(
+            "assignment_state IN "
+            "('assigned_user', 'assigned_team', 'team_unclaimed', 'waiting_assignment')",
+            name="ck_email_threads_assignment_state",
+        ),
+        CheckConstraint(
+            "(sla_first_response_minutes IS NULL OR sla_first_response_minutes >= 0) AND "
+            "(sla_resolution_minutes IS NULL OR sla_resolution_minutes >= 0) AND "
+            "sla_warning_minutes >= 0 AND sla_total_paused_seconds >= 0",
+            name="ck_email_threads_sla_minutes",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("email_channels.id"), index=True)
@@ -101,6 +171,27 @@ class EmailThread(TimestampMixin, Base):
     assigned_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    executor_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
+    supervisor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assignment_mode: Mapped[str] = mapped_column(String(40), default="manual", index=True)
+    assignment_state: Mapped[str] = mapped_column(
+        String(40), default="waiting_assignment", index=True
+    )
+    assigned_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     work_queue_id: Mapped[int | None] = mapped_column(
         ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
     )
@@ -118,6 +209,20 @@ class EmailThread(TimestampMixin, Base):
     )
     classification_other_text: Mapped[str | None] = mapped_column(Text)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    first_response_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    resolution_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sla_first_response_minutes: Mapped[int | None] = mapped_column(Integer)
+    sla_resolution_minutes: Mapped[int | None] = mapped_column(Integer)
+    sla_warning_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    sla_pause_on_waiting: Mapped[bool] = mapped_column(Boolean, default=True)
+    sla_timezone: Mapped[str] = mapped_column(String(80), default="Europe/Lisbon")
+    sla_paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sla_total_paused_seconds: Mapped[int] = mapped_column(Integer, default=0)
     waiting_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     external_conversation_id: Mapped[str | None] = mapped_column(String(255), index=True)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
@@ -200,7 +305,13 @@ class EmailAuditEvent(Base):
 
 class EmailChannelUser(Base):
     __tablename__ = "email_channel_users"
-    __table_args__ = (UniqueConstraint("channel_id", "user_id", name="uq_email_channel_user"),)
+    __table_args__ = (
+        UniqueConstraint("channel_id", "user_id", name="uq_email_channel_user"),
+        CheckConstraint(
+            "visibility_mode IN ('scope_all', 'direct_only', 'consult')",
+            name="ck_email_channel_users_visibility_mode",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(
@@ -209,11 +320,21 @@ class EmailChannelUser(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     can_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     can_approve: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_assume: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_assign: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_manage_sla: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility_mode: Mapped[str] = mapped_column(String(40), default="scope_all")
 
 
 class EmailChannelRole(Base):
     __tablename__ = "email_channel_roles"
-    __table_args__ = (UniqueConstraint("channel_id", "role_id", name="uq_email_channel_role"),)
+    __table_args__ = (
+        UniqueConstraint("channel_id", "role_id", name="uq_email_channel_role"),
+        CheckConstraint(
+            "visibility_mode IN ('scope_all', 'direct_only', 'consult')",
+            name="ck_email_channel_roles_visibility_mode",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(
@@ -224,7 +345,40 @@ class EmailChannelRole(Base):
     can_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     can_send_direct: Mapped[bool] = mapped_column(Boolean, default=False)
     can_approve: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_assume: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_assign: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_manage_sla: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility_mode: Mapped[str] = mapped_column(String(40), default="scope_all")
+
+
+class EmailExecutorEligibility(TimestampMixin, Base):
+    __tablename__ = "email_executor_eligibilities"
+    __table_args__ = (
+        UniqueConstraint(
+            "channel_id", "category_id", "user_id", "team_id", name="uq_email_executor_eligibility"
+        ),
+        CheckConstraint(
+            "(user_id IS NOT NULL AND team_id IS NULL) OR "
+            "(user_id IS NULL AND team_id IS NOT NULL)",
+            name="ck_email_executor_eligibility_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
 class EmailTemplate(TimestampMixin, Base):

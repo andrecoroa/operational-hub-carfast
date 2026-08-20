@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, false, or_, select
 
 from app.models.admin import UserRole
+from app.models.organization import TeamMember
+from app.models.tasks import TaskHelpRequest, TaskParticipant
 from app.models.work_hierarchy import (
     RoleWorkScope,
     WorkCategory,
@@ -223,11 +225,12 @@ def user_work_scope_allows(
     db,
     *,
     user_id: int,
-    queue_id: int,
+    queue_id: int | None,
     department_id: int | None,
     category_id: int | None,
     subcategory_id: int | None,
     action: str,
+    task=None,
 ) -> bool:
     scopes = list(
         db.scalars(
@@ -243,21 +246,104 @@ def user_work_scope_allows(
         "create": "can_create",
         "update": "can_update",
         "assign": "can_assign",
-        "close": "can_close",
+        "assume": "can_assume",
+        "respond": "can_respond",
+        "close": "can_complete",
+        "complete": "can_complete",
+        "manage_sla": "can_manage_sla",
+        "admin_classifications": "can_administer_classifications",
         "manage": "can_manage",
     }.get(action)
     if not permission_field:
         return False
+    task_required_actions = {
+        "read",
+        "update",
+        "assign",
+        "assume",
+        "respond",
+        "close",
+        "complete",
+        "manage_sla",
+        "manage",
+    }
     for scope in scopes:
-        matches = (
+        matches = queue_id is None or (
             scope.queue_id == queue_id
             and (scope.department_id is None or scope.department_id == department_id)
             and (scope.category_id is None or scope.category_id == category_id)
             and (scope.subcategory_id is None or scope.subcategory_id == subcategory_id)
         )
-        if matches and (getattr(scope, permission_field) or scope.can_manage):
+        if scope.visibility_mode == "consult" and action != "read":
+            continue
+        requires_direct_relation = (
+            scope.visibility_mode == "direct_only" and action in task_required_actions
+        )
+        direct_relation_allowed = not requires_direct_relation or (
+            task is not None and _task_has_direct_relation(db, user_id=user_id, task=task)
+        )
+        if (
+            matches
+            and _scope_grants(scope, permission_field)
+            and direct_relation_allowed
+        ):
             return True
     return False
+
+
+def _task_direct_relation_filter(*, user_id: int, task_model):
+    member_team_ids = select(TeamMember.team_id).where(TeamMember.user_id == user_id)
+    participant_task_ids = select(TaskParticipant.task_id).where(
+        TaskParticipant.user_id == user_id,
+        TaskParticipant.status == "active",
+    )
+    help_task_ids = select(TaskHelpRequest.task_id).where(
+        TaskHelpRequest.requested_user_id == user_id,
+        TaskHelpRequest.status == "pending",
+    )
+    return or_(
+        task_model.assigned_to_id == user_id,
+        task_model.team_id.in_(member_team_ids),
+        task_model.created_by_id == user_id,
+        task_model.id.in_(participant_task_ids),
+        task_model.id.in_(help_task_ids),
+    )
+
+
+def _scope_grants(scope: RoleWorkScope, permission_field: str) -> bool:
+    granted = bool(getattr(scope, permission_field) or scope.can_manage)
+    if permission_field == "can_complete":
+        granted = granted or scope.can_close
+    return granted
+
+
+def _task_has_direct_relation(db, *, user_id: int, task) -> bool:
+    if task.assigned_to_id == user_id or task.created_by_id == user_id:
+        return True
+    if task.team_id and db.scalar(
+        select(TeamMember.id).where(
+            TeamMember.team_id == task.team_id,
+            TeamMember.user_id == user_id,
+        )
+    ):
+        return True
+    if db.scalar(
+        select(TaskParticipant.id).where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.user_id == user_id,
+            TaskParticipant.status == "active",
+        )
+    ):
+        return True
+    return bool(
+        db.scalar(
+            select(TaskHelpRequest.id).where(
+                TaskHelpRequest.task_id == task.id,
+                TaskHelpRequest.requested_user_id == user_id,
+                TaskHelpRequest.status == "pending",
+            )
+        )
+    )
 
 
 def user_work_scope_filter(db, *, user_id: int, task_model, action: str = "read"):
@@ -276,14 +362,23 @@ def user_work_scope_filter(db, *, user_id: int, task_model, action: str = "read"
         "create": "can_create",
         "update": "can_update",
         "assign": "can_assign",
-        "close": "can_close",
+        "assume": "can_assume",
+        "respond": "can_respond",
+        "close": "can_complete",
+        "complete": "can_complete",
+        "manage_sla": "can_manage_sla",
+        "admin_classifications": "can_administer_classifications",
         "manage": "can_manage",
     }.get(action)
     if not permission_field:
         return False
     allowed = []
+    permits_unclassified = False
+    direct_relation = _task_direct_relation_filter(user_id=user_id, task_model=task_model)
     for scope in scopes:
-        if not (getattr(scope, permission_field) or scope.can_manage):
+        if scope.visibility_mode == "consult" and action != "read":
+            continue
+        if not _scope_grants(scope, permission_field):
             continue
         conditions = [task_model.work_queue_id == scope.queue_id]
         if scope.department_id is not None:
@@ -292,10 +387,16 @@ def user_work_scope_filter(db, *, user_id: int, task_model, action: str = "read"
             conditions.append(task_model.work_category_id == scope.category_id)
         if scope.subcategory_id is not None:
             conditions.append(task_model.work_subcategory_id == scope.subcategory_id)
+        if scope.visibility_mode == "direct_only":
+            conditions.append(direct_relation)
+        else:
+            permits_unclassified = True
         allowed.append(and_(*conditions))
     if allowed:
-        return or_(task_model.work_queue_id.is_(None), *allowed)
-    return task_model.work_queue_id.is_(None)
+        if permits_unclassified:
+            return or_(task_model.work_queue_id.is_(None), *allowed)
+        return or_(and_(task_model.work_queue_id.is_(None), direct_relation), *allowed)
+    return false()
 
 
 def source_work_default(db, *, source_type: str, source_key: str = "default"):

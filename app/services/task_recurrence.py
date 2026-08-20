@@ -17,6 +17,7 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
 )
 from app.services.audit import record_audit
+from app.services.service_desk import initialize_task_service_desk
 
 RECURRENCE_TIMEZONE = "Europe/Lisbon"
 RECURRENCE_FREQUENCIES = {"daily", "weekly", "monthly"}
@@ -158,6 +159,24 @@ def _create_task_for_occurrence(
     )
     db.add(task)
     db.flush()
+    try:
+        initialize_task_service_desk(
+            db,
+            task,
+            now=occurrence.scheduled_for,
+            actor_user_id=template.created_by_id,
+            requested_user_id=template.assigned_to_id,
+        )
+    except ValueError:
+        # A recurrence must keep running after an executor is inactivated or
+        # removed from the category. Re-evaluate the current category policy
+        # and leave the occurrence waiting when no eligible default exists.
+        initialize_task_service_desk(
+            db,
+            task,
+            now=occurrence.scheduled_for,
+            actor_user_id=template.created_by_id,
+        )
     occurrence.task_id = task.id
     occurrence.status = "created"
     db.add(

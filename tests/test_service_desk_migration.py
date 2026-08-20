@@ -13,6 +13,7 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_REVISION = "ffbe1e2f3a4c"
 PREVIOUS_REVISION = "ffad1e2f3a4b"
+CURRENT_HEAD_REVISION = "ffcf2a3b4c5d"
 MIGRATION_PATH = (
     ROOT / "migrations" / "versions" / "ffbe1e2f3a4c_add_service_desk_email_operations.py"
 )
@@ -38,12 +39,12 @@ def _render_postgresql_sql(monkeypatch, operation: str) -> str:
     return output.getvalue()
 
 
-def test_service_desk_migration_is_the_single_head_on_remote_predecessor() -> None:
+def test_service_desk_migration_remains_on_the_single_head_chain() -> None:
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "migrations"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == [MIGRATION_REVISION]
+    assert scripts.get_heads() == [CURRENT_HEAD_REVISION]
     assert scripts.get_revision(MIGRATION_REVISION).down_revision == PREVIOUS_REVISION
 
 

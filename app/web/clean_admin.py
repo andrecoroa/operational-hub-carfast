@@ -8,7 +8,7 @@ import re
 from datetime import UTC, date, datetime, time, timedelta
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select
 
@@ -17,12 +17,20 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
+from app.models.documents import Document
 from app.models.email import (
     EmailChannel,
     EmailChannelRole,
+    EmailChannelUser,
     EmailExecutorEligibility,
     EmailInboxRule,
     EmailTemplate,
+)
+from app.models.evolution import (
+    EvolutionRecord,
+    EvolutionRecordComment,
+    EvolutionRecordDocument,
+    EvolutionRecordHistory,
 )
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import (
@@ -32,7 +40,7 @@ from app.models.organization import (
     UserOrganizationalUnit,
 )
 from app.models.settings import SettingsCatalog, SettingsValue
-from app.models.tasks import Task
+from app.models.tasks import Task, TaskDocument, TaskHistory
 from app.models.work_hierarchy import (
     RoleWorkScope,
     ServiceDeskCategoryExecutor,
@@ -49,14 +57,19 @@ from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
 from app.services.bootstrap import postmark_inbound_address
+from app.services.email_access_admin import (
+    apply_email_role_batch,
+    grant_snapshot,
+    plan_email_role_batch,
+)
 from app.services.service_desk import (
     ASSIGNMENT_MODES,
     assignment_target_user_allowed,
-    eligible_category_teams,
-    eligible_category_users,
     category_team_is_eligible,
     category_user_is_eligible,
     duration_to_minutes,
+    eligible_category_teams,
+    eligible_category_users,
     email_eligible_teams,
     email_eligible_users,
 )
@@ -146,6 +159,7 @@ PERMISSION_GROUP_LABELS = {
     "management_center": "Centro de Gestão",
     "settings": "Configurações",
     "users": "Utilizadores",
+    "admin.evolution": "Registo de Evolução",
 }
 
 ADMIN_NAV = (
@@ -203,6 +217,12 @@ ADMIN_NAV = (
         ),
     ),
     (
+        "evolution",
+        "Registo de Evolução",
+        "/v2-clean/admin/evolution",
+        ("admin.evolution.read", "admin.evolution.manage", "admin.manage"),
+    ),
+    (
         "audit",
         "Auditoria",
         "/v2-clean/admin/audit",
@@ -221,6 +241,123 @@ ADMIN_NAV = (
         ("admin.security.read", "admin.security.manage", "users.manage", "admin.manage"),
     ),
 )
+
+EVOLUTION_TYPE_LABELS = {
+    "improvement": "Melhoria",
+    "question": "Dúvida",
+    "problem": "Problema",
+    "feature": "Nova funcionalidade",
+}
+EVOLUTION_STATUS_LABELS = {
+    "registered": "Registado",
+    "analysis": "Em análise",
+    "approved": "Aprovado",
+    "deferred": "Adiado",
+    "rejected": "Rejeitado",
+    "implementation": "Em implementação",
+    "completed": "Concluído",
+}
+EVOLUTION_PRIORITY_LABELS = {
+    "low": "Baixa",
+    "normal": "Normal",
+    "high": "Alta",
+    "urgent": "Urgente",
+}
+ADMIN_MODULE_LABELS = {
+    "general": "Geral",
+    "service_desk": "Centro de Tarefas / Service Desk",
+    "email": "Email",
+    "workshop": "Oficina",
+    "stock": "Stock",
+    "fleet_sales": "Frota e Venda",
+    "documentation": "Documentação",
+    "system": "Sistema",
+}
+
+ADMIN_MODULE_NAV = {
+    "general": {
+        "access": ("Utilizadores e perfis", "/v2-clean/admin/users"),
+        "scopes": ("Organização e equipas", "/v2-clean/admin/organization"),
+        "execution": ("Responsáveis e equipas", "/v2-clean/admin/organization"),
+        "rules": ("Configurações gerais", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria operacional", "/v2-clean/admin/audit?q=sla"),
+        "templates": ("Registo de Evolução", "/v2-clean/admin/evolution?module=general"),
+        "audit": ("Auditoria", "/v2-clean/admin/audit"),
+    },
+    "service_desk": {
+        "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
+        "scopes": ("Âmbitos por perfil", "/v2-clean/admin/work-classification?view=permissions"),
+        "execution": ("Supervisores e executores", "/v2-clean/admin/work-classification?view=desk"),
+        "rules": ("Tipos e políticas", "/v2-clean/admin/work-classification?view=desk"),
+        "sla": ("SLA por categoria", "/v2-clean/admin/work-classification?view=desk"),
+        "templates": ("Tipos de ticket", "/v2-clean/admin/work-classification?view=desk"),
+        "audit": ("Auditoria Service Desk", "/v2-clean/admin/audit?q=service_desk"),
+    },
+    "email": {
+        "access": ("Capacidades por perfil", "/v2-clean/admin/roles"),
+        "scopes": ("Acesso e visibilidade por caixa", "/v2-clean/admin/work-classification?view=channels"),
+        "execution": ("Executores por caixa/categoria", "/v2-clean/admin/work-classification?view=channels"),
+        "rules": ("Regras de caixa", "/v2-clean/admin/work-classification?view=channels"),
+        "sla": ("SLA e atribuição", "/v2-clean/admin/work-classification?view=channels"),
+        "templates": ("Modelos de email", "/v2-clean/admin/work-classification?view=templates"),
+        "audit": ("Auditoria Email", "/v2-clean/admin/audit?q=email"),
+    },
+    "workshop": {
+        "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
+        "scopes": ("Âmbitos de trabalho", "/v2-clean/admin/work-classification?view=permissions"),
+        "execution": ("Configuração operacional", "/v2-clean/admin/settings"),
+        "rules": ("Regras da Oficina", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria de prazos", "/v2-clean/admin/audit?q=workshop"),
+        "templates": ("Modelos da Oficina", "/v2-clean/admin/workshop-models"),
+        "audit": ("Auditoria Oficina", "/v2-clean/admin/audit?q=workshop"),
+    },
+    "stock": {
+        "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
+        "scopes": ("Organização", "/v2-clean/admin/organization"),
+        "execution": ("Permissões operacionais", "/v2-clean/admin/roles"),
+        "rules": ("Configurações Stock", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria operacional", "/v2-clean/admin/audit?q=stock"),
+        "templates": ("Evolução Stock", "/v2-clean/admin/evolution?module=stock"),
+        "audit": ("Auditoria Stock", "/v2-clean/admin/audit?q=stock"),
+    },
+    "fleet_sales": {
+        "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
+        "scopes": ("Organização", "/v2-clean/admin/organization"),
+        "execution": ("Permissões operacionais", "/v2-clean/admin/roles"),
+        "rules": ("Ciclos e estados", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria operacional", "/v2-clean/admin/audit?q=vehicle"),
+        "templates": ("Evolução Frota e Venda", "/v2-clean/admin/evolution?module=fleet_sales"),
+        "audit": ("Auditoria Frota e Venda", "/v2-clean/admin/audit?q=vehicle"),
+    },
+    "documentation": {
+        "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
+        "scopes": ("Organização", "/v2-clean/admin/organization"),
+        "execution": ("Permissões operacionais", "/v2-clean/admin/roles"),
+        "rules": ("Tipos de documento", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria de tratamento", "/v2-clean/admin/audit?q=document"),
+        "templates": ("Modelos de extração", "/v2-clean/documentation/extraction-models"),
+        "audit": ("Auditoria Documentação", "/v2-clean/admin/audit?q=document"),
+    },
+    "system": {
+        "access": ("Segurança e acessos", "/v2-clean/admin/security"),
+        "scopes": ("Organização", "/v2-clean/admin/organization"),
+        "execution": ("Integrações", "/v2-clean/admin/integrations"),
+        "rules": ("Configurações", "/v2-clean/admin/settings"),
+        "sla": ("Auditoria do sistema", "/v2-clean/admin/audit"),
+        "templates": ("Perfis e permissões", "/v2-clean/admin/roles"),
+        "audit": ("Auditoria e exportação", "/v2-clean/admin/audit"),
+    },
+}
+
+ADMIN_MODULE_DIMENSION_LABELS = {
+    "access": "Acesso geral",
+    "scopes": "Âmbitos",
+    "execution": "Execução / elegibilidade",
+    "rules": "Regras",
+    "sla": "SLA",
+    "templates": "Modelos",
+    "audit": "Auditoria",
+}
 
 
 WORK_ENTITY_MODELS = {
@@ -318,6 +455,9 @@ def _layout_context(
         "admin_nav": nav,
         "current_admin_user": user,
         "current_admin_permissions": permissions,
+        "admin_module_labels": ADMIN_MODULE_LABELS,
+        "admin_module_nav": ADMIN_MODULE_NAV,
+        "admin_module_dimension_labels": ADMIN_MODULE_DIMENSION_LABELS,
         **extra,
     }
 
@@ -1316,6 +1456,15 @@ def clean_admin_work_classification(request: Request):
             if can_read_global_configuration
             else []
         )
+        channel_users = (
+            db.scalars(
+                select(EmailChannelUser).order_by(
+                    EmailChannelUser.channel_id, EmailChannelUser.user_id
+                )
+            ).all()
+            if can_read_global_configuration
+            else []
+        )
         inbox_rules = (
             db.scalars(
                 select(EmailInboxRule).order_by(
@@ -1469,6 +1618,7 @@ def clean_admin_work_classification(request: Request):
             work_scopes=scopes,
             email_channels=channels,
             email_channel_roles=channel_roles,
+            email_channel_users=channel_users,
             email_inbox_rules=inbox_rules,
             email_templates=email_templates,
             active_users=users,
@@ -1943,6 +2093,199 @@ def clean_admin_toggle_email_executor(request: Request, item_id: int):
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
+def _plan_email_executor_batch(
+    db,
+    *,
+    actor_user_id: int,
+    channel_ids: list[int],
+    category_ids: list[int],
+    user_ids: list[int],
+    team_ids: list[int],
+    operation: str,
+) -> list[dict[str, object]]:
+    if operation not in {"apply", "revoke"}:
+        raise ValueError("invalid_operation")
+    selected_channels = set(channel_ids)
+    selected_categories = {item for item in category_ids if item}
+    selected_users = set(user_ids)
+    selected_teams = set(team_ids)
+    if not selected_channels or not (selected_users or selected_teams):
+        raise ValueError("empty_selection")
+    if selected_channels != set(
+        db.scalars(select(EmailChannel.id).where(EmailChannel.id.in_(selected_channels))).all()
+    ):
+        raise ValueError("invalid_selection")
+    if selected_categories != set(
+        db.scalars(
+            select(WorkCategory.id).where(WorkCategory.id.in_(selected_categories or {-1}))
+        ).all()
+    ):
+        raise ValueError("invalid_selection")
+    valid_users = set(
+        db.scalars(
+            select(User.id).where(User.id.in_(selected_users or {-1}), User.active.is_(True))
+        ).all()
+    )
+    valid_teams = set(
+        db.scalars(
+            select(Team.id).where(Team.id.in_(selected_teams or {-1}), Team.active.is_(True))
+        ).all()
+    )
+    if valid_users != selected_users or valid_teams != selected_teams:
+        raise ValueError("invalid_selection")
+    if any(
+        not assignment_target_user_allowed(
+            db, actor_user_id=actor_user_id, target_user_id=target_user_id
+        )
+        for target_user_id in selected_users
+    ):
+        raise ValueError("invalid_executor")
+    categories: set[int | None] = set(selected_categories) if selected_categories else {None}
+    targets = [(item, None) for item in selected_users] + [
+        (None, item) for item in selected_teams
+    ]
+    changes: list[dict[str, object]] = []
+    for channel_id in sorted(selected_channels):
+        for category_id in sorted(categories, key=lambda value: value or 0):
+            for target_user_id, target_team_id in targets:
+                statement = select(EmailExecutorEligibility).where(
+                    EmailExecutorEligibility.channel_id == channel_id,
+                    EmailExecutorEligibility.user_id == target_user_id,
+                    EmailExecutorEligibility.team_id == target_team_id,
+                )
+                statement = statement.where(
+                    EmailExecutorEligibility.category_id == category_id
+                    if category_id is not None
+                    else EmailExecutorEligibility.category_id.is_(None)
+                )
+                item = db.scalar(statement)
+                before = bool(item and item.active)
+                after = operation == "apply"
+                if before != after:
+                    changes.append(
+                        {
+                            "channel_id": channel_id,
+                            "category_id": category_id,
+                            "user_id": target_user_id,
+                            "team_id": target_team_id,
+                            "before": before,
+                            "after": after,
+                            "item": item,
+                        }
+                    )
+    return changes
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-executors/batch/preview"
+)
+def clean_admin_preview_email_executor_batch(
+    request: Request,
+    channel_ids: list[int] = Form([]),
+    category_ids: list[int] = Form([]),
+    user_ids: list[int] = Form([]),
+    team_ids: list[int] = Form([]),
+    operation: str = Form("apply"),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    try:
+        with SessionLocal() as db:
+            changes = _plan_email_executor_batch(
+                db,
+                actor_user_id=access[0],
+                channel_ids=channel_ids,
+                category_ids=category_ids,
+                user_ids=user_ids,
+                team_ids=team_ids,
+                operation=operation,
+            )
+            return JSONResponse(
+                {
+                    "count": len(changes),
+                    "changes": [
+                        {key: value for key, value in item.items() if key != "item"}
+                        for item in changes
+                    ],
+                }
+            )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-executors/batch")
+def clean_admin_apply_email_executor_batch(
+    request: Request,
+    channel_ids: list[int] = Form([]),
+    category_ids: list[int] = Form([]),
+    user_ids: list[int] = Form([]),
+    team_ids: list[int] = Form([]),
+    operation: str = Form("apply"),
+    confirmed: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if confirmed != "on":
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=channels", "error", "preview_required"
+        )
+    try:
+        with SessionLocal() as db:
+            changes = _plan_email_executor_batch(
+                db,
+                actor_user_id=access[0],
+                channel_ids=channel_ids,
+                category_ids=category_ids,
+                user_ids=user_ids,
+                team_ids=team_ids,
+                operation=operation,
+            )
+            for change in changes:
+                item = change["item"] or EmailExecutorEligibility(
+                    channel_id=int(change["channel_id"]),
+                    category_id=change["category_id"],
+                    user_id=change["user_id"],
+                    team_id=change["team_id"],
+                )
+                item.active = bool(change["after"])
+                db.add(item)
+                db.flush()
+                record_audit(
+                    db,
+                    action="clean_admin.email.executor_batch_item",
+                    entity_type="email_executor_eligibility",
+                    entity_id=item.id,
+                    user_id=access[0],
+                    before_json={"active": change["before"]},
+                    after_json={
+                        "active": change["after"],
+                        "channel_id": change["channel_id"],
+                        "category_id": change["category_id"],
+                        "user_id": change["user_id"],
+                        "team_id": change["team_id"],
+                    },
+                )
+            record_audit(
+                db,
+                action="clean_admin.email.executor_batch_applied",
+                entity_type="email_executor_batch",
+                entity_id=f"user:{access[0]}",
+                user_id=access[0],
+                detail=f"{len(changes)} elegibilidades alteradas numa transação.",
+                after_json={"operation": operation, "change_count": len(changes)},
+            )
+            db.commit()
+    except ValueError as exc:
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=channels", "error", str(exc)
+        )
+    return _redirect(
+        "/v2-clean/admin/work-classification?view=channels", "batch_saved"
+    )
+
+
 def _valid_work_scope_hierarchy(
     db,
     queue_id: int,
@@ -2396,7 +2739,21 @@ def clean_admin_save_email_channel_role(
     access = _work_classification_manage_access(request)
     if not access:
         return _denied(request)
-    if visibility_mode not in {"scope_all", "direct_only", "consult"}:
+    requested = {
+        "can_read": can_read == "on",
+        "can_reply": can_reply == "on",
+        "can_send_direct": can_send_direct == "on",
+        "can_approve": can_approve == "on",
+        "can_assume": can_assume == "on",
+        "can_assign": can_assign == "on",
+        "can_manage_sla": can_manage_sla == "on",
+        "can_manage": can_manage == "on",
+    }
+    if (
+        visibility_mode not in {"scope_all", "direct_only", "consult"}
+        or any(value for field, value in requested.items() if field != "can_read")
+        and not requested["can_read"]
+    ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
     with SessionLocal() as db:
         if not db.get(EmailChannel, channel_id) or not db.get(Role, role_id):
@@ -2407,18 +2764,301 @@ def clean_admin_save_email_channel_role(
                 EmailChannelRole.role_id == role_id,
             )
         ) or EmailChannelRole(channel_id=channel_id, role_id=role_id)
-        grant.can_read = can_read == "on"
+        before = grant_snapshot(grant)
+        for field, value in requested.items():
+            setattr(grant, field, value)
+        grant.visibility_mode = visibility_mode
+        db.add(grant)
+        db.flush()
+        record_audit(
+            db,
+            action="clean_admin.email.channel_role_saved",
+            entity_type="email_channel_role",
+            entity_id=grant.id,
+            user_id=access[0],
+            before_json=before,
+            after_json=grant_snapshot(grant),
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification?view=channels", "saved")
+
+
+def _plan_email_access_from_form(
+    db,
+    *,
+    role_ids: list[int],
+    channel_ids: list[int],
+    operation: str,
+    actions: list[str],
+    preset: str,
+    visibility_mode: str,
+    source_role_id: int | None,
+    source_channel_id: int | None,
+):
+    selected_roles = set(role_ids)
+    selected_channels = set(channel_ids)
+    valid_role_ids = set(
+        db.scalars(select(Role.id).where(Role.id.in_(selected_roles or {-1}))).all()
+    )
+    valid_channel_ids = set(
+        db.scalars(
+            select(EmailChannel.id).where(EmailChannel.id.in_(selected_channels or {-1}))
+        ).all()
+    )
+    if selected_roles != valid_role_ids or selected_channels != valid_channel_ids:
+        raise ValueError("invalid_selection")
+    if source_role_id and not db.get(Role, source_role_id):
+        raise ValueError("missing_copy_source")
+    if source_channel_id and not db.get(EmailChannel, source_channel_id):
+        raise ValueError("missing_copy_source")
+    return plan_email_role_batch(
+        db,
+        role_ids=selected_roles,
+        channel_ids=selected_channels,
+        operation=operation,
+        actions=set(actions),
+        preset=preset,
+        visibility_mode=visibility_mode,
+        source_role_id=source_role_id,
+        source_channel_id=source_channel_id,
+    )
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-access/batch/preview"
+)
+def clean_admin_preview_email_access_batch(
+    request: Request,
+    role_ids: list[int] = Form([]),
+    channel_ids: list[int] = Form([]),
+    operation: str = Form("apply"),
+    actions: list[str] = Form([]),
+    preset: str = Form(""),
+    visibility_mode: str = Form("scope_all"),
+    source_role_id: int | None = Form(None),
+    source_channel_id: int | None = Form(None),
+):
+    if not _work_classification_manage_access(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    try:
+        with SessionLocal() as db:
+            changes = _plan_email_access_from_form(
+                db,
+                role_ids=role_ids,
+                channel_ids=channel_ids,
+                operation=operation,
+                actions=actions,
+                preset=preset,
+                visibility_mode=visibility_mode,
+                source_role_id=source_role_id,
+                source_channel_id=source_channel_id,
+            )
+            return JSONResponse(
+                {
+                    "count": len(changes),
+                    "changes": [
+                        {
+                            "channel_id": item.channel_id,
+                            "role_id": item.role_id,
+                            "before": item.before,
+                            "after": item.after,
+                        }
+                        for item in changes
+                    ],
+                }
+            )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-access/batch")
+def clean_admin_apply_email_access_batch(
+    request: Request,
+    role_ids: list[int] = Form([]),
+    channel_ids: list[int] = Form([]),
+    operation: str = Form("apply"),
+    actions: list[str] = Form([]),
+    preset: str = Form(""),
+    visibility_mode: str = Form("scope_all"),
+    source_role_id: int | None = Form(None),
+    source_channel_id: int | None = Form(None),
+    confirmed: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if confirmed != "on":
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=channels", "error", "preview_required"
+        )
+    try:
+        with SessionLocal() as db:
+            changes = _plan_email_access_from_form(
+                db,
+                role_ids=role_ids,
+                channel_ids=channel_ids,
+                operation=operation,
+                actions=actions,
+                preset=preset,
+                visibility_mode=visibility_mode,
+                source_role_id=source_role_id,
+                source_channel_id=source_channel_id,
+            )
+            apply_email_role_batch(db, changes)
+            db.flush()
+            for item in changes:
+                record_audit(
+                    db,
+                    action="clean_admin.email.access_batch_item",
+                    entity_type="email_channel_role",
+                    entity_id=f"{item.channel_id}:{item.role_id}",
+                    user_id=access[0],
+                    before_json=item.before,
+                    after_json=item.after,
+                )
+            record_audit(
+                db,
+                action="clean_admin.email.access_batch_applied",
+                entity_type="email_access_batch",
+                entity_id=f"user:{access[0]}",
+                user_id=access[0],
+                detail=f"{len(changes)} concessões alteradas numa transação.",
+                after_json={
+                    "operation": operation,
+                    "preset": preset or None,
+                    "role_ids": sorted(set(role_ids)),
+                    "channel_ids": sorted(set(channel_ids)),
+                    "change_count": len(changes),
+                },
+            )
+            db.commit()
+    except ValueError as exc:
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=channels", "error", str(exc)
+        )
+    return _redirect(
+        "/v2-clean/admin/work-classification?view=channels", "batch_saved"
+    )
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-channel-roles/{grant_id}/delete"
+)
+def clean_admin_delete_email_channel_role(request: Request, grant_id: int):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        grant = db.get(EmailChannelRole, grant_id)
+        if not grant:
+            return _redirect(
+                "/v2-clean/admin/work-classification?view=channels", "error", "missing"
+            )
+        before = grant_snapshot(grant)
+        record_audit(
+            db,
+            action="clean_admin.email.channel_role_removed",
+            entity_type="email_channel_role",
+            entity_id=grant.id,
+            user_id=access[0],
+            before_json=before,
+        )
+        db.delete(grant)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification?view=channels", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-user-exceptions")
+def clean_admin_save_email_user_exception(
+    request: Request,
+    channel_id: int = Form(...),
+    user_id: int = Form(...),
+    can_reply: str = Form(""),
+    can_approve: str = Form(""),
+    can_assume: str = Form(""),
+    can_assign: str = Form(""),
+    can_manage_sla: str = Form(""),
+    visibility_mode: str = Form("consult"),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    if visibility_mode not in {"scope_all", "direct_only", "consult"}:
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=channels", "error", "invalid_scope"
+        )
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not db.get(EmailChannel, channel_id) or not user or not user.active:
+            return _redirect(
+                "/v2-clean/admin/work-classification?view=channels", "error", "invalid_selection"
+            )
+        grant = db.scalar(
+            select(EmailChannelUser).where(
+                EmailChannelUser.channel_id == channel_id,
+                EmailChannelUser.user_id == user_id,
+            )
+        ) or EmailChannelUser(channel_id=channel_id, user_id=user_id)
+        before = {
+            "can_reply": grant.can_reply,
+            "can_approve": grant.can_approve,
+            "can_assume": grant.can_assume,
+            "can_assign": grant.can_assign,
+            "can_manage_sla": grant.can_manage_sla,
+            "visibility_mode": grant.visibility_mode,
+        }
         grant.can_reply = can_reply == "on"
-        grant.can_send_direct = can_send_direct == "on"
         grant.can_approve = can_approve == "on"
         grant.can_assume = can_assume == "on"
         grant.can_assign = can_assign == "on"
         grant.can_manage_sla = can_manage_sla == "on"
-        grant.can_manage = can_manage == "on"
         grant.visibility_mode = visibility_mode
         db.add(grant)
+        db.flush()
+        record_audit(
+            db,
+            action="clean_admin.email.user_exception_saved",
+            entity_type="email_channel_user",
+            entity_id=grant.id,
+            user_id=access[0],
+            before_json=before,
+            after_json={
+                "can_reply": grant.can_reply,
+                "can_approve": grant.can_approve,
+                "can_assume": grant.can_assume,
+                "can_assign": grant.can_assign,
+                "can_manage_sla": grant.can_manage_sla,
+                "visibility_mode": grant.visibility_mode,
+            },
+        )
         db.commit()
-    return _redirect("/v2-clean/admin/work-classification", "saved")
+    return _redirect("/v2-clean/admin/work-classification?view=channels", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-user-exceptions/{grant_id}/delete"
+)
+def clean_admin_delete_email_user_exception(request: Request, grant_id: int):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        grant = db.get(EmailChannelUser, grant_id)
+        if not grant:
+            return _redirect(
+                "/v2-clean/admin/work-classification?view=channels", "error", "missing"
+            )
+        record_audit(
+            db,
+            action="clean_admin.email.user_exception_removed",
+            entity_type="email_channel_user",
+            entity_id=grant.id,
+            user_id=access[0],
+            before_json={"channel_id": grant.channel_id, "user_id": grant.user_id},
+        )
+        db.delete(grant)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification?view=channels", "saved")
 
 
 def _save_email_inbox_rule(
@@ -3121,6 +3761,546 @@ def clean_admin_update_value(
         )
         db.commit()
     return _redirect("/v2-clean/admin/settings", "saved")
+
+
+def _evolution_access(request: Request, *, manage: bool = False):
+    if manage:
+        return _authorized(request, "admin.evolution.manage", "admin.manage")
+    return _authorized(
+        request,
+        "admin.evolution.read",
+        "admin.evolution.manage",
+        "admin.manage",
+    )
+
+
+@clean_admin_router.get("/v2-clean/admin/modules/{module_code}")
+def clean_admin_module_redirect(request: Request, module_code: str):
+    access = _authorized(
+        request,
+        "admin.dashboard.read",
+        "admin.users.read",
+        "admin.roles.read",
+        "admin.organization.read",
+        "admin.settings.read",
+        "admin.evolution.read",
+        "admin.audit.read",
+        "admin.integrations.read",
+        "admin.security.read",
+        "service_desk.classifications.manage",
+        "users.manage",
+        "settings.manage",
+        "admin.manage",
+    )
+    if not access:
+        return _denied(request)
+    targets = {
+        "general": "/v2-clean/admin/users",
+        "service_desk": "/v2-clean/admin/work-classification?view=desk",
+        "email": "/v2-clean/admin/work-classification?view=channels",
+        "workshop": "/v2-clean/admin/workshop-models",
+        "stock": "/v2-clean/admin/settings",
+        "fleet_sales": "/v2-clean/admin/settings",
+        "documentation": "/v2-clean/admin/settings",
+        "system": "/v2-clean/admin/security",
+    }
+    return RedirectResponse(targets.get(module_code, "/v2-clean/admin/overview"), status_code=303)
+
+
+def _valid_evolution_values(
+    *, record_type: str, module: str, priority: str, status: str
+) -> bool:
+    return bool(
+        record_type in EVOLUTION_TYPE_LABELS
+        and module in ADMIN_MODULE_LABELS
+        and priority in EVOLUTION_PRIORITY_LABELS
+        and status in EVOLUTION_STATUS_LABELS
+    )
+
+
+def _evolution_record_snapshot(record: EvolutionRecord) -> dict[str, object]:
+    return {
+        field: getattr(record, field)
+        for field in (
+            "record_type",
+            "module",
+            "title",
+            "description",
+            "origin",
+            "priority",
+            "status",
+            "decision",
+            "notes",
+            "analysis_user_id",
+            "analysis_team_id",
+            "reference_task_id",
+            "reference_chat",
+            "reference_branch",
+            "reference_commit",
+        )
+    }
+
+
+@clean_admin_router.get("/v2-clean/admin/evolution", response_class=HTMLResponse)
+def clean_admin_evolution(request: Request):
+    access = _evolution_access(request)
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    query_params = request.query_params
+    q = query_params.get("q", "").strip()
+    record_type = query_params.get("record_type", "").strip()
+    module = query_params.get("module", "").strip()
+    priority = query_params.get("priority", "").strip()
+    status = query_params.get("status", "").strip()
+    sort = query_params.get("sort", "updated")
+    direction = query_params.get("direction", "desc")
+    sort_fields = {
+        "created": EvolutionRecord.created_at,
+        "updated": EvolutionRecord.updated_at,
+        "title": EvolutionRecord.title,
+        "module": EvolutionRecord.module,
+        "priority": EvolutionRecord.priority,
+        "status": EvolutionRecord.status,
+    }
+    sort_field = sort_fields.get(sort, EvolutionRecord.updated_at)
+    order = sort_field.asc() if direction == "asc" else sort_field.desc()
+    with SessionLocal() as db:
+        statement = select(EvolutionRecord)
+        if q:
+            like = f"%{q}%"
+            statement = statement.where(
+                or_(
+                    EvolutionRecord.title.ilike(like),
+                    EvolutionRecord.description.ilike(like),
+                    EvolutionRecord.origin.ilike(like),
+                    EvolutionRecord.decision.ilike(like),
+                    EvolutionRecord.notes.ilike(like),
+                    EvolutionRecord.reference_chat.ilike(like),
+                    EvolutionRecord.reference_branch.ilike(like),
+                    EvolutionRecord.reference_commit.ilike(like),
+                )
+            )
+        if record_type in EVOLUTION_TYPE_LABELS:
+            statement = statement.where(EvolutionRecord.record_type == record_type)
+        if module in ADMIN_MODULE_LABELS:
+            statement = statement.where(EvolutionRecord.module == module)
+        if priority in EVOLUTION_PRIORITY_LABELS:
+            statement = statement.where(EvolutionRecord.priority == priority)
+        if status in EVOLUTION_STATUS_LABELS:
+            statement = statement.where(EvolutionRecord.status == status)
+        records = db.scalars(statement.order_by(order, EvolutionRecord.id.desc()).limit(500)).all()
+        status_counts = dict(
+            db.execute(
+                select(EvolutionRecord.status, func.count(EvolutionRecord.id)).group_by(
+                    EvolutionRecord.status
+                )
+            ).all()
+        )
+        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
+        teams = db.scalars(select(Team).where(Team.active.is_(True)).order_by(Team.name)).all()
+        all_users = {item.id: item for item in db.scalars(select(User)).all()}
+        all_teams = {item.id: item for item in db.scalars(select(Team)).all()}
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "evolution",
+            evolution_records=records,
+            evolution_status_counts=status_counts,
+            evolution_filters={
+                "q": q,
+                "record_type": record_type,
+                "module": module,
+                "priority": priority,
+                "status": status,
+                "sort": sort,
+                "direction": direction,
+            },
+            evolution_type_labels=EVOLUTION_TYPE_LABELS,
+            evolution_status_labels=EVOLUTION_STATUS_LABELS,
+            evolution_priority_labels=EVOLUTION_PRIORITY_LABELS,
+            admin_module_labels=ADMIN_MODULE_LABELS,
+            active_users=users,
+            active_teams=teams,
+            users_by_id=all_users,
+            teams_by_id=all_teams,
+            can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+        )
+    return templates.TemplateResponse(request, "clean_admin.html", context)
+
+
+@clean_admin_router.post("/v2-clean/admin/evolution")
+def clean_admin_create_evolution_record(
+    request: Request,
+    record_type: str = Form(""),
+    module: str = Form(""),
+    title: str = Form(""),
+    description: str = Form(""),
+    origin: str = Form(""),
+    priority: str = Form("normal"),
+    analysis_user_id: int | None = Form(None),
+    analysis_team_id: int | None = Form(None),
+    reference_chat: str = Form(""),
+    reference_branch: str = Form(""),
+    reference_commit: str = Form(""),
+):
+    access = _evolution_access(request, manage=True)
+    if not access:
+        return _denied(request)
+    user_id, _permissions = access
+    if (
+        not _valid_evolution_values(
+            record_type=record_type,
+            module=module,
+            priority=priority,
+            status="registered",
+        )
+        or not title.strip()
+        or not description.strip()
+        or analysis_user_id is not None
+        and analysis_team_id is not None
+    ):
+        return _redirect("/v2-clean/admin/evolution", "error", "invalid")
+    with SessionLocal() as db:
+        if analysis_user_id and not db.get(User, analysis_user_id):
+            return _redirect("/v2-clean/admin/evolution", "error", "invalid_responsible")
+        if analysis_team_id and not db.get(Team, analysis_team_id):
+            return _redirect("/v2-clean/admin/evolution", "error", "invalid_responsible")
+        record = EvolutionRecord(
+            record_type=record_type,
+            module=module,
+            title=title.strip()[:200],
+            description=description.strip(),
+            origin=origin.strip()[:160] or None,
+            priority=priority,
+            status="registered",
+            analysis_user_id=analysis_user_id,
+            analysis_team_id=analysis_team_id,
+            reference_chat=reference_chat.strip()[:255] or None,
+            reference_branch=reference_branch.strip()[:255] or None,
+            reference_commit=reference_commit.strip()[:80] or None,
+            created_by_id=user_id,
+            updated_by_id=user_id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(
+            db,
+            action="clean_admin.evolution.created",
+            entity_type="evolution_record",
+            entity_id=record.id,
+            user_id=user_id,
+            after_json=_evolution_record_snapshot(record),
+        )
+        db.commit()
+        return _redirect(f"/v2-clean/admin/evolution/{record.id}", "created")
+
+
+@clean_admin_router.get("/v2-clean/admin/evolution/{record_id}", response_class=HTMLResponse)
+def clean_admin_evolution_detail(request: Request, record_id: int):
+    access = _evolution_access(request)
+    if not access:
+        return _denied(request)
+    user_id, permissions = access
+    with SessionLocal() as db:
+        record = db.get(EvolutionRecord, record_id)
+        if not record:
+            return _redirect("/v2-clean/admin/evolution", "error", "missing")
+        comments = db.scalars(
+            select(EvolutionRecordComment)
+            .where(EvolutionRecordComment.record_id == record_id)
+            .order_by(EvolutionRecordComment.created_at, EvolutionRecordComment.id)
+        ).all()
+        history = db.scalars(
+            select(EvolutionRecordHistory)
+            .where(EvolutionRecordHistory.record_id == record_id)
+            .order_by(EvolutionRecordHistory.changed_at.desc(), EvolutionRecordHistory.id.desc())
+        ).all()
+        links = db.scalars(
+            select(EvolutionRecordDocument)
+            .where(EvolutionRecordDocument.record_id == record_id)
+            .order_by(EvolutionRecordDocument.created_at.desc())
+        ).all()
+        linked_document_ids = {item.document_id for item in links}
+        documents_by_id = (
+            {
+                item.id: item
+                for item in db.scalars(
+                    select(Document).where(Document.id.in_(linked_document_ids))
+                ).all()
+            }
+            if linked_document_ids
+            else {}
+        )
+        candidate_documents = db.scalars(
+            select(Document)
+            .where(Document.archived.is_(False))
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(200)
+        ).all()
+        users = db.scalars(select(User).order_by(User.name)).all()
+        teams = db.scalars(select(Team).order_by(Team.name)).all()
+        context = _layout_context(
+            db,
+            user_id,
+            permissions,
+            "evolution",
+            evolution_record=record,
+            evolution_comments=comments,
+            evolution_history=history,
+            evolution_documents=links,
+            documents_by_id=documents_by_id,
+            candidate_documents=candidate_documents,
+            evolution_type_labels=EVOLUTION_TYPE_LABELS,
+            evolution_status_labels=EVOLUTION_STATUS_LABELS,
+            evolution_priority_labels=EVOLUTION_PRIORITY_LABELS,
+            admin_module_labels=ADMIN_MODULE_LABELS,
+            active_users=[item for item in users if item.active],
+            active_teams=[item for item in teams if item.active],
+            users_by_id={item.id: item for item in users},
+            teams_by_id={item.id: item for item in teams},
+            can_manage=bool(permissions.intersection({"admin.evolution.manage", "admin.manage"})),
+        )
+    return templates.TemplateResponse(request, "clean_admin_evolution_detail.html", context)
+
+
+@clean_admin_router.post("/v2-clean/admin/evolution/{record_id}")
+def clean_admin_update_evolution_record(
+    request: Request,
+    record_id: int,
+    record_type: str = Form(""),
+    module: str = Form(""),
+    title: str = Form(""),
+    description: str = Form(""),
+    origin: str = Form(""),
+    priority: str = Form("normal"),
+    status: str = Form("registered"),
+    decision: str = Form(""),
+    notes: str = Form(""),
+    analysis_user_id: int | None = Form(None),
+    analysis_team_id: int | None = Form(None),
+    reference_chat: str = Form(""),
+    reference_branch: str = Form(""),
+    reference_commit: str = Form(""),
+):
+    access = _evolution_access(request, manage=True)
+    if not access:
+        return _denied(request)
+    user_id, _permissions = access
+    if (
+        not _valid_evolution_values(
+            record_type=record_type, module=module, priority=priority, status=status
+        )
+        or not title.strip()
+        or not description.strip()
+        or analysis_user_id is not None
+        and analysis_team_id is not None
+    ):
+        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "invalid")
+    with SessionLocal() as db:
+        record = db.get(EvolutionRecord, record_id)
+        if not record:
+            return _redirect("/v2-clean/admin/evolution", "error", "missing")
+        if analysis_user_id and not db.get(User, analysis_user_id):
+            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "invalid_responsible")
+        if analysis_team_id and not db.get(Team, analysis_team_id):
+            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "invalid_responsible")
+        before = _evolution_record_snapshot(record)
+        updates = {
+            "record_type": record_type,
+            "module": module,
+            "title": title.strip()[:200],
+            "description": description.strip(),
+            "origin": origin.strip()[:160] or None,
+            "priority": priority,
+            "status": status,
+            "decision": decision.strip() or None,
+            "notes": notes.strip() or None,
+            "analysis_user_id": analysis_user_id,
+            "analysis_team_id": analysis_team_id,
+            "reference_chat": reference_chat.strip()[:255] or None,
+            "reference_branch": reference_branch.strip()[:255] or None,
+            "reference_commit": reference_commit.strip()[:80] or None,
+        }
+        changed = False
+        for field, new_value in updates.items():
+            old_value = getattr(record, field)
+            if old_value == new_value:
+                continue
+            db.add(
+                EvolutionRecordHistory(
+                    record_id=record.id,
+                    user_id=user_id,
+                    field_name=field,
+                    old_value=str(old_value) if old_value is not None else None,
+                    new_value=str(new_value) if new_value is not None else None,
+                )
+            )
+            setattr(record, field, new_value)
+            changed = True
+        if changed:
+            record.updated_by_id = user_id
+            record_audit(
+                db,
+                action="clean_admin.evolution.updated",
+                entity_type="evolution_record",
+                entity_id=record.id,
+                user_id=user_id,
+                before_json=before,
+                after_json=_evolution_record_snapshot(record),
+            )
+            db.commit()
+        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/evolution/{record_id}/comments")
+def clean_admin_add_evolution_comment(
+    request: Request, record_id: int, comment: str = Form("")
+):
+    access = _evolution_access(request, manage=True)
+    if not access:
+        return _denied(request)
+    user_id, _permissions = access
+    if not comment.strip():
+        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "empty_comment")
+    with SessionLocal() as db:
+        if not db.get(EvolutionRecord, record_id):
+            return _redirect("/v2-clean/admin/evolution", "error", "missing")
+        db.add(
+            EvolutionRecordComment(record_id=record_id, user_id=user_id, comment=comment.strip())
+        )
+        record_audit(
+            db,
+            action="clean_admin.evolution.comment_added",
+            entity_type="evolution_record",
+            entity_id=record_id,
+            user_id=user_id,
+            detail="Comentário adicionado ao registo de evolução.",
+        )
+        db.commit()
+    return _redirect(f"/v2-clean/admin/evolution/{record_id}", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/evolution/{record_id}/documents")
+def clean_admin_link_evolution_document(
+    request: Request, record_id: int, document_id: int = Form(...)
+):
+    access = _evolution_access(request, manage=True)
+    if not access:
+        return _denied(request)
+    user_id, _permissions = access
+    with SessionLocal() as db:
+        record = db.get(EvolutionRecord, record_id)
+        document = db.get(Document, document_id)
+        if not record or not document:
+            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "missing")
+        existing = db.scalar(
+            select(EvolutionRecordDocument).where(
+                EvolutionRecordDocument.record_id == record_id,
+                EvolutionRecordDocument.document_id == document_id,
+            )
+        )
+        if not existing:
+            db.add(
+                EvolutionRecordDocument(
+                    record_id=record_id,
+                    document_id=document_id,
+                    linked_by_id=user_id,
+                )
+            )
+            record_audit(
+                db,
+                action="clean_admin.evolution.document_linked",
+                entity_type="evolution_record",
+                entity_id=record_id,
+                user_id=user_id,
+                after_json={"document_id": document_id},
+            )
+            db.commit()
+    return _redirect(f"/v2-clean/admin/evolution/{record_id}", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/evolution/{record_id}/convert")
+def clean_admin_convert_evolution_record(request: Request, record_id: int):
+    access = _evolution_access(request, manage=True)
+    if not access:
+        return _denied(request)
+    user_id, _permissions = access
+    with SessionLocal() as db:
+        record = db.get(EvolutionRecord, record_id)
+        if not record:
+            return _redirect("/v2-clean/admin/evolution", "error", "missing")
+        if record.status != "approved" or record.reference_task_id:
+            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "not_convertible")
+        task = Task(
+            title=record.title,
+            description=f"Registo de Evolução #{record.id}\n\n{record.description}",
+            task_type="administration_task",
+            source="admin_evolution",
+            status="new",
+            priority=record.priority,
+            team_id=record.analysis_team_id,
+            assigned_to_id=record.analysis_user_id,
+            created_by_id=user_id,
+            assignment_mode="manual",
+            assignment_state=(
+                "assigned_user"
+                if record.analysis_user_id
+                else "assigned_team"
+                if record.analysis_team_id
+                else "waiting_assignment"
+            ),
+        )
+        db.add(task)
+        db.flush()
+        for link in db.scalars(
+            select(EvolutionRecordDocument).where(
+                EvolutionRecordDocument.record_id == record.id
+            )
+        ).all():
+            db.add(TaskDocument(task_id=task.id, document_id=link.document_id, category="evolution"))
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="source_evolution_record_id",
+                old_value=None,
+                new_value=str(record.id),
+            )
+        )
+        old_status = record.status
+        record.reference_task_id = task.id
+        record.status = "implementation"
+        record.updated_by_id = user_id
+        db.add(
+            EvolutionRecordHistory(
+                record_id=record.id,
+                user_id=user_id,
+                field_name="reference_task_id",
+                old_value=None,
+                new_value=str(task.id),
+            )
+        )
+        db.add(
+            EvolutionRecordHistory(
+                record_id=record.id,
+                user_id=user_id,
+                field_name="status",
+                old_value=old_status,
+                new_value="implementation",
+            )
+        )
+        record_audit(
+            db,
+            action="clean_admin.evolution.converted_to_task",
+            entity_type="evolution_record",
+            entity_id=record.id,
+            user_id=user_id,
+            after_json={"task_id": task.id, "status": "implementation"},
+        )
+        db.commit()
+        return _redirect(f"/v2-clean/admin/evolution/{record_id}", "converted")
 
 
 def _audit_statement(

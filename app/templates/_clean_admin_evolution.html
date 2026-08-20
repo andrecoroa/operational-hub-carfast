@@ -1,0 +1,70 @@
+<header class="clean-admin-section-header clean-card-wide">
+  <div>
+    <p class="eyebrow">Administração / Geral</p>
+    <h2>Registo de Evolução</h2>
+    <p>Propostas, dúvidas e problemas permanecem consultáveis até e depois da decisão.</p>
+  </div>
+</header>
+
+<section class="clean-panel clean-card-wide evolution-toolbar">
+  <div class="evolution-counters" aria-label="Contadores por estado">
+    <a href="/v2-clean/admin/evolution" class="pill muted-pill">Total · {{ evolution_status_counts.values()|sum }}</a>
+    {% for code, label in evolution_status_labels.items() %}
+      <a href="/v2-clean/admin/evolution?status={{ code }}" class="pill muted-pill">{{ label }} · {{ evolution_status_counts.get(code, 0) }}</a>
+    {% endfor %}
+  </div>
+  <form class="clean-admin-filter-form evolution-filter-form" method="get" action="/v2-clean/admin/evolution">
+    <label>Pesquisa<input name="q" value="{{ evolution_filters.q }}" placeholder="título, descrição, origem ou referência"></label>
+    <label>Tipo<select name="record_type"><option value="">Todos</option>{% for code,label in evolution_type_labels.items() %}<option value="{{ code }}" {% if evolution_filters.record_type == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Módulo<select name="module"><option value="">Todos</option>{% for code,label in admin_module_labels.items() %}<option value="{{ code }}" {% if evolution_filters.module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Prioridade<select name="priority"><option value="">Todas</option>{% for code,label in evolution_priority_labels.items() %}<option value="{{ code }}" {% if evolution_filters.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Estado<select name="status"><option value="">Todos</option>{% for code,label in evolution_status_labels.items() %}<option value="{{ code }}" {% if evolution_filters.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Ordenar<select name="sort"><option value="updated" {% if evolution_filters.sort == 'updated' %}selected{% endif %}>Última alteração</option><option value="created" {% if evolution_filters.sort == 'created' %}selected{% endif %}>Criação</option><option value="title" {% if evolution_filters.sort == 'title' %}selected{% endif %}>Título</option><option value="module" {% if evolution_filters.sort == 'module' %}selected{% endif %}>Módulo</option><option value="priority" {% if evolution_filters.sort == 'priority' %}selected{% endif %}>Prioridade</option><option value="status" {% if evolution_filters.sort == 'status' %}selected{% endif %}>Estado</option></select></label>
+    <label>Direção<select name="direction"><option value="desc" {% if evolution_filters.direction == 'desc' %}selected{% endif %}>Descendente</option><option value="asc" {% if evolution_filters.direction == 'asc' %}selected{% endif %}>Ascendente</option></select></label>
+    <button type="submit">Aplicar</button>
+    <a class="button-link secondary-link" href="/v2-clean/admin/evolution">Limpar</a>
+  </form>
+</section>
+
+{% if can_manage %}
+<details class="clean-panel clean-card-wide evolution-create">
+  <summary><strong>Novo registo</strong><span>Registar sem converter imediatamente em trabalho</span></summary>
+  <form class="clean-admin-form evolution-form" method="post" action="/v2-clean/admin/evolution">
+    <label>Tipo<select name="record_type" required>{% for code,label in evolution_type_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+    <label>Módulo<select name="module" required>{% for code,label in admin_module_labels.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+    <label>Prioridade<select name="priority" required>{% for code,label in evolution_priority_labels.items() %}<option value="{{ code }}" {% if code == 'normal' %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Origem<input name="origin" maxlength="160" placeholder="reunião, utilizador, incidente…"></label>
+    <label class="evolution-span-2">Título<input name="title" maxlength="200" required></label>
+    <label class="evolution-span-2">Descrição<textarea name="description" required></textarea></label>
+    <label>Responsável utilizador<select name="analysis_user_id"><option value="">Sem utilizador</option>{% for item in active_users %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+    <label>Responsável equipa<select name="analysis_team_id"><option value="">Sem equipa</option>{% for item in active_teams %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
+    <label>Chat/tarefa externa<input name="reference_chat" maxlength="255"></label>
+    <label>Branch<input name="reference_branch" maxlength="255"></label>
+    <label>Commit<input name="reference_commit" maxlength="80"></label>
+    <button type="submit">Registar</button>
+  </form>
+</details>
+{% endif %}
+
+<section class="clean-panel clean-card-wide">
+  <div class="table-heading flat-heading"><div><p class="eyebrow">Até 500 resultados</p><h3>Registos</h3></div></div>
+  <div class="table-wrap">
+    <table class="evolution-table">
+      <thead><tr><th>ID</th><th>Tipo / módulo</th><th>Título</th><th>Origem</th><th>Prioridade</th><th>Estado</th><th>Responsável</th><th>Atualização</th></tr></thead>
+      <tbody>
+        {% for item in evolution_records %}
+          <tr>
+            <td><a href="/v2-clean/admin/evolution/{{ item.id }}">#{{ item.id }}</a></td>
+            <td><strong>{{ evolution_type_labels[item.record_type] }}</strong><small>{{ admin_module_labels[item.module] }}</small></td>
+            <td><a href="/v2-clean/admin/evolution/{{ item.id }}"><strong>{{ item.title }}</strong></a><small>{{ item.description|truncate(100) }}</small></td>
+            <td>{{ item.origin or '—' }}</td>
+            <td><span class="pill muted-pill">{{ evolution_priority_labels[item.priority] }}</span></td>
+            <td><span class="clean-status-pill {{ 'is-active' if item.status in ['approved','implementation','completed'] else 'is-inactive' }}">{{ evolution_status_labels[item.status] }}</span></td>
+            <td>{% if item.analysis_user_id %}{{ users_by_id.get(item.analysis_user_id).name }}{% elif item.analysis_team_id %}{{ teams_by_id.get(item.analysis_team_id).name }} · equipa{% else %}Por definir{% endif %}</td>
+            <td>{{ item.updated_at.strftime('%d/%m/%Y %H:%M') if item.updated_at else '—' }}</td>
+          </tr>
+        {% else %}<tr><td colspan="8">Sem registos para os filtros selecionados.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

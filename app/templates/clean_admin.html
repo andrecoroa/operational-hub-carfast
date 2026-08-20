@@ -18,6 +18,15 @@
           <a href="{{ item.href }}" {% if admin_section == item.code %}class="active"{% endif %}>{{ item.label }}</a>
         {% endfor %}
       </nav>
+      <details class="clean-admin-module-directory">
+        <summary>Configuração por módulo</summary>
+        <div class="clean-admin-module-table-wrap">
+          <table class="clean-admin-module-table">
+            <thead><tr><th>Módulo</th>{% for code,label in admin_module_dimension_labels.items() %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+            <tbody>{% for module_code,module_label in admin_module_labels.items() %}<tr><th><a href="/v2-clean/admin/modules/{{ module_code }}">{{ module_label }}</a></th>{% for dimension_code in admin_module_dimension_labels %}{% set target = admin_module_nav[module_code][dimension_code] %}<td><a href="{{ target[1] }}">{{ target[0] }}</a></td>{% endfor %}</tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
     </header>
 
     {% if request.query_params.get("error") %}
@@ -422,6 +431,10 @@
 
     {% if admin_section == "work_classification" %}
       {% include "_clean_admin_work_classification.html" %}
+    {% endif %}
+
+    {% if admin_section == "evolution" %}
+      {% include "_clean_admin_evolution.html" %}
     {% endif %}
 
     {% if admin_section == "audit" %}

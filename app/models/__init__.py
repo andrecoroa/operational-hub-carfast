@@ -27,6 +27,12 @@ from app.models.email import (
     EmailThread,
     EmailWebhookEvent,
 )
+from app.models.evolution import (
+    EvolutionRecord,
+    EvolutionRecordComment,
+    EvolutionRecordDocument,
+    EvolutionRecordHistory,
+)
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
@@ -181,6 +187,10 @@ __all__ = [
     "EmailMessage",
     "EmailThread",
     "EmailWebhookEvent",
+    "EvolutionRecord",
+    "EvolutionRecordComment",
+    "EvolutionRecordDocument",
+    "EvolutionRecordHistory",
     "Incident",
     "IncidentEvent",
     "IncidentEvidence",

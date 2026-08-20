@@ -10815,6 +10815,187 @@ button.clean-upload-preview-card {
   }
 }
 
+.evolution-toolbar {
+  display: grid;
+  gap: 14px;
+}
+
+.clean-admin-module-directory {
+  margin-top: 10px;
+  border-top: 1px solid #d8e1eb;
+  padding-top: 10px;
+}
+
+.clean-admin-module-directory > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: #324762;
+  font-weight: 700;
+}
+
+.clean-admin-module-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.clean-admin-module-table {
+  min-width: 1120px;
+  font-size: 12px;
+}
+
+.clean-admin-module-table th,
+.clean-admin-module-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.clean-admin-module-table a {
+  color: #1c4f87;
+  text-decoration: none;
+}
+
+.email-access-matrix th small,
+.email-access-matrix td small {
+  display: block;
+  margin-top: 3px;
+}
+
+.email-batch-panel {
+  margin: 14px 0;
+  border: 1px solid #d8e1eb;
+  padding: 12px;
+}
+
+.email-batch-panel > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.email-batch-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.email-batch-form fieldset {
+  min-width: 0;
+  margin: 0;
+}
+
+.email-batch-form select[multiple] {
+  min-height: 118px;
+}
+
+.email-batch-preview {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-left: 3px solid #1c70b7;
+  background: #f4f8fc;
+}
+
+.email-user-exception-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 900px) {
+  .email-batch-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .email-batch-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.evolution-counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.evolution-counters a {
+  text-decoration: none;
+}
+
+.evolution-filter-form {
+  grid-template-columns: minmax(180px, 2fr) repeat(6, minmax(120px, 1fr));
+}
+
+.evolution-create > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.evolution-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.evolution-span-2 {
+  grid-column: span 2;
+}
+
+.evolution-table td small {
+  display: block;
+  margin-top: 3px;
+}
+
+.evolution-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px;
+}
+
+.evolution-detail-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+}
+
+.evolution-detail-summary span {
+  color: #607087;
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .evolution-filter-form,
+  .evolution-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evolution-detail-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .evolution-filter-form,
+  .evolution-form,
+  .evolution-detail-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evolution-span-2 {
+    grid-column: auto;
+  }
+}
+
 
 /* Clean workshop v2 process refinements */
 .clean-header-actions-strong { align-items: center; }

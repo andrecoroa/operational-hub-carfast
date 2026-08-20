@@ -18,6 +18,7 @@ from app.models.email import (
     EmailAttachment,
     EmailAuditEvent,
     EmailChannel,
+    EmailInboxRule,
     EmailMessage,
     EmailThread,
     EmailWebhookEvent,
@@ -110,6 +111,26 @@ def _storage_root() -> Path:
     return root
 
 
+def _inbox_rule(db: Session, channel_id: int, subject: str) -> EmailInboxRule | None:
+    normalized = subject.strip().casefold()
+    rules = db.scalars(
+        select(EmailInboxRule)
+        .where(
+            EmailInboxRule.channel_id == channel_id,
+            EmailInboxRule.active.is_(True),
+        )
+        .order_by(EmailInboxRule.sort_order, EmailInboxRule.id)
+    ).all()
+    for rule in rules:
+        expected = rule.subject_match.strip().casefold()
+        if expected and (
+            (rule.match_type == "exact" and normalized == expected)
+            or (rule.match_type == "contains" and expected in normalized)
+        ):
+            return rule
+    return None
+
+
 def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     key = _event_key(payload)
     existing_event = db.scalar(select(EmailWebhookEvent).where(EmailWebhookEvent.event_key == key))
@@ -126,6 +147,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     channel = _channel_for_payload(db, payload)
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
+    rule = _inbox_rule(db, channel.id, subject)
     sender = _address(payload.get("From"))
     headers = _headers(payload)
     conversation_id = str(payload.get("OriginalMessageID") or "").strip() or None
@@ -154,25 +176,78 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             sender_email=sender,
             sender_name=payload.get("FromName"),
             external_conversation_id=conversation_id or external_id,
-            work_queue_id=channel.default_queue_id,
-            work_department_id=channel.default_department_id,
-            work_category_id=channel.default_category_id,
-            work_subcategory_id=channel.default_subcategory_id,
+            work_queue_id=(
+                rule.default_queue_id
+                if rule and rule.default_queue_id
+                else channel.default_queue_id
+            ),
+            work_department_id=(
+                rule.default_department_id
+                if rule and rule.default_department_id
+                else channel.default_department_id
+            ),
+            work_category_id=(
+                rule.default_category_id
+                if rule and rule.default_category_id
+                else channel.default_category_id
+            ),
+            work_subcategory_id=(
+                rule.default_subcategory_id
+                if rule and rule.default_subcategory_id
+                else channel.default_subcategory_id
+            ),
             classification_status=(
                 "classified"
-                if channel.default_queue_id and channel.default_department_id
+                if (
+                    rule.default_queue_id
+                    if rule and rule.default_queue_id
+                    else channel.default_queue_id
+                )
+                and (
+                    rule.default_department_id
+                    if rule and rule.default_department_id
+                    else channel.default_department_id
+                )
                 else "unclassified"
             ),
-            document_type=channel.default_document_type,
-            assigned_to_id=channel.default_assignee_id,
+            document_type=(
+                rule.default_document_type
+                if rule and rule.default_document_type
+                else channel.default_document_type
+            ),
+            assigned_to_id=(
+                rule.default_assignee_id
+                if rule and rule.default_assignee_id
+                else channel.default_assignee_id
+            ),
             due_at=(
-                now + timedelta(days=channel.default_due_days)
-                if channel.default_due_days is not None
+                now
+                + timedelta(
+                    days=rule.default_due_days
+                    if rule and rule.default_due_days is not None
+                    else channel.default_due_days
+                )
+                if (
+                    rule.default_due_days
+                    if rule and rule.default_due_days is not None
+                    else channel.default_due_days
+                )
+                is not None
                 else None
             ),
             waiting_until=(
-                now + timedelta(days=channel.default_wait_days)
-                if channel.default_wait_days is not None
+                now
+                + timedelta(
+                    days=rule.default_wait_days
+                    if rule and rule.default_wait_days is not None
+                    else channel.default_wait_days
+                )
+                if (
+                    rule.default_wait_days
+                    if rule and rule.default_wait_days is not None
+                    else channel.default_wait_days
+                )
+                is not None
                 else None
             ),
             last_message_at=now,
@@ -220,7 +295,8 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             )
         )
     thread.last_message_at = message.received_at
-    if created_thread and channel.auto_task_mode in {"open", "complete"}:
+    auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
+    if created_thread and auto_task_mode in {"open", "complete"}:
         queue = db.get(WorkQueue, channel.default_queue_id) if channel.default_queue_id else None
         now = datetime.now(UTC)
         task = Task(
@@ -232,18 +308,18 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 else "operational_task"
             ),
             source="email",
-            status="closed" if channel.auto_task_mode == "complete" else "new",
+            status="closed" if auto_task_mode == "complete" else "new",
             priority="normal",
             customer_email=sender,
-            assigned_to_id=channel.default_assignee_id,
+            assigned_to_id=thread.assigned_to_id,
             due_on=thread.due_at.date() if thread.due_at else None,
             work_queue_id=thread.work_queue_id,
             work_department_id=thread.work_department_id,
             work_category_id=thread.work_category_id,
             work_subcategory_id=thread.work_subcategory_id,
             classification_status=thread.classification_status,
-            resolved_at=now if channel.auto_task_mode == "complete" else None,
-            closed_at=now if channel.auto_task_mode == "complete" else None,
+            resolved_at=now if auto_task_mode == "complete" else None,
+            closed_at=now if auto_task_mode == "complete" else None,
         )
         db.add(task)
         db.flush()

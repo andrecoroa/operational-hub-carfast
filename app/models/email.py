@@ -48,6 +48,40 @@ class EmailChannel(TimestampMixin, Base):
     default_wait_days: Mapped[int | None] = mapped_column(Integer)
 
 
+class EmailInboxRule(TimestampMixin, Base):
+    __tablename__ = "email_inbox_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(160))
+    subject_match: Mapped[str] = mapped_column(String(500))
+    match_type: Mapped[str] = mapped_column(String(20), default="contains", index=True)
+    default_queue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_queues.id", ondelete="SET NULL"), index=True
+    )
+    default_department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_departments.id", ondelete="SET NULL"), index=True
+    )
+    default_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_categories.id", ondelete="SET NULL"), index=True
+    )
+    default_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
+    )
+    default_document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    default_assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    default_due_days: Mapped[int | None] = mapped_column(Integer)
+    default_wait_days: Mapped[int | None] = mapped_column(Integer)
+    auto_task_mode: Mapped[str | None] = mapped_column(String(40), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
 class EmailThread(TimestampMixin, Base):
     __tablename__ = "email_threads"
 
@@ -212,6 +246,4 @@ class EmailTemplate(TimestampMixin, Base):
         ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
-    )
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

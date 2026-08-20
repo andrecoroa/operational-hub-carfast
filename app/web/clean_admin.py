@@ -17,7 +17,7 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
-from app.models.email import EmailChannel, EmailChannelRole, EmailTemplate
+from app.models.email import EmailChannel, EmailChannelRole, EmailInboxRule, EmailTemplate
 from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.organization import (
     OrganizationalUnit,
@@ -204,9 +204,7 @@ def _template_nav_permissions(request: Request) -> set[str]:
         return set(cached_permissions)
     with SessionLocal() as db:
         user = db.get(User, int(raw_user_id))
-        permissions = (
-            get_user_permission_codes(db, user) if user and user.active else set()
-        )
+        permissions = get_user_permission_codes(db, user) if user and user.active else set()
     request.state.permission_codes = permissions
     return permissions
 
@@ -1110,8 +1108,7 @@ def clean_admin_settings(request: Request):
                 for catalog in catalogs
             },
             value_display_labels={
-                value.id: SETTINGS_VALUE_LABELS.get(value.code, value.label)
-                for value in values
+                value.id: SETTINGS_VALUE_LABELS.get(value.code, value.label) for value in values
             },
             can_manage=bool(
                 permissions.intersection(
@@ -1122,9 +1119,7 @@ def clean_admin_settings(request: Request):
     return templates.TemplateResponse(request, "clean_admin.html", context)
 
 
-@clean_admin_router.get(
-    "/v2-clean/admin/work-classification", response_class=HTMLResponse
-)
+@clean_admin_router.get("/v2-clean/admin/work-classification", response_class=HTMLResponse)
 def clean_admin_work_classification(request: Request):
     access = _authorized(
         request,
@@ -1159,13 +1154,14 @@ def clean_admin_work_classification(request: Request):
         scopes = db.scalars(select(RoleWorkScope).order_by(RoleWorkScope.role_id)).all()
         channels = db.scalars(select(EmailChannel).order_by(EmailChannel.name)).all()
         channel_roles = db.scalars(
-            select(EmailChannelRole).order_by(
-                EmailChannelRole.channel_id, EmailChannelRole.role_id
+            select(EmailChannelRole).order_by(EmailChannelRole.channel_id, EmailChannelRole.role_id)
+        ).all()
+        inbox_rules = db.scalars(
+            select(EmailInboxRule).order_by(
+                EmailInboxRule.channel_id, EmailInboxRule.sort_order, EmailInboxRule.name
             )
         ).all()
-        email_templates = db.scalars(
-            select(EmailTemplate).order_by(EmailTemplate.name)
-        ).all()
+        email_templates = db.scalars(select(EmailTemplate).order_by(EmailTemplate.name)).all()
         users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
         source_defaults = db.scalars(
             select(WorkSourceDefault).order_by(
@@ -1182,9 +1178,7 @@ def clean_admin_work_classification(request: Request):
             level: {
                 item_id: count
                 for item_id, count in db.execute(
-                    select(field, func.count(Task.id))
-                    .where(field.is_not(None))
-                    .group_by(field)
+                    select(field, func.count(Task.id)).where(field.is_not(None)).group_by(field)
                 ).all()
             }
             for level, field in usage_fields.items()
@@ -1195,15 +1189,11 @@ def clean_admin_work_classification(request: Request):
                 for item in queues
             },
             "department": {
-                item.id: sum(
-                    1 for child in categories if child.department_id == item.id
-                )
+                item.id: sum(1 for child in categories if child.department_id == item.id)
                 for item in departments
             },
             "category": {
-                item.id: sum(
-                    1 for child in subcategories if child.category_id == item.id
-                )
+                item.id: sum(1 for child in subcategories if child.category_id == item.id)
                 for item in categories
             },
             "subcategory": {item.id: 0 for item in subcategories},
@@ -1226,6 +1216,7 @@ def clean_admin_work_classification(request: Request):
             work_scopes=scopes,
             email_channels=channels,
             email_channel_roles=channel_roles,
+            email_inbox_rules=inbox_rules,
             email_templates=email_templates,
             active_users=users,
             source_defaults=source_defaults,
@@ -1241,9 +1232,7 @@ def clean_admin_work_classification(request: Request):
 
 
 def _work_classification_manage_access(request: Request):
-    return _authorized(
-        request, "admin.settings.manage", "settings.manage", "admin.manage"
-    )
+    return _authorized(request, "admin.settings.manage", "settings.manage", "admin.manage")
 
 
 def _valid_work_scope_hierarchy(
@@ -1260,9 +1249,7 @@ def _valid_work_scope_hierarchy(
     if department_id and (not department or department.queue_id != queue_id):
         return False
     category = db.get(WorkCategory, category_id) if category_id else None
-    if category_id and (
-        not department or not category or category.department_id != department.id
-    ):
+    if category_id and (not department or not category or category.department_id != department.id):
         return False
     subcategory = db.get(WorkSubcategory, subcategory_id) if subcategory_id else None
     return not subcategory_id or bool(
@@ -1287,18 +1274,14 @@ def clean_admin_create_work_classification(
     model = WORK_ENTITY_MODELS.get(entity_type)
     clean_code = code.strip().lower()
     if not model or not CODE_PATTERN.fullmatch(clean_code) or not name.strip():
-        return _redirect(
-            "/v2-clean/admin/work-classification", "error", "invalid_classification"
-        )
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_classification")
     parent_fields = {
         "department": "queue_id",
         "category": "department_id",
         "subcategory": "category_id",
     }
     if entity_type != "queue" and not parent_id:
-        return _redirect(
-            "/v2-clean/admin/work-classification", "error", "missing_parent"
-        )
+        return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
     values = {
         "code": clean_code,
         "name": name.strip(),
@@ -1315,9 +1298,7 @@ def clean_admin_create_work_classification(
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
-@clean_admin_router.post(
-    "/v2-clean/admin/work-classification/items/{entity_type}/{entity_id}"
-)
+@clean_admin_router.post("/v2-clean/admin/work-classification/items/{entity_type}/{entity_id}")
 def clean_admin_update_work_classification(
     request: Request,
     entity_type: str,
@@ -1341,9 +1322,7 @@ def clean_admin_update_work_classification(
         "subcategory": (WorkCategory, "category_id"),
     }
     if entity_type in parent_definitions and not parent_id:
-        return _redirect(
-            "/v2-clean/admin/work-classification", "error", "missing_parent"
-        )
+        return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
     with SessionLocal() as db:
         item = db.get(model, entity_id)
         if not item:
@@ -1351,9 +1330,7 @@ def clean_admin_update_work_classification(
         if entity_type in parent_definitions:
             parent_model, parent_field = parent_definitions[entity_type]
             if not db.get(parent_model, parent_id):
-                return _redirect(
-                    "/v2-clean/admin/work-classification", "error", "missing_parent"
-                )
+                return _redirect("/v2-clean/admin/work-classification", "error", "missing_parent")
             duplicate = db.scalar(
                 select(model).where(
                     getattr(model, parent_field) == parent_id,
@@ -1362,9 +1339,7 @@ def clean_admin_update_work_classification(
                 )
             )
             if duplicate:
-                return _redirect(
-                    "/v2-clean/admin/work-classification", "error", "duplicate"
-                )
+                return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
             setattr(item, parent_field, parent_id)
         item.name = name.strip()
         item.description = description.strip() or None
@@ -1397,9 +1372,7 @@ def clean_admin_save_work_scope(
         if not _valid_work_scope_hierarchy(
             db, queue_id, department_id, category_id, subcategory_id
         ):
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "invalid_scope"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
         scope = db.scalar(
             select(RoleWorkScope).where(
                 RoleWorkScope.role_id == role_id,
@@ -1447,15 +1420,11 @@ def clean_admin_update_work_scope(
     with SessionLocal() as db:
         scope = db.get(RoleWorkScope, scope_id)
         if not scope:
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "missing"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
         if not db.get(Role, role_id) or not _valid_work_scope_hierarchy(
             db, queue_id, department_id, category_id, subcategory_id
         ):
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "invalid_scope"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "invalid_scope")
         duplicate = db.scalar(
             select(RoleWorkScope).where(
                 RoleWorkScope.id != scope.id,
@@ -1467,9 +1436,7 @@ def clean_admin_update_work_scope(
             )
         )
         if duplicate:
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "duplicate"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
         scope.role_id = role_id
         scope.queue_id = queue_id
         scope.department_id = department_id
@@ -1566,6 +1533,155 @@ def clean_admin_save_email_channel_role(
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
+def _save_email_inbox_rule(
+    rule: EmailInboxRule,
+    *,
+    name: str,
+    subject_match: str,
+    match_type: str,
+    default_queue_id: int | None,
+    default_department_id: int | None,
+    default_category_id: int | None,
+    default_subcategory_id: int | None,
+    default_document_type: str,
+    default_assignee_id: int | None,
+    default_due_days: int | None,
+    default_wait_days: int | None,
+    auto_task_mode: str,
+    sort_order: int,
+    active: str,
+    notes: str,
+) -> None:
+    rule.name = name.strip()
+    rule.subject_match = subject_match.strip()
+    rule.match_type = match_type
+    rule.default_queue_id = default_queue_id
+    rule.default_department_id = default_department_id
+    rule.default_category_id = default_category_id
+    rule.default_subcategory_id = default_subcategory_id
+    rule.default_document_type = default_document_type.strip() or None
+    rule.default_assignee_id = default_assignee_id
+    rule.default_due_days = default_due_days
+    rule.default_wait_days = default_wait_days
+    rule.auto_task_mode = auto_task_mode or None
+    rule.sort_order = sort_order
+    rule.active = active == "on"
+    rule.notes = notes.strip() or None
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-inbox-rules")
+def clean_admin_create_email_inbox_rule(
+    request: Request,
+    channel_id: int = Form(...),
+    name: str = Form(""),
+    subject_match: str = Form(""),
+    match_type: str = Form("contains"),
+    default_queue_id: int | None = Form(None),
+    default_department_id: int | None = Form(None),
+    default_category_id: int | None = Form(None),
+    default_subcategory_id: int | None = Form(None),
+    default_document_type: str = Form(""),
+    default_assignee_id: int | None = Form(None),
+    default_due_days: int | None = Form(None),
+    default_wait_days: int | None = Form(None),
+    auto_task_mode: str = Form(""),
+    sort_order: int = Form(100),
+    active: str = Form(""),
+    notes: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    if (
+        not name.strip()
+        or not subject_match.strip()
+        or match_type not in {"contains", "exact"}
+        or auto_task_mode not in {"", "none", "open", "complete"}
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
+    with SessionLocal() as db:
+        if not db.get(EmailChannel, channel_id):
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        rule = EmailInboxRule(
+            channel_id=channel_id, name=name.strip(), subject_match=subject_match.strip()
+        )
+        _save_email_inbox_rule(
+            rule,
+            name=name,
+            subject_match=subject_match,
+            match_type=match_type,
+            default_queue_id=default_queue_id,
+            default_department_id=default_department_id,
+            default_category_id=default_category_id,
+            default_subcategory_id=default_subcategory_id,
+            default_document_type=default_document_type,
+            default_assignee_id=default_assignee_id,
+            default_due_days=default_due_days,
+            default_wait_days=default_wait_days,
+            auto_task_mode=auto_task_mode,
+            sort_order=sort_order,
+            active=active,
+            notes=notes,
+        )
+        db.add(rule)
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-inbox-rules/{rule_id}")
+def clean_admin_update_email_inbox_rule(
+    request: Request,
+    rule_id: int,
+    name: str = Form(""),
+    subject_match: str = Form(""),
+    match_type: str = Form("contains"),
+    default_queue_id: int | None = Form(None),
+    default_department_id: int | None = Form(None),
+    default_category_id: int | None = Form(None),
+    default_subcategory_id: int | None = Form(None),
+    default_document_type: str = Form(""),
+    default_assignee_id: int | None = Form(None),
+    default_due_days: int | None = Form(None),
+    default_wait_days: int | None = Form(None),
+    auto_task_mode: str = Form(""),
+    sort_order: int = Form(100),
+    active: str = Form(""),
+    notes: str = Form(""),
+):
+    if not _work_classification_manage_access(request):
+        return _denied(request)
+    if (
+        not name.strip()
+        or not subject_match.strip()
+        or match_type not in {"contains", "exact"}
+        or auto_task_mode not in {"", "none", "open", "complete"}
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_rule")
+    with SessionLocal() as db:
+        rule = db.get(EmailInboxRule, rule_id)
+        if not rule:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        _save_email_inbox_rule(
+            rule,
+            name=name,
+            subject_match=subject_match,
+            match_type=match_type,
+            default_queue_id=default_queue_id,
+            default_department_id=default_department_id,
+            default_category_id=default_category_id,
+            default_subcategory_id=default_subcategory_id,
+            default_document_type=default_document_type,
+            default_assignee_id=default_assignee_id,
+            default_due_days=default_due_days,
+            default_wait_days=default_wait_days,
+            auto_task_mode=auto_task_mode,
+            sort_order=sort_order,
+            active=active,
+            notes=notes,
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-templates")
 def clean_admin_create_email_template(
     request: Request,
@@ -1601,9 +1717,7 @@ def clean_admin_create_email_template(
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
-@clean_admin_router.post(
-    "/v2-clean/admin/work-classification/email-templates/{template_id}"
-)
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-templates/{template_id}")
 def clean_admin_update_email_template(
     request: Request,
     template_id: int,
@@ -1618,15 +1732,11 @@ def clean_admin_update_email_template(
     if not _work_classification_manage_access(request):
         return _denied(request)
     if not name.strip() or not body_template.strip():
-        return _redirect(
-            "/v2-clean/admin/work-classification", "error", "invalid_template"
-        )
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_template")
     with SessionLocal() as db:
         item = db.get(EmailTemplate, template_id)
         if not item:
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "missing"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
         item.name = name.strip()
         item.subject_template = subject_template.strip() or None
         item.body_template = body_template.strip()
@@ -1656,9 +1766,7 @@ def clean_admin_create_source_default(
     clean_type = source_type.strip().lower()
     clean_key = source_key.strip().lower()
     if clean_type not in WORK_SOURCE_TYPES or not CODE_PATTERN.fullmatch(clean_key):
-        return _redirect(
-            "/v2-clean/admin/work-classification", "error", "invalid_source"
-        )
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_source")
     with SessionLocal() as db:
         if db.scalar(
             select(WorkSourceDefault).where(
@@ -1666,9 +1774,7 @@ def clean_admin_create_source_default(
                 WorkSourceDefault.source_key == clean_key,
             )
         ):
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "duplicate_source"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate_source")
         db.add(
             WorkSourceDefault(
                 source_type=clean_type,
@@ -1684,9 +1790,7 @@ def clean_admin_create_source_default(
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
-@clean_admin_router.post(
-    "/v2-clean/admin/work-classification/source-defaults/{default_id}"
-)
+@clean_admin_router.post("/v2-clean/admin/work-classification/source-defaults/{default_id}")
 def clean_admin_update_source_default(
     request: Request,
     default_id: int,
@@ -1701,9 +1805,7 @@ def clean_admin_update_source_default(
     with SessionLocal() as db:
         item = db.get(WorkSourceDefault, default_id)
         if not item:
-            return _redirect(
-                "/v2-clean/admin/work-classification", "error", "missing"
-            )
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
         item.queue_id = queue_id
         item.department_id = department_id
         item.category_id = category_id

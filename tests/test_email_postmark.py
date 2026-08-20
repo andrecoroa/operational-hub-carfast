@@ -10,12 +10,19 @@ from app.core.config import settings
 from app.models.admin import User
 from app.models.email import (
     EmailAttachment,
+    EmailChannel,
     EmailChannelUser,
+    EmailInboxRule,
     EmailMessage,
     EmailThread,
     EmailWebhookEvent,
 )
-from app.services.email_postmark import ingest_inbound, send_message, webhook_authorized
+from app.services.email_postmark import (
+    ensure_email_channels,
+    ingest_inbound,
+    send_message,
+    webhook_authorized,
+)
 from app.services.work_classification import thread_reference
 
 
@@ -73,6 +80,59 @@ def test_inbound_is_idempotent_and_archives_attachments(db_session, tmp_path, mo
     )
 
 
+def test_inbound_subject_rule_overrides_channel_defaults(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    channel.default_due_days = 10
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Faturas de stock",
+            subject_match="fatura stock",
+            match_type="contains",
+            default_document_type="stock_invoice",
+            default_due_days=2,
+            auto_task_mode="none",
+            sort_order=10,
+        )
+    )
+    db_session.commit()
+
+    payload = _payload("pm-rule-contains")
+    payload["Subject"] = "RE: Fatura Stock 2026/123"
+    thread, created = ingest_inbound(db_session, payload)
+
+    assert created is True
+    assert thread.document_type == "stock_invoice"
+    assert 1 <= (thread.due_at.date() - thread.created_at.date()).days <= 2
+    assert thread.task_id is None
+
+
+def test_inbound_exact_rule_does_not_match_partial_subject(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    ensure_email_channels(db_session)
+    channel = db_session.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    channel.default_document_type = "default_document"
+    db_session.add(
+        EmailInboxRule(
+            channel_id=channel.id,
+            name="Assunto exato",
+            subject_match="Documento mensal",
+            match_type="exact",
+            default_document_type="monthly_document",
+            sort_order=10,
+        )
+    )
+    db_session.commit()
+
+    payload = _payload("pm-rule-exact")
+    payload["Subject"] = "RE: Documento mensal"
+    thread, _ = ingest_inbound(db_session, payload)
+
+    assert thread.document_type == "default_document"
+
+
 def test_clean_email_inbox_and_thread_render(
     authenticated_client, db_session, tmp_path, monkeypatch
 ):
@@ -117,9 +177,7 @@ def test_email_inbox_defaults_to_triage_and_searches_message_content(
 
     default_inbox = authenticated_client.get("/v2-clean/email")
     all_inbox = authenticated_client.get("/v2-clean/email?status=all")
-    body_search = authenticated_client.get(
-        "/v2-clean/email?status=all&q=pesquisa+alargada"
-    )
+    body_search = authenticated_client.get("/v2-clean/email?status=all&q=pesquisa+alargada")
     reference_search = authenticated_client.get(
         f"/v2-clean/email?status=all&q={thread_reference(archived_thread)}"
     )
@@ -143,7 +201,7 @@ def test_email_preview_sanitizes_html_and_task_uses_operational_queue(
     )
     payload = _payload("pm-ui-safe")
     payload["HtmlBody"] = (
-        '<p>Olá <strong>CarFast</strong></p><script>alert(1)</script>'
+        "<p>Olá <strong>CarFast</strong></p><script>alert(1)</script>"
         '<img src="https://example.com/logo.png" onerror="alert(2)">'
     )
     thread, _ = ingest_inbound(db_session, payload)
@@ -227,9 +285,7 @@ def test_pdf_attachment_with_generic_content_type_opens_inline(
     ingest_inbound(db_session, payload)
     attachment = db_session.scalar(select(EmailAttachment))
 
-    response = authenticated_client.get(
-        f"/v2-clean/email/attachments/{attachment.id}/file"
-    )
+    response = authenticated_client.get(f"/v2-clean/email/attachments/{attachment.id}/file")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
@@ -431,11 +487,14 @@ def test_email_reply_rejects_an_invalid_recipient(
 
     assert response.status_code == 303
     assert response.headers["location"].endswith("error=invalid_recipient")
-    assert db_session.scalar(
-        select(func.count())
-        .select_from(EmailMessage)
-        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
-    ) == 0
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(EmailMessage)
+            .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        )
+        == 0
+    )
 
 
 def test_email_approval_keeps_the_recipient_selected_on_the_reply(

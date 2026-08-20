@@ -10,25 +10,25 @@
   <label>Fila
     <select name="{{ prefix }}queue_id" class="work-hierarchy-queue">
       <option value="">Sem predefinição</option>
-      {% for item in work_queues %}<option value="{{ item.id }}" {% if values and values.queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      {% for item in work_queues %}<option value="{{ item.id }}" {% if values and (values|attr(prefix ~ 'queue_id')) == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
     </select>
   </label>
   <label>Departamento
     <select name="{{ prefix }}department_id" class="work-hierarchy-department">
       <option value="">Sem predefinição</option>
-      {% for item in work_departments %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}" {% if values and values.department_id == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_departments %}<option value="{{ item.id }}" data-parent-id="{{ item.queue_id }}" {% if values and (values|attr(prefix ~ 'department_id')) == item.id %}selected{% endif %}>{{ work_queues_by_id[item.queue_id].name }} / {{ item.name }}</option>{% endfor %}
     </select>
   </label>
   <label>Categoria
     <select name="{{ prefix }}category_id" class="work-hierarchy-category">
       <option value="">Por classificar</option>
-      {% for item in work_categories %}<option value="{{ item.id }}" data-parent-id="{{ item.department_id }}" {% if values and values.category_id == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_categories %}<option value="{{ item.id }}" data-parent-id="{{ item.department_id }}" {% if values and (values|attr(prefix ~ 'category_id')) == item.id %}selected{% endif %}>{{ work_departments_by_id[item.department_id].name }} / {{ item.name }}</option>{% endfor %}
     </select>
   </label>
   <label>Subcategoria
     <select name="{{ prefix }}subcategory_id" class="work-hierarchy-subcategory">
       <option value="">Por classificar</option>
-      {% for item in work_subcategories %}<option value="{{ item.id }}" data-parent-id="{{ item.category_id }}" {% if values and values.subcategory_id == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}</option>{% endfor %}
+      {% for item in work_subcategories %}<option value="{{ item.id }}" data-parent-id="{{ item.category_id }}" {% if values and (values|attr(prefix ~ 'subcategory_id')) == item.id %}selected{% endif %}>{{ work_categories_by_id[item.category_id].name }} / {{ item.name }}</option>{% endfor %}
     </select>
   </label>
 {%- endmacro %}
@@ -203,6 +203,30 @@
   </form>
 </dialog>
 {% endfor %}
+{% for rule in email_inbox_rules %}
+<dialog id="work-edit-inbox-rule-{{ rule.id }}" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules/{{ rule.id }}">
+    <header><div><small>Regra da caixa</small><h3>{{ rule.name }}</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-dialog-grid"><label>Nome<input name="name" value="{{ rule.name }}" required></label><label>Assunto<input name="subject_match" value="{{ rule.subject_match }}" required></label><label>Correspondência<select name="match_type"><option value="contains" {% if rule.match_type == 'contains' %}selected{% endif %}>Contém</option><option value="exact" {% if rule.match_type == 'exact' %}selected{% endif %}>É exatamente</option></select></label><label>Prioridade<input type="number" name="sort_order" value="{{ rule.sort_order }}" min="0"></label></div>
+    <div class="clean-work-dialog-grid">{{ hierarchy_selects(rule, 'default_') }}</div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type" value="{{ rule.default_document_type or '' }}"></label><label>Responsável<select name="default_assignee_id"><option value="">Manter predefinição da caixa</option>{% for user in active_users %}<option value="{{ user.id }}" {% if rule.default_assignee_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days" value="{{ rule.default_due_days if rule.default_due_days is not none else '' }}"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days" value="{{ rule.default_wait_days if rule.default_wait_days is not none else '' }}"></label></div>
+    <label>Tarefa automática<select name="auto_task_mode"><option value="">Manter predefinição da caixa</option><option value="none" {% if rule.auto_task_mode == 'none' %}selected{% endif %}>Não criar</option><option value="open" {% if rule.auto_task_mode == 'open' %}selected{% endif %}>Criar aberta</option><option value="complete" {% if rule.auto_task_mode == 'complete' %}selected{% endif %}>Criar concluída</option></select></label>
+    <label>Notas<textarea name="notes">{{ rule.notes or '' }}</textarea></label><label class="checkbox-label"><input type="checkbox" name="active" {% if rule.active %}checked{% endif %}> Ativa</label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Guardar regra</button></footer>
+  </form>
+</dialog>
+{% endfor %}
+<dialog id="work-create-inbox-rule" class="clean-work-editor is-wide">
+  <form method="post" action="/v2-clean/admin/work-classification/email-inbox-rules">
+    <header><div><small>Email</small><h3>Nova regra de entrada</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
+    <div class="clean-work-dialog-grid"><label>Caixa<select name="channel_id" required>{% for item in email_channels %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label><label>Nome<input name="name" required></label><label>Assunto<input name="subject_match" required></label><label>Correspondência<select name="match_type"><option value="contains">Contém</option><option value="exact">É exatamente</option></select></label><label>Prioridade<input type="number" name="sort_order" value="100" min="0"></label></div>
+    <div class="clean-work-dialog-grid">{{ hierarchy_selects(None, 'default_') }}</div>
+    <div class="clean-work-dialog-grid"><label>Tipo de documento<input name="default_document_type"></label><label>Responsável<select name="default_assignee_id"><option value="">Manter predefinição da caixa</option>{% for user in active_users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select></label><label>Prazo (dias)<input type="number" min="0" name="default_due_days"></label><label>Aguardar resposta (dias)<input type="number" min="0" name="default_wait_days"></label></div>
+    <label>Tarefa automática<select name="auto_task_mode"><option value="">Manter predefinição da caixa</option><option value="none">Não criar</option><option value="open">Criar aberta</option><option value="complete">Criar concluída</option></select></label>
+    <label>Notas<textarea name="notes"></textarea></label><label class="checkbox-label"><input type="checkbox" name="active" checked> Ativa</label>
+    <footer><button type="button" class="secondary" data-dialog-close>Cancelar</button><button>Criar regra</button></footer>
+  </form>
+</dialog>
 <dialog id="work-create-channel-role" class="clean-work-editor">
   <form method="post" action="/v2-clean/admin/work-classification/email-channel-roles">
     <header><div><small>Email</small><h3>Permissão por caixa</h3></div><button type="button" class="secondary" data-dialog-close>Fechar</button></header>
@@ -316,10 +340,12 @@ document.addEventListener('DOMContentLoaded', () => {
 </section>
 
 <section class="clean-work-admin-view" data-work-admin-view="channels" hidden>
-  <div class="clean-work-view-heading"><div><h3>Caixas de email</h3><p>Classificação, responsável, prazos e criação automática de tarefa por caixa.</p></div>{% if can_manage %}<button type="button" data-dialog-open="work-create-channel-role">Adicionar acesso</button>{% endif %}</div>
+  <div class="clean-work-view-heading"><div><h3>Caixas de email</h3><p>Classificação, responsável, prazos, regras de entrada e criação automática de tarefa.</p></div>{% if can_manage %}<div class="clean-work-table-actions"><button type="button" class="secondary" data-dialog-open="work-create-inbox-rule">Nova regra</button><button type="button" data-dialog-open="work-create-channel-role">Adicionar acesso</button></div>{% endif %}</div>
   <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Endereço</th><th>Tarefa automática</th><th>Responsável</th><th>Prazo</th><th>Estado</th><th>Ação</th></tr></thead><tbody>
     {% for channel in email_channels %}<tr><td><strong>{{ channel.name }}</strong></td><td>{{ channel.address }}</td><td>{{ {'none':'Não','open':'Aberta','complete':'Concluída'}.get(channel.auto_task_mode, channel.auto_task_mode) }}</td><td>{% for user in active_users if user.id == channel.default_assignee_id %}{{ user.name }}{% else %}Por atribuir{% endfor %}</td><td>{{ channel.default_due_days if channel.default_due_days is not none else '—' }} dias</td><td><span class="clean-status-pill {{ 'is-active' if channel.active else 'is-inactive' }}">{{ 'Ativa' if channel.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-channel-{{ channel.id }}">Editar</button>{% endif %}</td></tr>{% endfor %}
   </tbody></table></div>
+  <div class="clean-work-subsection-heading"><h4>Regras por assunto</h4><span>{{ email_inbox_rules|length }} regras</span></div>
+  <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Regra</th><th>Condição</th><th>Responsável</th><th>Prazo</th><th>Tarefa</th><th>Estado</th><th></th></tr></thead><tbody>{% for rule in email_inbox_rules %}<tr><td>{% for channel in email_channels if channel.id == rule.channel_id %}{{ channel.name }}{% endfor %}</td><td><strong>{{ rule.name }}</strong><br><small>Prioridade {{ rule.sort_order }}</small></td><td>Assunto {{ 'é' if rule.match_type == 'exact' else 'contém' }} “{{ rule.subject_match }}”</td><td>{% for user in active_users if user.id == rule.default_assignee_id %}{{ user.name }}{% else %}Predefinição da caixa{% endfor %}</td><td>{{ rule.default_due_days if rule.default_due_days is not none else 'Predefinição' }}</td><td>{{ {'none':'Não criar','open':'Criar aberta','complete':'Criar concluída'}.get(rule.auto_task_mode, 'Predefinição') }}</td><td><span class="clean-status-pill {{ 'is-active' if rule.active else 'is-inactive' }}">{{ 'Ativa' if rule.active else 'Inativa' }}</span></td><td>{% if can_manage %}<button type="button" class="secondary" data-dialog-open="work-edit-inbox-rule-{{ rule.id }}">Editar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="8">Sem regras específicas. Aplicam-se as predefinições de cada caixa.</td></tr>{% endfor %}</tbody></table></div>
   <div class="clean-work-subsection-heading"><h4>Acessos por perfil</h4><span>{{ email_channel_roles|length }} regras</span></div>
   <div class="clean-table-scroll"><table class="clean-table clean-work-compact-table"><thead><tr><th>Caixa</th><th>Perfil</th><th>Ler</th><th>Responder</th><th>Envio direto</th><th>Aprovar</th><th>Gerir</th></tr></thead><tbody>{% for grant in email_channel_roles %}<tr><td>{% for channel in email_channels if channel.id == grant.channel_id %}{{ channel.name }}{% endfor %}</td><td>{{ roles_by_id[grant.role_id].name }}</td><td>{{ 'Sim' if grant.can_read else '—' }}</td><td>{{ 'Sim' if grant.can_reply else '—' }}</td><td>{{ 'Sim' if grant.can_send_direct else '—' }}</td><td>{{ 'Sim' if grant.can_approve else '—' }}</td><td>{{ 'Sim' if grant.can_manage else '—' }}</td></tr>{% else %}<tr><td colspan="7">Sem permissões por perfil configuradas.</td></tr>{% endfor %}</tbody></table></div>
 </section>

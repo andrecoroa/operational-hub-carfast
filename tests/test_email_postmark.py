@@ -12,10 +12,18 @@ from app.models.email import (
     EmailAttachment,
     EmailChannel,
     EmailChannelUser,
+    EmailExecutorEligibility,
     EmailInboxRule,
     EmailMessage,
     EmailThread,
     EmailWebhookEvent,
+)
+from app.models.organization import Team, TeamMember
+from app.services.bootstrap import (
+    POSTMARK_INBOUND_DOMAIN,
+    POSTMARK_INBOUND_LOCAL_PART,
+    postmark_inbound_address,
+    seed_email_channels,
 )
 from app.services.email_postmark import (
     ensure_email_channels,
@@ -24,6 +32,11 @@ from app.services.email_postmark import (
     webhook_authorized,
 )
 from app.services.work_classification import thread_reference
+from app.services.service_desk import (
+    claim_email_thread,
+    initialize_email_operations,
+    sla_snapshot,
+)
 
 
 def _payload(message_id: str = "pm-test-1") -> dict:
@@ -540,3 +553,289 @@ def test_email_approval_keeps_the_recipient_selected_on_the_reply(
     db_session.refresh(message)
     assert message.state == "sent"
     assert message.external_message_id == "pm-sender-sent"
+
+
+def test_five_mailboxes_bootstrap_with_exact_postmark_plus_addresses(db_session):
+    seed_email_channels(db_session)
+    seed_email_channels(db_session)
+    db_session.commit()
+
+    channels = {
+        item.code: item for item in db_session.scalars(select(EmailChannel)).all()
+    }
+    assert set(channels) == {"test", "multas", "oficina", "sinistros", "vvp"}
+    expected = {
+        "test": ("hub@carfast.pt", "hub"),
+        "multas": ("multas@carfast.pt", "multas"),
+        "oficina": ("oficina@carfast.pt", "oficina"),
+        "sinistros": ("sinistros@carfast.pt", "sinistros"),
+        "vvp": ("vvp@carfast.pt", "vvp"),
+    }
+    for code, (public_address, mailbox_hash) in expected.items():
+        assert channels[code].address == public_address
+        assert channels[code].inbound_hash == mailbox_hash
+        assert channels[code].inbound_forward_address == postmark_inbound_address(
+            mailbox_hash
+        )
+
+
+def test_postmark_mailbox_hash_routes_each_forwarded_mailbox_and_preserves_hub(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    public_by_hash = {
+        "multas": "multas@carfast.pt",
+        "oficina": "oficina@carfast.pt",
+        "sinistros": "sinistros@carfast.pt",
+        "vvp": "vvp@carfast.pt",
+    }
+    for mailbox_hash, public_address in public_by_hash.items():
+        payload = _payload(f"pm-route-{mailbox_hash}")
+        inbound_address = postmark_inbound_address(mailbox_hash)
+        payload["To"] = inbound_address
+        payload["ToFull"] = [
+            {
+                "Email": inbound_address,
+                "Name": "",
+                "MailboxHash": mailbox_hash,
+            }
+        ]
+        payload["MailboxHash"] = mailbox_hash
+        thread, created = ingest_inbound(db_session, payload)
+        assert created is True
+        assert db_session.get(EmailChannel, thread.channel_id).address == public_address
+
+    historical = _payload("pm-route-hub-historical")
+    historical_address = (
+        f"{POSTMARK_INBOUND_LOCAL_PART}@{POSTMARK_INBOUND_DOMAIN}"
+    )
+    historical["To"] = historical_address
+    historical["ToFull"] = [{"Email": historical_address, "Name": ""}]
+    thread, _ = ingest_inbound(db_session, historical)
+    channel = db_session.get(EmailChannel, thread.channel_id)
+    assert channel.code == "test"
+    assert channel.address == "hub@carfast.pt"
+
+
+def test_postmark_top_level_mailbox_hash_routes_all_five_mailboxes(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    public_by_hash = {
+        "hub": "hub@carfast.pt",
+        "multas": "multas@carfast.pt",
+        "oficina": "oficina@carfast.pt",
+        "sinistros": "sinistros@carfast.pt",
+        "vvp": "vvp@carfast.pt",
+    }
+    bare_inbound = f"{POSTMARK_INBOUND_LOCAL_PART}@{POSTMARK_INBOUND_DOMAIN}"
+    for mailbox_hash, public_address in public_by_hash.items():
+        payload = _payload(f"pm-top-level-{mailbox_hash}")
+        payload["To"] = bare_inbound
+        payload["ToFull"] = [{"Email": bare_inbound, "Name": ""}]
+        payload["MailboxHash"] = mailbox_hash.upper()
+
+        thread, created = ingest_inbound(db_session, payload)
+
+        assert created is True
+        assert db_session.get(EmailChannel, thread.channel_id).address == public_address
+
+
+def test_postmark_tofull_mailbox_hash_routes_all_five_mailboxes(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    public_by_hash = {
+        "hub": "hub@carfast.pt",
+        "multas": "multas@carfast.pt",
+        "oficina": "oficina@carfast.pt",
+        "sinistros": "sinistros@carfast.pt",
+        "vvp": "vvp@carfast.pt",
+    }
+    bare_inbound = f"{POSTMARK_INBOUND_LOCAL_PART}@{POSTMARK_INBOUND_DOMAIN}"
+    for mailbox_hash, public_address in public_by_hash.items():
+        payload = _payload(f"pm-tofull-{mailbox_hash}")
+        payload["To"] = bare_inbound
+        payload["ToFull"] = [
+            {"Email": bare_inbound, "Name": "", "MailboxHash": mailbox_hash}
+        ]
+        payload.pop("MailboxHash", None)
+
+        thread, created = ingest_inbound(db_session, payload)
+
+        assert created is True
+        assert db_session.get(EmailChannel, thread.channel_id).address == public_address
+
+
+def test_postmark_exact_plus_address_routes_all_five_mailboxes_without_hash_fields(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    public_by_hash = {
+        "hub": "hub@carfast.pt",
+        "multas": "multas@carfast.pt",
+        "oficina": "oficina@carfast.pt",
+        "sinistros": "sinistros@carfast.pt",
+        "vvp": "vvp@carfast.pt",
+    }
+    for mailbox_hash, public_address in public_by_hash.items():
+        payload = _payload(f"pm-plus-address-{mailbox_hash}")
+        inbound_address = postmark_inbound_address(mailbox_hash)
+        payload["To"] = inbound_address
+        payload["ToFull"] = [{"Email": inbound_address, "Name": ""}]
+        payload.pop("MailboxHash", None)
+
+        thread, created = ingest_inbound(db_session, payload)
+
+        assert created is True
+        assert db_session.get(EmailChannel, thread.channel_id).address == public_address
+
+
+def test_postmark_top_level_mailbox_hash_has_priority_and_plus_ingest_is_idempotent(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-priority-idempotent")
+    payload["To"] = postmark_inbound_address("oficina")
+    payload["ToFull"] = [
+        {
+            "Email": postmark_inbound_address("oficina"),
+            "Name": "",
+            "MailboxHash": "oficina",
+        }
+    ]
+    payload["MailboxHash"] = "multas"
+
+    first_thread, first_created = ingest_inbound(db_session, payload)
+    second_thread, second_created = ingest_inbound(db_session, payload)
+
+    assert first_created is True
+    assert second_created is False
+    assert second_thread.id == first_thread.id
+    assert db_session.get(EmailChannel, first_thread.channel_id).address == "multas@carfast.pt"
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(EmailWebhookEvent)
+            .where(EmailWebhookEvent.event_key == "message:pm-priority-idempotent")
+        )
+        == 1
+    )
+
+
+def test_postmark_unknown_mailbox_hash_does_not_fall_back_to_hub(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    payload = _payload("pm-unknown-mailbox")
+    payload["To"] = "unknown@inbound.postmarkapp.com"
+    payload["ToFull"] = [
+        {
+            "Email": "unknown@inbound.postmarkapp.com",
+            "Name": "",
+            "MailboxHash": "unknown",
+        }
+    ]
+    payload["MailboxHash"] = "unknown"
+
+    try:
+        ingest_inbound(db_session, payload)
+    except ValueError as exc:
+        assert "configured email channel" in str(exc)
+    else:
+        raise AssertionError("Unknown MailboxHash must not route to the hub")
+
+
+def test_email_channel_sla_assignment_and_claim_are_independent(db_session):
+    channels = {
+        item.code: item for item in db_session.scalars(select(EmailChannel)).all()
+    }
+    channels["multas"].first_response_minutes = 15
+    channels["multas"].resolution_minutes = 120
+    channels["oficina"].first_response_minutes = 60
+    channels["oficina"].resolution_minutes = 1440
+    team = db_session.scalar(select(Team).where(Team.code == "operations"))
+    user = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
+    db_session.add_all(
+        [
+            TeamMember(team_id=team.id, user_id=user.id),
+            EmailExecutorEligibility(channel_id=channels["multas"].id, team_id=team.id),
+        ]
+    )
+    channels["multas"].assignment_mode = "team_claim"
+    channels["multas"].default_team_id = team.id
+    db_session.flush()
+
+    start = email_web.datetime(2026, 8, 20, 9, 0, tzinfo=email_web.UTC)
+    multas_thread = EmailThread(
+        channel_id=channels["multas"].id,
+        subject="Multa recebida",
+        status="triage",
+    )
+    oficina_thread = EmailThread(
+        channel_id=channels["oficina"].id,
+        subject="Pedido de oficina",
+        status="triage",
+    )
+    db_session.add_all([multas_thread, oficina_thread])
+    db_session.flush()
+    initialize_email_operations(
+        db_session, multas_thread, channel=channels["multas"], now=start
+    )
+    initialize_email_operations(
+        db_session, oficina_thread, channel=channels["oficina"], now=start
+    )
+
+    assert multas_thread.assignment_state == "team_unclaimed"
+    assert multas_thread.resolution_due_at != oficina_thread.resolution_due_at
+    assert sla_snapshot(multas_thread, now=start).overall == "warning"
+    claim_email_thread(db_session, multas_thread, user_id=user.id, now=start)
+    assert multas_thread.assigned_to_id == user.id
+    assert multas_thread.assignment_state == "assigned_user"
+
+
+def test_postmark_outbound_uses_public_from_and_reply_to_for_every_mailbox(
+    db_session, monkeypatch
+):
+    captured = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"MessageID":"pm-multi-box"}'
+
+    def fake_urlopen(request, timeout):
+        captured.append(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(settings, "email_outbound_enabled", True)
+    monkeypatch.setattr(settings, "postmark_server_token", "test-token")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    channels = list(
+        db_session.scalars(select(EmailChannel).order_by(EmailChannel.code))
+    )
+    for index, channel in enumerate(channels, 1):
+        message = EmailMessage(
+            id=1000 + index,
+            thread_id=2000 + index,
+            direction="outbound",
+            state="approved",
+            sender=channel.address,
+            recipients_json=[{"Email": "cliente@example.com"}],
+            subject="Teste por caixa",
+            text_body="Mensagem",
+        )
+        send_message(message, channel.address, reply_to=channel.address)
+
+    assert {(item["From"], item["ReplyTo"]) for item in captured} == {
+        ("hub@carfast.pt", "hub@carfast.pt"),
+        ("multas@carfast.pt", "multas@carfast.pt"),
+        ("oficina@carfast.pt", "oficina@carfast.pt"),
+        ("sinistros@carfast.pt", "sinistros@carfast.pt"),
+        ("vvp@carfast.pt", "vvp@carfast.pt"),
+    }

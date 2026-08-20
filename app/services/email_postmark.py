@@ -10,7 +10,7 @@ import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -25,15 +25,21 @@ from app.models.email import (
 )
 from app.models.tasks import Task, TaskEmailOrigin
 from app.models.work_hierarchy import WorkQueue
+from app.services.bootstrap import (
+    POSTMARK_INBOUND_DOMAIN,
+    POSTMARK_INBOUND_LOCAL_PART,
+    seed_email_channels,
+)
+from app.services.service_desk import (
+    initialize_email_operations,
+    initialize_task_service_desk,
+    mark_task_resolved,
+    transition_email_waiting,
+)
 
 
 def ensure_email_channels(db: Session) -> None:
-    address = settings.email_initial_address.strip().lower()
-    existing = db.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
-    if not existing:
-        db.add(EmailChannel(code="test", name="Caixa de teste", address=address))
-    elif existing.address != address:
-        existing.address = address
+    seed_email_channels(db)
     db.flush()
 
 
@@ -87,22 +93,78 @@ def _message_ids(value: str | None) -> list[str]:
 
 def _channel_for_payload(db: Session, payload: dict) -> EmailChannel:
     ensure_email_channels(db)
-    mailbox_hash = str(payload.get("MailboxHash") or "").strip()
-    if mailbox_hash:
-        channel = db.scalar(select(EmailChannel).where(EmailChannel.inbound_hash == mailbox_hash))
+    recipients = payload.get("ToFull") or []
+    # Postmark exposes plus-addressing first as the top-level MailboxHash and
+    # also on ToFull recipients.  Keep that precedence deterministic: a
+    # forwarded/original recipient must not override the stream-level hash.
+    mailbox_hashes: list[str] = []
+    for value in [
+        payload.get("MailboxHash"),
+        *(
+            item.get("MailboxHash")
+            for item in recipients
+            if isinstance(item, dict)
+        ),
+    ]:
+        mailbox_hash = str(value or "").strip().casefold()
+        if mailbox_hash and mailbox_hash not in mailbox_hashes:
+            mailbox_hashes.append(mailbox_hash)
+    for mailbox_hash in mailbox_hashes:
+        channel = db.scalar(
+            select(EmailChannel).where(func.lower(EmailChannel.inbound_hash) == mailbox_hash)
+        )
         if channel:
             return channel
-    recipients = payload.get("ToFull") or []
     addresses = {_address(item.get("Email")) for item in recipients if isinstance(item, dict)}
-    to_value = _address(payload.get("OriginalRecipient") or payload.get("To"))
-    if to_value:
-        addresses.add(to_value)
-    channel = (
-        db.scalar(select(EmailChannel).where(EmailChannel.address.in_(addresses)))
-        if addresses
-        else None
-    )
-    return channel or db.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    for value in (payload.get("OriginalRecipient"), payload.get("To")):
+        for part in re.split(r"[,;]", str(value or "")):
+            address = _address(part)
+            if address:
+                addresses.add(address)
+    headers = _headers(payload)
+    for header in ("x-original-to", "delivered-to", "x-forwarded-to", "envelope-to"):
+        for part in re.split(r"[,;]", headers.get(header, "")):
+            address = _address(part)
+            if address:
+                addresses.add(address)
+    channel = None
+    if addresses:
+        channel = db.scalar(
+            select(EmailChannel).where(
+                (EmailChannel.address.in_(addresses))
+                | (EmailChannel.inbound_forward_address.in_(addresses))
+            )
+        )
+    if not channel:
+        channels = list(db.scalars(select(EmailChannel).where(EmailChannel.active.is_(True))))
+        for address in addresses:
+            local_part, _, domain = address.casefold().partition("@")
+            channel = next(
+                (
+                    item
+                    for item in channels
+                    if (
+                        item.inbound_hash
+                        and domain == POSTMARK_INBOUND_DOMAIN
+                        and local_part
+                        == f"{POSTMARK_INBOUND_LOCAL_PART}+{item.inbound_hash}".casefold()
+                    )
+                    or local_part == f"intake+{item.code}".casefold()
+                    or local_part.startswith(f"intake+{item.code}+")
+                ),
+                None,
+            )
+            if channel:
+                break
+    # Preserve messages historically forwarded to the stream's bare inbound address.
+    if not channel and (
+        f"{POSTMARK_INBOUND_LOCAL_PART}@{POSTMARK_INBOUND_DOMAIN}" in addresses
+        or "hub@carfast.pt" in addresses
+    ):
+        channel = db.scalar(select(EmailChannel).where(EmailChannel.code == "test"))
+    if channel:
+        return channel
+    raise ValueError("Inbound payload does not identify a configured email channel.")
 
 
 def _storage_root() -> Path:
@@ -141,10 +203,10 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         )
         return db.get(EmailThread, message.thread_id), False
 
+    channel = _channel_for_payload(db, payload)
     event = EmailWebhookEvent(event_key=key, event_type="inbound", payload_json=payload)
     db.add(event)
     db.flush()
-    channel = _channel_for_payload(db, payload)
     external_id = str(payload.get("MessageID") or payload.get("MessageId") or key)
     subject = str(payload.get("Subject") or "(sem assunto)")[:500]
     rule = _inbox_rule(db, channel.id, subject)
@@ -215,26 +277,6 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
                 if rule and rule.default_document_type
                 else channel.default_document_type
             ),
-            assigned_to_id=(
-                rule.default_assignee_id
-                if rule and rule.default_assignee_id
-                else channel.default_assignee_id
-            ),
-            due_at=(
-                now
-                + timedelta(
-                    days=rule.default_due_days
-                    if rule and rule.default_due_days is not None
-                    else channel.default_due_days
-                )
-                if (
-                    rule.default_due_days
-                    if rule and rule.default_due_days is not None
-                    else channel.default_due_days
-                )
-                is not None
-                else None
-            ),
             waiting_until=(
                 now
                 + timedelta(
@@ -252,9 +294,17 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             ),
             last_message_at=now,
         )
+        initialize_email_operations(db, thread, channel=channel, rule=rule, now=now)
         db.add(thread)
         db.flush()
-    elif thread.status in {"resolved", "archived"}:
+    elif thread.status in {"waiting_reply", "resolved", "archived"}:
+        transition_email_waiting(
+            db,
+            thread,
+            waiting=False,
+            user_id=None,
+            reason="Nova mensagem recebida",
+        )
         thread.status = "new_reply"
 
     message = EmailMessage(
@@ -297,7 +347,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
     thread.last_message_at = message.received_at
     auto_task_mode = rule.auto_task_mode if rule and rule.auto_task_mode else channel.auto_task_mode
     if created_thread and auto_task_mode in {"open", "complete"}:
-        queue = db.get(WorkQueue, channel.default_queue_id) if channel.default_queue_id else None
+        queue = db.get(WorkQueue, thread.work_queue_id) if thread.work_queue_id else None
         now = datetime.now(UTC)
         task = Task(
             title=subject[:200],
@@ -311,8 +361,7 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             status="closed" if auto_task_mode == "complete" else "new",
             priority="normal",
             customer_email=sender,
-            assigned_to_id=thread.assigned_to_id,
-            due_on=thread.due_at.date() if thread.due_at else None,
+            due_on=thread.resolution_due_at.date() if thread.resolution_due_at else None,
             work_queue_id=thread.work_queue_id,
             work_department_id=thread.work_department_id,
             work_category_id=thread.work_category_id,
@@ -323,6 +372,9 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
         )
         db.add(task)
         db.flush()
+        initialize_task_service_desk(db, task, now=now)
+        if auto_task_mode == "complete":
+            mark_task_resolved(db, task, actor_user_id=None, now=now)
         db.add(
             TaskEmailOrigin(
                 task_id=task.id,
@@ -337,13 +389,13 @@ def ingest_inbound(db: Session, payload: dict) -> tuple[EmailThread, bool]:
             )
         )
         thread.task_id = task.id
-        thread.status = "resolved" if channel.auto_task_mode == "complete" else "task_created"
+        thread.status = "resolved" if auto_task_mode == "complete" else "task_created"
         db.add(
             EmailAuditEvent(
                 thread_id=thread.id,
                 message_id=message.id,
                 action="task_created_automatically",
-                details_json={"task_id": task.id, "mode": channel.auto_task_mode},
+                details_json={"task_id": task.id, "mode": auto_task_mode},
             )
         )
     event.processed = True

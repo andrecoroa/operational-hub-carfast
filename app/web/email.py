@@ -8,6 +8,7 @@ from mimetypes import guess_type
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Form, Header, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -27,6 +28,7 @@ from app.models.email import (
     EmailTemplate,
     EmailThread,
 )
+from app.models.organization import Team, TeamMember
 from app.models.tasks import Task, TaskEmailOrigin
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.services.authorization import get_user_permission_codes
@@ -45,12 +47,28 @@ from app.services.work_classification import (
     message_reference,
     task_classification,
     thread_reference,
+    user_work_scope_allows,
     validate_work_hierarchy,
     work_hierarchy_context,
+)
+from app.services.service_desk import (
+    assignment_target_user_allowed,
+    assignment_label,
+    claim_email_thread,
+    email_eligible_teams,
+    email_eligible_users,
+    initialize_email_operations,
+    initialize_task_service_desk,
+    local_datetime,
+    mark_email_first_response,
+    mark_email_resolved,
+    sla_snapshot,
+    transition_email_waiting,
 )
 
 email_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["lisbon_datetime"] = local_datetime
 
 
 def _nav_permissions(request: Request) -> set[str]:
@@ -196,8 +214,8 @@ def _auth(request: Request, *required: str):
 
 
 def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, object | None]:
-    channels = list(db.scalars(select(EmailChannel).where(EmailChannel.active.is_(True))))
-    if permissions.intersection({"email.manage", "admin.manage"}):
+    channels = list(db.scalars(select(EmailChannel)))
+    if "admin.manage" in permissions:
         return {channel.id: None for channel in channels}
     user_grants = list(
         db.scalars(select(EmailChannelUser).where(EmailChannelUser.user_id == user_id))
@@ -214,6 +232,14 @@ def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, object
         )
     )
     merged: dict[int, object] = {}
+    visibility_rank = {"consult": 0, "direct_only": 1, "scope_all": 2}
+
+    def merge_visibility(current, incoming: str) -> None:
+        if visibility_rank.get(incoming, 0) > visibility_rank.get(
+            current.visibility_mode, 0
+        ):
+            current.visibility_mode = incoming
+
     for grant in role_grants:
         current = merged.setdefault(
             grant.channel_id,
@@ -222,12 +248,20 @@ def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, object
                 can_send_direct=False,
                 can_approve=False,
                 can_manage=False,
+                can_assume=False,
+                can_assign=False,
+                can_manage_sla=False,
+                visibility_mode="consult",
             ),
         )
         current.can_reply = current.can_reply or grant.can_reply
         current.can_send_direct = current.can_send_direct or grant.can_send_direct
         current.can_approve = current.can_approve or grant.can_approve
         current.can_manage = current.can_manage or grant.can_manage
+        current.can_assume = current.can_assume or grant.can_assume
+        current.can_assign = current.can_assign or grant.can_assign
+        current.can_manage_sla = current.can_manage_sla or grant.can_manage_sla
+        merge_visibility(current, grant.visibility_mode)
     for grant in user_grants:
         current = merged.setdefault(
             grant.channel_id,
@@ -236,21 +270,56 @@ def _channel_access(db, user_id: int, permissions: set[str]) -> dict[int, object
                 can_send_direct=False,
                 can_approve=False,
                 can_manage=False,
+                can_assume=False,
+                can_assign=False,
+                can_manage_sla=False,
+                visibility_mode="consult",
             ),
         )
         current.can_reply = current.can_reply or grant.can_reply
         current.can_approve = current.can_approve or grant.can_approve
+        current.can_assume = current.can_assume or grant.can_assume
+        current.can_assign = current.can_assign or grant.can_assign
+        current.can_manage_sla = current.can_manage_sla or grant.can_manage_sla
+        merge_visibility(current, grant.visibility_mode)
     return merged
 
 
 def _can_use_channel(
-    db, user_id: int, permissions: set[str], channel_id: int, action: str = "read"
+    db,
+    user_id: int,
+    permissions: set[str],
+    channel_id: int,
+    action: str = "read",
+    thread: EmailThread | None = None,
 ) -> bool:
     access = _channel_access(db, user_id, permissions)
     if channel_id not in access:
         return False
     grant = access[channel_id]
-    if grant is None or action == "read":
+    if grant is None:
+        return True
+    if grant.visibility_mode == "consult" and action != "read":
+        return False
+    if thread is not None and grant.visibility_mode == "direct_only":
+        team_relation = bool(
+            thread.executor_team_id
+            and db.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.team_id == thread.executor_team_id,
+                    TeamMember.user_id == user_id,
+                )
+            )
+        )
+        if not (
+            thread.assigned_to_id == user_id
+            or thread.created_by_id == user_id
+            or team_relation
+        ):
+            return False
+    if action == "read":
+        return True
+    if action == "alter":
         return True
     if action == "reply":
         return bool(grant.can_reply)
@@ -260,7 +329,32 @@ def _can_use_channel(
         return bool(grant.can_send_direct)
     if action == "manage":
         return bool(grant.can_manage)
+    if action == "assume":
+        return bool(grant.can_assume)
+    if action == "assign":
+        return bool(grant.can_assign)
+    if action == "manage_sla":
+        return bool(grant.can_manage_sla)
     return False
+
+
+def _email_visibility_filter(db, user_id: int, access: dict[int, object | None]):
+    member_team_ids = select(TeamMember.team_id).where(TeamMember.user_id == user_id)
+    conditions = []
+    for channel_id, grant in access.items():
+        base = EmailThread.channel_id == channel_id
+        if grant is None or grant.visibility_mode in {"scope_all", "consult"}:
+            conditions.append(base)
+        else:
+            conditions.append(
+                base
+                & or_(
+                    EmailThread.assigned_to_id == user_id,
+                    EmailThread.created_by_id == user_id,
+                    EmailThread.executor_team_id.in_(member_team_ids),
+                )
+            )
+    return or_(*conditions) if conditions else EmailThread.id == -1
 
 
 def _reply_channel_context(
@@ -357,7 +451,9 @@ def _optional_datetime(value: str) -> datetime | None:
         parsed = datetime.fromisoformat(value.strip())
     except ValueError:
         return None
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ZoneInfo("Europe/Lisbon"))
+    return parsed.astimezone(UTC)
 
 
 @email_router.post("/api/webhooks/postmark/inbound")
@@ -368,7 +464,10 @@ async def postmark_inbound(request: Request, authorization: str | None = Header(
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     payload = await request.json()
     with SessionLocal() as db:
-        thread, created = ingest_inbound(db, payload)
+        try:
+            thread, created = ingest_inbound(db, payload)
+        except ValueError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=422)
         return {"ok": True, "created": created, "thread_id": thread.id}
 
 
@@ -395,7 +494,7 @@ def email_inbox(request: Request, status: str = "triage", channel: str = "", q: 
         query = (
             select(EmailThread, EmailChannel)
             .join(EmailChannel, EmailChannel.id == EmailThread.channel_id)
-            .where(EmailThread.channel_id.in_(list(channel_access) or [-1]))
+            .where(_email_visibility_filter(db, user_id, channel_access))
         )
         if selected_status != "all":
             query = query.where(EmailThread.status == selected_status)
@@ -429,7 +528,7 @@ def email_inbox(request: Request, status: str = "triage", channel: str = "", q: 
         counts = dict(
             db.execute(
                 select(EmailThread.status, func.count())
-                .where(EmailThread.channel_id.in_(list(channel_access) or [-1]))
+                .where(_email_visibility_filter(db, user_id, channel_access))
                 .group_by(EmailThread.status)
             ).all()
         )
@@ -442,6 +541,9 @@ def email_inbox(request: Request, status: str = "triage", channel: str = "", q: 
         )
         users = list(db.scalars(select(User).order_by(User.name)))
         users_by_id = {item.id: item for item in users}
+        teams_by_id = {
+            item.id: item for item in db.scalars(select(Team).order_by(Team.name))
+        }
         now = datetime.now(UTC)
         inbox_rows = []
         for thread, thread_channel in rows:
@@ -463,6 +565,20 @@ def email_inbox(request: Request, status: str = "triage", channel: str = "", q: 
                     channel=thread_channel,
                     reference=thread_reference(thread),
                     assignee=users_by_id.get(thread.assigned_to_id),
+                    assignment_label=assignment_label(
+                        state=thread.assignment_state,
+                        user_name=(
+                            users_by_id[thread.assigned_to_id].name
+                            if thread.assigned_to_id in users_by_id
+                            else None
+                        ),
+                        team_name=(
+                            teams_by_id[thread.executor_team_id].name
+                            if thread.executor_team_id in teams_by_id
+                            else None
+                        ),
+                    ),
+                    sla=sla_snapshot(thread),
                     due_state=due_state,
                 )
             )
@@ -474,7 +590,11 @@ def email_inbox(request: Request, status: str = "triage", channel: str = "", q: 
         email_templates = list(
             db.scalars(
                 select(EmailTemplate)
-                .where(EmailTemplate.active.is_(True))
+                .where(
+                    EmailTemplate.active.is_(True),
+                    (EmailTemplate.channel_id.is_(None))
+                    | (EmailTemplate.channel_id.in_(list(channel_access) or [-1])),
+                )
                 .order_by(EmailTemplate.name)
             )
         )
@@ -599,12 +719,7 @@ def email_new_message(
                 "classified" if queue_id and department_id else "unclassified"
             ),
             document_type=channel.default_document_type,
-            assigned_to_id=channel.default_assignee_id,
-            due_at=(
-                now + timedelta(days=channel.default_due_days)
-                if channel.default_due_days is not None
-                else None
-            ),
+            created_by_id=user_id,
             waiting_until=(
                 now + timedelta(days=channel.default_wait_days)
                 if channel.default_wait_days is not None
@@ -614,6 +729,7 @@ def email_new_message(
         )
         db.add(thread)
         db.flush()
+        initialize_email_operations(db, thread, channel=channel, now=now)
         message = EmailMessage(
             thread_id=thread.id,
             direction="outbound",
@@ -642,6 +758,15 @@ def email_new_message(
             message.approved_at = now
             message.external_message_id = result.get("MessageID") or None
             thread.status = "waiting_reply"
+            mark_email_first_response(db, thread, user_id=user_id, now=now)
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=True,
+                user_id=user_id,
+                reason="A aguardar resposta externa",
+                now=now,
+            )
             audit_action = "sent"
         db.add(
             EmailAuditEvent(
@@ -673,17 +798,66 @@ def email_thread(request: Request, thread_id: int):
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, thread=thread
+        ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         channel = db.get(EmailChannel, thread.channel_id)
         view_data = _thread_view_data(db, thread)
         reply_channels, reply_channel_send_direct = _reply_channel_context(
             db, user_id, permissions
         )
+        eligible_users = [
+            item
+            for item in email_eligible_users(
+                db, thread.channel_id, thread.work_category_id
+            )
+            if assignment_target_user_allowed(
+                db, actor_user_id=user_id, target_user_id=item.id
+            )
+        ]
+        eligible_teams = email_eligible_teams(db, thread.channel_id, thread.work_category_id)
+        thread_assignee = db.get(User, thread.assigned_to_id) if thread.assigned_to_id else None
+        thread_team = db.get(Team, thread.executor_team_id) if thread.executor_team_id else None
+        if thread_assignee and all(item.id != thread_assignee.id for item in eligible_users):
+            eligible_users.append(thread_assignee)
+        if thread_team and all(item.id != thread_team.id for item in eligible_teams):
+            eligible_teams.append(thread_team)
+        can_alter = bool(
+            permissions.intersection({"email.triage", "email.manage", "admin.manage"})
+        ) and _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        )
         workflow_context = {
             **work_hierarchy_context(db),
-            "email_users": list(
-                db.scalars(select(User).where(User.active.is_(True)).order_by(User.name))
+            "email_users": eligible_users,
+            "email_teams": eligible_teams,
+            "email_assignment_label": assignment_label(
+                state=thread.assignment_state,
+                user_name=thread_assignee.name if thread_assignee else None,
+                team_name=thread_team.name if thread_team else None,
+            ),
+            "email_sla": sla_snapshot(thread),
+            "can_claim": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "assume", thread=thread
+            ),
+            "can_assign": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "assign", thread=thread
+            ),
+            "can_manage_sla": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "manage_sla", thread=thread
+            ),
+            "can_alter": can_alter,
+            "can_create_task": can_alter
+            and bool(
+                permissions.intersection(
+                    {
+                        "tasks.write",
+                        "tasks.operational.write",
+                        "tasks.administration.write",
+                        "admin.manage",
+                    }
+                )
             ),
             "email_templates": list(
                 db.scalars(
@@ -724,13 +898,13 @@ def email_thread(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
-                "can_triage": bool(
-                    permissions.intersection({"email.triage", "email.manage", "admin.manage"})
-                ),
+                "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
                 )
-                and _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"),
+                and _can_use_channel(
+                    db, user_id, permissions, thread.channel_id, "reply", thread=thread
+                ),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": False,
             },
@@ -753,16 +927,65 @@ def email_thread_preview(request: Request, thread_id: int):
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, thread=thread
+        ):
             return HTMLResponse("Conversa não encontrada.", status_code=404)
         view_data = _thread_view_data(db, thread)
         reply_channels, reply_channel_send_direct = _reply_channel_context(
             db, user_id, permissions
         )
+        eligible_users = [
+            item
+            for item in email_eligible_users(
+                db, thread.channel_id, thread.work_category_id
+            )
+            if assignment_target_user_allowed(
+                db, actor_user_id=user_id, target_user_id=item.id
+            )
+        ]
+        eligible_teams = email_eligible_teams(db, thread.channel_id, thread.work_category_id)
+        thread_assignee = db.get(User, thread.assigned_to_id) if thread.assigned_to_id else None
+        thread_team = db.get(Team, thread.executor_team_id) if thread.executor_team_id else None
+        if thread_assignee and all(item.id != thread_assignee.id for item in eligible_users):
+            eligible_users.append(thread_assignee)
+        if thread_team and all(item.id != thread_team.id for item in eligible_teams):
+            eligible_teams.append(thread_team)
+        can_alter = bool(
+            permissions.intersection({"email.triage", "email.manage", "admin.manage"})
+        ) and _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        )
         workflow_context = {
             **work_hierarchy_context(db),
-            "email_users": list(
-                db.scalars(select(User).where(User.active.is_(True)).order_by(User.name))
+            "email_users": eligible_users,
+            "email_teams": eligible_teams,
+            "email_assignment_label": assignment_label(
+                state=thread.assignment_state,
+                user_name=thread_assignee.name if thread_assignee else None,
+                team_name=thread_team.name if thread_team else None,
+            ),
+            "email_sla": sla_snapshot(thread),
+            "can_claim": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "assume", thread=thread
+            ),
+            "can_assign": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "assign", thread=thread
+            ),
+            "can_manage_sla": _can_use_channel(
+                db, user_id, permissions, thread.channel_id, "manage_sla", thread=thread
+            ),
+            "can_alter": can_alter,
+            "can_create_task": can_alter
+            and bool(
+                permissions.intersection(
+                    {
+                        "tasks.write",
+                        "tasks.operational.write",
+                        "tasks.administration.write",
+                        "admin.manage",
+                    }
+                )
             ),
             "email_templates": list(
                 db.scalars(
@@ -800,13 +1023,13 @@ def email_thread_preview(request: Request, thread_id: int):
                 **_classification_context(),
                 **workflow_context,
                 "status_labels": STATUS_LABELS,
-                "can_triage": bool(
-                    permissions.intersection({"email.triage", "email.manage", "admin.manage"})
-                ),
+                "can_triage": can_alter,
                 "can_reply": bool(
                     permissions.intersection({"email.reply", "email.manage", "admin.manage"})
                 )
-                and _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"),
+                and _can_use_channel(
+                    db, user_id, permissions, thread.channel_id, "reply", thread=thread
+                ),
                 "outbound_enabled": settings.email_outbound_enabled,
                 "embedded": True,
             },
@@ -832,7 +1055,9 @@ def email_message_body(request: Request, message_id: int):
         if not message:
             return HTMLResponse("Mensagem não encontrada.", status_code=404)
         thread = db.get(EmailThread, message.thread_id)
-        if not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, thread=thread
+        ):
             return HTMLResponse("Sem acesso.", status_code=403)
         return HTMLResponse(
             _safe_email_document(message),
@@ -859,6 +1084,8 @@ def email_triage(
     work_subcategory_id: str = Form(""),
     classification_other_text: str = Form(""),
     assigned_to_id: str = Form(""),
+    executor_team_id: str = Form(""),
+    team_requires_claim: str = Form(""),
     due_at: str = Form(""),
     waiting_until: str = Form(""),
 ):
@@ -879,7 +1106,9 @@ def email_triage(
         )
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         hierarchy_selection = None
         if work_queue_id.strip() or work_department_id.strip():
@@ -903,12 +1132,123 @@ def email_triage(
         assignee = (
             db.get(User, int(assigned_to_id)) if assigned_to_id.isdigit() else None
         )
+        executor_team = (
+            db.get(Team, int(executor_team_id)) if executor_team_id.isdigit() else None
+        )
+        if assignee and executor_team:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=assignment_not_allowed",
+                status_code=303,
+            )
+        target_category_id = (
+            hierarchy_selection.category.id
+            if hierarchy_selection and hierarchy_selection.category
+            else thread.work_category_id
+        )
+        eligible_user_ids = {
+            item.id for item in email_eligible_users(db, thread.channel_id, target_category_id)
+        }
+        eligible_team_ids = {
+            item.id for item in email_eligible_teams(db, thread.channel_id, target_category_id)
+        }
+        new_user_id = assignee.id if assignee and assignee.active else None
+        new_team_id = executor_team.id if executor_team and executor_team.active else None
+        assignment_changed = (
+            thread.assigned_to_id != new_user_id
+            or thread.executor_team_id != new_team_id
+            or (
+                new_team_id is not None
+                and (thread.assignment_state == "team_unclaimed")
+                != (team_requires_claim == "on")
+            )
+        )
+        if assignment_changed and not _can_use_channel(
+            db,
+            user_id,
+            permissions,
+            thread.channel_id,
+            "assign",
+            thread=thread,
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        if new_user_id and new_user_id not in eligible_user_ids:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=assignment_not_allowed",
+                status_code=303,
+            )
+        if new_user_id and not assignment_target_user_allowed(
+            db, actor_user_id=user_id, target_user_id=new_user_id
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=assignment_not_allowed",
+                status_code=303,
+            )
+        if new_team_id and new_team_id not in eligible_team_ids:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=assignment_not_allowed",
+                status_code=303,
+            )
+        parsed_due_at = _optional_datetime(due_at)
+        if parsed_due_at != thread.resolution_due_at and not _can_use_channel(
+            db,
+            user_id,
+            permissions,
+            thread.channel_id,
+            "manage_sla",
+            thread=thread,
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
         thread.content_type = content_type or None
         thread.nature = nature or None
         thread.document_type = document_type or None
         thread.triage_notes = triage_notes.strip() or None
-        thread.assigned_to_id = assignee.id if assignee and assignee.active else None
-        thread.due_at = _optional_datetime(due_at)
+        if assignment_changed:
+            previous = {
+                "user_id": thread.assigned_to_id,
+                "team_id": thread.executor_team_id,
+                "state": thread.assignment_state,
+            }
+            thread.assigned_to_id = new_user_id
+            thread.executor_team_id = new_team_id
+            thread.assignment_state = (
+                "assigned_user"
+                if new_user_id
+                else "team_unclaimed"
+                if new_team_id and team_requires_claim == "on"
+                else "assigned_team"
+                if new_team_id
+                else "waiting_assignment"
+            )
+            thread.assignment_mode = (
+                "auto_user"
+                if new_user_id
+                else "team_claim"
+                if new_team_id and team_requires_claim == "on"
+                else "auto_team"
+                if new_team_id
+                else "manual"
+            )
+            thread.assigned_by_id = user_id
+            thread.assigned_at = datetime.now(UTC) if new_user_id or new_team_id else None
+            db.add(
+                EmailAuditEvent(
+                    thread_id=thread.id,
+                    user_id=user_id,
+                    action="reassigned" if previous["user_id"] or previous["team_id"] else "assigned",
+                    details_json={
+                        "before": previous,
+                        "user_id": new_user_id,
+                        "team_id": new_team_id,
+                        "state": thread.assignment_state,
+                    },
+                )
+            )
+        thread.due_at = parsed_due_at
+        thread.resolution_due_at = parsed_due_at
         thread.waiting_until = _optional_datetime(waiting_until)
         if hierarchy_selection:
             thread.work_queue_id = hierarchy_selection.queue.id
@@ -957,7 +1297,9 @@ def email_attachment_preview(request: Request, attachment_id: int):
         attachment = db.get(EmailAttachment, attachment_id)
         message = db.get(EmailMessage, attachment.message_id) if attachment else None
         thread = db.get(EmailThread, message.thread_id) if message else None
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, thread=thread
+        ):
             return HTMLResponse("Anexo não encontrado.", status_code=404)
         view_data = _thread_view_data(db, thread)
         reference = next(
@@ -976,6 +1318,19 @@ def email_attachment_preview(request: Request, attachment_id: int):
                 "attachment": attachment,
                 "thread": thread,
                 "reference": reference,
+                "can_alter": bool(
+                    permissions.intersection(
+                        {"email.triage", "email.manage", "admin.manage"}
+                    )
+                )
+                and _can_use_channel(
+                    db,
+                    user_id,
+                    permissions,
+                    thread.channel_id,
+                    "alter",
+                    thread=thread,
+                ),
                 **_classification_context(),
             },
         )
@@ -991,7 +1346,9 @@ def email_attachment_file(request: Request, attachment_id: int):
         attachment = db.get(EmailAttachment, attachment_id)
         message = db.get(EmailMessage, attachment.message_id) if attachment else None
         thread = db.get(EmailThread, message.thread_id) if message else None
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, thread=thread
+        ):
             return HTMLResponse("Anexo não encontrado.", status_code=404)
         path = Path(attachment.storage_path)
         if not path.is_file():
@@ -1045,7 +1402,9 @@ def email_attachment_classify(
         attachment = db.get(EmailAttachment, attachment_id)
         message = db.get(EmailMessage, attachment.message_id) if attachment else None
         thread = db.get(EmailThread, message.thread_id) if message else None
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
             return HTMLResponse("Anexo não encontrado.", status_code=404)
         attachment.document_type = document_type or None
         attachment.nature = nature or None
@@ -1080,10 +1439,14 @@ def email_channel_access(
     can_reply: bool = Form(False),
     can_approve: bool = Form(False),
 ):
-    auth = _auth(request, "email.manage", "admin.manage")
+    auth = _auth(request, "admin.manage")
     if not auth:
         return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
     with SessionLocal() as db:
+        channel = db.get(EmailChannel, channel_id)
+        target_user = db.get(User, user_id)
+        if not channel or not target_user or not target_user.active:
+            return RedirectResponse("/v2-clean/email?error=invalid_access", status_code=303)
         grant = db.scalar(
             select(EmailChannelUser).where(
                 EmailChannelUser.channel_id == channel_id, EmailChannelUser.user_id == user_id
@@ -1109,9 +1472,56 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
     user_id, _ = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if thread and _can_use_channel(db, user_id, auth[1], thread.channel_id):
+        action = (
+            "manage_sla"
+            if status in {"waiting_reply", "resolved"}
+            or thread and thread.status == "resolved"
+            else "alter"
+        )
+        if thread and _can_use_channel(
+            db, user_id, auth[1], thread.channel_id, action, thread=thread
+        ):
+            prior_status = thread.status
             thread.status = status
-            thread.resolved_at = datetime.now(UTC) if status == "resolved" else None
+            if status == "resolved":
+                mark_email_resolved(db, thread, user_id=user_id)
+            elif prior_status == "resolved":
+                reopened_at = datetime.now(UTC)
+                thread.resolved_at = None
+                thread.resolution_due_at = (
+                    reopened_at + timedelta(minutes=thread.sla_resolution_minutes)
+                    if thread.sla_resolution_minutes is not None
+                    else None
+                )
+                thread.due_at = thread.resolution_due_at
+                db.add(
+                    EmailAuditEvent(
+                        thread_id=thread.id,
+                        user_id=user_id,
+                        action="sla_reopened",
+                        details_json={"resolution_due_at": (
+                            thread.resolution_due_at.isoformat()
+                            if thread.resolution_due_at
+                            else None
+                        )},
+                    )
+                )
+            if prior_status == "waiting_reply" and status != "waiting_reply":
+                transition_email_waiting(
+                    db,
+                    thread,
+                    waiting=False,
+                    user_id=user_id,
+                    reason="Conversa retomada",
+                )
+            if status == "waiting_reply" and prior_status != "waiting_reply":
+                transition_email_waiting(
+                    db,
+                    thread,
+                    waiting=True,
+                    user_id=user_id,
+                    reason="A aguardar resposta externa",
+                )
             db.add(
                 EmailAuditEvent(
                     thread_id=thread.id,
@@ -1122,6 +1532,38 @@ def email_status(request: Request, thread_id: int, status: str = Form(...)):
             )
             db.commit()
     return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=status", status_code=303)
+
+
+@email_router.post("/v2-clean/email/{thread_id}/claim")
+def email_claim(request: Request, thread_id: int):
+    auth = _auth(request, "email.assume", "email.manage", "admin.manage")
+    if not auth:
+        return RedirectResponse(
+            f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+        )
+    user_id, permissions = auth
+    with SessionLocal() as db:
+        thread = db.get(EmailThread, thread_id)
+        if not thread or not _can_use_channel(
+            db,
+            user_id,
+            permissions,
+            thread.channel_id,
+            "assume",
+            thread=thread,
+        ):
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+            )
+        try:
+            claim_email_thread(db, thread, user_id=user_id)
+        except ValueError:
+            return RedirectResponse(
+                f"/v2-clean/email/{thread_id}?error=assignment_not_allowed",
+                status_code=303,
+            )
+        db.commit()
+    return RedirectResponse(f"/v2-clean/email/{thread_id}?saved=claimed", status_code=303)
 
 
 @email_router.post("/v2-clean/email/{thread_id}/reply")
@@ -1138,7 +1580,14 @@ def email_reply(
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id, "reply"):
+        if not thread or not _can_use_channel(
+            db,
+            user_id,
+            permissions,
+            thread.channel_id,
+            "reply",
+            thread=thread,
+        ):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         sender_channel = db.get(EmailChannel, thread.channel_id)
         if (
@@ -1213,6 +1662,15 @@ def email_reply(
             message.approved_at = now
             message.external_message_id = result.get("MessageID") or message.external_message_id
             thread.status = "waiting_reply"
+            mark_email_first_response(db, thread, user_id=user_id, now=now)
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=True,
+                user_id=user_id,
+                reason="A aguardar resposta externa",
+                now=now,
+            )
             state = "sent"
         db.add(
             EmailAuditEvent(
@@ -1245,7 +1703,9 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             not thread
             or not message
             or message.thread_id != thread.id
-            or not _can_use_channel(db, user_id, auth[1], thread.channel_id)
+            or not _can_use_channel(
+                db, user_id, auth[1], thread.channel_id, thread=thread
+            )
             or not sender_channel
             or not _can_use_channel(
                 db, user_id, auth[1], sender_channel.id, "approve"
@@ -1282,6 +1742,14 @@ def email_approve(request: Request, thread_id: int, message_id: int):
             )
             message.external_message_id = result.get("MessageID") or message.external_message_id
             thread.status = "waiting_reply"
+            mark_email_first_response(db, thread, user_id=user_id)
+            transition_email_waiting(
+                db,
+                thread,
+                waiting=True,
+                user_id=user_id,
+                reason="A aguardar resposta externa",
+            )
         except RuntimeError as exc:
             message.postmark_error = str(exc)
             db.commit()
@@ -1306,13 +1774,22 @@ def email_approve(request: Request, thread_id: int, message_id: int):
 
 @email_router.post("/v2-clean/email/{thread_id}/task")
 def email_create_task(request: Request, thread_id: int):
-    auth = _auth(request, "tasks.write", "email.manage", "admin.manage")
+    auth = _auth(
+        request,
+        "tasks.write",
+        "tasks.operational.write",
+        "tasks.administration.write",
+        "email.manage",
+        "admin.manage",
+    )
     if not auth:
         return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
     user_id, permissions = auth
     with SessionLocal() as db:
         thread = db.get(EmailThread, thread_id)
-        if not thread or not _can_use_channel(db, user_id, permissions, thread.channel_id):
+        if not thread or not _can_use_channel(
+            db, user_id, permissions, thread.channel_id, "alter", thread=thread
+        ):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         if not thread.task_id:
             hierarchy = validate_work_hierarchy(
@@ -1329,6 +1806,31 @@ def email_create_task(request: Request, thread_id: int):
                     "administration_task"
                     if hierarchy.queue.code == "administration"
                     else "operational_task"
+                )
+            workspace_permission = (
+                "tasks.administration.write"
+                if task_type == "administration_task"
+                else "tasks.operational.write"
+            )
+            if not permissions.intersection(
+                {"admin.manage", "tasks.write", workspace_permission}
+            ):
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+                )
+            if hierarchy and not user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=hierarchy.queue.id,
+                department_id=hierarchy.department.id,
+                category_id=hierarchy.category.id if hierarchy.category else None,
+                subcategory_id=(
+                    hierarchy.subcategory.id if hierarchy.subcategory else None
+                ),
+                action="create",
+            ):
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
                 )
             task = Task(
                 title=thread.subject[:200],
@@ -1351,25 +1853,47 @@ def email_create_task(request: Request, thread_id: int):
                 status="new",
                 priority="normal",
                 customer_email=thread.sender_email,
-                assigned_to_id=thread.assigned_to_id,
+                assigned_to_id=None,
+                team_id=None,
                 due_on=thread.due_at.date() if thread.due_at else None,
                 created_by_id=user_id,
             )
             db.add(task)
             db.flush()
+            try:
+                initialize_task_service_desk(
+                    db,
+                    task,
+                    actor_user_id=user_id,
+                    requested_user_id=thread.assigned_to_id,
+                    requested_team_id=thread.executor_team_id,
+                )
+            except ValueError:
+                initialize_task_service_desk(db, task, actor_user_id=user_id)
+                db.add(
+                    EmailAuditEvent(
+                        thread_id=thread.id,
+                        user_id=user_id,
+                        action="task_assignment_not_carried",
+                        details_json={
+                            "email_user_id": thread.assigned_to_id,
+                            "email_team_id": thread.executor_team_id,
+                        },
+                    )
+                )
             first = db.scalar(
                 select(EmailMessage)
-                .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "inbound")
+                .where(EmailMessage.thread_id == thread.id)
                 .order_by(EmailMessage.id)
             )
             db.add(
                 TaskEmailOrigin(
                     task_id=task.id,
-                    message_id=first.external_message_id,
-                    sender=first.sender,
-                    recipients_json=first.recipients_json,
-                    subject=first.subject,
-                    received_at=first.received_at,
+                    message_id=first.external_message_id if first else f"email-thread:{thread.id}",
+                    sender=first.sender if first else thread.sender_email,
+                    recipients_json=first.recipients_json if first else None,
+                    subject=first.subject if first else thread.subject,
+                    received_at=first.received_at if first else thread.created_at,
                     mailbox=db.get(EmailChannel, thread.channel_id).address,
                     source_url=f"/v2-clean/email/{thread.id}",
                 )
@@ -1378,7 +1902,7 @@ def email_create_task(request: Request, thread_id: int):
             db.add(
                 EmailAuditEvent(
                     thread_id=thread.id,
-                    message_id=first.id,
+                    message_id=first.id if first else None,
                     user_id=user_id,
                     action="task_created",
                     details_json={"task_id": task.id},

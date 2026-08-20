@@ -246,7 +246,10 @@
               <div class="clean-admin-permission-groups">
                 {% for group, group_permissions in permission_groups.items() %}
                   <fieldset class="clean-admin-permission-group">
-                    <legend><span>{{ group }}</span><small>{{ group_permissions|length }} permissões</small></legend>
+                    <legend><span>{{ permission_group_labels.get(group, group|replace('_', ' ')|title) }}</span><small>{{ group_permissions|length }} permissões</small></legend>
+                    {% if group == "email" %}
+                      <p class="clean-admin-permission-hint">Estas permissões autorizam as funções gerais. Define as caixas acessíveis em <a href="/v2-clean/admin/work-classification?view=channels">Filas e classificação · Email</a>.</p>
+                    {% endif %}
                     <div class="clean-admin-permission-group-list">
                       {% for permission in group_permissions %}
                         <label class="clean-admin-permission-item">

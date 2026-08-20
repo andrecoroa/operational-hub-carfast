@@ -492,10 +492,12 @@ def seed_permissions(db: Session) -> None:
 
 
 def seed_roles(db: Session) -> None:
+    created_role_codes: set[str] = set()
     for code, name in INITIAL_ROLES:
         exists = db.scalar(select(Role).where(Role.code == code))
         if not exists:
             db.add(Role(code=code, name=name, is_system=True))
+            created_role_codes.add(code)
     db.flush()
 
     admin = db.scalar(select(Role).where(Role.code == "admin"))
@@ -516,6 +518,8 @@ def seed_roles(db: Session) -> None:
 
     roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
     for role_code, permission_codes in DEFAULT_ROLE_PERMISSIONS.items():
+        if role_code not in created_role_codes:
+            continue
         role = roles_by_code.get(role_code)
         if not role:
             continue

@@ -67,8 +67,8 @@ WEB_PERMISSION_RULES = (
     (
         ("/v2-clean/email",),
         {
-            "GET": {"email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage"},
-            "POST": {"email.triage", "email.reply", "email.approve", "email.manage", "tasks.write", "admin.manage"},
+            "GET": {"email.read", "email.triage", "email.reply", "email.approve", "email.manage", "email.assume", "email.assign", "email.sla.manage", "admin.manage"},
+            "POST": {"email.triage", "email.reply", "email.approve", "email.manage", "email.assume", "email.assign", "email.sla.manage", "tasks.write", "admin.manage"},
         },
     ),
     (

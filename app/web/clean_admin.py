@@ -134,6 +134,20 @@ SETTINGS_VALUE_LABELS = {
     "trade_debt": "Dívida comercial",
 }
 
+PERMISSION_GROUP_LABELS = {
+    "email": "Email",
+    "service_desk": "Service Desk",
+    "tasks": "Centro de Tarefas",
+    "documents": "Documentação",
+    "workshop": "Oficina",
+    "stock": "Stock",
+    "vehicles": "Frota",
+    "dashboard": "Dashboard",
+    "management_center": "Centro de Gestão",
+    "settings": "Configurações",
+    "users": "Utilizadores",
+}
+
 ADMIN_NAV = (
     (
         "overview",
@@ -745,6 +759,7 @@ def clean_admin_roles(request: Request):
             roles=roles,
             role_permissions=role_permissions,
             permission_groups=permission_groups,
+            permission_group_labels=PERMISSION_GROUP_LABELS,
             can_manage=bool(
                 permissions.intersection({"admin.roles.manage", "users.manage", "admin.manage"})
             ),

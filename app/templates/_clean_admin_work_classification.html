@@ -316,6 +316,9 @@ document.addEventListener('DOMContentLoaded', () => {
     areaSearch?.closest('.clean-work-area-search')?.classList.toggle('is-hidden', activeAdminView === 'structure');
     applyAreaSearch();
   }));
+  const requestedAdminView = new URLSearchParams(window.location.search).get('view');
+  const requestedAdminTab = [...adminTabs].find((button) => button.dataset.workAdminTab === requestedAdminView);
+  requestedAdminTab?.click();
   areaSearch?.addEventListener('input', applyAreaSearch);
   let activeLevel = 'queue';
   const levelTabs = document.querySelectorAll('[data-work-level]');

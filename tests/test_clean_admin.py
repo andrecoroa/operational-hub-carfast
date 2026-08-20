@@ -1,11 +1,12 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from app.models.admin import Role, User, UserRole
+from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.documents import Document
 from app.models.tasks import Task
 from app.models.work_hierarchy import RoleWorkScope, WorkDepartment, WorkQueue
 from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessPhase
+from app.services.bootstrap import seed_roles
 from app.services.users import create_user
 
 
@@ -49,6 +50,33 @@ def test_clean_admin_pages_are_available_to_admin(authenticated_client):
     assert "clean-admin-permission-groups" in roles_page.text
     assert "Matriz de permissões" in roles_page.text
     assert "Código técnico" in roles_page.text
+    assert ">Email<" in roles_page.text
+    assert "/v2-clean/admin/work-classification?view=channels" in roles_page.text
+
+
+def test_seed_roles_preserves_manually_removed_profile_permission(db_session):
+    role = db_session.scalar(select(Role).where(Role.code == "operator"))
+    permission = db_session.scalar(select(Permission).where(Permission.code == "email.read"))
+    assert role is not None
+    assert permission is not None
+    db_session.execute(
+        delete(RolePermission).where(
+            RolePermission.role_id == role.id,
+            RolePermission.permission_id == permission.id,
+        )
+    )
+    db_session.commit()
+
+    seed_roles(db_session)
+    db_session.flush()
+
+    restored = db_session.scalar(
+        select(RolePermission).where(
+            RolePermission.role_id == role.id,
+            RolePermission.permission_id == permission.id,
+        )
+    )
+    assert restored is None
 
 
 def test_clean_admin_users_uses_compact_table_and_wide_access_dialog(authenticated_client):

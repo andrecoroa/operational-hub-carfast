@@ -62,11 +62,12 @@ from app.models.management_center import (
     ManagementProcessType,
     ManagementRule,
 )
-from app.models.organization import OrganizationalUnit, Team, UserOrganizationalUnit
+from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
 from app.models.tasks import (
     QuickRecord,
     Task,
+    TaskAssignmentEvent,
     TaskComment,
     TaskDocument,
     TaskEmailOrigin,
@@ -77,8 +78,9 @@ from app.models.tasks import (
     TaskParticipant,
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
+    TaskSlaEvent,
 )
-from app.models.work_hierarchy import WorkQueue
+from app.models.work_hierarchy import ServiceDeskTicketType, WorkQueue
 from app.models.vehicles import (
     Vehicle,
     VehicleExternalSnapshot,
@@ -151,6 +153,24 @@ from app.services.work_classification import (
     user_work_scope_filter,
     validate_work_hierarchy,
     work_hierarchy_context,
+)
+from app.services.service_desk import (
+    assign_task_executor,
+    assignment_target_user_allowed,
+    assignment_label,
+    category_team_is_eligible,
+    category_user_is_eligible,
+    claim_task,
+    default_ticket_type,
+    eligible_category_teams,
+    eligible_category_users,
+    initialize_task_service_desk,
+    local_datetime,
+    mark_task_first_response,
+    mark_task_resolved,
+    pause_task_sla,
+    resume_task_sla,
+    sla_snapshot,
 )
 from app.services.document_import_preview import (
     RENTWAY_IMPORT_KINDS,
@@ -297,6 +317,7 @@ from app.services.vehicles import normalize_identifier
 from app.web.clean_admin import ADMIN_NAV, clean_admin_router, clean_admin_user_has
 
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["lisbon_datetime"] = local_datetime
 web_router = APIRouter(include_in_schema=False)
 INVOICE_OCR_MANIFEST_SCHEMA = "carfast.invoice-ocr-manifest.v1"
 INVOICE_OCR_MANIFEST_MAX_SIZE = 25 * 1024 * 1024
@@ -2723,6 +2744,7 @@ def create_next_recurring_task(db, task: Task, user_id: int | None) -> Task | No
     if existing:
         return existing
     next_task = Task(
+        ticket_type_id=task.ticket_type_id,
         title=task.title,
         description=task.description,
         task_type=task.task_type,
@@ -2766,6 +2788,13 @@ def create_next_recurring_task(db, task: Task, user_id: int | None) -> Task | No
     )
     db.add(next_task)
     db.flush()
+    initialize_task_service_desk(
+        db,
+        next_task,
+        actor_user_id=user_id,
+        requested_user_id=task.assigned_to_id,
+        requested_team_id=task.team_id,
+    )
     create_guided_flow_run_for_task(db, next_task, next_task.guided_flow_code, user_id)
     db.add(
         TaskHistory(
@@ -4143,6 +4172,9 @@ def clean_tasks_center(
         mine_relation_conditions: dict[str, object] = {}
         active_relation_filter = None
         if active_workspace == "mine" and user_id:
+            member_team_ids = select(TeamMember.team_id).where(
+                TeamMember.user_id == user_id
+            )
             participant_task_ids = select(TaskParticipant.task_id).where(
                 TaskParticipant.user_id == user_id,
                 TaskParticipant.status == "active",
@@ -4168,7 +4200,10 @@ def clean_tasks_center(
                 )
             )
             mine_relation_conditions = {
-                "assigned": Task.assigned_to_id == user_id,
+                "assigned": or_(
+                    Task.assigned_to_id == user_id,
+                    Task.team_id.in_(member_team_ids),
+                ),
                 "identified": identified_condition,
                 "following": following_condition,
                 "support": support_condition,
@@ -4176,6 +4211,7 @@ def clean_tasks_center(
             }
             mine_relation_conditions["all"] = or_(
                 Task.assigned_to_id == user_id,
+                Task.team_id.in_(member_team_ids),
                 Task.created_by_id == user_id,
                 Task.id.in_(participant_task_ids),
                 support_condition,
@@ -4296,8 +4332,20 @@ def clean_tasks_center(
             for task in tasks
         }
         task_ids = [task.id for task in tasks]
-        users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-        users_by_id = {user.id: user for user in users}
+        all_users = db.scalars(select(User).order_by(User.name)).all()
+        users = [user for user in all_users if user.active]
+        users_by_id = {user.id: user for user in all_users}
+        all_teams = db.scalars(select(Team).order_by(Team.name)).all()
+        teams = [team for team in all_teams if team.active]
+        teams_by_id = {team.id: team for team in all_teams}
+        ticket_types = db.scalars(
+            select(ServiceDeskTicketType)
+            .where(ServiceDeskTicketType.active.is_(True))
+            .order_by(ServiceDeskTicketType.sort_order, ServiceDeskTicketType.name)
+        ).all()
+        ticket_types_by_id = {
+            item.id: item for item in db.scalars(select(ServiceDeskTicketType)).all()
+        }
         participants_by_task: dict[int, list[TaskParticipant]] = defaultdict(list)
         comments_by_task: dict[int, list[TaskComment]] = defaultdict(list)
         history_by_task: dict[int, list[TaskHistory]] = defaultdict(list)
@@ -4343,9 +4391,12 @@ def clean_tasks_center(
                 for item in db.scalars(select(TaskEmailOrigin).where(TaskEmailOrigin.task_id.in_(task_ids)))
             }
         if active_workspace == "mine" and user_id:
+            member_team_id_set = set(db.scalars(member_team_ids))
             for task in tasks:
                 if task.assigned_to_id == user_id:
                     task_relations_by_task[task.id].append("Responsável")
+                elif task.team_id in member_team_id_set:
+                    task_relations_by_task[task.id].append("Equipa executora")
                 participant_roles = {
                     participant.role
                     for participant in participants_by_task.get(task.id, [])
@@ -4469,6 +4520,37 @@ def clean_tasks_center(
         }
         prefill_nature = prefill_nature_aliases.get(raw_prefill_category.lower(), raw_prefill_category)
         hierarchy = work_hierarchy_context(db)
+        category_ids = [item.id for item in hierarchy["work_categories"]]
+        eligible_user_ids_by_category = {
+            category_id: [
+                item.id
+                for item in eligible_category_users(db, category_id)
+                if assignment_target_user_allowed(
+                    db, actor_user_id=user_id, target_user_id=item.id
+                )
+            ]
+            for category_id in category_ids
+        }
+        eligible_team_ids_by_category = {
+            category_id: [item.id for item in eligible_category_teams(db, category_id)]
+            for category_id in category_ids
+        }
+        task_sla_by_id = {task.id: sla_snapshot(task) for task in tasks}
+        task_assignment_labels = {
+            task.id: assignment_label(
+                state=task.assignment_state,
+                user_name=(users_by_id[task.assigned_to_id].name if task.assigned_to_id in users_by_id else None),
+                team_name=(teams_by_id[task.team_id].name if task.team_id in teams_by_id else None),
+            )
+            for task in tasks
+        }
+        task_claim_allowed_by_id = {
+            task.id: (
+                task.assignment_state == "team_unclaimed"
+                and _task_hierarchy_scope_allows(db, user_id, task, action="assume")
+            )
+            for task in tasks
+        }
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
@@ -4486,7 +4568,17 @@ def clean_tasks_center(
                 "task_priority_labels": task_priority_labels,
                 "current_user_id": user_id,
                 "users": users,
+                "all_users": all_users,
                 "users_by_id": users_by_id,
+                "teams": teams,
+                "all_teams": all_teams,
+                "teams_by_id": teams_by_id,
+                "ticket_types": ticket_types,
+                "ticket_types_by_id": ticket_types_by_id,
+                "eligible_user_ids_by_category": eligible_user_ids_by_category,
+                "eligible_team_ids_by_category": eligible_team_ids_by_category,
+                "task_sla_by_id": task_sla_by_id,
+                "task_assignment_labels": task_assignment_labels,
                 "participants_by_task": participants_by_task,
                 "comments_by_task": comments_by_task,
                 "history_by_task": history_by_task,
@@ -4496,6 +4588,7 @@ def clean_tasks_center(
                 "task_relations_by_task": task_relations_by_task,
                 "task_update_allowed_by_id": task_update_allowed_by_id,
                 "task_close_allowed_by_id": task_close_allowed_by_id,
+                "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "mine_counts": mine_counts,
                 "recent_documents": recent_documents,
                 "readable_workspaces": readable_workspaces,
@@ -4893,6 +4986,7 @@ def clean_task_recurrence_toggle(request: Request, template_id: int):
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
 def clean_tasks_create(
     request: Request,
+    ticket_type_id: str = Form(""),
     title: str = Form(""),
     description: str = Form(""),
     workspace: str = Form(""),
@@ -4914,6 +5008,7 @@ def clean_tasks_create(
     entity_type: str = Form(""),
     entity_id: str = Form(""),
     assigned_to_id: str = Form(""),
+    assigned_team_id: str = Form(""),
     source: str = Form("manual"),
     email_message_id: str = Form(""),
     email_sender: str = Form(""),
@@ -4991,10 +5086,50 @@ def clean_tasks_create(
             db, current_user, clean_workspace, action="create"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        parsed_ticket_type_id = parse_int_from_text(ticket_type_id)
+        ticket_type = (
+            db.get(ServiceDeskTicketType, parsed_ticket_type_id)
+            if parsed_ticket_type_id
+            else None
+        )
+        if parsed_ticket_type_id and (not ticket_type or not ticket_type.active):
+            return RedirectResponse("/v2-clean/tasks?error=invalid_ticket_type", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        parsed_team_id = parse_int_from_text(assigned_team_id)
         assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
-        if assignee and not is_assignment_allowed_for_workspace(
+        executor_team = db.get(Team, parsed_team_id) if parsed_team_id else None
+        if parsed_assignee_id and parsed_team_id:
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
+        if parsed_assignee_id and (not assignee or not assignee.active):
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
+        if parsed_team_id and (not executor_team or not executor_team.active):
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
+        if assignee and assignee.active and not is_assignment_allowed_for_workspace(
             db, assignee.id, clean_workspace, actor_user_id=user_id
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
+        if (assignee or executor_team) and hierarchy_selection and not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=(hierarchy_selection.category.id if hierarchy_selection.category else None),
+            subcategory_id=(hierarchy_selection.subcategory.id if hierarchy_selection.subcategory else None),
+            action="assign",
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        category_id = (
+            hierarchy_selection.category.id
+            if hierarchy_selection and hierarchy_selection.category
+            else None
+        )
+        if hierarchy_selection and assignee and not category_user_is_eligible(
+            db, category_id, assignee.id
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
+        if hierarchy_selection and executor_team and (
+            not executor_team.active
+            or not category_team_is_eligible(db, category_id, executor_team.id)
         ):
             return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
         clean_source = "email" if source == "email" and email_message_id.strip() else "v2_clean"
@@ -5004,6 +5139,13 @@ def clean_tasks_create(
         ):
             return RedirectResponse("/v2-clean/tasks?error=duplicate_email", status_code=303)
         task = Task(
+            ticket_type_id=(
+                ticket_type.id
+                if ticket_type
+                else default_ticket_type(db).id
+                if default_ticket_type(db)
+                else None
+            ),
             title=clean_title[:200],
             description=description.strip() or None,
             task_type=workspace_config["default_task_type"],
@@ -5019,8 +5161,18 @@ def clean_tasks_create(
             due_on=parsed_due,
             entity_type=entity_type.strip()[:120] or None,
             entity_id=entity_id.strip()[:120] or None,
-            team_id=default_team_id(db, workspace_config["default_team_code"]),
-            assigned_to_id=assignee.id if assignee and assignee.active else None,
+            team_id=(
+                None
+                if hierarchy_selection
+                else default_team_id(db, workspace_config["default_team_code"])
+            ),
+            assigned_to_id=(
+                None
+                if hierarchy_selection
+                else assignee.id
+                if assignee and assignee.active
+                else None
+            ),
             created_by_id=user_id,
             work_queue_id=(hierarchy_selection.queue.id if hierarchy_selection else None),
             work_department_id=(
@@ -5052,6 +5204,35 @@ def clean_tasks_create(
         )
         db.add(task)
         db.flush()
+        if hierarchy_selection:
+            initialize_task_service_desk(
+                db,
+                task,
+                now=now,
+                actor_user_id=user_id,
+                requested_user_id=(assignee.id if assignee and assignee.active else None),
+                requested_team_id=(
+                    executor_team.id if executor_team and executor_team.active else None
+                ),
+            )
+        else:
+            task.assignment_state = (
+                "assigned_user"
+                if task.assigned_to_id
+                else "assigned_team"
+                if task.team_id
+                else "waiting_assignment"
+            )
+            task.assignment_mode = "manual"
+            db.add(
+                TaskAssignmentEvent(
+                    task_id=task.id,
+                    actor_user_id=user_id,
+                    action="legacy_assignment_preserved",
+                    to_user_id=task.assigned_to_id,
+                    to_team_id=task.team_id,
+                )
+            )
         task_upload_root = document_archive_root() / "tasks" / str(task.id)
         for upload in attachments:
             original_name = Path(upload.filename or "").name[:255]
@@ -5137,6 +5318,7 @@ def clean_tasks_create(
 def clean_tasks_update(
     request: Request,
     task_id: int,
+    ticket_type_id: str = Form(""),
     title: str = Form(""),
     description: str = Form(""),
     status: str = Form("new"),
@@ -5156,6 +5338,8 @@ def clean_tasks_update(
     contract_number: str = Form(""),
     invoice_number: str = Form(""),
     assigned_to_id: str = Form(""),
+    assigned_team_id: str = Form(""),
+    team_requires_claim: str = Form(""),
     waiting_reason: str = Form(""),
     waiting_reason_detail: str = Form(""),
     return_url: str = Form(""),
@@ -5185,6 +5369,15 @@ def clean_tasks_update(
             db, current_user, task_workspace, action="update"
         ) or not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if clean_status in TASK_ARCHIVE_STATUSES and not _task_hierarchy_scope_allows(
+            db, user_id, task, action="complete"
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if task.status in TASK_ARCHIVE_STATUSES and clean_status not in TASK_ARCHIVE_STATUSES and (
+            not _task_hierarchy_scope_allows(db, user_id, task, action="complete")
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="manage_sla")
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         hierarchy_selection = None
         if classification_version == "3" or work_queue_id.strip():
             hierarchy_selection = validate_work_hierarchy(
@@ -5213,6 +5406,7 @@ def clean_tasks_update(
                     else None
                 ),
                 action="update",
+                task=task,
             ):
                 return clean_task_action_redirect(
                     return_url, task_id=task_id, flag="forbidden"
@@ -5229,13 +5423,108 @@ def clean_tasks_update(
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
+        parsed_team_id = parse_int_from_text(assigned_team_id)
+        parsed_ticket_type_id = parse_int_from_text(ticket_type_id)
+        ticket_type = (
+            db.get(ServiceDeskTicketType, parsed_ticket_type_id)
+            if parsed_ticket_type_id
+            else None
+        )
+        if parsed_ticket_type_id and (not ticket_type or not ticket_type.active):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="invalid_ticket_type")
         assignee = db.get(User, parsed_assignee_id) if parsed_assignee_id else None
+        executor_team = db.get(Team, parsed_team_id) if parsed_team_id else None
+        if parsed_assignee_id and parsed_team_id:
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="assignment_not_allowed")
         if assignee and not is_assignment_allowed_for_workspace(
             db, assignee.id, target_workspace, actor_user_id=user_id
         ):
             return clean_task_action_redirect(return_url, task_id=task_id, flag="assignment_not_allowed")
+        if parsed_assignee_id and (
+            not assignee
+            or (not assignee.active and parsed_assignee_id != task.assigned_to_id)
+        ):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="assignment_not_allowed")
+        if parsed_team_id and (
+            not executor_team
+            or (not executor_team.active and parsed_team_id != task.team_id)
+        ):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="assignment_not_allowed")
+        effective_assignee_id = (
+            assignee.id
+            if assignee and assignee.active
+            else task.assigned_to_id
+            if parsed_assignee_id == task.assigned_to_id
+            else None
+        )
+        effective_team_id = (
+            executor_team.id
+            if executor_team and executor_team.active
+            else task.team_id
+            if parsed_team_id == task.team_id
+            else None
+        )
+        assignment_changed = (
+            task.assigned_to_id != effective_assignee_id
+            or task.team_id != effective_team_id
+        )
+        if assignment_changed and not _task_hierarchy_scope_allows(
+            db, user_id, task, action="assign"
+        ):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="forbidden")
+        if assignment_changed and hierarchy_selection and not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=(
+                hierarchy_selection.category.id if hierarchy_selection.category else None
+            ),
+            subcategory_id=(
+                hierarchy_selection.subcategory.id
+                if hierarchy_selection.subcategory
+                else None
+            ),
+            action="assign",
+            task=task,
+        ):
+            return clean_task_action_redirect(return_url, task_id=task_id, flag="forbidden")
+        target_category_id = (
+            hierarchy_selection.category.id
+            if hierarchy_selection and hierarchy_selection.category
+            else task.work_category_id
+        )
+        if effective_assignee_id and not category_user_is_eligible(
+            db, target_category_id, effective_assignee_id
+        ):
+            is_preserved_legacy = (
+                not hierarchy_selection
+                and effective_assignee_id == task.assigned_to_id
+                and not task.work_category_id
+            )
+            if not is_preserved_legacy:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="assignment_not_allowed"
+                )
+        if effective_team_id and not category_team_is_eligible(
+            db, target_category_id, effective_team_id
+        ):
+            is_preserved_legacy = (
+                not hierarchy_selection
+                and effective_team_id == task.team_id
+                and not task.work_category_id
+            )
+            if not is_preserved_legacy:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="assignment_not_allowed"
+                )
         target_config = TASK_WORKSPACE_CONFIG[target_workspace]
+        prior_status = task.status
         changes = {
+            "ticket_type_id": (
+                task.ticket_type_id,
+                ticket_type.id if ticket_type else task.ticket_type_id,
+            ),
             "title": (task.title, clean_title[:200]),
             "description": (task.description, description.strip() or None),
             "status": (task.status, clean_status),
@@ -5246,7 +5535,6 @@ def clean_tasks_update(
             "reservation_number": (task.reservation_number, reservation_number.strip()[:120] or None),
             "contract_number": (task.contract_number, contract_number.strip()[:120] or None),
             "invoice_number": (task.invoice_number, invoice_number.strip()[:120] or None),
-            "assigned_to_id": (task.assigned_to_id, assignee.id if assignee and assignee.active else None),
             "waiting_reason": (task.waiting_reason, waiting_reason.strip()[:80] or None),
             "waiting_reason_detail": (task.waiting_reason_detail, waiting_reason_detail.strip() or None),
         }
@@ -5311,12 +5599,65 @@ def clean_tasks_update(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        if assignment_changed:
+            try:
+                assign_task_executor(
+                    db,
+                    task,
+                    actor_user_id=user_id,
+                    user_id=effective_assignee_id,
+                    team_id=effective_team_id,
+                    require_claim=team_requires_claim == "on",
+                    reason="Atualização do ticket",
+                    now=now,
+                )
+            except ValueError:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="assignment_not_allowed"
+                )
+        if clean_status == "waiting" and prior_status != "waiting":
+            pause_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason=waiting_reason.strip() or "Ticket em espera",
+                now=now,
+            )
+        elif clean_status != "waiting" and prior_status == "waiting":
+            resume_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason="Ticket retomado",
+                now=now,
+            )
         if clean_status in TASK_ARCHIVE_STATUSES:
             task.closed_at = task.closed_at or now
-            if clean_status == "resolved":
-                task.resolved_at = task.resolved_at or now
+            mark_task_resolved(db, task, actor_user_id=user_id, now=now)
         else:
             task.closed_at = None
+            if prior_status in TASK_ARCHIVE_STATUSES and task.resolved_at:
+                task.resolved_at = None
+                task.sla_paused_at = None
+                task.resolution_due_at = (
+                    now + timedelta(minutes=task.sla_resolution_minutes)
+                    if task.sla_resolution_minutes is not None
+                    else None
+                )
+                db.add(
+                    TaskSlaEvent(
+                        task_id=task.id,
+                        actor_user_id=user_id,
+                        action="reopened",
+                        details_json={
+                            "resolution_due_at": (
+                                task.resolution_due_at.isoformat()
+                                if task.resolution_due_at
+                                else None
+                            )
+                        },
+                    )
+                )
         record_audit(
             db,
             action="task.update",
@@ -5416,20 +5757,12 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task and not _task_hierarchy_scope_allows(db, user_id, task, action="close"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        if task and task.work_queue_id and not user_work_scope_allows(
-            db,
-            user_id=user_id,
-            queue_id=task.work_queue_id,
-            department_id=task.work_department_id,
-            category_id=task.work_category_id,
-            subcategory_id=task.work_subcategory_id,
-            action="close",
-        ):
-            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
             task.status = "closed"
-            task.closed_at = datetime.now(UTC)
+            closed_now = datetime.now(UTC)
+            task.closed_at = closed_now
+            mark_task_resolved(db, task, actor_user_id=user_id, now=closed_now)
             db.add(
                 TaskHistory(
                     task_id=task.id,
@@ -5468,12 +5801,37 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
             db, current_user, workspace_for_task_type(task.task_type), action="close"
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        if task and not _task_hierarchy_scope_allows(db, user_id, task, action="close"):
+        if task and (
+            not _task_hierarchy_scope_allows(db, user_id, task, action="close")
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="manage_sla")
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
             prior_status = task.status
+            reopened_at = datetime.now(UTC)
             task.status = "new"
             task.closed_at = None
+            task.resolved_at = None
+            task.sla_paused_at = None
+            task.resolution_due_at = (
+                reopened_at + timedelta(minutes=task.sla_resolution_minutes)
+                if task.sla_resolution_minutes is not None
+                else None
+            )
+            db.add(
+                TaskSlaEvent(
+                    task_id=task.id,
+                    actor_user_id=user_id,
+                    action="reopened",
+                    details_json={
+                        "resolution_due_at": (
+                            task.resolution_due_at.isoformat()
+                            if task.resolution_due_at
+                            else None
+                        )
+                    },
+                )
+            )
             db.add(
                 TaskHistory(
                     task_id=task.id,
@@ -5507,8 +5865,6 @@ def _task_hierarchy_scope_allows(db, user_id: int | None, task: Task, *, action:
     """Apply the shared hierarchy scope while keeping legacy tasks available for reclassification."""
     if not user_id:
         return False
-    if not task.work_queue_id:
-        return True
     return user_work_scope_allows(
         db,
         user_id=user_id,
@@ -5517,7 +5873,44 @@ def _task_hierarchy_scope_allows(db, user_id: int | None, task: Task, *, action:
         category_id=task.work_category_id,
         subcategory_id=task.work_subcategory_id,
         action=action,
+        task=task,
     )
+
+
+@web_router.post("/v2-clean/tasks/{task_id}/claim", response_class=HTMLResponse)
+def clean_tasks_claim(request: Request, task_id: int, return_url: str = Form("")):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        task = db.get(Task, task_id)
+        current_user = db.get(User, user_id)
+        if (
+            not task
+            or not user_can_access_task_workspace(
+                db, current_user, workspace_for_task_type(task.task_type), action="update"
+            )
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="assume")
+        ):
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="forbidden"
+            )
+        try:
+            claim_task(db, task, user_id=user_id)
+        except ValueError:
+            return clean_task_action_redirect(
+                return_url, task_id=task_id, flag="assignment_not_allowed"
+            )
+        record_audit(
+            db,
+            action="task.claim",
+            entity_type="task",
+            entity_id=task.id,
+            detail=f"Ticket assumido por {current_user.name}",
+            user_id=user_id,
+        )
+        db.commit()
+    return clean_task_action_redirect(return_url, task_id=task_id, flag="claimed")
 
 
 @web_router.post("/v2-clean/tasks/{task_id}/comments", response_class=HTMLResponse)
@@ -5539,10 +5932,11 @@ def clean_tasks_comment(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
-            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="respond")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mark_task_first_response(db, task, actor_user_id=user_id)
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="commented")
 
@@ -30811,7 +31205,14 @@ def task_center(request: Request):
         for workspace_code, workspace_config in TASK_WORKSPACE_CONFIG.items():
             if workspace_code not in authorized_workspaces:
                 continue
-            workspace_task_filter = Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code]))
+            workspace_task_filter = Task.task_type.in_(
+                tuple(TASK_WORKSPACE_TASK_TYPES[workspace_code])
+            )
+            hierarchy_scope = user_work_scope_filter(
+                db, user_id=user_id, task_model=Task, action="read"
+            )
+            if hierarchy_scope is not None:
+                workspace_task_filter = and_(workspace_task_filter, hierarchy_scope)
             Subtask = aliased(Task)
             subtask_parent_ids = select(Subtask.parent_task_id).where(Subtask.parent_task_id.is_not(None)).distinct()
             open_count = db.scalar(
@@ -30927,6 +31328,11 @@ def task_board_manage(
         tomorrow_start = datetime.fromtimestamp(today_start.timestamp() + 86400, UTC)
         archived_condition = (Task.closed_at.is_not(None)) | (Task.status.in_(TASK_ARCHIVE_STATUSES))
         workspace_task_filter = Task.task_type.in_(tuple(workspace_task_codes))
+        hierarchy_scope = user_work_scope_filter(
+            db, user_id=user_id, task_model=Task, action="read"
+        )
+        if hierarchy_scope is not None:
+            workspace_task_filter = and_(workspace_task_filter, hierarchy_scope)
         parent_task_filter = Task.parent_task_id.is_(None)
         subtask_filter = Task.parent_task_id.is_not(None)
         active_task_filter = (
@@ -31964,6 +32370,16 @@ def quick_record_convert(
         current_user = db.get(User, user_id)
         if not user_can_access_task_workspace(db, current_user, workspace, write=True):
             return RedirectResponse("/task-board", status_code=303)
+        if not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=None,
+            department_id=None,
+            category_id=None,
+            subcategory_id=None,
+            action="create",
+        ):
+            return RedirectResponse("/task-board?error=forbidden", status_code=303)
         workspace_config = TASK_WORKSPACE_CONFIG[workspace]
         allowed_task_types = set(TASK_WORKSPACE_TASK_TYPES[workspace])
         if task_type not in allowed_task_types:
@@ -31971,16 +32387,29 @@ def quick_record_convert(
         if priority not in PRIORITY_DISPLAY_LABELS:
             priority = record.priority or "normal"
         assigned_user_id = parse_optional_int(assigned_to_id)
-        if assigned_user_id and not db.get(User, assigned_user_id):
-            assigned_user_id = None
+        assigned_user = db.get(User, assigned_user_id) if assigned_user_id else None
+        if assigned_user_id and (not assigned_user or not assigned_user.active):
+            return RedirectResponse(
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         if not is_assignment_allowed_for_workspace(db, assigned_user_id, workspace):
             return RedirectResponse(
                 f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
                 status_code=303,
             )
         assigned_team_id = parse_optional_int(team_id)
-        if assigned_team_id and not db.get(Team, assigned_team_id):
-            assigned_team_id = None
+        assigned_team = db.get(Team, assigned_team_id) if assigned_team_id else None
+        if assigned_team_id and (not assigned_team or not assigned_team.active):
+            return RedirectResponse(
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
+        if assigned_user_id and assigned_team_id:
+            return RedirectResponse(
+                f"{task_workspace_new_url(workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
@@ -32018,6 +32447,13 @@ def quick_record_convert(
         )
         db.add(task)
         db.flush()
+        initialize_task_service_desk(
+            db,
+            task,
+            actor_user_id=user_id,
+            requested_user_id=assigned_user_id,
+            requested_team_id=assigned_team_id,
+        )
         task_id = task.id
         db.add(
             TaskHistory(
@@ -32152,6 +32588,16 @@ def task_create(
         current_user = db.get(User, user_id)
         if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
             return RedirectResponse("/task-board", status_code=303)
+        if not user_work_scope_allows(
+            db,
+            user_id=user_id,
+            queue_id=None,
+            department_id=None,
+            category_id=None,
+            subcategory_id=None,
+            action="create",
+        ):
+            return RedirectResponse("/task-board?error=forbidden", status_code=303)
         if source not in TASK_SOURCE_DISPLAY_LABELS:
             source = "manual"
         allowed_workspace_task_types = set(TASK_WORKSPACE_TASK_TYPES[current_workspace])
@@ -32172,13 +32618,26 @@ def task_create(
         parsed_recurrence_interval = parse_optional_int(recurrence_interval) or 1
         parsed_recurrence_interval = min(max(parsed_recurrence_interval, 1), 36)
         assigned_user_id = parse_optional_int(assigned_to_id)
-        if assigned_user_id and not db.get(User, assigned_user_id):
-            assigned_user_id = None
+        assigned_user = db.get(User, assigned_user_id) if assigned_user_id else None
+        if assigned_user_id and (not assigned_user or not assigned_user.active):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         if not is_assignment_allowed_for_workspace(db, assigned_user_id, workspace):
             return RedirectResponse(f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed", status_code=303)
         assigned_team_id = parse_optional_int(team_id)
-        if assigned_team_id and not db.get(Team, assigned_team_id):
-            assigned_team_id = None
+        assigned_team = db.get(Team, assigned_team_id) if assigned_team_id else None
+        if assigned_team_id and (not assigned_team or not assigned_team.active):
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
+        if assigned_user_id and assigned_team_id:
+            return RedirectResponse(
+                f"{task_workspace_new_url(current_workspace, 'task')}&error=assignment_not_allowed",
+                status_code=303,
+            )
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
         if delegated_user_id and not db.get(User, delegated_user_id):
             delegated_user_id = None
@@ -32298,6 +32757,13 @@ def task_create(
         )
         db.add(task)
         db.flush()
+        initialize_task_service_desk(
+            db,
+            task,
+            actor_user_id=user_id,
+            requested_user_id=assigned_user_id,
+            requested_team_id=assigned_team_id,
+        )
         create_guided_flow_run_for_task(db, task, clean_guided_flow_code, user_id)
         db.add(
             TaskHistory(
@@ -32341,7 +32807,9 @@ def task_detail(
         if not task:
             return RedirectResponse("/task-board/manage", status_code=303)
         task_workspace = workspace_for_task_type(task.task_type)
-        if not user_can_access_task_workspace(db, current_user, task_workspace):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace
+        ) or not _task_hierarchy_scope_allows(db, current_user.id, task, action="read"):
             return RedirectResponse("/task-board", status_code=303)
         task_manage_url = task_workspace_manage_url(task_workspace)
         comments = db.scalars(
@@ -32501,6 +32969,17 @@ def task_update(
         target_workspace = workspace_for_task_type(task_type)
         if not user_can_access_task_workspace(db, current_user, current_workspace, write=True):
             return RedirectResponse("/task-board", status_code=303)
+        if not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
+            return RedirectResponse("/task-board?error=forbidden", status_code=303)
+        if status in TASK_ARCHIVE_STATUSES and not _task_hierarchy_scope_allows(
+            db, user_id, task, action="complete"
+        ):
+            return RedirectResponse("/task-board?error=forbidden", status_code=303)
+        if task.status in TASK_ARCHIVE_STATUSES and status not in TASK_ARCHIVE_STATUSES and (
+            not _task_hierarchy_scope_allows(db, user_id, task, action="complete")
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="manage_sla")
+        ):
+            return RedirectResponse("/task-board?error=forbidden", status_code=303)
         if target_workspace != current_workspace and not user_can_access_task_workspace(
             db, current_user, target_workspace, write=True
         ):
@@ -32515,15 +32994,32 @@ def task_update(
 
         responsible_user_id, responsible_team_id = parse_delegation_target(responsible_to)
         assigned_user_id = responsible_user_id if responsible_to else parse_optional_int(assigned_to_id)
-        if assigned_user_id and not db.get(User, assigned_user_id):
-            assigned_user_id = None
+        assigned_user = db.get(User, assigned_user_id) if assigned_user_id else None
+        if assigned_user_id and (
+            not assigned_user
+            or (
+                not assigned_user.active
+                and assigned_user_id != task.assigned_to_id
+            )
+        ):
+            return task_update_error_url(task_id, "assignment_not_allowed")
         assigned_team_id = responsible_team_id if responsible_to else parse_optional_int(team_id)
-        if assigned_team_id and not db.get(Team, assigned_team_id):
-            assigned_team_id = None
+        assigned_team = db.get(Team, assigned_team_id) if assigned_team_id else None
+        if assigned_team_id and (
+            not assigned_team
+            or (not assigned_team.active and assigned_team_id != task.team_id)
+        ):
+            return task_update_error_url(task_id, "assignment_not_allowed")
+        if assigned_user_id and assigned_team_id:
+            return task_update_error_url(task_id, "assignment_not_allowed")
         assignment_changed = (
             str(task.assigned_to_id or "") != str(assigned_user_id or "")
             or str(task.team_id or "") != str(assigned_team_id or "")
         )
+        if assignment_changed and not _task_hierarchy_scope_allows(
+            db, user_id, task, action="assign"
+        ):
+            return task_update_error_url(task_id, "forbidden")
         if assignment_changed and not is_assignment_allowed_for_workspace(db, assigned_user_id, target_workspace):
             return task_update_error_url(task_id, "assignment_not_allowed")
         delegated_user_id, delegated_team_id = parse_delegation_target(delegated_to)
@@ -32627,13 +33123,24 @@ def task_update(
         add_visible_task_change(changes, "Área", task.department, clean_department)
         add_visible_task_change(changes, "Estação", task.station, station.strip())
 
+        prior_status = task.status
         task.status = status
         task.priority = priority
         task.task_type = task_type
         task.category = clean_category
         task.subcategory = clean_subcategory or None
-        task.assigned_to_id = assigned_user_id
-        task.team_id = assigned_team_id
+        if assignment_changed:
+            try:
+                assign_task_executor(
+                    db,
+                    task,
+                    actor_user_id=user_id,
+                    user_id=assigned_user_id,
+                    team_id=assigned_team_id,
+                    reason="Atualização pela interface legacy",
+                )
+            except ValueError:
+                return task_update_error_url(task_id, "assignment_not_allowed")
         task.delegated_to_user_id = delegated_user_id
         task.delegated_to_team_id = delegated_team_id
         task.waiting_for_user_id = waiting_for_user_id
@@ -32643,10 +33150,47 @@ def task_update(
         task.due_on = parsed_due_on
         task.department = clean_department or None
         task.station = station.strip() or None
-        if status in {"resolved", "closed", "no_action_needed"}:
-            task.resolved_at = task.resolved_at or datetime.now(UTC)
-        else:
+        transition_now = datetime.now(UTC)
+        if status == "waiting" and prior_status != "waiting":
+            pause_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason=clean_waiting_reason or "Tarefa em espera",
+                now=transition_now,
+            )
+        elif status != "waiting" and prior_status == "waiting":
+            resume_task_sla(
+                db,
+                task,
+                actor_user_id=user_id,
+                reason="Tarefa retomada",
+                now=transition_now,
+            )
+        if status in TASK_ARCHIVE_STATUSES:
+            mark_task_resolved(db, task, actor_user_id=user_id, now=transition_now)
+        elif prior_status in TASK_ARCHIVE_STATUSES:
             task.resolved_at = None
+            task.sla_paused_at = None
+            task.resolution_due_at = (
+                transition_now + timedelta(minutes=task.sla_resolution_minutes)
+                if task.sla_resolution_minutes is not None
+                else None
+            )
+            db.add(
+                TaskSlaEvent(
+                    task_id=task.id,
+                    actor_user_id=user_id,
+                    action="reopened",
+                    details_json={
+                        "resolution_due_at": (
+                            task.resolution_due_at.isoformat()
+                            if task.resolution_due_at
+                            else None
+                        )
+                    },
+                )
+            )
         if status in {"closed", "cancelled", "no_action_needed"}:
             task.closed_at = task.closed_at or datetime.now(UTC)
         else:
@@ -32713,7 +33257,9 @@ def task_guided_flow_step_update(
             return RedirectResponse("/task-board/manage", status_code=303)
         task_workspace = workspace_for_task_type(task.task_type)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace, write=True
+        ) or not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
             return RedirectResponse("/task-board", status_code=303)
 
         allowed_step_statuses = {code for code, _ in GUIDED_FLOW_STEP_STATUSES}
@@ -32727,6 +33273,11 @@ def task_guided_flow_step_update(
         step.data_json = step_data
 
         if action == "generate_task":
+            if not _task_hierarchy_scope_allows(db, user_id, task, action="create"):
+                return RedirectResponse(
+                    f"/task-board/{task_id}?error=forbidden#flow-step-{step_run_id}",
+                    status_code=303,
+                )
             subtask = Task(
                 title=f"{step.title} - {task.title}",
                 description=clean_note or f"Passo pendente gerado a partir da tarefa CF-TASK-{task.id:05d}.",
@@ -32748,6 +33299,14 @@ def task_guided_flow_step_update(
                 entity_type=task.entity_type,
                 entity_id=task.entity_id,
                 parent_task_id=task.id,
+                ticket_type_id=task.ticket_type_id,
+                work_queue_id=task.work_queue_id,
+                work_department_id=task.work_department_id,
+                work_category_id=task.work_category_id,
+                work_subcategory_id=task.work_subcategory_id,
+                classification_status=task.classification_status,
+                classification_other_text=task.classification_other_text,
+                legacy_classification=task.legacy_classification,
                 team_id=task.team_id,
                 assigned_to_id=task.assigned_to_id,
                 created_by_id=user_id,
@@ -32755,6 +33314,20 @@ def task_guided_flow_step_update(
             )
             db.add(subtask)
             db.flush()
+            try:
+                initialize_task_service_desk(
+                    db,
+                    subtask,
+                    actor_user_id=user_id,
+                    requested_user_id=task.assigned_to_id,
+                    requested_team_id=task.team_id,
+                )
+            except ValueError:
+                initialize_task_service_desk(
+                    db,
+                    subtask,
+                    actor_user_id=user_id,
+                )
             step.generated_task_id = subtask.id
             step.status = "task_created"
             db.add(
@@ -32842,7 +33415,9 @@ def task_add_comment(
             return RedirectResponse("/task-board/manage", status_code=303)
         task_workspace = workspace_for_task_type(task.task_type)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace, write=True
+        ) or not _task_hierarchy_scope_allows(db, user_id, task, action="respond"):
             return RedirectResponse("/task-board", status_code=303)
 
         if not clean_comment:
@@ -32943,6 +33518,7 @@ def task_add_comment(
             )
 
         db.add(TaskComment(task_id=task.id, user_id=user_id, comment=clean_comment))
+        mark_task_first_response(db, task, actor_user_id=user_id)
         record_audit(
             db,
             action="task.comment.created",
@@ -32984,7 +33560,9 @@ def task_create_document(
             return RedirectResponse("/task-board/manage", status_code=303)
         task_workspace = workspace_for_task_type(task.task_type)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if not user_can_access_task_workspace(
+            db, current_user, task_workspace, write=True
+        ) or not _task_hierarchy_scope_allows(db, user_id, task, action="update"):
             return RedirectResponse("/task-board", status_code=303)
         vehicle = db.scalar(select(Vehicle).where(Vehicle.plate == task.plate)) if task.plate else None
         if classification not in DOCUMENT_AREA_LABELS:
@@ -33031,15 +33609,19 @@ def task_close(request: Request, task_id: int):
         task = db.get(Task, task_id)
         task_workspace = workspace_for_task_type(task.task_type) if task else "operational"
         current_user = db.get(User, user_id)
-        if task and not user_can_access_task_workspace(db, current_user, task_workspace, write=True):
+        if task and (
+            not user_can_access_task_workspace(db, current_user, task_workspace, write=True)
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="complete")
+        ):
             return RedirectResponse("/task-board", status_code=303)
         if task and not task.closed_at:
             if not can_supervise_task(db, current_user, task):
                 return task_update_error_url(task_id, "responsible_required")
             old_status = task.status
             task.status = "closed"
-            task.resolved_at = task.resolved_at or datetime.now(UTC)
-            task.closed_at = datetime.now(UTC)
+            closed_now = datetime.now(UTC)
+            mark_task_resolved(db, task, actor_user_id=user_id, now=closed_now)
+            task.closed_at = closed_now
             db.add(
                 TaskHistory(
                     task_id=task.id,
@@ -33463,8 +34045,26 @@ def can_supervise_task(db, user: User | None, task: Task) -> bool:
         return False
     if task.assigned_to_id and task.assigned_to_id == user.id:
         return True
+    if task.supervisor_user_id and task.supervisor_user_id == user.id:
+        return True
+    if task.team_id and db.scalar(
+        select(TeamMember.id).where(
+            TeamMember.team_id == task.team_id,
+            TeamMember.user_id == user.id,
+        )
+    ):
+        return True
     permissions = get_user_permission_codes(db, user)
-    return bool({"admin.manage", "users.manage", "settings.manage"} & permissions)
+    return bool(
+        {
+            "service_desk.assign",
+            "service_desk.complete",
+            "admin.manage",
+            "users.manage",
+            "settings.manage",
+        }
+        & permissions
+    )
 
 
 def task_update_error_url(task_id: int, error: str) -> RedirectResponse:

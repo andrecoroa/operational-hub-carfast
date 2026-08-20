@@ -7,13 +7,13 @@
     <header class="clean-module-hero clean-task-hero">
       <div>
         <p class="eyebrow">Operação</p>
-        <h2>Centro de Tarefas</h2>
-        <p>Uma fila de cada vez, com responsabilidade, colaboração e contexto visíveis.</p>
+        <h2>Service Desk</h2>
+        <p>Tickets, responsabilidade operacional e SLA num único centro de serviço.</p>
       </div>
       {% if creatable_workspaces or can_manage_recurrence %}
         <div class="clean-module-hero-actions">
           {% if can_manage_recurrence %}<a class="button-link secondary-link" href="/v2-clean/tasks/recurring">Recorrentes</a>{% endif %}
-          {% if creatable_workspaces %}<button class="button-link" type="button" data-task-create-open>Nova tarefa</button>{% endif %}
+          {% if creatable_workspaces %}<button class="button-link" type="button" data-task-create-open>Novo ticket</button>{% endif %}
         </div>
       {% endif %}
     </header>
@@ -49,7 +49,7 @@
     {% if creatable_workspaces %}
       <details class="clean-panel clean-card-wide clean-task-create-shell" id="new-task" {% if request.query_params.get("create") == "1" or prefill.title or request.query_params.get("error") == "missing_title" %}open{% endif %}>
         <summary>
-          <span><b>Nova tarefa</b><small>Criação curta; o restante acompanhamento é feito no detalhe.</small></span>
+          <span><b>Novo ticket</b><small>O tipo adapta a gestão sem perder o histórico do Centro de Tarefas.</small></span>
           <span class="clean-task-summary-action">Criar</span>
         </summary>
         <div class="clean-task-create-body">
@@ -59,6 +59,7 @@
             <input type="hidden" name="entity_id" value="{{ prefill.entity_id }}">
             <input type="hidden" name="return_url" value="{{ prefill.return_url }}">
             <label class="span-2">Título<input name="title" value="{{ prefill.title }}" required></label>
+            <label>Tipo de ticket<select name="ticket_type_id" required>{% for item in ticket_types %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label>
             <div class="clean-task-classification-row span-2" data-work-hierarchy>
               <label>Fila
                 <select name="work_queue_id" required data-work-level="queue">
@@ -86,12 +87,13 @@
               </label>
               <label class="clean-work-other span-2" hidden>Descrição de “Outro”<input name="classification_other_text" placeholder="Indica a classificação a rever"></label>
             </div>
-            <label>Responsável
-              <select name="assigned_to_id">
+            <label>Executor
+              <select name="assigned_to_id" data-service-desk-executor="user">
                 <option value="">Por atribuir</option>
-                {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+                {% for user in users %}<option value="{{ user.id }}" data-categories="{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}">{{ user.name }}</option>{% endfor %}
               </select>
             </label>
+            <label>Equipa executora<select name="assigned_team_id" data-service-desk-executor="team"><option value="">Sem equipa</option>{% for team in teams %}<option value="{{ team.id }}" data-categories="{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}">{{ team.name }}</option>{% endfor %}</select></label>
             <label>Prioridade
               <select name="priority">
                 <option value="normal">Normal</option><option value="high">Alta</option>
@@ -174,7 +176,7 @@
               <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
               <td>
                 <strong>{{ task.title }}</strong>
-                <small>{{ "Problema" if task_is_problem else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
+                <small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa antiga" }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
                 {% if filters.workspace == "mine" and task_relations_by_task.get(task.id) %}
                   <span class="clean-task-relation-list">{% for relation in task_relations_by_task.get(task.id, []) %}<em>{{ relation }}</em>{% endfor %}</span>
                 {% endif %}
@@ -190,9 +192,9 @@
                   <small>Classificação anterior · {{ task.category or "Por classificar" }}</small>
                 {% endif %}
               </td>
-              <td>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</td>
-              <td>{{ task.created_at.strftime("%d/%m/%Y") if task.created_at else "-" }}</td>
-              <td>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}</td>
+              <td>{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</td>
+              <td>{{ (task.created_at|lisbon_datetime).strftime("%d/%m/%Y") if task.created_at else "-" }}</td>
+              <td>{{ (task.resolution_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") if task.resolution_due_at else task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}<small class="clean-sla-state is-{{ task_sla_by_id.get(task.id).overall }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).overall) }}</small></td>
               <td><span class="clean-task-status {% if task.closed_at %}closed{% endif %}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
               <td><button class="button-link secondary-link" type="button">Abrir</button></td>
             </tr>
@@ -221,7 +223,7 @@
     <div class="clean-task-preview-backdrop" data-task-close></div>
     <article class="clean-task-preview-dialog clean-preview-dialog">
       <header class="clean-preview-header">
-        <div><small>{{ work_queue_labels.get(task.work_queue_id, task_workspace_labels.get(task_workspace)) if task.work_queue_id else task_workspace_labels.get(task_workspace) }} · CF-TASK-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
+        <div><small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa antiga" }} · CF-TASK-{{ "%05d"|format(task.id) }}</small><h2>{{ task.title }}</h2></div>
         <div class="clean-task-preview-actions">
           <span class="clean-task-status">{{ task_status_labels.get(task.status, task.status) }}</span>
           <button type="button" class="button-link secondary-link clean-preview-close" data-task-close>Fechar preview</button>
@@ -272,19 +274,21 @@
               <input type="hidden" name="contract_number" value="{{ task.contract_number or '' }}">
               <input type="hidden" name="invoice_number" value="{{ task.invoice_number or '' }}">
               <label class="span-2">Título<input name="title" value="{{ task.title }}" required></label>
+              <label>Tipo de ticket<select name="ticket_type_id"><option value="">Tarefa antiga · manter</option>{% for item in ticket_types %}<option value="{{ item.id }}" {% if task.ticket_type_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
               <label class="span-2">Motivo de espera<input name="waiting_reason" value="{{ task.waiting_reason or '' }}"></label>
               <label class="span-2">Descrição da espera<textarea name="waiting_reason_detail" rows="2">{{ task.waiting_reason_detail or '' }}</textarea></label>
-              <label>Responsável<select name="assigned_to_id"><option value="">Por atribuir</option>{% for user in users %}<option value="{{ user.id }}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}</option>{% endfor %}</select></label>
+              <label>Executor<select name="assigned_to_id" data-service-desk-executor="user"><option value="">Por atribuir</option>{% for user in all_users %}{% set category_ids %}{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.assigned_to_id == user.id %}<option value="{{ user.id }}" data-categories="{{ category_ids }}{% if task.assigned_to_id == user.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.assigned_to_id == user.id %}selected{% endif %}>{{ user.name }}{% if task.assigned_to_id == user.id and user.id not in eligible_user_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
+              <label>Equipa executora<select name="assigned_team_id" data-service-desk-executor="team"><option value="">Sem equipa</option>{% for team in all_teams %}{% set category_ids %}{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}{% endset %}{% if category_ids|trim or task.team_id == team.id %}<option value="{{ team.id }}" data-categories="{{ category_ids }}{% if task.team_id == team.id %} {{ task.work_category_id or '' }}{% endif %}" {% if task.team_id == team.id %}selected{% endif %}>{{ team.name }}{% if task.team_id == team.id and team.id not in eligible_team_ids_by_category.get(task.work_category_id, []) %} · histórico{% endif %}</option>{% endif %}{% endfor %}</select></label>
+              <label class="checkbox-label"><input type="checkbox" name="team_requires_claim" {% if task.assignment_state == 'team_unclaimed' %}checked{% endif %}> Equipa fica por assumir</label>
               <label>Estado<select name="status">{% for code, label in [("new","Nova"),("in_execution","Em curso"),("waiting","Em espera"),("resolved","Resolvida"),("closed","Fechada"),("cancelled","Cancelada")] %}<option value="{{ code }}" {% if task.status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prioridade<select name="priority">{% for code, label in [("low","Baixa"),("normal","Normal"),("high","Alta"),("urgent","Urgente")] %}<option value="{{ code }}" {% if task.priority == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               <label>Prazo<input type="date" name="due_on" value="{{ task.due_on.isoformat() if task.due_on else '' }}"></label>
-              <input type="hidden" name="classification_version" value="3">
               {% if task.legacy_classification or (not task.work_queue_id and (task.category or task.subcategory)) %}
                 <div class="clean-task-legacy span-2"><b>Classificação anterior</b><span>{{ task.legacy_classification or ((task.category or '-') ~ ' · ' ~ (task.subcategory or '-')) }}</span></div>
               {% endif %}
               <div class="clean-task-classification-row span-2" data-work-hierarchy>
-                <label>Fila<select name="work_queue_id" required data-work-level="queue" data-selected="{{ task.work_queue_id or '' }}"><option value="">Selecionar fila</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
-                <label>Departamento<select name="work_department_id" required data-work-level="department" data-selected="{{ task.work_department_id or '' }}"><option value="">Selecionar departamento</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+                <label>Fila<select name="work_queue_id" data-work-level="queue" data-selected="{{ task.work_queue_id or '' }}"><option value="">Manter classificação anterior</option>{% for item in work_queues %}<option value="{{ item.id }}" {% if task.work_queue_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
+                <label>Departamento<select name="work_department_id" data-work-level="department" data-selected="{{ task.work_department_id or '' }}"><option value="">Por classificar</option>{% for item in work_departments %}<option value="{{ item.id }}" data-parent="{{ item.queue_id }}" {% if task.work_department_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
                 <label>Categoria<select name="work_category_id" data-work-level="category" data-selected="{{ task.work_category_id or '' }}"><option value="">Por classificar</option>{% for item in work_categories %}<option value="{{ item.id }}" data-parent="{{ item.department_id }}" {% if task.work_category_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
                 <label>Subcategoria<select name="work_subcategory_id" data-work-level="subcategory" data-selected="{{ task.work_subcategory_id or '' }}"><option value="">Por classificar</option>{% for item in work_subcategories %}<option value="{{ item.id }}" data-parent="{{ item.category_id }}" {% if task.work_subcategory_id == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select></label>
                 <label class="clean-work-other span-2" {% if task.classification_status != 'review' %}hidden{% endif %}>Descrição de “Outro”<input name="classification_other_text" value="{{ task.classification_other_text or '' }}" placeholder="Indica a classificação a rever"></label>
@@ -297,7 +301,7 @@
             <h3>Comentários</h3>
             <div class="clean-task-timeline">
               {% for comment in comments_by_task.get(task.id, [])[:8] %}
-                <article><b>{{ users_by_id.get(comment.user_id).name if users_by_id.get(comment.user_id) else "Utilizador" }}</b><time>{{ comment.created_at.strftime("%d/%m/%Y %H:%M") }}</time><p>{{ comment.comment }}</p></article>
+                <article><b>{{ users_by_id.get(comment.user_id).name if users_by_id.get(comment.user_id) else "Utilizador" }}</b><time>{{ (comment.created_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</time><p>{{ comment.comment }}</p></article>
               {% else %}<p>Sem comentários.</p>{% endfor %}
             </div>
             {% if can_write %}
@@ -309,11 +313,12 @@
           </section>
           <details class="clean-task-history">
             <summary>Histórico ({{ history_by_task.get(task.id, [])|length }})</summary>
-            {% for item in history_by_task.get(task.id, [])[:12] %}<p><b>{{ item.field_name }}</b> · {{ item.new_value or "-" }} <time>{{ item.changed_at.strftime("%d/%m/%Y %H:%M") }}</time></p>{% endfor %}
+            {% for item in history_by_task.get(task.id, [])[:12] %}<p><b>{{ item.field_name }}</b> · {{ item.new_value or "-" }} <time>{{ (item.changed_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</time></p>{% endfor %}
           </details>
         </div>
         <aside class="clean-task-preview-side">
-          <section><h3>Responsabilidade</h3><dl><dt>Responsável</dt><dd>{{ users_by_id.get(task.assigned_to_id).name if users_by_id.get(task.assigned_to_id) else "Por atribuir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd><dt>Prazo</dt><dd>{{ task.due_on.strftime("%d/%m/%Y") if task.due_on else "Sem prazo" }}</dd></dl></section>
+          <section><h3>Responsabilidade</h3><dl><dt>Executor</dt><dd>{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</dd><dt>Supervisor</dt><dd>{{ users_by_id.get(task.supervisor_user_id).name if users_by_id.get(task.supervisor_user_id) else "Por definir" }}</dd><dt>Criada por</dt><dd>{{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</dd></dl>{% if task_claim_allowed_by_id.get(task.id) %}<form method="post" action="/v2-clean/tasks/{{ task.id }}/claim"><input type="hidden" name="return_url" value="{{ request.url.path }}?{{ request.url.query }}"><button>Assumir ticket</button></form>{% endif %}</section>
+          <section><h3>SLA</h3><dl><dt>Primeira resposta</dt><dd><span class="clean-sla-state is-{{ task_sla_by_id.get(task.id).first_response }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).first_response) }}</span>{% if task.first_response_due_at %}<small>{{ (task.first_response_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</small>{% endif %}</dd><dt>Resolução</dt><dd><span class="clean-sla-state is-{{ task_sla_by_id.get(task.id).resolution }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).resolution) }}</span>{% if task.resolution_due_at %}<small>{{ (task.resolution_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") }}</small>{% endif %}</dd></dl></section>
           <section>
             <h3>Colaboração</h3>
             <p><b>Criador:</b> {{ users_by_id.get(task.created_by_id).name if users_by_id.get(task.created_by_id) else "-" }}</p>
@@ -390,6 +395,8 @@
     const category = root.querySelector('[data-work-level="category"]');
     const subcategory = root.querySelector('[data-work-level="subcategory"]');
     const other = root.querySelector('.clean-work-other');
+    const form = root.closest('form');
+    const executorSelects = form ? form.querySelectorAll('[data-service-desk-executor]') : [];
     const levels = [queue, department, category, subcategory];
     if (levels.some((item) => !item)) return;
     const filter = (select, parentValue) => {
@@ -419,6 +426,18 @@
       const showOther = requiresDescription();
       other.hidden = !showOther;
       other.querySelector('input').required = showOther;
+      executorSelects.forEach((select) => {
+        Array.from(select.options).forEach((option, index) => {
+          if (!index) return;
+          const categories = (option.dataset.categories || '').trim().split(/\s+/);
+          const visible = (
+            Boolean(category.value) && categories.includes(String(category.value))
+          ) || (!category.value && option.selected);
+          option.hidden = !visible;
+          option.disabled = !visible;
+        });
+        if (select.value && select.selectedOptions[0]?.disabled) select.value = '';
+      });
     };
     levels.forEach((select, index) => select.addEventListener('change', () => {
       levels.slice(index + 1).forEach((child) => { child.value = ''; });

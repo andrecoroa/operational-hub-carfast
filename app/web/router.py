@@ -23609,6 +23609,19 @@ def clean_workshop_technical_report_void(request: Request, report_id: int):
     )
 
 
+@web_router.get("/alerts", response_class=HTMLResponse)
+def alerts_page(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        return templates.TemplateResponse(request, "alerts.html", {"user": user})
+
+
 @web_router.get("/admin", response_class=HTMLResponse)
 def admin_page(
     request: Request,

@@ -22,6 +22,9 @@
     {% endif %}
     {% if is_clean_experience %}
       <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
+      {% if "dashboard.read" in nav_perms %}
+        <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas personalizados</a>
+      {% endif %}
       <a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>
       <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
       {% set workshop_menu_open = active_menu == "workshop" or request.url.path.startswith('/v2-clean/workshop') %}

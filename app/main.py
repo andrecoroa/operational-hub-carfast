@@ -65,6 +65,7 @@ EXPERIENCE_NEUTRAL_PREFIXES = (
 
 WEB_PERMISSION_RULES = (
     (("/",), {"GET": {"dashboard.read"}}),
+    (("/alerts",), {"GET": {"dashboard.read"}}),
     (
         ("/evolution/quick",),
         {

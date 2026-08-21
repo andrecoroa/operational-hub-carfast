@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% set active_menu = "alerts" %}
+  {% include "_sidebar.html" %}
+  <main class="content alerts-content">
+    <header class="topbar alerts-topbar">
+      <div>
+        <p class="eyebrow">Automação e controlo</p>
+        <h2>Alertas personalizados</h2>
+        <p class="breadcrumb">Crie regras sobre os dados existentes e escolha quem deve agir.</p>
+      </div>
+      <div class="alerts-header-actions">
+        <button class="alerts-ghost-button" type="button" data-action="save-draft">Guardar rascunho</button>
+        <button type="button" data-action="activate">Ativar alerta</button>
+      </div>
+    </header>
+
+    <nav class="alerts-steps" aria-label="Etapas de configuração">
+      <button class="is-active" type="button" data-step-target="1"><span>1</span><strong>Dados</strong><small>O que observar</small></button>
+      <button type="button" data-step-target="2"><span>2</span><strong>Regras</strong><small>Quando alertar</small></button>
+      <button type="button" data-step-target="3"><span>3</span><strong>Ação</strong><small>Quem e como</small></button>
+    </nav>
+
+    <div class="alerts-layout">
+      <section class="alerts-builder">
+        <div class="alert-step-panel" data-step="1">
+          <div class="alerts-panel-heading">
+            <div><span class="alerts-step-number">01</span><div><h3>Escolha a fonte de dados</h3><p>Selecione a área que pretende acompanhar.</p></div></div>
+            <span class="alerts-complete">Concluído ✓</span>
+          </div>
+          <div class="data-source-grid" role="radiogroup" aria-label="Fonte de dados">
+            <button type="button" class="data-source-card is-selected" data-source="Frota" data-icon="▣"><span class="source-icon fleet">▣</span><strong>Frota</strong><small>Viaturas e estado operacional</small><b>Selecionado</b></button>
+            <button type="button" class="data-source-card" data-source="Oficina" data-icon="⚙"><span class="source-icon workshop">⚙</span><strong>Oficina</strong><small>Processos e intervenções</small><b>Selecionar</b></button>
+            <button type="button" class="data-source-card" data-source="Tarefas" data-icon="✓"><span class="source-icon tasks">✓</span><strong>Tarefas</strong><small>Prazos e responsáveis</small><b>Selecionar</b></button>
+            <button type="button" class="data-source-card" data-source="Documentos" data-icon="▤"><span class="source-icon docs">▤</span><strong>Documentos</strong><small>Validade e classificação</small><b>Selecionar</b></button>
+          </div>
+        </div>
+
+        <div class="alert-step-panel" data-step="2">
+          <div class="alerts-panel-heading">
+            <div><span class="alerts-step-number">02</span><div><h3>Defina as condições</h3><p>Combine campos e operadores para construir a regra.</p></div></div>
+            <span class="alerts-required">Obrigatório</span>
+          </div>
+          <div class="rule-intro"><span>Quando</span><strong data-source-label>Frota</strong><span>cumprir todas as condições:</span><select aria-label="Combinação de condições"><option>todas</option><option>qualquer uma</option></select></div>
+          <div class="rules-list" data-rules-list>
+            <div class="rule-row">
+              <span class="rule-join">SE</span>
+              <label><span>Campo</span><select data-rule-field><option>Estado operacional</option><option>Data da próxima revisão</option><option>Quilometragem atual</option><option>Responsável</option></select></label>
+              <label><span>Operador</span><select data-rule-operator><option>é igual a</option><option>é diferente de</option><option>está vazio</option><option>é anterior a</option></select></label>
+              <label><span>Valor</span><select data-rule-value><option>Em manutenção</option><option>Bloqueada</option><option>Indisponível</option></select></label>
+              <button class="rule-remove" type="button" aria-label="Remover condição">×</button>
+            </div>
+            <div class="rule-row">
+              <span class="rule-join">E</span>
+              <label><span>Campo</span><select><option>Data de entrada</option><option>Última atualização</option><option>Data de saída prevista</option></select></label>
+              <label><span>Operador</span><select><option>há mais de</option><option>há menos de</option><option>é hoje</option></select></label>
+              <label><span>Valor</span><div class="value-with-suffix"><input type="number" value="3" min="1"><span>dias</span></div></label>
+              <button class="rule-remove" type="button" aria-label="Remover condição">×</button>
+            </div>
+          </div>
+          <button class="add-rule-button" type="button" data-action="add-rule">＋ Adicionar condição</button>
+
+          <div class="alerts-subsection">
+            <div class="subsection-heading"><div><span class="comparison-icon">⇄</span><div><h4>Comparação entre campos</h4><p>Opcional · Compare dois valores do mesmo registo.</p></div></div><label class="toggle"><input type="checkbox" data-comparison-toggle><span></span></label></div>
+            <div class="comparison-fields" data-comparison-fields hidden>
+              <select aria-label="Primeiro campo"><option>Quilometragem atual</option><option>Data da próxima revisão</option></select><select aria-label="Operador"><option>é superior a</option><option>é inferior a</option></select><select aria-label="Segundo campo"><option>Próxima revisão (km)</option><option>Última revisão (km)</option></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="alert-step-panel" data-step="3">
+          <div class="alerts-panel-heading">
+            <div><span class="alerts-step-number">03</span><div><h3>Configure a resposta</h3><p>Dê um nome ao alerta e escolha os destinatários.</p></div></div>
+          </div>
+          <div class="alert-action-grid">
+            <label><span>Nome do alerta</span><input data-alert-name value="Viaturas em manutenção há mais de 3 dias"></label>
+            <label><span>Prioridade</span><select><option>Alta</option><option>Média</option><option>Baixa</option></select></label>
+            <label><span>Notificar</span><select><option>Equipa de Operações</option><option>Responsável da viatura</option><option>Gestores</option></select></label>
+            <label><span>Frequência</span><select><option>Uma vez por ocorrência</option><option>Diariamente enquanto persistir</option><option>A cada atualização</option></select></label>
+          </div>
+          <label class="alert-description"><span>Mensagem</span><textarea rows="3">A viatura {{ matricula }} permanece em manutenção há mais de 3 dias. Validar estado e previsão de conclusão.</textarea><small>Pode utilizar campos entre chavetas para personalizar a mensagem.</small></label>
+        </div>
+      </section>
+
+      <aside class="alerts-preview">
+        <div class="preview-heading"><div><span class="preview-live-dot"></span><strong>Pré-visualização</strong></div><span>Em tempo real</span></div>
+        <article class="preview-alert-card">
+          <div class="preview-card-top"><span class="preview-priority">Alta prioridade</span><span>Agora</span></div>
+          <span class="preview-source-icon">▣</span>
+          <h3 data-preview-name>Viaturas em manutenção há mais de 3 dias</h3>
+          <p>Foram encontrados <strong>4 registos</strong> que cumprem esta regra.</p>
+          <div class="preview-record"><span>22-ZX-41</span><strong>5 dias em manutenção</strong></div>
+          <div class="preview-record"><span>AG-73-PQ</span><strong>4 dias em manutenção</strong></div>
+          <button type="button">Ver registos afetados <span>→</span></button>
+        </article>
+        <div class="rule-summary">
+          <p class="eyebrow">Resumo da regra</p>
+          <div><span>Fonte</span><strong data-summary-source>Frota</strong></div>
+          <div><span>Condições</span><strong data-condition-count>2 condições</strong></div>
+          <div><span>Destinatário</span><strong>Equipa de Operações</strong></div>
+          <div><span>Frequência</span><strong>Uma vez</strong></div>
+        </div>
+        <div class="preview-tip"><span>i</span><p><strong>Dica</strong> Use regras específicas para evitar alertas em excesso. Pode ajustar ou pausar o alerta a qualquer momento.</p></div>
+      </aside>
+    </div>
+    <div class="alerts-toast" role="status" aria-live="polite" hidden></div>
+  </main>
+</div>
+
+<template id="rule-template">
+  <div class="rule-row">
+    <span class="rule-join">E</span>
+    <label><span>Campo</span><select><option>Quilometragem atual</option><option>Data da próxima revisão</option><option>Responsável</option></select></label>
+    <label><span>Operador</span><select><option>é superior a</option><option>é igual a</option><option>está vazio</option></select></label>
+    <label><span>Valor</span><input placeholder="Indique um valor"></label>
+    <button class="rule-remove" type="button" aria-label="Remover condição">×</button>
+  </div>
+</template>
+<script>
+(() => {
+  const root = document.querySelector('.alerts-content');
+  const rules = root.querySelector('[data-rules-list]');
+  const updateCount = () => {
+    const count = rules.querySelectorAll('.rule-row').length;
+    root.querySelector('[data-condition-count]').textContent = `${count} ${count === 1 ? 'condição' : 'condições'}`;
+  };
+  root.addEventListener('click', (event) => {
+    const source = event.target.closest('.data-source-card');
+    if (source) {
+      root.querySelectorAll('.data-source-card').forEach(card => { card.classList.remove('is-selected'); card.querySelector('b').textContent = 'Selecionar'; });
+      source.classList.add('is-selected'); source.querySelector('b').textContent = 'Selecionado';
+      root.querySelectorAll('[data-source-label], [data-summary-source]').forEach(item => item.textContent = source.dataset.source);
+      root.querySelector('.preview-source-icon').textContent = source.dataset.icon;
+    }
+    if (event.target.closest('[data-action="add-rule"]')) {
+      rules.append(document.querySelector('#rule-template').content.cloneNode(true)); updateCount();
+    }
+    const remove = event.target.closest('.rule-remove');
+    if (remove && rules.querySelectorAll('.rule-row').length > 1) { remove.closest('.rule-row').remove(); updateCount(); }
+    const step = event.target.closest('[data-step-target]');
+    if (step) { root.querySelector(`[data-step="${step.dataset.stepTarget}"]`).scrollIntoView({behavior: 'smooth', block: 'start'}); }
+    const action = event.target.closest('[data-action="save-draft"], [data-action="activate"]');
+    if (action) {
+      const toast = root.querySelector('.alerts-toast');
+      toast.textContent = action.dataset.action === 'activate' ? 'Alerta ativado com sucesso.' : 'Rascunho guardado.';
+      toast.hidden = false; window.setTimeout(() => { toast.hidden = true; }, 2800);
+    }
+  });
+  root.querySelector('[data-comparison-toggle]').addEventListener('change', event => { root.querySelector('[data-comparison-fields]').hidden = !event.target.checked; });
+  root.querySelector('[data-alert-name]').addEventListener('input', event => { root.querySelector('[data-preview-name]').textContent = event.target.value || 'Novo alerta personalizado'; });
+})();
+</script>
+{% endblock %}

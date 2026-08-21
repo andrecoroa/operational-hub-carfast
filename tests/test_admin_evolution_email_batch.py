@@ -6,6 +6,7 @@ from app.models.email import EmailChannel, EmailChannelRole, EmailExecutorEligib
 from app.models.evolution import EvolutionRecord, EvolutionRecordHistory
 from app.models.tasks import Task
 from app.services.authorization import expand_permission_aliases
+from app.services.users import create_user
 
 
 def test_evolution_register_preserves_history_and_converts_approved_record(
@@ -253,3 +254,124 @@ def test_email_executor_batch_applies_cross_product_in_one_audited_operation(
         )
         is not None
     )
+
+
+def test_admin_is_grouped_by_domains_with_central_operations_area(authenticated_client):
+    response = authenticated_client.get("/v2-clean/admin/operations")
+
+    assert response.status_code == 200
+    assert "Pesquisar na Administração" in response.text
+    assert "Operações e Service Desk" in response.text
+    assert "Centro de Tarefas" in response.text
+    assert "Centro de Processos" in response.text
+    assert "Permissões operacionais" in response.text
+    for label in (
+        "Utilizadores e Acessos",
+        "Organização",
+        "Módulos Operacionais",
+        "Integrações",
+        "Sistema e Auditoria",
+        "Evolução da Aplicação",
+    ):
+        assert label in response.text
+    assert "data-admin-domain-search" in response.text
+    assert "data-admin-domain-group" in response.text
+
+
+def test_global_evolution_action_creates_with_automatic_context(authenticated_client, db_session):
+    home = authenticated_client.get("/v2-clean")
+    assert home.status_code == 200
+    assert 'title="Novo registo de evolução"' in home.text
+    assert 'action="/evolution/quick"' in home.text
+    assert "future_implementation" in home.text
+
+    response = authenticated_client.post(
+        "/evolution/quick",
+        data={
+            "record_type": "decision",
+            "title": "Manter histórico operacional",
+            "description": "Decisão registada no contexto da fila.",
+            "priority": "high",
+            "current_url": "/v2-clean/tasks?workspace=operational",
+            "module": "general",
+            "context": "Centro de Tarefas",
+        },
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 201
+    record = db_session.get(EvolutionRecord, response.json()["id"])
+    assert record is not None
+    assert record.record_type == "decision"
+    assert record.module == "service_desk"
+    assert record.reference_chat == "/v2-clean/tasks?workspace=operational"
+    assert "Centro de Tarefas" in (record.notes or "")
+    assert db_session.scalar(
+        select(AuditLog).where(AuditLog.action == "clean_admin.evolution.quick_created")
+    )
+
+
+def test_evolution_creation_permission_does_not_grant_management(client, db_session):
+    user = create_user(
+        db_session,
+        name="Consulta com evolução",
+        email="evolution.viewer@carfast.local",
+        password="Secret123!",
+        role_codes=["viewer"],
+    )
+    db_session.commit()
+    login = client.post(
+        "/login",
+        data={"email": user.email, "password": "Secret123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    client.post(
+        "/change-notice",
+        data={"next_url": "/v2-clean"},
+        follow_redirects=False,
+    )
+
+    created = client.post(
+        "/evolution/quick",
+        data={
+            "record_type": "error",
+            "title": "Erro observado",
+            "description": "Descrição para análise administrativa.",
+            "priority": "normal",
+            "current_url": "https://malicious.example/escape",
+            "module": "fleet_sales",
+            "context": "Página de consulta",
+        },
+        headers={"Accept": "application/json"},
+    )
+    assert created.status_code == 201
+    record_id = created.json()["id"]
+    record = db_session.get(EvolutionRecord, record_id)
+    assert record is not None
+    assert record.reference_chat == "/v2-clean"
+    assert record.module == "fleet_sales"
+
+    management_page = client.get("/v2-clean/admin/evolution", follow_redirects=False)
+    assert management_page.status_code == 303
+    assert management_page.headers["location"] == "/v2-clean?error=forbidden"
+
+    update = client.post(
+        f"/v2-clean/admin/evolution/{record_id}",
+        data={
+            "record_type": "error",
+            "module": "fleet_sales",
+            "title": "Tentativa sem autorização",
+            "description": record.description,
+            "priority": "urgent",
+            "status": "approved",
+        },
+        follow_redirects=False,
+    )
+    assert update.status_code == 303
+    assert update.headers["location"] == "/v2-clean?error=forbidden"
+    db_session.expire_all()
+    unchanged = db_session.get(EvolutionRecord, record_id)
+    assert unchanged is not None
+    assert unchanged.title == "Erro observado"
+    assert unchanged.priority == "normal"

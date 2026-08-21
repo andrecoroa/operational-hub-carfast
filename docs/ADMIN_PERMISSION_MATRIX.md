@@ -41,7 +41,8 @@ Estados usados:
 | `admin.security.read` | Revisão de acessos | Sistema | GET `/v2-clean/admin/security` | Segurança e acessos | User Admin, Auditor | ativa | manter |
 | `admin.security.manage` | Controlos de segurança | Sistema | reservado no middleware; sem formulário específico | Segurança e acessos | Admin | parcial | ligar apenas a ações concretas futuras |
 | `admin.evolution.read` | Consultar Registo de Evolução | Geral | lista/detalhe, filtros, histórico, anexos/comentários | Registo de Evolução | Funcional, Auditor | em falta (resolvida) | nova permissão própria |
-| `admin.evolution.manage` | Gerir Registo de Evolução | Geral | criar/editar/comentar/ligar documento/converter tarefa | Registo de Evolução | Funcional | em falta (resolvida) | nova permissão própria |
+| `admin.evolution.create` | Criar registos de evolução | Geral | POST rápido global e criação administrativa | ação global `+` | todos os perfis iniciais | ativa | separa contribuição de gestão/priorização |
+| `admin.evolution.manage` | Gerir Registo de Evolução | Geral | editar/priorizar/comentar/ligar documento/converter tarefa | Evolução da aplicação | Funcional | em falta (resolvida) | gestão completa reservada a perfis administrativos |
 | `experience.legacy.access` | Abrir experiência anterior | Sistema | gate de rotas legacy | ligação lateral | Funcional e perfis operacionais | ativa | manter até retirada explícita da experiência anterior |
 | `vehicles.read` | Consultar viaturas | Frota e Venda | GET Frota/API | Frota | Auditor, Gestor, Operador, Consulta | ativa | manter |
 | `vehicles.write` | Editar viaturas | Frota e Venda | POST/PATCH Frota/API | Frota | Gestor, Operador | ativa | manter |
@@ -120,3 +121,6 @@ Estados usados:
    workspaces, evitando aumento silencioso de privilégio.
 6. Botões e endpoints novos usam a mesma autorização server-side. A UI nunca é a barreira de
    segurança.
+7. `admin.evolution.create` autoriza apenas a entrada rápida/aditiva. Não concede leitura da
+   área administrativa, alteração de prioridade/estado, decisão, comentários, anexos ou conversão
+   em tarefa.

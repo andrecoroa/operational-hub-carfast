@@ -15,6 +15,7 @@ from app.models.email import (
     EmailExecutorEligibility,
     EmailInboxRule,
     EmailMessage,
+    EmailMessageDelivery,
     EmailThread,
     EmailWebhookEvent,
 )
@@ -28,15 +29,16 @@ from app.services.bootstrap import (
 from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
+    reply_all_recipients,
     send_message,
     webhook_authorized,
 )
-from app.services.work_classification import thread_reference
 from app.services.service_desk import (
     claim_email_thread,
     initialize_email_operations,
     sla_snapshot,
 )
+from app.services.work_classification import thread_reference
 
 
 def _payload(message_id: str = "pm-test-1") -> dict:
@@ -84,6 +86,7 @@ def test_inbound_is_idempotent_and_archives_attachments(db_session, tmp_path, mo
     assert db_session.scalar(select(func.count()).select_from(EmailMessage)) == 1
     assert db_session.scalar(select(func.count()).select_from(EmailAttachment)) == 1
     assert db_session.scalar(select(func.count()).select_from(EmailWebhookEvent)) == 1
+    assert db_session.scalar(select(func.count()).select_from(EmailMessageDelivery)) == 1
     attachment = db_session.scalar(select(EmailAttachment))
     assert (
         tmp_path.joinpath(
@@ -91,6 +94,182 @@ def test_inbound_is_idempotent_and_archives_attachments(db_session, tmp_path, mo
         ).read_bytes()
         == b"conteudo"
     )
+
+
+def test_same_logical_email_via_two_postmark_deliveries_is_merged_and_auditable(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    first = _payload("pm-forward-a")
+    first.update(
+        {
+            "MailboxHash": "hub",
+            "OriginalRecipient": "apoio@carfast.pt",
+            "ToFull": [{"Email": "apoio@carfast.pt", "Name": "Apoio"}],
+            "CcFull": [{"Email": "operacoes@carfast.pt", "Name": "Operações"}],
+            "Headers": [
+                {"Name": "Message-ID", "Value": "<external-message-42@example.com>"},
+                {"Name": "Date", "Value": "Fri, 21 Aug 2026 09:15:00 +0100"},
+            ],
+        }
+    )
+    second = dict(first)
+    second["MessageID"] = "pm-forward-b"
+    second["OriginalRecipient"] = "operacoes@carfast.pt"
+
+    first_thread, first_created = ingest_inbound(db_session, first)
+    second_thread, second_created = ingest_inbound(db_session, second)
+    repeated_thread, repeated_created = ingest_inbound(db_session, second)
+
+    assert first_created is True
+    assert second_created is False
+    assert repeated_created is False
+    assert first_thread.id == second_thread.id == repeated_thread.id
+    assert db_session.scalar(select(func.count()).select_from(EmailThread)) == 1
+    assert db_session.scalar(select(func.count()).select_from(EmailMessage)) == 1
+    assert db_session.scalar(select(func.count()).select_from(EmailWebhookEvent)) == 2
+    assert db_session.scalar(select(func.count()).select_from(EmailMessageDelivery)) == 2
+    deliveries = list(
+        db_session.scalars(select(EmailMessageDelivery).order_by(EmailMessageDelivery.id))
+    )
+    assert {item.original_recipient for item in deliveries} == {
+        "apoio@carfast.pt",
+        "operacoes@carfast.pt",
+    }
+    assert [item.canonical_marker for item in deliveries] == ["canonical", None]
+    message = db_session.scalar(select(EmailMessage))
+    assert message.recipients_json == [{"Email": "apoio@carfast.pt", "Name": "Apoio"}]
+    assert message.cc_json == [
+        {"Email": "operacoes@carfast.pt", "Name": "Operações"}
+    ]
+
+    preview = authenticated_client.get(f"/v2-clean/email/{first_thread.id}/preview")
+    assert preview.status_code == 200
+    assert "Para: apoio@carfast.pt" in preview.text
+    assert "Cc: operacoes@carfast.pt" in preview.text
+    assert "Recebido originalmente em" in preview.text
+    assert "Responder a todos" in preview.text
+
+
+def test_reply_all_excludes_every_internal_address_and_alias(
+    authenticated_client, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    monkeypatch.setattr(
+        email_web,
+        "SessionLocal",
+        sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False),
+    )
+    payload = _payload("pm-reply-all")
+    payload["MailboxHash"] = "hub"
+    payload["ToFull"] = [
+        {"Email": "hub@carfast.pt"},
+        {"Email": "observador@example.net"},
+    ]
+    payload["CcFull"] = [
+        {"Email": "colega@example.org", "Name": "Colega"},
+        {"Email": "multas@carfast.pt"},
+        {"Email": postmark_inbound_address("oficina")},
+    ]
+    payload["Headers"] = [
+        {"Name": "Message-ID", "Value": "<reply-all-source@example.com>"}
+    ]
+    thread, _ = ingest_inbound(db_session, payload)
+    source = db_session.scalar(
+        select(EmailMessage).where(EmailMessage.thread_id == thread.id)
+    )
+
+    reply_to, reply_cc = reply_all_recipients(db_session, source, "hub@carfast.pt")
+    assert reply_to == [{"Email": "cliente@example.com"}]
+    assert {item["Email"] for item in reply_cc} == {
+        "observador@example.net",
+        "colega@example.org",
+    }
+
+    response = authenticated_client.post(
+        f"/v2-clean/email/{thread.id}/reply",
+        data={
+            "body": "Resposta para todos os intervenientes externos.",
+            "recipient_email": "cliente@example.com",
+            "reply_mode": "all",
+            "reply_source_message_id": str(source.id),
+            "submit": "approval",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    outbound = db_session.scalar(
+        select(EmailMessage)
+        .where(EmailMessage.thread_id == thread.id, EmailMessage.direction == "outbound")
+        .order_by(EmailMessage.id.desc())
+    )
+    assert outbound.recipients_json == [{"Email": "cliente@example.com"}]
+    assert {item["Email"] for item in outbound.cc_json} == {
+        "observador@example.net",
+        "colega@example.org",
+    }
+    assert all(
+        "carfast" not in item["Email"] and "postmarkapp.com" not in item["Email"]
+        for item in [*outbound.recipients_json, *outbound.cc_json]
+    )
+
+
+def test_same_logical_email_remains_isolated_across_functional_channels(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    first = _payload("pm-cross-channel-a")
+    first["MailboxHash"] = "multas"
+    first["Headers"] = [
+        {"Name": "Message-ID", "Value": "<cross-channel@example.com>"}
+    ]
+    second = dict(first)
+    second["MessageID"] = "pm-cross-channel-b"
+    second["MailboxHash"] = "oficina"
+
+    first_thread, first_created = ingest_inbound(db_session, first)
+    second_thread, second_created = ingest_inbound(db_session, second)
+
+    assert first_created is True
+    assert second_created is True
+    assert first_thread.id != second_thread.id
+    assert first_thread.channel_id != second_thread.channel_id
+    assert db_session.scalar(select(func.count()).select_from(EmailMessage)) == 2
+    deliveries = list(db_session.scalars(select(EmailMessageDelivery)))
+    assert len({item.logical_key for item in deliveries}) == 1
+    assert {item.canonical_marker for item in deliveries} == {"canonical"}
+
+
+def test_fallback_logical_key_merges_only_matching_dated_content(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "email_storage_root", str(tmp_path))
+    first = _payload("pm-fallback-a")
+    first["Headers"] = [
+        {"Name": "Date", "Value": "Fri, 21 Aug 2026 10:00:03 +0100"}
+    ]
+    duplicate = dict(first)
+    duplicate["MessageID"] = "pm-fallback-b"
+    distinct = dict(first)
+    distinct["MessageID"] = "pm-fallback-c"
+    distinct["TextBody"] = "Conteúdo efetivamente diferente."
+
+    first_thread, first_created = ingest_inbound(db_session, first)
+    duplicate_thread, duplicate_created = ingest_inbound(db_session, duplicate)
+    distinct_thread, distinct_created = ingest_inbound(db_session, distinct)
+
+    assert first_created is True
+    assert duplicate_created is False
+    assert distinct_created is True
+    assert duplicate_thread.id == first_thread.id
+    assert distinct_thread.id != first_thread.id
+    assert db_session.scalar(select(func.count()).select_from(EmailMessage)) == 2
+    assert db_session.scalar(select(func.count()).select_from(EmailMessageDelivery)) == 3
 
 
 def test_inbound_subject_rule_overrides_channel_defaults(db_session, tmp_path, monkeypatch):
@@ -827,6 +1006,7 @@ def test_postmark_outbound_uses_public_from_and_reply_to_for_every_mailbox(
             state="approved",
             sender=channel.address,
             recipients_json=[{"Email": "cliente@example.com"}],
+            cc_json=[{"Email": "colega@example.org"}],
             subject="Teste por caixa",
             text_body="Mensagem",
         )
@@ -839,3 +1019,4 @@ def test_postmark_outbound_uses_public_from_and_reply_to_for_every_mailbox(
         ("sinistros@carfast.pt", "sinistros@carfast.pt"),
         ("vvp@carfast.pt", "vvp@carfast.pt"),
     }
+    assert {item["Cc"] for item in captured} == {"colega@example.org"}

@@ -8,6 +8,7 @@ from app.models.work_hierarchy import RoleWorkScope, WorkDepartment, WorkQueue
 from app.models.workshop_phased import WorkshopPhasedProcess, WorkshopPhasedProcessPhase
 from app.services.bootstrap import seed_roles
 from app.services.users import create_user
+from app.web import clean_admin
 
 
 def _login(client, email: str, password: str) -> None:
@@ -103,6 +104,10 @@ def test_work_classification_uses_compact_hierarchy_table_and_editors(authentica
     assert 'data-work-edit-parent' in response.text
     assert "Código estável (não editável)" in response.text
     assert "Administração da hierarquia" in response.text
+
+
+def test_work_classification_registers_lisbon_datetime_filter():
+    assert "lisbon_datetime" in clean_admin.templates.env.filters
 
 
 def test_work_scope_permissions_have_an_edit_action(authenticated_client, db_session):

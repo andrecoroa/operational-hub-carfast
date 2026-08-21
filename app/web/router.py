@@ -13897,7 +13897,7 @@ def clean_documentation_treatment(
             ).first()
             if requested_row:
                 records_page_raw.append(requested_row)
-        expected_limit = clean_page_size - len(records_page_raw)
+        expected_limit = max(clean_page_size - len(records_page_raw), 0)
         expected_offset = max(offset - actual_total, 0) if offset >= actual_total else 0
         expected_records = (
             db.scalars(

@@ -87,12 +87,14 @@ from app.services.service_desk import (
     eligible_category_users,
     email_eligible_teams,
     email_eligible_users,
+    local_datetime,
 )
 from app.services.users import create_user
 from app.services.work_classification import user_work_scope_allows
 
 clean_admin_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["lisbon_datetime"] = local_datetime
 
 CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

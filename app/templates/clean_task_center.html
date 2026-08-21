@@ -451,7 +451,6 @@
     const category = root.querySelector('[data-work-level="category"]');
     const subcategory = root.querySelector('[data-work-level="subcategory"]');
     const other = root.querySelector('.clean-work-other');
-    const form = root.closest('form');
     const executorSelects = form ? form.querySelectorAll('[data-service-desk-executor]') : [];
     const levels = [queue, department, category, subcategory];
     if (levels.some((item) => !item)) return;

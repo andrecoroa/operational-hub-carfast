@@ -289,4 +289,5 @@ def test_task_table_has_compact_responsive_overflow_contract():
     assert "min-width: 820px" in css
     assert 'data-label="Executor"' in template
     assert 'data-service-desk-executor="user"' in template
+    assert template.count("const form = root.closest('form');") == 1
     assert "Só são apresentados utilizadores elegíveis" in template

@@ -742,7 +742,20 @@ def test_five_mailboxes_bootstrap_with_exact_postmark_plus_addresses(db_session)
     channels = {
         item.code: item for item in db_session.scalars(select(EmailChannel)).all()
     }
-    assert set(channels) == {"test", "multas", "oficina", "sinistros", "vvp"}
+    assert set(channels) == {
+        "test",
+        "multas",
+        "oficina",
+        "sinistros",
+        "vvp",
+        "seguradoras",
+        "brokers",
+        "departamento_financeiro",
+        "reports",
+        "administrativo",
+        "suporte",
+        "outros",
+    }
     expected = {
         "test": ("hub@carfast.pt", "hub"),
         "multas": ("multas@carfast.pt", "multas"),
@@ -756,6 +769,21 @@ def test_five_mailboxes_bootstrap_with_exact_postmark_plus_addresses(db_session)
         assert channels[code].inbound_forward_address == postmark_inbound_address(
             mailbox_hash
         )
+    for code in {
+        "seguradoras",
+        "brokers",
+        "departamento_financeiro",
+        "reports",
+        "administrativo",
+        "suporte",
+        "outros",
+    }:
+        assert channels[code].address is None
+        assert channels[code].default_reply_address is None
+        assert channels[code].inbound_hash is None
+        assert channels[code].inbound_forward_address is None
+    assert channels["outros"].requires_triage is True
+    assert channels["outros"].administrative_review_on_unclassified is True
 
 
 def test_postmark_mailbox_hash_routes_each_forwarded_mailbox_and_preserves_hub(
@@ -996,7 +1024,11 @@ def test_postmark_outbound_uses_public_from_and_reply_to_for_every_mailbox(
     monkeypatch.setattr(settings, "postmark_server_token", "test-token")
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     channels = list(
-        db_session.scalars(select(EmailChannel).order_by(EmailChannel.code))
+        db_session.scalars(
+            select(EmailChannel)
+            .where(EmailChannel.address.is_not(None))
+            .order_by(EmailChannel.code)
+        )
     )
     for index, channel in enumerate(channels, 1):
         message = EmailMessage(

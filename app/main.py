@@ -1,7 +1,7 @@
 from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -435,6 +435,18 @@ def create_app() -> FastAPI:
                     )
                     db.commit()
                 request.session["carfast_experience"] = "current"
+        navigation_permission = navigation_permission_for_path(path)
+        if navigation_permission and not has_required_permission(
+            request, {navigation_permission}
+        ):
+            if not request.session.get("user_id"):
+                next_url = request.url.path
+                if request.url.query:
+                    next_url = f"{next_url}?{request.url.query}"
+                return RedirectResponse(
+                    f"/login?next={quote(next_url, safe='')}", status_code=303
+                )
+            return PlainTextResponse("Acesso ao módulo não autorizado.", status_code=403)
         required_permissions = route_required_permissions(path, request.method)
         if required_permissions and not has_required_permission(request, required_permissions):
             if not request.session.get("user_id"):

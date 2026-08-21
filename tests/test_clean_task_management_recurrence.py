@@ -97,7 +97,11 @@ def test_mine_counters_and_all_relationship_badges_are_complete(
 
 
 def test_management_queue_is_isolated_and_uses_action_permissions(client, db_session):
-    permission_codes = {"tasks.management.read", "tasks.management.create"}
+    permission_codes = {
+        "navigation.tasks.access",
+        "tasks.management.read",
+        "tasks.management.create",
+    }
     role = _create_role_with_permissions(db_session, "management_creator", permission_codes)
     user = create_user(
         db_session,
@@ -198,7 +202,11 @@ def test_recurring_area_requires_specific_permission(client, db_session):
     role = _create_role_with_permissions(
         db_session,
         "management_without_recurrence",
-        {"tasks.management.read", "tasks.management.create"},
+        {
+            "navigation.tasks.access",
+            "tasks.management.read",
+            "tasks.management.create",
+        },
     )
     user = create_user(
         db_session,

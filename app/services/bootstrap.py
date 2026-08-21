@@ -21,6 +21,7 @@ from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults
 
 INITIAL_PERMISSIONS = [
+    *NAVIGATION_PERMISSIONS.items(),
     ("dashboard.read", "Ver dashboard"),
     ("admin.manage", "Gerir administracao"),
     ("settings.manage", "Gerir parametrizacao"),
@@ -702,6 +703,20 @@ def seed_roles(db: Session) -> None:
             )
             if not exists:
                 db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+
+        # Navigation is derived only while creating a built-in role in a fresh
+        # database. Existing roles are initialized by the one-shot migration and
+        # subsequent boots never restore choices made by administrators.
+        if role_code in created_role_codes:
+            for permission_code in derived_navigation_permissions(permission_codes):
+                permission = permissions_by_code.get(permission_code)
+                if permission:
+                    db.add(
+                        RolePermission(
+                            role_id=role.id,
+                            permission_id=permission.id,
+                        )
+                    )
 
 
 def seed_organizational_units(db: Session) -> None:

@@ -3,6 +3,13 @@
 <div class="app-shell clean-shell">
   {% set active_menu = "clean" %}
   {% include "_sidebar.html" %}
+  {% set home_nav_perms = nav_permissions(request) %}
+  {% set home_can_tasks = "navigation.tasks.access" in home_nav_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
+  {% set home_can_processes = "navigation.processes.access" in home_nav_perms and nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}
+  {% set home_can_workshop = "navigation.workshop.access" in home_nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
+  {% set home_can_workshop_write = home_can_workshop and nav_has_permission(request, "workshop.write", "admin.manage") %}
+  {% set home_can_fleet = "navigation.fleet.access" in home_nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
+  {% set home_can_documentation = "navigation.documentation.access" in home_nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
   <main class="content clean-content">
     <header class="clean-hero clean-home-hero clean-home-operational-hero">
       <div>
@@ -11,8 +18,8 @@
         <p>Trabalho em curso, prioridades e acessos principais da operação CarFast.</p>
       </div>
       <div class="button-row">
-        <a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>
-        <a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>
+        {% if home_can_workshop_write %}<a class="button-link" href="/v2-clean/workshop-entry">Nova entrada</a>{% endif %}
+        {% if home_can_tasks %}<a class="button-link secondary-link" href="/v2-clean/tasks#new-task">Nova tarefa</a>{% endif %}
       </div>
     </header>
 
@@ -30,10 +37,12 @@
             <p class="eyebrow">Prioridades</p>
             <h3>Trabalho por área</h3>
           </div>
-          <a class="table-link" href="/v2-clean/processes">Ver processos</a>
+          {% if home_can_processes %}<a class="table-link" href="/v2-clean/processes">Ver processos</a>{% endif %}
         </div>
         <div class="clean-home-work-queue">
           {% for area in area_cards %}
+            {% set area_allowed = (area.href.startswith('/v2-clean/tasks') and home_can_tasks) or (area.href.startswith('/v2-clean/processes') and home_can_processes) or (area.href.startswith('/v2-clean/workshop') and home_can_workshop) or (area.href.startswith('/v2-clean/fleet') and home_can_fleet) or (area.href.startswith('/v2-clean/documentation') and home_can_documentation) %}
+            {% if area_allowed %}
             <a class="clean-home-work-row" href="{{ area.href }}">
               <span class="clean-area-code">{{ area.label[:2]|upper }}</span>
               <div>
@@ -45,6 +54,7 @@
                 <span class="{% if area.critical %}is-critical{% endif %}"><b>{{ area.critical }}</b> críticos</span>
               </div>
             </a>
+            {% endif %}
           {% endfor %}
         </div>
       </article>
@@ -56,10 +66,10 @@
             <h3>Operação diária</h3>
           </div>
           <div class="clean-home-shortcuts">
-            <a href="/v2-clean/workshop"><span>Oficina</span><b>Dashboard</b></a>
-            <a href="/v2-clean/fleet"><span>Frota</span><b>Consultar viaturas</b></a>
-            <a href="/v2-clean/documentation"><span>Documentação</span><b>Importar e validar</b></a>
-            <a href="/v2-clean/tasks"><span>Tarefas</span><b>Abrir fila</b></a>
+            {% if home_can_workshop %}<a href="/v2-clean/workshop"><span>Oficina</span><b>Dashboard</b></a>{% endif %}
+            {% if home_can_fleet %}<a href="/v2-clean/fleet"><span>Frota</span><b>Consultar viaturas</b></a>{% endif %}
+            {% if home_can_documentation %}<a href="/v2-clean/documentation"><span>Documentação</span><b>Importar e validar</b></a>{% endif %}
+            {% if home_can_tasks %}<a href="/v2-clean/tasks"><span>Tarefas</span><b>Abrir fila</b></a>{% endif %}
           </div>
         </article>
 
@@ -70,7 +80,7 @@
             <p>{{ quick_metrics.workshop_alerts }} alertas de oficina e {{ quick_metrics.audits }} auditorias abertas.</p>
           </div>
           <div class="clean-action-row">
-            <a class="button-link secondary-link" href="/v2-clean/processes">Ver prioridades</a>
+            {% if home_can_processes %}<a class="button-link secondary-link" href="/v2-clean/processes">Ver prioridades</a>{% endif %}
           </div>
         </article>
       </aside>

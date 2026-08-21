@@ -28,25 +28,24 @@
       <a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>
       <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
       {% set workshop_menu_open = active_menu == "workshop" or request.url.path.startswith('/v2-clean/workshop') %}
-      <details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
+      {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
         <summary {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
         <div class="sidebar-nav-children">
-          <a class="sidebar-sub-link" href="/v2-clean/workshop">Visão geral</a>
-          <a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a>
-          <a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>
+          {% if nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop">Visão geral</a>{% endif %}
+          {% if nav_has_permission(request, "workshop.write", "admin.manage") %}<a class="sidebar-sub-link" href="/v2-clean/workshop-entry">Novo processo</a><a class="sidebar-sub-link" href="/v2-clean/workshop-entry?historical=1">Processo histórico</a>{% endif %}
         </div>
-      </details>
+      </details>{% endif %}
       {% set fleet_menu_open = active_menu in ["fleet", "fleet_sales"] or request.url.path.startswith('/v2-clean/fleet') %}
-      <details class="sidebar-nav-group" {% if fleet_menu_open %}open{% endif %}>
+      {% if can_nav_fleet %}<details class="sidebar-nav-group" {% if fleet_menu_open %}open{% endif %}>
         <summary {% if fleet_menu_open %}class="active"{% endif %}>Frota</summary>
         <div class="sidebar-nav-children">
-          <a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>
+          {% if nav_has_permission(request, "vehicles.read", "vehicles.write", "admin.manage") %}<a class="sidebar-sub-link {% if active_menu == 'fleet' %}active{% endif %}" href="/v2-clean/fleet">Viaturas</a>{% endif %}
           {% if nav_has_permission(request, "fleet.commerce.manage", "vehicles.write", "admin.manage") %}
             <a class="sidebar-sub-link {% if active_menu == 'fleet_sales' %}active{% endif %}" href="/v2-clean/fleet/sales">Venda de viaturas</a>
           {% endif %}
         </div>
-      </details>
-      {% if nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
+      </details>{% endif %}
+      {% if can_nav_stock %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}
       {% if nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
@@ -56,7 +55,7 @@
         <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
       {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
-      <details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
+      {% if can_nav_documentation %}<details class="sidebar-nav-group" {% if documentation_menu_open %}open{% endif %}>
         <summary {% if documentation_menu_open %}class="active"{% endif %}>Documentação</summary>
         <div class="sidebar-nav-children">
           <a class="sidebar-sub-link" href="/v2-clean/documentation/triage">Triagem</a>
@@ -65,7 +64,7 @@
           <a class="sidebar-sub-link" href="/v2-clean/documentation/imports/invoices">Importação</a>
           <a class="sidebar-sub-link" href="/v2-clean/documentation/archive">Arquivo</a>
         </div>
-      </details>
+      </details>{% endif %}
       <span class="nav-section-label">Sistema</span>
       {% if nav_has_permission(
         request,

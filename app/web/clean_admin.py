@@ -1208,6 +1208,12 @@ def clean_admin_roles(request: Request):
                 parts = permission.code.split(".")
                 group = f"admin.{parts[1]}" if len(parts) > 1 else "admin"
             permission_groups.setdefault(group, []).append(permission)
+        permission_groups = dict(
+            sorted(
+                permission_groups.items(),
+                key=lambda item: (item[0] != "navigation", item[0]),
+            )
+        )
         context = _layout_context(
             db,
             user_id,

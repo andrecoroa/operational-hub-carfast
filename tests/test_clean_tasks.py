@@ -15,6 +15,7 @@ from app.models import (
     VehicleDocumentRecord,
     WorkshopPhasedProcess,
 )
+from app.services.users import create_user
 
 
 def test_clean_task_shortcut_opens_creation_form(authenticated_client):
@@ -321,11 +322,12 @@ def test_clean_task_center_prefills_document_context(authenticated_client, db_se
 
 def test_clean_task_center_supports_mine_participants_email_and_documents(authenticated_client, db_session):
     owner = db_session.scalar(select(User).where(User.email == "admin.tests@carfast.local"))
-    participant = User(
+    participant = create_user(
+        db_session,
         name="Pessoa de apoio",
         email="apoio.tasks@carfast.local",
-        password_hash="not-used",
-        active=True,
+        password="Secret123!",
+        role_codes=["operator"],
     )
     document = Document(
         title="Pedido recebido",

@@ -80,6 +80,7 @@ from app.models.tasks import (
     TaskGuidedFlowStepRun,
     TaskHelpRequest,
     TaskHistory,
+    TaskNotification,
     TaskParticipant,
     TaskRecurrenceOccurrence,
     TaskRecurrenceTemplate,
@@ -3455,6 +3456,14 @@ def external_portal_request_create(
         )
         db.add(task)
         db.flush()
+        create_task_notifications(
+            db,
+            task=task,
+            event_type="task_created",
+            title=f"Nova tarefa: {task.title}",
+            actor_user_id=None,
+            detail="Foi criada uma tarefa com a qual tens relação.",
+        )
         task.external_source_id = f"portal:{task.id:05d}"
         db.add(
             TaskHistory(
@@ -3802,7 +3811,9 @@ def clean_process_area_cards(db: Session) -> list[dict[str, object]]:
     ]
 
 
-def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
+def clean_task_division_cards(
+    db: Session, *, user_id: int | None = None
+) -> list[dict[str, object]]:
     cards: list[dict[str, object]] = []
     division_specs = [
         (
@@ -3846,14 +3857,22 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
             "Restrito",
         ),
     ]
+    visibility = (
+        task_visibility_filter(db, user_id=user_id, task_model=Task)
+        if user_id
+        else None
+    )
     for workspace_code, short, label, description, chips, state in division_specs:
         task_codes = TASK_WORKSPACE_TASK_TYPES.get(workspace_code, [])
+        task_conditions = [Task.task_type.in_(tuple(task_codes))]
+        if visibility is not None:
+            task_conditions.append(visibility)
         open_count = (
             db.scalar(
                 select(func.count())
                 .select_from(Task)
                 .where(
-                    Task.task_type.in_(tuple(task_codes)),
+                    *task_conditions,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                 )
@@ -3878,7 +3897,7 @@ def clean_task_division_cards(db: Session) -> list[dict[str, object]]:
                 select(func.count())
                 .select_from(Task)
                 .where(
-                    Task.task_type.in_(tuple(task_codes)),
+                    *task_conditions,
                     Task.closed_at.is_(None),
                     ~Task.status.in_(TASK_ARCHIVE_STATUSES | TASK_PLANNED_STATUSES),
                     Task.due_on == date.today(),
@@ -4063,6 +4082,7 @@ def clean_tasks_center(
     nature: str = "",
     department: str = "",
     due: str = "",
+    assignment: str = "",
     plate: str = "",
     q: str = "",
     sort: str = "priority",
@@ -4111,7 +4131,9 @@ def clean_tasks_center(
             set(creatable_workspaces) | set(updatable_workspaces) | set(closable_workspaces)
         )
         task_divisions = [
-            item for item in clean_task_division_cards(db) if item["code"] in readable_workspaces
+            item
+            for item in clean_task_division_cards(db, user_id=user_id)
+            if item["code"] in readable_workspaces
         ]
         legacy_divisions = {item["code"]: item for item in task_divisions}
         visible_queue_codes = {
@@ -4164,7 +4186,12 @@ def clean_tasks_center(
         )
         if active_workspace == "all" and not readable_workspaces:
             active_workspace = "mine"
-        active_mine_kind = mine_kind if mine_kind in {"all", "assigned", "identified", "following", "created", "support"} else "all"
+        active_mine_kind = (
+            mine_kind
+            if mine_kind
+            in {"all", "assigned", "identified", "following", "team", "created", "support"}
+            else "all"
+        )
         active_status = status if status in {"open", "closed", "all"} else "open"
         incoming_record_type = (record_type or type or "").strip().lower()
         effective_record_type = incoming_record_type if incoming_record_type in {"task", "problem"} else "task"
@@ -4201,12 +4228,13 @@ def clean_tasks_center(
             for code in codes
         ]
         filters = [Task.task_type.in_(tuple(task_type_codes))]
-        if user_id:
-            hierarchy_scope = user_work_scope_filter(
-                db, user_id=user_id, task_model=Task, action="read"
-            )
-            if hierarchy_scope is not None:
-                filters.append(hierarchy_scope)
+        visibility_filter = (
+            task_visibility_filter(db, user_id=user_id, task_model=Task)
+            if user_id
+            else None
+        )
+        if visibility_filter is not None:
+            filters.append(visibility_filter)
         mine_relation_conditions: dict[str, object] = {}
         active_relation_filter = None
         if active_workspace == "mine" and user_id:
@@ -4231,11 +4259,30 @@ def clean_tasks_center(
                     TaskParticipant.status == "active",
                 )
             )
-            support_condition = Task.id.in_(
+            team_ids = user_team_ids(db, user_id)
+            support_user_condition = Task.id.in_(
                 select(TaskHelpRequest.task_id).where(
                     TaskHelpRequest.requested_user_id == user_id,
-                    TaskHelpRequest.status == "pending",
+                    TaskHelpRequest.status != "cancelled",
                 )
+            )
+            support_team_condition = (
+                Task.id.in_(
+                    select(TaskHelpRequest.task_id).where(
+                        TaskHelpRequest.requested_team_id.in_(tuple(team_ids)),
+                        TaskHelpRequest.status != "cancelled",
+                    )
+                )
+                if team_ids
+                else None
+            )
+            support_condition = (
+                or_(support_user_condition, support_team_condition)
+                if support_team_condition is not None
+                else support_user_condition
+            )
+            team_condition = task_team_relation_filter(
+                db, user_id=user_id, task_model=Task
             )
             mine_relation_conditions = {
                 "assigned": or_(
@@ -4247,13 +4294,22 @@ def clean_tasks_center(
                 "support": support_condition,
                 "created": Task.created_by_id == user_id,
             }
-            mine_relation_conditions["all"] = or_(
+            if team_condition is not None:
+                mine_relation_conditions["team"] = team_condition
+            all_conditions = [
                 Task.assigned_to_id == user_id,
                 Task.team_id.in_(member_team_ids),
                 Task.created_by_id == user_id,
+                Task.delegated_to_user_id == user_id,
+                Task.waiting_for_user_id == user_id,
                 Task.id.in_(participant_task_ids),
                 support_condition,
-            )
+            ]
+            if team_condition is not None:
+                all_conditions.append(team_condition)
+            mine_relation_conditions["all"] = or_(*all_conditions)
+            if active_mine_kind not in mine_relation_conditions:
+                active_mine_kind = "all"
             active_relation_filter = mine_relation_conditions[active_mine_kind]
             filters.append(active_relation_filter)
         if active_status == "open":
@@ -4272,9 +4328,14 @@ def clean_tasks_center(
         clean_nature = nature.strip()[:80]
         if clean_nature:
             filters.append(Task.category == clean_nature)
-        active_due = due if due == "today" else ""
+        active_due = due if due in {"today", "due_soon", "overdue"} else ""
         if active_due == "today":
-            filters.append(Task.due_on == datetime.now().date())
+            filters.append(Task.due_on == date.today())
+        elif active_due:
+            filters.append(task_due_condition(active_due, task_model=Task))
+        active_assignment = assignment if assignment == "unassigned" else ""
+        if active_assignment:
+            filters.append(Task.assigned_to_id.is_(None))
         if q.strip():
             search = f"%{q.strip()}%"
             filters.append(
@@ -4286,7 +4347,18 @@ def clean_tasks_center(
                     Task.external_source_id.ilike(search),
                 )
             )
-        mine_counts = {code: 0 for code in ("all", "assigned", "identified", "following", "support", "created")}
+        mine_counts = {
+            code: 0
+            for code in (
+                "all",
+                "assigned",
+                "identified",
+                "following",
+                "team",
+                "support",
+                "created",
+            )
+        }
         if mine_relation_conditions:
             counter_filters = [item for item in filters if item is not active_relation_filter]
             counter_row = db.execute(
@@ -4302,7 +4374,9 @@ def clean_tasks_center(
                 .select_from(Task)
                 .where(*counter_filters)
             ).one()
-            mine_counts = {code: int(getattr(counter_row, code) or 0) for code in mine_counts}
+            mine_counts = {
+                code: int(getattr(counter_row, code, 0) or 0) for code in mine_counts
+            }
         page_size = 50
         total_tasks = db.scalar(
             select(func.count()).select_from(Task).where(*filters)
@@ -4445,30 +4519,114 @@ def clean_tasks_center(
                 if "follower" in participant_roles:
                     task_relations_by_task[task.id].append("A acompanhar")
                 if any(
-                    item.requested_user_id == user_id and item.status == "pending"
+                    (
+                        item.requested_user_id == user_id
+                        or (
+                            item.requested_team_id
+                            and item.requested_team_id in current_team_ids
+                        )
+                    )
+                    and item.status != "cancelled"
                     for item in help_requests_by_task.get(task.id, [])
                 ):
                     task_relations_by_task[task.id].append("Suporte solicitado")
+                if current_team_ids.intersection(
+                    {
+                        team_id
+                        for team_id in (
+                            task.team_id,
+                            task.delegated_to_team_id,
+                            task.waiting_for_team_id,
+                        )
+                        if team_id
+                    }
+                ):
+                    task_relations_by_task[task.id].append("Equipa")
                 if task.created_by_id == user_id:
                     task_relations_by_task[task.id].append("Criador")
+        task_notifications: list[TaskNotification] = []
+        task_notification_unread_count = 0
+        if user_id and readable_task_type_codes:
+            notification_conditions = [
+                TaskNotification.user_id == user_id,
+                Task.task_type.in_(tuple(readable_task_type_codes)),
+            ]
+            if visibility_filter is not None:
+                notification_conditions.append(visibility_filter)
+            task_notifications = list(
+                db.scalars(
+                    select(TaskNotification)
+                    .join(Task, Task.id == TaskNotification.task_id)
+                    .where(*notification_conditions)
+                    .order_by(
+                        TaskNotification.read_at.is_not(None),
+                        TaskNotification.created_at.desc(),
+                        TaskNotification.id.desc(),
+                    )
+                    .limit(15)
+                )
+            )
+            task_notification_unread_count = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(TaskNotification)
+                    .join(Task, Task.id == TaskNotification.task_id)
+                    .where(
+                        *notification_conditions,
+                        TaskNotification.read_at.is_(None),
+                    )
+                )
+                or 0
+            )
         recent_documents = db.scalars(
             select(Document).order_by(Document.created_at.desc()).limit(80)
         ).all()
-        open_filter = [
-            Task.task_type.in_(tuple(readable_task_type_codes)),
+        open_filter = [Task.task_type.in_(tuple(readable_task_type_codes))]
+        if visibility_filter is not None:
+            open_filter.append(visibility_filter)
+        open_task_filter = [
+            *open_filter,
+            Task.closed_at.is_(None),
+            ~Task.status.in_(TASK_ARCHIVE_STATUSES),
         ]
+        due_soon_condition = task_due_condition("due_soon", task_model=Task)
+        overdue_condition = task_due_condition("overdue", task_model=Task)
         task_metrics = {
             "divisions": len(visible_queue_codes),
-            "open": sum(int(item["open"]) for item in task_divisions),
+            "open": db.scalar(
+                select(func.count()).select_from(Task).where(*open_task_filter)
+            )
+            or 0,
             "quick": sum(int(item["quick"]) for item in task_divisions),
-            "due_today": sum(int(item["due_today"]) for item in task_divisions),
+            "due_today": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*open_task_filter, Task.due_on == date.today())
+            )
+            or 0,
+            "unassigned": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*open_task_filter, Task.assigned_to_id.is_(None))
+            )
+            or 0,
+            "due_soon": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*open_task_filter, due_soon_condition)
+            )
+            or 0,
+            "overdue": db.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(*open_task_filter, overdue_condition)
+            )
+            or 0,
             "problems": db.scalar(
                 select(func.count())
                 .select_from(Task)
                 .where(
-                    *open_filter,
-                    Task.closed_at.is_(None),
-                    ~Task.status.in_(TASK_ARCHIVE_STATUSES),
+                    *open_task_filter,
                     or_(Task.subcategory == "problem", Task.task_type.ilike("%problem%")),
                 )
             )
@@ -4478,6 +4636,11 @@ def clean_tasks_center(
                     select(func.count())
                     .select_from(Task)
                     .where(
+                        *(
+                            [visibility_filter]
+                            if visibility_filter is not None
+                            else []
+                        ),
                         Task.task_type.in_(tuple(TASK_WORKSPACE_TASK_TYPES["audit"])),
                         Task.closed_at.is_(None),
                         ~Task.status.in_(TASK_ARCHIVE_STATUSES),
@@ -4545,7 +4708,7 @@ def clean_tasks_center(
             "administration": "Administração",
             "all": "Todas",
         }
-        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso"}
+        task_status_labels = {"open": "Aberta", "closed": "Fechada", "cancelled": "Cancelada", "resolved": "Resolvida", "new": "Nova", "in_execution": "Em curso", "waiting": "Em espera", "delegated": "Delegada", "planned": "Planeada", "execution_done": "Execução concluída", "ready_validation": "Para validar", "no_action_needed": "Sem ação"}
         task_priority_labels = {"urgent": "Urgente", "high": "Alta", "normal": "Normal", "low": "Baixa"}
         raw_prefill_category = str(prefill_context["category"] or "").strip()
         prefill_nature_aliases = {
@@ -4605,6 +4768,7 @@ def clean_tasks_center(
                 "task_status_labels": task_status_labels,
                 "task_priority_labels": task_priority_labels,
                 "current_user_id": user_id,
+                "current_user_team_ids": sorted(user_team_ids(db, user_id)) if user_id else [],
                 "users": users,
                 "all_users": all_users,
                 "users_by_id": users_by_id,
@@ -4628,6 +4792,12 @@ def clean_tasks_center(
                 "task_close_allowed_by_id": task_close_allowed_by_id,
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
                 "mine_counts": mine_counts,
+                "task_notifications": task_notifications,
+                "task_notification_unread_count": task_notification_unread_count,
+                "task_due_soon_days": TASK_DUE_SOON_DAYS,
+                "task_today": date.today(),
+                "task_due_soon_limit": date.today()
+                + timedelta(days=TASK_DUE_SOON_DAYS),
                 "recent_documents": recent_documents,
                 "readable_workspaces": readable_workspaces,
                 "writable_workspaces": writable_workspaces,
@@ -4649,6 +4819,7 @@ def clean_tasks_center(
                     "plate": normalized_plate,
                     "q": q.strip(),
                     "due": active_due,
+                    "assignment": active_assignment,
                     "sort": active_sort,
                 },
                 "prefill": {
@@ -4831,8 +5002,16 @@ def clean_task_recurrence_create(
             else "operational"
         )
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
-        if parsed_assignee_id and not is_assignment_allowed_for_workspace(
-            db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
+        if parsed_assignee_id and not is_task_assignment_allowed(
+            db,
+            actor_user_id=user_id,
+            target_user_id=parsed_assignee_id,
+            workspace=clean_workspace,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=(hierarchy_selection.category.id if hierarchy_selection.category else None),
+            subcategory_id=(hierarchy_selection.subcategory.id if hierarchy_selection.subcategory else None),
+            team_id=default_team_id(db, TASK_WORKSPACE_CONFIG[clean_workspace]["default_team_code"]),
         ):
             return RedirectResponse(
                 "/v2-clean/tasks/recurring?error=assignment_not_allowed", status_code=303
@@ -4948,8 +5127,31 @@ def clean_task_recurrence_update(
             else "operational"
         )
         parsed_assignee_id = parse_int_from_text(assigned_to_id)
-        if parsed_assignee_id and not is_assignment_allowed_for_workspace(
-            db, parsed_assignee_id, clean_workspace, actor_user_id=user_id
+        if (
+            parsed_assignee_id != model.assigned_to_id
+            and not user_work_scope_allows(
+                db,
+                user_id=user_id,
+                queue_id=hierarchy_selection.queue.id,
+                department_id=hierarchy_selection.department.id,
+                category_id=(hierarchy_selection.category.id if hierarchy_selection.category else None),
+                subcategory_id=(hierarchy_selection.subcategory.id if hierarchy_selection.subcategory else None),
+                action="assign",
+            )
+        ):
+            return RedirectResponse(
+                "/v2-clean/tasks/recurring?error=assignment_not_allowed", status_code=303
+            )
+        if parsed_assignee_id and not is_task_assignment_allowed(
+            db,
+            actor_user_id=user_id,
+            target_user_id=parsed_assignee_id,
+            workspace=clean_workspace,
+            queue_id=hierarchy_selection.queue.id,
+            department_id=hierarchy_selection.department.id,
+            category_id=(hierarchy_selection.category.id if hierarchy_selection.category else None),
+            subcategory_id=(hierarchy_selection.subcategory.id if hierarchy_selection.subcategory else None),
+            team_id=default_team_id(db, TASK_WORKSPACE_CONFIG[clean_workspace]["default_team_code"]),
         ):
             return RedirectResponse(
                 "/v2-clean/tasks/recurring?error=assignment_not_allowed", status_code=303
@@ -5023,6 +5225,73 @@ def clean_task_recurrence_toggle(request: Request, template_id: int):
         )
         db.commit()
     return RedirectResponse("/v2-clean/tasks/recurring?toggled=1", status_code=303)
+
+
+@web_router.get("/v2-clean/tasks/assignable-users", response_class=JSONResponse)
+def clean_tasks_assignable_users(
+    request: Request,
+    work_queue_id: str = "",
+    work_department_id: str = "",
+    work_category_id: str = "",
+    work_subcategory_id: str = "",
+    task_id: int | None = None,
+):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return JSONResponse({"users": []}, status_code=403)
+    with SessionLocal() as db:
+        selection = validate_work_hierarchy(
+            db,
+            queue_id=parse_int_from_text(work_queue_id),
+            department_id=parse_int_from_text(work_department_id),
+            category_id=parse_int_from_text(work_category_id),
+            subcategory_id=parse_int_from_text(work_subcategory_id),
+            # Eligibility does not depend on the free text of an “Outro” option.
+            other_text="assignment-preview",
+        )
+        if not selection:
+            return JSONResponse({"users": []})
+        workspace = (
+            "administration"
+            if selection.queue.code == "administration"
+            else "operational"
+        )
+        actor = db.get(User, user_id)
+        task = db.get(Task, task_id) if task_id else None
+        if task_id and (
+            not task
+            or not user_can_access_task_workspace(db, actor, workspace, action="update")
+            or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+        ):
+            return JSONResponse({"users": []}, status_code=403)
+        if not task_id and not user_can_access_task_workspace(
+            db, actor, workspace, action="create"
+        ):
+            return JSONResponse({"users": []}, status_code=403)
+        users = list(
+            db.scalars(
+                select(User).where(User.active.is_(True)).order_by(User.name, User.email)
+            )
+        )
+        team_id = task.team_id if task else default_team_id(
+            db, TASK_WORKSPACE_CONFIG[workspace]["default_team_code"]
+        )
+        candidates = task_assignable_users_for_context(
+            db,
+            users=users,
+            actor_user_id=user_id,
+            workspace=workspace,
+            queue_id=selection.queue.id,
+            department_id=selection.department.id,
+            category_id=selection.category.id if selection.category else None,
+            subcategory_id=(
+                selection.subcategory.id if selection.subcategory else None
+            ),
+            team_id=team_id,
+        )
+        return JSONResponse(
+            {"users": [{"id": item.id, "name": item.name} for item in candidates]}
+        )
 
 
 @web_router.post("/v2-clean/tasks", response_class=HTMLResponse)
@@ -5705,9 +5974,11 @@ def clean_tasks_update(
                     ),
                 }
             )
+        changed_fields: list[str] = []
         for field_name, (old_value, new_value) in changes.items():
             if old_value == new_value:
                 continue
+            changed_fields.append(field_name)
             setattr(task, field_name, new_value)
             db.add(
                 TaskHistory(
@@ -5918,6 +6189,13 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
                 detail=f"Tarefa fechada na v2-clean: {task.title}",
                 user_id=user_id,
             )
+            create_task_notifications(
+                db,
+                task=task,
+                event_type="task_closed",
+                title=f"Tarefa fechada: {task.title}",
+                actor_user_id=user_id,
+            )
             db.commit()
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks?closed=1")
     separator = "&" if "?" in target else "?"
@@ -5987,6 +6265,13 @@ def clean_tasks_reopen(request: Request, task_id: int, return_url: str = Form(""
                 detail=f"Tarefa reaberta na v2-clean: {task.title}",
                 user_id=user_id,
             )
+            create_task_notifications(
+                db,
+                task=task,
+                event_type="task_reopened",
+                title=f"Tarefa reaberta: {task.title}",
+                actor_user_id=user_id,
+            )
             db.commit()
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks?reopened=1")
     separator = "&" if "?" in target else "?"
@@ -5997,6 +6282,53 @@ def clean_task_action_redirect(return_url: str, *, task_id: int, flag: str) -> R
     target = _clean_v2_return_url(return_url, "/v2-clean/tasks")
     separator = "&" if "?" in target else "?"
     return RedirectResponse(f"{target}{separator}{flag}=1&open_task={task_id}", status_code=303)
+
+
+@web_router.get("/v2-clean/tasks/notifications/{notification_id}/open")
+def clean_task_notification_open(request: Request, notification_id: int):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        notification = db.get(TaskNotification, notification_id)
+        task = db.get(Task, notification.task_id) if notification else None
+        user = db.get(User, user_id)
+        if (
+            not notification
+            or notification.user_id != user_id
+            or not task
+            or not user_can_access_task_workspace(
+                db, user, workspace_for_task_type(task.task_type)
+            )
+            or not user_can_view_task(db, user_id=user_id, task=task)
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if notification.read_at is None:
+            notification.read_at = datetime.now(UTC)
+            db.commit()
+        task_id = task.id
+    return RedirectResponse(
+        f"/v2-clean/tasks?workspace=mine&open_task={task_id}#task-preview-{task_id}",
+        status_code=303,
+    )
+
+
+@web_router.post("/v2-clean/tasks/notifications/read-all")
+def clean_task_notifications_read_all(request: Request):
+    user_id = get_web_user_id(request)
+    if not user_id:
+        return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+    with SessionLocal() as db:
+        now = datetime.now(UTC)
+        for notification in db.scalars(
+            select(TaskNotification).where(
+                TaskNotification.user_id == user_id,
+                TaskNotification.read_at.is_(None),
+            )
+        ):
+            notification.read_at = now
+        db.commit()
+    return RedirectResponse("/v2-clean/tasks?notifications=read", status_code=303)
 
 
 def _task_hierarchy_scope_allows(db, user_id: int | None, task: Task, *, action: str) -> bool:
@@ -6085,11 +6417,14 @@ def clean_tasks_participant(
     task_id: int,
     participant_user_id: str = Form(""),
     role: str = Form("participant"),
+    action: str = Form("add"),
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
     parsed_user_id = parse_int_from_text(participant_user_id)
-    clean_role = "follower"
+    # Keep the legacy explicit follower contract for integrations; the current UI
+    # sends participant for the distinct “Acrescentar colaborador” action.
+    clean_role = "follower" if role == "follower" else "participant"
     if not user_id or not parsed_user_id:
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
@@ -6104,6 +6439,17 @@ def clean_tasks_participant(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
             or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
+            or not is_task_assignment_allowed(
+                db,
+                actor_user_id=user_id,
+                target_user_id=participant_user.id,
+                workspace=workspace_for_task_type(task.task_type),
+                queue_id=task.work_queue_id,
+                department_id=task.work_department_id,
+                category_id=task.work_category_id,
+                subcategory_id=task.work_subcategory_id,
+                team_id=task.team_id,
+            )
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         exists = db.scalar(
@@ -6113,8 +6459,15 @@ def clean_tasks_participant(
                 TaskParticipant.role == clean_role,
             )
         )
-        if exists:
+        if action == "remove":
+            if exists:
+                exists.status = "inactive"
+            event_type = "collaborator_removed"
+            notification_title = f"Colaboração removida: {task.title}"
+        elif exists:
             exists.status = "active"
+            event_type = "collaborator_added"
+            notification_title = f"Colaboração adicionada: {task.title}"
         else:
             db.add(
                 TaskParticipant(
@@ -6124,6 +6477,25 @@ def clean_tasks_participant(
                     created_by_id=user_id,
                 )
             )
+            event_type = "collaborator_added"
+            notification_title = f"Colaboração adicionada: {task.title}"
+        create_task_notifications(
+            db,
+            task=task,
+            event_type=event_type,
+            title=notification_title,
+            actor_user_id=user_id,
+            extra_user_ids=(participant_user.id,),
+        )
+        db.add(
+            TaskHistory(
+                task_id=task.id,
+                user_id=user_id,
+                field_name="collaborator",
+                old_value=participant_user.name if action == "remove" else None,
+                new_value=None if action == "remove" else participant_user.name,
+            )
+        )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="participant_added")
 
@@ -6146,7 +6518,7 @@ def clean_tasks_participant_self(
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="read"
             )
-            or not _task_hierarchy_scope_allows(db, user_id, task, action="read")
+            or not user_can_view_task(db, user_id=user_id, task=task)
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         participant = db.scalar(
@@ -6179,34 +6551,83 @@ def clean_tasks_help_request(
     request: Request,
     task_id: int,
     requested_user_id: str = Form(""),
+    requested_target: str = Form(""),
     message: str = Form(""),
     return_url: str = Form(""),
 ):
     user_id = get_web_user_id(request)
-    parsed_user_id = parse_int_from_text(requested_user_id)
-    if not user_id or not parsed_user_id:
+    parsed_target_user_id, parsed_team_id = parse_delegation_target(requested_target)
+    parsed_user_id = parsed_target_user_id or parse_int_from_text(requested_user_id)
+    if not user_id or (not parsed_user_id and not parsed_team_id):
         return clean_task_action_redirect(return_url, task_id=task_id, flag="error")
     with SessionLocal() as db:
         task = db.get(Task, task_id)
         user = db.get(User, user_id)
-        requested_user = db.get(User, parsed_user_id)
+        requested_user = db.get(User, parsed_user_id) if parsed_user_id else None
+        requested_team = db.get(Team, parsed_team_id) if parsed_team_id else None
         if (
             not task
-            or not requested_user
-            or not requested_user.active
+            or (parsed_user_id and (not requested_user or not requested_user.active))
+            or (parsed_team_id and (not requested_team or not requested_team.active))
             or not user_can_access_task_workspace(
                 db, user, workspace_for_task_type(task.task_type), action="update"
             )
             or not _task_hierarchy_scope_allows(db, user_id, task, action="update")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
-        db.add(
-            TaskHelpRequest(
-                task_id=task.id,
-                requested_user_id=requested_user.id,
-                requested_by_id=user_id,
-                message=message.strip() or None,
+        if requested_user and not is_task_assignment_allowed(
+            db,
+            actor_user_id=user_id,
+            target_user_id=requested_user.id,
+            workspace=workspace_for_task_type(task.task_type),
+            queue_id=task.work_queue_id,
+            department_id=task.work_department_id,
+            category_id=task.work_category_id,
+            subcategory_id=task.work_subcategory_id,
+            team_id=task.team_id,
+        ):
+            return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if requested_team:
+            member_ids = set(
+                db.scalars(
+                    select(TeamMember.user_id).where(
+                        TeamMember.team_id == requested_team.id
+                    )
+                )
             )
+            allowed_member = any(
+                is_task_assignment_allowed(
+                    db,
+                    actor_user_id=user_id,
+                    target_user_id=member_id,
+                    workspace=workspace_for_task_type(task.task_type),
+                    queue_id=task.work_queue_id,
+                    department_id=task.work_department_id,
+                    category_id=task.work_category_id,
+                    subcategory_id=task.work_subcategory_id,
+                    team_id=requested_team.id,
+                )
+                for member_id in member_ids
+            )
+            if not member_ids or not allowed_member:
+                return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        help_request = TaskHelpRequest(
+            task_id=task.id,
+            requested_user_id=requested_user.id if requested_user else None,
+            requested_team_id=requested_team.id if requested_team else None,
+            requested_by_id=user_id,
+            message=message.strip() or None,
+        )
+        db.add(help_request)
+        db.flush()
+        create_task_notifications(
+            db,
+            task=task,
+            event_type="support_requested",
+            title=f"Suporte solicitado: {task.title}",
+            actor_user_id=user_id,
+            detail=message.strip() or "Foi solicitado apoio nesta tarefa.",
+            extra_user_ids=(requested_user.id,) if requested_user else (),
         )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_requested")
@@ -6227,7 +6648,49 @@ def clean_tasks_help_response(
         return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
     with SessionLocal() as db:
         help_request = db.get(TaskHelpRequest, help_id)
-        if not help_request or help_request.task_id != task_id or help_request.requested_user_id != user_id:
+        task = db.get(Task, task_id)
+        team_member = bool(
+            help_request
+            and help_request.requested_team_id
+            and db.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.team_id == help_request.requested_team_id,
+                    TeamMember.user_id == user_id,
+                )
+            )
+        )
+        can_respond = bool(
+            help_request
+            and (
+                help_request.requested_user_id == user_id
+                or team_member
+            )
+        )
+        can_cancel = bool(
+            help_request
+            and (
+                help_request.requested_by_id == user_id
+                or (
+                    task
+                    and user_can_access_task_workspace(
+                        db,
+                        db.get(User, user_id),
+                        workspace_for_task_type(task.task_type),
+                        action="update",
+                    )
+                    and _task_hierarchy_scope_allows(
+                        db, user_id, task, action="update"
+                    )
+                )
+            )
+        )
+        if (
+            not help_request
+            or help_request.task_id != task_id
+            or not task
+            or (clean_response == "responded" and not can_respond)
+            or (clean_response == "cancelled" and not can_cancel)
+        ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         help_request.status = clean_response
         help_request.responded_at = datetime.now(UTC)
@@ -6239,6 +6702,25 @@ def clean_tasks_help_response(
                     comment=f"Resposta ao pedido de suporte: {comment.strip()}",
                 )
             )
+        create_task_notifications(
+            db,
+            task=task,
+            event_type=(
+                "support_responded"
+                if clean_response == "responded"
+                else "support_cancelled"
+            ),
+            title=(
+                f"Suporte respondido: {task.title}"
+                if clean_response == "responded"
+                else f"Pedido de suporte cancelado: {task.title}"
+            ),
+            actor_user_id=user_id,
+            detail=comment.strip() or None,
+            extra_user_ids=(help_request.requested_by_id,)
+            if help_request.requested_by_id
+            else (),
+        )
         db.commit()
     return clean_task_action_redirect(return_url, task_id=task_id, flag="help_answered")
 
@@ -34246,6 +34728,76 @@ def is_assignment_allowed_for_workspace(
     if normalize_task_workspace(workspace) == "administration":
         return True
     return user.email.strip().lower() not in TASK_ADMIN_ONLY_ASSIGNMENT_EMAILS
+
+
+def is_task_assignment_allowed(
+    db,
+    *,
+    actor_user_id: int,
+    target_user_id: int,
+    workspace: str,
+    queue_id: int | None,
+    department_id: int | None,
+    category_id: int | None,
+    subcategory_id: int | None,
+    team_id: int | None,
+) -> bool:
+    target = db.get(User, target_user_id)
+    if (
+        not target
+        or not target.active
+        or not is_assignment_allowed_for_workspace(
+            db,
+            target_user_id,
+            workspace,
+            actor_user_id=actor_user_id,
+        )
+        or not user_can_access_task_workspace(db, target, workspace)
+    ):
+        return False
+    if not queue_id:
+        return True
+    return hierarchy_assignment_allows(
+        db,
+        actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
+        queue_id=queue_id,
+        department_id=department_id,
+        category_id=category_id,
+        subcategory_id=subcategory_id,
+        team_id=team_id,
+    )
+
+
+def task_assignable_users_for_context(
+    db,
+    *,
+    users: list[User],
+    actor_user_id: int | None,
+    workspace: str,
+    queue_id: int | None,
+    department_id: int | None,
+    category_id: int | None,
+    subcategory_id: int | None,
+    team_id: int | None,
+) -> list[User]:
+    if not actor_user_id:
+        return []
+    return [
+        user
+        for user in users
+        if is_task_assignment_allowed(
+            db,
+            actor_user_id=actor_user_id,
+            target_user_id=user.id,
+            workspace=workspace,
+            queue_id=queue_id,
+            department_id=department_id,
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+            team_id=team_id,
+        )
+    ]
 
 
 def can_supervise_task(db, user: User | None, task: Task) -> bool:

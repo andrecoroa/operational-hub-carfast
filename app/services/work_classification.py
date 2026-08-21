@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import and_, false, or_, select
 
 from app.models.admin import UserRole
+from app.models.classification_proposals import ClassificationProposal
 from app.models.organization import TeamMember
 from app.models.tasks import TaskHelpRequest, TaskParticipant
 from app.models.work_hierarchy import (
@@ -68,6 +69,16 @@ TASK_DESTINATION = {
 }
 
 
+def parse_classification_choice(value: str | int | None) -> tuple[int | None, int | None]:
+    """Return (official_id, proposal_id) for a common selector value."""
+    if isinstance(value, int):
+        return value, None
+    cleaned = str(value or "").strip()
+    if cleaned.startswith("proposal:") and cleaned[9:].isdigit():
+        return None, int(cleaned[9:])
+    return (int(cleaned), None) if cleaned.isdigit() else (None, None)
+
+
 def task_classification(nature: str | None) -> tuple[str, str]:
     return TASK_DESTINATION.get(nature or "", TASK_DESTINATION["operational"])
 
@@ -121,6 +132,13 @@ def work_hierarchy_context(db, *, active_only: bool = True) -> dict[str, object]
             subcategories_query.order_by(WorkSubcategory.sort_order, WorkSubcategory.name)
         )
     )
+    proposals = list(
+        db.scalars(
+            select(ClassificationProposal)
+            .where(ClassificationProposal.active.is_(True))
+            .order_by(ClassificationProposal.kind, ClassificationProposal.proposed_name)
+        )
+    )
     if active_only:
         all_queues = list(db.scalars(select(WorkQueue)))
         all_departments = list(db.scalars(select(WorkDepartment)))
@@ -140,6 +158,8 @@ def work_hierarchy_context(db, *, active_only: bool = True) -> dict[str, object]
         "work_departments_by_id": {item.id: item for item in departments},
         "work_categories_by_id": {item.id: item for item in categories},
         "work_subcategories_by_id": {item.id: item for item in subcategories},
+        "classification_proposals": proposals,
+        "classification_proposals_by_id": {item.id: item for item in proposals},
         # Active rows feed selectors; these complete maps preserve readable history
         # when an administrator later deactivates or renames a classification.
         "work_queue_labels": {item.id: item.name for item in all_queues},
@@ -173,6 +193,21 @@ def work_hierarchy_context(db, *, active_only: bool = True) -> dict[str, object]
                     "requires_description": item.requires_description,
                 }
                 for item in subcategories
+            ],
+            "proposals": [
+                {
+                    "id": item.id,
+                    "kind": item.kind,
+                    "parent_id": item.department_id
+                    if item.kind == "category"
+                    else item.category_id,
+                    "parent_proposal_id": item.parent_proposal_id,
+                    "name": item.proposed_name,
+                    "code": item.provisional_code,
+                    "usage_count": item.usage_count,
+                    "status": item.status,
+                }
+                for item in proposals
             ],
         },
     }

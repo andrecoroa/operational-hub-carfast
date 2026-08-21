@@ -31,6 +31,12 @@ PERMISSION_ALIASES: dict[str, set[str]] = {
         "admin.evolution.read",
         "admin.evolution.create",
         "admin.evolution.manage",
+        "classification.active.use",
+        "classification.propose",
+        "classification.provisional.use",
+        "classification.validate",
+        "classification.merge_reclassify",
+        "classification.catalog.manage",
     },
     "users.manage": {
         "admin.dashboard.read",
@@ -62,6 +68,14 @@ PERMISSION_ALIASES: dict[str, set[str]] = {
     "service_desk.respond": {"tasks.operational.write"},
     "service_desk.complete": {"tasks.operational.write"},
     "service_desk.sla.manage": {"tasks.operational.write"},
+    "service_desk.classifications.manage": {
+        "classification.active.use",
+        "classification.propose",
+        "classification.provisional.use",
+        "classification.validate",
+        "classification.merge_reclassify",
+        "classification.catalog.manage",
+    },
 }
 
 

@@ -73,6 +73,12 @@ class Task(TimestampMixin, Base):
     work_subcategory_id: Mapped[int | None] = mapped_column(
         ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
     )
+    provisional_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("classification_proposals.id", ondelete="RESTRICT"), index=True
+    )
+    provisional_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("classification_proposals.id", ondelete="RESTRICT"), index=True
+    )
     classification_status: Mapped[str] = mapped_column(
         String(40), default="unclassified", index=True
     )

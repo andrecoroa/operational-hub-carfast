@@ -37,6 +37,11 @@ from app.models.organization import Team, TeamMember
 from app.models.tasks import Task, TaskEmailOrigin
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.services.authorization import get_user_permission_codes
+from app.services.classification_proposals import (
+    attach_selection_to_entity,
+    detach_entity_proposals,
+    validate_proposal_selection,
+)
 from app.services.email_postmark import (
     ensure_email_channels,
     ingest_inbound,
@@ -65,6 +70,7 @@ from app.services.work_classification import (
     WORK_NATURES,
     attachment_reference,
     message_reference,
+    parse_classification_choice,
     task_classification,
     thread_reference,
     user_work_scope_allows,
@@ -1253,6 +1259,9 @@ def email_thread(request: Request, thread_id: int):
         workflow_context = {
             **work_hierarchy_context(db),
             **_reply_all_context(db, view_data, channel),
+            "can_propose_classification": "classification.propose" in permissions,
+            "can_use_provisional_classification": "classification.provisional.use"
+            in permissions,
             "email_users": eligible_users,
             "email_teams": eligible_teams,
             "email_assignment_label": assignment_label(
@@ -1395,6 +1404,9 @@ def email_thread_preview(request: Request, thread_id: int):
                 view_data,
                 db.get(EmailChannel, thread.channel_id),
             ),
+            "can_propose_classification": "classification.propose" in permissions,
+            "can_use_provisional_classification": "classification.provisional.use"
+            in permissions,
             "email_users": eligible_users,
             "email_teams": eligible_teams,
             "email_assignment_label": assignment_label(
@@ -1556,20 +1568,48 @@ def email_triage(
         ):
             return RedirectResponse("/v2-clean/email?error=not_found", status_code=303)
         hierarchy_selection = None
+        proposal_selection = None
         if work_queue_id.strip() or work_department_id.strip():
+            official_category_id, category_proposal_id = parse_classification_choice(
+                work_category_id
+            )
+            official_subcategory_id, subcategory_proposal_id = parse_classification_choice(
+                work_subcategory_id
+            )
+            uses_provisional = bool(category_proposal_id or subcategory_proposal_id)
+            required_permission = (
+                "classification.provisional.use"
+                if uses_provisional
+                else "classification.active.use"
+            )
+            if required_permission not in permissions:
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+                )
             hierarchy_selection = validate_work_hierarchy(
                 db,
                 queue_id=int(work_queue_id) if work_queue_id.isdigit() else None,
                 department_id=(
                     int(work_department_id) if work_department_id.isdigit() else None
                 ),
-                category_id=int(work_category_id) if work_category_id.isdigit() else None,
-                subcategory_id=(
-                    int(work_subcategory_id) if work_subcategory_id.isdigit() else None
-                ),
+                category_id=official_category_id,
+                subcategory_id=official_subcategory_id,
                 other_text=classification_other_text,
             )
             if not hierarchy_selection:
+                return RedirectResponse(
+                    f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
+                    status_code=303,
+                )
+            try:
+                proposal_selection = validate_proposal_selection(
+                    db,
+                    department_id=hierarchy_selection.department.id,
+                    official_category_id=official_category_id,
+                    category_proposal_id=category_proposal_id,
+                    subcategory_proposal_id=subcategory_proposal_id,
+                )
+            except ValueError:
                 return RedirectResponse(
                     f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
                     status_code=303,
@@ -1700,6 +1740,7 @@ def email_triage(
         thread.resolution_due_at = parsed_due_at
         thread.waiting_until = _optional_datetime(waiting_until)
         if hierarchy_selection:
+            detach_entity_proposals(db, entity=thread, actor_user_id=user_id)
             thread.work_queue_id = hierarchy_selection.queue.id
             thread.work_department_id = hierarchy_selection.department.id
             thread.work_category_id = (
@@ -1718,6 +1759,19 @@ def email_triage(
                 and channel_policy.administrative_review_on_unclassified
                 and hierarchy_selection.status != "classified"
             )
+            thread.classification_updated_by_id = user_id
+            thread.classification_updated_at = datetime.now(UTC)
+            if proposal_selection and (
+                proposal_selection.category or proposal_selection.subcategory
+            ):
+                attach_selection_to_entity(
+                    db,
+                    entity=thread,
+                    selection=proposal_selection,
+                    actor_user_id=user_id,
+                    module="email",
+                    origin_url=str(request.url),
+                )
         thread.status = "in_progress" if thread.status == "triage" else thread.status
         db.add(
             EmailAuditEvent(
@@ -2541,6 +2595,25 @@ def email_create_task(request: Request, thread_id: int):
         ):
             return RedirectResponse(f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303)
         if not thread.task_id:
+            proposal_selection = None
+            if thread.provisional_category_id or thread.provisional_subcategory_id:
+                if "classification.provisional.use" not in permissions:
+                    return RedirectResponse(
+                        f"/v2-clean/email/{thread_id}?error=forbidden", status_code=303
+                    )
+                try:
+                    proposal_selection = validate_proposal_selection(
+                        db,
+                        department_id=thread.work_department_id,
+                        official_category_id=thread.work_category_id,
+                        category_proposal_id=thread.provisional_category_id,
+                        subcategory_proposal_id=thread.provisional_subcategory_id,
+                    )
+                except ValueError:
+                    return RedirectResponse(
+                        f"/v2-clean/email/{thread_id}?error=invalid_hierarchy",
+                        status_code=303,
+                    )
             hierarchy = validate_work_hierarchy(
                 db,
                 queue_id=thread.work_queue_id,
@@ -2609,6 +2682,17 @@ def email_create_task(request: Request, thread_id: int):
             )
             db.add(task)
             db.flush()
+            if proposal_selection and (
+                proposal_selection.category or proposal_selection.subcategory
+            ):
+                attach_selection_to_entity(
+                    db,
+                    entity=task,
+                    selection=proposal_selection,
+                    actor_user_id=user_id,
+                    module="service_desk",
+                    origin_url=f"/v2-clean/email/{thread.id}",
+                )
             try:
                 initialize_task_service_desk(
                     db,

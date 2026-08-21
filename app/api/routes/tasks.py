@@ -26,9 +26,14 @@ from app.schemas.tasks import (
 )
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
+from app.services.classification_proposals import (
+    attach_selection_to_entity,
+    detach_entity_proposals,
+    validate_proposal_selection,
+)
 from app.services.service_desk import (
-    assignment_target_user_allowed,
     assign_task_executor,
+    assignment_target_user_allowed,
     category_team_is_eligible,
     category_user_is_eligible,
     claim_task,
@@ -75,6 +80,8 @@ class ServiceDeskTaskCreate(TaskCreate):
     work_department_id: int | None = None
     work_category_id: int | None = None
     work_subcategory_id: int | None = None
+    provisional_category_id: int | None = None
+    provisional_subcategory_id: int | None = None
     classification_other_text: str | None = None
     team_requires_claim: bool = False
 
@@ -85,6 +92,8 @@ class ServiceDeskTaskUpdate(TaskUpdate):
     work_department_id: int | None = None
     work_category_id: int | None = None
     work_subcategory_id: int | None = None
+    provisional_category_id: int | None = None
+    provisional_subcategory_id: int | None = None
     classification_other_text: str | None = None
     team_requires_claim: bool = False
 
@@ -96,6 +105,8 @@ class ServiceDeskTaskRead(TaskRead):
     work_department_id: int | None = None
     work_category_id: int | None = None
     work_subcategory_id: int | None = None
+    provisional_category_id: int | None = None
+    provisional_subcategory_id: int | None = None
     classification_status: str = "unclassified"
     classification_other_text: str | None = None
     supervisor_user_id: int | None = None
@@ -172,10 +183,28 @@ def create_task(
     current_user: CurrentUser,
     _: TaskWriter,
 ):
-    values = payload.model_dump(exclude={"team_requires_claim"})
+    values = payload.model_dump(
+        exclude={
+            "team_requires_claim",
+            "provisional_category_id",
+            "provisional_subcategory_id",
+        }
+    )
     hierarchy_requested = _hierarchy_requested(payload.model_fields_set)
     hierarchy = None
+    proposal_selection = None
     if hierarchy_requested:
+        permissions = get_user_permission_codes(db, current_user)
+        uses_provisional = bool(
+            payload.provisional_category_id or payload.provisional_subcategory_id
+        )
+        required_permission = (
+            "classification.provisional.use"
+            if uses_provisional
+            else "classification.active.use"
+        )
+        if required_permission not in permissions:
+            raise HTTPException(status_code=403, detail="Classification permission denied.")
         hierarchy = validate_work_hierarchy(
             db,
             queue_id=payload.work_queue_id,
@@ -183,10 +212,20 @@ def create_task(
             category_id=payload.work_category_id,
             subcategory_id=payload.work_subcategory_id,
             other_text=payload.classification_other_text or "",
-            require_category=True,
+            require_category=not bool(payload.provisional_category_id),
         )
         if not hierarchy:
             raise HTTPException(status_code=400, detail="Invalid or inactive work hierarchy.")
+        try:
+            proposal_selection = validate_proposal_selection(
+                db,
+                department_id=hierarchy.department.id,
+                official_category_id=hierarchy.category.id if hierarchy.category else None,
+                category_proposal_id=payload.provisional_category_id,
+                subcategory_proposal_id=payload.provisional_subcategory_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     scope_values = _hierarchy_scope_values(hierarchy)
     if not user_work_scope_allows(
@@ -240,6 +279,8 @@ def create_task(
             "work_department_id",
             "work_category_id",
             "work_subcategory_id",
+            "provisional_category_id",
+            "provisional_subcategory_id",
             "classification_other_text",
         ):
             values.pop(field_name, None)
@@ -255,6 +296,16 @@ def create_task(
     )
     db.add(task)
     db.flush()
+    if proposal_selection and (
+        proposal_selection.category or proposal_selection.subcategory
+    ):
+        attach_selection_to_entity(
+            db,
+            entity=task,
+            selection=proposal_selection,
+            actor_user_id=current_user.id,
+            module="service_desk_api",
+        )
     if hierarchy:
         try:
             initialize_task_service_desk(
@@ -314,9 +365,21 @@ def update_task(
     task = _get_visible_task(db, task_id, current_user, action="update")
     changes = payload.model_dump(exclude_unset=True)
     team_requires_claim = bool(changes.pop("team_requires_claim", False))
+    proposed_category_id = changes.pop("provisional_category_id", None)
+    proposed_subcategory_id = changes.pop("provisional_subcategory_id", None)
 
     target_hierarchy = None
+    proposal_selection = None
     if _hierarchy_requested(payload.model_fields_set):
+        permissions = get_user_permission_codes(db, current_user)
+        uses_provisional = bool(proposed_category_id or proposed_subcategory_id)
+        required_permission = (
+            "classification.provisional.use"
+            if uses_provisional
+            else "classification.active.use"
+        )
+        if required_permission not in permissions:
+            raise HTTPException(status_code=403, detail="Classification permission denied.")
         target_hierarchy = validate_work_hierarchy(
             db,
             queue_id=changes.get("work_queue_id", task.work_queue_id),
@@ -326,10 +389,22 @@ def update_task(
             other_text=changes.get(
                 "classification_other_text", task.classification_other_text or ""
             ),
-            require_category=True,
+            require_category=not bool(proposed_category_id),
         )
         if not target_hierarchy:
             raise HTTPException(status_code=400, detail="Invalid or inactive work hierarchy.")
+        try:
+            proposal_selection = validate_proposal_selection(
+                db,
+                department_id=target_hierarchy.department.id,
+                official_category_id=(
+                    target_hierarchy.category.id if target_hierarchy.category else None
+                ),
+                category_proposal_id=proposed_category_id,
+                subcategory_proposal_id=proposed_subcategory_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not user_work_scope_allows(
             db,
             user_id=current_user.id,
@@ -485,6 +560,18 @@ def update_task(
         old_value = getattr(task, field)
         setattr(task, field, value)
         record_task_history(db, task.id, current_user.id, field, old_value, value)
+    if target_hierarchy:
+        detach_entity_proposals(db, entity=task, actor_user_id=current_user.id)
+        if proposal_selection and (
+            proposal_selection.category or proposal_selection.subcategory
+        ):
+            attach_selection_to_entity(
+                db,
+                entity=task,
+                selection=proposal_selection,
+                actor_user_id=current_user.id,
+                module="service_desk_api",
+            )
 
     if assignment_requested:
         _assign_task_compatibly(

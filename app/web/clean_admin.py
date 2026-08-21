@@ -18,6 +18,10 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
+from app.models.classification_proposals import (
+    ClassificationProposal,
+    ClassificationProposalUsage,
+)
 from app.models.documents import Document
 from app.models.email import (
     EmailChannel,
@@ -58,6 +62,17 @@ from app.models.work_hierarchy import (
 from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
+from app.services.bootstrap import postmark_inbound_address
+from app.services.classification_proposals import (
+    approve_proposal,
+    archive_proposal,
+    archive_suggested,
+    associate_proposal,
+    merge_proposals,
+    observe_proposal,
+    proposal_suggestions,
+    reject_proposal,
+)
 from app.services.email_access_admin import (
     apply_email_role_batch,
     grant_snapshot,
@@ -157,6 +172,7 @@ SETTINGS_VALUE_LABELS = {
 }
 
 PERMISSION_GROUP_LABELS = {
+    "classification": "Classificações transversais",
     "email": "Email",
     "service_desk": "Service Desk",
     "tasks": "Centro de Tarefas",
@@ -220,6 +236,8 @@ ADMIN_NAV = (
         "/v2-clean/admin/work-classification",
         (
             "service_desk.classifications.manage",
+            "classification.validate",
+            "classification.catalog.manage",
             "admin.settings.read",
             "admin.settings.manage",
             "settings.manage",
@@ -1595,6 +1613,9 @@ def clean_admin_work_classification(request: Request):
     access = _authorized(
         request,
         SERVICE_DESK_CLASSIFICATION_PERMISSION,
+        "classification.validate",
+        "classification.merge_reclassify",
+        "classification.catalog.manage",
         "admin.settings.read",
         "admin.settings.manage",
         "settings.manage",
@@ -1634,6 +1655,36 @@ def clean_admin_work_classification(request: Request):
                 WorkSubcategory.name,
             )
         ).all()
+        classification_proposals = db.scalars(
+            select(ClassificationProposal).order_by(
+                ClassificationProposal.active.desc(),
+                ClassificationProposal.usage_count.desc(),
+                ClassificationProposal.id.desc(),
+            )
+        ).all()
+        classification_proposal_usages = db.scalars(
+            select(ClassificationProposalUsage)
+            .where(ClassificationProposalUsage.active.is_(True))
+            .order_by(ClassificationProposalUsage.updated_at.desc())
+        ).all()
+        classification_similar = {}
+        for proposal in classification_proposals:
+            if not proposal.active:
+                continue
+            classification_similar[proposal.id] = [
+                item
+                for item in proposal_suggestions(
+                    db,
+                    kind=proposal.kind,
+                    name=proposal.proposed_name,
+                    department_id=proposal.department_id,
+                    category_id=proposal.category_id,
+                    parent_proposal_id=proposal.parent_proposal_id,
+                    limit=4,
+                )
+                if not (item["type"] == "proposal" and item["id"] == proposal.id)
+            ]
+        all_queues_by_id = {item.id: item for item in all_queues}
         all_departments_by_id = {item.id: item for item in all_departments}
         all_categories_by_id = {item.id: item for item in all_categories}
 
@@ -1894,6 +1945,26 @@ def clean_admin_work_classification(request: Request):
             work_departments=departments,
             work_categories=categories,
             work_subcategories=subcategories,
+            classification_proposals=classification_proposals,
+            classification_proposal_usages=classification_proposal_usages,
+            classification_similar=classification_similar,
+            classification_archive_suggested={
+                item.id: archive_suggested(item) for item in classification_proposals
+            },
+            can_validate_classifications=bool(
+                permissions.intersection(
+                    {"classification.validate", "classification.catalog.manage", "admin.manage"}
+                )
+            ),
+            can_merge_classifications=bool(
+                permissions.intersection(
+                    {
+                        "classification.merge_reclassify",
+                        "classification.catalog.manage",
+                        "admin.manage",
+                    }
+                )
+            ),
             work_queues_by_id={item.id: item for item in queues},
             work_departments_by_id={item.id: item for item in departments},
             work_categories_by_id={item.id: item for item in categories},
@@ -2032,6 +2103,113 @@ def _service_desk_item_scope_allows(
             )
         )
     return False
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/proposals/{proposal_id}/decision"
+)
+def clean_admin_classification_proposal_decision(
+    request: Request,
+    proposal_id: int,
+    action: str = Form(""),
+    approved_name: str = Form(""),
+    target_id: str = Form(""),
+    target_proposal_id: str = Form(""),
+    notes: str = Form(""),
+    confirmed: str = Form(""),
+):
+    required = (
+        ("classification.merge_reclassify", "classification.catalog.manage", "admin.manage")
+        if action == "merge"
+        else ("classification.validate", "classification.catalog.manage", "admin.manage")
+    )
+    access = _authorized(request, *required)
+    if not access:
+        return _denied(request)
+    if confirmed != "on":
+        return _redirect(
+            "/v2-clean/admin/work-classification?view=proposals",
+            "proposal_error",
+            "confirm_required",
+        )
+    user_id, _permissions = access
+    with SessionLocal() as db:
+        proposal = db.get(ClassificationProposal, proposal_id)
+        if not proposal:
+            return _redirect(
+                "/v2-clean/admin/work-classification?view=proposals",
+                "proposal_error",
+                "not_found",
+            )
+        try:
+            if action == "approve":
+                approve_proposal(
+                    db,
+                    proposal=proposal,
+                    actor_user_id=user_id,
+                    approved_name=approved_name,
+                    notes=notes,
+                )
+            elif action == "link":
+                if not target_id.isdigit():
+                    raise ValueError("Seleciona uma classificação oficial.")
+                associate_proposal(
+                    db,
+                    proposal=proposal,
+                    actor_user_id=user_id,
+                    target_id=int(target_id),
+                    notes=notes,
+                )
+            elif action == "merge":
+                target = (
+                    db.get(ClassificationProposal, int(target_proposal_id))
+                    if target_proposal_id.isdigit()
+                    else None
+                )
+                if not target:
+                    raise ValueError("Seleciona uma proposta de destino.")
+                merge_proposals(
+                    db,
+                    source=proposal,
+                    target=target,
+                    actor_user_id=user_id,
+                    notes=notes,
+                )
+            elif action == "reject":
+                reject_proposal(
+                    db,
+                    proposal=proposal,
+                    actor_user_id=user_id,
+                    reason=notes,
+                )
+            elif action == "observe":
+                observe_proposal(
+                    db,
+                    proposal=proposal,
+                    actor_user_id=user_id,
+                    notes=notes,
+                )
+            elif action == "archive":
+                archive_proposal(
+                    db,
+                    proposal=proposal,
+                    actor_user_id=user_id,
+                    notes=notes,
+                )
+            else:
+                raise ValueError("A decisão indicada não é válida.")
+            db.commit()
+        except ValueError as exc:
+            db.rollback()
+            return _redirect(
+                "/v2-clean/admin/work-classification?view=proposals",
+                "proposal_error",
+                str(exc)[:160],
+            )
+    return _redirect(
+        "/v2-clean/admin/work-classification?view=proposals",
+        "proposal_decided",
+    )
 
 
 @clean_admin_router.post("/v2-clean/admin/work-classification/ticket-types")

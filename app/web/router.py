@@ -1,21 +1,20 @@
 import csv
-from collections import defaultdict
-from copy import deepcopy
-from datetime import UTC, date, datetime, time, timedelta
-from decimal import Decimal, InvalidOperation
 import hashlib
 import html
 import io
 import json
 import mimetypes
-from pathlib import Path
 import re
 import shutil
 import unicodedata
 import uuid
 import zipfile
-from tempfile import TemporaryDirectory
-from tempfile import NamedTemporaryFile
+from collections import defaultdict
+from copy import deepcopy
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any
@@ -48,9 +47,9 @@ from app.models.documents import (
     VehicleDocumentRecord,
     VehicleDocumentRecordTag,
 )
-from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.imports import ImportBatch, ImportError, ImportFile, ImportMapping, ImportRawRow
 from app.models.incidents import Incident, IncidentEvent, IncidentEvidence
+from app.models.integrations import EmailIntake, EmailIntakeAttachment
 from app.models.management_center import (
     ClaimIncident,
     ClaimRefstroLine,
@@ -64,6 +63,12 @@ from app.models.management_center import (
 )
 from app.models.organization import OrganizationalUnit, Team, TeamMember, UserOrganizationalUnit
 from app.models.pilot import PilotFeedback
+from app.models.stock import (
+    StockArticle,
+    StockArticleVehicleCompatibility,
+    StockCategory,
+    StockLocation,
+)
 from app.models.tasks import (
     QuickRecord,
     Task,
@@ -80,17 +85,6 @@ from app.models.tasks import (
     TaskRecurrenceTemplate,
     TaskSlaEvent,
 )
-from app.models.work_hierarchy import ServiceDeskTicketType, WorkQueue
-from app.models.vehicles import (
-    Vehicle,
-    VehicleExternalSnapshot,
-    VehicleFinancialPlan,
-    VehicleFinancialPlanInstallment,
-    VehicleIdentifier,
-    VehicleManualField,
-    VehicleOperationalStatusEvent,
-)
-from app.models.vehicle_sales import VehicleSaleProfile
 from app.models.vehicle_history_audit import (
     VehicleHistoryAudit,
     VehicleHistoryAuditDocument,
@@ -100,6 +94,17 @@ from app.models.vehicle_history_audit import (
     VehicleHistoryAuditService,
     VehicleHistoryAuditTruth,
 )
+from app.models.vehicle_sales import VehicleSaleProfile
+from app.models.vehicles import (
+    Vehicle,
+    VehicleExternalSnapshot,
+    VehicleFinancialPlan,
+    VehicleFinancialPlanInstallment,
+    VehicleIdentifier,
+    VehicleManualField,
+    VehicleOperationalStatusEvent,
+)
+from app.models.work_hierarchy import ServiceDeskTicketType, WorkQueue
 from app.models.workshop import (
     WorkshopProcess,
     WorkshopProcessEvidence,
@@ -119,13 +124,78 @@ from app.models.workshop_phased import (
     WorkshopTemplate,
     WorkshopTemplateVersion,
 )
-from app.models.stock import (
-    StockArticle,
-    StockArticleVehicleCompatibility,
-    StockCategory,
-    StockLocation,
+from app.services.audit import record_audit
+from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
+from app.services.classification_proposals import (
+    attach_selection_to_entity,
+    detach_entity_proposals,
+    validate_proposal_selection,
 )
-from app.services.stock import stock_balances
+from app.services.diagnostic_documents import (
+    DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
+    DIAGNOSTIC_OCR_STATUS_LABELS,
+    DIAGNOSTIC_OCR_STATUSES,
+    DIAGNOSTIC_STATUS_LABELS,
+    DIAGNOSTIC_STATUSES,
+    DIAGNOSTIC_TYPE_LABELS,
+    DIAGNOSTIC_TYPES,
+    DIAGNOSTIC_VALIDATION_STATUS_LABELS,
+    DIAGNOSTIC_VALIDATION_STATUSES,
+    document_vehicle_predicate,
+    ensure_diagnostic_profile,
+    find_vehicle_by_plate,
+)
+from app.services.diagnostic_ocr import (
+    EXTRACTOR_VERSION as DIAGNOSTIC_EXTRACTOR_VERSION,
+)
+from app.services.diagnostic_ocr import (
+    PARSER_VERSION as DIAGNOSTIC_PARSER_VERSION,
+)
+from app.services.diagnostic_ocr import (
+    extract_diagnostic_pdf,
+    persist_diagnostic_extraction,
+    synchronize_diagnostic_profile_from_extraction,
+)
+from app.services.document_import_preview import (
+    RENTWAY_IMPORT_KINDS,
+    preview_structured_spreadsheet,
+)
+from app.services.document_service_classification import save_service_classifications
+from app.services.document_workflow import (
+    INVOICE_NATURES,
+    WORKFLOW_LABELS,
+    classify_invoice_nature,
+    confident_destination,
+    get_or_create_workflow_state,
+    transition_document_workflow,
+    workflow_values,
+)
+from app.services.documentation_treatment import (
+    TREATMENT_REASON_LABELS,
+    apply_document_treatment_action,
+    associate_expected_invoice,
+    document_action_compatibility,
+    document_treatment_dimensions,
+    expected_action_compatibility,
+    expected_invoice_dimensions,
+    service_count,
+)
+from app.services.documentation_vehicle_view import documentation_by_vehicle_overview
+from app.services.management_center import (
+    ACTION_STATUS_LABELS,
+    AR_IMPORT_TYPE,
+    CRAR_PER_VEHICLE_IMPORT_TYPE,
+    PROCESS_PHASE_LABELS,
+    PROCESS_STATUS_LABELS,
+    REFSTRO_IMPORT_TYPE,
+    add_history,
+    associate_to_process,
+    create_claim_process,
+    end_association,
+    ensure_management_defaults,
+    preview_claims_file,
+    refresh_claim_state,
+)
 from app.services.pending_document_importer import (
     create_pending_documents_from_preview,
     preview_pending_documents,
@@ -142,22 +212,10 @@ from app.services.rentway_fleet_importer import (
     normalize_rentway_gearbox,
     preview_rentway_fleet_xlsx,
 )
-from app.services.structured_financial_plan_importer import (
-    apply_financial_plan_preview,
-    preview_financial_plan_workbook,
-)
-from app.services.vehicle_financials import canonical_vehicle_financial_values
-from app.services.work_classification import (
-    apply_source_work_default,
-    user_work_scope_allows,
-    user_work_scope_filter,
-    validate_work_hierarchy,
-    work_hierarchy_context,
-)
 from app.services.service_desk import (
     assign_task_executor,
-    assignment_target_user_allowed,
     assignment_label,
+    assignment_target_user_allowed,
     category_team_is_eligible,
     category_user_is_eligible,
     claim_task,
@@ -172,32 +230,18 @@ from app.services.service_desk import (
     resume_task_sla,
     sla_snapshot,
 )
-from app.services.document_import_preview import (
-    RENTWAY_IMPORT_KINDS,
-    preview_structured_spreadsheet,
+from app.services.stock import ensure_invoice_import, stock_balances
+from app.services.structured_financial_plan_importer import (
+    apply_financial_plan_preview,
+    preview_financial_plan_workbook,
 )
-from app.services.document_workflow import (
-    INVOICE_NATURES,
-    WORKFLOW_LABELS,
-    classify_invoice_nature,
-    confident_destination,
-    get_or_create_workflow_state,
-    transition_document_workflow,
-    workflow_values,
+from app.services.task_bulk_importer import (
+    TASK_BULK_FIELDS,
+    TASK_BULK_IMPORT_TYPE,
+    create_tasks_from_bulk_import,
+    preview_task_bulk_import,
+    store_task_bulk_upload,
 )
-from app.services.document_service_classification import save_service_classifications
-from app.services.documentation_treatment import (
-    TREATMENT_REASON_LABELS,
-    apply_document_treatment_action,
-    associate_expected_invoice,
-    document_action_compatibility,
-    document_treatment_dimensions,
-    expected_action_compatibility,
-    expected_invoice_dimensions,
-    service_count,
-)
-from app.services.documentation_vehicle_view import documentation_by_vehicle_overview
-from app.services.stock import ensure_invoice_import
 from app.services.task_recurrence import (
     RECURRENCE_FREQUENCIES,
     RECURRENCE_TASK_TYPES,
@@ -207,46 +251,19 @@ from app.services.task_recurrence import (
     opportunistic_generate_recurring_tasks,
     utc_datetime_to_local,
 )
-from app.services.management_center import (
-    ACTION_STATUS_LABELS,
-    AR_IMPORT_TYPE,
-    CRAR_PER_VEHICLE_IMPORT_TYPE,
-    PROCESS_PHASE_LABELS,
-    PROCESS_STATUS_LABELS,
-    REFSTRO_IMPORT_TYPE,
-    add_history,
-    associate_to_process,
-    create_claim_process,
-    end_association,
-    ensure_management_defaults,
-    preview_claims_file,
-    refresh_claim_state,
-)
-from app.services.task_bulk_importer import (
-    TASK_BULK_FIELDS,
-    TASK_BULK_IMPORT_TYPE,
-    create_tasks_from_bulk_import,
-    preview_task_bulk_import,
-    store_task_bulk_upload,
-)
 from app.services.trade_debt_importer import (
     TRADE_DEBT_IMPORT_TYPE,
     apply_trade_debt_import,
     preview_trade_debt_import,
     store_trade_debt_upload,
 )
-from app.services.workshop_history_importer import (
-    TECHNICAL_HISTORY_IMPORT_COLUMNS,
-    import_workshop_technical_history_file,
-    technical_history_template_csv,
-)
-
+from app.services.users import create_user
 from app.services.vehicle_document_history import (
-    DOCUMENT_HISTORY_AUDIT_FIELDS,
     DOCUMENT_HISTORY_AUDIT_FIELD_LABELS,
+    DOCUMENT_HISTORY_AUDIT_FIELDS,
     DOCUMENT_HISTORY_COMPARISON_LABELS,
-    DOCUMENT_HISTORY_MAIN_GROUPS,
     DOCUMENT_HISTORY_MAIN_GROUP_LABELS,
+    DOCUMENT_HISTORY_MAIN_GROUPS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATION_LABELS,
     DOCUMENT_HISTORY_QUICK_CLASSIFICATIONS,
     DOCUMENT_HISTORY_STRUCTURED_GROUPS,
@@ -272,11 +289,16 @@ from app.services.vehicle_document_history import (
     v2_clean_document_visible_condition,
     vehicle_document_module_context,
 )
-from app.services.workshop_report_extractor import (
-    classify_workshop_report_from_bytes,
-    extract_workshop_report_values_from_bytes,
+from app.services.vehicle_financials import canonical_vehicle_financial_values
+from app.services.vehicles import normalize_identifier
+from app.services.work_classification import (
+    apply_source_work_default,
+    parse_classification_choice,
+    user_work_scope_allows,
+    user_work_scope_filter,
+    validate_work_hierarchy,
+    work_hierarchy_context,
 )
-from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.services.workshop_configuration import (
     WORKSHOP_STOCK_STATUSES,
     allocate_workshop_public_reference,
@@ -289,31 +311,16 @@ from app.services.workshop_configuration import (
     suggest_workshop_template,
     validate_workshop_template_config,
 )
-from app.services.audit import record_audit
-from app.services.authorization import get_user_authorized_unit_codes, get_user_permission_codes
-from app.services.diagnostic_documents import (
-    DIAGNOSTIC_ASSOCIATION_STATUS_LABELS,
-    DIAGNOSTIC_OCR_STATUSES,
-    DIAGNOSTIC_OCR_STATUS_LABELS,
-    DIAGNOSTIC_STATUSES,
-    DIAGNOSTIC_STATUS_LABELS,
-    DIAGNOSTIC_TYPES,
-    DIAGNOSTIC_TYPE_LABELS,
-    DIAGNOSTIC_VALIDATION_STATUSES,
-    DIAGNOSTIC_VALIDATION_STATUS_LABELS,
-    document_vehicle_predicate,
-    ensure_diagnostic_profile,
-    find_vehicle_by_plate,
+from app.services.workshop_history_importer import (
+    TECHNICAL_HISTORY_IMPORT_COLUMNS,
+    import_workshop_technical_history_file,
+    technical_history_template_csv,
 )
-from app.services.diagnostic_ocr import (
-    EXTRACTOR_VERSION as DIAGNOSTIC_EXTRACTOR_VERSION,
-    PARSER_VERSION as DIAGNOSTIC_PARSER_VERSION,
-    extract_diagnostic_pdf,
-    persist_diagnostic_extraction,
-    synchronize_diagnostic_profile_from_extraction,
+from app.services.workshop_report_extractor import (
+    classify_workshop_report_from_bytes,
+    extract_workshop_report_values_from_bytes,
 )
-from app.services.users import create_user
-from app.services.vehicles import normalize_identifier
+from app.services.workshop_templates import STELLANTIS_REPORTS
 from app.web.clean_admin import ADMIN_NAV, clean_admin_router, clean_admin_user_has
 
 templates = Jinja2Templates(directory="app/templates")
@@ -4052,6 +4059,9 @@ def clean_tasks_center(
     user_id = get_web_user_id(request)
     with SessionLocal() as db:
         current_user = db.get(User, user_id) if user_id else None
+        classification_permissions = (
+            get_user_permission_codes(db, current_user) if current_user else set()
+        )
         opportunistic_generate_recurring_tasks(db)
         readable_workspaces = user_task_workspace_codes(db, current_user)
         creatable_workspaces = [
@@ -4597,6 +4607,10 @@ def clean_tasks_center(
                 "updatable_workspaces": updatable_workspaces,
                 "closable_workspaces": closable_workspaces,
                 "can_manage_recurrence": user_can_create_recurring_tasks(db, current_user),
+                "can_propose_classification": "classification.propose"
+                in classification_permissions,
+                "can_use_provisional_classification": "classification.provisional.use"
+                in classification_permissions,
                 "filters": {
                     "workspace": active_workspace,
                     "mine_kind": active_mine_kind,
@@ -5038,14 +5052,31 @@ def clean_tasks_create(
     normalized_plate = normalize_identifier(plate) if plate else None
     now = datetime.now(UTC)
     with SessionLocal() as db:
+        current_user = db.get(User, user_id)
+        permission_codes = get_user_permission_codes(db, current_user) if current_user else set()
         hierarchy_selection = None
+        proposal_selection = None
         if classification_version == "3" or work_queue_id.strip():
+            official_category_id, category_proposal_id = parse_classification_choice(
+                work_category_id
+            )
+            official_subcategory_id, subcategory_proposal_id = parse_classification_choice(
+                work_subcategory_id
+            )
+            uses_provisional = bool(category_proposal_id or subcategory_proposal_id)
+            required_permission = (
+                "classification.provisional.use"
+                if uses_provisional
+                else "classification.active.use"
+            )
+            if required_permission not in permission_codes:
+                return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
             hierarchy_selection = validate_work_hierarchy(
                 db,
                 queue_id=parse_int_from_text(work_queue_id),
                 department_id=parse_int_from_text(work_department_id),
-                category_id=parse_int_from_text(work_category_id),
-                subcategory_id=parse_int_from_text(work_subcategory_id),
+                category_id=official_category_id,
+                subcategory_id=official_subcategory_id,
                 other_text=classification_other_text,
             )
             if not hierarchy_selection:
@@ -5071,6 +5102,19 @@ def clean_tasks_create(
                 return RedirectResponse(
                     "/v2-clean/tasks?error=forbidden", status_code=303
                 )
+            try:
+                proposal_selection = validate_proposal_selection(
+                    db,
+                    department_id=hierarchy_selection.department.id,
+                    official_category_id=official_category_id,
+                    category_proposal_id=category_proposal_id,
+                    subcategory_proposal_id=subcategory_proposal_id,
+                )
+            except ValueError:
+                return RedirectResponse(
+                    "/v2-clean/tasks?create=1&error=missing_classification#new-task",
+                    status_code=303,
+                )
             clean_workspace = (
                 "administration"
                 if hierarchy_selection.queue.code == "administration"
@@ -5081,7 +5125,6 @@ def clean_tasks_create(
         workspace_config = TASK_WORKSPACE_CONFIG[clean_workspace]
         is_problem = record_type == "problem" and clean_workspace == "workshop"
         effective_record_type = "problem" if is_problem else "task"
-        current_user = db.get(User, user_id)
         if not user_can_access_task_workspace(
             db, current_user, clean_workspace, action="create"
         ):
@@ -5204,6 +5247,17 @@ def clean_tasks_create(
         )
         db.add(task)
         db.flush()
+        if proposal_selection and (
+            proposal_selection.category or proposal_selection.subcategory
+        ):
+            attach_selection_to_entity(
+                db,
+                entity=task,
+                selection=proposal_selection,
+                actor_user_id=user_id,
+                module="service_desk",
+                origin_url=str(request.url),
+            )
         if hierarchy_selection:
             initialize_task_service_desk(
                 db,
@@ -5379,13 +5433,31 @@ def clean_tasks_update(
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         hierarchy_selection = None
+        proposal_selection = None
         if classification_version == "3" or work_queue_id.strip():
+            official_category_id, category_proposal_id = parse_classification_choice(
+                work_category_id
+            )
+            official_subcategory_id, subcategory_proposal_id = parse_classification_choice(
+                work_subcategory_id
+            )
+            permissions = get_user_permission_codes(db, current_user)
+            uses_provisional = bool(category_proposal_id or subcategory_proposal_id)
+            required_permission = (
+                "classification.provisional.use"
+                if uses_provisional
+                else "classification.active.use"
+            )
+            if required_permission not in permissions:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="forbidden"
+                )
             hierarchy_selection = validate_work_hierarchy(
                 db,
                 queue_id=parse_int_from_text(work_queue_id),
                 department_id=parse_int_from_text(work_department_id),
-                category_id=parse_int_from_text(work_category_id),
-                subcategory_id=parse_int_from_text(work_subcategory_id),
+                category_id=official_category_id,
+                subcategory_id=official_subcategory_id,
                 other_text=classification_other_text,
             )
             if not hierarchy_selection:
@@ -5410,6 +5482,18 @@ def clean_tasks_update(
             ):
                 return clean_task_action_redirect(
                     return_url, task_id=task_id, flag="forbidden"
+                )
+            try:
+                proposal_selection = validate_proposal_selection(
+                    db,
+                    department_id=hierarchy_selection.department.id,
+                    official_category_id=official_category_id,
+                    category_proposal_id=category_proposal_id,
+                    subcategory_proposal_id=subcategory_proposal_id,
+                )
+            except ValueError:
+                return clean_task_action_redirect(
+                    return_url, task_id=task_id, flag="missing_classification"
                 )
             target_workspace = (
                 "administration"
@@ -5599,6 +5683,19 @@ def clean_tasks_update(
                     new_value=str(new_value) if new_value is not None else None,
                 )
             )
+        if hierarchy_selection:
+            detach_entity_proposals(db, entity=task, actor_user_id=user_id)
+            if proposal_selection and (
+                proposal_selection.category or proposal_selection.subcategory
+            ):
+                attach_selection_to_entity(
+                    db,
+                    entity=task,
+                    selection=proposal_selection,
+                    actor_user_id=user_id,
+                    module="service_desk",
+                    origin_url=str(request.url),
+                )
         if assignment_changed:
             try:
                 assign_task_executor(

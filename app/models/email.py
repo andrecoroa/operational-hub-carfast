@@ -247,6 +247,12 @@ class EmailThread(TimestampMixin, Base):
     work_subcategory_id: Mapped[int | None] = mapped_column(
         ForeignKey("work_subcategories.id", ondelete="SET NULL"), index=True
     )
+    provisional_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("classification_proposals.id", ondelete="RESTRICT"), index=True
+    )
+    provisional_subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("classification_proposals.id", ondelete="RESTRICT"), index=True
+    )
     classification_status: Mapped[str] = mapped_column(
         String(40), default="unclassified", index=True
     )
@@ -256,6 +262,10 @@ class EmailThread(TimestampMixin, Base):
     )
     original_recipient_address: Mapped[str | None] = mapped_column(String(255), index=True)
     technical_recipient_address: Mapped[str | None] = mapped_column(String(255), index=True)
+    classification_updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    classification_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     first_response_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True

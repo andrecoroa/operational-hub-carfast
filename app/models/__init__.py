@@ -1,6 +1,12 @@
 from app.models.admin import Permission, Role, RolePermission, User, UserRole
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.classification_proposals import (
+    ClassificationProposal,
+    ClassificationProposalAudit,
+    ClassificationProposalUsage,
+    ClassificationSequence,
+)
 from app.models.documents import (
     DiagnosticDocument,
     DiagnosticExtraction,
@@ -163,6 +169,10 @@ from app.models.workshop_phased import (
 __all__ = [
     "AuditLog",
     "Base",
+    "ClassificationProposal",
+    "ClassificationProposalAudit",
+    "ClassificationProposalUsage",
+    "ClassificationSequence",
     "ClaimIncident",
     "ClaimRefstroLine",
     "ClaimRentwayAR",

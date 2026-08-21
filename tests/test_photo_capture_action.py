@@ -392,5 +392,6 @@ def test_photo_migration_is_the_single_alembic_head():
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "migrations"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["fff15d6e7f8b"]
+    assert scripts.get_heads() == ["fff26e7f8a9c"]
+    assert scripts.get_revision("fff26e7f8a9c").down_revision == "fff15d6e7f8b"
     assert scripts.get_revision("fff15d6e7f8b").down_revision == "ffd05e6f7a8b"

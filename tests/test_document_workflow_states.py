@@ -139,4 +139,4 @@ def test_automatic_destination_requires_known_high_confidence(
 def test_alembic_task_recurrence_revision_is_the_only_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["ec0c1d2e3f4b"]
+    assert script.get_heads() == ["fff26e7f8a9c"]

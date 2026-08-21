@@ -1877,24 +1877,53 @@ def clean_admin_work_classification(request: Request):
         )
         email_user_eligibility_tokens = {item.id: [] for item in users}
         email_team_eligibility_tokens = {item.id: [] for item in teams}
+        allowed_user_ids = set(email_user_eligibility_tokens)
+        active_team_ids = set(email_team_eligibility_tokens)
+        team_members: dict[int, set[int]] = {}
+        if active_team_ids:
+            for team_id, member_user_id in db.execute(
+                select(TeamMember.team_id, TeamMember.user_id).where(
+                    TeamMember.team_id.in_(active_team_ids)
+                )
+            ).all():
+                if member_user_id in allowed_user_ids:
+                    team_members.setdefault(team_id, set()).add(member_user_id)
+
+        # Build the matrix from the already loaded eligibility rows. Calling the
+        # eligibility helpers for every channel/category combination caused an
+        # N x M query storm on the production administration page.
+        active_eligibilities_by_channel: dict[int, list[EmailExecutorEligibility]] = {}
+        for eligibility in email_executors:
+            if eligibility.active:
+                active_eligibilities_by_channel.setdefault(
+                    eligibility.channel_id, []
+                ).append(eligibility)
+
+        category_options = [None, *(item.id for item in categories)]
         for channel in channels:
-            for eligibility_category_id in [None, *(item.id for item in categories)]:
+            channel_eligibilities = active_eligibilities_by_channel.get(channel.id, [])
+            for eligibility_category_id in category_options:
+                applicable = [
+                    item
+                    for item in channel_eligibilities
+                    if item.category_id is None
+                    or item.category_id == eligibility_category_id
+                ]
                 token = f"{channel.id}:{eligibility_category_id or 0}"
-                for eligible_user in email_eligible_users(
-                    db, channel.id, eligibility_category_id
-                ):
-                    if assignment_target_user_allowed(
-                        db,
-                        actor_user_id=user_id,
-                        target_user_id=eligible_user.id,
-                    ):
-                        email_user_eligibility_tokens.setdefault(
-                            eligible_user.id, []
-                        ).append(token)
-                for eligible_team in email_eligible_teams(
-                    db, channel.id, eligibility_category_id
-                ):
-                    email_team_eligibility_tokens.setdefault(eligible_team.id, []).append(token)
+                eligible_user_ids: set[int] = set()
+                eligible_team_ids: set[int] = set()
+                for eligibility in applicable:
+                    if eligibility.user_id in allowed_user_ids:
+                        eligible_user_ids.add(eligibility.user_id)
+                    if eligibility.team_id in active_team_ids:
+                        eligible_team_ids.add(eligibility.team_id)
+                        eligible_user_ids.update(
+                            team_members.get(eligibility.team_id, set())
+                        )
+                for eligible_user_id in eligible_user_ids:
+                    email_user_eligibility_tokens[eligible_user_id].append(token)
+                for eligible_team_id in eligible_team_ids:
+                    email_team_eligibility_tokens[eligible_team_id].append(token)
         source_defaults = (
             db.scalars(
                 select(WorkSourceDefault).order_by(

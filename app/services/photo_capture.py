@@ -83,8 +83,11 @@ def normalize_photo_config(config: PhotoActionConfigInput | dict[str, Any]) -> d
     observation = str(raw.get("observation") or "optional").lower()
     if observation not in {"disabled", "optional", "required"}:
         raise PhotoCaptureError("A regra de observação é inválida.")
-    allow_camera = bool(raw.get("allow_camera", True))
-    allow_gallery = bool(raw.get("allow_gallery", True))
+    capture_raw = raw.get("capture") if isinstance(raw.get("capture"), dict) else {}
+    location_raw = raw.get("location") if isinstance(raw.get("location"), dict) else {}
+    review_raw = raw.get("review") if isinstance(raw.get("review"), dict) else {}
+    allow_camera = bool(capture_raw.get("allow_camera", raw.get("allow_camera", True)))
+    allow_gallery = bool(capture_raw.get("allow_gallery", raw.get("allow_gallery", True)))
     if not allow_camera and not allow_gallery:
         raise PhotoCaptureError("É necessário permitir câmara ou galeria/ficheiro.")
     return {
@@ -98,12 +101,17 @@ def normalize_photo_config(config: PhotoActionConfigInput | dict[str, Any]) -> d
         "capture": {
             "allow_camera": allow_camera,
             "allow_gallery": allow_gallery,
-            "require_new": bool(raw.get("require_new_capture", False)),
+            "require_new": bool(
+                capture_raw.get("require_new", raw.get("require_new_capture", False))
+            ),
         },
         "categories": categories,
         "observation": observation,
-        "location": {"enabled": bool(raw.get("location_enabled", False)), "consent_required": True},
-        "review": {"required": bool(raw.get("review_required", False))},
+        "location": {
+            "enabled": bool(location_raw.get("enabled", raw.get("location_enabled", False))),
+            "consent_required": True,
+        },
+        "review": {"required": bool(review_raw.get("required", raw.get("review_required", False)))},
         "retention_policy": str(raw.get("retention_policy") or "operational_evidence")[:80],
         "metadata_policy": "strip_exif",
         "max_file_bytes": min(max(int(raw.get("max_file_bytes", 15_000_000)), 100_000), 50_000_000),
@@ -213,7 +221,13 @@ def user_can_access_photo_session(
         if required not in permissions:
             return False
     if session.vehicle_id:
-        required = "vehicles.write" if write else "vehicles.read"
+        has_operational_parent = bool(
+            session.task_id
+            or session.workshop_process_id
+            or session.phased_process_id
+            or session.phase_id
+        )
+        required = "vehicles.write" if write and not has_operational_parent else "vehicles.read"
         if required not in permissions:
             return False
     if session.entity_type and session.entity_type not in {
@@ -260,9 +274,21 @@ def create_photo_session(
         raise PhotoCaptureError("A definição publicada da ação não foi encontrada.")
 
     task = db.get(Task, payload.task_id) if payload.task_id else None
-    flow_step = db.get(TaskGuidedFlowStepRun, payload.task_flow_step_id) if payload.task_flow_step_id else None
-    legacy_process = db.get(WorkshopProcess, payload.workshop_process_id) if payload.workshop_process_id else None
-    phased_process = db.get(WorkshopPhasedProcess, payload.phased_process_id) if payload.phased_process_id else None
+    flow_step = (
+        db.get(TaskGuidedFlowStepRun, payload.task_flow_step_id)
+        if payload.task_flow_step_id
+        else None
+    )
+    legacy_process = (
+        db.get(WorkshopProcess, payload.workshop_process_id)
+        if payload.workshop_process_id
+        else None
+    )
+    phased_process = (
+        db.get(WorkshopPhasedProcess, payload.phased_process_id)
+        if payload.phased_process_id
+        else None
+    )
     phase = db.get(WorkshopPhasedProcessPhase, payload.phase_id) if payload.phase_id else None
     vehicle = db.get(Vehicle, payload.vehicle_id) if payload.vehicle_id else None
     requested = [
@@ -291,14 +317,26 @@ def create_photo_session(
         ]
         if value
     }
-    if inherited_vehicle_id and context_vehicle_ids and inherited_vehicle_id not in context_vehicle_ids:
+    if (
+        inherited_vehicle_id
+        and context_vehicle_ids
+        and inherited_vehicle_id not in context_vehicle_ids
+    ):
         raise PhotoCaptureError("A viatura não corresponde ao processo indicado.")
     if not inherited_vehicle_id and context_vehicle_ids:
         inherited_vehicle_id = next(iter(context_vehicle_ids))
     if not any(
-        [payload.task_id, payload.workshop_process_id, phased_process, inherited_vehicle_id, payload.entity_type]
+        [
+            payload.task_id,
+            payload.workshop_process_id,
+            phased_process,
+            inherited_vehicle_id,
+            payload.entity_type,
+        ]
     ):
-        raise PhotoCaptureError("Associe a captura a uma tarefa, processo, fase, viatura ou entidade.")
+        raise PhotoCaptureError(
+            "Associe a captura a uma tarefa, processo, fase, viatura ou entidade."
+        )
 
     session = PhotoCaptureSession(
         definition_id=definition.id if definition else None,
@@ -366,7 +404,9 @@ def _safe_original_name(name: str | None) -> str:
 def _normalize_image(content: bytes, original_name: str) -> tuple[bytes, str, str, int, int, bytes]:
     detected = _detect_content_type(content)
     if not detected:
-        raise PhotoCaptureError("Formato inválido. Use JPEG, PNG ou WebP; SVG e HTML não são aceites.")
+        raise PhotoCaptureError(
+            "Formato inválido. Use JPEG, PNG ou WebP; SVG e HTML não são aceites."
+        )
     suffix = Path(original_name).suffix.lower()
     canonical_suffix, compatible_suffixes = PHOTO_CONTENT_TYPES[detected]
     if suffix not in compatible_suffixes:
@@ -379,7 +419,9 @@ def _normalize_image(content: bytes, original_name: str) -> tuple[bytes, str, st
             image.load()
             width, height = image.size
             if width <= 0 or height <= 0 or width * height > MAX_PIXELS:
-                raise PhotoCaptureError("A resolução da fotografia é inválida ou demasiado elevada.")
+                raise PhotoCaptureError(
+                    "A resolução da fotografia é inválida ou demasiado elevada."
+                )
             if max(width, height) > MAX_LONG_EDGE:
                 image.thumbnail((MAX_LONG_EDGE, MAX_LONG_EDGE), Image.Resampling.LANCZOS)
             width, height = image.size
@@ -401,7 +443,9 @@ def _normalize_image(content: bytes, original_name: str) -> tuple[bytes, str, st
             thumbnail = io.BytesIO()
             thumb.convert("RGB").save(thumbnail, format="JPEG", quality=82, optimize=True)
     except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise PhotoCaptureError("O conteúdo da fotografia está corrompido ou não é seguro.") from exc
+        raise PhotoCaptureError(
+            "O conteúdo da fotografia está corrompido ou não é seguro."
+        ) from exc
     return normalized.getvalue(), detected, canonical_suffix, width, height, thumbnail.getvalue()
 
 
@@ -417,7 +461,9 @@ def _resolve_private_file(path_value: str) -> Path:
 
 
 def private_photo_path(media: PhotoMedia, document: Document, *, thumbnail: bool) -> Path:
-    return _resolve_private_file(media.thumbnail_storage_path if thumbnail else document.storage_path)
+    return _resolve_private_file(
+        media.thumbnail_storage_path if thumbnail else document.storage_path
+    )
 
 
 def _ensure_document_link(
@@ -494,7 +540,9 @@ def store_photo(
     has_location = location_latitude is not None or location_longitude is not None
     if has_location:
         if not location_config.get("enabled") or not location_consent:
-            raise PhotoCaptureError("A localização só pode ser guardada com consentimento explícito.")
+            raise PhotoCaptureError(
+                "A localização só pode ser guardada com consentimento explícito."
+            )
         if location_latitude is None or location_longitude is None:
             raise PhotoCaptureError("A localização está incompleta.")
         if not (-90 <= location_latitude <= 90 and -180 <= location_longitude <= 180):
@@ -502,10 +550,13 @@ def store_photo(
     if len(content) > int(config.get("max_file_bytes", 15_000_000)):
         raise PhotoCaptureError("A fotografia excede o tamanho máximo permitido.")
     safe_name = _safe_original_name(original_name)
-    normalized, content_type, suffix, width, height, thumbnail = _normalize_image(content, safe_name)
+    normalized, content_type, suffix, width, height, thumbnail = _normalize_image(
+        content, safe_name
+    )
     digest = hashlib.sha256(normalized).hexdigest()
     media = db.scalar(select(PhotoMedia).where(PhotoMedia.sha256 == digest))
     document = db.get(Document, media.document_id) if media else None
+    deduplicated = bool(media and document and not document.archived)
     if not media or not document or document.archived:
         root = persistent_storage_root() / "photos" / "sha256" / digest[:2]
         root.mkdir(parents=True, exist_ok=True)
@@ -559,6 +610,15 @@ def store_photo(
                 user_id=user.id,
             )
         )
+    duplicate_item = db.scalar(
+        select(PhotoCaptureItem).where(
+            PhotoCaptureItem.session_id == session.id,
+            PhotoCaptureItem.photo_media_id == media.id,
+            PhotoCaptureItem.removed_at.is_(None),
+        )
+    )
+    if duplicate_item:
+        raise PhotoCaptureError("Esta fotografia já faz parte da captura.")
     item = PhotoCaptureItem(
         session_id=session.id,
         photo_media_id=media.id,
@@ -617,7 +677,7 @@ def store_photo(
             "sha256": digest,
             "category": clean_category,
             "source": clean_source,
-            "deduplicated": document.created_at != document.updated_at if document.created_at else False,
+            "deduplicated": deduplicated,
             "location_recorded": has_location,
         },
     )

@@ -201,6 +201,7 @@ from app.services.pending_document_importer import (
     preview_pending_documents,
     reconcile_pending_invoices,
 )
+from app.services.photo_capture import required_photo_blockers
 from app.services.portal_access import (
     portal_context,
     portal_csrf_token,
@@ -5459,6 +5460,13 @@ def clean_tasks_update(
             or not _task_hierarchy_scope_allows(db, user_id, task, action="manage_sla")
         ):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
+        if clean_status in {"resolved", "closed"}:
+            photo_blockers = required_photo_blockers(db, task_id=task.id)
+            if photo_blockers:
+                message = "Fotografias obrigatórias: " + " ".join(photo_blockers)
+                return RedirectResponse(
+                    f"/task-board/{task.id}?error={quote_plus(message)}", status_code=303
+                )
         hierarchy_selection = None
         proposal_selection = None
         if classification_version == "3" or work_queue_id.strip():
@@ -5882,6 +5890,12 @@ def clean_tasks_close(request: Request, task_id: int, return_url: str = Form("")
         if task and not _task_hierarchy_scope_allows(db, user_id, task, action="close"):
             return RedirectResponse("/v2-clean/tasks?error=forbidden", status_code=303)
         if task:
+            photo_blockers = required_photo_blockers(db, task_id=task.id)
+            if photo_blockers:
+                message = "Fotografias obrigatórias: " + " ".join(photo_blockers)
+                return RedirectResponse(
+                    f"/task-board/{task.id}?error={quote_plus(message)}", status_code=303
+                )
             prior_status = task.status
             task.status = "closed"
             closed_now = datetime.now(UTC)
@@ -21906,6 +21920,20 @@ async def clean_workshop_entry_save(request: Request):
                 f"/v2-clean/workshop-entry?process_id={process_id}&error=missing_km",
                 status_code=303,
             )
+        if action == "advance":
+            photo_blockers = required_photo_blockers(
+                db, phased_process_id=process.id, phase_id=phase.id
+            )
+            if photo_blockers:
+                phase.data_json = entry_data
+                phase.status = "in_progress"
+                process.current_phase_code = "entrada"
+                db.commit()
+                message = quote_plus("Fotografias obrigatórias: " + " ".join(photo_blockers))
+                return RedirectResponse(
+                    f"/v2-clean/workshop-entry?process_id={process.id}&error={message}",
+                    status_code=303,
+                )
         phase.data_json = entry_data
         phase.status = "completed" if action == "advance" else "in_progress"
         phase.started_at = phase.started_at or now
@@ -21989,6 +22017,7 @@ def clean_workshop_entry(
         selected_template_code = ""
         available_phase_defs: list[dict[str, object]] = []
         saved_entry: dict[str, object] = {}
+        entry_phase: WorkshopPhasedProcessPhase | None = None
         if process:
             creator = db.get(User, process.created_by_id) if process.created_by_id else None
             if creator:
@@ -22078,6 +22107,7 @@ def clean_workshop_entry(
             "new_entry_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate)}",
             "new_historical_url": f"/v2-clean/workshop-entry{clean_workshop_query_suffix(vehicle_id=vehicle_id, plate=plate, historical=True)}",
             "saved_entry": saved_entry,
+            "photo_phase_row": entry_phase,
             "entry_substep_status": clean_workshop_entry_substep_status(saved_entry),
             "template_options": template_options,
             "selected_template_code": selected_template_code,
@@ -22120,6 +22150,7 @@ def clean_workshop_phase(
     if not phase_config:
         return RedirectResponse(f"/v2-clean/workshop-entry{query_suffix}", status_code=303)
     phase_data: dict[str, object] = {}
+    phase_row: WorkshopPhasedProcessPhase | None = None
     phase_form: dict[str, object] = {}
     entry_form: dict[str, object] = {}
     entry_summary = "Sem descrição"
@@ -22306,6 +22337,7 @@ def clean_workshop_phase(
             "workshop_admin": workshop_admin,
             "active_step": phase,
             "phase_data": phase_data,
+            "photo_phase_row": phase_row,
             "phase_form": phase_form,
             "entry_summary": entry_summary,
             "repair_summary": repair_summary,
@@ -23104,6 +23136,19 @@ async def clean_workshop_phase_save(request: Request, phase: str):
             )
 
         if action == "advance":
+            photo_blockers = required_photo_blockers(
+                db, phased_process_id=process.id, phase_id=phase_row.id
+            )
+            if photo_blockers:
+                phase_row.status = "in_progress"
+                process.current_phase_code = phase
+                db.commit()
+                message = quote_plus("Fotografias obrigatórias: " + " ".join(photo_blockers))
+                return RedirectResponse(
+                    f"{clean_workshop_phase_path(phase)}?process_id={process.id}"
+                    f"&error={message}",
+                    status_code=303,
+                )
             phase_reports = (
                 db.scalars(
                     select(WorkshopPhasedTechnicalReport).where(
@@ -33417,6 +33462,17 @@ def task_guided_flow_step_update(
         allowed_step_statuses = {code for code, _ in GUIDED_FLOW_STEP_STATUSES}
         if step_status not in allowed_step_statuses:
             step_status = step.status or "pending"
+        if step_status in {"done", "not_applicable", "task_created"}:
+            photo_blockers = required_photo_blockers(
+                db, task_id=task.id, task_flow_step_id=step.id
+            )
+            if photo_blockers:
+                message = "Fotografias obrigatórias: " + " ".join(photo_blockers)
+                return RedirectResponse(
+                    f"/task-board/{task.id}?error={quote_plus(message)}"
+                    f"#flow-step-{step.id}",
+                    status_code=303,
+                )
         clean_note = step_note.strip()
         old_status = step.status
         step_data = dict(step.data_json or {})

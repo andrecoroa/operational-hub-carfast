@@ -159,6 +159,10 @@
                     </div>
                   </form>
                 {% endif %}
+                {% set photo_task_id = task.id %}
+                {% set photo_task_flow_step_id = step.id %}
+                {% set photo_vehicle_id = linked_vehicle.id if linked_vehicle else none %}
+                {% include "_photo_capture.html" %}
               </details>
             {% endfor %}
           </div>
@@ -170,6 +174,11 @@
           <p class="muted">Este registo foi criado antes da execução do fluxo. Regravar a tarefa ou recriar o fluxo irá preparar os passos.</p>
         </article>
         {% endif %}
+
+        {% set photo_task_id = task.id %}
+        {% set photo_task_flow_step_id = none %}
+        {% set photo_vehicle_id = linked_vehicle.id if linked_vehicle else none %}
+        {% include "_photo_capture.html" %}
 
         <article class="section workshop-summary-card task-relations-card">
           <div class="table-heading flat-heading compact-task-heading">

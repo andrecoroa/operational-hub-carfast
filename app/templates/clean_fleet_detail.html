@@ -226,6 +226,10 @@
         </article>
       </div>
     </section>
+    {% set photo_vehicle_id = vehicle.id %}
+    {% set photo_entity_type = "vehicle" %}
+    {% set photo_entity_id = vehicle.id %}
+    {% include "_photo_capture.html" %}
   </main>
 </div>
 <script>

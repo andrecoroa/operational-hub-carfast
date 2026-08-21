@@ -1,0 +1,21 @@
+<section
+  class="photo-capture"
+  data-photo-capture
+  {% if photo_task_id %}data-task-id="{{ photo_task_id }}"{% endif %}
+  {% if photo_task_flow_step_id %}data-task-flow-step-id="{{ photo_task_flow_step_id }}"{% endif %}
+  {% if photo_workshop_process_id %}data-workshop-process-id="{{ photo_workshop_process_id }}"{% endif %}
+  {% if photo_phased_process_id %}data-phased-process-id="{{ photo_phased_process_id }}"{% endif %}
+  {% if photo_phase_id %}data-phase-id="{{ photo_phase_id }}"{% endif %}
+  {% if photo_vehicle_id %}data-vehicle-id="{{ photo_vehicle_id }}"{% endif %}
+  {% if photo_entity_type %}data-entity-type="{{ photo_entity_type }}"{% endif %}
+  {% if photo_entity_id %}data-entity-id="{{ photo_entity_id }}"{% endif %}
+  aria-label="Fotografias associadas"
+>
+  <div class="photo-capture__heading">
+    <div><p class="eyebrow">Evidência visual</p><h3>Fotografias</h3></div>
+    <button type="button" class="button-link secondary-link" data-photo-new>Tirar fotografia</button>
+  </div>
+  <p class="photo-capture__hint">JPEG, PNG ou WebP. O conteúdo é validado, os metadados EXIF são removidos e o acesso permanece autenticado.</p>
+  <div data-photo-feedback class="photo-capture__feedback" role="status" aria-live="polite"></div>
+  <div data-photo-sessions class="photo-capture__sessions" aria-busy="true"></div>
+</section>

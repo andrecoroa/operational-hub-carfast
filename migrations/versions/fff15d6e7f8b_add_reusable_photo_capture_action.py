@@ -1,7 +1,7 @@
 """Add reusable, versioned take-photo action.
 
 Revision ID: fff15d6e7f8b
-Revises: ffe04c5d6e7f
+Revises: ffd05e6f7a8b
 Create Date: 2026-08-21
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "fff15d6e7f8b"
-down_revision: str | Sequence[str] | None = "ffe04c5d6e7f"
+down_revision: str | Sequence[str] | None = "ffd05e6f7a8b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -29,8 +29,18 @@ def upgrade() -> None:
         sa.Column("change_note", sa.Text(), nullable=True),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("published_by_id", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["published_by_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("code", "version_number", name="uq_photo_action_definition_version"),
@@ -49,8 +59,18 @@ def upgrade() -> None:
         sa.Column("thumbnail_content_type", sa.String(length=120), nullable=False),
         sa.Column("thumbnail_size", sa.Integer(), nullable=False),
         sa.Column("metadata_policy", sa.String(length=40), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["document_id"], ["documents.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("document_id"),
@@ -87,19 +107,41 @@ def upgrade() -> None:
         sa.Column("reviewed_by_id", sa.Integer(), nullable=True),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("rejection_reason", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["created_by_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["definition_id"], ["photo_action_definitions.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["phase_id"], ["workshop_phased_process_phases.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["phased_process_id"], ["workshop_phased_processes.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["repeats_session_id"], ["photo_capture_sessions.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["definition_id"], ["photo_action_definitions.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["phase_id"], ["workshop_phased_process_phases.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["phased_process_id"], ["workshop_phased_processes.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["repeats_session_id"], ["photo_capture_sessions.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["reviewed_by_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["submitted_by_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["task_flow_step_id"], ["task_guided_flow_step_runs.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["task_flow_step_id"], ["task_guided_flow_step_runs.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["task_id"], ["tasks.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["vehicle_id"], ["vehicles.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["workshop_process_id"], ["workshop_processes.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["workshop_process_id"], ["workshop_processes.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     for column in (
@@ -131,7 +173,12 @@ def upgrade() -> None:
         sa.Column("is_new_capture", sa.Boolean(), nullable=False),
         sa.Column("captured_by_id", sa.Integer(), nullable=True),
         sa.Column("client_captured_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("captured_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "captured_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("location_latitude", sa.Float(), nullable=True),
         sa.Column("location_longitude", sa.Float(), nullable=True),
         sa.Column("location_accuracy_m", sa.Float(), nullable=True),
@@ -140,17 +187,36 @@ def upgrade() -> None:
         sa.Column("removed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("removed_by_id", sa.Integer(), nullable=True),
         sa.Column("rejection_reason", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["captured_by_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["photo_media_id"], ["photo_media.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["removed_by_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["replaces_item_id"], ["photo_capture_items.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["replaces_item_id"], ["photo_capture_items.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["session_id"], ["photo_capture_sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("session_id", "photo_media_id", name="uq_photo_capture_item_media"),
     )
-    for column in ("session_id", "photo_media_id", "category", "status", "capture_source", "captured_at"):
+    for column in (
+        "session_id",
+        "photo_media_id",
+        "category",
+        "status",
+        "capture_source",
+        "captured_at",
+    ):
         op.create_index(f"ix_photo_capture_items_{column}", "photo_capture_items", [column])
 
 

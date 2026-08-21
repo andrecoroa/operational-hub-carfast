@@ -15,7 +15,6 @@ from app.services.photo_capture import (
     PhotoCaptureError,
     active_session_items,
     create_photo_session,
-    photo_session_ready,
     private_photo_path,
     publish_photo_definition,
     session_payload,
@@ -80,7 +79,9 @@ def create_session(payload: PhotoSessionCreate, db: DbSession, current_user: Cur
             db,
             payload,
             user=current_user,
-            allow_inline_config=bool(permissions.intersection({"photos.configure", "admin.manage"})),
+            allow_inline_config=bool(
+                permissions.intersection({"photos.configure", "admin.manage"})
+            ),
         )
     except PhotoCaptureError as exc:
         db.rollback()
@@ -140,7 +141,7 @@ async def upload_photo(
     session_id: int,
     db: DbSession,
     current_user: CurrentUser,
-    photo: UploadFile = File(...),
+    photo: UploadFile = File(...),  # noqa: B008
     category: str = Form("other"),
     observation: str = Form(""),
     capture_source: str = Form("camera"),
@@ -202,7 +203,7 @@ def remove_photo(session_id: int, item_id: int, db: DbSession, current_user: Cur
         raise HTTPException(status_code=403, detail="A fotografia já foi submetida.")
     item.removed_at = datetime.now(UTC)
     item.removed_by_id = current_user.id
-    remaining = len(active_session_items(db, session.id)) - 1
+    remaining = len(active_session_items(db, session.id))
     if remaining <= 0:
         session.status = "pending"
     record_audit(
@@ -227,7 +228,9 @@ def submit_session(session_id: int, db: DbSession, current_user: CurrentUser):
     items = active_session_items(db, session.id)
     minimum = int((session.config_snapshot_json or {}).get("min_photos", 1))
     if len(items) < minimum:
-        raise HTTPException(status_code=400, detail=f"São necessárias pelo menos {minimum} fotografias.")
+        raise HTTPException(
+            status_code=400, detail=f"São necessárias pelo menos {minimum} fotografias."
+        )
     session.status = "submitted"
     session.submitted_by_id = current_user.id
     session.submitted_at = datetime.now(UTC)

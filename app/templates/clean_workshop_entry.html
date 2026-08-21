@@ -353,6 +353,14 @@
         </div>
       </section>
     </form>
+    {% if workshop_process %}
+      {% set photo_phased_process_id = workshop_process.id %}
+      {% set photo_phase_id = photo_phase_row.id if photo_phase_row else none %}
+      {% set photo_vehicle_id = workshop_process.vehicle_id %}
+      {% set photo_entity_type = "workshop_phase" %}
+      {% set photo_entity_id = "entrada" %}
+      {% include "_photo_capture.html" %}
+    {% endif %}
   </main>
 </div>
 <div class="clean-image-preview-modal" id="clean-image-preview-modal" hidden>

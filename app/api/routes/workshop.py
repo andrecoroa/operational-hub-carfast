@@ -5,7 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.api.auth import require_method_permission
 from app.core.config import settings
@@ -37,6 +37,7 @@ from app.models.workshop_phased import (
 from app.models.workshop_phased import (
     WorkshopPhasedTechnicalReport as WorkshopTechnicalReport,
 )
+from app.services.photo_capture import required_photo_blockers
 from app.services.work_classification import apply_source_work_default
 from app.services.workshop_configuration import WORKSHOP_STOCK_STATUSES
 from app.services.workshop_report_extractor import (
@@ -1006,6 +1007,22 @@ def _mark_phase(
     data: dict[str, Any] | None = None,
     completed_by_id: int | None = None,
 ) -> None:
+    if status_value in {"completed", "validated"}:
+        db = object_session(phase)
+        blockers = (
+            required_photo_blockers(
+                db,
+                phased_process_id=phase.process_id,
+                phase_id=phase.id,
+            )
+            if db
+            else []
+        )
+        if blockers:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Fotografias obrigatórias: " + " ".join(blockers),
+            )
     phase.status = status_value
     if data is not None:
         phase.data_json = {**(phase.data_json or {}), **data}

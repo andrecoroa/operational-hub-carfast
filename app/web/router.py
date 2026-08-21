@@ -244,6 +244,16 @@ from app.services.task_bulk_importer import (
     preview_task_bulk_import,
     store_task_bulk_upload,
 )
+from app.services.task_center import (
+    TASK_DUE_SOON_DAYS,
+    create_task_notifications,
+    hierarchy_assignment_allows,
+    task_due_condition,
+    task_team_relation_filter,
+    task_visibility_filter,
+    user_can_view_task,
+    user_team_ids,
+)
 from app.services.task_recurrence import (
     RECURRENCE_FREQUENCIES,
     RECURRENCE_TASK_TYPES,
@@ -4260,6 +4270,7 @@ def clean_tasks_center(
                 )
             )
             team_ids = user_team_ids(db, user_id)
+            current_team_ids = set(team_ids)
             support_user_condition = Task.id.in_(
                 select(TaskHelpRequest.task_id).where(
                     TaskHelpRequest.requested_user_id == user_id,
@@ -4752,6 +4763,28 @@ def clean_tasks_center(
             )
             for task in tasks
         }
+        task_assignable_users_by_id = {
+            task.id: [
+                user
+                for user in all_users
+                if (
+                    user.id in eligible_user_ids_by_category.get(task.work_category_id, [])
+                    or user.id == task.assigned_to_id
+                )
+            ]
+            for task in tasks
+        }
+        task_support_teams_by_id = {
+            task.id: [
+                team
+                for team in all_teams
+                if (
+                    team.id in eligible_team_ids_by_category.get(task.work_category_id, [])
+                    or team.id == task.team_id
+                )
+            ]
+            for task in tasks
+        }
         return templates.TemplateResponse(
             request,
             "clean_task_center.html",
@@ -4791,6 +4824,8 @@ def clean_tasks_center(
                 "task_update_allowed_by_id": task_update_allowed_by_id,
                 "task_close_allowed_by_id": task_close_allowed_by_id,
                 "task_claim_allowed_by_id": task_claim_allowed_by_id,
+                "task_assignable_users_by_id": task_assignable_users_by_id,
+                "task_support_teams_by_id": task_support_teams_by_id,
                 "mine_counts": mine_counts,
                 "task_notifications": task_notifications,
                 "task_notification_unread_count": task_notification_unread_count,
@@ -5463,11 +5498,11 @@ def clean_tasks_create(
             if hierarchy_selection and hierarchy_selection.category
             else None
         )
-        if hierarchy_selection and assignee and not category_user_is_eligible(
+        if category_id and hierarchy_selection and assignee and not category_user_is_eligible(
             db, category_id, assignee.id
         ):
             return RedirectResponse("/v2-clean/tasks?error=assignment_not_allowed", status_code=303)
-        if hierarchy_selection and executor_team and (
+        if category_id and hierarchy_selection and executor_team and (
             not executor_team.active
             or not category_team_is_eligible(db, category_id, executor_team.id)
         ):
@@ -5584,6 +5619,14 @@ def clean_tasks_create(
                     to_team_id=task.team_id,
                 )
             )
+        create_task_notifications(
+            db,
+            task=task,
+            event_type="task_created",
+            title=f"Nova tarefa: {task.title}",
+            actor_user_id=user_id,
+            detail="Foi criada uma tarefa com a qual tens relação.",
+        )
         task_upload_root = document_archive_root() / "tasks" / str(task.id)
         for upload in attachments:
             original_name = Path(upload.filename or "").name[:255]

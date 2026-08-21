@@ -16,6 +16,10 @@ from app.models.work_hierarchy import (
     WorkQueue,
 )
 from app.services.management_center import ensure_management_defaults
+from app.services.navigation import (
+    NAVIGATION_PERMISSIONS,
+    derived_navigation_permissions,
+)
 from app.services.photo_capture import ensure_photo_action_defaults
 from app.services.stock import ensure_stock_defaults
 from app.services.workshop_configuration import ensure_workshop_configuration_defaults

@@ -21,12 +21,21 @@
       <a class="sidebar-experience-switch" href="/switch-experience/clean">Nova experiência</a>
     {% endif %}
     {% if is_clean_experience %}
-      <a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>
+      {% set can_nav_home = "navigation.home.access" in nav_perms and nav_has_permission(request, "dashboard.read", "admin.manage") %}
+      {% set can_nav_tasks = "navigation.tasks.access" in nav_perms and nav_has_permission(request, "tasks.read", "tasks.operational.read", "tasks.operational.write", "tasks.workshop.read", "tasks.workshop.write", "tasks.audit.read", "tasks.audit.write", "tasks.administration.read", "tasks.administration.write", "tasks.management.read", "tasks.management.create", "tasks.management.update", "tasks.management.close", "tasks.recurring.manage", "admin.manage") %}
+      {% set can_nav_processes = "navigation.processes.access" in nav_perms and nav_has_permission(request, "management_center.read", "management_center.write", "admin.manage") %}
+      {% set can_nav_workshop = "navigation.workshop.access" in nav_perms and nav_has_permission(request, "workshop.read", "workshop.write", "admin.manage") %}
+      {% set can_nav_fleet = "navigation.fleet.access" in nav_perms and nav_has_permission(request, "vehicles.read", "vehicles.write", "fleet.commerce.manage", "admin.manage") %}
+      {% set can_nav_stock = "navigation.stock.access" in nav_perms and nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
+      {% set can_nav_email = "navigation.email.access" in nav_perms and nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
+      {% set can_nav_documentation = "navigation.documentation.access" in nav_perms and nav_has_permission(request, "documents.read", "documents.write", "admin.manage") %}
+      {% set can_nav_admin = "navigation.admin.access" in nav_perms and nav_has_permission(request, "admin.dashboard.read", "admin.users.read", "admin.users.manage", "admin.roles.read", "admin.roles.manage", "admin.organization.read", "admin.organization.manage", "admin.settings.read", "admin.settings.manage", "admin.workshop_models.read", "admin.workshop_models.manage", "admin.workshop_models.publish", "admin.audit.read", "admin.audit.export", "admin.integrations.read", "admin.integrations.manage", "admin.security.read", "admin.security.manage", "admin.manage", "users.manage", "settings.manage", "suppliers.configuration.manage") %}
+      {% if can_nav_home %}<a href="/v2-clean" {% if active_menu == "clean" %}class="active"{% endif %}>Início</a>{% endif %}
       {% if "dashboard.read" in nav_perms %}
         <a href="/alerts" {% if active_menu == "alerts" %}class="active"{% endif %}>Alertas personalizados</a>
       {% endif %}
-      <a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>
-      <a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>
+      {% if can_nav_tasks %}<a href="/v2-clean/tasks" {% if active_menu == "clean_tasks" %}class="active"{% endif %}>Centro de Tarefas</a>{% endif %}
+      {% if can_nav_processes %}<a href="/v2-clean/processes" {% if active_menu == "clean_processes" %}class="active"{% endif %}>Centro de Processos</a>{% endif %}
       {% set workshop_menu_open = active_menu == "workshop" or request.url.path.startswith('/v2-clean/workshop') %}
       {% if can_nav_workshop %}<details class="sidebar-nav-group" {% if workshop_menu_open %}open{% endif %}>
         <summary {% if workshop_menu_open %}class="active"{% endif %}>Oficina</summary>
@@ -51,7 +60,7 @@
       {% if nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
         <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Fornecedores</a>
       {% endif %}
-      {% if nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
+      {% if can_nav_email %}
         <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
       {% endif %}
       {% set documentation_menu_open = active_menu in ["documentation_center", "documentation_triage", "documentation_treatment", "documentation_imports", "documentation_invoices", "documentation_diagnostics", "documentation_archive", "documentation_models", "documents", "documents_center"] %}
@@ -66,34 +75,7 @@
         </div>
       </details>{% endif %}
       <span class="nav-section-label">Sistema</span>
-      {% if nav_has_permission(
-        request,
-        "admin.dashboard.read",
-        "admin.users.read",
-        "admin.users.manage",
-        "admin.roles.read",
-        "admin.roles.manage",
-        "admin.organization.read",
-        "admin.organization.manage",
-        "admin.settings.read",
-        "admin.settings.manage",
-        "admin.workshop_models.read",
-        "admin.workshop_models.manage",
-        "admin.workshop_models.publish",
-        "admin.audit.read",
-        "admin.audit.export",
-        "admin.integrations.read",
-        "admin.integrations.manage",
-        "admin.security.read",
-        "admin.security.manage",
-        "admin.evolution.read",
-        "admin.evolution.manage",
-        "service_desk.classifications.manage",
-        "admin.manage",
-        "users.manage",
-        "settings.manage",
-        "suppliers.configuration.manage"
-      ) %}
+      {% if can_nav_admin %}
         <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
       {% endif %}
     {% else %}

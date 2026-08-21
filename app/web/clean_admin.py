@@ -171,6 +171,7 @@ SETTINGS_VALUE_LABELS = {
 }
 
 PERMISSION_GROUP_LABELS = {
+    "navigation": "Navegação e módulos",
     "classification": "Classificações transversais",
     "email": "Email",
     "service_desk": "Service Desk",

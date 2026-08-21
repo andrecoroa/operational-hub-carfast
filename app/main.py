@@ -13,6 +13,7 @@ from app.core.database import SessionLocal
 from app.models.admin import User
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
+from app.services.navigation import navigation_permission_for_path
 from app.web.email import email_router
 from app.web.portal import portal_router
 from app.web.router import web_router

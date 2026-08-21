@@ -120,7 +120,7 @@
                 <option value="">Por atribuir</option>
                 {% for user in users %}<option value="{{ user.id }}" data-categories="{% for category_id, ids in eligible_user_ids_by_category.items() if user.id in ids %} {{ category_id }}{% endfor %}">{{ user.name }}</option>{% endfor %}
               </select>
-              <small class="clean-task-field-help" data-assignee-help>A lista respeita fila, hierarquia, equipa e permissões.</small>
+              <small class="clean-task-field-help" data-assignee-help>Só são apresentados utilizadores elegíveis para esta classificação e equipa.</small>
             </label>
             <label>Equipa executora<select name="assigned_team_id" data-service-desk-executor="team"><option value="">Sem equipa</option>{% for team in teams %}<option value="{{ team.id }}" data-categories="{% for category_id, ids in eligible_team_ids_by_category.items() if team.id in ids %} {{ category_id }}{% endfor %}">{{ team.name }}</option>{% endfor %}</select></label>
             <label>Prioridade
@@ -206,15 +206,14 @@
       <div class="clean-task-table-wrap">
         <table class="clean-doc-table clean-task-table">
           <colgroup><col class="task-col-main"><col class="task-col-context"><col class="task-col-owner"><col class="task-col-date"><col class="task-col-due"><col class="task-col-status"><col class="task-col-action"></colgroup>
-          <thead><tr><th>Tarefa</th><th>Hierarquia e contexto</th><th>Responsável</th><th>Criada</th><th>Prazo</th><th>Estado</th><th><span class="sr-only">Ação</span></th></tr></thead>
+          <thead><tr><th>Tarefa</th><th>Hierarquia e contexto</th><th>Executor</th><th>Criada</th><th>Prazo</th><th>Estado</th><th><span class="sr-only">Ação</span></th></tr></thead>
           <tbody>
           {% for task in tasks %}
             {% set task_workspace = "audit" if task.task_type in ["audit_task", "workshop_audit"] else "workshop" if task.task_type == "workshop_task" else "management" if task.task_type == "management_task" else "administration" if task.task_type == "administration_task" else "operational" %}
             {% set task_is_problem = task.subcategory == "problem" or "problem" in task.task_type %}
             <tr class="clean-task-clickable" data-task-open="task-preview-{{ task.id }}" tabindex="0">
-              <td><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></td>
-              <td>
-                <strong>{{ task.title }}</strong>
+              <td data-label="Tarefa">
+                <div class="clean-task-title-line"><strong>{{ task.title }}</strong><span class="clean-task-priority priority-{{ task.priority or 'normal' }}">{{ task_priority_labels.get(task.priority, "Normal") }}</span></div>
                 <small>{{ ticket_types_by_id.get(task.ticket_type_id).name if ticket_types_by_id.get(task.ticket_type_id) else "Tarefa antiga" }} · CF-TASK-{{ "%05d"|format(task.id) }}</small>
                 {% if filters.workspace == "mine" and task_relations_by_task.get(task.id) %}
                   <span class="clean-task-relation-list">{% for relation in task_relations_by_task.get(task.id, []) %}<em>{{ relation }}</em>{% endfor %}</span>
@@ -232,11 +231,11 @@
                 {% endif %}
                 {% if task.plate or task.entity_type %}<small>{{ task.plate or task.entity_type }}</small>{% endif %}
               </td>
-              <td>{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</td>
-              <td>{{ (task.created_at|lisbon_datetime).strftime("%d/%m/%Y") if task.created_at else "-" }}</td>
-              <td>{{ (task.resolution_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") if task.resolution_due_at else task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}<small class="clean-sla-state is-{{ task_sla_by_id.get(task.id).overall }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).overall) }}</small></td>
-              <td><span class="clean-task-status {% if task.closed_at %}closed{% endif %}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
-              <td><button class="button-link secondary-link" type="button">Abrir</button></td>
+              <td data-label="Executor">{{ task_assignment_labels.get(task.id, "A aguardar atribuição") }}</td>
+              <td data-label="Criada">{{ (task.created_at|lisbon_datetime).strftime("%d/%m/%Y") if task.created_at else "-" }}</td>
+              <td data-label="Prazo">{{ (task.resolution_due_at|lisbon_datetime).strftime("%d/%m/%Y %H:%M") if task.resolution_due_at else task.due_on.strftime("%d/%m/%Y") if task.due_on else "-" }}<small class="clean-sla-state is-{{ task_sla_by_id.get(task.id).overall }}">{{ {'within':'Dentro do prazo','warning':'A terminar','overdue':'Ultrapassado','completed':'Concluído','paused':'Pausado','not_configured':'Sem SLA'}.get(task_sla_by_id.get(task.id).overall) }}</small></td>
+              <td data-label="Estado"><span class="clean-task-status {% if task.closed_at %}closed{% endif %}">{{ task_status_labels.get(task.status, task.status) }}</span></td>
+              <td data-label="Ação"><button class="button-link secondary-link" type="button">Abrir</button></td>
             </tr>
           {% else %}
             <tr><td colspan="7">Sem tarefas para os filtros selecionados.</td></tr>

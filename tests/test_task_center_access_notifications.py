@@ -287,6 +287,6 @@ def test_task_table_has_compact_responsive_overflow_contract():
     assert ".clean-task-table-wrap" in css
     assert "overflow: auto" in css
     assert "min-width: 820px" in css
-    assert 'data-label="Responsável"' in template
-    assert 'data-task-assignee' in template
+    assert 'data-label="Executor"' in template
+    assert 'data-service-desk-executor="user"' in template
     assert "Só são apresentados utilizadores elegíveis" in template

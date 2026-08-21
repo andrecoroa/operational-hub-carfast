@@ -29254,6 +29254,7 @@ body:has(.email-preview-dialog[open]) { overflow: hidden; }
 @media(max-width:900px){.supplier-layout,.supplier-two-columns,.supplier-admin-grid{grid-template-columns:1fr}.supplier-definition{grid-template-columns:repeat(2,minmax(0,1fr))}.supplier-check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.supplier-page{gap:14px}.supplier-hero{padding:18px;flex-direction:column}.supplier-hero-actions{width:100%}.supplier-hero-actions>*{flex:1;text-align:center}.supplier-filter,.supplier-form-grid,.supplier-admin-item,.supplier-definition{grid-template-columns:1fr}.supplier-definition-wide{grid-column:auto}.supplier-check-grid{grid-template-columns:1fr}.supplier-card{padding:16px}.supplier-table th,.supplier-table td{padding:12px}.supplier-dialog form{padding:18px}}
 /* Keep email preview overrides after the legacy email rules above. */
+.clean-task-table { min-width: 820px; }
 .email-preview-dialog { width:95vw; height:94vh; margin:auto; }
 .email-modal-shell { grid-template-rows:auto minmax(0,1fr) auto; }
 .email-modal-header { min-height:72px; padding:10px 16px; }

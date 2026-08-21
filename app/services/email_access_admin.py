@@ -16,6 +16,9 @@ EMAIL_ACCESS_FIELDS = (
     "can_assign",
     "can_manage_sla",
     "can_manage",
+    "can_change_sender",
+    "can_edit_recipients",
+    "can_use_cc_bcc",
 )
 
 EMAIL_ACCESS_PRESETS = {

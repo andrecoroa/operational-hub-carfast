@@ -21,6 +21,7 @@ from app.models.audit import AuditLog
 from app.models.documents import Document
 from app.models.email import (
     EmailChannel,
+    EmailChannelAlias,
     EmailChannelRole,
     EmailChannelUser,
     EmailExecutorEligibility,
@@ -57,7 +58,6 @@ from app.models.work_hierarchy import (
 from app.models.workshop_phased import WorkshopTemplate
 from app.services.audit import record_audit
 from app.services.authorization import get_user_permission_codes
-from app.services.bootstrap import postmark_inbound_address
 from app.services.email_access_admin import (
     apply_email_role_batch,
     grant_snapshot,
@@ -81,6 +81,14 @@ clean_admin_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{1,79}$")
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_TEMPLATE_VARIABLE_PATTERN = re.compile(r"{{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*}}")
+EMAIL_TEMPLATE_VARIABLES = {
+    "recipient_name",
+    "sender_email",
+    "subject",
+    "thread_reference",
+}
 
 SETTINGS_CATALOG_LABELS = {
     "vehicle_lifecycle_status": "Estado do ciclo de vida da viatura",
@@ -519,8 +527,14 @@ ADMIN_MODULE_NAV = {
     },
     "email": {
         "access": ("Capacidades por perfil", "/v2-clean/admin/roles"),
-        "scopes": ("Acesso e visibilidade por caixa", "/v2-clean/admin/work-classification?view=channels"),
-        "execution": ("Executores por caixa/categoria", "/v2-clean/admin/work-classification?view=channels"),
+        "scopes": (
+            "Acesso e visibilidade por caixa",
+            "/v2-clean/admin/work-classification?view=channels",
+        ),
+        "execution": (
+            "Executores por caixa/categoria",
+            "/v2-clean/admin/work-classification?view=channels",
+        ),
         "rules": ("Regras de caixa", "/v2-clean/admin/work-classification?view=channels"),
         "sla": ("SLA e atribuição", "/v2-clean/admin/work-classification?view=channels"),
         "templates": ("Modelos de email", "/v2-clean/admin/work-classification?view=templates"),
@@ -1620,7 +1634,6 @@ def clean_admin_work_classification(request: Request):
                 WorkSubcategory.name,
             )
         ).all()
-        all_queues_by_id = {item.id: item for item in all_queues}
         all_departments_by_id = {item.id: item for item in all_departments}
         all_categories_by_id = {item.id: item for item in all_categories}
 
@@ -1706,6 +1719,16 @@ def clean_admin_work_classification(request: Request):
         )
         channels = (
             db.scalars(select(EmailChannel).order_by(EmailChannel.name)).all()
+            if can_read_global_configuration
+            else []
+        )
+        channel_aliases = (
+            db.scalars(
+                select(EmailChannelAlias).order_by(
+                    EmailChannelAlias.channel_id,
+                    EmailChannelAlias.address,
+                )
+            ).all()
             if can_read_global_configuration
             else []
         )
@@ -1879,6 +1902,7 @@ def clean_admin_work_classification(request: Request):
             roles_by_id={item.id: item for item in roles},
             work_scopes=scopes,
             email_channels=channels,
+            email_channel_aliases=channel_aliases,
             email_channel_roles=channel_roles,
             email_channel_users=channel_users,
             email_inbox_rules=inbox_rules,
@@ -2121,17 +2145,29 @@ def clean_admin_save_category_policy(
         if default_executor_user_id and not category_user_is_eligible(
             db, category_id, default_executor_user_id
         ):
-            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+            return _redirect(
+                "/v2-clean/admin/work-classification",
+                "error",
+                "executor_not_eligible",
+            )
         if default_executor_user_id and not assignment_target_user_allowed(
             db,
             actor_user_id=access[0],
             target_user_id=default_executor_user_id,
         ):
-            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+            return _redirect(
+                "/v2-clean/admin/work-classification",
+                "error",
+                "executor_not_eligible",
+            )
         if default_executor_team_id and not category_team_is_eligible(
             db, category_id, default_executor_team_id
         ):
-            return _redirect("/v2-clean/admin/work-classification", "error", "executor_not_eligible")
+            return _redirect(
+                "/v2-clean/admin/work-classification",
+                "error",
+                "executor_not_eligible",
+            )
         if assignment_mode == "auto_user" and not default_executor_user_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_executor_team_id:
@@ -2841,6 +2877,81 @@ def clean_admin_delete_work_scope(request: Request, scope_id: int):
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
 
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-channels")
+def clean_admin_create_email_channel(
+    request: Request,
+    code: str = Form(...),
+    name: str = Form(...),
+    active: str = Form("on"),
+    default_reply_address: str = Form(""),
+    reply_policy: str = Form("mailbox"),
+    requires_triage: str = Form(""),
+    administrative_review_on_unclassified: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    clean_code = code.strip().lower()
+    clean_name = name.strip()
+    clean_reply = default_reply_address.strip().lower() or None
+    if (
+        not clean_name
+        or not CODE_PATTERN.fullmatch(clean_code)
+        or reply_policy not in {"original", "mailbox"}
+        or clean_reply
+        and not EMAIL_PATTERN.fullmatch(clean_reply)
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_channel")
+    with SessionLocal() as db:
+        if db.scalar(select(EmailChannel).where(EmailChannel.code == clean_code)):
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        if clean_reply and db.scalar(
+            select(EmailChannel).where(
+                or_(
+                    func.lower(EmailChannel.address) == clean_reply,
+                    func.lower(EmailChannel.default_reply_address) == clean_reply,
+                )
+            )
+        ):
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        channel = EmailChannel(
+            code=clean_code,
+            name=clean_name,
+            address=None,
+            default_reply_address=clean_reply,
+            reply_policy=reply_policy,
+            inbound_hash=None,
+            inbound_forward_address=None,
+            active=active == "on",
+            requires_triage=requires_triage == "on",
+            administrative_review_on_unclassified=(
+                administrative_review_on_unclassified == "on"
+            ),
+            approval_required=True,
+            auto_task_mode="none",
+            assignment_mode="manual",
+            warning_minutes=60,
+            pause_on_waiting=True,
+        )
+        db.add(channel)
+        db.flush()
+        record_audit(
+            db,
+            "email_channel_created",
+            "email_channel",
+            channel.id,
+            user_id=access[0],
+            after_json={
+                "code": channel.code,
+                "name": channel.name,
+                "active": channel.active,
+                "reply_policy": channel.reply_policy,
+            },
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved", "channel_created")
+
+
 @clean_admin_router.post("/v2-clean/admin/work-classification/email-channels/{channel_id}")
 def clean_admin_update_email_channel(
     request: Request,
@@ -2856,6 +2967,7 @@ def clean_admin_update_email_channel(
     default_assignee_id: int | None = Form(None),
     default_team_id: int | None = Form(None),
     supervisor_user_id: int | None = Form(None),
+    functional_owner_user_id: int | None = Form(None),
     assignment_mode: str = Form("manual"),
     first_response_value: int | None = Form(None),
     first_response_unit: str = Form("minutes"),
@@ -2864,6 +2976,10 @@ def clean_admin_update_email_channel(
     warning_minutes: int = Form(60),
     pause_on_waiting: str = Form(""),
     inbound_forward_address: str = Form(""),
+    default_reply_address: str = Form(""),
+    reply_policy: str = Form("mailbox"),
+    requires_triage: str = Form(""),
+    administrative_review_on_unclassified: str = Form(""),
     default_due_days: int | None = Form(None),
     default_wait_days: int | None = Form(None),
 ):
@@ -2873,6 +2989,7 @@ def clean_admin_update_email_channel(
     if (
         auto_task_mode not in {"none", "open", "complete"}
         or assignment_mode not in ASSIGNMENT_MODES
+        or reply_policy not in {"original", "mailbox"}
         or first_response_unit not in {"minutes", "days"}
         or resolution_unit not in {"minutes", "days"}
         or first_response_value is not None
@@ -2918,6 +3035,21 @@ def clean_admin_update_email_channel(
             return _redirect(
                 "/v2-clean/admin/work-classification", "error", "invalid_supervisor"
             )
+        functional_owner = (
+            db.get(User, functional_owner_user_id) if functional_owner_user_id else None
+        )
+        if functional_owner_user_id and (
+            not functional_owner
+            or not functional_owner.active
+            or not assignment_target_user_allowed(
+                db,
+                actor_user_id=access[0],
+                target_user_id=functional_owner_user_id,
+            )
+        ):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_owner"
+            )
         if default_assignee_id and default_assignee_id not in {
             item.id
             for item in email_eligible_users(db, channel.id, default_category_id)
@@ -2942,20 +3074,35 @@ def clean_admin_update_email_channel(
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
         if assignment_mode in {"auto_team", "team_claim"} and not default_team_id:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing_executor")
-        clean_forward = (
-            postmark_inbound_address(channel.inbound_hash)
-            if channel.inbound_hash
-            else inbound_forward_address.strip().lower() or None
-        )
-        if clean_forward and db.scalar(
+        clean_reply = default_reply_address.strip().lower() or None
+        if clean_reply and not EMAIL_PATTERN.fullmatch(clean_reply):
+            return _redirect(
+                "/v2-clean/admin/work-classification", "error", "invalid_email"
+            )
+        if clean_reply and db.scalar(
             select(EmailChannel).where(
                 EmailChannel.id != channel.id,
-                EmailChannel.inbound_forward_address == clean_forward,
+                or_(
+                    func.lower(EmailChannel.address) == clean_reply,
+                    func.lower(EmailChannel.default_reply_address) == clean_reply,
+                ),
             )
         ):
             return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        before = {
+            "name": channel.name,
+            "active": channel.active,
+            "default_reply_address": channel.default_reply_address,
+            "reply_policy": channel.reply_policy,
+        }
         channel.name = name.strip() or channel.name
         channel.active = active == "on"
+        channel.default_reply_address = clean_reply
+        channel.reply_policy = reply_policy
+        channel.requires_triage = requires_triage == "on"
+        channel.administrative_review_on_unclassified = (
+            administrative_review_on_unclassified == "on"
+        )
         channel.auto_task_mode = auto_task_mode
         channel.default_queue_id = default_queue_id
         channel.default_department_id = default_department_id
@@ -2965,6 +3112,7 @@ def clean_admin_update_email_channel(
         channel.default_assignee_id = default_assignee_id
         channel.default_team_id = default_team_id
         channel.supervisor_user_id = supervisor_user_id
+        channel.functional_owner_user_id = functional_owner_user_id
         channel.assignment_mode = assignment_mode
         channel.first_response_minutes = duration_to_minutes(
             first_response_value, first_response_unit
@@ -2976,9 +3124,214 @@ def clean_admin_update_email_channel(
         )
         channel.warning_minutes = warning_minutes
         channel.pause_on_waiting = pause_on_waiting == "on"
-        channel.inbound_forward_address = clean_forward
         channel.default_due_days = default_due_days
         channel.default_wait_days = default_wait_days
+        record_audit(
+            db,
+            "email_channel_updated",
+            "email_channel",
+            channel.id,
+            user_id=access[0],
+            before_json=before,
+            after_json={
+                "name": channel.name,
+                "active": channel.active,
+                "default_reply_address": channel.default_reply_address,
+                "reply_policy": channel.reply_policy,
+            },
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post("/v2-clean/admin/work-classification/email-channel-aliases")
+def clean_admin_create_email_channel_alias(
+    request: Request,
+    channel_id: int = Form(...),
+    address: str = Form(...),
+    label: str = Form(""),
+    inbound_hash: str = Form(""),
+    inbound_forward_address: str = Form(""),
+    active: str = Form("on"),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    clean_address = address.strip().lower()
+    clean_hash = inbound_hash.strip().casefold() or None
+    clean_forward = inbound_forward_address.strip().lower() or None
+    if (
+        not EMAIL_PATTERN.fullmatch(clean_address)
+        or clean_forward
+        and not EMAIL_PATTERN.fullmatch(clean_forward)
+        or clean_hash
+        and (len(clean_hash) > 255 or any(char.isspace() for char in clean_hash))
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_alias")
+    with SessionLocal() as db:
+        channel = db.get(EmailChannel, channel_id)
+        if not channel:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        duplicate = db.scalar(
+            select(EmailChannelAlias).where(
+                or_(
+                    func.lower(EmailChannelAlias.address) == clean_address,
+                    EmailChannelAlias.inbound_hash == clean_hash if clean_hash else False,
+                    func.lower(EmailChannelAlias.inbound_forward_address) == clean_forward
+                    if clean_forward
+                    else False,
+                )
+            )
+        )
+        legacy_duplicate = db.scalar(
+            select(EmailChannel).where(
+                EmailChannel.id != channel.id,
+                or_(
+                    func.lower(EmailChannel.address) == clean_address,
+                    EmailChannel.inbound_hash == clean_hash if clean_hash else False,
+                    func.lower(EmailChannel.inbound_forward_address) == clean_forward
+                    if clean_forward
+                    else False,
+                ),
+            )
+        )
+        if duplicate or legacy_duplicate:
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        alias = EmailChannelAlias(
+            channel_id=channel.id,
+            address=clean_address,
+            label=label.strip() or None,
+            inbound_hash=clean_hash,
+            inbound_forward_address=clean_forward,
+            active=active == "on",
+        )
+        db.add(alias)
+        db.flush()
+        record_audit(
+            db,
+            "email_channel_alias_created",
+            "email_channel_alias",
+            alias.id,
+            user_id=access[0],
+            after_json={
+                "channel_id": channel.id,
+                "address": clean_address,
+                "has_inbound_hash": bool(clean_hash),
+                "has_inbound_destination": bool(clean_forward),
+            },
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved", "alias_created")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-channel-aliases/{alias_id}/toggle"
+)
+def clean_admin_toggle_email_channel_alias(request: Request, alias_id: int):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    with SessionLocal() as db:
+        alias = db.get(EmailChannelAlias, alias_id)
+        if not alias:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        alias.active = not alias.active
+        record_audit(
+            db,
+            "email_channel_alias_toggled",
+            "email_channel_alias",
+            alias.id,
+            user_id=access[0],
+            after_json={"active": alias.active},
+        )
+        db.commit()
+    return _redirect("/v2-clean/admin/work-classification", "saved")
+
+
+@clean_admin_router.post(
+    "/v2-clean/admin/work-classification/email-channel-aliases/{alias_id}"
+)
+def clean_admin_update_email_channel_alias(
+    request: Request,
+    alias_id: int,
+    address: str = Form(...),
+    label: str = Form(""),
+    inbound_hash: str = Form(""),
+    inbound_forward_address: str = Form(""),
+    active: str = Form(""),
+):
+    access = _work_classification_manage_access(request)
+    if not access:
+        return _denied(request)
+    clean_address = address.strip().lower()
+    clean_hash = inbound_hash.strip().casefold() or None
+    clean_forward = inbound_forward_address.strip().lower() or None
+    if (
+        not EMAIL_PATTERN.fullmatch(clean_address)
+        or clean_forward
+        and not EMAIL_PATTERN.fullmatch(clean_forward)
+        or clean_hash
+        and (len(clean_hash) > 255 or any(char.isspace() for char in clean_hash))
+    ):
+        return _redirect("/v2-clean/admin/work-classification", "error", "invalid_alias")
+    with SessionLocal() as db:
+        alias = db.get(EmailChannelAlias, alias_id)
+        if not alias:
+            return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        duplicate = db.scalar(
+            select(EmailChannelAlias).where(
+                EmailChannelAlias.id != alias.id,
+                or_(
+                    func.lower(EmailChannelAlias.address) == clean_address,
+                    EmailChannelAlias.inbound_hash == clean_hash if clean_hash else False,
+                    func.lower(EmailChannelAlias.inbound_forward_address) == clean_forward
+                    if clean_forward
+                    else False,
+                ),
+            )
+        )
+        if duplicate:
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        legacy_duplicate = db.scalar(
+            select(EmailChannel).where(
+                EmailChannel.id != alias.channel_id,
+                or_(
+                    func.lower(EmailChannel.address) == clean_address,
+                    func.lower(EmailChannel.default_reply_address) == clean_address,
+                    EmailChannel.inbound_hash == clean_hash if clean_hash else False,
+                    func.lower(EmailChannel.inbound_forward_address) == clean_forward
+                    if clean_forward
+                    else False,
+                ),
+            )
+        )
+        if legacy_duplicate:
+            return _redirect("/v2-clean/admin/work-classification", "error", "duplicate")
+        before = {
+            "address": alias.address,
+            "inbound_hash": alias.inbound_hash,
+            "inbound_forward_address": alias.inbound_forward_address,
+            "active": alias.active,
+        }
+        alias.address = clean_address
+        alias.label = label.strip() or None
+        alias.inbound_hash = clean_hash
+        alias.inbound_forward_address = clean_forward
+        alias.active = active == "on"
+        record_audit(
+            db,
+            "email_channel_alias_updated",
+            "email_channel_alias",
+            alias.id,
+            user_id=access[0],
+            before_json=before,
+            after_json={
+                "address": alias.address,
+                "inbound_hash": alias.inbound_hash,
+                "inbound_forward_address": alias.inbound_forward_address,
+                "active": alias.active,
+            },
+        )
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
@@ -2996,6 +3349,9 @@ def clean_admin_save_email_channel_role(
     can_assign: str = Form(""),
     can_manage_sla: str = Form(""),
     can_manage: str = Form(""),
+    can_change_sender: str = Form(""),
+    can_edit_recipients: str = Form(""),
+    can_use_cc_bcc: str = Form(""),
     visibility_mode: str = Form("scope_all"),
 ):
     access = _work_classification_manage_access(request)
@@ -3010,6 +3366,9 @@ def clean_admin_save_email_channel_role(
         "can_assign": can_assign == "on",
         "can_manage_sla": can_manage_sla == "on",
         "can_manage": can_manage == "on",
+        "can_change_sender": can_change_sender == "on",
+        "can_edit_recipients": can_edit_recipients == "on",
+        "can_use_cc_bcc": can_use_cc_bcc == "on",
     }
     if (
         visibility_mode not in {"scope_all", "direct_only", "consult"}
@@ -3240,6 +3599,9 @@ def clean_admin_save_email_user_exception(
     can_assume: str = Form(""),
     can_assign: str = Form(""),
     can_manage_sla: str = Form(""),
+    can_change_sender: str = Form(""),
+    can_edit_recipients: str = Form(""),
+    can_use_cc_bcc: str = Form(""),
     visibility_mode: str = Form("consult"),
 ):
     access = _work_classification_manage_access(request)
@@ -3267,6 +3629,9 @@ def clean_admin_save_email_user_exception(
             "can_assume": grant.can_assume,
             "can_assign": grant.can_assign,
             "can_manage_sla": grant.can_manage_sla,
+            "can_change_sender": grant.can_change_sender,
+            "can_edit_recipients": grant.can_edit_recipients,
+            "can_use_cc_bcc": grant.can_use_cc_bcc,
             "visibility_mode": grant.visibility_mode,
         }
         grant.can_reply = can_reply == "on"
@@ -3274,6 +3639,9 @@ def clean_admin_save_email_user_exception(
         grant.can_assume = can_assume == "on"
         grant.can_assign = can_assign == "on"
         grant.can_manage_sla = can_manage_sla == "on"
+        grant.can_change_sender = can_change_sender == "on"
+        grant.can_edit_recipients = can_edit_recipients == "on"
+        grant.can_use_cc_bcc = can_use_cc_bcc == "on"
         grant.visibility_mode = visibility_mode
         db.add(grant)
         db.flush()
@@ -3290,6 +3658,9 @@ def clean_admin_save_email_user_exception(
                 "can_assume": grant.can_assume,
                 "can_assign": grant.can_assign,
                 "can_manage_sla": grant.can_manage_sla,
+                "can_change_sender": grant.can_change_sender,
+                "can_edit_recipients": grant.can_edit_recipients,
+                "can_use_cc_bcc": grant.can_use_cc_bcc,
                 "visibility_mode": grant.visibility_mode,
             },
         )
@@ -3685,7 +4056,17 @@ def clean_admin_create_email_template(
     if not access:
         return _denied(request)
     clean_code = code.strip().lower()
-    if not CODE_PATTERN.fullmatch(clean_code) or not name.strip() or not body_template.strip():
+    template_variables = set(
+        EMAIL_TEMPLATE_VARIABLE_PATTERN.findall(
+            f"{subject_template}\n{body_template}"
+        )
+    )
+    if (
+        not CODE_PATTERN.fullmatch(clean_code)
+        or not name.strip()
+        or not body_template.strip()
+        or not template_variables.issubset(EMAIL_TEMPLATE_VARIABLES)
+    ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_template")
     with SessionLocal() as db:
         db.add(
@@ -3694,6 +4075,8 @@ def clean_admin_create_email_template(
                 name=name.strip(),
                 subject_template=subject_template.strip() or None,
                 body_template=body_template.strip(),
+                version=1,
+                allowed_variables_json=sorted(template_variables),
                 channel_id=channel_id,
                 category_id=category_id,
                 subcategory_id=subcategory_id,
@@ -3717,21 +4100,69 @@ def clean_admin_update_email_template(
     subcategory_id: int | None = Form(None),
     active: str = Form(""),
 ):
-    if not _work_classification_manage_access(request):
+    access = _work_classification_manage_access(request)
+    if not access:
         return _denied(request)
-    if not name.strip() or not body_template.strip():
+    template_variables = set(
+        EMAIL_TEMPLATE_VARIABLE_PATTERN.findall(
+            f"{subject_template}\n{body_template}"
+        )
+    )
+    if (
+        not name.strip()
+        or not body_template.strip()
+        or not template_variables.issubset(EMAIL_TEMPLATE_VARIABLES)
+    ):
         return _redirect("/v2-clean/admin/work-classification", "error", "invalid_template")
     with SessionLocal() as db:
         item = db.get(EmailTemplate, template_id)
         if not item:
             return _redirect("/v2-clean/admin/work-classification", "error", "missing")
+        before = {
+            "name": item.name,
+            "subject_template": item.subject_template,
+            "body_template": item.body_template,
+            "channel_id": item.channel_id,
+            "category_id": item.category_id,
+            "subcategory_id": item.subcategory_id,
+            "version": item.version,
+        }
+        changed_content = any(
+            (
+                item.name != name.strip(),
+                item.subject_template != (subject_template.strip() or None),
+                item.body_template != body_template.strip(),
+                item.channel_id != channel_id,
+                item.category_id != category_id,
+                item.subcategory_id != subcategory_id,
+            )
+        )
         item.name = name.strip()
         item.subject_template = subject_template.strip() or None
         item.body_template = body_template.strip()
         item.channel_id = channel_id
         item.category_id = category_id
         item.subcategory_id = subcategory_id
+        item.allowed_variables_json = sorted(template_variables)
+        if changed_content:
+            item.version += 1
         item.active = active == "on"
+        record_audit(
+            db,
+            "email_template_updated",
+            "email_template",
+            item.id,
+            user_id=access[0],
+            before_json=before,
+            after_json={
+                "name": item.name,
+                "channel_id": item.channel_id,
+                "category_id": item.category_id,
+                "subcategory_id": item.subcategory_id,
+                "version": item.version,
+                "active": item.active,
+            },
+        )
         db.commit()
     return _redirect("/v2-clean/admin/work-classification", "saved")
 
@@ -4466,9 +4897,17 @@ def clean_admin_update_evolution_record(
         if not record:
             return _redirect("/v2-clean/admin/evolution", "error", "missing")
         if analysis_user_id and not db.get(User, analysis_user_id):
-            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "invalid_responsible")
+            return _redirect(
+                f"/v2-clean/admin/evolution/{record_id}",
+                "error",
+                "invalid_responsible",
+            )
         if analysis_team_id and not db.get(Team, analysis_team_id):
-            return _redirect(f"/v2-clean/admin/evolution/{record_id}", "error", "invalid_responsible")
+            return _redirect(
+                f"/v2-clean/admin/evolution/{record_id}",
+                "error",
+                "invalid_responsible",
+            )
         before = _evolution_record_snapshot(record)
         updates = {
             "record_type": record_type,
@@ -4622,7 +5061,13 @@ def clean_admin_convert_evolution_record(request: Request, record_id: int):
                 EvolutionRecordDocument.record_id == record.id
             )
         ).all():
-            db.add(TaskDocument(task_id=task.id, document_id=link.document_id, category="evolution"))
+            db.add(
+                TaskDocument(
+                    task_id=task.id,
+                    document_id=link.document_id,
+                    category="evolution",
+                )
+            )
         db.add(
             TaskHistory(
                 task_id=task.id,

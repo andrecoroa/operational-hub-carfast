@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.admin import Permission, Role, RolePermission
-from app.models.email import EmailChannel
+from app.models.email import EmailChannel, EmailChannelAlias
 from app.models.organization import OrganizationalUnit, Team
 from app.models.settings import SettingsCatalog, SettingsValue
 from app.models.work_hierarchy import (
@@ -318,8 +318,23 @@ INITIAL_CATALOGS = {
     ],
     "task_priority": ["normal", "high", "urgent"],
     "task_area": ["operations", "workshop", "documents", "fleet", "administration"],
-    "task_category": ["request", "information", "invoice", "work_order", "diagnostic", "compliance", "other"],
-    "task_subcategory": ["validation", "missing_document", "data_mismatch", "follow_up", "support", "other"],
+    "task_category": [
+        "request",
+        "information",
+        "invoice",
+        "work_order",
+        "diagnostic",
+        "compliance",
+        "other",
+    ],
+    "task_subcategory": [
+        "validation",
+        "missing_document",
+        "data_mismatch",
+        "follow_up",
+        "support",
+        "other",
+    ],
     "document_type": ["general", "invoice", "report", "photo", "contract"],
     "import_type": ["rentway_fleet", "rentway_contracts", "rentway_impros", "trade_debt"],
 }
@@ -359,11 +374,43 @@ def postmark_inbound_address(mailbox_hash: str) -> str:
 
 
 EMAIL_CHANNEL_DEFINITIONS = (
-    ("test", "Caixa geral", None, "hub"),
-    ("multas", "Multas", "multas@carfast.pt", "multas"),
-    ("oficina", "Oficina", "oficina@carfast.pt", "oficina"),
-    ("sinistros", "Sinistros", "sinistros@carfast.pt", "sinistros"),
-    ("vvp", "VVP", "vvp@carfast.pt", "vvp"),
+    # Existing operational mailboxes keep their historically configured values
+    # when first installed.  The bootstrap never overwrites later administration.
+    {
+        "code": "test",
+        "name": "Caixa geral",
+        "address_setting": "email_initial_address",
+        "inbound_hash": "hub",
+    },
+    {"code": "multas", "name": "Multas", "address": "multas@carfast.pt", "inbound_hash": "multas"},
+    {
+        "code": "oficina",
+        "name": "Oficina",
+        "address": "oficina@carfast.pt",
+        "inbound_hash": "oficina",
+    },
+    {
+        "code": "sinistros",
+        "name": "Sinistros",
+        "address": "sinistros@carfast.pt",
+        "inbound_hash": "sinistros",
+    },
+    {"code": "vvp", "name": "VVP", "address": "vvp@carfast.pt", "inbound_hash": "vvp"},
+    # Functional mailboxes are deliberately created without invented M365 or
+    # Postmark values.  They become externally reachable only after an alias is
+    # configured in Administration with real data.
+    {"code": "seguradoras", "name": "Seguradoras"},
+    {"code": "brokers", "name": "Brokers"},
+    {"code": "departamento_financeiro", "name": "Dep. Financeiro"},
+    {"code": "reports", "name": "Reports"},
+    {"code": "administrativo", "name": "Administrativo"},
+    {"code": "suporte", "name": "Suporte"},
+    {
+        "code": "outros",
+        "name": "Outros",
+        "requires_triage": True,
+        "administrative_review_on_unclassified": True,
+    },
 )
 
 
@@ -400,26 +447,34 @@ def seed_service_desk(db: Session) -> None:
 
 def seed_email_channels(db: Session) -> None:
     channels_by_code = {item.code: item for item in db.scalars(select(EmailChannel)).all()}
-    hub_address = settings.email_initial_address.strip().lower() or "hub@carfast.pt"
-    for code, name, configured_address, inbound_hash in EMAIL_CHANNEL_DEFINITIONS:
-        address = configured_address or hub_address
-        inbound_forward_address = postmark_inbound_address(inbound_hash)
+    for definition in EMAIL_CHANNEL_DEFINITIONS:
+        code = definition["code"]
         existing = channels_by_code.get(code)
         if existing:
-            if existing.address != address:
-                existing.address = address
-            if existing.inbound_hash != inbound_hash:
-                existing.inbound_hash = inbound_hash
-            if existing.inbound_forward_address != inbound_forward_address:
-                existing.inbound_forward_address = inbound_forward_address
             continue
+        setting_name = definition.get("address_setting")
+        address = (
+            str(getattr(settings, setting_name, "") or "").strip().lower() or None
+            if setting_name
+            else definition.get("address")
+        )
+        inbound_hash = definition.get("inbound_hash")
+        inbound_forward_address = (
+            postmark_inbound_address(inbound_hash) if inbound_hash else None
+        )
         channel = EmailChannel(
             code=code,
-            name=name,
+            name=definition["name"],
             address=address,
+            default_reply_address=address,
+            reply_policy="mailbox",
             inbound_hash=inbound_hash,
             inbound_forward_address=inbound_forward_address,
             active=True,
+            requires_triage=definition.get("requires_triage", False),
+            administrative_review_on_unclassified=definition.get(
+                "administrative_review_on_unclassified", False
+            ),
             approval_required=True,
             auto_task_mode="none",
             assignment_mode="manual",
@@ -428,6 +483,17 @@ def seed_email_channels(db: Session) -> None:
         )
         db.add(channel)
         db.flush()
+        if address:
+            db.add(
+                EmailChannelAlias(
+                    channel_id=channel.id,
+                    address=address,
+                    label="Endereço inicial",
+                    inbound_hash=inbound_hash,
+                    inbound_forward_address=inbound_forward_address,
+                    active=True,
+                )
+            )
         channels_by_code[code] = channel
 
 
@@ -588,7 +654,10 @@ def seed_catalogs(db: Session) -> None:
     for catalog_code, values in INITIAL_CATALOGS.items():
         catalog = db.scalar(select(SettingsCatalog).where(SettingsCatalog.code == catalog_code))
         if not catalog:
-            catalog = SettingsCatalog(code=catalog_code, name=catalog_code.replace("_", " ").title())
+            catalog = SettingsCatalog(
+                code=catalog_code,
+                name=catalog_code.replace("_", " ").title(),
+            )
             db.add(catalog)
             db.flush()
         for index, value_code in enumerate(values, start=1):

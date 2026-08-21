@@ -32,18 +32,33 @@ class EmailChannel(TimestampMixin, Base):
             "warning_minutes >= 0",
             name="ck_email_channels_sla_minutes",
         ),
+        CheckConstraint(
+            "reply_policy IN ('original', 'mailbox')",
+            name="ck_email_channels_reply_policy",
+        ),
         Index("ux_email_channels_inbound_forward_address", "inbound_forward_address", unique=True),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160))
-    address: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Legacy public address.  It remains available for existing installations,
+    # while new functional mailboxes can be created before real M365/Postmark
+    # addresses are known.
+    address: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    default_reply_address: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True
+    )
+    reply_policy: Mapped[str] = mapped_column(String(20), default="mailbox", index=True)
     inbound_hash: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     inbound_forward_address: Mapped[str | None] = mapped_column(
         String(255), index=True
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    requires_triage: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    administrative_review_on_unclassified: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True
+    )
     approval_required: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_task_mode: Mapped[str] = mapped_column(String(40), default="none", index=True)
     default_queue_id: Mapped[int | None] = mapped_column(
@@ -68,6 +83,9 @@ class EmailChannel(TimestampMixin, Base):
     supervisor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    functional_owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     assignment_mode: Mapped[str] = mapped_column(String(40), default="manual", index=True)
     first_response_minutes: Mapped[int | None] = mapped_column(Integer)
     resolution_minutes: Mapped[int | None] = mapped_column(Integer)
@@ -75,6 +93,28 @@ class EmailChannel(TimestampMixin, Base):
     pause_on_waiting: Mapped[bool] = mapped_column(Boolean, default=True)
     default_due_days: Mapped[int | None] = mapped_column(Integer)
     default_wait_days: Mapped[int | None] = mapped_column(Integer)
+
+
+class EmailChannelAlias(TimestampMixin, Base):
+    __tablename__ = "email_channel_aliases"
+    __table_args__ = (
+        UniqueConstraint("address", name="uq_email_channel_alias_address"),
+        UniqueConstraint("inbound_hash", name="uq_email_channel_alias_inbound_hash"),
+        UniqueConstraint(
+            "inbound_forward_address",
+            name="uq_email_channel_alias_inbound_forward_address",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("email_channels.id", ondelete="CASCADE"), index=True
+    )
+    address: Mapped[str] = mapped_column(String(255), index=True)
+    label: Mapped[str | None] = mapped_column(String(160))
+    inbound_hash: Mapped[str | None] = mapped_column(String(255), index=True)
+    inbound_forward_address: Mapped[str | None] = mapped_column(String(255), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
 class EmailInboxRule(TimestampMixin, Base):
@@ -177,6 +217,9 @@ class EmailThread(TimestampMixin, Base):
     supervisor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    functional_owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
@@ -208,6 +251,11 @@ class EmailThread(TimestampMixin, Base):
         String(40), default="unclassified", index=True
     )
     classification_other_text: Mapped[str | None] = mapped_column(Text)
+    administrative_review_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True
+    )
+    original_recipient_address: Mapped[str | None] = mapped_column(String(255), index=True)
+    technical_recipient_address: Mapped[str | None] = mapped_column(String(255), index=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     first_response_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
@@ -237,11 +285,13 @@ class EmailMessage(TimestampMixin, Base):
         ForeignKey("email_threads.id", ondelete="CASCADE"), index=True
     )
     external_message_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    logical_message_key: Mapped[str | None] = mapped_column(String(320), index=True)
     direction: Mapped[str] = mapped_column(String(20), index=True)
     state: Mapped[str] = mapped_column(String(40), default="received", index=True)
     sender: Mapped[str] = mapped_column(String(255))
     recipients_json: Mapped[list | None] = mapped_column(JSON)
     cc_json: Mapped[list | None] = mapped_column(JSON)
+    bcc_json: Mapped[list | None] = mapped_column(JSON)
     subject: Mapped[str] = mapped_column(String(500))
     text_body: Mapped[str | None] = mapped_column(Text)
     html_body: Mapped[str | None] = mapped_column(Text)
@@ -251,7 +301,41 @@ class EmailMessage(TimestampMixin, Base):
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    content_revision: Mapped[int] = mapped_column(Integer, default=1)
+    approved_revision: Mapped[int | None] = mapped_column(Integer)
+    compose_mode: Mapped[str] = mapped_column(String(20), default="reply", index=True)
+    template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_templates.id", ondelete="SET NULL"), index=True
+    )
+    template_version: Mapped[int | None] = mapped_column(Integer)
+    template_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     postmark_error: Mapped[str | None] = mapped_column(Text)
+
+
+class EmailDeliveryOrigin(TimestampMixin, Base):
+    __tablename__ = "email_delivery_origins"
+    __table_args__ = (
+        UniqueConstraint("delivery_key", name="uq_email_delivery_origin_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("email_messages.id", ondelete="CASCADE"), index=True
+    )
+    channel_alias_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_channel_aliases.id", ondelete="SET NULL"), index=True
+    )
+    webhook_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_webhook_events.id", ondelete="SET NULL"), index=True
+    )
+    delivery_key: Mapped[str] = mapped_column(String(320), index=True)
+    delivery_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    original_recipient: Mapped[str | None] = mapped_column(String(255), index=True)
+    technical_recipient: Mapped[str | None] = mapped_column(String(255), index=True)
+    postmark_mailbox_hash: Mapped[str | None] = mapped_column(String(255), index=True)
+    recipients_json: Mapped[list | None] = mapped_column(JSON)
+    cc_json: Mapped[list | None] = mapped_column(JSON)
 
 
 class EmailAttachment(TimestampMixin, Base):
@@ -357,6 +441,9 @@ class EmailChannelUser(Base):
     can_assume: Mapped[bool] = mapped_column(Boolean, default=False)
     can_assign: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage_sla: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_change_sender: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_edit_recipients: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_use_cc_bcc: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_mode: Mapped[str] = mapped_column(String(40), default="scope_all")
 
 
@@ -383,6 +470,9 @@ class EmailChannelRole(Base):
     can_assign: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage_sla: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_change_sender: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_edit_recipients: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_use_cc_bcc: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_mode: Mapped[str] = mapped_column(String(40), default="scope_all")
 
 
@@ -424,6 +514,8 @@ class EmailTemplate(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160))
     subject_template: Mapped[str | None] = mapped_column(String(500))
     body_template: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    allowed_variables_json: Mapped[list | None] = mapped_column(JSON)
     channel_id: Mapped[int | None] = mapped_column(
         ForeignKey("email_channels.id", ondelete="SET NULL"), index=True
     )
@@ -435,3 +527,25 @@ class EmailTemplate(TimestampMixin, Base):
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class EmailThreadLink(TimestampMixin, Base):
+    __tablename__ = "email_thread_links"
+    __table_args__ = (
+        CheckConstraint(
+            "link_type IN ('process', 'entity')",
+            name="ck_email_thread_links_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_id: Mapped[int] = mapped_column(
+        ForeignKey("email_threads.id", ondelete="CASCADE"), index=True
+    )
+    link_type: Mapped[str] = mapped_column(String(20), index=True)
+    label: Mapped[str] = mapped_column(String(200))
+    reference: Mapped[str | None] = mapped_column(String(255), index=True)
+    url: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )

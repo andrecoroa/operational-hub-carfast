@@ -117,3 +117,7 @@ python -m pytest
 
 Ver também: `docs/DEPLOY_V2_PRODUCTION.md`.
 
+## Documentação funcional
+
+O índice dos manuais, inventário factual e runbooks está em `docs/README.md`.
+

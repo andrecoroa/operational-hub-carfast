@@ -178,6 +178,7 @@ PERMISSION_GROUP_LABELS = {
     "documents": "Documentação",
     "workshop": "Oficina",
     "stock": "Stock",
+    "suppliers": "Fornecedores",
     "vehicles": "Frota",
     "dashboard": "Dashboard",
     "management_center": "Centro de Gestão",
@@ -242,6 +243,12 @@ ADMIN_NAV = (
             "settings.manage",
             "admin.manage",
         ),
+    ),
+    (
+        "suppliers",
+        "Fornecedores",
+        "/v2-clean/admin/suppliers",
+        ("suppliers.configuration.manage", "admin.manage"),
     ),
     (
         "workshop_models",
@@ -310,6 +317,7 @@ ADMIN_MODULE_LABELS = {
     "email": "Email",
     "workshop": "Oficina",
     "stock": "Stock",
+    "suppliers": "Fornecedores",
     "fleet_sales": "Frota e Venda",
     "documentation": "Documentação",
     "system": "Sistema",
@@ -447,6 +455,12 @@ ADMIN_DOMAIN_DEFINITIONS = (
                 ),
             ),
             (
+                "suppliers",
+                "Fornecedores",
+                "/v2-clean/admin/suppliers",
+                ("suppliers.configuration.manage", "admin.manage"),
+            ),
+            (
                 "workshop_models",
                 "Modelos da Oficina",
                 "/v2-clean/admin/workshop-models",
@@ -574,6 +588,15 @@ ADMIN_MODULE_NAV = {
         "sla": ("Auditoria operacional", "/v2-clean/admin/audit?q=stock"),
         "templates": ("Evolução Stock", "/v2-clean/admin/evolution?module=stock"),
         "audit": ("Auditoria Stock", "/v2-clean/admin/audit?q=stock"),
+    },
+    "suppliers": {
+        "access": ("Permissões de fornecedores", "/v2-clean/admin/roles"),
+        "scopes": ("Tipos e subtipos", "/v2-clean/admin/suppliers"),
+        "execution": ("Ficha geral", "/v2-clean/suppliers"),
+        "rules": ("Tipos por módulo", "/v2-clean/admin/suppliers"),
+        "sla": ("Auditoria", "/v2-clean/admin/audit?q=supplier"),
+        "templates": ("Modelos de email", "/v2-clean/admin/suppliers"),
+        "audit": ("Auditoria de fornecedores", "/v2-clean/admin/audit?q=supplier"),
     },
     "fleet_sales": {
         "access": ("Capacidades gerais", "/v2-clean/admin/roles"),
@@ -842,6 +865,7 @@ def clean_admin_operations(request: Request):
         "admin.settings.read",
         "admin.audit.read",
         "service_desk.classifications.manage",
+        "suppliers.configuration.manage",
         "admin.manage",
     )
     if not access:
@@ -4727,6 +4751,7 @@ def clean_admin_module_redirect(request: Request, module_code: str):
         "service_desk.classifications.manage",
         "users.manage",
         "settings.manage",
+        "suppliers.configuration.manage",
         "admin.manage",
     )
     if not access:
@@ -4737,6 +4762,7 @@ def clean_admin_module_redirect(request: Request, module_code: str):
         "email": "/v2-clean/admin/work-classification?view=channels",
         "workshop": "/v2-clean/admin/workshop-models",
         "stock": "/v2-clean/admin/settings",
+        "suppliers": "/v2-clean/admin/suppliers",
         "fleet_sales": "/v2-clean/admin/settings",
         "documentation": "/v2-clean/admin/settings",
         "system": "/v2-clean/admin/security",

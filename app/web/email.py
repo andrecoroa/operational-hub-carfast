@@ -34,6 +34,8 @@ from app.models.email import (
     EmailThreadLink,
 )
 from app.models.organization import Team, TeamMember
+from app.models.stock import StockSupplier
+from app.models.suppliers import SupplierTypeAssignment
 from app.models.tasks import Task, TaskEmailOrigin
 from app.models.work_hierarchy import WorkCategory, WorkDepartment, WorkQueue, WorkSubcategory
 from app.services.authorization import get_user_permission_codes
@@ -62,6 +64,10 @@ from app.services.service_desk import (
     mark_email_resolved,
     sla_snapshot,
     transition_email_waiting,
+)
+from app.services.supplier_email_templates import (
+    email_template_snapshot,
+    ranked_supplier_email_templates,
 )
 from app.services.work_classification import (
     ATTACHMENT_STATUSES,
@@ -615,7 +621,9 @@ def _ranked_email_templates(db, thread: EmailThread) -> list[EmailTemplate]:
     templates_list = [
         item
         for item in candidates
-        if (not item.category_id or item.category_id == thread.work_category_id)
+        if item.supplier_id is None
+        and item.supplier_type_id is None
+        and (not item.category_id or item.category_id == thread.work_category_id)
         and (
             not item.subcategory_id
             or item.subcategory_id == thread.work_subcategory_id
@@ -783,6 +791,10 @@ def email_inbox(
     q: str = "",
     responsible: str = "",
     due: str = "",
+    supplier_id: int | None = None,
+    module_code: str = "",
+    compose: str = "",
+    context_code: str = "",
 ):
     auth = _auth(request, "email.read", "email.triage", "email.manage", "admin.manage")
     if not auth:
@@ -955,17 +967,31 @@ def email_inbox(
             for item in channels
             if _can_use_channel(db, user_id, permissions, item.id, "reply")
         ]
-        email_templates = list(
-            db.scalars(
-                select(EmailTemplate)
-                .where(
-                    EmailTemplate.active.is_(True),
-                    (EmailTemplate.channel_id.is_(None))
-                    | (EmailTemplate.channel_id.in_(list(channel_access) or [-1])),
+        compose_supplier = db.get(StockSupplier, supplier_id) if supplier_id else None
+        if compose_supplier and not compose_supplier.active:
+            compose_supplier = None
+        supplier_type_ids = (
+            set(
+                db.scalars(
+                    select(SupplierTypeAssignment.supplier_type_id).where(
+                        SupplierTypeAssignment.supplier_id == compose_supplier.id
+                    )
                 )
-                .order_by(EmailTemplate.name)
             )
+            if compose_supplier
+            else set()
         )
+        email_templates = [
+            item
+            for item in ranked_supplier_email_templates(
+                db,
+                supplier_id=compose_supplier.id if compose_supplier else None,
+                supplier_type_ids=supplier_type_ids,
+                module_code=module_code.strip().lower() or None,
+                context_code=context_code.strip().lower() or None,
+            )
+            if item.channel_id is None or item.channel_id in channel_access
+        ]
         return templates.TemplateResponse(
             request,
             "clean_email_inbox.html",
@@ -996,6 +1022,10 @@ def email_inbox(
                     )
                     for item in compose_channels
                 },
+                "compose_supplier": compose_supplier,
+                "compose_module_code": module_code.strip().lower(),
+                "compose_context_code": context_code.strip().lower(),
+                "compose_open": compose == "1" and compose_supplier is not None,
             },
         )
 
@@ -1011,6 +1041,10 @@ def email_new_message(
     body: str = Form(""),
     template_id: str = Form(""),
     submit: str = Form("draft"),
+    supplier_id: int | None = Form(None),
+    supplier_type_id: int | None = Form(None),
+    module_code: str = Form(""),
+    context_code: str = Form(""),
 ):
     auth = _auth(request, "email.reply", "email.manage", "admin.manage")
     if not auth:
@@ -1039,11 +1073,26 @@ def email_new_message(
             or not _can_use_channel(db, user_id, permissions, channel.id, "reply")
         ):
             return RedirectResponse("/v2-clean/email?error=forbidden", status_code=303)
+        supplier = db.get(StockSupplier, supplier_id) if supplier_id else None
+        if supplier and not supplier.active:
+            return RedirectResponse("/v2-clean/email?error=inactive_supplier", status_code=303)
+        supplier_type_ids = (
+            set(db.scalars(select(SupplierTypeAssignment.supplier_type_id).where(SupplierTypeAssignment.supplier_id == supplier.id)))
+            if supplier else set()
+        )
+        if supplier_type_id not in supplier_type_ids:
+            supplier_type_id = next(iter(sorted(supplier_type_ids)), None)
+        applicable_templates = ranked_supplier_email_templates(
+            db,
+            supplier_id=supplier.id if supplier else None,
+            supplier_type_ids=supplier_type_ids,
+            module_code=module_code.strip().lower() or None,
+            context_code=context_code.strip().lower() or None,
+            channel_id=channel.id,
+        )
+        applicable_ids = {item.id for item in applicable_templates}
         template = db.get(EmailTemplate, int(template_id)) if template_id.isdigit() else None
-        if template and (
-            not template.active
-            or template.channel_id not in {None, channel.id}
-        ):
+        if template and template.id not in applicable_ids:
             template = None
         if (cc_list or bcc_list) and not _can_use_channel(
             db, user_id, permissions, channel.id, "use_cc_bcc"
@@ -1153,11 +1202,13 @@ def email_new_message(
             compose_mode="new",
             template_id=template.id if template else None,
             template_version=template.version if template else None,
-            template_snapshot_json=(
-                {"code": template.code, "name": template.name, "version": template.version}
-                if template
-                else None
+            template_snapshot_json=email_template_snapshot(
+                template, rendered_subject=clean_subject, rendered_body=clean_body
             ),
+            supplier_id=supplier.id if supplier else None,
+            supplier_type_id=supplier_type_id,
+            context_module=module_code.strip().lower() or None,
+            context_code=context_code.strip().lower() or None,
             created_by_id=user_id,
         )
         message.approval_fingerprint = _message_fingerprint(message)
@@ -2196,6 +2247,8 @@ def email_reply(
             or template.channel_id not in {None, thread.channel_id}
             or template.category_id not in {None, thread.work_category_id}
             or template.subcategory_id not in {None, thread.work_subcategory_id}
+            or template.supplier_id is not None
+            or template.supplier_type_id is not None
         ):
             return RedirectResponse(
                 f"/v2-clean/email/{thread_id}?error=invalid_template", status_code=303
@@ -2240,16 +2293,8 @@ def email_reply(
             compose_mode=mode,
             template_id=template.id if template else None,
             template_version=template.version if template else None,
-            template_snapshot_json=(
-                {
-                    "code": template.code,
-                    "name": template.name,
-                    "version": template.version,
-                    "subject_template": template.subject_template,
-                    "body_template": template.body_template,
-                }
-                if template
-                else None
+            template_snapshot_json=email_template_snapshot(
+                template, rendered_subject=clean_subject, rendered_body=clean_body
             ),
             created_by_id=user_id,
         )

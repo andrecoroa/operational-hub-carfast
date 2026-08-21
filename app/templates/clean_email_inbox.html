@@ -4,7 +4,7 @@
   {% set active_menu="email" %}{% include "_sidebar.html" %}
   <main class="content clean-content email-page">
     <header class="email-header"><div><p class="eyebrow">Comunicação</p><h1>Email</h1><p>Conversas recebidas e respostas preparadas por caixa.</p></div>{% if compose_channels %}<button type="button" data-email-compose-open>Novo email</button>{% endif %}</header>
-    {% if request.query_params.get('error') == 'invalid_recipient' %}<div class="clean-alert-warning">Indica um endereço de email válido.</div>{% elif request.query_params.get('error') == 'missing_message' %}<div class="clean-alert-warning">Indica o assunto e a mensagem.</div>{% endif %}
+    {% if request.query_params.get('error') == 'invalid_recipient' %}<div class="clean-alert-warning">Indica um endereço de email válido.</div>{% elif request.query_params.get('error') == 'missing_message' %}<div class="clean-alert-warning">Indica o assunto e a mensagem.</div>{% elif request.query_params.get('error') == 'inactive_supplier' %}<div class="clean-alert-warning">O fornecedor está inativo para novas utilizações; o histórico permanece disponível.</div>{% endif %}
     <nav class="email-channel-tabs" aria-label="Caixas de email">
       <a href="/v2-clean/email?status={{ filters.status }}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="{% if not filters.channel %}active{% endif %}">Todas as caixas</a>
       {% for item in channels %}<a href="/v2-clean/email?channel={{ item.code }}&status={{ filters.status }}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}" class="{% if filters.channel == item.code %}active{% endif %}">{{ item.name }}</a>{% endfor %}
@@ -43,10 +43,14 @@
     <label>De / Responder como
       <select name="channel_id" required data-email-compose-channel>{% for item in compose_channels %}<option value="{{ item.id }}">{{ item.name }} · {{ item.default_reply_address or item.address }}</option>{% endfor %}</select>
     </label>
-    <label>Para<input type="text" name="recipients" placeholder="nome@empresa.pt" required></label>
+    {% if compose_supplier %}<div class="email-notice">Fornecedor: <strong>{{ compose_supplier.name }}</strong> · modelos específicos apresentados primeiro, com fallback por tipo/módulo.</div>{% endif %}
+    <input type="hidden" name="supplier_id" value="{{ compose_supplier.id if compose_supplier else '' }}">
+    <input type="hidden" name="module_code" value="{{ compose_module_code or '' }}">
+    <input type="hidden" name="context_code" value="{{ compose_context_code or '' }}">
+    <label>Para<input type="text" name="recipients" value="{{ compose_supplier.email if compose_supplier else '' }}" placeholder="nome@empresa.pt" required></label>
     <div class="email-compose-recipient-grid"><label>Cc<input type="text" name="cc" placeholder="Opcional"></label><label>Bcc<input type="text" name="bcc" placeholder="Opcional"></label></div>
     <label>Modelo
-      <select name="template_id" data-email-compose-template><option value="">Sem modelo</option>{% for item in email_templates %}<option value="{{ item.id }}" data-channel="{{ item.channel_id or '' }}" data-subject="{{ item.subject_template or '' }}" data-body="{{ item.body_template }}">{{ item.name }}</option>{% endfor %}</select>
+      <select name="template_id" data-email-compose-template><option value="">Sem modelo</option>{% for item in email_templates %}<option value="{{ item.id }}" data-channel="{{ item.channel_id or '' }}" data-subject="{{ item.subject_template or '' }}" data-body="{{ item.body_template }}">{{ item.name }}{% if compose_supplier and item.supplier_id == compose_supplier.id %} · fornecedor{% elif item.supplier_type_id %} · tipo de serviço{% elif item.module_code %} · {{ item.module_code }}{% endif %}</option>{% endfor %}</select>
     </label>
     <label>Assunto<input type="text" name="subject" required data-email-compose-subject></label>
     <label>Mensagem<textarea name="body" rows="12" required data-email-compose-body></textarea></label>
@@ -88,6 +92,7 @@
       body.value = option.dataset.body || '';
     });
     refresh();
+    {% if compose_open %}dialog?.showModal();{% endif %}
   })();
 </script>{% endif %}
 {% endblock %}

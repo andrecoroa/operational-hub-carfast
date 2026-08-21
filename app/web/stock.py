@@ -39,6 +39,7 @@ from app.models.stock import (
     StockSupplier,
 )
 from app.models.vehicles import Vehicle
+from app.models.suppliers import SupplierType, SupplierTypeAssignment
 from app.models.workshop_phased import WorkshopMaterialNeed, WorkshopPhasedProcess
 from app.schemas.stock import (
     StockArticleVehicleCompatibilityCreate,
@@ -731,8 +732,28 @@ def stock_supplier_create(
         phone=phone.strip() or None,
         address=address.strip() or None,
         payment_terms=payment_terms.strip() or None,
+        created_by_id=_user_id(request),
+        updated_by_id=_user_id(request),
     )
     db.add(supplier)
+    db.flush()
+    stock_type = db.scalar(select(SupplierType).where(SupplierType.code == "stock"))
+    if stock_type:
+        db.add(
+            SupplierTypeAssignment(
+                supplier_id=supplier.id,
+                supplier_type_id=stock_type.id,
+                created_by_id=_user_id(request),
+            )
+        )
+    record_audit(
+        db,
+        action="supplier.created_from_stock",
+        entity_type="supplier",
+        entity_id=supplier.id,
+        detail=supplier.name,
+        user_id=_user_id(request),
+    )
     db.commit()
     return RedirectResponse(f"/v2-clean/stock/suppliers/{supplier.id}?saved=1", status_code=303)
 

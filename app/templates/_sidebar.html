@@ -49,6 +49,9 @@
       {% if nav_has_permission(request, "stock.read", "stock.operate", "stock.manage", "admin.manage") %}
         <a href="/v2-clean/stock" {% if active_menu == "stock" %}class="active"{% endif %}>Stock</a>
       {% endif %}
+      {% if nav_has_permission(request, "suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage") %}
+        <a href="/v2-clean/suppliers" {% if active_menu == "suppliers" %}class="active"{% endif %}>Fornecedores</a>
+      {% endif %}
       {% if nav_has_permission(request, "email.read", "email.triage", "email.reply", "email.approve", "email.manage", "admin.manage") %}
         <a href="/v2-clean/email" {% if active_menu == "email" %}class="active"{% endif %}>Email</a>
       {% endif %}
@@ -89,7 +92,8 @@
         "service_desk.classifications.manage",
         "admin.manage",
         "users.manage",
-        "settings.manage"
+        "settings.manage",
+        "suppliers.configuration.manage"
       ) %}
         <a href="/v2-clean/admin" {% if active_menu == "clean_admin" %}class="active"{% endif %}>Administração</a>
       {% endif %}

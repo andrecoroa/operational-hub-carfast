@@ -17,6 +17,7 @@ from app.web.email import email_router
 from app.web.portal import portal_router
 from app.web.router import web_router
 from app.web.stock import stock_router
+from app.web.suppliers import supplier_router
 from app.web.vehicle_sales import vehicle_sales_router
 
 CHANGE_NOTICE_ALLOWED_PREFIXES = (
@@ -112,6 +113,7 @@ WEB_PERMISSION_RULES = (
                 "users.manage",
                 "settings.manage",
                 "service_desk.classifications.manage",
+                "suppliers.configuration.manage",
             },
             "POST": {
                 "admin.users.manage",
@@ -129,7 +131,15 @@ WEB_PERMISSION_RULES = (
                 "users.manage",
                 "settings.manage",
                 "service_desk.classifications.manage",
+                "suppliers.configuration.manage",
             },
+        },
+    ),
+    (
+        ("/v2-clean/suppliers",),
+        {
+            "GET": {"suppliers.read", "suppliers.write", "stock.read", "stock.manage", "admin.manage"},
+            "POST": {"suppliers.write", "admin.manage"},
         },
     ),
     (
@@ -451,6 +461,7 @@ def create_app() -> FastAPI:
     app.include_router(portal_router)
     app.include_router(vehicle_sales_router)
     app.include_router(stock_router)
+    app.include_router(supplier_router)
     app.include_router(email_router)
     app.include_router(web_router)
     return app

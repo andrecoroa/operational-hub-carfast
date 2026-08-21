@@ -13,7 +13,7 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_REVISION = "ffbe1e2f3a4c"
 PREVIOUS_REVISION = "ffad1e2f3a4b"
-CURRENT_HEAD_REVISION = "ffcf2a3b4c5d"
+CURRENT_HEAD_REVISION = "ffd02a3b4c5e"
 MIGRATION_PATH = (
     ROOT / "migrations" / "versions" / "ffbe1e2f3a4c_add_service_desk_email_operations.py"
 )

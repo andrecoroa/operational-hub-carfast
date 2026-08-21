@@ -106,42 +106,34 @@ def _logical_message_key(payload: dict) -> str:
         return "rfc:" + hashlib.sha256(normalized.encode()).hexdigest()
 
     normalized_date = _normalized_header_date(payload, headers)
-    if normalized_date:
-        attachment_fingerprints = []
-        for item in payload.get("Attachments") or []:
-            if not isinstance(item, dict):
-                continue
-            content = str(item.get("Content") or "")
-            attachment_fingerprints.append(
-                {
-                    "name": str(item.get("Name") or "").strip().casefold(),
-                    "type": str(item.get("ContentType") or "").strip().casefold(),
-                    "content": hashlib.sha256(content.encode()).hexdigest(),
-                }
-            )
-        canonical = {
-            "sender": _address(payload.get("From")),
-            "subject": re.sub(r"\s+", " ", str(payload.get("Subject") or ""))
-            .strip()
-            .casefold(),
-            "date": normalized_date,
-            "text": hashlib.sha256(
-                str(payload.get("TextBody") or "").encode()
-            ).hexdigest(),
-            "html": hashlib.sha256(
-                str(payload.get("HtmlBody") or "").encode()
-            ).hexdigest(),
-            "attachments": sorted(
-                attachment_fingerprints,
-                key=lambda item: (item["name"], item["type"], item["content"]),
-            ),
-        }
-        encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
-        return "fallback:" + hashlib.sha256(encoded.encode()).hexdigest()
-
-    # Without an original identifier or date, merging is more dangerous than
-    # retaining two deliveries. Keep the Postmark identity as a conservative key.
-    return "postmark:" + hashlib.sha256(_event_key(payload).encode()).hexdigest()
+    attachment_fingerprints = []
+    for item in payload.get("Attachments") or []:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("Content") or "")
+        attachment_fingerprints.append(
+            {
+                "name": str(item.get("Name") or "").strip().casefold(),
+                "type": str(item.get("ContentType") or "").strip().casefold(),
+                "content": hashlib.sha256(content.encode()).hexdigest(),
+            }
+        )
+    canonical = {
+        "sender": _address(payload.get("From")),
+        "sender_name": str(payload.get("FromName") or "").strip().casefold(),
+        "subject": re.sub(r"\s+", " ", str(payload.get("Subject") or ""))
+        .strip()
+        .casefold(),
+        "date": normalized_date,
+        "text": hashlib.sha256(str(payload.get("TextBody") or "").encode()).hexdigest(),
+        "html": hashlib.sha256(str(payload.get("HtmlBody") or "").encode()).hexdigest(),
+        "attachments": sorted(
+            attachment_fingerprints,
+            key=lambda item: (item["name"], item["type"], item["content"]),
+        ),
+    }
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return "fallback:" + hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def _recipient_email(item: object) -> str:

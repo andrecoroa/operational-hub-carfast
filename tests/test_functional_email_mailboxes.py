@@ -8,8 +8,8 @@ from app.models.email import (
     EmailChannel,
     EmailChannelAlias,
     EmailChannelRole,
-    EmailDeliveryOrigin,
     EmailMessage,
+    EmailMessageDelivery,
     EmailTemplate,
     EmailThread,
 )
@@ -208,18 +208,19 @@ def test_rfc_message_id_deduplicates_delivery_and_preserves_origins(db_session):
         db_session.scalars(select(EmailMessage).where(EmailMessage.thread_id == first.id))
     )
     assert len(messages) == 1
-    assert messages[0].logical_message_key == "rfc:logical@example.com"
     assert {item["Email"] for item in messages[0].cc_json} == {
         "financeiro@example.org"
     }
     origins = list(
         db_session.scalars(
-            select(EmailDeliveryOrigin).where(
-                EmailDeliveryOrigin.message_id == messages[0].id
+            select(EmailMessageDelivery).where(
+                EmailMessageDelivery.message_id == messages[0].id
             )
         )
     )
-    assert {item.delivery_message_id for item in origins} == {
+    assert len({item.logical_key for item in origins}) == 1
+    assert origins[0].logical_key.startswith("rfc:")
+    assert {item.postmark_message_id for item in origins} == {
         "delivery-one",
         "delivery-two",
     }

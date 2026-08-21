@@ -1,7 +1,7 @@
-"""add configurable functional email mailboxes and delivery origins
+"""add configurable functional email mailboxes
 
 Revision ID: ffd02a3b4c5e
-Revises: ffcf2a3b4c5d
+Revises: ffe04c5d6e7f
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "ffd02a3b4c5e"
-down_revision: str | Sequence[str] | None = "ffcf2a3b4c5d"
+down_revision: str | Sequence[str] | None = "ffe04c5d6e7f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -144,7 +144,6 @@ def upgrade() -> None:
     )
 
     message_columns = (
-        sa.Column("logical_message_key", sa.String(320)),
         sa.Column("bcc_json", sa.JSON()),
         sa.Column("approval_fingerprint", sa.String(64)),
         sa.Column("content_revision", sa.Integer(), nullable=False, server_default="1"),
@@ -162,51 +161,9 @@ def upgrade() -> None:
         op.add_column("email_messages", column)
     _index(
         "email_messages",
-        "logical_message_key",
         "approval_fingerprint",
         "compose_mode",
         "template_id",
-    )
-
-    op.create_table(
-        "email_delivery_origins",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "message_id",
-            sa.Integer(),
-            sa.ForeignKey("email_messages.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "channel_alias_id",
-            sa.Integer(),
-            sa.ForeignKey("email_channel_aliases.id", ondelete="SET NULL"),
-        ),
-        sa.Column(
-            "webhook_event_id",
-            sa.Integer(),
-            sa.ForeignKey("email_webhook_events.id", ondelete="SET NULL"),
-        ),
-        sa.Column("delivery_key", sa.String(320), nullable=False),
-        sa.Column("delivery_message_id", sa.String(255)),
-        sa.Column("original_recipient", sa.String(255)),
-        sa.Column("technical_recipient", sa.String(255)),
-        sa.Column("postmark_mailbox_hash", sa.String(255)),
-        sa.Column("recipients_json", sa.JSON()),
-        sa.Column("cc_json", sa.JSON()),
-        *_timestamps(),
-        sa.UniqueConstraint("delivery_key", name="uq_email_delivery_origin_key"),
-    )
-    _index(
-        "email_delivery_origins",
-        "message_id",
-        "channel_alias_id",
-        "webhook_event_id",
-        "delivery_key",
-        "delivery_message_id",
-        "original_recipient",
-        "technical_recipient",
-        "postmark_mailbox_hash",
     )
 
     for table in ("email_channel_users", "email_channel_roles"):
@@ -259,7 +216,6 @@ def downgrade() -> None:
     for table in ("email_channel_roles", "email_channel_users"):
         for name in ("can_use_cc_bcc", "can_edit_recipients", "can_change_sender"):
             op.drop_column(table, name)
-    op.drop_table("email_delivery_origins")
     for name in (
         "template_snapshot_json",
         "template_version",
@@ -269,7 +225,6 @@ def downgrade() -> None:
         "content_revision",
         "approval_fingerprint",
         "bcc_json",
-        "logical_message_key",
     ):
         op.drop_column("email_messages", name)
     for name in (

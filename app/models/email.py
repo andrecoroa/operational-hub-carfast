@@ -285,7 +285,6 @@ class EmailMessage(TimestampMixin, Base):
         ForeignKey("email_threads.id", ondelete="CASCADE"), index=True
     )
     external_message_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
-    logical_message_key: Mapped[str | None] = mapped_column(String(320), index=True)
     direction: Mapped[str] = mapped_column(String(20), index=True)
     state: Mapped[str] = mapped_column(String(40), default="received", index=True)
     sender: Mapped[str] = mapped_column(String(255))
@@ -311,31 +310,6 @@ class EmailMessage(TimestampMixin, Base):
     template_version: Mapped[int | None] = mapped_column(Integer)
     template_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     postmark_error: Mapped[str | None] = mapped_column(Text)
-
-
-class EmailDeliveryOrigin(TimestampMixin, Base):
-    __tablename__ = "email_delivery_origins"
-    __table_args__ = (
-        UniqueConstraint("delivery_key", name="uq_email_delivery_origin_key"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    message_id: Mapped[int] = mapped_column(
-        ForeignKey("email_messages.id", ondelete="CASCADE"), index=True
-    )
-    channel_alias_id: Mapped[int | None] = mapped_column(
-        ForeignKey("email_channel_aliases.id", ondelete="SET NULL"), index=True
-    )
-    webhook_event_id: Mapped[int | None] = mapped_column(
-        ForeignKey("email_webhook_events.id", ondelete="SET NULL"), index=True
-    )
-    delivery_key: Mapped[str] = mapped_column(String(320), index=True)
-    delivery_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
-    original_recipient: Mapped[str | None] = mapped_column(String(255), index=True)
-    technical_recipient: Mapped[str | None] = mapped_column(String(255), index=True)
-    postmark_mailbox_hash: Mapped[str | None] = mapped_column(String(255), index=True)
-    recipients_json: Mapped[list | None] = mapped_column(JSON)
-    cc_json: Mapped[list | None] = mapped_column(JSON)
 
 
 class EmailAttachment(TimestampMixin, Base):

@@ -495,15 +495,19 @@ def _internal_email_addresses(db) -> set[str]:
     result = {
         value.casefold()
         for row in db.scalars(select(EmailChannel)).all()
-        for value in (row.address, row.default_reply_address)
+        for value in (
+            row.address,
+            row.default_reply_address,
+            row.inbound_forward_address,
+        )
         if value
     }
-    result.update(
-        item.casefold()
-        for item in db.scalars(
-            select(EmailChannelAlias.address).where(EmailChannelAlias.active.is_(True))
-        )
-    )
+    for alias in db.scalars(
+        select(EmailChannelAlias).where(EmailChannelAlias.active.is_(True))
+    ):
+        for value in (alias.address, alias.inbound_forward_address):
+            if value:
+                result.add(value.casefold())
     internal_domains = {item.rsplit("@", 1)[-1] for item in result if "@" in item}
     for domain in internal_domains:
         result.add(f"*@{domain}")

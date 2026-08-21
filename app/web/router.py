@@ -2633,6 +2633,33 @@ def user_can_access_task_workspace(
     return bool(permissions.intersection(required))
 
 
+def user_can_access_quick_record(
+    db,
+    user: User | None,
+    record: QuickRecord,
+    *,
+    write: bool = False,
+) -> bool:
+    if record.entity_type != "email_intake":
+        return user_can_access_task_workspace(db, user, record.workspace, write=write)
+    if not user or not user.active:
+        return False
+    permissions = get_user_permission_codes(db, user)
+    required = (
+        {"email.triage", "email.reply", "email.manage", "admin.manage"}
+        if write
+        else {
+            "email.read",
+            "email.triage",
+            "email.reply",
+            "email.approve",
+            "email.manage",
+            "admin.manage",
+        }
+    )
+    return bool(permissions.intersection(required))
+
+
 def user_task_workspace_codes(db, user: User | None, *, write: bool = False) -> list[str]:
     return [
         workspace_code
@@ -32161,7 +32188,22 @@ def quick_record_create(
     clean_workspace = normalize_task_workspace(workspace)
     with SessionLocal() as db:
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, clean_workspace, write=True):
+        if source == "email":
+            permissions = (
+                get_user_permission_codes(db, current_user)
+                if current_user and current_user.active
+                else set()
+            )
+            can_create = bool(
+                permissions.intersection(
+                    {"email.triage", "email.reply", "email.manage", "admin.manage"}
+                )
+            )
+        else:
+            can_create = user_can_access_task_workspace(
+                db, current_user, clean_workspace, write=True
+            )
+        if not can_create:
             return RedirectResponse("/task-board", status_code=303)
     allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE.get(clean_workspace, [])}
     if record_type not in allowed_record_types:
@@ -32271,7 +32313,7 @@ def quick_record_detail(
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, workspace):
+        if not user_can_access_quick_record(db, current_user, record):
             return RedirectResponse("/task-board", status_code=303)
         linked_task = db.get(Task, record.converted_task_id) if record.converted_task_id else None
         linked_email_intake = None
@@ -32334,7 +32376,7 @@ def quick_record_email_original(request: Request, record_id: int):
             return RedirectResponse(f"/task-board/quick/{record_id}", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, workspace):
+        if not user_can_access_quick_record(db, current_user, record):
             return RedirectResponse("/task-board", status_code=303)
         try:
             intake_id = int(record.entity_id)
@@ -32384,7 +32426,7 @@ def quick_record_update(
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+        if not user_can_access_quick_record(db, current_user, record, write=True):
             return RedirectResponse("/task-board", status_code=303)
         allowed_record_types = {code for code, _ in QUICK_RECORD_TYPES_BY_WORKSPACE[workspace]}
         if record_type not in allowed_record_types:
@@ -32438,7 +32480,7 @@ def quick_record_close(request: Request, record_id: int):
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+        if not user_can_access_quick_record(db, current_user, record, write=True):
             return RedirectResponse("/task-board", status_code=303)
         record.status = "closed"
         record.closed_at = record.closed_at or datetime.now(UTC)
@@ -32478,7 +32520,7 @@ def quick_record_convert(
             return RedirectResponse("/task-board/manage", status_code=303)
         workspace = normalize_task_workspace(record.workspace)
         current_user = db.get(User, user_id)
-        if not user_can_access_task_workspace(db, current_user, workspace, write=True):
+        if not user_can_access_quick_record(db, current_user, record, write=True):
             return RedirectResponse("/task-board", status_code=303)
         if not user_work_scope_allows(
             db,
